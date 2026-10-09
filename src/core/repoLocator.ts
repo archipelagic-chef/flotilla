@@ -1,3 +1,5 @@
+// fs/promises realpath has the semantics of fs.realpath.native.
+import { realpath } from 'node:fs/promises';
 import * as path from 'node:path';
 import { runGit } from './git/gitCli';
 
@@ -21,12 +23,18 @@ export async function locateRepo(folder: string): Promise<RepoLocation | undefin
   }
   const [top, common, gitDir] = out.split(/\r?\n/);
   if (!top || !common || !gitDir) return undefined;
-  const commonDir = path.resolve(folder, common);
-  if (path.basename(commonDir) !== '.git') return undefined;
-  return {
-    mainRoot: path.dirname(commonDir),
-    commonDir,
-    worktreeRoot: path.resolve(top),
-    gitDir: path.resolve(folder, gitDir),
-  };
+  const commonPath = path.resolve(folder, common);
+  if (path.basename(commonPath) !== '.git') return undefined;
+  // Real paths: git writes real paths into .git files and back-pointers, and resolves `..` physically,
+  // so paths reached through a symlinked folder would break relative gitdirs and path comparisons.
+  try {
+    return {
+      mainRoot: await realpath(path.dirname(commonPath)),
+      commonDir: await realpath(commonPath),
+      worktreeRoot: await realpath(path.resolve(folder, top)),
+      gitDir: await realpath(path.resolve(folder, gitDir)),
+    };
+  } catch {
+    return undefined;
+  }
 }

@@ -1,8 +1,9 @@
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { locateRepo } from '../../../src/core/repoLocator';
 import { makePortable } from '../../../src/features/worktrees/portability';
 import { resolveWorktrees, type ResolvedWorktree } from '../../../src/features/worktrees/resolver';
-import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment } from '../../helpers/gitRepo';
+import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -11,6 +12,16 @@ const roots = (repo: string) => ({ mainRoot: repo, commonDir: path.join(repo, '.
 const byId = (list: ResolvedWorktree[], id: string) => list.find((w) => w.id === id)!;
 
 describe('resolveWorktrees', () => {
+  it.skipIf(process.platform === 'win32')('resolves a plain worktree as reachable when the repo is opened through a symlink', async () => {
+    const { repo, linkedRepo, dirs } = symlinkedRepo();
+    cleanup.push(...dirs);
+    const wt = path.join(repo, '.worktrees', 'plain');
+    git(repo, 'worktree', 'add', '-b', 'plain', wt);
+    const roots = (await locateRepo(linkedRepo))!;
+    const linked = (await resolveWorktrees(roots)).find((w) => !w.isMain)!;
+    expect(linked).toMatchObject({ path: wt, insideRepo: true, portable: false });
+  });
+
   it('returns only the main worktree for a fresh repo', async () => {
     const repo = initRepo();
     cleanup.push(repo);

@@ -79,7 +79,7 @@ export class WorktreeService {
   async adopt(wt: ResolvedWorktree): Promise<void> {
     if (!wt.path) throw new Error('This worktree is not reachable from this environment.');
     if (!(await makePortable(wt.path, wt.adminDir))) {
-      throw new Error(`Cannot make ${wt.path} portable: it has no relative path to ${wt.adminDir}.`);
+      throw new Error(`Cannot make ${wt.path} portable: there is no relative path to ${wt.adminDir} that git accepts.`);
     }
   }
 

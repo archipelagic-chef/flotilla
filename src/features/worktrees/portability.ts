@@ -1,15 +1,20 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { runGit } from '../../core/git/gitCli';
 import { samePath, toGitPath } from '../../core/paths';
 
 export const LOCK_REASON = 'switchyard: portable';
 
-/** Overwrites a file in place, preserving attributes like the hidden bit on Windows. */
+/**
+ * Overwrites a file in place, preserving attributes like the hidden bit on Windows. Writes at position 0 first
+ * and truncates after, so a concurrent reader never sees an empty file.
+ */
 async function overwriteFile(file: string, content: string): Promise<void> {
+  const data = Buffer.from(content, 'utf8');
   const handle = await fs.open(file, 'r+');
   try {
-    await handle.truncate(0);
-    await handle.writeFile(content);
+    await handle.write(data, 0, data.length, 0);
+    await handle.truncate(data.length);
   } finally {
     await handle.close();
   }
@@ -64,14 +69,36 @@ export async function isPortable(worktreeDir: string, adminDir: string): Promise
   return value !== undefined && isRelativeGitdir(value) && (await isLocked(adminDir));
 }
 
+/** True when git, run in the worktree, resolves its git dir to realAdminDir. */
+async function gitDirResolvesTo(worktreeDir: string, realAdminDir: string): Promise<boolean> {
+  try {
+    const out = (await runGit(['rev-parse', '--git-dir'], { cwd: worktreeDir })).trim();
+    return samePath(await fs.realpath(path.resolve(worktreeDir, out)), realAdminDir);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rewrites <worktreeDir>/.git to a relative gitdir and locks the worktree so a prune in another environment
+ * keeps it. Locks first (fail safe), then rewrites, then verifies with git; on failure it restores the .git
+ * file (and removes a lock it added) and returns false.
+ */
 export async function makePortable(worktreeDir: string, adminDir: string): Promise<boolean> {
   if ((await readGitFile(worktreeDir)) === undefined) return false;
-  const rel = relativeGitdir(worktreeDir, adminDir);
+  // Git resolves `..` physically, so the relative path must be computed between real paths.
+  const realAdminDir = await fs.realpath(adminDir);
+  const rel = relativeGitdir(await fs.realpath(worktreeDir), realAdminDir);
   if (!rel) return false;
+  const addedLock = !(await isLocked(adminDir));
+  if (addedLock) await lock(adminDir);
   const gitPath = path.join(worktreeDir, '.git');
+  const original = await fs.readFile(gitPath, 'utf8');
   await overwriteFile(gitPath, `gitdir: ${rel}\n`);
-  if (!(await isLocked(adminDir))) await lock(adminDir);
-  return true;
+  if (await gitDirResolvesTo(worktreeDir, realAdminDir)) return true;
+  await overwriteFile(gitPath, original);
+  if (addedLock) await unlock(adminDir);
+  return false;
 }
 
 export async function readBackPointer(adminDir: string): Promise<string | undefined> {

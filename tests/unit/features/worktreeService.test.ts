@@ -2,8 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GitError } from '../../../src/core/git/gitCli';
+import { locateRepo } from '../../../src/core/repoLocator';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
-import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, writeFile } from '../../helpers/gitRepo';
+import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -58,6 +59,16 @@ describe('WorktreeService.create', () => {
     const wt = await s.create({ kind: 'remote', remoteRef: 'origin/remote-only' });
     expect(wt.branch).toBe('remote-only');
     expect(git(wt.path!, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/remote-only');
+  });
+
+  it.skipIf(process.platform === 'win32')('creates a working portable worktree when the repo is opened through a symlink', async () => {
+    const { repo, linkedRepo, dirs } = symlinkedRepo();
+    cleanup.push(...dirs);
+    const roots = (await locateRepo(linkedRepo))!;
+    const wt = await new WorktreeService(roots, () => ({ autoAdopt: true })).create({ kind: 'new', branch: 'feat' });
+    expect(wt).toMatchObject({ path: path.join(repo, '.worktrees', 'feat'), portable: true });
+    expect(fs.readFileSync(path.join(repo, '.worktrees', 'feat', '.git'), 'utf8')).toBe('gitdir: ../../.git/worktrees/feat\n');
+    expect(git(path.join(linkedRepo, '.worktrees', 'feat'), 'status', '--porcelain')).toBe('');
   });
 
   it('works when the repo path has spaces and non-ASCII characters', async () => {

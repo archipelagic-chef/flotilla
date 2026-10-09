@@ -11,7 +11,7 @@ import {
   retargetBackPointer,
   unlock,
 } from '../../../src/features/worktrees/portability';
-import { git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment } from '../../helpers/gitRepo';
+import { git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -51,6 +51,30 @@ describe('makePortable', () => {
     git(repo, 'worktree', 'lock', '--reason', 'mine', dir);
     await makePortable(dir, admin);
     expect(fs.readFileSync(path.join(admin, 'locked'), 'utf8').trim()).toBe('mine');
+  });
+
+  it.skipIf(process.platform === 'win32')('computes the relative path from real paths when the worktree is reached through a symlink', async () => {
+    const { repo, linkedRepo, dirs } = symlinkedRepo();
+    cleanup.push(...dirs);
+    const { admin } = await addWorktree(repo, 'feat');
+    const linkedDir = path.join(linkedRepo, '.worktrees', 'feat');
+    expect(await makePortable(linkedDir, admin)).toBe(true);
+    expect(fs.readFileSync(path.join(linkedDir, '.git'), 'utf8')).toBe('gitdir: ../../.git/worktrees/feat\n');
+    expect(git(linkedDir, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feat');
+  });
+
+  it('restores the .git file and returns false when git does not accept the rewritten path', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const { dir, admin } = await addWorktree(repo, 'feat');
+    const notAGitDir = path.join(repo, '.git', 'worktrees', 'not-a-git-dir');
+    fs.mkdirSync(notAGitDir);
+    const original = fs.readFileSync(path.join(dir, '.git'), 'utf8');
+    expect(await makePortable(dir, notAGitDir)).toBe(false);
+    expect(fs.readFileSync(path.join(dir, '.git'), 'utf8')).toBe(original);
+    expect(fs.existsSync(path.join(notAGitDir, 'locked'))).toBe(false);
+    expect(fs.existsSync(path.join(admin, 'locked'))).toBe(false);
+    expect(git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feat');
   });
 
   it('refuses to touch a .git directory', async () => {

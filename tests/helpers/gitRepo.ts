@@ -67,6 +67,19 @@ export function removeDir(dir: string): void {
   }
 }
 
+/**
+ * Creates a repo at <realParent>/repo and a symlink <linkHolder>/c -> realParent, like a workspace opened through a
+ * symlinked folder. `linkedRepo` is the repo seen through the symlink. Needs symlink privileges (skip on win32).
+ */
+export function symlinkedRepo(): { repo: string; linkedRepo: string; dirs: string[] } {
+  const realParent = makeTempDir();
+  const repo = initRepo(path.join(realParent, 'repo'));
+  const linkHolder = makeTempDir('switchyard-link-');
+  const link = path.join(linkHolder, 'c');
+  fs.symlinkSync(realParent, link, 'dir');
+  return { repo, linkedRepo: path.join(link, 'repo'), dirs: [realParent, linkHolder] };
+}
+
 /** Copies the repo to a new absolute path and renames the original away, like a second environment seeing the repo at a different mount path. */
 export function simulateOtherEnvironment(repo: string): string {
   const other = makeTempDir('switchyard-other-');
