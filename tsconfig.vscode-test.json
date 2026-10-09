@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "module": "node16", "moduleResolution": "node16", "outDir": "out", "rootDir": ".", "types": ["mocha", "node"] },
+  "include": ["tests/vscode/**/*.ts"]
+}
