@@ -26,19 +26,31 @@ export interface RemovalRisks {
 
 const ADD_TIMEOUT_MS = 120_000;
 
+export interface WorktreeServiceOptions {
+  autoAdopt: boolean;
+  /** Called when auto-adoption of a worktree fails; that worktree is listed as not portable. */
+  onAdoptError?: (wt: ResolvedWorktree, error: unknown) => void;
+}
+
 export class WorktreeService {
   constructor(
     readonly roots: RepoRoots,
-    private readonly options: () => { autoAdopt: boolean },
+    private readonly options: () => WorktreeServiceOptions,
   ) {}
 
   async list(): Promise<ResolvedWorktree[]> {
     const worktrees = await resolveWorktrees(this.roots);
-    if (!this.options().autoAdopt) return worktrees;
+    const options = this.options();
+    if (!options.autoAdopt) return worktrees;
     let adopted = false;
     for (const wt of worktrees) {
       if (!wt.isMain && wt.path && wt.insideRepo && !wt.portable) {
-        adopted = (await makePortable(wt.path, wt.adminDir)) || adopted;
+        try {
+          adopted = (await makePortable(wt.path, wt.adminDir)) || adopted;
+        } catch (error) {
+          // One worktree we cannot adopt (EPERM, EACCES, ...) must not blank the whole overview.
+          options.onAdoptError?.(wt, error);
+        }
       }
     }
     return adopted ? resolveWorktrees(this.roots) : worktrees;
@@ -106,7 +118,13 @@ export class WorktreeService {
     try {
       await runGit(['worktree', 'remove', ...(opts.force ? ['--force'] : []), wt.path], { cwd: this.roots.mainRoot, timeoutMs: ADD_TIMEOUT_MS });
     } catch (error) {
-      if (previousLock !== undefined) await lock(wt.adminDir, previousLock);
+      if (previousLock !== undefined) {
+        try {
+          await lock(wt.adminDir, previousLock);
+        } catch {
+          // e.g. ENOENT when git already deleted the admin dir: the git error is what matters
+        }
+      }
       throw error;
     }
   }

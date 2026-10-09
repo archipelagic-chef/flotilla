@@ -51,7 +51,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return;
   }
 
-  const service = new WorktreeService(location, () => ({ autoAdopt: readSettings().autoAdopt }));
+  const service = new WorktreeService(location, () => ({
+    autoAdopt: readSettings().autoAdopt,
+    onAdoptError: (wt, error) =>
+      output.appendLine(`Could not make ${wt.path ?? wt.adminDir} portable: ${error instanceof Error ? error.message : String(error)}`),
+  }));
   const repository = new Repository<Workstream>(
     () =>
       buildWorkstreams(service, {

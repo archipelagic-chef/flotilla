@@ -99,6 +99,28 @@ describe('WorktreeService.list (adoption)', () => {
     expect(fs.readFileSync(path.join(outsideParent, 'out', '.git'), 'utf8')).toBe(outGitFile);
   });
 
+  it('reports a worktree that cannot be adopted and still lists the others', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    git(repo, 'worktree', 'add', '-b', 'stuck', path.join(repo, '.worktrees', 'stuck'));
+    git(repo, 'worktree', 'add', '-b', 'fine', path.join(repo, '.worktrees', 'fine'));
+    // A directory where the lock file goes makes lock() throw (EISDIR / EPERM).
+    fs.mkdirSync(path.join(repo, '.git', 'worktrees', 'stuck', 'locked'));
+    const stuckGitFile = fs.readFileSync(path.join(repo, '.worktrees', 'stuck', '.git'), 'utf8');
+    const errors: Array<[string | undefined, unknown]> = [];
+    const s = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({
+      autoAdopt: true,
+      onAdoptError: (wt, error) => errors.push([wt.id, error]),
+    }));
+
+    const list = await s.list();
+    expect(errors.map(([id]) => id)).toEqual(['stuck']);
+    expect(errors[0][1]).toBeInstanceOf(Error);
+    expect(list.find((w) => w.id === 'stuck')!.portable).toBe(false);
+    expect(list.find((w) => w.id === 'fine')!.portable).toBe(true);
+    expect(fs.readFileSync(path.join(repo, '.worktrees', 'stuck', '.git'), 'utf8')).toBe(stuckGitFile);
+  });
+
   it('leaves worktrees alone when autoAdopt is off, and adopt() makes one portable', async () => {
     const repo = initRepo();
     cleanup.push(repo);
