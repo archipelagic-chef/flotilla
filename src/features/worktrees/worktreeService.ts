@@ -91,10 +91,7 @@ export class WorktreeService {
     let unmergedCommits = 0;
     if (wt.branch) {
       const ref = `refs/heads/${wt.branch}`;
-      const allRefsOutput = await runGit(['for-each-ref', '--format=%(refname)'], { cwd: this.roots.mainRoot });
-      const allRefs = allRefsOutput.split(/\r?\n/).filter((r) => r && r !== ref);
-      const args = allRefs.length > 0 ? ['rev-list', '--count', ref, '--not', ...allRefs] : ['rev-list', '--count', ref];
-      const out = await runGit(args, { cwd: this.roots.mainRoot });
+      const out = await runGit(['rev-list', '--count', ref, '--not', `--exclude=${wt.branch}`, '--branches', '--remotes'], { cwd: this.roots.mainRoot });
       unmergedCommits = Number(out.trim());
     }
     return { changedFiles, unmergedCommits };
