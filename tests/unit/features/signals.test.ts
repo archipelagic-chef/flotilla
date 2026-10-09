@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { classifyActivity, lastActivity } from '../../../src/features/workstreams/activity';
 import { AGENT_STATUS_FILE, clearAgentStatus, parseAgentStatus, readAgentStatus } from '../../../src/features/workstreams/agentStatus';
-import { deleteHeartbeat, envFromRemoteName, isAlive, readHeartbeat, writeHeartbeat } from '../../../src/features/workstreams/heartbeat';
+import { deleteHeartbeat, envFromRemoteName, isAlive, isHeartbeatPath, readHeartbeat, writeHeartbeat } from '../../../src/features/workstreams/heartbeat';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -55,6 +55,15 @@ describe('heartbeat', () => {
     expect(envFromRemoteName('attached-container')).toBe('container');
     expect(envFromRemoteName(undefined)).toBe('host');
     expect(envFromRemoteName('wsl')).toBe('host');
+  });
+
+  it('recognises the heartbeat file and its temp files in watcher URI paths', () => {
+    expect(isHeartbeatPath('/r/.git/worktrees/a/switchyard-window.json')).toBe(true);
+    expect(isHeartbeatPath('/r/.git/worktrees/a/switchyard-window.json.4242.tmp')).toBe(true);
+    expect(isHeartbeatPath('/c:/r/.git/switchyard-window.json.7.tmp')).toBe(true);
+    expect(isHeartbeatPath('/r/.git/worktrees/a/workstream.json')).toBe(false);
+    expect(isHeartbeatPath('/r/.git/worktrees/a/HEAD')).toBe(false);
+    expect(isHeartbeatPath('/r/.git/worktrees/switchyard-window.json.d/HEAD')).toBe(false);
   });
 
   it('writes, reads, ages and deletes', async () => {

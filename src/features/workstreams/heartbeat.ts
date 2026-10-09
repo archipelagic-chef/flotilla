@@ -13,6 +13,11 @@ export interface Heartbeat {
   updatedAt: Date;
 }
 
+/** True for the heartbeat file and its `<file>.<pid>.tmp` siblings, given a URI path (always `/`-separated). */
+export function isHeartbeatPath(uriPath: string): boolean {
+  return path.posix.basename(uriPath).startsWith(HEARTBEAT_FILE);
+}
+
 export function envFromRemoteName(remoteName: string | undefined): WindowEnv {
   return remoteName === 'dev-container' || remoteName === 'attached-container' ? 'container' : 'host';
 }

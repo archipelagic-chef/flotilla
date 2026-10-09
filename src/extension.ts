@@ -5,7 +5,7 @@ import { getGitVersion, GitError, MIN_GIT_VERSION, runGit, versionAtLeast } from
 import { locateRepo } from './core/repoLocator';
 import { Repository } from './core/repository';
 import { toWorkspaceUri } from './core/uris';
-import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_FILE, HEARTBEAT_INTERVAL_MS, writeHeartbeat } from './features/workstreams/heartbeat';
+import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
 import { buildWorkstreams, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
@@ -94,7 +94,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   for (const [base, glob] of watched) {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
-      if (!uri.path.endsWith(`/${HEARTBEAT_FILE}`)) refresh();
+      // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
+      if (!isHeartbeatPath(uri.path)) refresh();
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);
