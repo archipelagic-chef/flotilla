@@ -15,6 +15,7 @@ import type { CreateRequest, WorktreeService } from '../features/worktrees/workt
 import { claudeHookConfig } from './claudeHooks';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
+import { removalToRun, setupsToRun, withoutSetup, type PendingRemoval, type PendingSetup } from './pending';
 import { readSettings } from './settings';
 import type { Node, WorkstreamsView } from './workstreamsView';
 
@@ -32,19 +33,6 @@ export interface CommandContext {
 
 const PENDING_REMOVAL_KEY = 'switchyard.pendingRemoval';
 const PENDING_SETUP_KEY = 'switchyard.pendingSetup';
-
-interface PendingRemoval {
-  mainRoot: string;
-  adminDir: string;
-  force: boolean;
-  deleteBranch: boolean;
-  branch: string | undefined;
-}
-
-interface PendingSetup {
-  worktreeDir: string;
-  command: string;
-}
 
 interface PickFilter {
   includeUnreachable?: boolean;
@@ -119,17 +107,17 @@ export function registerCommands(ctx: CommandContext): void {
 
 export async function resumePendingActions(ctx: CommandContext): Promise<void> {
   const state = ctx.extension.globalState;
+  const now = Date.now();
   const queue = state.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
-  const mine = queue.filter((p) => samePath(p.worktreeDir, ctx.currentRoot));
-  if (mine.length) {
-    await state.update(PENDING_SETUP_KEY, queue.filter((p) => !mine.includes(p)));
-    for (const p of mine) startSetupTerminal(p.worktreeDir, p.command);
+  const setups = setupsToRun(queue, ctx.currentRoot, now);
+  if (setups.keep.length !== queue.length) {
+    await state.update(PENDING_SETUP_KEY, setups.keep);
+    for (const p of setups.run) startSetupTerminal(p.worktreeDir, p.command);
   }
-  const removal = state.get<PendingRemoval>(PENDING_REMOVAL_KEY);
-  if (removal && samePath(removal.mainRoot, ctx.service.roots.mainRoot) && samePath(ctx.currentRoot, removal.mainRoot)) {
-    await state.update(PENDING_REMOVAL_KEY, undefined);
-    await guard(ctx, () => executeRemoval(ctx, removal))();
-  }
+  const removal = removalToRun(state.get<PendingRemoval>(PENDING_REMOVAL_KEY), ctx.service.roots.mainRoot, ctx.currentRoot, now);
+  if (removal.clear) await state.update(PENDING_REMOVAL_KEY, undefined);
+  const plan = removal.run;
+  if (plan) await guard(ctx, () => executeRemoval(ctx, plan))();
 }
 
 function guard(ctx: CommandContext, handler: Handler): Handler {
@@ -230,8 +218,16 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
     startSetupTerminal(dir, settings.setupCommand);
     return;
   }
-  await queueSetup(ctx, dir, settings.setupCommand);
-  await openWorktree(ctx, dir, settings.openAfterCreate === 'newWindow');
+  const queued = await queueSetup(ctx, dir, settings.setupCommand);
+  try {
+    await openWorktree(ctx, dir, settings.openAfterCreate === 'newWindow');
+  } catch (error) {
+    if (queued) {
+      const queue = ctx.extension.globalState.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
+      await ctx.extension.globalState.update(PENDING_SETUP_KEY, withoutSetup(queue, queued));
+    }
+    throw error;
+  }
 }
 
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {
@@ -252,10 +248,12 @@ function startSetupTerminal(dir: string, command: string): void {
   terminal.sendText(command);
 }
 
-async function queueSetup(ctx: CommandContext, dir: string, command: string): Promise<void> {
-  if (!command.trim()) return;
+async function queueSetup(ctx: CommandContext, dir: string, command: string): Promise<PendingSetup | undefined> {
+  if (!command.trim()) return undefined;
+  const entry: PendingSetup = { worktreeDir: dir, command, createdAt: Date.now() };
   const queue = ctx.extension.globalState.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
-  await ctx.extension.globalState.update(PENDING_SETUP_KEY, [...queue, { worktreeDir: dir, command }]);
+  await ctx.extension.globalState.update(PENDING_SETUP_KEY, [...queue, entry]);
+  return entry;
 }
 
 async function quickSwitch(ctx: CommandContext): Promise<void> {
@@ -341,10 +339,16 @@ async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<vo
     force: risks.changedFiles > 0,
     deleteBranch: choice === removeAndDelete,
     branch: wt.branch,
+    createdAt: Date.now(),
   };
   if (ws.isCurrent) {
     await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, plan);
-    await openWorktree(ctx, plan.mainRoot, false);
+    try {
+      await openWorktree(ctx, plan.mainRoot, false);
+    } catch (error) {
+      await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, undefined);
+      throw error;
+    }
     return;
   }
   await executeRemoval(ctx, plan);
@@ -352,7 +356,14 @@ async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<vo
 
 async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promise<void> {
   const wt = (await ctx.service.list()).find((w) => samePath(w.adminDir, plan.adminDir));
-  if (wt) await ctx.service.remove(wt, { force: plan.force });
+  if (!wt) {
+    void vscode.window.showInformationMessage(
+      `The worktree${plan.branch ? ` for '${plan.branch}'` : ''} no longer exists, so nothing was removed${plan.deleteBranch && plan.branch ? ' and the branch was kept' : ''}.`,
+    );
+    await ctx.repository.refresh();
+    return;
+  }
+  await ctx.service.remove(wt, { force: plan.force });
   if (plan.deleteBranch && plan.branch) {
     try {
       await ctx.service.deleteBranch(plan.branch, false);
