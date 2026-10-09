@@ -1,0 +1,45 @@
+{
+  "name": "switchyard",
+  "displayName": "Switchyard",
+  "description": "Run parallel workstreams in git worktrees, across host and devcontainer.",
+  "version": "0.0.1",
+  "publisher": "archipelagic",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "contributes": {},
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.20.5",
+    "@types/vscode": "^1.95.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "tinyglobby": "^0.2.17"
+  }
+}

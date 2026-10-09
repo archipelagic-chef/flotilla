@@ -1,0 +1,13 @@
+{
+  "name": "switchyard-dev",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": { "version": "latest" }
+  },
+  "postCreateCommand": "git config --global --add safe.directory '*' && sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libasound2 libgbm1 libgtk-3-0 libnss3 libxss1 libxkbfile1 libsecret-1-0 && npm ci",
+  "customizations": {
+    "vscode": {
+      "extensions": ["vitest.explorer"]
+    }
+  }
+}
