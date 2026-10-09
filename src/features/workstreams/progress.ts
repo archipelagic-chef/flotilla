@@ -47,7 +47,8 @@ export async function computeProgress(worktreeDir: string, base: string | undefi
     progress.ahead = ahead;
     progress.behind = behind;
     const mergeBase = (await runGit(['merge-base', base, 'HEAD'], { cwd })).trim();
-    Object.assign(progress, sumNumstat(await runGit(['diff', '--numstat', '-z', mergeBase], { cwd })));
+    // Plumbing diff-index never refreshes or writes the index (porcelain `git diff` does when files are stat-dirty).
+    Object.assign(progress, sumNumstat(await runGit(['diff-index', '--numstat', '-z', mergeBase], { cwd })));
   } catch {
     // unknown base or unrelated histories: keep zeros
   }

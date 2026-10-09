@@ -1,8 +1,9 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
 import { compareWithBase } from '../../../src/features/diffs/compare';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import { git, initRepo, makeStatDirty, removeDir, restatInPast, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -56,5 +57,24 @@ describe('compareWithBase', () => {
     expect(result.rightRef).toBe(WORKING);
     expect(result.files).toContainEqual({ path: 'shared.txt', kind: 'modified' });
     expect(result.files).toContainEqual({ path: 'new.txt', kind: 'added' });
+  });
+
+  it('uncommitted mode does not modify the worktree index', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const tracked = ['one.txt', 'two.txt', 'three.txt'];
+    makeStatDirty(repo, tracked);
+    const wt = path.join(repo, '.worktrees', 'feat');
+    git(repo, 'worktree', 'add', '-b', 'feat', wt);
+    writeFile(wt, 'README.md', 'edited, not committed\n');
+    restatInPast(wt, tracked);
+    const indexPath = path.resolve(wt, git(wt, 'rev-parse', '--git-path', 'index'));
+    const before = fs.statSync(indexPath).mtimeMs;
+    const content = fs.readFileSync(indexPath);
+    const result = await compareWithBase(wt, 'main', 'uncommitted');
+    await compareWithBase(wt, 'main', 'uncommitted');
+    expect(result.files).toEqual([{ path: 'README.md', kind: 'modified' }]);
+    expect(fs.statSync(indexPath).mtimeMs).toBe(before);
+    expect(fs.readFileSync(indexPath).equals(content)).toBe(true);
   });
 });

@@ -38,6 +38,27 @@ export function writeFile(root: string, rel: string, content: string): void {
   fs.writeFileSync(file, content);
 }
 
+/**
+ * Commits the given files, then rewrites each with identical content and an mtime 10 minutes in the past:
+ * the index's stat data no longer matches (stat-dirty) but the content does, and the entries are not racy.
+ */
+export function makeStatDirty(root: string, rels: string[]): void {
+  for (const rel of rels) writeFile(root, rel, `${rel}\n`);
+  git(root, 'add', ...rels);
+  git(root, 'commit', '-q', '-m', 'stat-dirty fixture');
+  restatInPast(root, rels);
+}
+
+/** Rewrites tracked files with identical content and an mtime 10 minutes in the past (stat-dirty, not racy). */
+export function restatInPast(root: string, rels: string[]): void {
+  const past = new Date(Date.now() - 10 * 60_000);
+  for (const rel of rels) {
+    const file = path.join(root, rel);
+    fs.writeFileSync(file, fs.readFileSync(file));
+    fs.utimesSync(file, past, past);
+  }
+}
+
 export function removeDir(dir: string): void {
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });

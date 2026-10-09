@@ -14,6 +14,8 @@ export class GitError extends Error {
 export interface RunGitOptions {
   cwd: string;
   timeoutMs?: number;
+  /** Extra environment variables, merged over the defaults. */
+  env?: Record<string, string>;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -29,7 +31,7 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
         maxBuffer: 64 * 1024 * 1024,
         encoding: 'utf8',
         windowsHide: true,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' },
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...opts.env },
       },
       (error, stdout, stderr) => {
         if (error) {

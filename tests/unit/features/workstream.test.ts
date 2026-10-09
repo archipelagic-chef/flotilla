@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildWorkstreams, type BuildOptions } from '../../../src/features/workstreams/workstream';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
-import { initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import { initRepo, makeStatDirty, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -43,11 +43,14 @@ describe('buildWorkstreams', () => {
     const repo = initRepo();
     cleanup.push(repo);
     const service = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({ autoAdopt: true }));
+    makeStatDirty(repo, ['one.txt', 'two.txt', 'three.txt']);
     writeFile(repo, 'README.md', 'changed but same size?\n');
     const index = path.join(repo, '.git', 'index');
     const before = fs.statSync(index).mtimeMs;
+    const content = fs.readFileSync(index);
     await buildWorkstreams(service, options(repo));
     await buildWorkstreams(service, options(repo));
     expect(fs.statSync(index).mtimeMs).toBe(before);
+    expect(fs.readFileSync(index).equals(content)).toBe(true);
   });
 });
