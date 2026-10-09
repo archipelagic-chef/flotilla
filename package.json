@@ -19,7 +19,396 @@
   "activationEvents": [
     "workspaceContains:.git"
   ],
-  "contributes": {},
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "switchyard",
+          "title": "Switchyard",
+          "icon": "media/switchyard.svg"
+        }
+      ]
+    },
+    "views": {
+      "switchyard": [
+        {
+          "id": "switchyard.workstreams",
+          "name": "Workstreams"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "switchyard.workstreams",
+        "contents": "Switchyard needs git 2.17 or newer in this environment.\n[Download git](https://git-scm.com/downloads)",
+        "when": "switchyard.state == gitMissing"
+      },
+      {
+        "view": "switchyard.workstreams",
+        "contents": "Open a folder inside a git repository to manage workstreams.",
+        "when": "switchyard.state == noRepo"
+      }
+    ],
+    "commands": [
+      {
+        "command": "switchyard.refresh",
+        "title": "Refresh",
+        "category": "Switchyard",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "switchyard.newWorkstream",
+        "title": "New Workstream…",
+        "category": "Switchyard",
+        "icon": "$(add)"
+      },
+      {
+        "command": "switchyard.quickSwitch",
+        "title": "Switch Workstream…",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.openInNewWindow",
+        "title": "Open in New Window",
+        "category": "Switchyard",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "switchyard.switchHere",
+        "title": "Switch This Window Here",
+        "category": "Switchyard",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "switchyard.remove",
+        "title": "Remove Worktree…",
+        "category": "Switchyard",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "switchyard.adopt",
+        "title": "Make Portable (Adopt)",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.runSetupHere",
+        "title": "Run Setup Here",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.openTerminal",
+        "title": "Open Terminal Here",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.copyPath",
+        "title": "Copy Path",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.revealInOS",
+        "title": "Reveal in File Explorer",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.compareWith",
+        "title": "Compare with…",
+        "category": "Switchyard",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "switchyard.compareToggleTwoDot",
+        "title": "Toggle Two-Dot Compare",
+        "category": "Switchyard",
+        "icon": "$(arrow-both)"
+      },
+      {
+        "command": "switchyard.compareToggleUncommitted",
+        "title": "Toggle Include Uncommitted",
+        "category": "Switchyard",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "switchyard.compareDismiss",
+        "title": "Dismiss Compare",
+        "category": "Switchyard",
+        "icon": "$(close)"
+      },
+      {
+        "command": "switchyard.openFileDiff",
+        "title": "Open Diff",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.openFile",
+        "title": "Open File",
+        "category": "Switchyard",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "switchyard.clearAgentStatus",
+        "title": "Clear Agent Status",
+        "category": "Switchyard"
+      },
+      {
+        "command": "switchyard.copyClaudeHookConfig",
+        "title": "Copy Claude Code Hook Config",
+        "category": "Switchyard"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "switchyard.refresh",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.newWorkstream",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.quickSwitch",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.openInNewWindow",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.switchHere",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.remove",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.adopt",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.runSetupHere",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.openTerminal",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.copyPath",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.revealInOS",
+          "when": "switchyard.state == ready && !remoteName"
+        },
+        {
+          "command": "switchyard.compareWith",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.clearAgentStatus",
+          "when": "switchyard.state == ready"
+        },
+        {
+          "command": "switchyard.compareToggleTwoDot",
+          "when": "false"
+        },
+        {
+          "command": "switchyard.compareToggleUncommitted",
+          "when": "false"
+        },
+        {
+          "command": "switchyard.compareDismiss",
+          "when": "false"
+        },
+        {
+          "command": "switchyard.openFileDiff",
+          "when": "false"
+        },
+        {
+          "command": "switchyard.openFile",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "switchyard.newWorkstream",
+          "when": "view == switchyard.workstreams && switchyard.state == ready",
+          "group": "navigation@1"
+        },
+        {
+          "command": "switchyard.refresh",
+          "when": "view == switchyard.workstreams && switchyard.state == ready",
+          "group": "navigation@2"
+        },
+        {
+          "command": "switchyard.copyClaudeHookConfig",
+          "when": "view == switchyard.workstreams",
+          "group": "1_agents@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "switchyard.openInNewWindow",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "group": "inline@1"
+        },
+        {
+          "command": "switchyard.switchHere",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "group": "inline@2"
+        },
+        {
+          "command": "switchyard.remove",
+          "when": "view == switchyard.workstreams && viewItem =~ /;linked;/",
+          "group": "inline@3"
+        },
+        {
+          "command": "switchyard.openInNewWindow",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "switchyard.switchHere",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "switchyard.compareWith",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "group": "2_compare@1"
+        },
+        {
+          "command": "switchyard.openTerminal",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "group": "3_tools@1"
+        },
+        {
+          "command": "switchyard.copyPath",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "group": "3_tools@2"
+        },
+        {
+          "command": "switchyard.revealInOS",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/ && !remoteName",
+          "group": "3_tools@3"
+        },
+        {
+          "command": "switchyard.runSetupHere",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;.*;linked;/",
+          "group": "4_setup@1"
+        },
+        {
+          "command": "switchyard.adopt",
+          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;.*;linked;notPortable;/",
+          "group": "4_setup@2"
+        },
+        {
+          "command": "switchyard.clearAgentStatus",
+          "when": "view == switchyard.workstreams && viewItem =~ /;hasAgent;/",
+          "group": "5_agent@1"
+        },
+        {
+          "command": "switchyard.remove",
+          "when": "view == switchyard.workstreams && viewItem =~ /;linked;/",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "switchyard.compareToggleTwoDot",
+          "when": "view == switchyard.workstreams && viewItem == compare",
+          "group": "inline@1"
+        },
+        {
+          "command": "switchyard.compareToggleUncommitted",
+          "when": "view == switchyard.workstreams && viewItem == compare",
+          "group": "inline@2"
+        },
+        {
+          "command": "switchyard.compareDismiss",
+          "when": "view == switchyard.workstreams && viewItem == compare",
+          "group": "inline@3"
+        },
+        {
+          "command": "switchyard.openFile",
+          "when": "view == switchyard.workstreams && viewItem == file",
+          "group": "inline@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Switchyard",
+      "properties": {
+        "switchyard.openAfterCreate": {
+          "type": "string",
+          "enum": [
+            "newWindow",
+            "currentWindow",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Open the new worktree in a new window",
+            "Switch this window to the new worktree",
+            "Stay where you are"
+          ],
+          "default": "newWindow",
+          "description": "What to do after creating a workstream."
+        },
+        "switchyard.copyFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns (relative to the main worktree) of ignored files to copy into new worktrees, e.g. \".env\"."
+        },
+        "switchyard.setupCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Command to run in a terminal in a new worktree, e.g. \"npm ci\"."
+        },
+        "switchyard.autoAdopt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically make worktrees inside the repository portable across host and container."
+        },
+        "switchyard.defaultBase": {
+          "type": "string",
+          "default": "",
+          "description": "Base branch for progress and comparisons. Empty: origin/HEAD, then main, then master."
+        },
+        "switchyard.activeWindowMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "A workstream with changes newer than this is 'active'."
+        },
+        "switchyard.staleAfterDays": {
+          "type": "number",
+          "default": 7,
+          "minimum": 1,
+          "description": "A workstream with no activity for this long is 'stale'."
+        },
+        "switchyard.agentStatusStaleMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "A 'working' agent report older than this is shown as last reported."
+        },
+        "switchyard.notifyOnAttention": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notify when a workstream starts waiting for input or reports an error."
+        },
+        "switchyard.pollSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "description": "How often to refresh while the Workstreams view is visible."
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
