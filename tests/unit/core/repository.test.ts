@@ -54,4 +54,22 @@ describe('Repository', () => {
     await repo.refresh();
     expect(changes).toBe(0);
   });
+
+  it('isolates a throwing listener from other listeners and from load errors', async () => {
+    const errors: unknown[] = [];
+    const repo = new Repository(async () => ['ok'], 5, (e) => errors.push(e));
+    let secondListenerCalls = 0;
+    repo.onDidChange(() => {
+      throw new Error('listener error');
+    });
+    repo.onDidChange(() => {
+      secondListenerCalls++;
+    });
+    await repo.refresh();
+    expect(repo.current).toEqual(['ok']);
+    expect(secondListenerCalls).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(Error);
+    expect((errors[0] as Error).message).toBe('listener error');
+  });
 });

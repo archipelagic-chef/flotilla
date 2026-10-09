@@ -49,15 +49,25 @@ export class Repository<T> {
     }
     this.running = true;
     const waiters = this.waiters.splice(0);
+    let loaded = false;
     try {
       this.items = await this.load();
-      for (const listener of [...this.listeners]) listener();
+      loaded = true;
     } catch (error) {
       this.onError(error);
     } finally {
       this.running = false;
-      waiters.forEach((w) => w());
     }
+    if (loaded) {
+      for (const listener of [...this.listeners]) {
+        try {
+          listener();
+        } catch (error) {
+          this.onError(error);
+        }
+      }
+    }
+    waiters.forEach((w) => w());
     if (this.rerun && !this.disposed) {
       this.rerun = false;
       await this.run();
