@@ -4,6 +4,17 @@ import { samePath, toGitPath } from '../../core/paths';
 
 export const LOCK_REASON = 'switchyard: portable';
 
+/** Overwrites a file in place, preserving attributes like the hidden bit on Windows. */
+async function overwriteFile(file: string, content: string): Promise<void> {
+  const handle = await fs.open(file, 'r+');
+  try {
+    await handle.truncate(0);
+    await handle.writeFile(content);
+  } finally {
+    await handle.close();
+  }
+}
+
 /** Returns the raw value of the `gitdir:` line in <worktreeDir>/.git, or undefined if it isn't a gitdir file. */
 export async function readGitFile(worktreeDir: string): Promise<string | undefined> {
   try {
@@ -54,12 +65,11 @@ export async function isPortable(worktreeDir: string, adminDir: string): Promise
 }
 
 export async function makePortable(worktreeDir: string, adminDir: string): Promise<boolean> {
+  if ((await readGitFile(worktreeDir)) === undefined) return false;
   const rel = relativeGitdir(worktreeDir, adminDir);
   if (!rel) return false;
   const gitPath = path.join(worktreeDir, '.git');
-  // Remove the .git directory if it exists, then write the .git file
-  await fs.rm(gitPath, { recursive: true, force: true });
-  await fs.writeFile(gitPath, `gitdir: ${rel}\n`);
+  await overwriteFile(gitPath, `gitdir: ${rel}\n`);
   if (!(await isLocked(adminDir))) await lock(adminDir);
   return true;
 }

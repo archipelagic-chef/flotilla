@@ -52,6 +52,13 @@ describe('makePortable', () => {
     await makePortable(dir, admin);
     expect(fs.readFileSync(path.join(admin, 'locked'), 'utf8').trim()).toBe('mine');
   });
+
+  it('refuses to touch a .git directory', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    expect(await makePortable(repo, path.join(repo, '.git'))).toBe(false);
+    expect(fs.existsSync(path.join(repo, '.git', 'HEAD'))).toBe(true);
+  });
 });
 
 describe('second environment (repo seen at a different absolute path)', () => {
