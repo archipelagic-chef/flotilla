@@ -1,0 +1,57 @@
+import { describe, expect, it } from 'vitest';
+import { Repository } from '../../../src/core/repository';
+
+describe('Repository', () => {
+  it('coalesces refresh calls into one load and notifies listeners', async () => {
+    let loads = 0;
+    const repo = new Repository(async () => [++loads], 10);
+    let changes = 0;
+    repo.onDidChange(() => changes++);
+    await Promise.all([repo.refresh(), repo.refresh(), repo.refresh()]);
+    expect(loads).toBe(1);
+    expect(repo.current).toEqual([1]);
+    expect(changes).toBe(1);
+  });
+
+  it('runs one more load when refreshed during a load', async () => {
+    let loads = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const repo = new Repository(async () => {
+      loads++;
+      if (loads === 1) await gate;
+      return [loads];
+    }, 5);
+    const first = repo.refresh();
+    await new Promise((r) => setTimeout(r, 20));
+    const second = repo.refresh();
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await Promise.all([first, second]);
+    expect(loads).toBe(2);
+    expect(repo.current).toEqual([2]);
+  });
+
+  it('keeps the previous snapshot and reports errors', async () => {
+    let fail = false;
+    const errors: unknown[] = [];
+    const repo = new Repository(async () => {
+      if (fail) throw new Error('boom');
+      return ['ok'];
+    }, 5, (e) => errors.push(e));
+    await repo.refresh();
+    fail = true;
+    await repo.refresh();
+    expect(repo.current).toEqual(['ok']);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('stops notifying disposed listeners', async () => {
+    const repo = new Repository(async () => [1], 5);
+    let changes = 0;
+    const sub = repo.onDidChange(() => changes++);
+    sub.dispose();
+    await repo.refresh();
+    expect(changes).toBe(0);
+  });
+});
