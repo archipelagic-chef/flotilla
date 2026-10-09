@@ -10,6 +10,8 @@ const ctx = await esbuild.context({
   outfile: 'dist/extension.js',
   external: ['vscode'],
   sourcemap: true,
+  banner: { js: "const __importMetaUrl = require('url').pathToFileURL(__filename).href;" },
+  define: { 'import.meta.url': '__importMetaUrl' },
   logLevel: 'info',
 });
 if (watch) {
