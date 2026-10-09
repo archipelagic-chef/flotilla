@@ -211,6 +211,10 @@
           "when": "switchyard.state == ready"
         },
         {
+        "command": "switchyard.copyClaudeHookConfig",
+        "when": "switchyard.state == ready"
+      },
+        {
           "command": "switchyard.compareToggleTwoDot",
           "when": "false"
         },
@@ -244,7 +248,7 @@
         },
         {
           "command": "switchyard.copyClaudeHookConfig",
-          "when": "view == switchyard.workstreams",
+          "when": "view == switchyard.workstreams && switchyard.state == ready",
           "group": "1_agents@1"
         }
       ],
