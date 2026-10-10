@@ -14,6 +14,8 @@ export interface TicketView {
   activity: Array<TicketEntry & { html: string }>;
   /** For an issue from an integration: where it lives. Its title, status and description are edited there. */
   remote?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+  /** The issues in trackers a local item is linked to, with their current status if they're listed. */
+  links: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
   /** Reading it from its tracker failed. */
   error?: string;
   /** The worktrees working on the item (several for an epic), with their agents' state. */
@@ -40,4 +42,8 @@ export type TicketWebviewMessage =
   | { type: 'writeWithAI' }
   | { type: 'openFile' }
   | { type: 'openRemote' }
+  /** Link the item to an issue (asks which), unlink it, or open a linked one. */
+  | { type: 'link' }
+  | { type: 'unlink'; id: string }
+  | { type: 'openLink'; id: string }
   | { type: 'openWorktree'; key: string };

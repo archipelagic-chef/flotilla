@@ -305,6 +305,19 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {item.activity}
         </span>
       )}
+      {!renaming && item.linked && (
+        // One small badge (the title needs the room); the hover lists the issues, a click opens the first.
+        <a
+          class="link-badge"
+          href={item.linked[0].url}
+          data-tip={item.linked.map((l) => `${l.id}${l.statusName ? ` · ${l.statusName}` : ''}  ${l.title}`).join('\n')}
+          data-tip-hint={`Click to open ${item.linked[0].id} in ${item.linked[0].kind === 'jira' ? 'Jira' : 'GitHub'}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <i class={`codicon codicon-${item.linked[0].kind === 'github' ? 'github' : 'issues'}`} />
+          {item.linked.length > 1 && item.linked.length}
+        </a>
+      )}
       {worktrees.slice(0, 2).map((ws) => {
         const dot = AGENT_DOT[ws.attention];
         return (
@@ -348,6 +361,9 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
             <>
               <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
                 <i class="codicon codicon-sparkle" />
+              </button>
+              <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
+                <i class="codicon codicon-link" />
               </button>
               <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                 <i class="codicon codicon-edit" />

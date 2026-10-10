@@ -1806,6 +1806,25 @@ ins {
 .backlog-item .activity-count .codicon {
   font-size: 12px;
 }
+.backlog-item .link-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.backlog-item .link-badge:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.backlog-item .link-badge .codicon {
+  font-size: 13px;
+}
 .backlog-title .title-actions {
   display: flex;
   gap: 2px;

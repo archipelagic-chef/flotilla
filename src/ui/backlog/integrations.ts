@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
+import type { IssueLink } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { GitHubSource, gitHubRepo } from '../../features/backlog/sources/github';
 import { JiraSource } from '../../features/backlog/sources/jira';
@@ -90,11 +91,77 @@ export class BacklogIntegrations implements vscode.Disposable {
     return this.states.flatMap((s) => s.issues);
   }
 
-  /** The integration an issue comes from. */
-  async sourceOf(id: string): Promise<IssueSource | undefined> {
-    const issue = this.issues().find((i) => i.id === id);
-    const state = issue && this.states.find((s) => s.config.id === issue.source);
+  /** The integration an issue comes from (sourceId for one that isn't among the listed issues, e.g. a linked one). */
+  async sourceOf(id: string, sourceId?: string): Promise<IssueSource | undefined> {
+    const from = sourceId ?? this.issues().find((i) => i.id === id)?.source;
+    const state = from ? this.states.find((s) => s.config.id === from) : undefined;
     return state && this.source(state.config);
+  }
+
+  /** Looks an issue up by key in the trackers it could be in: also issues the backlog doesn't list (another JQL). */
+  private async lookup(key: string): Promise<RemoteIssue | undefined> {
+    const k = key.trim();
+    const listed = this.issues().find((i) => i.id.toLowerCase() === k.toLowerCase());
+    if (listed) return listed;
+    for (const state of this.states) {
+      const fits = state.config.kind === 'jira' ? /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(k) : /^(GH-|#)?\d+$/i.test(k);
+      if (!fits) continue;
+      try {
+        return (await (await this.source(state.config)).details(k.toUpperCase().replace(/^#/, ''))).issue;
+      } catch {
+        // not there; try the next one
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Asks for an issue to link an item to: one of the listed issues, or any other by its key (ABC-123, #42). Undefined
+   * if cancelled.
+   */
+  async pickIssue(itemId: string, exclude: readonly string[]): Promise<IssueLink | undefined> {
+    if (!this.states.length) {
+      const choice = await vscode.window.showInformationMessage('Connect Jira or GitHub Issues to link items to their issues.', 'Connect…');
+      if (choice) await this.manage();
+      if (!this.states.length) return undefined;
+    }
+    type Item = vscode.QuickPickItem & { issue?: RemoteIssue; key?: string };
+    const listed: Item[] = this.states.flatMap((s) => [
+      { label: s.label, kind: vscode.QuickPickItemKind.Separator },
+      ...s.issues
+        .filter((i) => !exclude.includes(i.id))
+        .map((i) => ({ label: `$(${s.config.kind === 'github' ? 'github' : 'issues'}) ${i.id}`, description: i.title, detail: i.statusName, issue: i })),
+    ]);
+    const pick = vscode.window.createQuickPick<Item>();
+    pick.title = `Link ${itemId} to an Issue`;
+    pick.placeholder = 'Search the issues, or type the key of another one (ABC-123, #42)';
+    pick.matchOnDescription = true;
+    pick.items = listed;
+    pick.onDidChangeValue((v) => {
+      const typed = v.trim();
+      const known = listed.some((i) => i.issue?.id.toLowerCase() === typed.toLowerCase());
+      const looksLikeKey = /^[A-Za-z][A-Za-z0-9_]*-\d+$|^#?\d+$/.test(typed);
+      pick.items = looksLikeKey && !known ? [{ label: `$(link) Link ${typed}`, description: 'Look it up in the connected trackers', key: typed }, ...listed] : listed;
+    });
+    const chosen = await new Promise<Item | undefined>((resolve) => {
+      pick.onDidAccept(() => {
+        resolve(pick.selectedItems[0]);
+        pick.hide();
+      });
+      pick.onDidHide(() => resolve(undefined));
+      pick.show();
+    });
+    pick.dispose();
+    if (!chosen) return undefined;
+    const issue =
+      chosen.issue ??
+      (await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Looking up ${chosen.key}…` }, () => this.lookup(chosen.key!)));
+    if (!issue) {
+      void vscode.window.showWarningMessage(`${chosen.key} isn't in any connected tracker (or can't be read).`);
+      return undefined;
+    }
+    if (exclude.includes(issue.id)) return undefined;
+    return { id: issue.id, source: issue.source, url: issue.url, title: issue.title };
   }
 
   /** Reads every integration's issues (one read at a time; a refresh while reading waits for it). */

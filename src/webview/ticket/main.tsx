@@ -302,6 +302,23 @@ function App() {
         <Title ticket={ticket} />
         <div class="properties">
           <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
+          {ticket.links.map((l) => (
+            <span key={l.id} class="link-chip">
+              <button class="link-open" onClick={() => send({ type: 'openLink', id: l.id })} title={`${l.title}\nOpen it in ${l.kind === 'jira' ? 'Jira' : 'GitHub'}`}>
+                <i class={`codicon codicon-${l.kind === 'github' ? 'github' : 'issues'}`} />
+                <span class="link-id">{l.id}</span>
+                {l.statusName && <span class="muted">{l.statusName}</span>}
+              </button>
+              <button class="link-remove" onClick={() => send({ type: 'unlink', id: l.id })} title={`Unlink ${l.id}`} aria-label={`Unlink ${l.id}`}>
+                <i class="codicon codicon-close" />
+              </button>
+            </span>
+          ))}
+          {!ticket.remote && (
+            <button class="add-link" onClick={() => send({ type: 'link' })} title="Link it to an issue in Jira or GitHub Issues">
+              <i class="codicon codicon-link" /> {ticket.links.length ? 'Link' : 'Link Issue'}
+            </button>
+          )}
         </div>
         <div class="toolbar">
           {!done && (

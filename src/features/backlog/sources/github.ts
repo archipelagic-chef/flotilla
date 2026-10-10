@@ -70,7 +70,7 @@ export class GitHubSource implements IssueSource {
   }
 
   private number(id: string): number {
-    const n = Number(/^GH-(\d+)$/.exec(id)?.[1]);
+    const n = Number(/^(?:GH-|#)?(\d+)$/i.exec(id.trim())?.[1]);
     if (!n) throw new Error(`'${id}' is not a GitHub issue.`);
     return n;
   }

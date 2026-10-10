@@ -32,6 +32,19 @@ export interface BacklogItem {
   branches?: string[];
   /** Before branches: the one branch started for it. Read, never written. */
   branch?: string;
+  /** Issues in trackers (Jira, GitHub Issues) this item is linked to. */
+  links?: IssueLink[];
+}
+
+/** A local item's link to an issue in a tracker. */
+export interface IssueLink {
+  /** The issue's key: "ABC-123", "GH-42". */
+  id: string;
+  /** The integration it comes from. */
+  source: string;
+  url: string;
+  /** As it was when linked; the tracker's current title shows while it's connected. */
+  title: string;
 }
 
 export interface BacklogData {
@@ -130,6 +143,31 @@ export function moveItem(data: BacklogData, id: string, status: BacklogStatus, b
   return { ...data, items: [...rest.slice(0, index), moved, ...rest.slice(index)] };
 }
 
+/** Links an item to an issue (again: a link to the same issue is replaced). */
+export function linkIssue(data: BacklogData, id: string, link: IssueLink): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => (i.id === id ? { ...i, links: [...(i.links ?? []).filter((l) => l.id !== link.id), link] } : i)),
+  };
+}
+
+export function unlinkIssue(data: BacklogData, id: string, issue: string): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { links, ...rest } = i;
+      const kept = (links ?? []).filter((l) => l.id !== issue);
+      return kept.length ? { ...rest, links: kept } : rest;
+    }),
+  };
+}
+
+/** The local item an issue is linked to, if any. */
+export function linkedItem(data: BacklogData, issue: string): BacklogItem | undefined {
+  return data.items.find((i) => i.links?.some((l) => l.id === issue));
+}
+
 /** A branch name for an item, from a pattern with {id} and {slug} (the title, lower case, dashes). */
 export function branchFor(item: Pick<BacklogItem, 'id' | 'title'>, pattern: string): string {
   const slug = item.title
@@ -161,8 +199,11 @@ export function addBranch(data: BacklogData, id: string, branch: string): Backlo
 }
 
 /** Whether a worktree's branch works on an item: one started for it, or one whose name carries its id. */
-export function branchMatches(item: Pick<BacklogItem, 'id' | 'branches' | 'branch'>, branch: string): boolean {
+export function branchMatches(item: Pick<BacklogItem, 'id' | 'branches' | 'branch' | 'links'>, branch: string): boolean {
   if (itemBranches(item).includes(branch)) return true;
-  const escaped = item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^A-Za-z0-9])${escaped}(?![0-9])`, 'i').test(branch);
+  // A branch named after a linked issue ("feature/ABC-123-…") works on the item too.
+  return [item.id, ...(item.links ?? []).map((l) => l.id)].some((id) => {
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^A-Za-z0-9])${escaped}(?![0-9])`, 'i').test(branch);
+  });
 }

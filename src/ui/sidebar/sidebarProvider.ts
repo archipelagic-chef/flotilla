@@ -77,16 +77,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async postBacklog(): Promise<void> {
     const store = this.deps.backlog;
     const data = await store.read();
+    const sources = this.deps.integrations.current;
+    const issues = this.deps.integrations.issues();
     const items = await Promise.all(
-      data.items.map(async (item) => {
+      data.items.map(async (item): Promise<BacklogItemView> => {
         const ticket = await store.readTicket(item);
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length };
+        const linked = item.links?.map((l) => {
+          const now = issues.find((i) => i.id === l.id);
+          return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
+        });
+        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}) };
       }),
     );
-    // Issues from integrations follow the local items, in their tracker's order.
-    const sources = this.deps.integrations.current;
+    // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.
+    const linkedIds = new Set(data.items.flatMap((i) => (i.links ?? []).map((l) => l.id)));
     const remote: BacklogItemView[] = sources.flatMap((s) =>
-      s.issues.map((i) => ({
+      s.issues.filter((i) => !linkedIds.has(i.id)).map((i) => ({
         id: i.id,
         title: i.title,
         status: i.status,
@@ -158,6 +164,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'ai':
         await vscode.commands.executeCommand('flotilla.writeBacklogItem', m.id);
+        return;
+      case 'link':
+        await vscode.commands.executeCommand('flotilla.linkBacklogItem', m.id);
         return;
       case 'integrations':
         await this.deps.integrations.manage();

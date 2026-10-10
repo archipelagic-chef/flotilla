@@ -2,7 +2,7 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { branchMatches, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { branchMatches, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
@@ -61,6 +61,8 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   async open(id: string): Promise<void> {
+    // An issue linked to a local item is part of it.
+    id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
     if (existing) {
       existing.reveal();
@@ -148,9 +150,20 @@ export class TicketPanels implements vscode.Disposable {
       };
     }
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
+    const issues = this.deps.integrations.issues();
     const view: TicketView = {
       item: plain,
       ...content,
+      links: (plain.links ?? []).map((l) => {
+        const now = issues.find((i) => i.id === l.id);
+        return {
+          id: l.id,
+          kind: l.source.startsWith('github:') ? 'github' : 'jira',
+          title: now?.title ?? l.title,
+          url: l.url,
+          statusName: now?.statusName,
+        };
+      }),
       remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName },
       worktrees: this.worktreesOf(item).map((ws) => ({
         key: ws.key,
@@ -229,6 +242,17 @@ export class TicketPanels implements vscode.Disposable {
       case 'openFile':
         await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
         return;
+      case 'link':
+        await vscode.commands.executeCommand('flotilla.linkBacklogItem', id);
+        return;
+      case 'unlink':
+        await backlog.change((d) => unlinkIssue(d, id, m.id));
+        break;
+      case 'openLink': {
+        const link = item.links?.find((l) => l.id === m.id);
+        if (link) await vscode.env.openExternal(vscode.Uri.parse(link.url));
+        return;
+      }
       case 'openWorktree':
         if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
         return;

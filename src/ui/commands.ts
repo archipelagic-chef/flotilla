@@ -6,7 +6,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, branchFor, branchMatches, itemBranches, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -108,6 +108,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
   register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
+  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
   register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
@@ -429,9 +430,11 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
 }
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title'>, ticket: string, branch: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string): string {
+  const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   return [
     `You're working on backlog item ${item.id}: "${item.title}".`,
+    ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages; don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent" (local time) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
@@ -455,6 +458,19 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
   await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws)));
   await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened an agent chat for worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+}
+
+/** Links a local item to an issue in a connected tracker (Jira, GitHub Issues). */
+async function linkBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
+  if (typeof id !== 'string') return;
+  const data = await ctx.backlog.read();
+  if (!data.items.some((i) => i.id === id)) return;
+  // An issue is linked to one item at most (it then shows as part of that item).
+  const linked = data.items.flatMap((i) => (i.links ?? []).map((l) => l.id));
+  const link = await ctx.integrations.pickIssue(id, linked);
+  if (!link) return;
+  await ctx.backlog.change((d) => linkIssue(d, id, link));
+  await ctx.tickets.addActivity(id, 'Flotilla', `Linked to [${link.id}](${link.url}): ${link.title}`);
 }
 
 /** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */

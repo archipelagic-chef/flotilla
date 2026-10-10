@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -101,6 +101,22 @@ describe('backlog', () => {
     expect(data.items[0].branches).toEqual(['old', 'feature/BL-1-api']);
     expect(data.items[0].branch).toBeUndefined();
     expect(itemBranches(data.items[0])).toEqual(['old', 'feature/BL-1-api']);
+  });
+
+  it('links items to issues in trackers', () => {
+    const jira = { id: 'ABC-7', source: 'jira:x', url: 'https://x/browse/ABC-7', title: 'Old' };
+    let data = backlog('a', 'b');
+    data = linkIssue(linkIssue(data, 'BL-1', jira), 'BL-1', { ...jira, title: 'New' });
+    data = linkIssue(data, 'BL-1', { id: 'GH-3', source: 'github:o/r', url: 'https://github.com/o/r/issues/3', title: 'Bug' });
+    const item = data.items.find((i) => i.id === 'BL-1')!;
+    expect(item.links?.map((l) => [l.id, l.title])).toEqual([['ABC-7', 'New'], ['GH-3', 'Bug']]);
+    expect(linkedItem(data, 'GH-3')?.id).toBe('BL-1');
+    expect(linkedItem(data, 'GH-4')).toBeUndefined();
+    // Branches named after a linked issue work on the item.
+    expect(branchMatches(item, 'feature/ABC-7-login')).toBe(true);
+    expect(branchMatches(item, 'feature/ABC-70')).toBe(false);
+    data = unlinkIssue(unlinkIssue(data, 'BL-1', 'ABC-7'), 'BL-1', 'GH-3');
+    expect(data.items.find((i) => i.id === 'BL-1')!.links).toBeUndefined();
   });
 });
 

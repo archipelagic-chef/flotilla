@@ -19,6 +19,8 @@ export interface BacklogItemView extends BacklogItem {
   activity: number;
   /** An issue from an integration (Jira, GitHub Issues), not a local item. */
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+  /** A local item's linked issues, with their current status where they're listed. */
+  linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -214,7 +216,7 @@ export type WebviewMessage =
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
   /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai'; id: string }
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link'; id: string }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison
