@@ -16,6 +16,8 @@ export interface TicketView {
   remote?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
   /** The issues in trackers a local item is linked to, with their current status if they're listed. */
   links: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
+  /** Its description and comments are still being read from its tracker. */
+  loading?: boolean;
   /** Reading it from its tracker failed. */
   error?: string;
   /** The worktrees working on the item (several for an epic), with their agents' state. */

@@ -48,7 +48,7 @@ export interface IssueSource {
 }
 
 /** fetch, injectable for tests. */
-export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
+export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   statusText: string;
@@ -56,15 +56,28 @@ export type Fetch = (url: string, init?: { method?: string; headers?: Record<str
   text(): Promise<string>;
 }>;
 
+/** How long a tracker gets to answer. */
+export const TIMEOUT_MS = 20_000;
+
 export async function fetchJson<T>(fetch: Fetch, url: string, init: { method?: string; headers: Record<string, string>; body?: unknown }): Promise<T> {
-  const res = await fetch(url, {
-    method: init.method ?? 'GET',
-    headers: { Accept: 'application/json', ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => '')).slice(0, 300);
-    throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: init.method ?? 'GET',
+      headers: { Accept: 'application/json', ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      signal: abort.signal,
+    });
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 300);
+      throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
+    }
+    return (await res.json()) as T;
+  } catch (error) {
+    if (abort.signal.aborted) throw new Error(`${new URL(url).host} didn't answer within ${TIMEOUT_MS / 1000} seconds.`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await res.json()) as T;
 }

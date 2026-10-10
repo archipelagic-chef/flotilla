@@ -1,4 +1,4 @@
-import { render } from 'preact';
+import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BacklogStatus } from '../../features/backlog/backlog';
 import type { TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
@@ -174,9 +174,11 @@ function Description({ ticket }: { ticket: TicketView }) {
           </button>
         )}
       </div>
-      {draft === undefined ? (
+      {ticket.loading ? (
+        <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
+      ) : draft === undefined ? (
         <div onDblClick={() => !ticket.remote && setDraft(ticket.description)}>
-          <Rendered html={ticket.descriptionHtml} empty="No description yet. Edit it, or have Claude write it." />
+          <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
         </div>
       ) : (
         <>
@@ -217,7 +219,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
       <div class="block-head">
         <h2>Activity</h2>
       </div>
-      {!ticket.activity.length && <div class="empty-text">No comments or reports yet. Agents report here as they work.</div>}
+      {!ticket.activity.length && !ticket.loading && <div class="empty-text">No comments or reports yet. Agents report here as they work.</div>}
       <ol class="feed">
         {ticket.activity.map((e, i) => (
           <li key={i} class={`entry author-${e.author.toLowerCase()}`}>
@@ -369,7 +371,7 @@ function App() {
       </header>
       {ticket.error && (
         <div class="error-note">
-          <i class="codicon codicon-warning" /> Couldn't read it from {ticket.remote?.label ?? 'its tracker'}: {ticket.error}
+          <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}
         </div>
       )}
       <Description ticket={ticket} />
@@ -378,4 +380,26 @@ function App() {
   );
 }
 
-render(<App />, document.getElementById('root')!);
+/** Shows what went wrong instead of a blank tab if the view fails to render. */
+class ErrorBoundary extends Component<{ children: ComponentChildren }, { error?: string }> {
+  state: { error?: string } = {};
+  componentDidCatch(error: unknown) {
+    this.setState({ error: error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error) });
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div class="error-note">
+        <i class="codicon codicon-warning" /> This ticket couldn't be shown. Close and reopen it; if it keeps happening, this is what failed:
+        <pre>{this.state.error}</pre>
+      </div>
+    );
+  }
+}
+
+render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+  document.getElementById('root')!,
+);

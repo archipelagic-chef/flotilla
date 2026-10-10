@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { branchMatches, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import type { RemoteIssue } from '../../features/backlog/sources/source';
+import type { RemoteDetails, RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
 import { entryDate, type Ticket } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -51,7 +51,11 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.refreshAll()).dispose },
       deps.backlog.watch(() => this.refreshAll()),
-      deps.integrations.onDidChange(() => this.refreshAll()),
+      // Refreshed issues: read their details again too.
+      deps.integrations.onDidChange(() => {
+        this.details.clear();
+        this.refreshAll();
+      }),
     );
   }
 
@@ -98,15 +102,37 @@ export class TicketPanels implements vscode.Disposable {
     return remote && { id, title: remote.title, status: remote.status, priority: remote.priority, created: '', remote };
   }
 
+  /** Issues read from their trackers, for a minute: views refresh often (worktrees change), trackers can be slow. */
+  private readonly details = new Map<string, { at: number; settled: boolean; value: Promise<RemoteDetails> }>();
+
+  /** An issue's details, cached (fresh: read again, e.g. after commenting); refreshes while it's read share the read. */
+  private remoteDetails(id: string, fresh = false): Promise<RemoteDetails> {
+    const cached = this.details.get(id);
+    if (cached && !fresh && Date.now() - cached.at < 60_000) return cached.value;
+    const entry = {
+      at: Date.now(),
+      settled: false,
+      value: (async () => {
+        const source = await this.deps.integrations.sourceOf(id);
+        if (!source) throw new Error('Its integration is no longer connected.');
+        return source.details(id);
+      })(),
+    };
+    this.details.set(id, entry);
+    entry.value.then(
+      () => (entry.settled = true),
+      () => this.details.get(id) === entry && this.details.delete(id),
+    );
+    return entry.value;
+  }
+
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
   private async remoteView(item: BacklogItem & { remote: RemoteIssue }, webview: vscode.Webview): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'>> {
     const dir = this.deps.backlog.dir;
     const local = (await this.deps.backlog.readTicket(item)).activity;
     const localEntries = await Promise.all(local.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, webview, dir) })));
     try {
-      const source = await this.deps.integrations.sourceOf(item.id);
-      if (!source) throw new Error('Its integration is no longer connected.');
-      const d = await source.details(item.id);
+      const d = await this.remoteDetails(item.id);
       const remoteEntries = await Promise.all(
         d.comments.map(async (c) => ({
           date: entryDate(new Date(c.date)),
@@ -129,31 +155,60 @@ export class TicketPanels implements vscode.Disposable {
     for (const [id, panel] of this.panels) void this.post(id, panel);
   }
 
+  /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
+  private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
+
+  /** Sends a ticket's view; never leaves the tab waiting: a failure shows in it. */
   private async post(id: string, panel: vscode.WebviewPanel): Promise<void> {
-    const item = await this.item(id);
-    if (!item) {
-      panel.dispose();
-      return;
+    const seq = (this.posts.get(panel) ?? 0) + 1;
+    this.posts.set(panel, seq);
+    const send = (ticket: TicketView) => {
+      if (this.posts.get(panel) !== seq) return;
+      const message: TicketHostMessage = { type: 'ticket', ticket };
+      void panel.webview.postMessage(message);
+    };
+    let base: TicketView | undefined;
+    try {
+      const item = await this.item(id);
+      if (!item) {
+        panel.dispose();
+        return;
+      }
+      panel.title = `${item.id} ${item.title}`;
+      const dir = this.deps.backlog.dir;
+      const { remote, ...plain } = item;
+      base = this.baseView(plain, remote);
+      if (remote) {
+        // What the backlog knows shows at once; the description and comments follow from the tracker.
+        if (!this.details.get(id)?.settled) send({ ...base, loading: true });
+        send({ ...base, ...(await this.remoteView({ ...plain, remote }, panel.webview)) });
+      } else {
+        const ticket = await this.deps.backlog.readTicket(item);
+        send({
+          ...base,
+          description: ticket.description,
+          descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
+          activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      send({
+        ...(base ?? { item: { id, title: id, status: 'todo', created: '' }, description: '', descriptionHtml: '', activity: [], links: [], worktrees: [] }),
+        error: message,
+      });
     }
-    panel.title = `${item.id} ${item.title}`;
-    const dir = this.deps.backlog.dir;
-    const { remote, ...plain } = item;
-    let content: Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'>;
-    if (remote) {
-      content = await this.remoteView({ ...plain, remote }, panel.webview);
-    } else {
-      const ticket = await this.deps.backlog.readTicket(item);
-      content = {
-        description: ticket.description,
-        descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
-        activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
-      };
-    }
+  }
+
+  /** A ticket's view without its description and activity. */
+  private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): TicketView {
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
-    const view: TicketView = {
+    return {
       item: plain,
-      ...content,
+      description: '',
+      descriptionHtml: '',
+      activity: [],
       links: (plain.links ?? []).map((l) => {
         const now = issues.find((i) => i.id === l.id);
         return {
@@ -165,7 +220,7 @@ export class TicketPanels implements vscode.Disposable {
         };
       }),
       remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName },
-      worktrees: this.worktreesOf(item).map((ws) => ({
+      worktrees: this.worktreesOf(plain).map((ws) => ({
         key: ws.key,
         branch: workstreamLabel(ws),
         attention: ws.attention,
@@ -173,8 +228,6 @@ export class TicketPanels implements vscode.Disposable {
         message: ws.agent?.message,
       })),
     };
-    const message: TicketHostMessage = { type: 'ticket', ticket: view };
-    void panel.webview.postMessage(message);
   }
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
@@ -212,6 +265,7 @@ export class TicketPanels implements vscode.Disposable {
           const source = await this.deps.integrations.sourceOf(id);
           if (!source) throw new Error('Its integration is no longer connected.');
           await source.comment(id, m.text.trim());
+          void this.remoteDetails(id, true).catch(() => undefined);
         } else {
           await this.addActivity(id, 'You', m.text);
         }
