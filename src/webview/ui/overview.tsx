@@ -48,8 +48,6 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
             role="button"
             tabIndex={0}
             style={{ '--ws-color': colors.get(ws.key) }}
-            data-tip-ws={ws.key}
-            data-tip-hint="Double-click to open its tab"
             data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: 'overview' })}
             onClick={() => setHighlighted(ws.key)}
             onDblClick={() => onSelect(ws.key)}

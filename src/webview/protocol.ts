@@ -143,6 +143,8 @@ export type HostMessage =
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
   | { type: 'backlog'; items: BacklogItem[] }
+  /** Fold (or unfold) every worktree section of the All tab. */
+  | { type: 'fold'; folded: boolean }
   /** Show an inline box to name a new backlog item. */
   | { type: 'backlogAdd' }
   /** The files a commit changed (against its first parent). */
@@ -188,6 +190,8 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
+  /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
+  | { type: 'folding'; canFold: boolean; allFolded: boolean }
   | { type: 'backlog'; op: 'add'; title: string }
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus }
   /** Drag and drop: into a lane, before another item or at the lane's end. */

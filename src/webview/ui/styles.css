@@ -1291,19 +1291,6 @@ ins {
   font-style: normal;
   white-space: normal;
 }
-.hover-commit {
-  min-width: 240px;
-}
-.hover-commit .muted {
-  color: var(--vscode-descriptionForeground, var(--muted));
-}
-.hover-message {
-  max-height: 200px;
-  overflow: hidden;
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .hover-status .codicon {
   font-size: 12px;
   vertical-align: -2px;
@@ -1590,4 +1577,51 @@ ins {
 .lane.drop-end .lane-body::after {
   top: auto;
   bottom: 0;
+}
+
+/* ---- comparisons ---- */
+.comparison + .comparison {
+  margin-top: 4px;
+}
+.comparison-head {
+  gap: 4px;
+  padding-left: 2px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+.comparison-head > .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.comparison-head .lane-chev-left {
+  width: 16px;
+  color: var(--muted);
+}
+.comparison-head .close {
+  flex: none;
+  margin-left: 2px;
+  width: 20px;
+  height: 20px;
+  visibility: hidden;
+}
+.comparison-head:hover .close,
+.comparison-head:focus-within .close {
+  visibility: visible;
+}
+.comparison-head .hover-actions + .badge,
+.comparison-head .badge:first-of-type {
+  margin-left: auto;
+}
+.comparison-head .hover-actions {
+  margin-left: auto;
+}
+.tools .sub-tool.add .codicon {
+  font-size: 14px;
+  color: var(--vscode-activityBar-inactiveForeground, var(--muted));
+}
+.tools .sub-tool.add:hover .codicon {
+  color: var(--vscode-activityBar-foreground, var(--vscode-foreground));
 }

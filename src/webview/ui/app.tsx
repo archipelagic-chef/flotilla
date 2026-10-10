@@ -10,7 +10,7 @@ import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
-import { CommitCard, CompareView, HistoryBody, VcBody, type CommitFiles, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
+import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -25,12 +25,13 @@ export interface Persisted {
   history: string[];
   /** The view under Version Control. */
   vcView: VcView;
-  /** What Version Control › Compare compares. */
-  comparison: CompareChoice;
+  /** Version Control › Compare's comparisons, newest first; the view shows only while there are any. */
+  comparisons: CompareChoice[];
+  nextComparison: number;
   search: SearchState;
 }
 
-const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparison: { mode: 'mergeBase', uncommitted: true }, search: INITIAL_SEARCH };
+const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparisons: [], nextComparison: 1, search: INITIAL_SEARCH };
 
 export type Update = (change: (p: Persisted) => Persisted) => void;
 
@@ -116,15 +117,16 @@ export function App() {
   const [addingBacklog, setAddingBacklog] = useState(false);
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
-  const [comparison, setComparison] = useState<Comparison | undefined>(undefined);
-  const compareId = useRef(0);
+  const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
+  /** Request ids: the latest per comparison, and which comparison each one is for. */
+  const compareRequests = useRef({ next: 0, latest: new Map<number, number>(), owner: new Map<number, number>() });
   const tabStrip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
   const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
-  const stateRef = useRef({ persisted, active });
-  stateRef.current = { persisted, active };
+  const stateRef = useRef({ persisted, active, workstreams });
+  stateRef.current = { persisted, active, workstreams };
 
   const update: Update = useCallback((change) => {
     setPersisted((prev) => {
@@ -164,14 +166,26 @@ export function App() {
   }, []);
 
   /** Compares; the list shown stays until the answer comes, and only the latest answer counts. */
-  const compare = useCallback((request: RefComparison) => {
-    const id = ++compareId.current;
-    setComparison((prev) => ({ id, files: prev?.files ?? [], loading: true }));
+  const compare = useCallback((comparisonId: number, request: RefComparison) => {
+    const r = compareRequests.current;
+    const id = ++r.next;
+    r.latest.set(comparisonId, id);
+    r.owner.set(id, comparisonId);
+    setCompareResults((prev) => new Map(prev).set(comparisonId, { id, files: prev.get(comparisonId)?.files ?? [], loading: true }));
     send({ type: 'compare', id, ...request });
   }, []);
 
   const chooseCompare = useCallback(
-    (change: Partial<CompareChoice>) => update((p) => ({ ...p, comparison: { ...INITIAL.comparison, ...p.comparison, ...change } })),
+    (id: number, change: Partial<CompareChoice>) => update((p) => ({ ...p, comparisons: p.comparisons.map((c) => (c.id === id ? { ...c, ...change } : c)) })),
+    [update],
+  );
+  const closeCompare = useCallback(
+    (id: number) =>
+      update((p) => {
+        const comparisons = p.comparisons.filter((c) => c.id !== id);
+        // Closing the last one hides Compare; back to Changes.
+        return { ...p, comparisons, vcView: !comparisons.length && p.vcView === 'compare' ? 'changes' : p.vcView };
+      }),
     [update],
   );
 
@@ -237,6 +251,9 @@ export function App() {
         case 'backlog':
           setBacklog(m.items);
           return;
+        case 'fold':
+          update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
+          return;
         case 'backlogAdd':
           update((prev) => ({ ...prev, tool: 'backlog' }));
           setAddingBacklog(true);
@@ -244,9 +261,15 @@ export function App() {
         case 'refs':
           setRefs({ defaultBase: m.defaultBase, refs: m.refs });
           return;
-        case 'compared':
-          if (m.id === compareId.current) setComparison({ id: m.id, files: m.files, error: m.error });
+        case 'compared': {
+          const r = compareRequests.current;
+          const owner = r.owner.get(m.id);
+          r.owner.delete(m.id);
+          if (owner !== undefined && r.latest.get(owner) === m.id) {
+            setCompareResults((prev) => new Map(prev).set(owner, { id: m.id, files: m.files, error: m.error }));
+          }
           return;
+        }
         case 'committed':
           update((prev) => {
             const drafts = { ...prev.drafts };
@@ -334,9 +357,19 @@ export function App() {
   }, [workstreams === undefined, measureTabs]);
   useEffect(measureTabs, [workstreams, closed, active, measureTabs]);
 
+  // Fold All in the view title: offered where the All tab shows worktree sections.
+  const sectioned = active === ALL && ['files', 'search', 'vc', 'chats'].includes(persisted.tool) && !(persisted.tool === 'vc' && persisted.vcView === 'compare' && persisted.comparisons.length > 0);
+  const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
+  useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
+
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
-  const { tool, vcView } = persisted;
+  const { tool } = persisted;
+  // Compare shows only while there are comparisons.
+  const vcView = persisted.vcView === 'compare' && !persisted.comparisons.length ? 'changes' : persisted.vcView;
+  // With the active worktree's branch, unless that's the base (main, or the All tab): then it's left to pick.
+  const addComparison = () =>
+    update((p) => withComparison(p, { base: refs?.defaultBase, head: activeWs && activeWs.branch !== refs?.defaultBase ? activeWs.branch : undefined }));
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
@@ -403,11 +436,12 @@ export function App() {
     content = (
       <CompareView
         workstreams={workstreams}
-        activeWs={activeWs}
-        choice={{ ...INITIAL.comparison, ...persisted.comparison }}
+        comparisons={persisted.comparisons}
         refs={refs}
-        result={comparison}
+        results={compareResults}
         choose={chooseCompare}
+        close={closeCompare}
+        add={addComparison}
         requestRefs={requestRefs}
         compare={compare}
       />
@@ -579,7 +613,7 @@ export function App() {
                 </button>
                 {t.id === 'vc' && tool === 'vc' && (
                   <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
-                    {VC_VIEWS.map((v) => (
+                    {VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0).map((v) => (
                       <button
                         key={v.id}
                         class="sub-tool"
@@ -593,6 +627,9 @@ export function App() {
                         <i class={`codicon codicon-${v.icon}`} />
                       </button>
                     ))}
+                    <button class="sub-tool add" aria-label="New Comparison…" data-tip-pos="right" onClick={addComparison}>
+                      <i class="codicon codicon-add" />
+                    </button>
                   </div>
                 )}
               </Fragment>
@@ -610,10 +647,6 @@ export function App() {
       </div>
       <Hover
         render={(el) => {
-          if (el.dataset.tipCommit) {
-            const commit = logs.get(el.dataset.tipKey ?? '')?.commits.find((c) => c.hash === el.dataset.tipCommit);
-            return commit && <CommitCard commit={commit} />;
-          }
           const ws = el.dataset.tipWs ? workstreams.find((w) => w.key === el.dataset.tipWs) : undefined;
           return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
         }}

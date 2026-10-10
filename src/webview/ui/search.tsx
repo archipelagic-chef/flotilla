@@ -194,7 +194,6 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
                         <button
                           key={m.line}
                           class="row hit"
-                          data-tip={`${f.path}:${m.line}`}
                           onClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: true, line: m.line, range: m.ranges[0] })}
                           onDblClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: false, line: m.line, range: m.ranges[0] })}
                         >

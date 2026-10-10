@@ -96,7 +96,6 @@ export function WorktreeHeader({ ws, tool }: { ws: WorkstreamView; tool: Tool })
   return (
     <div
       class="ws-head"
-      data-tip-ws={ws.key}
       data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: tool })}
       {...(tool === 'files' && ws.reachable ? dropTarget(ws.key, '') : {})}
     >
@@ -131,8 +130,6 @@ export function Section({ ws, tool, color, collapsed, onToggle, onSelect, childr
         {...(tool === 'files' && ws.reachable ? dropTarget(ws.key, '') : {})}
         onClick={onToggle}
         onDblClick={onSelect}
-        data-tip-ws={ws.key}
-        data-tip-hint={`Click to ${collapsed ? 'unfold' : 'fold'} · double-click to open its tab`}
       >
         <div class="sec-line">
           <Title ws={ws} />

@@ -13,7 +13,7 @@ import { ATTENTION_ICON } from './section';
  */
 type Placement = 'below' | 'above' | 'right';
 
-const SELECTOR = '[data-tip],[data-tip-ws],[data-tip-commit],button[aria-label]';
+const SELECTOR = '[data-tip],[data-tip-ws],button[aria-label]';
 /** Like workbench.hover.delay; moving on to the next element while a hover shows is instant, like VS Code. */
 const DELAY = 500;
 const GRACE = 300;

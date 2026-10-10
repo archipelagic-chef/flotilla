@@ -409,6 +409,18 @@
         "command": "flotilla.closeOtherTabs",
         "title": "Close Other Tabs",
         "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.foldAll",
+        "title": "Fold All Worktrees",
+        "category": "Flotilla",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "flotilla.unfoldAll",
+        "title": "Unfold All Worktrees",
+        "category": "Flotilla",
+        "icon": "$(expand-all)"
       }
     ],
     "menus": {
@@ -668,6 +680,14 @@
         {
           "command": "flotilla.startBacklogItem",
           "when": "false"
+        },
+        {
+          "command": "flotilla.foldAll",
+          "when": "flotilla.state == ready && flotilla.canFold"
+        },
+        {
+          "command": "flotilla.unfoldAll",
+          "when": "flotilla.state == ready && flotilla.canFold"
         }
       ],
       "view/title": [
@@ -675,6 +695,16 @@
           "command": "flotilla.newWorkstream",
           "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "0_workstreams@0"
+        },
+        {
+          "command": "flotilla.foldAll",
+          "when": "view == flotilla.sidebar && flotilla.state == ready && flotilla.canFold && !flotilla.allFolded",
+          "group": "navigation@1"
+        },
+        {
+          "command": "flotilla.unfoldAll",
+          "when": "view == flotilla.sidebar && flotilla.state == ready && flotilla.canFold && flotilla.allFolded",
+          "group": "navigation@1"
         },
         {
           "command": "flotilla.refresh",

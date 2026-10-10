@@ -149,6 +149,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
     vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
+    vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),
+    vscode.commands.registerCommand('flotilla.unfoldAll', () => sidebar.fold(false)),
     vscode.commands.registerCommand('flotilla.addBacklogItem', () => sidebar.addBacklogItem()),
     vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
     vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),

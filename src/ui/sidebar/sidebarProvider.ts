@@ -102,6 +102,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     await this.postBacklog();
   }
 
+  /** Folds or unfolds every worktree on the All tab (the view title's Fold All / Unfold All). */
+  fold(folded: boolean): void {
+    this.post({ type: 'fold', folded });
+  }
+
   /** Shows the Backlog tool with a box to name a new item. */
   async addBacklogItem(): Promise<void> {
     await this.showTool('backlog');
@@ -262,6 +267,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'backlog':
         await this.onBacklog(m);
+        return;
+      case 'folding':
+        await vscode.commands.executeCommand('setContext', 'flotilla.canFold', m.canFold);
+        await vscode.commands.executeCommand('setContext', 'flotilla.allFolded', m.allFolded);
         return;
       case 'openCommit': {
         const ws = this.find(m.key);

@@ -80,7 +80,6 @@ function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
       class={`chat${chat.open ? '' : ' past'}`}
       role="button"
       tabIndex={0}
-      data-tip={`${chat.title}\n${chat.open ? 'Open' : 'Resume'} this chat`}
       data-vscode-context={menuContext('chat', { key: ws.key, chatId: chat.id, flotillaWs: ws.context, linkedBy: chat.linkedBy })}
       onClick={() => run('flotilla.openChat', target)}
       onKeyDown={(e) => e.key === 'Enter' && run('flotilla.openChat', target)}
