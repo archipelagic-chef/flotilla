@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import type { Target } from '../../webview/protocol';
 import { FileOps } from './fileOps';
@@ -15,7 +16,7 @@ export function registerFileCommands(context: vscode.ExtensionContext, sidebar: 
   const items = (t: Target) => (t.paths?.length ? t.paths : t.path ? [t.path] : []).map((p) => ({ key: t.key, path: p }));
   const fileUri = (t: Target) => {
     const root = sidebar.root(t.key);
-    return root && t.path ? toWorkspaceUri(reference, path.join(root, t.path)) : undefined;
+    return root && t.path ? toWorkspaceUri(reference, resolveInside(root, t.path)) : undefined;
   };
   const register = (id: string, run: (t: Target) => unknown) =>
     context.subscriptions.push(

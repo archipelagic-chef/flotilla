@@ -27,3 +27,16 @@ describe('paths', () => {
     expect(toGitPath('a/b')).toBe('a/b');
   });
 });
+
+describe('resolveInside', () => {
+  it('accepts paths inside the root and rejects ones that leave it', async () => {
+    const { resolveInside } = await import('../../../src/core/paths');
+    const root = path.resolve('/r/wt');
+    expect(resolveInside(root, 'src/a.ts')).toBe(path.join(root, 'src', 'a.ts'));
+    expect(resolveInside(root, '')).toBe(root);
+    expect(resolveInside(root, 'src/../b.ts')).toBe(path.join(root, 'b.ts'));
+    expect(() => resolveInside(root, '../other/x')).toThrow(/outside/);
+    expect(() => resolveInside(root, '../wt2')).toThrow(/outside/);
+    expect(() => resolveInside(root, path.resolve('/etc/passwd'))).toThrow(/outside/);
+  });
+});

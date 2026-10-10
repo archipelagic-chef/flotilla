@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
 
+# Read-only token: CI only checks out and tests.
+permissions:
+  contents: read
+
 jobs:
   unit:
     strategy:

@@ -50,6 +50,14 @@ const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1,
 const STATES: readonly ChatState[] = ['working', 'waiting-for-input', 'done', 'ended'];
 const LINKS: readonly LinkKind[] = ['cwd', 'edit', 'manual'];
 
+/**
+ * Claude Code session ids are UUIDs. They come from files other tools can write and end up in file names, so
+ * anything else (such as "../x") is ignored.
+ */
+export function isSessionId(id: unknown): id is string {
+  return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id);
+}
+
 export function chatsDir(gitDir: string): string {
   return path.join(gitDir, 'flotilla', 'chats');
 }
@@ -78,7 +86,7 @@ export function parseChatRecord(raw: string): ChatRecord | undefined {
   if (typeof data !== 'object' || data === null) return undefined;
   const updatedAt = toDate(data.updatedAt);
   const sessionId = text(data.sessionId);
-  if (!sessionId || !updatedAt || !STATES.includes(data.state as ChatState)) return undefined;
+  if (!isSessionId(sessionId) || !updatedAt || !STATES.includes(data.state as ChatState)) return undefined;
   return {
     sessionId,
     source: 'claude-code',
@@ -276,6 +284,7 @@ async function readTranscriptFile(file: string, sessionId: string): Promise<Tran
 }
 
 export function transcriptPath(cwd: string, sessionId: string, home = claudeHome()): string {
+  if (!isSessionId(sessionId)) throw new Error(`Not a valid chat session id: ${sessionId}`);
   return path.join(home, 'projects', encodeProjectDir(cwd), `${sessionId}.jsonl`);
 }
 
@@ -293,7 +302,7 @@ export async function readTranscripts(worktreeDir: string, home = claudeHome()):
     return [];
   }
   const out: TranscriptInfo[] = [];
-  for (const name of names.filter((n) => n.endsWith('.jsonl'))) {
+  for (const name of names.filter((n) => n.endsWith('.jsonl') && isSessionId(n.slice(0, -'.jsonl'.length)))) {
     const info = await readTranscriptFile(path.join(dir, name), name.slice(0, -'.jsonl'.length));
     if (info) out.push(info);
   }

@@ -191,3 +191,20 @@ describe('importTranscript', () => {
     expect(await importTranscript('/r/.worktrees/a', '/r', 'nope', home)).toBe('missing');
   });
 });
+
+describe('session id validation', () => {
+  it('ignores records and transcripts whose id is not a plain session id', async () => {
+    const { isSessionId, transcriptPath } = await import('../../../../src/features/chats/chats');
+    expect(isSessionId('7d3f2c1e-5a4b-4c3d-9e8f-0a1b2c3d4e5f')).toBe(true);
+    for (const bad of ['../x', 'a/b', '..', '', '-rf', 'a b', 'x'.repeat(200)]) expect(isSessionId(bad)).toBe(false);
+    expect(parseChatRecord(JSON.stringify({ sessionId: '../../evil', state: 'done', updatedAt: now.toISOString() }))).toBeUndefined();
+    expect(() => transcriptPath('/r', '../../.bashrc')).toThrow(/session id/);
+    const home = makeTempDir();
+    cleanup.push(home);
+    const project = path.join(home, 'projects', encodeProjectDir('/r'));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'good-1.jsonl'), '');
+    fs.writeFileSync(path.join(project, '..weird.jsonl'), '');
+    expect((await readTranscripts('/r', home)).map((t) => t.sessionId)).toEqual(['good-1']);
+  });
+});

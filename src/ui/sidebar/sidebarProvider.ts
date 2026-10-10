@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
+import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
@@ -160,7 +161,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'openFile': {
         const ws = this.find(m.key);
         if (!ws?.worktree.path) return;
-        const uri = toWorkspaceUri(this.deps.reference, path.join(ws.worktree.path, m.path));
+        const uri = toWorkspaceUri(this.deps.reference, resolveInside(ws.worktree.path, m.path));
         const selection = m.line ? new vscode.Range(m.line - 1, m.range?.[0] ?? 0, m.line - 1, m.range?.[1] ?? 0) : undefined;
         await vscode.window.showTextDocument(uri, { preview: m.preview, preserveFocus: m.preview && !selection, selection });
         return;
@@ -221,7 +222,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const files: vscode.Uri[] = [];
     for (const w of targets) {
       const paths = relPath ? [relPath] : (await searchWorktree(w.worktree.path!, query, options, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path);
-      files.push(...paths.map((p) => toWorkspaceUri(this.deps.reference, path.join(w.worktree.path!, p))));
+      files.push(...paths.map((p) => toWorkspaceUri(this.deps.reference, resolveInside(w.worktree.path!, p))));
     }
     const edit = new vscode.WorkspaceEdit();
     const documents: vscode.TextDocument[] = [];

@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { toGitPath } from '../../core/paths';
+import { resolveInside, toGitPath } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { HostMessage, Target } from '../../webview/protocol';
@@ -35,7 +35,7 @@ export class FileOps {
   }
 
   private uri(key: string, rel: string): vscode.Uri {
-    return toWorkspaceUri(this.deps.reference, path.join(this.root(key), rel));
+    return toWorkspaceUri(this.deps.reference, resolveInside(this.root(key), rel));
   }
 
   private async exists(uri: vscode.Uri): Promise<boolean> {

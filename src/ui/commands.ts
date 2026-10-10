@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
 import { INDEX, WORKING } from '../core/diff/refs';
 import { GitError } from '../core/git/gitCli';
-import { isInside, samePath } from '../core/paths';
+import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
@@ -114,7 +114,7 @@ export function registerCommands(ctx: CommandContext): void {
   );
   register('flotilla.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
   register('flotilla.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
-  register('flotilla.copyPath', withWs((ws, arg) => vscode.env.clipboard.writeText(path.join(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))));
+  register('flotilla.copyPath', withWs((ws, arg) => vscode.env.clipboard.writeText(resolveInside(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))));
   register('flotilla.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
   register('flotilla.compareWith', withWs((ws) => compareWith(ctx, ws)));
   register('flotilla.openFile', withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)));
@@ -169,7 +169,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.copyClaudeHookConfig', async () => {
     await vscode.env.clipboard.writeText(claudeHookConfig());
     void vscode.window.showInformationMessage(
-      'Claude Code hook config copied. Merge it into the "hooks" section of .claude/settings.local.json in each worktree, or run Flotilla: Install Claude Code Hooks.',
+      'Claude Code hook config copied. The hooks also need the hook script, .claude/flotilla-hook.js, in each worktree: run Flotilla: Install Claude Code Hooks to set up both.',
     );
   });
 }
@@ -427,14 +427,14 @@ async function openFile(ctx: CommandContext, ws: Workstream, relPath: string | u
     void vscode.window.showInformationMessage(`${relPath} was deleted.`);
     return;
   }
-  await vscode.window.showTextDocument(toWorkspaceUri(ctx.reference, path.join(ws.worktree.path, relPath)), { preview: false });
+  await vscode.window.showTextDocument(toWorkspaceUri(ctx.reference, resolveInside(ws.worktree.path, relPath)), { preview: false });
 }
 
 /** Reveals a file or a worktree folder in the Explorer; it must be inside a workspace folder. */
 async function revealInExplorer(ctx: CommandContext, arg: Arg): Promise<void> {
   const ws = await pickWorkstream(ctx, arg, {});
   if (!ws?.worktree.path) return;
-  const target = isTarget(arg) && arg.path ? path.join(ws.worktree.path, arg.path) : ws.worktree.path;
+  const target = isTarget(arg) && arg.path ? resolveInside(ws.worktree.path, arg.path) : ws.worktree.path;
   const visible = (vscode.workspace.workspaceFolders ?? []).some((f) => samePath(f.uri.fsPath, target) || isInside(f.uri.fsPath, target));
   if (!visible) {
     const choice = await vscode.window.showInformationMessage(

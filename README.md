@@ -71,6 +71,20 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 - git 2.17 or newer in each environment (host and container).
 - For chat status: [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), and Node.js on the PATH where it runs (the hooks are small Node scripts).
 
+## Privacy and security
+
+- **Nothing leaves your machine.** Flotilla has no telemetry and makes no network requests of its own. It only runs git, including the push, pull and fetch you ask for.
+- **What it writes:**
+  - Files you create, edit or move through it.
+  - In each worktree's git directory: `flotilla/` (chat records) and a heartbeat file.
+  - With your consent: `.claude/settings.local.json` and `.claude/flotilla-hook.js` in each worktree (both kept out of git through `.git/info/exclude`).
+  - When you open a chat from another worktree: a copy of its transcript in Claude Code's chat folder. When linked chats get titles: a title line in their transcript (`flotilla.tagChatTitles`).
+- **What it reads:** your repository and its worktrees, and Claude Code's transcripts in `~/.claude/projects/`.
+- **The Claude Code hook** is a readable script, `.claude/flotilla-hook.js`. It only records each chat's state in the worktree's git directory.
+- **Trusted workspaces only:** Flotilla runs git, your `flotilla.setupCommand` and the hooks, so it stays off in VS Code's Restricted Mode.
+
+Please report security issues privately through [GitHub's security advisories](https://github.com/archipelagic-chef/flotilla/security/advisories/new) rather than in a public issue.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for building, testing and trying Flotilla across host and devcontainer.

@@ -1,3 +1,4 @@
+import { resolveInside } from '../../core/paths';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import picomatch from 'picomatch';
@@ -25,7 +26,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 
 /** Lists one directory of a worktree, folders first, the way the Explorer sorts. */
 export async function listDirectory(root: string, relDir: string, opts: ListOptions): Promise<DirEntry[]> {
-  const dir = path.join(root, relDir);
+  const dir = resolveInside(root, relDir);
   const dirents = await fs.readdir(dir, { withFileTypes: true });
   const entries: DirEntry[] = [];
   for (const d of dirents) {

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { HOOK_EVENTS, HOOK_MARKER, hookCommand } from './hookScript';
+import { HOOK_EVENTS, HOOK_FILE, HOOK_MARKER, hookCommand, hookFileContent } from './hookScript';
 
 export const SETTINGS_FILE = path.join('.claude', 'settings.local.json');
 
@@ -48,24 +48,36 @@ async function readSettings(file: string): Promise<Settings> {
   return parsed as Settings;
 }
 
+async function hookFileIsCurrent(worktreeRoot: string): Promise<boolean> {
+  try {
+    return (await fs.readFile(path.join(worktreeRoot, HOOK_FILE), 'utf8')) === hookFileContent();
+  } catch {
+    return false;
+  }
+}
+
 export async function hooksInstalled(worktreeRoot: string): Promise<boolean> {
   try {
-    return hasCurrentHooks(await readSettings(path.join(worktreeRoot, SETTINGS_FILE)));
+    return hasCurrentHooks(await readSettings(path.join(worktreeRoot, SETTINGS_FILE))) && (await hookFileIsCurrent(worktreeRoot));
   } catch {
     return false;
   }
 }
 
 /**
- * Installs the hooks into the worktree's `.claude/settings.local.json` (per checkout, so every worktree needs its own)
- * and keeps that file out of git. Throws, without writing, when the existing file is not valid JSON.
+ * Installs the hooks: the hook script as `.claude/flotilla-hook.js`, and the commands that run it in the worktree's
+ * `.claude/settings.local.json` (per checkout, so every worktree needs its own). Both are kept out of git. Throws,
+ * without writing, when the existing settings file is not valid JSON.
  */
 export async function installHooks(worktreeRoot: string, commonDir: string): Promise<'installed' | 'unchanged'> {
   const file = path.join(worktreeRoot, SETTINGS_FILE);
   const settings = await readSettings(file);
   await ensureExcludeLine(commonDir, '.claude/settings.local.json', ['.claude/settings.local.json', '/.claude/settings.local.json']);
-  if (hasCurrentHooks(settings)) return 'unchanged';
+  await ensureExcludeLine(commonDir, `/${HOOK_FILE}`, [HOOK_FILE, `/${HOOK_FILE}`]);
+  const scriptCurrent = await hookFileIsCurrent(worktreeRoot);
+  if (hasCurrentHooks(settings) && scriptCurrent) return 'unchanged';
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `${JSON.stringify(withFlotillaHooks(settings), null, 2)}\n`);
+  if (!scriptCurrent) await fs.writeFile(path.join(worktreeRoot, HOOK_FILE), hookFileContent());
+  if (!hasCurrentHooks(settings)) await fs.writeFile(file, `${JSON.stringify(withFlotillaHooks(settings), null, 2)}\n`);
   return 'installed';
 }

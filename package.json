@@ -1189,7 +1189,8 @@
     "test": "vitest run",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "vsce package",
-    "playground": "node scripts/playground.mjs"
+    "playground": "node scripts/playground.mjs",
+    "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -1208,5 +1209,15 @@
     "picomatch": "4.0.7",
     "preact": "10.29.8",
     "tinyglobby": "^0.2.17"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Flotilla runs git, your setup command and Claude Code hooks in the repository, so it needs a trusted workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Flotilla needs git and the files on disk."
+    }
   }
 }

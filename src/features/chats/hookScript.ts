@@ -1,15 +1,16 @@
 /**
- * The Claude Code hook. It runs as `node -e "eval(Buffer.from('<base64>','base64').toString())" flotilla-hook`,
- * which survives the quoting of sh, cmd and PowerShell (base64 has no special characters), and reads the hook
- * event from stdin. It writes one record per chat into the chat's worktree git dir, and mirrors the record into
- * the git dirs of other worktrees whose files the chat edits. It never fails the agent: every error is swallowed.
+ * The Claude Code hook. Flotilla installs it as a readable file, `.claude/flotilla-hook.js`, next to each worktree's
+ * `.claude/settings.local.json`; the hook command only loads that file (see hookCommand). It reads the hook event
+ * from stdin, writes one record per chat into the chat's worktree git dir, and mirrors the record into the git dirs
+ * of other worktrees whose files the chat edits. It never fails the agent: every error is swallowed.
  */
 const SOURCE = String.raw`
 const fs = require('fs'), path = require('path'), cp = require('child_process');
 const STATES = { SessionStart: 'done', UserPromptSubmit: 'working', PostToolUse: 'working', Notification: 'waiting-for-input', Stop: 'done', SessionEnd: 'ended' };
 let input = {};
 try { input = JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) {}
-const sid = typeof input.session_id === 'string' ? input.session_id : '';
+// Session ids are UUIDs; anything else is ignored (it would end up in a file name).
+const sid = typeof input.session_id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(input.session_id) ? input.session_id : '';
 const event = input.hook_event_name;
 const state = STATES[event];
 if (sid && state) {
@@ -53,7 +54,7 @@ if (sid && state) {
     }
     write(own, record);
     for (const dir of record.linkedDirs) {
-      if (unlinked(dir)) continue;
+      if (typeof dir !== 'string' || !path.isAbsolute(dir) || unlinked(dir)) continue;
       const previous = read(fileFor(dir));
       write(dir, Object.assign({}, record, { linkedBy: previous && previous.linkedBy === 'manual' ? 'manual' : 'edit', linkedDirs: [] }));
     }
@@ -66,11 +67,30 @@ export const HOOK_MARKER = 'flotilla-hook';
 
 export const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Notification', 'Stop', 'SessionEnd'] as const;
 
+/** Where the hook script is installed, relative to a worktree (next to its settings.local.json). */
+export const HOOK_FILE = '.claude/flotilla-hook.js';
+
+/** The code the hook runs. */
 export function hookSource(): string {
   return `try {\n${SOURCE}\n} catch (e) {}`;
 }
 
+/** The installed hook file: the code with a header saying what it is. */
+export function hookFileContent(): string {
+  return [
+    '// Flotilla hook for Claude Code (https://github.com/archipelagic-chef/flotilla).',
+    '// Installed by the Flotilla VS Code extension; reinstalling the hooks overwrites this file.',
+    '// It records each chat\'s state (working, waiting for input, done) in this worktree\'s git directory,',
+    '// in flotilla/chats/<session>.json, so Flotilla can show it. It sends nothing anywhere.',
+    hookSource(),
+    '',
+  ].join('\n');
+}
+
+/**
+ * The hook command in settings.local.json: loads the hook file from the session's project folder (Claude Code sets
+ * CLAUDE_PROJECT_DIR for hooks). No characters that sh, cmd or PowerShell interpret inside double quotes.
+ */
 export function hookCommand(): string {
-  const encoded = Buffer.from(hookSource(), 'utf8').toString('base64');
-  return `node -e "eval(Buffer.from('${encoded}','base64').toString())" ${HOOK_MARKER}`;
+  return `node -e "require(require('path').join(process.env.CLAUDE_PROJECT_DIR||process.cwd(),'.claude','flotilla-hook.js'))" ${HOOK_MARKER}`;
 }

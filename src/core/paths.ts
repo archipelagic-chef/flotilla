@@ -19,3 +19,13 @@ export function isInside(parent: string, child: string): boolean {
 export function toGitPath(p: string): string {
   return p.replace(/\\/g, '/');
 }
+
+/**
+ * Joins a relative path onto root and makes sure the result stays inside root (or is root). Paths come from the
+ * webview, context menus and files on disk, so a "../" or absolute path must never reach outside the worktree.
+ */
+export function resolveInside(root: string, rel: string): string {
+  const full = path.resolve(root, rel);
+  if (!samePath(full, root) && !isInside(root, full)) throw new Error(`${rel} is outside ${root}.`);
+  return full;
+}

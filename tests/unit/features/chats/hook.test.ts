@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readChatRecords } from '../../../../src/features/chats/chats';
-import { hasCurrentHooks, installHooks, withFlotillaHooks } from '../../../../src/features/chats/hookInstall';
+import { hasCurrentHooks, hooksInstalled, installHooks, withFlotillaHooks } from '../../../../src/features/chats/hookInstall';
 import { HOOK_EVENTS, hookCommand, hookSource } from '../../../../src/features/chats/hookScript';
 import { git, initRepo, removeDir } from '../../../helpers/gitRepo';
 
@@ -58,12 +58,25 @@ describe('hook script', () => {
     expect(fs.existsSync(path.join(wtGitDir, 'flotilla'))).toBe(false);
   });
 
-  it('survives shell quoting as a single command line', () => {
+  it('runs the installed hook file from the command line, via CLAUDE_PROJECT_DIR or the working directory', async () => {
+    const { repo, wt, wtGitDir } = setup();
+    await installHooks(wt, path.join(repo, '.git'));
+    const sub = path.join(wt, 'src');
+    fs.mkdirSync(sub, { recursive: true });
+    const run = (cwd: string, sid: string, env: Record<string, string> = {}) =>
+      execFileSync('sh', ['-c', hookCommand()], { cwd, env: { ...process.env, ...env }, input: JSON.stringify({ session_id: sid, hook_event_name: 'Stop', cwd: wt }) });
+    run(sub, 'q1', { CLAUDE_PROJECT_DIR: wt });
+    run(wt, 'q2');
+    expect(fs.readdirSync(path.join(wtGitDir, 'flotilla', 'chats')).sort()).toEqual(['q1.json', 'q2.json']);
+    // Nothing inside the quotes that sh, cmd or PowerShell would interpret.
+    const inner = /^node -e "([^"]*)" flotilla-hook$/.exec(hookCommand())![1];
+    expect(inner).not.toMatch(/[$`!%^<>&]/);
+  });
+
+  it('ignores session ids that are not plain ids', () => {
     const { wt, wtGitDir } = setup();
-    execFileSync('sh', ['-c', hookCommand()], { cwd: wt, input: JSON.stringify({ session_id: 'q', hook_event_name: 'Stop', cwd: wt }) });
-    expect(fs.existsSync(path.join(wtGitDir, 'flotilla', 'chats', 'q.json'))).toBe(true);
-    // Only base64 inside the quotes: nothing sh, cmd or PowerShell would interpret.
-    expect(hookCommand()).toMatch(/^node -e "eval\(Buffer\.from\('[A-Za-z0-9+/=]+','base64'\)\.toString\(\)\)" flotilla-hook$/);
+    fire(wt, { session_id: '../../evil', hook_event_name: 'Stop' });
+    expect(fs.existsSync(path.join(wtGitDir, 'flotilla'))).toBe(false);
   });
 });
 
@@ -91,6 +104,16 @@ describe('hook installation', () => {
     expect(await installHooks(wt, path.join(repo, '.git'))).toBe('installed');
     expect(await installHooks(wt, path.join(repo, '.git'))).toBe('unchanged');
     expect(git(wt, 'status', '--porcelain')).toBe('');
+    // The hook is a readable file, not an encoded blob.
+    const script = fs.readFileSync(path.join(wt, '.claude', 'flotilla-hook.js'), 'utf8');
+    expect(script).toMatch(/^\/\/ Flotilla hook for Claude Code/);
+    expect(script).toContain("hook_event_name");
+    expect(fs.readFileSync(path.join(wt, '.claude', 'settings.local.json'), 'utf8')).not.toMatch(/base64|eval/);
+    // A changed or missing hook file is reinstalled.
+    fs.writeFileSync(path.join(wt, '.claude', 'flotilla-hook.js'), '// tampered');
+    expect(await hooksInstalled(wt)).toBe(false);
+    expect(await installHooks(wt, path.join(repo, '.git'))).toBe('installed');
+    expect(await hooksInstalled(wt)).toBe(true);
     fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), '{ broken');
     await expect(installHooks(wt, path.join(repo, '.git'))).rejects.toThrow();
     expect(fs.readFileSync(path.join(wt, '.claude', 'settings.local.json'), 'utf8')).toBe('{ broken');
