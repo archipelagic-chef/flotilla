@@ -13,7 +13,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { closeTabs, offerActivityBar, selectWorktree } from './ui/activeWorktreeCommands';
+import { closeTabs, offerActivityBar, selectWorktree, newTerminal } from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
@@ -139,11 +139,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.selectWorktree', (arg?: unknown) => selectWorktree(arg, repository, active)),
     vscode.commands.registerCommand('flotilla.closeTab', (arg?: unknown) => closeTabs(arg, repository, active, false)),
     vscode.commands.registerCommand('flotilla.closeOtherTabs', (arg?: unknown) => closeTabs(arg, repository, active, true)),
-    vscode.commands.registerCommand('flotilla.newTerminal', () => {
-      const ws = repository.current.find((w) => w.key === active.key);
-      const terminal = vscode.window.createTerminal({ name: ws ? workstreamLabel(ws) : undefined, cwd: ws?.worktree.path ?? location.worktreeRoot });
-      terminal.show();
-    }),
+    vscode.commands.registerCommand('flotilla.newTerminal', () => newTerminal(repository, active, location.worktreeRoot, false)),
+    vscode.commands.registerCommand('flotilla.newTerminalIn', () => newTerminal(repository, active, location.worktreeRoot, true)),
     vscode.commands.registerCommand('flotilla.quickOpen', () => {
       const ws = repository.current.find((w) => w.key === active.key);
       if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');

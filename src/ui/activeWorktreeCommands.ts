@@ -36,6 +36,31 @@ export async function selectWorktree(arg: unknown, repository: Repository<Workst
   if (picked) active.set(picked.key);
 }
 
+/**
+ * Opens a terminal in a worktree: the active one, or, on the All tab (or when ask is set), the one picked from a list
+ * of the reachable worktrees with the active one first. Without reachable worktrees it opens in fallbackCwd.
+ */
+export async function newTerminal(repository: Repository<Workstream>, active: ActiveWorktree, fallbackCwd: string | undefined, ask: boolean): Promise<void> {
+  const reachable = tabOrder(repository.current).filter((w) => w.worktree.path);
+  let ws = ask ? undefined : reachable.find((w) => w.key === active.key);
+  if (!ws && reachable.length) {
+    const now = new Date();
+    type Item = vscode.QuickPickItem & { ws: Workstream };
+    const items: Item[] = reachable
+      .sort((a, b) => Number(b.key === active.key) - Number(a.key === active.key))
+      .map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, description: w.key === active.key ? 'active' : undefined, detail: describeWorkstream(w, now), ws: w }));
+    const picked = await vscode.window.showQuickPick(items, { title: 'New Terminal in Worktree', placeHolder: 'Which worktree should the terminal start in?' });
+    if (!picked) return;
+    ws = picked.ws;
+  }
+  const terminal = vscode.window.createTerminal({
+    name: ws ? workstreamLabel(ws) : undefined,
+    cwd: ws?.worktree.path ?? fallbackCwd,
+    iconPath: ws ? new vscode.ThemeIcon('git-branch') : undefined,
+  });
+  terminal.show();
+}
+
 const OFFERED_KEY = 'flotilla.activityBarOffered';
 
 /** Offers (once, or on request) to hide VS Code's activity bar or move it to the top, so Flotilla's tool strip is the only one on the side. */

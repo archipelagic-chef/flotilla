@@ -359,6 +359,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.newTerminalIn",
+        "title": "New Terminal in Worktree…",
+        "category": "Flotilla",
+        "icon": "$(git-branch)"
+      },
+      {
         "command": "flotilla.configureActivityBar",
         "title": "Use Flotilla as the Sidebar (Activity Bar Position)…",
         "category": "Flotilla"
@@ -622,6 +628,10 @@
         {
           "command": "flotilla.closeOtherTabs",
           "when": "flotilla.state == ready && flotilla.activeWorktree != 'all'"
+        },
+        {
+          "command": "flotilla.newTerminalIn",
+          "when": "flotilla.state == ready"
         }
       ],
       "view/title": [
@@ -644,6 +654,11 @@
           "command": "flotilla.installClaudeHooks",
           "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "1_agents@0"
+        },
+        {
+          "command": "flotilla.newTerminalIn",
+          "when": "view == terminal && flotilla.state == ready",
+          "group": "navigation@0"
         }
       ],
       "explorer/context": [
@@ -1214,6 +1229,11 @@
         "key": "ctrl+shift+g",
         "mac": "ctrl+shift+g",
         "when": "flotilla.state == ready && config.workbench.activityBar.location == 'hidden'"
+      },
+      {
+        "command": "flotilla.newTerminal",
+        "key": "ctrl+shift+`",
+        "when": "flotilla.state == ready"
       }
     ]
   },
