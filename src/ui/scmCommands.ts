@@ -1,13 +1,37 @@
 import * as vscode from 'vscode';
 import type { FileChange } from '../core/git/porcelain';
 import * as scm from '../features/scm/operations';
-import type { Workstream } from '../features/workstreams/workstream';
+import type { Repository } from '../core/repository';
+import { withFreshStatus, type Workstream } from '../features/workstreams/workstream';
 import { syncKind, workstreamLabel } from './format';
 
 export interface ScmContext {
-  refresh(): Promise<void>;
+  /** Updates ws's git status at once (when given), then refreshes everything in the background. */
+  refresh(ws?: Workstream): Promise<void>;
   /** Refreshes, then returns the latest snapshot of ws (the tree may show state up to a poll interval old). */
   fresh(ws: Workstream): Promise<Workstream>;
+}
+
+export function scmContext(repository: Repository<Workstream>): ScmContext {
+  return {
+    refresh: async (ws) => {
+      if (ws) {
+        try {
+          const updated = await withFreshStatus(ws);
+          repository.patch((items) => items.map((w) => (w.key === updated.key ? updated : w)));
+        } catch {
+          // the full refresh below shows the state
+        }
+        void repository.refresh();
+        return;
+      }
+      await repository.refresh();
+    },
+    fresh: async (ws) => {
+      await repository.refresh();
+      return repository.current.find((w) => w.key === ws.key) ?? ws;
+    },
+  };
 }
 
 /** Commit messages of failed commits (e.g. a rejected hook), offered again on the next attempt. */
@@ -22,7 +46,7 @@ function withProgress<T>(title: string, task: () => Promise<T>): Thenable<T> {
 export async function stagePaths(ctx: ScmContext, ws: Workstream, paths: readonly string[]): Promise<void> {
   if (!paths.length) return;
   await scm.stage(ws.worktree.path!, paths);
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 /** Unstages the paths; a staged rename unstages both of its sides. */
@@ -33,17 +57,17 @@ export async function unstagePaths(ctx: ScmContext, ws: Workstream, paths: reado
     return orig ? [p, orig] : [p];
   });
   await scm.unstage(ws.worktree.path!, all);
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 export async function stageAll(ctx: ScmContext, ws: Workstream): Promise<void> {
   await scm.stageAll(ws.worktree.path!);
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 export async function unstageAll(ctx: ScmContext, ws: Workstream): Promise<void> {
   await scm.unstageAll(ws.worktree.path!);
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 /** Discards the given unstaged changes, or all of them. Only changes still unstaged with the same kind are touched. */
@@ -64,17 +88,31 @@ export async function discardChanges(ctx: ScmContext, stale: Workstream, changes
   );
   if (!choice) return;
   await scm.discard(ws.worktree.path!, discardable);
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 /**
  * Commits the staged changes, or all changes after asking. Without a message, asks for one.
  * Returns true when a commit was made (the webview then clears its message box).
  */
-export async function commit(ctx: ScmContext, stale: Workstream, message?: string): Promise<boolean> {
+export interface CommitOptions {
+  /** Amend the last commit (staged changes only; an empty message keeps the old one). */
+  amend?: boolean;
+  /** Push or sync (pull, then push) after committing; an unpublished branch is published. */
+  then?: 'push' | 'sync';
+}
+
+export async function commit(ctx: ScmContext, stale: Workstream, message?: string, opts: CommitOptions = {}): Promise<boolean> {
   const ws = await ctx.fresh(stale);
   const dir = ws.worktree.path!;
   const label = workstreamLabel(ws);
+  if (opts.amend) {
+    const text = message?.trim() ?? '';
+    await withProgress(`Amending the last commit on ${label}…`, () => scm.commit(dir, text, { amend: true }));
+    await ctx.refresh(ws);
+    await afterCommit(ctx, ws, opts);
+    return true;
+  }
   let stageFirst = false;
   if (!ws.staged.length) {
     if (!ws.unstaged.length) {
@@ -112,8 +150,16 @@ export async function commit(ctx: ScmContext, stale: Workstream, message?: strin
     await scm.commit(dir, text);
   });
   drafts.delete(ws.key);
-  await ctx.refresh();
+  await ctx.refresh(ws);
+  await afterCommit(ctx, ws, opts);
   return true;
+}
+
+async function afterCommit(ctx: ScmContext, ws: Workstream, opts: CommitOptions): Promise<void> {
+  if (!opts.then) return;
+  if (syncKind(ws) === 'publish') return publish(ctx, ws);
+  if (syncKind(ws) === 'none') return;
+  await network(ctx, ws, opts.then === 'push' ? 'Pushing' : 'Syncing', opts.then === 'push' ? scm.push : scm.sync);
 }
 
 export async function publish(ctx: ScmContext, ws: Workstream): Promise<void> {
@@ -131,7 +177,7 @@ export async function publish(ctx: ScmContext, ws: Workstream): Promise<void> {
   const remote = remotes.length === 1 ? remotes[0] : await vscode.window.showQuickPick(remotes, { title: `Publish '${branch}' to…` });
   if (!remote) return;
   await withProgress(`Publishing ${branch} to ${remote}…`, () => scm.publish(dir, branch, remote));
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }
 
 /** Publishes an unpublished branch; otherwise pulls then pushes. */
@@ -142,5 +188,5 @@ export async function sync(ctx: ScmContext, ws: Workstream): Promise<void> {
 
 export async function network(ctx: ScmContext, ws: Workstream, verb: string, op: (dir: string) => Promise<void>): Promise<void> {
   await withProgress(`${verb} ${workstreamLabel(ws)}…`, () => op(ws.worktree.path!));
-  await ctx.refresh();
+  await ctx.refresh(ws);
 }

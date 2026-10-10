@@ -41,6 +41,8 @@ export interface CommandContext {
   currentRoot: string;
   /** Git dir of that worktree. */
   currentGitDir: string;
+  /** Key of the sidebar's active worktree, or 'all'. Commands without a target act on it. */
+  activeKey(): string;
   output: vscode.OutputChannel;
 }
 
@@ -90,13 +92,7 @@ export function registerCommands(ctx: CommandContext): void {
       const ws = await pickWorkstream(ctx, arg, filter);
       if (ws) await handler(ws, arg);
     };
-  const scmCtx: scmUi.ScmContext = {
-    refresh: () => ctx.repository.refresh(),
-    fresh: async (ws) => {
-      await ctx.repository.refresh();
-      return ctx.repository.current.find((w) => w.key === ws.key) ?? ws;
-    },
-  };
+  const scmCtx = scmUi.scmContext(ctx.repository);
   const chats = chatContext(ctx);
 
   register('flotilla.refresh', () => ctx.repository.refresh());
@@ -218,6 +214,10 @@ async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter)
   } else if (isTarget(arg)) {
     const ws = ctx.repository.current.find((w) => w.key === arg.key);
     if (ws) return ws;
+  } else if (arg === undefined) {
+    // From the palette or a shortcut: the active worktree is the context, unless the All tab is selected.
+    const ws = ctx.repository.current.find((w) => w.key === ctx.activeKey());
+    if (ws && (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain)) return ws;
   }
   const now = new Date();
   const candidates = ctx.repository.current.filter(

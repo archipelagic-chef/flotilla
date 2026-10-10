@@ -339,6 +339,27 @@
         "command": "flotilla.configureActivityBar",
         "title": "Use Flotilla as the Sidebar (Activity Bar Position)…",
         "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.quickOpen",
+        "title": "Go to File in Active Worktree…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showSidebar",
+        "title": "Show Flotilla",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.closeTab",
+        "title": "Close Tab",
+        "category": "Flotilla",
+        "icon": "$(close)"
+      },
+      {
+        "command": "flotilla.closeOtherTabs",
+        "title": "Close Other Tabs",
+        "category": "Flotilla"
       }
     ],
     "menus": {
@@ -562,6 +583,22 @@
         {
           "command": "flotilla.configureActivityBar",
           "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.quickOpen",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.showSidebar",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.closeTab",
+          "when": "flotilla.state == ready && flotilla.activeWorktree != 'all'"
+        },
+        {
+          "command": "flotilla.closeOtherTabs",
+          "when": "flotilla.state == ready && flotilla.activeWorktree != 'all'"
         }
       ],
       "view/title": [
@@ -938,6 +975,16 @@
           "command": "flotilla.pasteFile",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTab == 'files' && flotilla.canPaste",
           "group": "0_files@3"
+        },
+        {
+          "command": "flotilla.closeTab",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTabItem",
+          "group": "0_tab@1"
+        },
+        {
+          "command": "flotilla.closeOtherTabs",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTabItem",
+          "group": "0_tab@2"
         }
       ]
     },
@@ -1000,6 +1047,17 @@
           "type": "boolean",
           "default": true,
           "description": "Show the worktree in Claude Code's own session list: chats linked to a worktree are renamed to \"<branch>: <title>\" once Claude Code has titled them. A title you set yourself is never replaced."
+        },
+        "flotilla.search.maxResults": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 100,
+          "description": "Search results per worktree before Flotilla asks you to refine the search or show more."
+        },
+        "flotilla.tabLabelPattern": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Regular expression that finds the id to show on a worktree tab (its first group, or the whole match), e.g. `T\\d+`. Empty: a Jira key such as `ABC-123`, or an issue number at the start of a branch part (`123-fix` → `#123`); otherwise the last part of the branch."
         }
       }
     },
@@ -1074,6 +1132,30 @@
         "command": "flotilla.showSearch",
         "key": "ctrl+alt+f",
         "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.quickOpen",
+        "key": "ctrl+p",
+        "mac": "cmd+p",
+        "when": "flotilla.state == ready && flotilla.activeWorktree != 'all'"
+      },
+      {
+        "command": "flotilla.showFiles",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "flotilla.state == ready && config.workbench.activityBar.location == 'hidden'"
+      },
+      {
+        "command": "flotilla.showSearch",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "flotilla.state == ready && config.workbench.activityBar.location == 'hidden'"
+      },
+      {
+        "command": "flotilla.showVersionControl",
+        "key": "ctrl+shift+g",
+        "mac": "ctrl+shift+g",
+        "when": "flotilla.state == ready && config.workbench.activityBar.location == 'hidden'"
       }
     ]
   },

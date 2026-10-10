@@ -374,3 +374,34 @@ export async function tagTranscriptTitle(file: string, sessionId: string, label:
   await fs.appendFile(file, `${raw.endsWith('\n') || raw === '' ? '' : '\n'}${record}\n`);
   return 'tagged';
 }
+
+export type ImportResult = 'copied' | 'exists' | 'missing';
+
+/**
+ * Copies a chat's transcript (and its folder of attachments, if any) from the Claude Code project of one directory to
+ * another's, so Claude Code's panel in a window on `toCwd` can open it. An existing copy is never overwritten.
+ */
+export async function importTranscript(fromCwd: string, toCwd: string, sessionId: string, home = claudeHome()): Promise<ImportResult> {
+  const from = transcriptPath(fromCwd, sessionId, home);
+  const to = transcriptPath(toCwd, sessionId, home);
+  try {
+    await fs.access(to);
+    return 'exists';
+  } catch {
+    // not there yet
+  }
+  try {
+    await fs.access(from);
+  } catch {
+    return 'missing';
+  }
+  await fs.mkdir(path.dirname(to), { recursive: true });
+  await fs.copyFile(from, to, fs.constants.COPYFILE_EXCL);
+  const extras = from.slice(0, -'.jsonl'.length);
+  try {
+    if ((await fs.stat(extras)).isDirectory()) await fs.cp(extras, to.slice(0, -'.jsonl'.length), { recursive: true, errorOnExist: false, force: false });
+  } catch {
+    // no attachments folder
+  }
+  return 'copied';
+}

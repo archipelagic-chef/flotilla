@@ -1,67 +1,8 @@
 import { GitError, runGit } from '../../core/git/gitCli';
+import { highlight, matcher, type FileMatches, type SearchOptions, type SearchResult } from './matcher';
 
-export interface SearchOptions {
-  matchCase: boolean;
-  wholeWord: boolean;
-  regex: boolean;
-}
-
-export interface LineMatch {
-  /** 1-based line number. */
-  line: number;
-  /** The line (shortened around the first match for very long lines). */
-  text: string;
-  /** [start, end) offsets of the matches in text. */
-  ranges: Array<[number, number]>;
-}
-
-export interface FileMatches {
-  path: string;
-  matches: LineMatch[];
-}
-
-export interface SearchResult {
-  files: FileMatches[];
-  /** More matches exist than were returned. */
-  truncated: boolean;
-}
-
-const MAX_LINE = 240;
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** The JavaScript regex that finds the same matches git grep reports, to highlight them. Undefined for an invalid regex. */
-export function matcher(query: string, opts: SearchOptions): RegExp | undefined {
-  const source = opts.regex ? query : escapeRegExp(query);
-  try {
-    return new RegExp(opts.wholeWord ? `\\b(?:${source})\\b` : source, opts.matchCase ? 'g' : 'gi');
-  } catch {
-    return undefined;
-  }
-}
-
-/** Finds the match ranges in a line and shortens long lines around the first match. */
-export function highlight(text: string, re: RegExp): { text: string; ranges: Array<[number, number]> } {
-  const ranges: Array<[number, number]> = [];
-  re.lastIndex = 0;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    if (m[0] === '') {
-      re.lastIndex++;
-      continue;
-    }
-    ranges.push([m.index, m.index + m[0].length]);
-  }
-  if (text.length <= MAX_LINE) return { text, ranges };
-  const start = Math.max(0, (ranges[0]?.[0] ?? 0) - 40);
-  const clipped = `${start > 0 ? '…' : ''}${text.slice(start, start + MAX_LINE)}`;
-  const shift = start > 0 ? start - 1 : 0;
-  return {
-    text: clipped,
-    ranges: ranges.map(([a, b]) => [a - shift, b - shift] as [number, number]).filter(([a, b]) => a >= 0 && b <= clipped.length),
-  };
-}
+export type { FileMatches, LineMatch, SearchOptions, SearchResult } from './matcher';
+export { highlight, matcher } from './matcher';
 
 /** Parses `git grep -n -z` output: "path\0line\0text\n" per match. */
 export function parseGrep(out: string, re: RegExp, limit: number): SearchResult {

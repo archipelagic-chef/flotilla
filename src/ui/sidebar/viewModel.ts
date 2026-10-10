@@ -3,6 +3,7 @@ import { samePath } from '../../core/paths';
 import type { Chat } from '../../features/chats/chats';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ChatView, WorkstreamView } from '../../webview/protocol';
+import { tabLabel } from './tabLabel';
 import { ATTENTION_LABEL, describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../format';
 
 /** Two letters for a rail tile: initials of the last branch segment's words ("feature/login-form" → "lf"), or its first two letters. */
@@ -37,7 +38,7 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): C
   };
 }
 
-export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean): WorkstreamView {
+export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern?: string): WorkstreamView {
   const branch = workstreamLabel(ws);
   const sync = syncKind(ws);
   const tooltip = [branch, ws.worktree.path ?? `${ws.worktree.recordedPath} (not reachable from this environment)`, ATTENTION_LABEL[ws.attention]]
@@ -46,6 +47,7 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
   return {
     key: ws.key,
     branch,
+    label: ws.worktree.isMain ? branch : tabLabel(branch, labelPattern),
     initials: ws.worktree.isMain ? 'ma' : initials(branch),
     reachable: ws.worktree.path !== undefined,
     isMain: ws.worktree.isMain,
@@ -56,7 +58,7 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     tooltip,
     staged: ws.staged,
     unstaged: ws.unstaged,
-    sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : '') },
+    sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind },
     chats: ws.chats.map((c) => toChatView(c, all, now)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),

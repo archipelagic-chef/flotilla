@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
 import type { WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
@@ -19,11 +20,14 @@ interface Props {
   workstreams: readonly WorkstreamView[];
   active: string;
   colors: ReadonlyMap<string, string>;
+  /** Worktrees whose tab is closed. */
+  closed: ReadonlySet<string>;
   onSelect(key: string): void;
 }
 
-/** Every worktree at once, sorted by what needs you. Click one to open its tab. */
-export function Overview({ workstreams, active, colors, onSelect }: Props) {
+/** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
+export function Overview({ workstreams, active, colors, closed, onSelect }: Props) {
+  const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
   return (
     <div class="overview">
@@ -40,22 +44,32 @@ export function Overview({ workstreams, active, colors, onSelect }: Props) {
         return (
           <div
             key={ws.key}
-            class={`card${active === ws.key ? ' current' : ''}`}
+            class={`card${active === ws.key ? ' current' : ''}${highlighted === ws.key ? ' selected' : ''}`}
             role="button"
             tabIndex={0}
             style={{ '--ws-color': colors.get(ws.key) }}
-            title={`${ws.tooltip}\n\nOpen its tab`}
+            title={`${ws.tooltip}\n\nDouble-click to open its tab`}
             data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: 'overview' })}
-            onClick={() => onSelect(ws.key)}
+            onClick={() => setHighlighted(ws.key)}
+            onDblClick={() => onSelect(ws.key)}
             onKeyDown={(e) => e.key === 'Enter' && onSelect(ws.key)}
           >
             <div class="sec-line">
               <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]}`} />
               <span class="branch">{ws.branch}</span>
-              <span class="actions" onClick={(e) => e.stopPropagation()}>
+              {closed.has(ws.key) && <span class="tag" title="Its tab is closed; double-click to open it">tab closed</span>}
+              <span class="actions" onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
+                <button class="icon" title="Open Its Tab" onClick={() => onSelect(ws.key)}>
+                  <i class="codicon codicon-arrow-right" />
+                </button>
                 {ws.reachable && (
                   <button class="icon" title="New Chat" onClick={() => run('flotilla.newChat', { key: ws.key })}>
                     <i class="codicon codicon-comment-discussion" />
+                  </button>
+                )}
+                {!ws.isMain && (
+                  <button class="icon" title="Remove Worktree…" onClick={() => run('flotilla.remove', { key: ws.key })}>
+                    <i class="codicon codicon-trash" />
                   </button>
                 )}
               </span>

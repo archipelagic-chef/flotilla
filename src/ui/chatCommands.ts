@@ -1,9 +1,8 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside, samePath, toGitPath } from '../core/paths';
-import { claudeHome, linkChat, readChatRecords, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
+import { claudeHome, importTranscript, linkChat, readChatRecords, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
 import { installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
@@ -81,51 +80,44 @@ export async function newChat(ctx: ChatContext, ws: Workstream): Promise<void> {
   await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, prompt);
 }
 
-/** Claude Code's CLI: the binary its extension ships, else `claude` on the PATH. */
-function claudeCli(): string {
-  const ext = vscode.extensions.getExtension(CLAUDE_EXTENSION);
-  const binary = ext ? path.join(ext.extensionPath, 'resources', 'native-binary', process.platform === 'win32' ? 'claude.exe' : 'claude') : undefined;
-  if (!binary || !existsSync(binary)) return 'claude';
-  // PowerShell (the Windows default) needs the call operator to run a quoted path.
-  return process.platform === 'win32' ? `& "${binary}"` : `'${binary.replace(/'/g, "'\\''")}'`;
-}
-
-/** Terminals running resumed chats, so opening a chat again shows the same tab. */
-const chatTerminals = new Map<string, vscode.Terminal>();
-
 /**
- * Opens a chat in this window. Chats that run in this window's folder open in Claude Code's panel. The panel only
- * lists those, so a chat that runs in another worktree is resumed with Claude Code's CLI in a terminal tab in that
- * worktree's folder, still in this window.
+ * Opens a chat in Claude Code's panel in this window. The panel only lists chats recorded under this window's folder,
+ * so a chat that ran in another worktree's folder is first copied there (its transcript; the original stays) and
+ * linked to its worktree. It then continues in this window, like chats started here for a worktree.
  */
 export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string): Promise<void> {
   if (!claudeAvailable()) return;
   const chat = ws.chats.find((c) => c.id === chatId);
   if (!chat) return;
   const dir = chat.cwd ?? ws.worktree.path;
-  if (!dir || samePath(dir, ctx.currentRoot)) {
-    await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id);
-    return;
+  if (dir && !samePath(dir, ctx.currentRoot)) {
+    if (chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
+      const choice = await vscode.window.showWarningMessage(
+        `'${chat.title}' is still active in a window on ${workstreamLabel(ws)}.`,
+        { modal: true, detail: 'Opening it here continues a copy of the chat; the other window keeps its own copy.' },
+        'Open Here',
+      );
+      if (!choice) return;
+    }
+    const result = await importTranscript(dir, ctx.currentRoot, chat.id);
+    if (result === 'missing') {
+      void vscode.window.showWarningMessage(
+        `Can't open '${chat.title}': its transcript isn't in this environment (it ran in ${dir}). Open it from a window in the environment it ran in.`,
+      );
+      return;
+    }
+    // From now on the chat runs in this window's folder, but belongs to its worktree.
+    await linkChat({
+      sessionId: chat.id,
+      ownerGitDir: ctx.currentGitDir,
+      cwd: ctx.currentRoot,
+      targetGitDir: ws.worktree.adminDir,
+      title: chat.title,
+      state: chat.state,
+    });
+    void ctx.refresh();
   }
-  // The id is typed into a shell; it comes from files anyone with access to the repository can write.
-  if (!/^[A-Za-z0-9-]+$/.test(chat.id)) {
-    void vscode.window.showWarningMessage(`Can't resume '${chat.title}': its session id is not valid.`);
-    return;
-  }
-  const existing = chatTerminals.get(chat.id);
-  if (existing && existing.exitStatus === undefined) {
-    existing.show();
-    return;
-  }
-  const terminal = vscode.window.createTerminal({
-    name: `${workstreamLabel(ws)}: ${chat.title}`,
-    cwd: dir,
-    location: { viewColumn: vscode.ViewColumn.Active },
-    iconPath: new vscode.ThemeIcon('comment-discussion'),
-  });
-  chatTerminals.set(chat.id, terminal);
-  terminal.show();
-  terminal.sendText(`${claudeCli()} --resume ${chat.id}`);
+  await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id);
 }
 
 /** Shows each linked chat's worktree in Claude Code's own session list (setting flotilla.tagChatTitles). */

@@ -70,3 +70,16 @@ describe('searchWorktree', () => {
     expect(await searchWorktree(repo, '', plain)).toEqual({ files: [], truncated: false });
   });
 });
+
+describe('replaceAll', () => {
+  it('replaces literally, with case and whole-word options, and with regex groups', async () => {
+    const { replaceAll } = await import('../../../../src/features/search/matcher');
+    expect(replaceAll('retry Retry retrying', 'retry', 'again', plain)).toEqual({ text: 'again again againing', count: 3 });
+    expect(replaceAll('retry Retry', 'retry', 'x', { ...plain, matchCase: true })).toEqual({ text: 'x Retry', count: 1 });
+    expect(replaceAll('retry retrying', 'retry', 'x', { ...plain, wholeWord: true })).toEqual({ text: 'x retrying', count: 1 });
+    expect(replaceAll('a1 b22', '([a-z])([0-9]+)', '$2$1', { ...plain, regex: true })).toEqual({ text: '1a 22b', count: 2 });
+    // Literal mode inserts "$1" as typed.
+    expect(replaceAll('cost', 'cost', '$1', plain)).toEqual({ text: '$1', count: 1 });
+    expect(replaceAll('x', '(', 'y', { ...plain, regex: true })).toEqual({ text: 'x', count: 0 });
+  });
+});

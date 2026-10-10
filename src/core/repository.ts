@@ -7,6 +7,8 @@ export class Repository<T> {
   private rerun = false;
   private waiters: Array<() => void> = [];
   private disposed = false;
+  /** Bumped by patch(); a load that started before a patch is stale and is redone. */
+  private version = 0;
 
   constructor(
     private readonly load: () => Promise<readonly T[]>,
@@ -21,6 +23,24 @@ export class Repository<T> {
   onDidChange(listener: () => void): { dispose(): void } {
     this.listeners.add(listener);
     return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  /** Applies a quick partial update now (e.g. one worktree's git status) without waiting for a full load. */
+  patch(update: (items: readonly T[]) => readonly T[]): void {
+    if (this.disposed) return;
+    this.items = update(this.items);
+    this.version++;
+    this.notify();
+  }
+
+  private notify(): void {
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        this.onError(error);
+      }
+    }
   }
 
   refresh(): Promise<void> {
@@ -49,23 +69,29 @@ export class Repository<T> {
     }
     this.running = true;
     const waiters = this.waiters.splice(0);
+    const startedAt = this.version;
     let loaded = false;
+    let stale = false;
     try {
-      this.items = await this.load();
-      loaded = true;
+      const items = await this.load();
+      // Patched while loading: this result may predate the patch. Load again rather than undo it.
+      stale = this.version !== startedAt;
+      if (!stale) {
+        this.items = items;
+        loaded = true;
+      }
     } catch (error) {
       this.onError(error);
     } finally {
       this.running = false;
     }
-    if (loaded) {
-      for (const listener of [...this.listeners]) {
-        try {
-          listener();
-        } catch (error) {
-          this.onError(error);
-        }
-      }
+    if (loaded) this.notify();
+    if (stale && !this.disposed) {
+      // The callers waiting for this load get the next one.
+      this.waiters.unshift(...waiters);
+      this.rerun = false;
+      await this.run();
+      return;
     }
     waiters.forEach((w) => w());
     if (this.rerun && !this.disposed) {

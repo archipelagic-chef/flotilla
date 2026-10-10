@@ -170,3 +170,24 @@ describe('tagTranscriptTitle', () => {
     expect(await tagTranscriptTitle(path.join(dir, 'none.jsonl'), 'x', 'y')).toBe('missing');
   });
 });
+
+describe('importTranscript', () => {
+  it('copies a transcript and its folder into another project, once', async () => {
+    const { importTranscript, transcriptPath } = await import('../../../../src/features/chats/chats');
+    const home = makeTempDir();
+    cleanup.push(home);
+    const src = transcriptPath('/r/.worktrees/a', 's1', home);
+    fs.mkdirSync(path.join(path.dirname(src), 's1', 'subagents'), { recursive: true });
+    fs.writeFileSync(src, 'original\n');
+    fs.writeFileSync(path.join(path.dirname(src), 's1', 'subagents', 'x.jsonl'), 'sub\n');
+
+    expect(await importTranscript('/r/.worktrees/a', '/r', 's1', home)).toBe('copied');
+    const dest = transcriptPath('/r', 's1', home);
+    expect(fs.readFileSync(dest, 'utf8')).toBe('original\n');
+    expect(fs.existsSync(path.join(path.dirname(dest), 's1', 'subagents', 'x.jsonl'))).toBe(true);
+    fs.writeFileSync(dest, 'continued here\n');
+    expect(await importTranscript('/r/.worktrees/a', '/r', 's1', home)).toBe('exists');
+    expect(fs.readFileSync(dest, 'utf8')).toBe('continued here\n');
+    expect(await importTranscript('/r/.worktrees/a', '/r', 'nope', home)).toBe('missing');
+  });
+});

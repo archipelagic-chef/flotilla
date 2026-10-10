@@ -73,3 +73,29 @@ describe('Repository', () => {
     expect((errors[0] as Error).message).toBe('listener error');
   });
 });
+
+describe('Repository.patch', () => {
+  it('applies at once, and a load that started before the patch is redone instead of undoing it', async () => {
+    let value = 'old';
+    let release: (() => void) | undefined;
+    const repo = new Repository<string>(async () => {
+      const seen = value;
+      await new Promise<void>((r) => (release = r));
+      return [seen];
+    }, 0);
+    const changes: string[][] = [];
+    repo.onDidChange(() => changes.push([...repo.current]));
+    const done = repo.refresh();
+    await new Promise((r) => setTimeout(r, 5));
+    value = 'new';
+    repo.patch(() => ['patched']);
+    expect(repo.current).toEqual(['patched']);
+    release!(); // the first load returns 'old': discarded
+    await new Promise((r) => setTimeout(r, 5));
+    expect(repo.current).toEqual(['patched']);
+    release!(); // the second load sees 'new'
+    await done;
+    expect(repo.current).toEqual(['new']);
+    expect(changes).toEqual([['patched'], ['new']]);
+  });
+});

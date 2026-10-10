@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ChangeGroup, FileChangeView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
@@ -9,42 +10,131 @@ interface Props {
   update: Update;
 }
 
+type CommitAction = { amend?: boolean; then?: 'push' | 'sync' };
+
+const COMMIT_MENU: Array<{ label: string; action: CommitAction }> = [
+  { label: 'Commit', action: {} },
+  { label: 'Commit & Push', action: { then: 'push' } },
+  { label: 'Commit & Sync', action: { then: 'sync' } },
+  { label: 'Commit (Amend)', action: { amend: true } },
+];
+
+/** Like VS Code's Source Control: a message box at the top, and one primary button below it. */
+function CommitBox({ ws, draft, update }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const changes = ws.staged.length + ws.unstaged.length;
+  const setDraft = (value: string) => update((p) => ({ ...p, drafts: { ...p.drafts, [ws.key]: value } }));
+  const commit = (action: CommitAction = {}) => {
+    setMenuOpen(false);
+    send({ type: 'commit', key: ws.key, message: draft, ...action });
+  };
+  const target = { key: ws.key };
+
+  // The box grows with the message, up to ten lines, like VS Code's.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    // scrollHeight leaves out the border (the box is border-box sized).
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(el.scrollHeight + border, 10 * 18 + 8)}px`;
+  }, [draft]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menuOpen]);
+
+  let primary;
+  if (changes > 0) {
+    const what = ws.staged.length ? `${ws.staged.length} staged change(s)` : `all ${ws.unstaged.length} change(s)`;
+    primary = (
+      <div class="split-button">
+        <button class="button" title={`Commit ${what} on ${ws.branch}`} onClick={() => commit()}>
+          <i class="codicon codicon-check" />
+          Commit
+        </button>
+        <button
+          class="button more"
+          title="More Commit Actions…"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((o) => !o);
+          }}
+        >
+          <i class="codicon codicon-chevron-down" />
+        </button>
+        {menuOpen && (
+          <div class="menu" role="menu">
+            {COMMIT_MENU.map((item) => (
+              <button key={item.label} role="menuitem" onClick={() => commit(item.action)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else if (ws.sync.kind === 'publish') {
+    primary = (
+      <button class="button wide" onClick={() => run('flotilla.publish', target)}>
+        <i class="codicon codicon-cloud-upload" />
+        Publish Branch
+      </button>
+    );
+  } else if (ws.sync.kind === 'sync' && (ws.sync.ahead || ws.sync.behind)) {
+    primary = (
+      <button class="button wide" title={`Pull ${ws.sync.behind} and push ${ws.sync.ahead} commit(s)`} onClick={() => run('flotilla.sync', target)}>
+        <i class="codicon codicon-sync" />
+        Sync Changes {ws.sync.behind > 0 && `${ws.sync.behind}↓`} {ws.sync.ahead > 0 && `${ws.sync.ahead}↑`}
+      </button>
+    );
+  } else {
+    primary = (
+      <button class="button wide" disabled title="There are no changes to commit">
+        <i class="codicon codicon-check" />
+        Commit
+      </button>
+    );
+  }
+
+  return (
+    <div class="commit">
+      <textarea
+        ref={box}
+        id={`msg-${ws.key}`}
+        rows={1}
+        value={draft}
+        placeholder={`Message (Ctrl+Enter to commit on "${ws.branch}")`}
+        aria-label={`Commit message for ${ws.branch}`}
+        onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && changes > 0) {
+            e.preventDefault();
+            commit();
+          }
+        }}
+      />
+      {primary}
+    </div>
+  );
+}
+
 export function VcBody({ ws, draft, update }: Props) {
   const total = ws.staged.length + ws.unstaged.length;
-  const setDraft = (value: string) => update((p) => ({ ...p, drafts: { ...p.drafts, [ws.key]: value } }));
-  const commit = () => send({ type: 'commit', key: ws.key, message: draft });
-  const label = ws.staged.length ? `Commit ${ws.staged.length} Staged` : ws.unstaged.length ? `Commit All ${ws.unstaged.length}` : 'Commit';
   const target = { key: ws.key };
   return (
     <div class="vc">
-      {total > 0 && (
-        <div class="commit">
-          <textarea
-            id={`msg-${ws.key}`}
-            rows={2}
-            value={draft}
-            placeholder={`Message (Ctrl+Enter to commit on ${ws.branch})`}
-            aria-label={`Commit message for ${ws.branch}`}
-            onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                commit();
-              }
-            }}
-          />
-          <button class="button" disabled={!draft.trim()} onClick={commit} title={draft.trim() ? undefined : 'Enter a commit message first'}>
-            <i class="codicon codicon-check" />
-            {label}
-          </button>
-        </div>
-      )}
-      <SyncLine ws={ws} clean={total === 0} />
+      <CommitBox ws={ws} draft={draft} update={update} />
       <Group ws={ws} group="staged" title="Staged Changes" items={ws.staged} />
       <Group ws={ws} group="unstaged" title="Changes" items={ws.unstaged} />
-      {total === 0 && ws.sync.kind === 'none' && (
+      {total === 0 && (
         <div class="empty">
-          No changes.{' '}
+          {ws.sync.kind === 'sync' && !ws.sync.ahead && !ws.sync.behind ? 'Up to date with the remote. ' : ''}
           <button class="link" onClick={() => run('flotilla.compareWith', target)}>
             Compare with…
           </button>
@@ -54,35 +144,17 @@ export function VcBody({ ws, draft, update }: Props) {
   );
 }
 
-function SyncLine({ ws, clean }: { ws: WorkstreamView; clean: boolean }) {
-  if (ws.sync.kind === 'none') return null;
-  const target = { key: ws.key };
-  return (
-    <div class="sync-line">
-      <i class={`codicon codicon-${ws.sync.kind === 'publish' ? 'cloud-upload' : clean ? 'check' : 'sync'}`} />
-      <span>{clean ? `No changes · ${ws.sync.text}` : ws.sync.text}</span>
-      {ws.sync.kind === 'publish' ? (
-        <button class="button small" onClick={() => run('flotilla.publish', target)}>
-          Publish Branch
-        </button>
-      ) : (
-        <button class="button small secondary" onClick={() => run('flotilla.sync', target)} title="Pull, then push">
-          <i class="codicon codicon-sync" />
-          Sync
-        </button>
-      )}
-    </div>
-  );
-}
-
+/** A group is always shown, also when empty, so the staged and unstaged lanes stay in place. */
 function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeGroup; title: string; items: FileChangeView[] }) {
-  if (!items.length) return null;
   const target = { key: ws.key, group };
   return (
     <div class="group">
-      <div class="row group-head" data-vscode-context={menuContext('changeGroup', { key: ws.key, group, flotillaWs: ws.context })}>
+      <div
+        class="row group-head"
+        data-vscode-context={items.length ? menuContext('changeGroup', { key: ws.key, group, flotillaWs: ws.context }) : undefined}
+      >
         <span class="name">{title}</span>
-        <span class="hover-actions">
+        <span class="hover-actions" hidden={!items.length}>
           <button class="icon" title="Open Changes" onClick={() => run('flotilla.openChanges', target)}>
             <i class="codicon codicon-diff-multiple" />
           </button>
@@ -106,6 +178,7 @@ function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeG
       {items.map((c) => (
         <ChangeRow key={`${group}:${c.path}`} ws={ws} group={group} change={c} />
       ))}
+      {!items.length && <div class="row group-empty">{group === 'staged' ? 'No staged changes' : 'No changes'}</div>}
     </div>
   );
 }

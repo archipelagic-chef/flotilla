@@ -157,3 +157,22 @@ describe('remotes', () => {
     expect(git(bare, 'log', '-1', '--format=%s', 'main')).toBe('mine');
   });
 });
+
+describe('commit --amend', () => {
+  it('amends with a new message, or keeps the old one when the message is empty', async () => {
+    const { initRepo: init, git: g, writeFile: w } = await import('../../helpers/gitRepo');
+    const { commit: c } = await import('../../../src/features/scm/operations');
+    const repo = init();
+    w(repo, 'a.txt', 'a\n');
+    g(repo, 'add', '.');
+    await c(repo, 'first');
+    w(repo, 'b.txt', 'b\n');
+    g(repo, 'add', '.');
+    await c(repo, '', { amend: true });
+    expect(g(repo, 'log', '-1', '--format=%s')).toBe('first');
+    expect(g(repo, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort()).toEqual(['a.txt', 'b.txt']);
+    await c(repo, 'renamed', { amend: true });
+    expect(g(repo, 'log', '-1', '--format=%s')).toBe('renamed');
+    expect(g(repo, 'rev-list', '--count', 'HEAD')).toBe('2');
+  });
+});

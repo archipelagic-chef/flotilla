@@ -125,31 +125,34 @@ export class FileOps {
     }
   }
 
-  /** Drag and drop: moves a file or folder into a folder of the same or another worktree. */
-  async move(from: Item, to: { key: string; dir: string }): Promise<void> {
-    const name = path.posix.basename(from.path);
-    const target = toGitPath(path.posix.join(to.dir, name));
-    if (from.key === to.key && (target === from.path || posixDir(from.path) === to.dir)) return;
-    const source = this.uri(from.key, from.path);
-    const destination = this.uri(to.key, target);
-    if (from.key === to.key && isSelfOrInside(from.path, to.dir || '.')) {
-      void vscode.window.showWarningMessage(`Can't move '${name}' into itself.`);
+  /** Drag and drop: moves files and folders into a folder of the same or another worktree. */
+  async move(from: { key: string; paths: string[] }, to: { key: string; dir: string }): Promise<void> {
+    const items = from.paths.filter((p) => !(from.key === to.key && posixDir(p) === to.dir));
+    if (!items.length) return;
+    const inside = items.find((p) => from.key === to.key && isSelfOrInside(p, to.dir || '.'));
+    if (inside) {
+      void vscode.window.showWarningMessage(`Can't move '${path.posix.basename(inside)}' into itself.`);
       return;
     }
     if (vscode.workspace.getConfiguration('explorer').get<boolean>('confirmDragAndDrop', true)) {
+      const what = items.length === 1 ? `'${path.posix.basename(items[0])}'` : `${items.length} files and folders`;
       const into = to.dir ? `'${path.posix.basename(to.dir)}'` : 'the top folder';
       const other = from.key === to.key ? '' : ` of '${workstreamLabel(this.deps.find(to.key)!)}'`;
-      const choice = await vscode.window.showWarningMessage(`Are you sure you want to move '${name}' into ${into}${other}?`, { modal: true }, 'Move');
+      const choice = await vscode.window.showWarningMessage(`Are you sure you want to move ${what} into ${into}${other}?`, { modal: true }, 'Move');
       if (!choice) return;
     }
-    if (await this.exists(destination)) {
-      void vscode.window.showWarningMessage(`A file or folder '${name}' already exists in the destination folder.`);
-      return;
-    }
     const edit = new vscode.WorkspaceEdit();
-    edit.renameFile(source, destination, { overwrite: false });
-    if (!(await vscode.workspace.applyEdit(edit))) throw new Error(`Could not move ${from.path}.`);
-    this.deps.dirsChanged(from.key, [posixDir(from.path)]);
+    for (const rel of items) {
+      const name = path.posix.basename(rel);
+      const destination = this.uri(to.key, toGitPath(path.posix.join(to.dir, name)));
+      if (await this.exists(destination)) {
+        void vscode.window.showWarningMessage(`A file or folder '${name}' already exists in the destination folder.`);
+        return;
+      }
+      edit.renameFile(this.uri(from.key, rel), destination, { overwrite: false });
+    }
+    if (!(await vscode.workspace.applyEdit(edit))) throw new Error('Could not move the files.');
+    this.deps.dirsChanged(from.key, items.map(posixDir));
     this.deps.dirsChanged(to.key, [to.dir]);
   }
 

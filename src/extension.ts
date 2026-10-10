@@ -11,10 +11,11 @@ import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
 import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
-import { commit, type ScmContext } from './ui/scmCommands';
+import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { offerActivityBar, selectWorktree } from './ui/activeWorktreeCommands';
+import { closeTabs, offerActivityBar, selectWorktree } from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
+import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
@@ -94,13 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     (error) => output.appendLine(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`),
   );
   const inWorkspace = (ws: Workstream) => extraWorkspaceFolder(ws.worktree.path) !== undefined;
-  const scmCtx: ScmContext = {
-    refresh: () => repository.refresh(),
-    fresh: async (ws) => {
-      await repository.refresh();
-      return repository.current.find((w) => w.key === ws.key) ?? ws;
-    },
-  };
+  const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const sidebar = new SidebarProvider({
     extensionUri: context.extensionUri,
@@ -108,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reference: folder.uri,
     inWorkspace,
     active,
-    commit: (ws, message) => commit(scmCtx, ws, message),
+    commit: (ws, message, opts) => commit(scmCtx, ws, message, opts),
     output,
   });
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
@@ -120,6 +115,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reference: folder.uri,
     currentRoot: location.worktreeRoot,
     currentGitDir: location.gitDir,
+    activeKey: () => active.key,
     output,
   };
   context.subscriptions.push(
@@ -134,16 +130,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   registerCommands(ctx);
   context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
     vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
     vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),
     vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTool('vc')),
     vscode.commands.registerCommand('flotilla.showChats', () => sidebar.showTool('chats')),
     vscode.commands.registerCommand('flotilla.selectWorktree', (arg?: unknown) => selectWorktree(arg, repository, active)),
+    vscode.commands.registerCommand('flotilla.closeTab', (arg?: unknown) => closeTabs(arg, repository, active, false)),
+    vscode.commands.registerCommand('flotilla.closeOtherTabs', (arg?: unknown) => closeTabs(arg, repository, active, true)),
     vscode.commands.registerCommand('flotilla.newTerminal', () => {
       const ws = repository.current.find((w) => w.key === active.key);
       const terminal = vscode.window.createTerminal({ name: ws ? workstreamLabel(ws) : undefined, cwd: ws?.worktree.path ?? location.worktreeRoot });
       terminal.show();
+    }),
+    vscode.commands.registerCommand('flotilla.quickOpen', () => {
+      const ws = repository.current.find((w) => w.key === active.key);
+      if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');
+      return quickOpenInWorktree(ws, folder.uri);
     }),
     vscode.commands.registerCommand('flotilla.configureActivityBar', () => offerActivityBar(context, true)),
   );

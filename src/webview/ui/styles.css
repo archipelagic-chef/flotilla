@@ -327,7 +327,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 8px 6px 12px;
+  padding: 6px 8px 8px 12px;
 }
 textarea {
   font: inherit;
@@ -337,8 +337,10 @@ textarea {
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
   padding: 3px 6px;
-  resize: vertical;
-  min-height: 40px;
+  resize: none;
+  overflow-y: auto;
+  min-height: 26px;
+  box-sizing: border-box;
 }
 textarea::placeholder {
   color: var(--vscode-input-placeholderForeground);
@@ -376,17 +378,50 @@ textarea:focus {
 .button.secondary:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
-.sync-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 4px 12px;
-  color: var(--muted);
-  font-size: 12px;
+.button.wide {
+  width: 100%;
 }
-.sync-line .button {
-  margin-left: auto;
-  font-size: 12px;
+/* Commit ▾: the main action and a menu of the other ways to commit, as in VS Code. */
+.split-button {
+  position: relative;
+  display: flex;
+  gap: 1px;
+}
+.split-button > .button:first-child {
+  flex: 1;
+  border-radius: 2px 0 0 2px;
+}
+.split-button > .button.more {
+  flex: none;
+  padding: 2px 4px;
+  border-radius: 0 2px 2px 0;
+  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
+}
+.menu {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  top: calc(100% + 2px);
+  min-width: 160px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--border));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+.menu button {
+  text-align: left;
+  padding: 3px 12px;
+  line-height: 18px;
+}
+.menu button:hover,
+.menu button:focus-visible {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground));
+  outline: none;
 }
 .group-head {
   padding-left: 12px;
@@ -542,6 +577,12 @@ textarea:focus {
   height: 30px;
   background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
   border-bottom: 1px solid var(--border);
+}
+.wt-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -637,6 +678,7 @@ textarea:focus {
   place-items: center;
   padding: 0 8px;
   color: var(--muted);
+  border-left: 1px solid var(--border);
 }
 .wt-add:hover {
   color: var(--vscode-foreground);
@@ -830,4 +872,122 @@ mark {
   color: inherit;
   background: var(--vscode-editor-findMatchHighlightBackground);
   outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
+}
+
+.search-rows {
+  display: flex;
+  gap: 2px;
+  align-items: flex-start;
+}
+.replace-toggle {
+  width: 16px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border-radius: 2px;
+}
+.replace-toggle:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.search-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+del {
+  text-decoration: line-through;
+  background: var(--vscode-diffEditor-removedTextBackground);
+}
+ins {
+  text-decoration: none;
+  background: var(--vscode-diffEditor-insertedTextBackground);
+}
+.search-summary .link {
+  font-size: 12px;
+}
+
+/* ---- file icons (from the user's icon theme) ---- */
+.fi {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.fi.none {
+  width: 0;
+}
+.fi {
+  margin-right: 2px;
+}
+.fi::before {
+  display: inline-block;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  background-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+.row[aria-selected='true'] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+.tree:focus-within .row[aria-selected='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* ---- closable worktree tabs ---- */
+.tab-close {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-right: -4px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  color: inherit;
+  visibility: hidden;
+}
+.tab-close .codicon {
+  font-size: 12px;
+}
+.wt-tab:hover .tab-close,
+.wt-tab:focus-within .tab-close,
+.wt-tab[aria-selected='true'] .tab-close {
+  visibility: visible;
+}
+.tab-close:hover {
+  background: var(--hover);
+}
+.wt-tab {
+  cursor: pointer;
+}
+.wt-tab:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+.card.selected {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+
+/* An empty change group keeps its place. */
+.row.group-empty {
+  padding-left: 24px;
+  color: var(--muted);
+  font-style: italic;
+  cursor: default;
+}
+.row.group-empty:hover {
+  background: none;
 }

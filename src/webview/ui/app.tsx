@@ -3,6 +3,7 @@ import { ALL, type DirEntry, type HostMessage, type Tool, type WorkstreamView } 
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
+import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
@@ -31,12 +32,20 @@ export interface Highlight {
   path: string;
 }
 
+/** Selected rows of one worktree's tree; anchor is where a Shift range starts. */
+export interface Selection {
+  key: string;
+  paths: string[];
+  anchor: string;
+}
+
 export interface FilesApi {
   dirs: ReadonlyMap<string, DirEntry[]>;
   requestDir(key: string, path: string): void;
-  /** The selected row: clicked, or the active editor's file. */
-  selected: Highlight | undefined;
-  select(key: string, path: string): void;
+  selection: Selection | undefined;
+  isSelected(key: string, path: string): boolean;
+  /** single: just this row; toggle: add or remove it (Ctrl/Cmd); range: from the anchor to it (Shift). */
+  select(key: string, path: string, mode: 'single' | 'toggle' | 'range'): void;
   editing: Editing | undefined;
   stopEditing(): void;
 }
@@ -67,24 +76,25 @@ const ATTENTION_DOT: Record<string, string | undefined> = {
   done: 'done',
 };
 
-/** The tab label: the last part of the branch ("feature/login" → "login"). */
-function shortName(ws: WorkstreamView): string {
-  return ws.branch.split('/').filter(Boolean).pop() ?? ws.branch;
-}
-
 function ancestors(path: string): string[] {
   const parts = path.split('/');
   return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/'));
 }
 
 export function App() {
-  const [persisted, setPersisted] = useState<Persisted>(() => ({ ...INITIAL, ...((vscode.getState() as Partial<Persisted> | undefined) ?? {}) }));
+  const [persisted, setPersisted] = useState<Persisted>(() => {
+    const saved = (vscode.getState() as Partial<Persisted> | undefined) ?? {};
+    return { ...INITIAL, ...saved, search: { ...INITIAL_SEARCH, ...saved.search } };
+  });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
   const [active, setActiveState] = useState<string>(ALL);
+  /** Worktrees whose tab is closed; they stay in the Overview. */
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
-  const [highlight, setHighlight] = useState<Highlight | undefined>(undefined);
+  const [selection, setSelection] = useState<Selection | undefined>(undefined);
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
+  const [searchRefresh, setSearchRefresh] = useState(0);
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
   const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
@@ -122,6 +132,9 @@ export function App() {
         case 'active':
           setActiveState(m.key);
           return;
+        case 'tabs':
+          setClosed(new Set(m.closed));
+          return;
         case 'dir':
           setDirs((prev) => new Map(prev).set(dirKey(m.key, m.path), m.entries));
           return;
@@ -134,7 +147,14 @@ export function App() {
           update((prev) => ({ ...prev, tool: m.tool }));
           return;
         case 'searchResults':
-          if (m.id === searchId.current) setResults({ id: m.id, groups: m.groups, truncated: m.truncated, error: m.error });
+          if (m.id === searchId.current) setResults({ id: m.id, groups: m.groups, truncated: m.truncated, limit: m.limit, error: m.error });
+          return;
+        case 'iconTheme':
+          setIconTheme(m.theme);
+          setDirs((prev) => new Map(prev)); // re-render with the new icons
+          return;
+        case 'replaced':
+          setSearchRefresh((n) => n + 1);
           return;
         case 'committed':
           update((prev) => {
@@ -177,7 +197,7 @@ export function App() {
             expanded: { ...prev.expanded, [m.key]: [...new Set([...(prev.expanded[m.key] ?? []), ...parents])] },
           }));
           for (const d of ['', ...parents]) requestDir(m.key, d);
-          setHighlight({ key: m.key, path: m.path });
+          setSelection({ key: m.key, paths: [m.path], anchor: m.path });
           pendingScroll.current = { key: m.key, path: m.path, until: Date.now() + 3000 };
           return;
         }
@@ -224,8 +244,22 @@ export function App() {
   const files: FilesApi = {
     dirs,
     requestDir,
-    selected: highlight,
-    select: (key, path) => setHighlight({ key, path }),
+    selection,
+    isSelected: (key, path) => selection?.key === key && selection.paths.includes(path),
+    select: (key, path, mode) =>
+      setSelection((sel) => {
+        if (mode === 'single' || !sel || sel.key !== key) return { key, paths: [path], anchor: path };
+        if (mode === 'toggle') {
+          const paths = sel.paths.includes(path) ? sel.paths.filter((p) => p !== path) : [...sel.paths, path];
+          return { key, paths, anchor: path };
+        }
+        // A range covers the visible rows between the anchor and this one, in the order they are shown.
+        const rows = [...document.querySelectorAll<HTMLElement>(`.content [role="treeitem"][data-key="${CSS.escape(key)}"]`)].map(
+          (r) => r.dataset.path!,
+        );
+        const [a, b] = [rows.indexOf(sel.anchor), rows.indexOf(path)].sort((x, y) => x - y);
+        return a < 0 ? { key, paths: [path], anchor: path } : { key, paths: rows.slice(a, b + 1), anchor: sel.anchor };
+      }),
     editing,
     stopEditing: () => setEditing(undefined),
   };
@@ -244,7 +278,9 @@ export function App() {
         workstreams={workstreams}
         active={active}
         colors={colors}
+        closed={closed}
         onSelect={(key) => {
+          setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);
           update((p) => ({ ...p, tool: 'files' }));
         }}
@@ -258,6 +294,7 @@ export function App() {
           scope={activeWs ? activeWs.key : ALL}
           search={persisted.search}
           results={results}
+          refresh={searchRefresh}
           workstreams={workstreams}
           colors={colors}
           update={update}
@@ -298,43 +335,75 @@ export function App() {
 
   return (
     <div class="app" style={{ '--ws-color': activeWs ? colors.get(activeWs.key) : 'var(--focus)' }}>
-      <div
-        class="wt-tabs"
-        role="tablist"
-        aria-label="Worktrees"
-        onWheel={(e) => {
-          // A mouse wheel scrolls the tab strip sideways, like editor tabs.
-          if (e.deltaY && !e.deltaX) {
-            (e.currentTarget as HTMLElement).scrollLeft += e.deltaY;
-            e.preventDefault();
-          }
-        }}
-      >
+      <div class="wt-tabs" role="tablist" aria-label="Worktrees">
         <button class="wt-tab all" role="tab" aria-selected={active === ALL} title="All worktrees (Ctrl+Alt+0)" onClick={() => setActive(ALL)}>
           <i class="codicon codicon-layers" />
           <span class="nm">All</span>
         </button>
-        {workstreams.map((ws, i) => {
-          const open = ws.chats.filter((c) => c.open).length;
-          const dot = ATTENTION_DOT[ws.attention];
-          return (
-            <button
-              key={ws.key}
-              class={`wt-tab${ws.reachable ? '' : ' unreachable'}`}
-              role="tab"
-              aria-selected={active === ws.key}
-              style={{ '--ws-color': colors.get(ws.key) }}
-              title={`${ws.tooltip}${i < 9 ? `\n\nCtrl+Alt+${i + 1}` : ''}`}
-              data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: tool })}
-              onClick={() => setActive(ws.key)}
-            >
-              <span class="swatch" />
-              <span class="nm">{shortName(ws)}</span>
-              {dot && <span class={`dot ${dot}`} />}
-              {open > 0 && <span class="n">{open}</span>}
-            </button>
-          );
-        })}
+        {/* Only the worktree tabs scroll; All and + stay in place. */}
+        <div
+          class="wt-scroll"
+          onWheel={(e) => {
+            // A mouse wheel scrolls the tabs sideways, like editor tabs.
+            if (e.deltaY && !e.deltaX) {
+              (e.currentTarget as HTMLElement).scrollLeft += e.deltaY;
+              e.preventDefault();
+            }
+          }}
+        >
+          {workstreams
+            .filter((ws) => !closed.has(ws.key))
+            .map((ws, i) => {
+              const open = ws.chats.filter((c) => c.open).length;
+              const dot = ATTENTION_DOT[ws.attention];
+              const close = () => {
+                setClosed((c) => new Set([...c, ws.key]));
+                run('flotilla.closeTab', { key: ws.key });
+              };
+              return (
+                <div
+                  key={ws.key}
+                  class={`wt-tab${ws.reachable ? '' : ' unreachable'}`}
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={active === ws.key}
+                  style={{ '--ws-color': colors.get(ws.key) }}
+                  title={`${ws.tooltip}${i < 9 ? `\n\nCtrl+Alt+${i + 1}` : ''}`}
+                  data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: tool, flotillaTabItem: true })}
+                  onClick={() => setActive(ws.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') setActive(ws.key);
+                    else if (e.key === 'Delete') close();
+                    else return;
+                    e.preventDefault();
+                  }}
+                  onAuxClick={(e) => {
+                    // Middle-click closes, like editor tabs.
+                    if (e.button === 1) {
+                      e.preventDefault();
+                      close();
+                    }
+                  }}
+                >
+                  <span class="swatch" />
+                  <span class="nm">{ws.label}</span>
+                  {dot && <span class={`dot ${dot}`} />}
+                  {open > 0 && <span class="n">{open}</span>}
+                  <button
+                    class="tab-close"
+                    title="Close Tab (the worktree stays in the Overview)"
+                    aria-label={`Close ${ws.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      close();
+                    }}
+                  >
+                    <i class="codicon codicon-close" />
+                  </button>
+                </div>
+              );
+            })}
+        </div>
         <button class="wt-add" title="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
           <i class="codicon codicon-add" />
         </button>
@@ -344,7 +413,14 @@ export function App() {
           {TOOLS.map((t) => {
             const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? waitingCount : 0;
             return (
-              <button key={t.id} role="tab" aria-selected={tool === t.id} title={t.label} aria-label={t.label} onClick={() => update((p) => ({ ...p, tool: t.id }))}>
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tool === t.id}
+                title={t.label}
+                aria-label={t.label}
+                onClick={() => update((p) => ({ ...p, tool: t.id }))}
+              >
                 <i class={`codicon codicon-${t.icon}`} />
                 {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
               </button>

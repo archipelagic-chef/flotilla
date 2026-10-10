@@ -58,8 +58,12 @@ export async function discard(dir: string, changes: readonly FileChange[]): Prom
   await inChunks(tracked, (chunk) => git(dir, ['checkout', '-q', '--', ...chunk]));
 }
 
-export async function commit(dir: string, message: string): Promise<void> {
-  await git(dir, ['commit', '-q', '-m', message], { timeoutMs: LONG_TIMEOUT_MS });
+/** Commits the index. Amend without a message keeps the last commit's message. */
+export async function commit(dir: string, message: string, opts: { amend?: boolean } = {}): Promise<void> {
+  const args = ['commit', '-q'];
+  if (opts.amend) args.push('--amend');
+  args.push(...(opts.amend && !message ? ['--no-edit'] : ['-m', message]));
+  await git(dir, args, { timeoutMs: LONG_TIMEOUT_MS });
 }
 
 export async function listRemotes(dir: string): Promise<string[]> {

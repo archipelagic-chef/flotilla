@@ -49,6 +49,16 @@ function Actions({ ws, tool }: { ws: WorkstreamView; tool: Tool }) {
           </button>
         </>
       )}
+      {tool === 'vc' && ws.sync.kind === 'publish' && (
+        <button class="icon" title="Publish Branch" onClick={() => run('flotilla.publish', target)}>
+          <i class="codicon codicon-cloud-upload" />
+        </button>
+      )}
+      {tool === 'vc' && ws.sync.kind === 'sync' && (
+        <button class="icon" title={`Sync Changes (${ws.sync.text})`} onClick={() => run('flotilla.sync', target)}>
+          <i class="codicon codicon-sync" />
+        </button>
+      )}
       {tool !== 'files' && (
         <button class="icon" title="New Chat" onClick={() => run('flotilla.newChat', target)}>
           <i class="codicon codicon-comment-discussion" />

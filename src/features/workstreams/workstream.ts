@@ -119,7 +119,7 @@ async function buildOne(wt: ResolvedWorktree, base: string | undefined, hasRemot
   let last: Date | undefined;
   if (wt.path) {
     try {
-      ({ changes, staged, unstaged, branch } = parseStatusV2(await runGit(['status', '--porcelain=v2', '--branch', '-z'], { cwd: wt.path })));
+      ({ changes, staged, unstaged, branch } = await readStatus(wt.path));
     } catch {
       // treat as no changes; the error shows up when the user acts on the worktree
     }
@@ -165,4 +165,19 @@ export function findWorkstreamFor<T extends Pick<Workstream, 'worktree'>>(items:
     if (!best || best.worktree.path!.length < root.length) best = ws;
   }
   return best;
+}
+
+/** A worktree's git status: its changes, split into staged and unstaged, and its branch's upstream state. */
+export async function readStatus(dir: string): Promise<ReturnType<typeof parseStatusV2>> {
+  return parseStatusV2(await runGit(['status', '--porcelain=v2', '--branch', '-z'], { cwd: dir }));
+}
+
+/**
+ * Refreshes only the git status of one workstream (after staging, committing, …), so the UI follows at once.
+ * Progress, activity and chats keep their last values until the next full refresh.
+ */
+export async function withFreshStatus(ws: Workstream): Promise<Workstream> {
+  if (!ws.worktree.path) return ws;
+  const { changes, staged, unstaged, branch } = await readStatus(ws.worktree.path);
+  return { ...ws, changes, staged, unstaged, sync: { ...ws.sync, upstream: branch.upstream, ahead: branch.ahead, behind: branch.behind } };
 }
