@@ -6,6 +6,8 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
+import { branchFor, branchMatches, updateItem } from '../features/backlog/backlog';
+import type { LocalBacklog } from '../features/backlog/localBacklog';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
@@ -44,6 +46,7 @@ export interface CommandContext {
   /** Key of the sidebar's active worktree, or 'all'. Commands without a target act on it. */
   activeKey(): string;
   output: vscode.OutputChannel;
+  backlog: LocalBacklog;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -97,6 +100,7 @@ export function registerCommands(ctx: CommandContext): void {
 
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
+  register('flotilla.startBacklogItem', (id?: unknown) => startBacklogItem(ctx, id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
   register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
@@ -312,6 +316,11 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
     }
   }
 
+  await createWorkstream(ctx, request);
+}
+
+/** Creates a worktree, copies the setup files, runs the setup command and shows it; returns its key. */
+async function createWorkstream(ctx: CommandContext, request: CreateRequest): Promise<string> {
   const created = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Creating worktree…' },
     () => ctx.service.create(request),
@@ -329,6 +338,35 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
     if (fresh) await chatUi.installChatHooks(chatContext(ctx), fresh);
   }
   void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
+  return created.adminDir;
+}
+
+/**
+ * Starts work on a backlog item: shows the worktree whose branch carries it, or creates one (branch named by
+ * flotilla.backlog.branchPattern, from the default branch), and marks the item in progress.
+ */
+async function startBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
+  if (typeof id !== 'string') return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  const existing = ctx.repository.current.find((w) => w.worktree.branch && branchMatches(item, w.worktree.branch));
+  if (existing) {
+    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch: existing.worktree.branch }));
+    ctx.sidebar.reveal(existing.key);
+    return;
+  }
+  const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
+  const branch = item.branch ?? branchFor(item, pattern);
+  const branches = await ctx.service.listBranches();
+  const problem = branches.local.includes(branch) ? undefined : branchNameProblem(branch, []);
+  if (problem) {
+    void vscode.window.showErrorMessage(`Can't start ${item.id}: ${problem} Change flotilla.backlog.branchPattern or the item's title.`);
+    return;
+  }
+  const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
+  const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
+  await createWorkstream(ctx, request);
+  await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch }));
 }
 
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {

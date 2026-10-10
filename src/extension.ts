@@ -17,6 +17,7 @@ import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktree
 import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
+import { LocalBacklog } from './features/backlog/localBacklog';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
@@ -107,6 +108,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inWorkspace = (ws: Workstream) => extraWorkspaceFolder(ws.worktree.path) !== undefined;
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
+  const backlog = new LocalBacklog(location.commonDir);
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   const sidebar = new SidebarProvider({
@@ -117,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     active,
     commit: (ws, message, opts) => commit(scmCtx, ws, message, opts),
     output,
+    backlog,
   });
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
@@ -129,6 +132,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     currentGitDir: location.gitDir,
     activeKey: () => active.key,
     output,
+    backlog,
   };
   context.subscriptions.push(
     sidebar,
@@ -144,6 +148,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
+    vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
+    vscode.commands.registerCommand('flotilla.addBacklogItem', () => sidebar.addBacklogItem()),
     vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
     vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),
     vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTool('vc')),

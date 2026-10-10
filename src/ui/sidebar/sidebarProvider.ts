@@ -7,6 +7,8 @@ import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
+import { addItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -30,6 +32,7 @@ export interface SidebarDeps {
   reference: vscode.Uri;
   inWorkspace: (ws: Workstream) => boolean;
   active: ActiveWorktree;
+  backlog: LocalBacklog;
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string, opts: { amend?: boolean; then?: 'push' | 'sync' }) => Promise<boolean>;
   output: vscode.OutputChannel;
@@ -55,7 +58,54 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
+      deps.backlog.watch(() => void this.postBacklog()),
     );
+  }
+
+  private async postBacklog(): Promise<void> {
+    this.post({ type: 'backlog', items: (await this.deps.backlog.read()).items });
+  }
+
+  private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
+    const store = this.deps.backlog;
+    switch (m.op) {
+      case 'add': {
+        if (!m.title.trim()) return;
+        const prefix = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL').trim() || 'BL';
+        await store.change((d) => addItem(d, m.title, prefix, new Date()).data);
+        break;
+      }
+      case 'update':
+        await store.change((d) =>
+          updateItem(d, m.id, {
+            ...(m.title?.trim() ? { title: m.title.trim() } : {}),
+            ...(m.notes !== undefined ? { notes: m.notes.trim() || undefined } : {}),
+            ...(m.status ? { status: m.status } : {}),
+          }),
+        );
+        break;
+      case 'move':
+        await store.change((d) => moveItem(d, m.id, m.status, m.before));
+        break;
+      case 'delete': {
+        const item = (await store.read()).items.find((i) => i.id === m.id);
+        if (!item) return;
+        const choice = await vscode.window.showWarningMessage(`Delete ${item.id} '${item.title}' from the backlog?`, { modal: true }, 'Delete');
+        if (choice !== 'Delete') return;
+        await store.change((d) => removeItem(d, m.id));
+        break;
+      }
+      case 'start':
+        await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id);
+        return;
+    }
+    await this.postBacklog();
+  }
+
+  /** Shows the Backlog tool with a box to name a new item. */
+  async addBacklogItem(): Promise<void> {
+    await this.showTool('backlog');
+    this.post({ type: 'backlogAdd' });
   }
 
   get visible(): boolean {
@@ -151,6 +201,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.postState();
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
+        void this.postBacklog();
         if (this.pendingReveal) this.post(this.pendingReveal);
         this.pendingReveal = undefined;
         return;
@@ -208,6 +259,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'log':
         await this.postLog(m.key, m.skip);
+        return;
+      case 'backlog':
+        await this.onBacklog(m);
         return;
       case 'openCommit': {
         const ws = this.find(m.key);

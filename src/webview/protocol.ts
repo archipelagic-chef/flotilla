@@ -3,12 +3,15 @@
  * so it must not import vscode, node or DOM APIs.
  */
 import type { ChangeKind } from '../core/git/porcelain';
+import type { BacklogItem, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
+
+export type { BacklogItem, BacklogStatus };
 
 /** The views under Version Control in the tool strip. */
 export type VcView = 'changes' | 'history' | 'compare';
@@ -138,6 +141,10 @@ export type HostMessage =
   | { type: 'refs'; defaultBase?: string; refs: string[] }
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
+  /** The backlog, in priority order; sent at start and whenever it changes. */
+  | { type: 'backlog'; items: BacklogItem[] }
+  /** Show an inline box to name a new backlog item. */
+  | { type: 'backlogAdd' }
   /** The files a commit changed (against its first parent). */
   | { type: 'commitFiles'; key: string; hash: string; files: FileChangeView[]; error?: string }
   /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
@@ -181,6 +188,11 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
+  | { type: 'backlog'; op: 'add'; title: string }
+  | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus }
+  /** Drag and drop: into a lane, before another item or at the lane's end. */
+  | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
+  | { type: 'backlog'; op: 'delete' | 'start'; id: string }
   | { type: 'compare'; id: number } & RefComparison
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
   | ({ type: 'openCompare'; path?: string } & RefComparison);

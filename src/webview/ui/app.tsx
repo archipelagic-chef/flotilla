@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
+import { ALL, type BacklogItem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -9,6 +9,7 @@ import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
+import { BacklogView } from './backlog';
 import { CommitCard, CompareView, HistoryBody, VcBody, type CommitFiles, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
@@ -67,6 +68,7 @@ const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
+  { id: 'backlog', label: 'Backlog', icon: 'checklist' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'vc', label: 'Version Control', icon: 'source-control' },
@@ -110,6 +112,8 @@ export function App() {
   const [searchRefresh, setSearchRefresh] = useState(0);
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
+  const [backlog, setBacklog] = useState<BacklogItem[] | undefined>(undefined);
+  const [addingBacklog, setAddingBacklog] = useState(false);
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [comparison, setComparison] = useState<Comparison | undefined>(undefined);
@@ -229,6 +233,13 @@ export function App() {
           return;
         case 'commitFiles':
           setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
+          return;
+        case 'backlog':
+          setBacklog(m.items);
+          return;
+        case 'backlogAdd':
+          update((prev) => ({ ...prev, tool: 'backlog' }));
+          setAddingBacklog(true);
           return;
         case 'refs':
           setRefs({ defaultBase: m.defaultBase, refs: m.refs });
@@ -371,7 +382,23 @@ export function App() {
   );
 
   let content;
-  if (tool === 'vc' && vcView === 'compare') {
+  if (tool === 'backlog') {
+    // The backlog is the repository's, whichever tab is active.
+    content = (
+      <BacklogView
+        items={backlog}
+        workstreams={workstreams}
+        colors={colors}
+        adding={addingBacklog}
+        setAdding={setAddingBacklog}
+        openWorktree={(key) => {
+          setClosed((c) => new Set([...c].filter((k) => k !== key)));
+          setActive(key);
+          update((p) => ({ ...p, tool: 'files' }));
+        }}
+      />
+    );
+  } else if (tool === 'vc' && vcView === 'compare') {
     // Any two refs, whichever tab is active.
     content = (
       <CompareView

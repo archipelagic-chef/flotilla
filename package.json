@@ -344,6 +344,21 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.showBacklog",
+        "title": "Show Backlog",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.addBacklogItem",
+        "title": "Add Backlog Item…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.startBacklogItem",
+        "title": "Start Work on Backlog Item",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.showSearch",
         "title": "Search in Active Worktree",
         "category": "Flotilla"
@@ -641,6 +656,18 @@
         {
           "command": "flotilla.useWorktreeTerminals",
           "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.showBacklog",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.addBacklogItem",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.startBacklogItem",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -1140,6 +1167,18 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Regular expression that finds the id to show on a worktree tab (its first group, or the whole match), e.g. `T\\d+`. Empty: a Jira key such as `ABC-123`, or an issue number at the start of a branch part (`123-fix` → `#123`); otherwise the last part of the branch."
+        },
+        "flotilla.backlog.idPrefix": {
+          "type": "string",
+          "default": "BL",
+          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+          "patternErrorMessage": "2–10 capital letters or digits, starting with a letter, like BL or WEB.",
+          "markdownDescription": "Prefix of new local backlog item ids, as in `BL-12`. Tabs label worktrees by these ids."
+        },
+        "flotilla.backlog.branchPattern": {
+          "type": "string",
+          "default": "feature/{id}-{slug}",
+          "markdownDescription": "Branch name for work started from a backlog item. `{id}` is the item's id (e.g. `BL-12`), `{slug}` its title in lower case with dashes."
         }
       }
     },
