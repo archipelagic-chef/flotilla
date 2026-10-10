@@ -33,6 +33,12 @@ function claudeAvailable(): boolean {
   return false;
 }
 
+/** Opens a new Claude Code chat in this window with prompt in its message box (not sent: add to it, then send). */
+export async function askClaude(prompt: string): Promise<void> {
+  if (!claudeAvailable()) return;
+  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, prompt);
+}
+
 /** Chats started for another worktree, waiting for Claude Code to create their session. */
 const pendingLinks = new PendingLinks();
 let linkTimer: ReturnType<typeof setInterval> | undefined;

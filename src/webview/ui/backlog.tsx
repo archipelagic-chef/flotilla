@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
-import type { BacklogItem, BacklogStatus, WorkstreamView } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogStatus, WorkstreamView } from '../protocol';
 import { send } from './api';
 
 const LANES: Array<{ status: BacklogStatus; title: string; icon: string }> = [
@@ -111,27 +111,40 @@ export function BacklogView({ items, workstreams, colors, adding, setAdding, ope
   );
 }
 
+/** A box for a new item's title: Enter adds it, Shift+Enter adds it and opens its ticket, ✨ has Claude write it. */
 function NewItem({ onDone }: { onDone(): void }) {
   const input = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   useEffect(() => input.current?.focus(), []);
+  const add = (then?: 'open' | 'ai') => {
+    if (!title.trim()) return;
+    send({ type: 'backlog', op: 'add', title, then });
+    // The box stays for the next item (unless a ticket or chat opens).
+    setTitle('');
+    if (then) onDone();
+  };
   return (
     <div class="backlog-new">
-      <input
-        ref={input}
-        value={title}
-        placeholder="What needs doing? Enter adds it"
-        aria-label="New backlog item"
-        onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && title.trim()) {
-            send({ type: 'backlog', op: 'add', title });
-            // The box stays for the next item.
-            setTitle('');
-          } else if (e.key === 'Escape') onDone();
-        }}
-        onBlur={() => !title.trim() && onDone()}
-      />
+      <div class="backlog-new-box">
+        <input
+          ref={input}
+          value={title}
+          placeholder="Title (Enter adds, Shift+Enter opens its ticket)"
+          aria-label="New backlog item"
+          onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add(e.shiftKey ? 'open' : undefined);
+            else if (e.key === 'Escape') onDone();
+          }}
+          onBlur={(e) => !title.trim() && !(e.relatedTarget as HTMLElement | null)?.closest('.backlog-new') && onDone()}
+        />
+        <button class="icon" aria-label="Add and Open Its Ticket" disabled={!title.trim()} onClick={() => add('open')}>
+          <i class="codicon codicon-go-to-file" />
+        </button>
+        <button class="icon" aria-label="Add and Write It with Claude" disabled={!title.trim()} onClick={() => add('ai')}>
+          <i class="codicon codicon-sparkle" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -149,25 +162,29 @@ interface RowProps {
   openWorktree(key: string): void;
 }
 
+/** The agent's state on a worktree chip, as on the worktree tabs. */
+const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
+
 function ItemRow({ item, icon, worktree, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   const done = item.status === 'done';
+  const dot = worktree && AGENT_DOT[worktree.attention];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       draggable={!renaming}
-      data-tip={item.notes ? `${item.id} · ${item.title}\n\n${item.notes}` : undefined}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
       }}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onDblClick={() => setRenaming(true)}
+      onClick={() => !renaming && send({ type: 'backlog', op: 'open', id: item.id })}
       onKeyDown={(e) => {
         if (renaming) return;
-        if (e.key === 'F2' || e.key === 'Enter') setRenaming(true);
+        if (e.key === 'F2') setRenaming(true);
+        else if (e.key === 'Enter') send({ type: 'backlog', op: 'open', id: item.id });
         else if (e.key === 'Delete') send({ type: 'backlog', op: 'delete', id: item.id });
         else return;
         e.preventDefault();
@@ -187,7 +204,16 @@ function ItemRow({ item, icon, worktree, color, renaming, setRenaming, dropBefor
       {renaming ? (
         <RenameBox item={item} onDone={() => setRenaming(false)} />
       ) : (
-        <span class="name">{item.title}</span>
+        <>
+          <span class="name">{item.title}</span>
+          {item.summary && <span class="desc">{item.summary}</span>}
+        </>
+      )}
+      {!renaming && item.activity > 0 && (
+        <span class="activity-count" aria-label={`${item.activity} activity entries`}>
+          <i class="codicon codicon-comment" />
+          {item.activity}
+        </span>
       )}
       {worktree && (
         <button
@@ -200,16 +226,24 @@ function ItemRow({ item, icon, worktree, color, renaming, setRenaming, dropBefor
             openWorktree(worktree.key);
           }}
         >
+          {dot && <span class={`dot ${dot}`} />}
           {worktree.label}
         </button>
       )}
       {!renaming && (
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-          {!done && !worktree && (
-            <button class="icon" aria-label="Start Work (Create Its Worktree)" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })}>
+          {!done && (
+            <button
+              class="icon"
+              aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
+              onClick={() => send({ type: 'backlog', op: 'start', id: item.id })}
+            >
               <i class="codicon codicon-play" />
             </button>
           )}
+          <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
+            <i class="codicon codicon-sparkle" />
+          </button>
           <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
             <i class="codicon codicon-edit" />
           </button>

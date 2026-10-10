@@ -18,6 +18,7 @@ import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { LocalBacklog } from './features/backlog/localBacklog';
+import { TicketPanels } from './ui/backlog/ticketPanel';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
@@ -108,7 +109,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inWorkspace = (ws: Workstream) => extraWorkspaceFolder(ws.worktree.path) !== undefined;
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
-  const backlog = new LocalBacklog(location.commonDir);
+  const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   const sidebar = new SidebarProvider({
@@ -121,6 +122,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     backlog,
   });
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, backlog, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
+  context.subscriptions.push(tickets);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
     extension: context,
@@ -133,6 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activeKey: () => active.key,
     output,
     backlog,
+    tickets,
   };
   context.subscriptions.push(
     sidebar,

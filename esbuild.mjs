@@ -18,14 +18,14 @@ const host = await esbuild.context({
   logLevel: 'info',
 });
 
-// Sidebar webview bundle (browser): dist/webview.js and dist/webview.css.
+// Webview bundles (browser): the sidebar (dist/webview.js, .css) and ticket tabs (dist/ticket.js, .css).
 const webview = await esbuild.context({
-  entryPoints: ['src/webview/ui/main.tsx'],
+  entryPoints: { webview: 'src/webview/ui/main.tsx', ticket: 'src/webview/ticket/main.tsx' },
   bundle: true,
   platform: 'browser',
   target: 'es2022',
   format: 'iife',
-  outfile: 'dist/webview.js',
+  outdir: 'dist',
   jsx: 'automatic',
   jsxImportSource: 'preact',
   sourcemap: true,

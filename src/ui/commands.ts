@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
@@ -6,8 +7,9 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { branchFor, branchMatches, updateItem } from '../features/backlog/backlog';
+import { branchFor, branchMatches, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
+import type { TicketPanels } from './backlog/ticketPanel';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
@@ -47,6 +49,7 @@ export interface CommandContext {
   activeKey(): string;
   output: vscode.OutputChannel;
   backlog: LocalBacklog;
+  tickets: TicketPanels;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -100,7 +103,9 @@ export function registerCommands(ctx: CommandContext): void {
 
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
-  register('flotilla.startBacklogItem', (id?: unknown) => startBacklogItem(ctx, id));
+  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
+  register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
+  register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
   register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
@@ -343,30 +348,84 @@ async function createWorkstream(ctx: CommandContext, request: CreateRequest): Pr
 
 /**
  * Starts work on a backlog item: shows the worktree whose branch carries it, or creates one (branch named by
- * flotilla.backlog.branchPattern, from the default branch), and marks the item in progress.
+ * flotilla.backlog.branchPattern, from the default branch), and marks the item in progress. With agent, a Claude Code
+ * agent then works on it in that worktree, reporting in the item's ticket.
  */
-async function startBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
+async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown): Promise<void> {
+  if (typeof id !== 'string') return;
+  const agent = typeof opts === 'object' && opts !== null && (opts as { agent?: unknown }).agent === true;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  let ws = ctx.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  if (ws) {
+    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch: ws!.worktree.branch }));
+    ctx.sidebar.reveal(ws.key);
+  } else {
+    const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
+    const branch = item.branch ?? branchFor(item, pattern);
+    const branches = await ctx.service.listBranches();
+    const problem = branches.local.includes(branch) ? undefined : branchNameProblem(branch, []);
+    if (problem) {
+      void vscode.window.showErrorMessage(`Can't start ${item.id}: ${problem} Change flotilla.backlog.branchPattern or the item's title.`);
+      return;
+    }
+    const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
+    const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
+    const key = await createWorkstream(ctx, request);
+    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch }));
+    ws = ctx.repository.current.find((w) => w.key === key);
+  }
+  if (agent && ws?.worktree.path) await runAgent(ctx, item, ws);
+}
+
+/** The Claude Code CLI: the one that comes with the Claude Code extension, else `claude` on the PATH. */
+function claudeCli(): string {
+  const ext = vscode.extensions.getExtension('anthropic.claude-code');
+  if (ext) {
+    const bin = path.join(ext.extensionPath, 'resources', 'native-binary', process.platform === 'win32' ? 'claude.exe' : 'claude');
+    if (fs.existsSync(bin)) return bin;
+  }
+  return 'claude';
+}
+
+/** What an agent is told when it starts on an item. */
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title'>, ticket: string, branch: string): string {
+  return [
+    `You're working on backlog item ${item.id}: "${item.title}".`,
+    `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
+    `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages; don't push.`,
+    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent" (local time) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
+  ].join('\n\n');
+}
+
+/** Starts a Claude Code agent on an item in its worktree, in a terminal of its own. */
+async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream): Promise<void> {
+  const ticket = await ctx.backlog.ensureDocument(item);
+  const args = vscode.workspace.getConfiguration('flotilla').get<string[]>('agent.arguments', []);
+  const terminal = vscode.window.createTerminal({
+    name: `${item.id} agent`,
+    cwd: ws.worktree.path,
+    shellPath: claudeCli(),
+    shellArgs: [...args, agentPrompt(item, ticket, workstreamLabel(ws))],
+    iconPath: new vscode.ThemeIcon('hubot'),
+  });
+  terminal.show(true);
+  await ctx.tickets.addActivity(item.id, 'Flotilla', `Started an agent in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+}
+
+/** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */
+async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
   if (typeof id !== 'string') return;
   const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!item) return;
-  const existing = ctx.repository.current.find((w) => w.worktree.branch && branchMatches(item, w.worktree.branch));
-  if (existing) {
-    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch: existing.worktree.branch }));
-    ctx.sidebar.reveal(existing.key);
-    return;
-  }
-  const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
-  const branch = item.branch ?? branchFor(item, pattern);
-  const branches = await ctx.service.listBranches();
-  const problem = branches.local.includes(branch) ? undefined : branchNameProblem(branch, []);
-  if (problem) {
-    void vscode.window.showErrorMessage(`Can't start ${item.id}: ${problem} Change flotilla.backlog.branchPattern or the item's title.`);
-    return;
-  }
-  const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
-  const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
-  await createWorkstream(ctx, request);
-  await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch }));
+  const ticket = await ctx.backlog.ensureDocument(item);
+  await chatUi.askClaude(
+    [
+      `Help me write backlog item ${item.id} as a clear ticket. The ticket is ${ticket}: "# <title>", the description, then an "## Activity" log (leave that alone).`,
+      `Read what's there (my notes so far), ask me what you need to know, and look at this repository's code where it helps. Then rewrite the title and description: the problem or goal, the context, and acceptance criteria as a checklist.`,
+      '',
+    ].join('\n\n'),
+  );
 }
 
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {

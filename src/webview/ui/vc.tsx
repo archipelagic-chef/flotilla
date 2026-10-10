@@ -144,14 +144,7 @@ export function VcBody({ ws, draft, update }: Props) {
       <CommitBox ws={ws} draft={draft} update={update} />
       <Group ws={ws} group="staged" title="Staged Changes" items={ws.staged} />
       <Group ws={ws} group="unstaged" title="Changes" items={ws.unstaged} />
-      {total === 0 && (
-        <div class="empty">
-          {ws.sync.kind === 'sync' && !ws.sync.ahead && !ws.sync.behind ? 'Up to date with the remote. ' : ''}
-          <button class="link" onClick={() => update((p) => withComparison(p, { head: ws.branch }))}>
-            Compare with…
-          </button>
-        </div>
-      )}
+      {total === 0 && ws.sync.kind === 'sync' && !ws.sync.ahead && !ws.sync.behind && <div class="empty">Up to date with the remote.</div>}
     </div>
   );
 }
