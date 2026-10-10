@@ -6,13 +6,19 @@ import { locateRepo } from './core/repoLocator';
 import { Repository } from './core/repository';
 import { toWorkspaceUri } from './core/uris';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
-import { buildWorkstreams, type Workstream } from './features/workstreams/workstream';
+import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
-import { openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { toGitPath } from './core/paths';
+import * as chatUi from './ui/chatCommands';
+import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { commit, type ScmContext } from './ui/scmCommands';
+import { registerFileCommands } from './ui/sidebar/fileCommands';
+import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { WorkstreamStatusBar } from './ui/statusBar';
-import { WorkstreamsView } from './ui/workstreamsView';
+import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -21,18 +27,34 @@ function setState(state: 'ready' | 'noRepo' | 'gitMissing'): Thenable<unknown> {
   return vscode.commands.executeCommand('setContext', 'flotilla.state', state);
 }
 
+const NO_REPO_TEXT = 'Open a folder inside a git repository to manage workstreams.';
+
+/** Shows a plain message in the sidebar when Flotilla can't run (no repository, no git). */
+function showMessageView(context: vscode.ExtensionContext, text: string): void {
+  const escaped = text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, {
+      resolveWebviewView(view) {
+        view.webview.html = `<!DOCTYPE html><html><body style="font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-descriptionForeground); padding: 8px 12px;">${escaped}</body></html>`;
+      },
+    }),
+  );
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitContentProvider()));
 
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
+    showMessageView(context, NO_REPO_TEXT);
     await setState('noRepo');
     return;
   }
   const cwd = folder.uri.fsPath;
   const version = await getGitVersion(cwd);
   if (!version || !versionAtLeast(version, MIN_GIT_VERSION)) {
+    showMessageView(context, `Flotilla needs git ${MIN_GIT_VERSION.join('.')} or newer in this environment.`);
     await setState('gitMissing');
     void vscode.window.showErrorMessage(
       `Flotilla needs git ${MIN_GIT_VERSION.join('.')} or newer in this environment (${version ? `found ${version.join('.')}` : 'git not found'}).`,
@@ -47,6 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         `This repository uses git's relative worktree paths (extensions.relativeWorktrees), which need git 2.48+. This environment has git ${version.join('.')}.`,
       );
     }
+    showMessageView(context, NO_REPO_TEXT);
     await setState('noRepo');
     return;
   }
@@ -67,19 +90,107 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     300,
     (error) => output.appendLine(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`),
   );
-  const view = new WorkstreamsView(repository);
-  const treeView = vscode.window.createTreeView('flotilla.workstreams', { treeDataProvider: view, showCollapseAll: true });
-  view.attach(treeView);
-  const ctx: CommandContext = { extension: context, service, repository, view, reference: folder.uri, currentRoot: location.worktreeRoot, output };
+  const inWorkspace = (ws: Workstream) => extraWorkspaceFolder(ws.worktree.path) !== undefined;
+  const scmCtx: ScmContext = {
+    refresh: () => repository.refresh(),
+    fresh: async (ws) => {
+      await repository.refresh();
+      return repository.current.find((w) => w.key === ws.key) ?? ws;
+    },
+  };
+  const sidebar = new SidebarProvider({
+    extensionUri: context.extensionUri,
+    repository,
+    reference: folder.uri,
+    inWorkspace,
+    commit: (ws, message) => commit(scmCtx, ws, message),
+    output,
+  });
+  const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
+  const ctx: CommandContext = {
+    extension: context,
+    service,
+    repository,
+    sidebar: { reveal: (key) => sidebar.reveal(key) },
+    reference: folder.uri,
+    currentRoot: location.worktreeRoot,
+    currentGitDir: location.gitDir,
+    output,
+  };
   context.subscriptions.push(
-    view,
-    treeView,
+    sidebar,
+    vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     new WorkstreamStatusBar(repository),
+    decorations,
+    vscode.window.registerFileDecorationProvider(decorations),
     new AttentionNotifier(repository, (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow)),
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTab('files')),
+    vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTab('vc')),
+    vscode.commands.registerCommand('flotilla.showChats', () => sidebar.showTab('chats')),
+  );
+  registerFileCommands(context, sidebar, folder.uri, output);
   await setState('ready');
+  const chats = chatContext(ctx);
+
+  // Explorer integration: context keys for the worktree folders' "Flotilla" submenu.
+  const updateExplorerContext = () => {
+    const linked = repository.current.filter((ws) => ws.worktree.path && !ws.worktree.isMain && !ws.isCurrent);
+    // Same form as VS Code's `resourcePath` context key: fsPath for file URIs, the URI path otherwise (remote windows).
+    const asResourcePath = (uri: vscode.Uri) => (uri.scheme === 'file' ? uri.fsPath : uri.path);
+    const fsPaths = (items: Workstream[]) => items.map((ws) => asResourcePath(toWorkspaceUri(folder.uri, ws.worktree.path!)));
+    void vscode.commands.executeCommand('setContext', 'flotilla.worktreeFolders', fsPaths(linked));
+    void vscode.commands.executeCommand('setContext', 'flotilla.workspaceWorktrees', fsPaths(linked.filter(inWorkspace)));
+  };
+  // Editor -> sidebar: reveal the active file in its worktree, like the Explorer's auto-reveal.
+  const revealActive = (editor: vscode.TextEditor | undefined) => {
+    const uri = editor?.document.uri;
+    if (!uri || !sidebar.visible || uri.scheme !== folder.uri.scheme || uri.authority !== folder.uri.authority) return;
+    const ws = findWorkstreamFor(repository.current, uri.fsPath);
+    if (ws?.worktree.path) sidebar.reveal(ws.key, toGitPath(path.relative(ws.worktree.path, uri.fsPath)));
+  };
+  // Files tab: tell the webview which listed directories changed. Content changes don't alter listings.
+  const changedDirs = new Map<string, Set<string>>();
+  let dirTimer: ReturnType<typeof setTimeout> | undefined;
+  const onFileEvent = (uri: vscode.Uri) => {
+    const ws = findWorkstreamFor(repository.current, uri.fsPath);
+    if (!ws?.worktree.path) return;
+    const rel = toGitPath(path.relative(ws.worktree.path, path.dirname(uri.fsPath)));
+    if (rel.startsWith('..')) return;
+    const set = changedDirs.get(ws.key) ?? new Set();
+    set.add(rel === '.' ? '' : rel);
+    changedDirs.set(ws.key, set);
+    dirTimer ??= setTimeout(() => {
+      dirTimer = undefined;
+      for (const [key, dirs] of changedDirs) sidebar.dirsChanged(key, [...dirs]);
+      changedDirs.clear();
+    }, 200);
+  };
+  const filesWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '**/*'), false, true, false);
+  filesWatcher.onDidCreate(onFileEvent);
+  filesWatcher.onDidDelete(onFileEvent);
+  context.subscriptions.push(
+    filesWatcher,
+    repository.onDidChange(updateExplorerContext),
+    repository.onDidChange(() => void chatUi.maybeOfferHooks(chats)),
+    repository.onDidChange(() => {
+      const report = (e: unknown) => output.appendLine(`Chat linking failed: ${e instanceof Error ? e.message : String(e)}`);
+      void chatUi.linkPendingChats(chats).catch(report);
+      void chatUi.tagLinkedChatTitles(chats).catch(report);
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      updateExplorerContext();
+      sidebar.postState();
+      decorations.update();
+    }),
+    vscode.window.onDidChangeActiveTextEditor(revealActive),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (findWorkstreamFor(repository.current, doc.uri.fsPath)) void repository.refresh();
+    }),
+  );
 
   // Heartbeat: tells other windows (in any environment) that this worktree is open.
   heartbeatGitDir = location.gitDir;
@@ -93,7 +204,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const refresh = () => void repository.refresh();
   const watched: Array<[string, string]> = [
     [path.join(location.commonDir, 'worktrees'), '**'],
-    [location.commonDir, '{HEAD,workstream.json}'],
+    [location.commonDir, '{HEAD,workstream.json,flotilla/**}'],
     [path.join(location.mainRoot, '.worktrees'), '*'],
   ];
   for (const [base, glob] of watched) {
@@ -110,14 +221,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   const schedulePoll = () => {
     if (pollTimer) clearInterval(pollTimer);
-    const seconds = treeView.visible ? readSettings().pollSeconds : BACKGROUND_POLL_SECONDS;
+    const seconds = sidebar.visible ? readSettings().pollSeconds : BACKGROUND_POLL_SECONDS;
     pollTimer = setInterval(refresh, Math.max(5, seconds) * 1000);
   };
   schedulePoll();
   context.subscriptions.push(
-    treeView.onDidChangeVisibility(() => {
+    sidebar.onDidChangeVisibility((visible) => {
       schedulePoll();
-      if (treeView.visible) refresh();
+      if (visible) refresh();
     }),
     vscode.window.onDidChangeWindowState((state) => {
       if (state.focused) refresh();

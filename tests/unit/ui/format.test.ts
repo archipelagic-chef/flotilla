@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ResolvedWorktree } from '../../../src/features/worktrees/resolver';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
-import { describeWorkstream, formatAge, workstreamContext, workstreamLabel } from '../../../src/ui/format';
+import { describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../../../src/ui/format';
 
 const now = new Date('2026-10-09T10:00:00Z');
 const ago = (ms: number) => new Date(now.getTime() - ms);
@@ -24,6 +24,11 @@ function makeWs(overrides: Partial<Workstream> = {}, wt: Partial<ResolvedWorktre
       ...wt,
     },
     changes: [],
+    staged: [],
+    unstaged: [],
+    sync: { upstream: undefined, ahead: 0, behind: 0, hasRemote: false },
+    chats: [],
+    hasHooks: false,
     agent: undefined,
     agentStale: false,
     heartbeat: undefined,
@@ -89,7 +94,39 @@ describe('labels and context values', () => {
     expect(workstreamLabel(makeWs({}, { branch: undefined, head: 'abcdef1234567' }))).toBe('detached @ abcdef1');
   });
   it('builds a context value usable in when-clauses', () => {
-    expect(workstreamContext(makeWs())).toBe('workstream;reachable;notCurrent;linked;portable;noAgent;');
-    expect(workstreamContext(makeWs({ isCurrent: true }, { isMain: true, path: '/r' }))).toBe('workstream;reachable;current;main;portable;noAgent;');
+    expect(workstreamContext(makeWs())).toBe('workstream;reachable;notCurrent;linked;portable;noAgent;noStaged;noUnstaged;noSync;notInWorkspace;');
+    expect(workstreamContext(makeWs({ isCurrent: true }, { isMain: true, path: '/r' }))).toBe(
+      'workstream;reachable;current;main;portable;noAgent;noStaged;noUnstaged;noSync;notInWorkspace;',
+    );
+    const busy = makeWs({
+      staged: [{ path: 'a', kind: 'added' }],
+      unstaged: [{ path: 'b', kind: 'modified' }],
+      sync: { upstream: 'origin/feat', ahead: 1, behind: 0, hasRemote: true },
+    });
+    expect(workstreamContext(busy, true)).toBe('workstream;reachable;notCurrent;linked;portable;noAgent;hasStaged;hasUnstaged;tracking;inWorkspace;');
+  });
+});
+
+describe('sync state', () => {
+  const sync = (s: Partial<Workstream['sync']>) => ({ upstream: undefined, ahead: 0, behind: 0, hasRemote: true, ...s });
+  it('offers publishing a branch without upstream when a remote exists', () => {
+    const ws = makeWs({ sync: sync({}) });
+    expect(syncKind(ws)).toBe('publish');
+    expect(describeSync(ws)).toBe('unpublished');
+    expect(describeWorkstream(ws, now)).toBe('idle · — · unpublished');
+  });
+  it('says nothing without remotes or on a detached head', () => {
+    expect(syncKind(makeWs({ sync: sync({ hasRemote: false }) }))).toBe('none');
+    expect(describeSync(makeWs({ sync: sync({ hasRemote: false }) }))).toBe('');
+    expect(syncKind(makeWs({ sync: sync({}) }, { branch: undefined }))).toBe('none');
+  });
+  it('counts commits to push and pull', () => {
+    const ws = makeWs({ sync: sync({ upstream: 'origin/feat', ahead: 2, behind: 1 }) });
+    expect(syncKind(ws)).toBe('sync');
+    expect(describeSync(ws)).toBe('2 to push, 1 to pull');
+    expect(describeSync(makeWs({ sync: sync({ upstream: 'origin/feat' }) }))).toBe('');
+  });
+  it('marks worktrees that are in this window\'s workspace', () => {
+    expect(describeWorkstream(makeWs({ lastActivity: ago(MIN) }), now, true)).toBe('idle · 1m · in workspace');
   });
 });

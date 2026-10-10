@@ -18,3 +18,21 @@ export async function openChangeDiff(
     side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
   await vscode.commands.executeCommand('vscode.diff', toUri(left), toUri(right), `${path.posix.basename(change.path)} (${label})`);
 }
+
+/** Opens VS Code's multi-file diff editor on the changes (one entry per file). */
+export async function openChangesEditor(
+  reference: vscode.Uri,
+  worktreeDir: string,
+  changes: readonly FileChange[],
+  leftRef: string,
+  rightRef: string,
+  title: string,
+): Promise<void> {
+  const toUri = (side: DiffSide) =>
+    side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
+  const resources = changes.map((change) => {
+    const { left, right } = sideRefsFor(change, leftRef, rightRef);
+    return [toWorkspaceUri(reference, path.join(worktreeDir, change.path)), toUri(left), toUri(right)];
+  });
+  await vscode.commands.executeCommand('vscode.changes', title, resources);
+}

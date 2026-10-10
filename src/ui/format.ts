@@ -36,7 +36,22 @@ export function workstreamLabel(ws: Workstream): string {
   return ws.worktree.branch ?? `detached @ ${ws.worktree.head?.slice(0, 7) ?? 'unknown'}`;
 }
 
-export function describeWorkstream(ws: Workstream, now: Date): string {
+/** Upstream state, e.g. "unpublished" or "2 to push, 1 to pull"; empty when there is nothing to say. */
+export function describeSync(ws: Workstream): string {
+  const s = ws.sync;
+  if (!ws.worktree.branch) return '';
+  if (!s.upstream) return s.hasRemote ? 'unpublished' : '';
+  return [s.ahead ? `${s.ahead} to push` : '', s.behind ? `${s.behind} to pull` : ''].filter(Boolean).join(', ');
+}
+
+/** Which sync action applies: publish an unpublished branch, sync a tracking one, or none. */
+export function syncKind(ws: Workstream): 'publish' | 'sync' | 'none' {
+  if (!ws.worktree.branch) return 'none';
+  if (ws.sync.upstream) return 'sync';
+  return ws.sync.hasRemote ? 'publish' : 'none';
+}
+
+export function describeWorkstream(ws: Workstream, now: Date, inWorkspace = false): string {
   if (ws.attention === 'unreachable') return ATTENTION_LABEL.unreachable;
   const fromAgent = FROM_AGENT.has(ws.attention) && ws.agent !== undefined;
   const since = fromAgent ? ws.agent?.updatedAt : ws.lastActivity;
@@ -48,14 +63,19 @@ export function describeWorkstream(ws: Workstream, now: Date): string {
       .join(' ');
     if (counts) parts.push(counts);
   }
+  const sync = describeSync(ws);
+  if (sync) parts.push(sync);
   if (ws.isCurrent) parts.push('this window');
+  else if (inWorkspace) parts.push('in workspace');
   else if (ws.windowOpen && ws.heartbeat) parts.push(`open in ${ws.heartbeat.env}`);
   if (ws.worktree.isMain) parts.unshift('main worktree');
   return parts.join(' · ');
 }
 
-export function workstreamContext(ws: Workstream): string {
+/** Tokens are matched by regex in package.json when-clauses (e.g. `viewItem =~ /;linked;/`); append new ones at the end. */
+export function workstreamContext(ws: Workstream, inWorkspace = false): string {
   const wt = ws.worktree;
+  const sync = syncKind(ws);
   return [
     'workstream',
     wt.path ? 'reachable' : 'unreachable',
@@ -63,6 +83,10 @@ export function workstreamContext(ws: Workstream): string {
     wt.isMain ? 'main' : 'linked',
     wt.portable ? 'portable' : 'notPortable',
     ws.agent ? 'hasAgent' : 'noAgent',
+    ws.staged.length ? 'hasStaged' : 'noStaged',
+    ws.unstaged.length ? 'hasUnstaged' : 'noUnstaged',
+    sync === 'publish' ? 'publishable' : sync === 'sync' ? 'tracking' : 'noSync',
+    inWorkspace ? 'inWorkspace' : 'notInWorkspace',
     '',
   ].join(';');
 }

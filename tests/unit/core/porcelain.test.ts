@@ -35,6 +35,32 @@ describe('parseStatusV2', () => {
     ]);
   });
 
+  it('splits entries into staged and unstaged sides', () => {
+    const out = [
+      '1 MM N... 100644 100644 100644 aaa bbb both.ts',
+      '1 A. N... 000000 100644 100644 000 bbb added.ts',
+      '1 .D N... 100644 100644 000000 aaa aaa removed.ts',
+      '2 RM N... 100644 100644 100644 aaa bbb R100 new.ts',
+      'old.ts',
+      'u UU N... 100644 100644 100644 100644 a b c conflict.txt',
+      '? new.txt',
+      '',
+    ].join('\0');
+    const result = parseStatusV2(out);
+    expect(result.staged).toEqual([
+      { path: 'both.ts', kind: 'modified' },
+      { path: 'added.ts', kind: 'added' },
+      { path: 'new.ts', origPath: 'old.ts', kind: 'renamed' },
+    ]);
+    expect(result.unstaged).toEqual([
+      { path: 'both.ts', kind: 'modified' },
+      { path: 'removed.ts', kind: 'deleted' },
+      { path: 'new.ts', kind: 'modified' },
+      { path: 'conflict.txt', kind: 'conflicted' },
+      { path: 'new.txt', kind: 'untracked' },
+    ]);
+  });
+
   it('handles initial and detached heads', () => {
     const result = parseStatusV2('# branch.oid (initial)\0# branch.head (detached)\0');
     expect(result.branch).toEqual({ oid: undefined, head: undefined, ahead: 0, behind: 0 });

@@ -1,34 +1,46 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { openChangeDiff } from '../core/diff/openDiff';
+import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
+import { INDEX, WORKING } from '../core/diff/refs';
 import { GitError } from '../core/git/gitCli';
-import { samePath } from '../core/paths';
+import { isInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import type { CompareMode } from '../features/diffs/compare';
+import { compareWithBase, type CompareMode } from '../features/diffs/compare';
+import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
+import type { ChangeGroup, Target } from '../webview/protocol';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
+import * as chatUi from './chatCommands';
 import { claudeHookConfig } from './claudeHooks';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
+import * as scmUi from './scmCommands';
 import { readSettings } from './settings';
-import type { Node, WorkstreamsView } from './workstreamsView';
+import { addWorkspaceFolder, extraWorkspaceFolder, removeWorkspaceFolder } from './workspaceFolders';
+
+/** What the sidebar offers to commands. */
+export interface SidebarHandle {
+  reveal(key: string): void;
+}
 
 export interface CommandContext {
   extension: vscode.ExtensionContext;
   service: WorktreeService;
   repository: Repository<Workstream>;
-  view: WorkstreamsView;
+  sidebar: SidebarHandle;
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
   /** Root of the worktree open in this window. */
   currentRoot: string;
+  /** Git dir of that worktree. */
+  currentGitDir: string;
   output: vscode.OutputChannel;
 }
 
@@ -40,19 +52,52 @@ interface PickFilter {
 }
 
 type Handler = (...args: any[]) => unknown;
+/** Commands get a Target from the sidebar (or its context menus), a folder Uri from the Explorer, or nothing from the palette. */
+type Arg = Target | vscode.Uri | undefined;
+
+export function isTarget(arg: unknown): arg is Target {
+  return typeof arg === 'object' && arg !== null && !(arg instanceof vscode.Uri) && typeof (arg as Target).key === 'string';
+}
+
+/** The files a file command acts on: a multi-selection, or the one clicked file. */
+function targetPaths(arg: unknown): string[] {
+  if (!isTarget(arg)) return [];
+  return arg.paths?.length ? arg.paths : arg.path ? [arg.path] : [];
+}
 
 export async function openWorktree(ctx: CommandContext, dir: string, newWindow: boolean): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', toWorkspaceUri(ctx.reference, dir), { forceNewWindow: newWindow });
 }
 
+export function chatContext(ctx: CommandContext): chatUi.ChatContext {
+  return {
+    extension: ctx.extension,
+    currentRoot: ctx.currentRoot,
+    currentGitDir: ctx.currentGitDir,
+    mainRoot: ctx.service.roots.mainRoot,
+    commonDir: ctx.service.roots.commonDir,
+    workstreams: () => ctx.repository.current,
+    refresh: () => ctx.repository.refresh(),
+    output: ctx.output,
+  };
+}
+
 export function registerCommands(ctx: CommandContext): void {
   const register = (id: string, handler: Handler) => ctx.extension.subscriptions.push(vscode.commands.registerCommand(id, guard(ctx, handler)));
   const withWs =
-    (handler: (ws: Workstream) => unknown, filter: PickFilter = {}) =>
-    async (node?: Node) => {
-      const ws = await pickWorkstream(ctx, node, filter);
-      if (ws) await handler(ws);
+    (handler: (ws: Workstream, arg: Arg) => unknown, filter: PickFilter = {}) =>
+    async (arg?: Arg) => {
+      const ws = await pickWorkstream(ctx, arg, filter);
+      if (ws) await handler(ws, arg);
     };
+  const scmCtx: scmUi.ScmContext = {
+    refresh: () => ctx.repository.refresh(),
+    fresh: async (ws) => {
+      await ctx.repository.refresh();
+      return ctx.repository.current.find((w) => w.key === ws.key) ?? ws;
+    },
+  };
+  const chats = chatContext(ctx);
 
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
@@ -73,20 +118,48 @@ export function registerCommands(ctx: CommandContext): void {
   );
   register('flotilla.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
   register('flotilla.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
-  register('flotilla.copyPath', withWs((ws) => vscode.env.clipboard.writeText(ws.worktree.path!)));
+  register('flotilla.copyPath', withWs((ws, arg) => vscode.env.clipboard.writeText(path.join(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))));
   register('flotilla.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
   register('flotilla.compareWith', withWs((ws) => compareWith(ctx, ws)));
-  register('flotilla.compareToggleTwoDot', (node?: Node) => toggleCompareMode(ctx, node, 'twoDot'));
-  register('flotilla.compareToggleUncommitted', (node?: Node) => toggleCompareMode(ctx, node, 'uncommitted'));
-  register('flotilla.compareDismiss', (node?: Node) => {
-    if (node?.type === 'compare') ctx.view.setCompare(node.ws.key, undefined);
-  });
-  register('flotilla.openFileDiff', (node?: Node) => {
-    if (node?.type === 'file' && node.ws.worktree.path) {
-      return openChangeDiff(ctx.reference, node.ws.worktree.path, node.change, node.leftRef, node.rightRef, node.label);
-    }
-  });
-  register('flotilla.openFile', (node?: Node) => openFile(ctx, node));
+  register('flotilla.openFile', withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)));
+  register('flotilla.openFileDiff', withWs((ws, arg) => isTarget(arg) && arg.path && openFileDiff(ctx, ws, arg.path, arg.group ?? 'unstaged')));
+  register('flotilla.openChanges', withWs((ws, arg) => openGroupChanges(ctx, ws, (isTarget(arg) && arg.group) || 'unstaged')));
+  register('flotilla.stage', withWs((ws, arg) => scmUi.stagePaths(scmCtx, ws, targetPaths(arg))));
+  register('flotilla.unstage', withWs((ws, arg) => scmUi.unstagePaths(scmCtx, ws, targetPaths(arg))));
+  register(
+    'flotilla.discard',
+    withWs((ws, arg) => {
+      const paths = new Set(targetPaths(arg));
+      if (paths.size) return scmUi.discardChanges(scmCtx, ws, ws.unstaged.filter((c) => paths.has(c.path)));
+    }),
+  );
+  register('flotilla.stageAll', withWs((ws) => scmUi.stageAll(scmCtx, ws)));
+  register('flotilla.unstageAll', withWs((ws) => scmUi.unstageAll(scmCtx, ws)));
+  register('flotilla.discardAll', withWs((ws) => scmUi.discardChanges(scmCtx, ws)));
+  register('flotilla.commit', withWs((ws) => scmUi.commit(scmCtx, ws)));
+  register('flotilla.publish', withWs((ws) => scmUi.publish(scmCtx, ws)));
+  register('flotilla.sync', withWs((ws) => scmUi.sync(scmCtx, ws)));
+  register('flotilla.push', withWs((ws) => scmUi.network(scmCtx, ws, 'Pushing', scm.push)));
+  register('flotilla.pull', withWs((ws) => scmUi.network(scmCtx, ws, 'Pulling', scm.pull)));
+  register('flotilla.fetch', withWs((ws) => scmUi.network(scmCtx, ws, 'Fetching', scm.fetch)));
+  register(
+    'flotilla.addToWorkspace',
+    withWs(
+      (ws) => {
+        if (ws.isCurrent) return vscode.window.showInformationMessage(`'${workstreamLabel(ws)}' is already this window's folder.`);
+        addWorkspaceFolder(ctx.reference, ws.worktree.path!, `⎇ ${workstreamLabel(ws)}`);
+      },
+      { excludeMain: true },
+    ),
+  );
+  register('flotilla.removeFromWorkspace', withWs((ws) => removeWorkspaceFolder(ws.worktree.path)));
+  register('flotilla.revealInExplorer', (arg?: Arg) => revealInExplorer(ctx, arg));
+  // Chats
+  register('flotilla.newChat', withWs((ws) => chatUi.newChat(chats, ws)));
+  register('flotilla.openChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.openChat(chats, ws, arg.chatId)));
+  register('flotilla.unlinkChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.unlink(chats, ws, arg.chatId)));
+  register('flotilla.linkChat', withWs((ws) => chatUi.link(chats, ws)));
+  register('flotilla.installClaudeHooks', (arg?: Arg) => chatUi.installChatHooks(chats, isTarget(arg) ? ctx.repository.current.find((w) => w.key === arg.key) : undefined));
   register(
     'flotilla.clearAgentStatus',
     withWs(
@@ -100,7 +173,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.copyClaudeHookConfig', async () => {
     await vscode.env.clipboard.writeText(claudeHookConfig());
     void vscode.window.showInformationMessage(
-      'Claude Code hook config copied. Merge it into the "hooks" section of .claude/settings.json (project) or ~/.claude/settings.json (user).',
+      'Claude Code hook config copied. Merge it into the "hooks" section of .claude/settings.local.json in each worktree, or run Flotilla: Install Claude Code Hooks.',
     );
   });
 }
@@ -137,8 +210,15 @@ async function reportError(ctx: CommandContext, error: unknown): Promise<void> {
   if (choice) ctx.output.show();
 }
 
-async function pickWorkstream(ctx: CommandContext, node: Node | undefined, filter: PickFilter): Promise<Workstream | undefined> {
-  if (node?.type === 'workstream') return node.ws;
+async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter): Promise<Workstream | undefined> {
+  // From the Explorer: the worktree folder that was right-clicked.
+  if (arg instanceof vscode.Uri) {
+    const ws = ctx.repository.current.find((w) => w.worktree.path && samePath(w.worktree.path, arg.fsPath));
+    if (ws) return ws;
+  } else if (isTarget(arg)) {
+    const ws = ctx.repository.current.find((w) => w.key === arg.key);
+    if (ws) return ws;
+  }
   const now = new Date();
   const candidates = ctx.repository.current.filter(
     (ws) => (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain),
@@ -242,7 +322,12 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
   if (copied.length) ctx.output.appendLine(`Copied into ${dir}: ${copied.join(', ')}`);
   startSetupTerminal(dir, settings.setupCommand);
   await ctx.repository.refresh();
-  await ctx.view.reveal(created.adminDir);
+  ctx.sidebar.reveal(created.adminDir);
+  // Hooks follow the repository: once they are installed somewhere, new worktrees get them too.
+  if (ctx.repository.current.some((w) => w.hasHooks)) {
+    const fresh = ctx.repository.current.find((w) => w.key === created.adminDir);
+    if (fresh) await chatUi.installChatHooks(chatContext(ctx), fresh);
+  }
   void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
 }
 
@@ -302,21 +387,65 @@ async function compareWith(ctx: CommandContext, ws: Workstream): Promise<void> {
   );
   const base = await vscode.window.showQuickPick(options, { title: `Compare '${workstreamLabel(ws)}' with…` });
   if (!base) return;
-  ctx.view.setCompare(ws.key, { base, mode: 'mergeBase' });
-}
-
-function toggleCompareMode(ctx: CommandContext, node: Node | undefined, mode: Exclude<CompareMode, 'mergeBase'>): void {
-  if (node?.type !== 'compare') return;
-  ctx.view.setCompare(node.ws.key, { ...node.compare, mode: node.compare.mode === mode ? 'mergeBase' : mode });
-}
-
-async function openFile(ctx: CommandContext, node: Node | undefined): Promise<void> {
-  if (node?.type !== 'file' || !node.ws.worktree.path) return;
-  if (node.change.kind === 'deleted') {
-    void vscode.window.showInformationMessage(`${node.change.path} was deleted.`);
+  const modes: Array<vscode.QuickPickItem & { mode: CompareMode }> = [
+    { label: 'Since the branches diverged', description: 'merge-base', mode: 'mergeBase' },
+    { label: 'Including uncommitted changes', mode: 'uncommitted' },
+    { label: 'Two-dot', description: `${base}..HEAD`, mode: 'twoDot' },
+  ];
+  const mode = await vscode.window.showQuickPick(modes, { title: `Compare '${workstreamLabel(ws)}' with ${base}` });
+  if (!mode) return;
+  const result = await compareWithBase(dir, base, mode.mode);
+  if (!result.files.length) {
+    void vscode.window.showInformationMessage(`No differences between '${workstreamLabel(ws)}' and ${base}.`);
     return;
   }
-  await vscode.window.showTextDocument(toWorkspaceUri(ctx.reference, path.join(node.ws.worktree.path, node.change.path)));
+  await openChangesEditor(ctx.reference, dir, result.files, result.leftRef, result.rightRef, `${base} ↔ ${workstreamLabel(ws)}`);
+}
+
+const GROUP_REFS: Record<ChangeGroup, [string, string, string]> = {
+  staged: ['HEAD', INDEX, 'Staged Changes'],
+  unstaged: [INDEX, WORKING, 'Changes'],
+};
+
+async function openFileDiff(ctx: CommandContext, ws: Workstream, relPath: string, group: ChangeGroup): Promise<void> {
+  const change = ws[group].find((c) => c.path === relPath);
+  if (!change) return openFile(ctx, ws, relPath);
+  // Conflicted files have no single staged version; show them against HEAD.
+  const [left, right] = change.kind === 'conflicted' ? ['HEAD', WORKING] : GROUP_REFS[group];
+  await openChangeDiff(ctx.reference, ws.worktree.path!, change, left, right, `${workstreamLabel(ws)}: ${group === 'staged' ? 'staged' : 'working tree'}`);
+}
+
+async function openGroupChanges(ctx: CommandContext, ws: Workstream, group: ChangeGroup): Promise<void> {
+  const [left, right, title] = GROUP_REFS[group];
+  if (!ws[group].length) return;
+  await openChangesEditor(ctx.reference, ws.worktree.path!, ws[group], left, right, `${workstreamLabel(ws)}: ${title}`);
+}
+
+async function openFile(ctx: CommandContext, ws: Workstream, relPath: string | undefined): Promise<void> {
+  if (!relPath || !ws.worktree.path) return;
+  if (ws.unstaged.some((c) => c.path === relPath && c.kind === 'deleted')) {
+    void vscode.window.showInformationMessage(`${relPath} was deleted.`);
+    return;
+  }
+  await vscode.window.showTextDocument(toWorkspaceUri(ctx.reference, path.join(ws.worktree.path, relPath)), { preview: false });
+}
+
+/** Reveals a file or a worktree folder in the Explorer; it must be inside a workspace folder. */
+async function revealInExplorer(ctx: CommandContext, arg: Arg): Promise<void> {
+  const ws = await pickWorkstream(ctx, arg, {});
+  if (!ws?.worktree.path) return;
+  const target = isTarget(arg) && arg.path ? path.join(ws.worktree.path, arg.path) : ws.worktree.path;
+  const visible = (vscode.workspace.workspaceFolders ?? []).some((f) => samePath(f.uri.fsPath, target) || isInside(f.uri.fsPath, target));
+  if (!visible) {
+    const choice = await vscode.window.showInformationMessage(
+      `'${workstreamLabel(ws)}' is outside this window's folder, so the Explorer can't show it.`,
+      'Add to Workspace',
+    );
+    if (!choice) return;
+    addWorkspaceFolder(ctx.reference, ws.worktree.path, `⎇ ${workstreamLabel(ws)}`);
+    return;
+  }
+  await vscode.commands.executeCommand('revealInExplorer', toWorkspaceUri(ctx.reference, target));
 }
 
 async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<void> {
@@ -371,6 +500,7 @@ async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promis
     await ctx.repository.refresh();
     return;
   }
+  if (extraWorkspaceFolder(wt.path)) removeWorkspaceFolder(wt.path);
   await ctx.service.remove(wt, { force: plan.force });
   if (plan.deleteBranch && plan.branch) {
     try {

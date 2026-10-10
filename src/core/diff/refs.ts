@@ -5,6 +5,8 @@ import type { FileChange } from '../git/porcelain';
 export const WORKING = 'WORKING';
 /** Side has no content (added or deleted file). */
 export const EMPTY = 'EMPTY';
+/** Side is the staged version of the file. */
+export const INDEX = 'INDEX';
 
 export interface DiffSide {
   ref: string;
@@ -21,7 +23,7 @@ export function sideRefsFor(change: FileChange, leftRef: string, rightRef: strin
 export async function readFileAtRef(worktreeDir: string, ref: string, relPath: string): Promise<string> {
   if (ref === EMPTY) return '';
   try {
-    return await runGit(['show', `${ref}:${relPath}`], { cwd: worktreeDir });
+    return await runGit(['show', `${ref === INDEX ? '' : ref}:${relPath}`], { cwd: worktreeDir });
   } catch {
     return '';
   }

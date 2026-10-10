@@ -46,3 +46,4 @@ describe('removalToRun', () => {
     expect(removalToRun(undefined, root, root, now)).toEqual({ run: undefined, clear: false });
   });
 });
+

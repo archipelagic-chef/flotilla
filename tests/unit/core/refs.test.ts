@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { EMPTY, readFileAtRef, sideRefsFor, WORKING } from '../../../src/core/diff/refs';
-import { initRepo, removeDir } from '../../helpers/gitRepo';
+import { EMPTY, INDEX, readFileAtRef, sideRefsFor, WORKING } from '../../../src/core/diff/refs';
+import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -25,5 +25,14 @@ describe('readFileAtRef', () => {
     expect(await readFileAtRef(repo, 'HEAD', 'README.md')).toBe('hello\n');
     expect(await readFileAtRef(repo, EMPTY, 'README.md')).toBe('');
     expect(await readFileAtRef(repo, 'HEAD', 'missing.txt')).toBe('');
+  });
+
+  it('reads the staged version for INDEX', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    writeFile(repo, 'README.md', 'staged\n');
+    git(repo, 'add', 'README.md');
+    writeFile(repo, 'README.md', 'working\n');
+    expect(await readFileAtRef(repo, INDEX, 'README.md')).toBe('staged\n');
   });
 });

@@ -10,9 +10,16 @@ suite('Flotilla smoke test', () => {
 
   test('registers its commands', async () => {
     const commands = await vscode.commands.getCommands(true);
-    for (const id of ['flotilla.newWorkstream', 'flotilla.refresh', 'flotilla.quickSwitch', 'flotilla.remove', 'flotilla.compareWith']) {
+    const ids = ['flotilla.newWorkstream', 'flotilla.refresh', 'flotilla.quickSwitch', 'flotilla.remove', 'flotilla.compareWith'];
+    ids.push('flotilla.commit', 'flotilla.stage', 'flotilla.unstage', 'flotilla.sync', 'flotilla.publish', 'flotilla.addToWorkspace', 'flotilla.revealInExplorer');
+    ids.push('flotilla.newChat', 'flotilla.openChat', 'flotilla.installClaudeHooks', 'flotilla.showFiles', 'flotilla.showChats');
+    for (const id of ids) {
       assert.ok(commands.includes(id), `missing ${id}`);
     }
+  });
+
+  test('opens the sidebar on each tab', async () => {
+    for (const id of ['flotilla.showFiles', 'flotilla.showVersionControl', 'flotilla.showChats']) await vscode.commands.executeCommand(id);
   });
 
   test('refresh runs without error', async () => {

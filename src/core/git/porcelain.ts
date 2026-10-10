@@ -34,9 +34,44 @@ function kindFromXY(xy: string): ChangeKind {
   return 'modified';
 }
 
-export function parseStatusV2(out: string): { branch: StatusBranch; changes: FileChange[] } {
+/** Kind of one side (index or worktree) of a status entry; undefined when that side is unchanged ('.'). */
+function kindFromCode(code: string): ChangeKind | undefined {
+  switch (code) {
+    case '.':
+      return undefined;
+    case 'A':
+    case 'C':
+      return 'added';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    default:
+      return 'modified';
+  }
+}
+
+export interface StatusResult {
+  branch: StatusBranch;
+  /** One entry per path, combining index and worktree state. */
+  changes: FileChange[];
+  /** Changes in the index (HEAD ↔ index). */
+  staged: FileChange[];
+  /** Changes in the worktree (index ↔ files), including untracked and conflicted files. */
+  unstaged: FileChange[];
+}
+
+export function parseStatusV2(out: string): StatusResult {
   const branch: StatusBranch = { ahead: 0, behind: 0 };
   const changes: FileChange[] = [];
+  const staged: FileChange[] = [];
+  const unstaged: FileChange[] = [];
+  const addSides = (xy: string, p: string) => {
+    const x = kindFromCode(xy[0]);
+    const y = kindFromCode(xy[1]);
+    if (x) staged.push({ path: p, kind: x });
+    if (y) unstaged.push({ path: p, kind: y });
+  };
   const records = out.split('\0');
   for (let i = 0; i < records.length; i++) {
     const rec = records[i];
@@ -60,18 +95,25 @@ export function parseStatusV2(out: string): { branch: StatusBranch; changes: Fil
     if (type === '1') {
       const parts = splitN(rec, ' ', 9);
       changes.push({ path: parts[8], kind: kindFromXY(parts[1]) });
+      addSides(parts[1], parts[8]);
     } else if (type === '2') {
       const parts = splitN(rec, ' ', 10);
       const origPath = records[++i];
-      changes.push({ path: parts[9], origPath, kind: parts[8].startsWith('C') ? 'added' : 'renamed' });
+      const kind: ChangeKind = parts[8].startsWith('C') ? 'added' : 'renamed';
+      changes.push({ path: parts[9], origPath, kind });
+      staged.push({ path: parts[9], origPath, kind });
+      const y = kindFromCode(parts[1][1]);
+      if (y) unstaged.push({ path: parts[9], kind: y });
     } else if (type === 'u') {
       const parts = splitN(rec, ' ', 11);
       changes.push({ path: parts[10], kind: 'conflicted' });
+      unstaged.push({ path: parts[10], kind: 'conflicted' });
     } else if (type === '?') {
       changes.push({ path: rec.slice(2), kind: 'untracked' });
+      unstaged.push({ path: rec.slice(2), kind: 'untracked' });
     }
   }
-  return { branch, changes };
+  return { branch, changes, staged, unstaged };
 }
 
 export function parseNameStatus(out: string): FileChange[] {

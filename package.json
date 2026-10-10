@@ -32,23 +32,12 @@
     "views": {
       "flotilla": [
         {
-          "id": "flotilla.workstreams",
-          "name": "Workstreams"
+          "type": "webview",
+          "id": "flotilla.sidebar",
+          "name": "Flotilla"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "flotilla.workstreams",
-        "contents": "Flotilla needs git 2.17 or newer in this environment.\n[Download git](https://git-scm.com/downloads)",
-        "when": "flotilla.state == gitMissing"
-      },
-      {
-        "view": "flotilla.workstreams",
-        "contents": "Open a folder inside a git repository to manage workstreams.",
-        "when": "flotilla.state == noRepo"
-      }
-    ],
     "commands": [
       {
         "command": "flotilla.refresh",
@@ -117,24 +106,6 @@
         "icon": "$(git-compare)"
       },
       {
-        "command": "flotilla.compareToggleTwoDot",
-        "title": "Toggle Two-Dot Compare",
-        "category": "Flotilla",
-        "icon": "$(arrow-both)"
-      },
-      {
-        "command": "flotilla.compareToggleUncommitted",
-        "title": "Toggle Include Uncommitted",
-        "category": "Flotilla",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "flotilla.compareDismiss",
-        "title": "Dismiss Compare",
-        "category": "Flotilla",
-        "icon": "$(close)"
-      },
-      {
         "command": "flotilla.openFileDiff",
         "title": "Open Diff",
         "category": "Flotilla"
@@ -153,6 +124,195 @@
       {
         "command": "flotilla.copyClaudeHookConfig",
         "title": "Copy Claude Code Hook Config",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.commit",
+        "title": "Commit…",
+        "category": "Flotilla",
+        "icon": "$(check)"
+      },
+      {
+        "command": "flotilla.stage",
+        "title": "Stage Changes",
+        "category": "Flotilla",
+        "icon": "$(add)"
+      },
+      {
+        "command": "flotilla.unstage",
+        "title": "Unstage Changes",
+        "category": "Flotilla",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "flotilla.discard",
+        "title": "Discard Changes",
+        "category": "Flotilla",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "flotilla.stageAll",
+        "title": "Stage All Changes",
+        "category": "Flotilla",
+        "icon": "$(add)"
+      },
+      {
+        "command": "flotilla.unstageAll",
+        "title": "Unstage All Changes",
+        "category": "Flotilla",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "flotilla.discardAll",
+        "title": "Discard All Changes",
+        "category": "Flotilla",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "flotilla.publish",
+        "title": "Publish Branch",
+        "category": "Flotilla",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "flotilla.sync",
+        "title": "Sync Changes",
+        "category": "Flotilla",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "flotilla.push",
+        "title": "Push",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.pull",
+        "title": "Pull",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.fetch",
+        "title": "Fetch",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.addToWorkspace",
+        "title": "Add to Workspace",
+        "category": "Flotilla",
+        "icon": "$(root-folder-opened)"
+      },
+      {
+        "command": "flotilla.removeFromWorkspace",
+        "title": "Remove from Workspace",
+        "category": "Flotilla",
+        "icon": "$(root-folder)"
+      },
+      {
+        "command": "flotilla.revealInExplorer",
+        "title": "Reveal in Explorer View",
+        "category": "Flotilla",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "flotilla.openChanges",
+        "title": "Open Changes",
+        "category": "Flotilla",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "flotilla.newChat",
+        "title": "New Chat",
+        "category": "Flotilla",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "flotilla.openChat",
+        "title": "Open Chat",
+        "category": "Flotilla",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "flotilla.unlinkChat",
+        "title": "Unlink Chat from Worktree",
+        "category": "Flotilla",
+        "icon": "$(close)"
+      },
+      {
+        "command": "flotilla.linkChat",
+        "title": "Link a Chat to This Worktree…",
+        "category": "Flotilla",
+        "icon": "$(link)"
+      },
+      {
+        "command": "flotilla.installClaudeHooks",
+        "title": "Install Claude Code Hooks",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showFiles",
+        "title": "Show Files",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showVersionControl",
+        "title": "Show Version Control",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showChats",
+        "title": "Show Chats",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.newFile",
+        "title": "New File…",
+        "category": "Flotilla",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "flotilla.newFolder",
+        "title": "New Folder…",
+        "category": "Flotilla",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "flotilla.renameFile",
+        "title": "Rename…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.deleteFile",
+        "title": "Delete",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.copyFile",
+        "title": "Copy",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.cutFile",
+        "title": "Cut",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.pasteFile",
+        "title": "Paste",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openToSide",
+        "title": "Open to the Side",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.revealFileInOS",
+        "title": "Reveal in File Explorer",
         "category": "Flotilla"
       }
     ],
@@ -215,118 +375,524 @@
           "when": "flotilla.state == ready"
         },
         {
-          "command": "flotilla.compareToggleTwoDot",
-          "when": "false"
-        },
-        {
-          "command": "flotilla.compareToggleUncommitted",
-          "when": "false"
-        },
-        {
-          "command": "flotilla.compareDismiss",
-          "when": "false"
-        },
-        {
           "command": "flotilla.openFileDiff",
           "when": "false"
         },
         {
           "command": "flotilla.openFile",
           "when": "false"
+        },
+        {
+          "command": "flotilla.commit",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.stageAll",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.unstageAll",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.discardAll",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.publish",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.sync",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.push",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.pull",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.fetch",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.addToWorkspace",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.removeFromWorkspace",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.stage",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.unstage",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.discard",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.newChat",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.linkChat",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.installClaudeHooks",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.openChanges",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.openChat",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.unlinkChat",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.showFiles",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.showVersionControl",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.showChats",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.newFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.newFolder",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.renameFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.deleteFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.copyFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.cutFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.pasteFile",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.openToSide",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.revealFileInOS",
+          "when": "false"
         }
       ],
       "view/title": [
         {
           "command": "flotilla.newWorkstream",
-          "when": "view == flotilla.workstreams && flotilla.state == ready",
+          "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "navigation@1"
         },
         {
           "command": "flotilla.refresh",
-          "when": "view == flotilla.workstreams && flotilla.state == ready",
+          "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "navigation@2"
         },
         {
           "command": "flotilla.copyClaudeHookConfig",
-          "when": "view == flotilla.workstreams && flotilla.state == ready",
+          "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "1_agents@1"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "flotilla.remove",
-          "when": "view == flotilla.workstreams && viewItem =~ /;linked;/",
-          "group": "inline@3"
         },
         {
+          "command": "flotilla.installClaudeHooks",
+          "when": "view == flotilla.sidebar && flotilla.state == ready",
+          "group": "1_agents@0"
+        }
+      ],
+      "explorer/context": [
+        {
+          "submenu": "flotilla.explorer",
+          "when": "explorerResourceIsFolder && resourcePath in flotilla.worktreeFolders",
+          "group": "7_flotilla@1"
+        }
+      ],
+      "flotilla.explorer": [
+        {
           "command": "flotilla.openInNewWindow",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "1_open@1"
         },
         {
           "command": "flotilla.switchHere",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "1_open@2"
         },
         {
+          "command": "flotilla.addToWorkspace",
+          "when": "!(resourcePath in flotilla.workspaceWorktrees)",
+          "group": "2_workspace@1"
+        },
+        {
+          "command": "flotilla.removeFromWorkspace",
+          "when": "resourcePath in flotilla.workspaceWorktrees",
+          "group": "2_workspace@1"
+        },
+        {
+          "command": "flotilla.commit",
+          "group": "3_scm@1"
+        },
+        {
+          "command": "flotilla.sync",
+          "group": "3_scm@2"
+        },
+        {
           "command": "flotilla.compareWith",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
-          "group": "2_compare@1"
+          "group": "4_compare@1"
         },
         {
           "command": "flotilla.openTerminal",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
-          "group": "3_tools@1"
-        },
-        {
-          "command": "flotilla.copyPath",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
-          "group": "3_tools@2"
-        },
-        {
-          "command": "flotilla.revealInOS",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/ && !remoteName",
-          "group": "3_tools@3"
-        },
-        {
-          "command": "flotilla.runSetupHere",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;.*;linked;/",
-          "group": "4_setup@1"
-        },
-        {
-          "command": "flotilla.adopt",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;.*;linked;notPortable;/",
-          "group": "4_setup@2"
-        },
-        {
-          "command": "flotilla.clearAgentStatus",
-          "when": "view == flotilla.workstreams && viewItem =~ /;hasAgent;/",
-          "group": "5_agent@1"
+          "group": "5_tools@1"
         },
         {
           "command": "flotilla.remove",
-          "when": "view == flotilla.workstreams && viewItem =~ /;linked;/",
+          "group": "9_remove@1"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "flotilla.openInNewWindow",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;notCurrent;/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "flotilla.switchHere",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;notCurrent;/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "flotilla.addToWorkspace",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;notCurrent;linked;.*;notInWorkspace;/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "flotilla.removeFromWorkspace",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;inWorkspace;/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "1_open@4"
+        },
+        {
+          "command": "flotilla.newChat",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "2_chat@1"
+        },
+        {
+          "command": "flotilla.linkChat",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "2_chat@2"
+        },
+        {
+          "command": "flotilla.commit",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "3_scm@1"
+        },
+        {
+          "command": "flotilla.publish",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;publishable;/",
+          "group": "3_scm@2"
+        },
+        {
+          "command": "flotilla.sync",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;tracking;/",
+          "group": "3_scm@3"
+        },
+        {
+          "command": "flotilla.pull",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;tracking;/",
+          "group": "3_scm@4"
+        },
+        {
+          "command": "flotilla.push",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;tracking;/",
+          "group": "3_scm@5"
+        },
+        {
+          "command": "flotilla.fetch",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "3_scm@6"
+        },
+        {
+          "command": "flotilla.compareWith",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "4_compare@1"
+        },
+        {
+          "command": "flotilla.openTerminal",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "5_tools@1"
+        },
+        {
+          "command": "flotilla.copyPath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "5_tools@2"
+        },
+        {
+          "command": "flotilla.revealInOS",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/ && !remoteName",
+          "group": "5_tools@3"
+        },
+        {
+          "command": "flotilla.runSetupHere",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;.*;linked;/",
+          "group": "6_setup@1"
+        },
+        {
+          "command": "flotilla.adopt",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;.*;linked;notPortable;/",
+          "group": "6_setup@2"
+        },
+        {
+          "command": "flotilla.installClaudeHooks",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;/",
+          "group": "6_setup@3"
+        },
+        {
+          "command": "flotilla.clearAgentStatus",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;hasAgent;/",
+          "group": "7_agent@1"
+        },
+        {
+          "command": "flotilla.remove",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;linked;/",
           "group": "9_remove@1"
         },
         {
-          "command": "flotilla.compareToggleTwoDot",
-          "when": "view == flotilla.workstreams && viewItem == compare",
-          "group": "inline@1"
+          "command": "flotilla.openChanges",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'changeGroup'",
+          "group": "1_open@1"
         },
         {
-          "command": "flotilla.compareToggleUncommitted",
-          "when": "view == flotilla.workstreams && viewItem == compare",
-          "group": "inline@2"
+          "command": "flotilla.stageAll",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'changeGroup' && group == 'unstaged'",
+          "group": "2_scm@1"
         },
         {
-          "command": "flotilla.compareDismiss",
-          "when": "view == flotilla.workstreams && viewItem == compare",
-          "group": "inline@3"
+          "command": "flotilla.discardAll",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'changeGroup' && group == 'unstaged'",
+          "group": "2_scm@2"
+        },
+        {
+          "command": "flotilla.unstageAll",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'changeGroup' && group == 'staged'",
+          "group": "2_scm@1"
+        },
+        {
+          "command": "flotilla.openFileDiff",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change'",
+          "group": "1_open@1"
         },
         {
           "command": "flotilla.openFile",
-          "when": "view == flotilla.workstreams && viewItem == file",
-          "group": "inline@1"
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change'",
+          "group": "1_open@3"
+        },
+        {
+          "command": "flotilla.stage",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change' && group == 'unstaged'",
+          "group": "2_scm@1"
+        },
+        {
+          "command": "flotilla.discard",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change' && discardable",
+          "group": "2_scm@2"
+        },
+        {
+          "command": "flotilla.unstage",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change' && group == 'staged'",
+          "group": "2_scm@1"
+        },
+        {
+          "command": "flotilla.openChat",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'chat'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "flotilla.unlinkChat",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'chat'",
+          "group": "2_link@1"
+        },
+        {
+          "command": "flotilla.openFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "flotilla.openToSide",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "flotilla.newFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "2_new@1"
+        },
+        {
+          "command": "flotilla.newFolder",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "2_new@2"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "flotilla.revealFileInOS",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file' && !remoteName",
+          "group": "3_reveal@2"
+        },
+        {
+          "command": "flotilla.cutFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "5_cutcopypaste@1"
+        },
+        {
+          "command": "flotilla.copyFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "5_cutcopypaste@2"
+        },
+        {
+          "command": "flotilla.pasteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file' && flotilla.canPaste",
+          "group": "5_cutcopypaste@3"
+        },
+        {
+          "command": "flotilla.copyPath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "flotilla.copyRelativePath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "flotilla.renameFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "flotilla.deleteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'file'",
+          "group": "7_modification@2"
+        },
+        {
+          "command": "flotilla.newFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "2_new@1"
+        },
+        {
+          "command": "flotilla.newFolder",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "2_new@2"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "flotilla.revealFileInOS",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder' && !remoteName",
+          "group": "3_reveal@2"
+        },
+        {
+          "command": "flotilla.cutFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "5_cutcopypaste@1"
+        },
+        {
+          "command": "flotilla.copyFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "5_cutcopypaste@2"
+        },
+        {
+          "command": "flotilla.pasteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder' && flotilla.canPaste",
+          "group": "5_cutcopypaste@3"
+        },
+        {
+          "command": "flotilla.copyPath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "flotilla.copyRelativePath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "flotilla.renameFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "flotilla.deleteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'folder'",
+          "group": "7_modification@2"
+        },
+        {
+          "command": "flotilla.newFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTab == 'files' && flotillaWs =~ /;reachable;/",
+          "group": "0_files@1"
+        },
+        {
+          "command": "flotilla.newFolder",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTab == 'files' && flotillaWs =~ /;reachable;/",
+          "group": "0_files@2"
+        },
+        {
+          "command": "flotilla.pasteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTab == 'files' && flotilla.canPaste",
+          "group": "0_files@3"
         }
       ]
     },
@@ -384,14 +950,25 @@
           "default": 15,
           "minimum": 5,
           "description": "How often to refresh while the Workstreams view is visible."
+        },
+        "flotilla.tagChatTitles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the worktree in Claude Code's own session list: chats linked to a worktree are renamed to \"<branch>: <title>\" once Claude Code has titled them. A title you set yourself is never replaced."
         }
       }
-    }
+    },
+    "submenus": [
+      {
+        "id": "flotilla.explorer",
+        "label": "Flotilla"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "vitest run",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "vsce package",
@@ -400,6 +977,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.5",
+    "@types/picomatch": "4.0.3",
     "@types/vscode": "^1.95.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
@@ -409,6 +987,9 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
+    "@vscode/codicons": "0.0.45",
+    "picomatch": "4.0.7",
+    "preact": "10.29.8",
     "tinyglobby": "^0.2.17"
   }
 }

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { ensureExcludeLine } from '../../core/git/exclude';
 
 export const WORKTREES_DIR = '.worktrees';
 const EXCLUDE_LINE = '/.worktrees/';
@@ -35,20 +36,8 @@ export async function existingNames(mainRoot: string): Promise<Set<string>> {
   }
 }
 
-export async function ensureExcluded(commonDir: string): Promise<boolean> {
-  const file = path.join(commonDir, 'info', 'exclude');
-  let content = '';
-  try {
-    content = await fs.readFile(file, 'utf8');
-  } catch {
-    // no exclude file yet
-  }
-  const lines = content.split(/\r?\n/).map((l) => l.trim());
-  if (lines.some((l) => EXCLUDE_VARIANTS.includes(l))) return false;
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const prefix = content === '' || content.endsWith('\n') ? '' : '\n';
-  await fs.appendFile(file, `${prefix}${EXCLUDE_LINE}\n`);
-  return true;
+export function ensureExcluded(commonDir: string): Promise<boolean> {
+  return ensureExcludeLine(commonDir, EXCLUDE_LINE, EXCLUDE_VARIANTS);
 }
 
 export function branchNameProblem(name: string, existing: readonly string[]): string | undefined {
