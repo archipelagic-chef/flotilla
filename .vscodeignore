@@ -1,6 +1,9 @@
 **
-!dist/**
+!dist/*.js
+!dist/*.css
+!dist/codicons/**
 !media/**
 !package.json
 !README.md
+!CHANGELOG.md
 !LICENSE

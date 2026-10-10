@@ -1,10 +1,33 @@
 {
   "name": "flotilla",
   "displayName": "Flotilla",
-  "description": "Run parallel workstreams in git worktrees, across host and devcontainer.",
-  "version": "0.0.1",
+  "description": "Files, search, version control and Claude Code chats for every git worktree, in one window, on the host and in devcontainers.",
+  "icon": "media/icon.png",
+  "preview": true,
+  "version": "0.1.0",
   "publisher": "archipelagic",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/archipelagic-chef/flotilla.git"
+  },
+  "bugs": {
+    "url": "https://github.com/archipelagic-chef/flotilla/issues"
+  },
+  "homepage": "https://github.com/archipelagic-chef/flotilla#readme",
+  "keywords": [
+    "git",
+    "worktree",
+    "worktrees",
+    "devcontainer",
+    "claude",
+    "agents",
+    "source control"
+  ],
+  "galleryBanner": {
+    "color": "#1e2a3a",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.95.0"
   },
