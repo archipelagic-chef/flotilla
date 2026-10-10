@@ -5,7 +5,8 @@ const LOWER_KEY = /(?:^|\/)([a-z][a-z0-9]{1,9}-\d+)(?=$|[-_/.])/;
 /** Issue numbers at the start of a segment: "123-fix-login", "feature/42_typo". */
 const ISSUE_NUMBER = /(?:^|\/)#?(\d{1,7})(?=$|[-_/.])/;
 
-const MAX_FALLBACK = 18;
+/** Tabs stay narrow: about as wide as a ticket id like "AB-12345". */
+const MAX_FALLBACK = 8;
 
 /**
  * A short tab label for a branch: its ticket id (Jira key or issue number) when it has one, else the last part of
@@ -22,6 +23,8 @@ export function tabLabel(branch: string, pattern?: string): string {
       // invalid pattern: fall back to the built-in rules
     }
   }
+  const detached = /^detached @ (\w+)$/.exec(branch);
+  if (detached) return `@${detached[1].slice(0, 7)}`;
   const upper = UPPER_KEY.exec(branch);
   if (upper) return upper[1];
   const lower = LOWER_KEY.exec(branch);

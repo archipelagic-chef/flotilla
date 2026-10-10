@@ -8,7 +8,7 @@ import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
-import { VcBody } from './vc';
+import { CommitCard, VcBody, type Log } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -21,10 +21,12 @@ export interface Persisted {
   drafts: Record<string, string>;
   /** Workstream keys whose chat history is open. */
   history: string[];
+  /** Workstream keys whose commit history is open in Version Control. */
+  commitsOpen: string[];
   search: SearchState;
 }
 
-const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], search: INITIAL_SEARCH };
+const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], commitsOpen: [], search: INITIAL_SEARCH };
 
 export type Update = (change: (p: Persisted) => Persisted) => void;
 
@@ -96,6 +98,7 @@ export function App() {
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
   const [searchRefresh, setSearchRefresh] = useState(0);
+  const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
   const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
@@ -121,6 +124,12 @@ export function App() {
     if (requested.current.has(k)) return;
     requested.current.add(k);
     send({ type: 'listDir', key, path });
+  }, []);
+
+  /** Reads a page of a worktree's history; the list shown stays until it arrives. */
+  const requestLog = useCallback((key: string, skip: number) => {
+    setLogs((prev) => new Map(prev).set(key, { ...(prev.get(key) ?? { commits: [], more: false }), loading: true }));
+    send({ type: 'log', key, skip });
   }, []);
 
   const onMessage = useCallback(
@@ -156,6 +165,15 @@ export function App() {
           return;
         case 'replaced':
           setSearchRefresh((n) => n + 1);
+          return;
+        case 'log':
+          setLogs((prev) => {
+            const old = prev.get(m.key);
+            // A later page of a history that has moved on since (a commit, a pull) is dropped; page one follows.
+            if (m.skip > 0 && old?.head !== m.head) return prev;
+            const commits = m.skip > 0 ? [...(old?.commits ?? []).slice(0, m.skip), ...m.commits] : m.commits;
+            return new Map(prev).set(m.key, { head: m.head, commits, more: m.more, loading: false, error: m.error });
+          });
           return;
         case 'committed':
           update((prev) => {
@@ -236,6 +254,12 @@ export function App() {
 
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
+  // The arrows step through All and the open tabs, in their order.
+  const tabKeys = [ALL, ...workstreams.filter((ws) => !closed.has(ws.key)).map((ws) => ws.key)];
+  const at = tabKeys.indexOf(active);
+  const prevTab = at > 0 ? tabKeys[at - 1] : undefined;
+  const nextTab = at >= 0 && at < tabKeys.length - 1 ? tabKeys[at + 1] : undefined;
+
   const { tool } = persisted;
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
@@ -267,7 +291,16 @@ export function App() {
   const body = (ws: WorkstreamView) => (
     <>
       {tool === 'files' && <FilesBody ws={ws} files={files} expanded={persisted.expanded[ws.key] ?? []} update={update} />}
-      {tool === 'vc' && <VcBody ws={ws} draft={persisted.drafts[ws.key] ?? ''} update={update} />}
+      {tool === 'vc' && (
+        <VcBody
+          ws={ws}
+          draft={persisted.drafts[ws.key] ?? ''}
+          update={update}
+          commitsOpen={persisted.commitsOpen.includes(ws.key)}
+          log={logs.get(ws.key)}
+          requestLog={requestLog}
+        />
+      )}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );
@@ -341,7 +374,10 @@ export function App() {
           <i class="codicon codicon-layers" />
           <span class="nm">All</span>
         </button>
-        {/* Only the worktree tabs scroll; All and + stay in place. */}
+        <button class="wt-nav" aria-label="Previous Worktree Tab" disabled={!prevTab} onClick={() => prevTab && setActive(prevTab)}>
+          <i class="codicon codicon-chevron-left" />
+        </button>
+        {/* Only the worktree tabs scroll; All, the arrows and + stay in place. */}
         <div
           class="wt-scroll"
           onWheel={(e) => {
@@ -387,7 +423,6 @@ export function App() {
                     }
                   }}
                 >
-                  <span class="swatch" />
                   <span class="nm">{ws.label}</span>
                   {dot && <span class={`dot ${dot}`} />}
                   {open > 0 && <span class="n">{open}</span>}
@@ -406,6 +441,9 @@ export function App() {
               );
             })}
         </div>
+        <button class="wt-nav" aria-label="Next Worktree Tab" disabled={!nextTab} onClick={() => nextTab && setActive(nextTab)}>
+          <i class="codicon codicon-chevron-right" />
+        </button>
         <button class="wt-add" aria-label="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
           <i class="codicon codicon-add" />
         </button>
@@ -440,6 +478,10 @@ export function App() {
       </div>
       <Hover
         render={(el) => {
+          if (el.dataset.tipCommit) {
+            const commit = logs.get(el.dataset.tipKey ?? '')?.commits.find((c) => c.hash === el.dataset.tipCommit);
+            return commit && <CommitCard commit={commit} />;
+          }
           const ws = el.dataset.tipWs ? workstreams.find((w) => w.key === el.dataset.tipWs) : undefined;
           return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
         }}

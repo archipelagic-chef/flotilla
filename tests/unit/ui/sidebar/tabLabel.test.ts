@@ -12,14 +12,14 @@ describe('tabLabel', () => {
     ['feature/42_typo', '#42'],
     ['main', 'main'],
     ['feature/login', 'login'],
-    ['refactor/api-client', 'api-client'],
-    ['feature/a-really-long-branch-name-here', 'a-really-long-bra…'],
-    ['detached @ abc1234', 'detached @ abc1234'],
+    ['refactor/api-client', 'api-cli…'],
+    ['feature/a-really-long-branch-name-here', 'a-reall…'],
+    ['detached @ abc1234', '@abc1234'],
   ])('%s -> %s', (branch, expected) => expect(tabLabel(branch)).toBe(expected));
 
   it('does not take version-like or mid-word numbers for ids', () => {
-    expect(tabLabel('release/v2-cleanup')).toBe('v2-cleanup');
-    expect(tabLabel('feature/oauth2-login')).toBe('oauth2-login');
+    expect(tabLabel('release/v2-cleanup')).toBe('v2-clea…');
+    expect(tabLabel('feature/oauth2-login')).toBe('oauth2-…');
   });
 
   it('uses a custom pattern first, then falls back', () => {

@@ -27,6 +27,8 @@ export interface SyncState {
   behind: number;
   /** The repository has at least one remote, so an unpublished branch can be published. */
   hasRemote: boolean;
+  /** The commit checked out (undefined before the first commit). */
+  head?: string;
 }
 
 export interface Workstream {
@@ -141,7 +143,7 @@ async function buildOne(wt: ResolvedWorktree, base: string | undefined, hasRemot
     changes,
     staged,
     unstaged,
-    sync: { upstream: branch.upstream, ahead: branch.ahead, behind: branch.behind, hasRemote },
+    sync: { upstream: branch.upstream, ahead: branch.ahead, behind: branch.behind, hasRemote, head: branch.oid },
     chats,
     hasHooks,
     agent,
@@ -179,5 +181,5 @@ export async function readStatus(dir: string): Promise<ReturnType<typeof parseSt
 export async function withFreshStatus(ws: Workstream): Promise<Workstream> {
   if (!ws.worktree.path) return ws;
   const { changes, staged, unstaged, branch } = await readStatus(ws.worktree.path);
-  return { ...ws, changes, staged, unstaged, sync: { ...ws.sync, upstream: branch.upstream, ahead: branch.ahead, behind: branch.behind } };
+  return { ...ws, changes, staged, unstaged, sync: { ...ws.sync, upstream: branch.upstream, ahead: branch.ahead, behind: branch.behind, head: branch.oid } };
 }

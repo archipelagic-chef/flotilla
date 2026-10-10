@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { ChangeGroup, FileChangeView, WorkstreamView } from '../protocol';
+import type { ChangeGroup, CommitView, FileChangeView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
@@ -8,6 +8,16 @@ interface Props {
   ws: WorkstreamView;
   draft: string;
   update: Update;
+}
+
+/** A worktree's history as far as it's been read. */
+export interface Log {
+  /** The commit it was read from; a new HEAD means it's read again. */
+  head?: string;
+  commits: CommitView[];
+  more: boolean;
+  loading?: boolean;
+  error?: string;
 }
 
 type CommitAction = { amend?: boolean; then?: 'push' | 'sync' };
@@ -124,7 +134,13 @@ function CommitBox({ ws, draft, update }: Props) {
   );
 }
 
-export function VcBody({ ws, draft, update }: Props) {
+interface BodyProps extends Props {
+  commitsOpen: boolean;
+  log: Log | undefined;
+  requestLog(key: string, skip: number): void;
+}
+
+export function VcBody({ ws, draft, update, commitsOpen, log, requestLog }: BodyProps) {
   const total = ws.staged.length + ws.unstaged.length;
   const target = { key: ws.key };
   return (
@@ -140,6 +156,15 @@ export function VcBody({ ws, draft, update }: Props) {
           </button>
         </div>
       )}
+      <History
+        ws={ws}
+        open={commitsOpen}
+        log={log}
+        requestLog={requestLog}
+        onToggle={() =>
+          update((p) => ({ ...p, commitsOpen: commitsOpen ? p.commitsOpen.filter((k) => k !== ws.key) : [...p.commitsOpen, ws.key] }))
+        }
+      />
     </div>
   );
 }
@@ -223,6 +248,150 @@ function ChangeRow({ ws, group, change }: { ws: WorkstreamView; group: ChangeGro
         )}
       </span>
       <span class={`letter k-${change.kind}`}>{CHANGE_LETTER[change.kind]}</span>
+    </div>
+  );
+}
+
+/** "3 min ago", "2 days ago", like VS Code's timeline. */
+export function ago(iso: string, now = Date.now()): string {
+  const s = Math.max(0, (now - Date.parse(iso)) / 1000);
+  const steps: [number, string][] = [
+    [60, 'sec'],
+    [60, 'min'],
+    [24, 'hr'],
+    [7, 'day'],
+    [4.35, 'wk'],
+    [12, 'mo'],
+    [Infinity, 'yr'],
+  ];
+  let v = s;
+  for (const [size, unit] of steps) {
+    if (v < size) {
+      const n = Math.floor(v);
+      return unit === 'sec' ? 'now' : `${n} ${unit}${n === 1 || unit === 'min' || unit === 'sec' ? '' : 's'} ago`;
+    }
+    v /= size;
+  }
+  return '';
+}
+
+/**
+ * The worktree's commits, newest first, in a lane under the changes; collapsed until opened. It reads them when
+ * opened and again when HEAD or the upstream moves; "Load more" reads older ones.
+ */
+function History({ ws, open, log, requestLog, onToggle }: { ws: WorkstreamView; open: boolean; log: Log | undefined; requestLog(key: string, skip: number): void; onToggle(): void }) {
+  const stamp = `${ws.sync.head}|${ws.sync.ahead}|${ws.sync.behind}`;
+  useEffect(() => {
+    if (open) requestLog(ws.key, 0);
+  }, [open, stamp, ws.key, requestLog]);
+  const commits = log?.commits ?? [];
+  const outgoing = commits.filter((c) => c.outgoing).length;
+  return (
+    <div class={`group history${open ? '' : ' collapsed'}`}>
+      <div class="row group-head toggle-head" role="button" tabIndex={0} aria-expanded={open} onClick={onToggle} onKeyDown={(e) => e.key === 'Enter' && onToggle()}>
+        <i class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
+        <span class="name">Commits</span>
+        {open && (
+          <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+            <button class="icon" aria-label="Refresh" onClick={() => requestLog(ws.key, 0)}>
+              <i class="codicon codicon-refresh" />
+            </button>
+          </span>
+        )}
+        {outgoing > 0 && (
+          <span class="badge outgoing" data-tip={`${outgoing} commit${outgoing === 1 ? '' : 's'} not pushed yet`}>
+            {outgoing}↑
+          </span>
+        )}
+      </div>
+      {open && (
+        <>
+          {log?.error && <div class="row group-empty error">{log.error}</div>}
+          {!log?.error && !commits.length && <div class="row group-empty">{log?.loading || !log ? 'Loading…' : 'No commits yet'}</div>}
+          {commits.map((c) => (
+            <CommitRow key={c.hash} ws={ws} commit={c} />
+          ))}
+          {log?.more && (
+            <div class="row group-empty">
+              <button class="link" disabled={log.loading} onClick={() => requestLog(ws.key, commits.length)}>
+                {log.loading ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CommitRow({ ws, commit }: { ws: WorkstreamView; commit: CommitView }) {
+  const openIt = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash });
+  const icon = commit.parents.length > 1 ? 'git-merge' : 'git-commit';
+  return (
+    <div
+      class={`row log-row${commit.outgoing ? ' outgoing' : ''}`}
+      role="button"
+      tabIndex={0}
+      data-tip-commit={commit.hash}
+      data-tip-key={ws.key}
+      onClick={openIt}
+      onKeyDown={(e) => e.key === 'Enter' && openIt()}
+    >
+      <i class={`codicon codicon-${icon}`} />
+      <span class="name">{commit.subject}</span>
+      {/* The worktree's own branch goes without saying here; the hover lists every ref. */}
+      {commit.refs
+        .filter((r) => r !== ws.branch)
+        .slice(0, 2)
+        .map((r) => (
+          <span key={r} class={`ref${r.startsWith('tag: ') ? ' tag-ref' : r.includes('/') ? ' remote' : ''}`}>
+            {r.replace(/^tag: /, '')}
+          </span>
+        ))}
+      <span class="desc">{commit.author}</span>
+      <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+        <button class="icon" aria-label="Copy Commit Hash" onClick={() => send({ type: 'copy', text: commit.hash })}>
+          <i class="codicon codicon-copy" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** The hover of a commit: its whole message, author, date, hash and refs. */
+export function CommitCard({ commit }: { commit: CommitView }) {
+  const date = new Date(commit.date);
+  return (
+    <div class="hover-commit">
+      <div class="hover-body">
+        <div class="hover-row">
+          <i class="codicon codicon-account" />
+          <strong>{commit.author}</strong>
+          <span class="muted">
+            {ago(commit.date)} ({date.toLocaleString()})
+          </span>
+        </div>
+        <div class="hover-title">
+          <strong>{commit.subject}</strong>
+        </div>
+        {commit.body && <div class="hover-message">{commit.body}</div>}
+        {commit.refs.length > 0 && (
+          <div class="hover-row">
+            {commit.refs.map((r) => (
+              <span key={r} class={`ref${r.startsWith('tag: ') ? ' tag-ref' : r.includes('/') ? ' remote' : ''}`}>
+                {r.replace(/^tag: /, '')}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div class="hover-status">
+        <span>
+          <i class="codicon codicon-git-commit" /> {commit.short}
+          {commit.outgoing ? ' · not pushed yet' : ''}
+        </span>
+        <span>Click to see its changes</span>
+      </div>
     </div>
   );
 }

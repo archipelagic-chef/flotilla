@@ -35,7 +35,7 @@ describe('buildWorkstreams', () => {
     expect(aItem.changes).toEqual([{ path: 'new.txt', kind: 'untracked' }]);
     expect(aItem.unstaged).toEqual([{ path: 'new.txt', kind: 'untracked' }]);
     expect(aItem.staged).toEqual([]);
-    expect(aItem.sync).toEqual({ upstream: undefined, ahead: 0, behind: 0, hasRemote: false });
+    expect(aItem.sync).toEqual({ upstream: undefined, ahead: 0, behind: 0, hasRemote: false, head: expect.stringMatching(/^[0-9a-f]{40}$/) });
     expect(aItem.attention).toBe('active');
     expect(aItem.progress).toMatchObject({ base: 'main', ahead: 0, behind: 0 });
     const main = items.find((i) => i.worktree.isMain)!;
@@ -80,7 +80,7 @@ describe('buildWorkstreams', () => {
     const items = await buildWorkstreams(service, options(repo));
     const main = items.find((i) => i.worktree.isMain)!;
     expect(main.staged).toEqual([{ path: 'next.txt', kind: 'added' }]);
-    expect(main.sync).toEqual({ upstream: 'origin/main', ahead: 1, behind: 0, hasRemote: true });
+    expect(main.sync).toEqual({ upstream: 'origin/main', ahead: 1, behind: 0, hasRemote: true, head: expect.stringMatching(/^[0-9a-f]{40}$/) });
     const aItem = items.find((i) => i.key === a.adminDir)!;
     expect(aItem.sync).toMatchObject({ upstream: undefined, hasRemote: true });
   });

@@ -59,7 +59,7 @@ export interface WorkstreamView {
   agentMessage?: string;
   staged: FileChangeView[];
   unstaged: FileChangeView[];
-  sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number };
+  sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
   /** `;`-separated tokens for context-menu when-clauses, as in `webviewWorkstream =~ /;linked;/`. */
@@ -82,6 +82,23 @@ export interface DirEntry {
   dir: boolean;
   /** Ignored by git (.gitignore, info/exclude, core.excludesFile); shown greyed out, like in the Explorer. */
   ignored?: boolean;
+}
+
+/** A commit in a worktree's history. */
+export interface CommitView {
+  hash: string;
+  short: string;
+  subject: string;
+  /** The rest of the message, after the subject. */
+  body: string;
+  author: string;
+  /** ISO 8601 author date. */
+  date: string;
+  /** Branches and tags pointing at it, as git log --decorate prints them. */
+  refs: string[];
+  parents: string[];
+  /** Not on the upstream yet (or on no remote, for an unpublished branch). */
+  outgoing: boolean;
 }
 
 export type HostMessage =
@@ -107,7 +124,9 @@ export type HostMessage =
   /** The result of a create/rename from the inline box; on error the box stays open with the message. */
   | { type: 'editResult'; ok: boolean; error?: string }
   /** A commit from the message box succeeded; the webview clears that box. */
-  | { type: 'committed'; key: string };
+  | { type: 'committed'; key: string }
+  /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
+  | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
 export interface Target {
@@ -139,4 +158,9 @@ export type WebviewMessage =
   /** Drag and drop: move a file or folder into dir (same or another worktree). */
   | { type: 'move'; from: { key: string; paths: string[] }; to: { key: string; dir: string } }
   /** Runs a `flotilla.*` command with the target as its argument. */
-  | { type: 'command'; command: string; target?: Target };
+  | { type: 'command'; command: string; target?: Target }
+  /** Read a page of a worktree's history (newest first). */
+  | { type: 'log'; key: string; skip: number }
+  /** Open the files a commit changed in a multi-file diff. */
+  | { type: 'openCommit'; key: string; hash: string }
+  | { type: 'copy'; text: string };

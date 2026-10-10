@@ -2,8 +2,11 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
+import { openChangesEditor } from '../../core/diff/openDiff';
+import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
+import { commitChanges, readLog } from '../../features/history/log';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
@@ -13,6 +16,9 @@ import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
+
+/** Commits per page of a worktree's history. */
+const LOG_PAGE = 50;
 
 export interface SidebarDeps {
   extensionUri: vscode.Uri;
@@ -197,6 +203,39 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (!m.command.startsWith('flotilla.')) return;
         await vscode.commands.executeCommand(m.command, m.target);
         return;
+      case 'log':
+        await this.postLog(m.key, m.skip);
+        return;
+      case 'openCommit': {
+        const ws = this.find(m.key);
+        if (!ws?.worktree.path || !/^[0-9a-f]{4,64}$/.test(m.hash)) return;
+        const { changes, parent } = await commitChanges(ws.worktree.path, m.hash);
+        const subject = (await runGit(['log', '-n', '1', '--format=%h %s', m.hash, '--'], { cwd: ws.worktree.path })).trim();
+        if (!changes.length) {
+          void vscode.window.showInformationMessage(`${subject} changes no files.`);
+          return;
+        }
+        await openChangesEditor(this.deps.reference, ws.worktree.path, changes, parent, m.hash, subject);
+        return;
+      }
+      case 'copy':
+        await vscode.env.clipboard.writeText(m.text);
+        return;
+    }
+  }
+
+  private async postLog(key: string, skip: number): Promise<void> {
+    const ws = this.find(key);
+    const head = ws?.sync.head;
+    if (!ws?.worktree.path || !head) {
+      this.post({ type: 'log', key, head, skip, commits: [], more: false });
+      return;
+    }
+    try {
+      const page = await readLog(ws.worktree.path, { skip, limit: LOG_PAGE, upstream: ws.sync.upstream, hasRemote: ws.sync.hasRemote });
+      this.post({ type: 'log', key, head, skip, ...page });
+    } catch (error) {
+      this.post({ type: 'log', key, head, skip, commits: [], more: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

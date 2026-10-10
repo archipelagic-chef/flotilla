@@ -60,7 +60,7 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     agentMessage: ws.agent?.message || undefined,
     staged: ws.staged,
     unstaged: ws.unstaged,
-    sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind },
+    sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind, head: ws.sync.head },
     chats: ws.chats.map((c) => toChatView(c, all, now)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),
