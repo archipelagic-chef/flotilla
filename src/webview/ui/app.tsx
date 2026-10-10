@@ -9,7 +9,7 @@ import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
-import { CommitCard, CompareBody, HistoryBody, VcBody, type Comparison, type Log, type Refs } from './vc';
+import { CommitCard, CompareBody, HistoryBody, VcBody, type CommitFiles, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -110,6 +110,8 @@ export function App() {
   const [searchRefresh, setSearchRefresh] = useState(0);
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<ReadonlyMap<string, Refs>>(new Map());
+  /** Files of expanded commits, by worktree key and hash. */
+  const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [comparisons, setComparisons] = useState<ReadonlyMap<string, Comparison>>(new Map());
   const tabStrip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState({ left: false, right: false });
@@ -144,6 +146,11 @@ export function App() {
   const requestLog = useCallback((key: string, skip: number) => {
     setLogs((prev) => new Map(prev).set(key, { ...(prev.get(key) ?? { commits: [], more: false }), loading: true }));
     send({ type: 'log', key, skip });
+  }, []);
+
+  const requestCommitFiles = useCallback((key: string, hash: string) => {
+    setCommitFiles((prev) => (prev.has(`${key}\n${hash}`) ? prev : new Map(prev).set(`${key}\n${hash}`, { files: [], loading: true })));
+    send({ type: 'commitFiles', key, hash });
   }, []);
 
   const requestRefs = useCallback((key: string) => {
@@ -220,6 +227,9 @@ export function App() {
             const commits = m.skip > 0 ? [...(old?.commits ?? []).slice(0, m.skip), ...m.commits] : m.commits;
             return new Map(prev).set(m.key, { head: m.head, commits, more: m.more, loading: false, error: m.error });
           });
+          return;
+        case 'commitFiles':
+          setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
           return;
         case 'refs':
           setRefs((prev) => new Map(prev).set(m.key, { defaultBase: m.defaultBase, refs: m.refs }));
@@ -353,7 +363,15 @@ export function App() {
     <>
       {tool === 'files' && <FilesBody ws={ws} files={files} expanded={persisted.expanded[ws.key] ?? []} update={update} />}
       {tool === 'vc' && vcView === 'changes' && <VcBody ws={ws} draft={persisted.drafts[ws.key] ?? ''} update={update} />}
-      {tool === 'vc' && vcView === 'history' && <HistoryBody ws={ws} log={logs.get(ws.key)} requestLog={requestLog} />}
+      {tool === 'vc' && vcView === 'history' && (
+        <HistoryBody
+          ws={ws}
+          log={logs.get(ws.key)}
+          requestLog={requestLog}
+          files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
+          requestFiles={requestCommitFiles}
+        />
+      )}
       {tool === 'vc' && vcView === 'compare' && (
         <CompareBody
           ws={ws}

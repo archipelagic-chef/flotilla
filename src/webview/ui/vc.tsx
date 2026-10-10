@@ -1,8 +1,10 @@
+import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ChangeGroup, CommitView, CompareMode, FileChangeView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
+import { fileIcon } from './icons';
 
 interface Props {
   ws: WorkstreamView;
@@ -264,7 +266,33 @@ export function ago(iso: string, now = Date.now()): string {
  * Version Control › History: the worktree's commits, newest first. They're read when shown and again when HEAD or
  * the upstream moves; "Load more" reads older ones.
  */
-export function HistoryBody({ ws, log, requestLog }: { ws: WorkstreamView; log: Log | undefined; requestLog(key: string, skip: number): void }) {
+/** The files a commit changed, once read. */
+export interface CommitFiles {
+  files: FileChangeView[];
+  loading?: boolean;
+  error?: string;
+}
+
+interface HistoryProps {
+  ws: WorkstreamView;
+  log: Log | undefined;
+  requestLog(key: string, skip: number): void;
+  files(hash: string): CommitFiles | undefined;
+  requestFiles(key: string, hash: string): void;
+}
+
+export function HistoryBody({ ws, log, requestLog, files, requestFiles }: HistoryProps) {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (hash: string) => {
+    const open = !expanded.has(hash);
+    if (open) requestFiles(ws.key, hash);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(hash);
+      else next.delete(hash);
+      return next;
+    });
+  };
   const stamp = `${ws.sync.head}|${ws.sync.ahead}|${ws.sync.behind}`;
   useEffect(() => {
     requestLog(ws.key, 0);
@@ -289,7 +317,10 @@ export function HistoryBody({ ws, log, requestLog }: { ws: WorkstreamView; log: 
       {log?.error && <div class="row group-empty error">{log.error}</div>}
       {!log?.error && !commits.length && <div class="row group-empty">{log?.loading || !log ? 'Loading…' : 'No commits yet'}</div>}
       {commits.map((c) => (
-        <CommitRow key={c.hash} ws={ws} commit={c} />
+        <Fragment key={c.hash}>
+          <CommitRow ws={ws} commit={c} open={expanded.has(c.hash)} onToggle={() => toggle(c.hash)} />
+          {expanded.has(c.hash) && <CommitDetails ws={ws} commit={c} files={files(c.hash)} />}
+        </Fragment>
       ))}
       {log?.more && (
         <div class="row group-empty">
@@ -302,19 +333,26 @@ export function HistoryBody({ ws, log, requestLog }: { ws: WorkstreamView; log: 
   );
 }
 
-function CommitRow({ ws, commit }: { ws: WorkstreamView; commit: CommitView }) {
-  const openIt = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash });
+/** A commit: click to expand it into its message and changed files. */
+function CommitRow({ ws, commit, open, onToggle }: { ws: WorkstreamView; commit: CommitView; open: boolean; onToggle(): void }) {
   const icon = commit.parents.length > 1 ? 'git-merge' : 'git-commit';
   return (
     <div
       class={`row log-row${commit.outgoing ? ' outgoing' : ''}`}
-      role="button"
+      role="treeitem"
+      aria-expanded={open}
       tabIndex={0}
-      data-tip-commit={commit.hash}
+      data-tip-commit={open ? undefined : commit.hash}
       data-tip-key={ws.key}
-      onClick={openIt}
-      onKeyDown={(e) => e.key === 'Enter' && openIt()}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || (e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open)) {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
     >
+      <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} chev`} />
       <i class={`codicon codicon-${icon}`} />
       <span class="name">{commit.subject}</span>
       {/* The worktree's own branch goes without saying here; the hover lists every ref. */}
@@ -328,10 +366,64 @@ function CommitRow({ ws, commit }: { ws: WorkstreamView; commit: CommitView }) {
         ))}
       <span class="desc">{commit.author}</span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+        <button class="icon" aria-label="Open All Changes" onClick={() => send({ type: 'openCommit', key: ws.key, hash: commit.hash })}>
+          <i class="codicon codicon-diff-multiple" />
+        </button>
         <button class="icon" aria-label="Copy Commit Hash" onClick={() => send({ type: 'copy', text: commit.hash })}>
           <i class="codicon codicon-copy" />
         </button>
       </span>
+    </div>
+  );
+}
+
+/** Under an expanded commit: the rest of its message, who and when, and the files it changed. */
+function CommitDetails({ ws, commit, files }: { ws: WorkstreamView; commit: CommitView; files: CommitFiles | undefined }) {
+  const date = new Date(commit.date);
+  return (
+    <div class="commit-details" role="group" aria-label={commit.subject}>
+      {commit.body && <div class="commit-body">{commit.body}</div>}
+      <div class="commit-meta">
+        <span>{commit.author}</span>
+        <span data-tip={date.toLocaleString()}>{ago(commit.date)}</span>
+        <button class="link" data-tip="Copy Commit Hash" onClick={() => send({ type: 'copy', text: commit.hash })}>
+          {commit.short}
+        </button>
+        {commit.outgoing && <span class="outgoing-note">not pushed yet</span>}
+      </div>
+      {files?.error && <div class="row group-empty error">{files.error}</div>}
+      {!files?.error && !files?.files.length && <div class="row group-empty">{!files || files.loading ? 'Loading…' : 'No file changes'}</div>}
+      {files?.files.map((f) => (
+        <CommitFileRow key={f.path} ws={ws} commit={commit} change={f} />
+      ))}
+    </div>
+  );
+}
+
+function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: CommitView; change: FileChangeView }) {
+  const parts = change.path.split('/');
+  const name = parts.pop()!;
+  const open = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path });
+  return (
+    <div
+      class="row change commit-file"
+      role="button"
+      tabIndex={0}
+      data-tip={`${change.path}${change.origPath ? ` ← ${change.origPath}` : ''} · ${change.kind}`}
+      onClick={open}
+      onKeyDown={(e) => e.key === 'Enter' && open()}
+    >
+      <i class={fileIcon(name)} />
+      <span class={`name k-${change.kind}`}>{name}</span>
+      <span class="dir">{parts.join('/')}</span>
+      <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+        {change.kind !== 'deleted' && (
+          <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: ws.key, path: change.path })}>
+            <i class="codicon codicon-go-to-file" />
+          </button>
+        )}
+      </span>
+      <span class={`letter k-${change.kind}`}>{CHANGE_LETTER[change.kind]}</span>
     </div>
   );
 }

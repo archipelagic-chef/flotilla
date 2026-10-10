@@ -213,11 +213,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (!ws?.worktree.path || !/^[0-9a-f]{4,64}$/.test(m.hash)) return;
         const { changes, parent } = await commitChanges(ws.worktree.path, m.hash);
         const subject = (await runGit(['log', '-n', '1', '--format=%h %s', m.hash, '--'], { cwd: ws.worktree.path })).trim();
+        if (m.path !== undefined) {
+          const change = changes.find((c) => c.path === m.path);
+          if (change) await openChangeDiff(this.deps.reference, ws.worktree.path, change, parent, m.hash, subject);
+          return;
+        }
         if (!changes.length) {
           void vscode.window.showInformationMessage(`${subject} changes no files.`);
           return;
         }
         await openChangesEditor(this.deps.reference, ws.worktree.path, changes, parent, m.hash, subject);
+        return;
+      }
+      case 'commitFiles': {
+        const dir = this.root(m.key);
+        if (!dir || !/^[0-9a-f]{4,64}$/.test(m.hash)) return;
+        try {
+          const { changes } = await commitChanges(dir, m.hash);
+          this.post({ type: 'commitFiles', key: m.key, hash: m.hash, files: changes });
+        } catch (error) {
+          this.post({ type: 'commitFiles', key: m.key, hash: m.hash, files: [], error: error instanceof Error ? error.message : String(error) });
+        }
         return;
       }
       case 'copy':

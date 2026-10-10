@@ -135,6 +135,8 @@ export type HostMessage =
   | { type: 'refs'; key: string; defaultBase?: string; refs: string[] }
   /** The files that differ between a worktree and a base. */
   | { type: 'compared'; key: string; base: string; mode: CompareMode; files: FileChangeView[]; error?: string }
+  /** The files a commit changed (against its first parent). */
+  | { type: 'commitFiles'; key: string; hash: string; files: FileChangeView[]; error?: string }
   /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
@@ -171,8 +173,9 @@ export type WebviewMessage =
   | { type: 'command'; command: string; target?: Target }
   /** Read a page of a worktree's history (newest first). */
   | { type: 'log'; key: string; skip: number }
-  /** Open the files a commit changed in a multi-file diff. */
-  | { type: 'openCommit'; key: string; hash: string }
+  /** Open the files a commit changed in a multi-file diff; with path, only that file's diff. */
+  | { type: 'openCommit'; key: string; hash: string; path?: string }
+  | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs'; key: string }
   | { type: 'compare'; key: string; base: string; mode: CompareMode }
