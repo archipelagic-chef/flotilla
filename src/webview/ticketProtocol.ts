@@ -12,8 +12,8 @@ export interface TicketView {
   description: string;
   descriptionHtml: string;
   activity: Array<TicketEntry & { html: string }>;
-  /** The worktree working on the item, if there is one, and its agent's state. */
-  worktree?: { key: string; branch: string; attention: AttentionState; status: string; message?: string };
+  /** The worktrees working on the item (several for an epic), with their agents' state. */
+  worktrees: Array<{ key: string; branch: string; attention: AttentionState; status: string; message?: string }>;
 }
 
 export type TicketHostMessage =
@@ -33,4 +33,4 @@ export type TicketWebviewMessage =
   | { type: 'start'; agent: boolean }
   | { type: 'writeWithAI' }
   | { type: 'openFile' }
-  | { type: 'openWorktree' };
+  | { type: 'openWorktree'; key: string };

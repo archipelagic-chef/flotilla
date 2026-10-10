@@ -312,3 +312,8 @@ h2 {
   border-color: var(--vscode-checkbox-selectBorder, var(--focus));
   box-shadow: inset 0 0 0 2px var(--vscode-checkbox-background, var(--vscode-editor-background));
 }
+.worktrees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

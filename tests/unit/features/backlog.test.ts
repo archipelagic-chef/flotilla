@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addItem, branchFor, branchMatches, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, branchFor, branchMatches, itemBranches, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -55,6 +55,16 @@ describe('backlog', () => {
     expect(branchMatches({ id: 'BL-12' }, 'feature/bl-12')).toBe(true);
     expect(branchMatches({ id: 'BL-1' }, 'feature/BL-12-login')).toBe(false);
     expect(branchMatches({ id: 'BL-1', branch: 'my-own' }, 'my-own')).toBe(true);
+    expect(branchMatches({ id: 'BL-1', branches: ['a', 'b'] }, 'b')).toBe(true);
+  });
+
+  it('records several branches for an item (an epic)', () => {
+    let data = backlog('epic');
+    data = { ...data, items: data.items.map((i) => ({ ...i, branch: 'old' })) };
+    data = addBranch(addBranch(data, 'BL-1', 'feature/BL-1-api'), 'BL-1', 'feature/BL-1-api');
+    expect(data.items[0].branches).toEqual(['old', 'feature/BL-1-api']);
+    expect(data.items[0].branch).toBeUndefined();
+    expect(itemBranches(data.items[0])).toEqual(['old', 'feature/BL-1-api']);
   });
 });
 

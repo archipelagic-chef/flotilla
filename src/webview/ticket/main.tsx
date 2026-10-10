@@ -249,7 +249,7 @@ function App() {
     return () => window.removeEventListener('message', listener);
   }, []);
   if (!ticket) return <div class="empty-text">Loading…</div>;
-  const ws = ticket.worktree;
+  const worktrees = ticket.worktrees;
   const done = ticket.item.status === 'done';
   return (
     <main class="ticket">
@@ -268,12 +268,12 @@ function App() {
         <div class="toolbar">
           {!done && (
             <button class="button" onClick={() => send({ type: 'start', agent: true })} title="Creates its worktree if needed and starts a Claude Code agent there; it reports below">
-              <i class="codicon codicon-play" /> {ws ? 'Start an Agent' : 'Start with an Agent'}
+              <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
             </button>
           )}
-          {!done && !ws && (
-            <button class="button secondary" onClick={() => send({ type: 'start', agent: false })} title="Creates its worktree and branch, without an agent">
-              <i class="codicon codicon-git-branch" /> Create Worktree
+          {!done && (
+            <button class="button secondary" onClick={() => send({ type: 'start', agent: false })} title="Creates a worktree and branch for it, without an agent (an epic can have several)">
+              <i class="codicon codicon-git-branch" /> {worktrees.length ? 'Add a Worktree' : 'Create Worktree'}
             </button>
           )}
           <button class="button secondary" onClick={() => send({ type: 'writeWithAI' })} title="Opens a Claude Code chat that helps write this ticket">
@@ -283,13 +283,17 @@ function App() {
             <i class="codicon codicon-go-to-file" /> Open as Markdown
           </button>
         </div>
-        {ws && (
-          <button class="worktree" onClick={() => send({ type: 'openWorktree' })} title="Open its tab in Flotilla">
-            <i class="codicon codicon-git-branch" />
-            <span>{ws.branch}</span>
-            <span class={`state ${AGENT_STATE_CLASS[ws.attention] ?? ''}`}>{ws.status}</span>
-            {ws.message && <span class="muted">“{ws.message}”</span>}
-          </button>
+        {worktrees.length > 0 && (
+          <div class="worktrees">
+            {worktrees.map((ws) => (
+              <button key={ws.key} class="worktree" onClick={() => send({ type: 'openWorktree', key: ws.key })} title="Open its tab in Flotilla">
+                <i class="codicon codicon-git-branch" />
+                <span>{ws.branch}</span>
+                <span class={`state ${AGENT_STATE_CLASS[ws.attention] ?? ''}`}>{ws.status}</span>
+                {ws.message && <span class="muted">“{ws.message}”</span>}
+              </button>
+            ))}
+          </div>
         )}
       </header>
       <Description ticket={ticket} />

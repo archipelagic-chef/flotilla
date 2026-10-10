@@ -12,7 +12,9 @@ export interface BacklogItem {
   status: BacklogStatus;
   /** ISO 8601. */
   created: string;
-  /** The branch started for it, once there is one. */
+  /** Branches started for it: one for a small item, several for an epic. */
+  branches?: string[];
+  /** Before branches: the one branch started for it. Read, never written. */
   branch?: string;
 }
 
@@ -46,7 +48,7 @@ export function addItem(data: BacklogData, title: string, prefix: string, now: D
   return { data: { ...data, next: data.next + 1, items: [item, ...data.items] }, item };
 }
 
-export function updateItem(data: BacklogData, id: string, change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branch'>>): BacklogData {
+export function updateItem(data: BacklogData, id: string, change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>>): BacklogData {
   return { ...data, items: data.items.map((i) => (i.id === id ? { ...i, ...change } : i)) };
 }
 
@@ -80,9 +82,26 @@ export function branchFor(item: Pick<BacklogItem, 'id' | 'title'>, pattern: stri
   return pattern.replace(/\{id\}/g, item.id).replace(/\{slug\}/g, slug || 'work').replace(/-{2,}/g, '-').replace(/[-/]+$/, '');
 }
 
-/** The branch of a worktree that works on an item: the one started for it, or one whose name carries its id. */
-export function branchMatches(item: Pick<BacklogItem, 'id' | 'branch'>, branch: string): boolean {
-  if (item.branch && item.branch === branch) return true;
+/** The branches started for an item (including the one older backlogs recorded). */
+export function itemBranches(item: Pick<BacklogItem, 'branches' | 'branch'>): string[] {
+  return [...new Set([...(item.branches ?? []), ...(item.branch ? [item.branch] : [])])];
+}
+
+/** Records a branch started for an item (an epic gets several). */
+export function addBranch(data: BacklogData, id: string, branch: string): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { branch: _old, ...rest } = i;
+      return { ...rest, branches: [...new Set([...itemBranches(i), branch])] };
+    }),
+  };
+}
+
+/** Whether a worktree's branch works on an item: one started for it, or one whose name carries its id. */
+export function branchMatches(item: Pick<BacklogItem, 'id' | 'branches' | 'branch'>, branch: string): boolean {
+  if (itemBranches(item).includes(branch)) return true;
   const escaped = item.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^A-Za-z0-9])${escaped}(?![0-9])`, 'i').test(branch);
 }

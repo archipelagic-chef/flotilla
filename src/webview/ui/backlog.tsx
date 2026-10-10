@@ -29,7 +29,7 @@ export function BacklogView({ items, workstreams, colors, adding, setAdding, ope
   const [doneOpen, setDoneOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
-  const worktreeOf = (item: BacklogItem) => workstreams.find((w) => !w.isMain && branchMatches(item, w.branch));
+  const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
 
   const drop = (e: DragEvent, status: BacklogStatus, before?: string) => {
     const id = e.dataTransfer?.getData(DRAG_TYPE);
@@ -91,7 +91,7 @@ export function BacklogView({ items, workstreams, colors, adding, setAdding, ope
                       key={item.id}
                       item={item}
                       icon={lane.icon}
-                      worktree={worktreeOf(item)}
+                      worktrees={worktreesOf(item)}
                       color={(ws) => colors.get(ws.key)}
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
@@ -152,7 +152,8 @@ function NewItem({ onDone }: { onDone(): void }) {
 interface RowProps {
   item: BacklogItem;
   icon: string;
-  worktree: WorkstreamView | undefined;
+  /** The worktrees working on it: one, or several for an epic. */
+  worktrees: WorkstreamView[];
   color(ws: WorkstreamView): string | undefined;
   renaming: boolean;
   setRenaming(on: boolean): void;
@@ -165,9 +166,9 @@ interface RowProps {
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
-function ItemRow({ item, icon, worktree, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   const done = item.status === 'done';
-  const dot = worktree && AGENT_DOT[worktree.attention];
+  const worktree = worktrees[0];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
   return (
     <div
@@ -215,20 +216,29 @@ function ItemRow({ item, icon, worktree, color, renaming, setRenaming, dropBefor
           {item.activity}
         </span>
       )}
-      {worktree && (
-        <button
-          class="ws-chip"
-          style={{ '--ws-color': color(worktree) }}
-          data-tip-ws={worktree.key}
-          data-tip-hint="Click to open its tab"
-          onClick={(e) => {
-            e.stopPropagation();
-            openWorktree(worktree.key);
-          }}
-        >
-          {dot && <span class={`dot ${dot}`} />}
-          {worktree.label}
-        </button>
+      {worktrees.slice(0, 2).map((ws) => {
+        const dot = AGENT_DOT[ws.attention];
+        return (
+          <button
+            key={ws.key}
+            class="ws-chip"
+            style={{ '--ws-color': color(ws) }}
+            data-tip-ws={ws.key}
+            data-tip-hint="Click to open its tab"
+            onClick={(e) => {
+              e.stopPropagation();
+              openWorktree(ws.key);
+            }}
+          >
+            {dot && <span class={`dot ${dot}`} />}
+            {ws.label}
+          </button>
+        );
+      })}
+      {worktrees.length > 2 && (
+        <span class="ws-more" data-tip={worktrees.slice(2).map((w) => w.branch).join('\n')}>
+          +{worktrees.length - 2}
+        </span>
       )}
       {!renaming && (
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>

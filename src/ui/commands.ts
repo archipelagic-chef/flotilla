@@ -7,7 +7,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { branchFor, branchMatches, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, branchFor, branchMatches, itemBranches, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { TicketPanels } from './backlog/ticketPanel';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
@@ -356,26 +356,63 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const agent = typeof opts === 'object' && opts !== null && (opts as { agent?: unknown }).agent === true;
   const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!item) return;
-  let ws = ctx.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
-  if (ws) {
-    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch: ws!.worktree.branch }));
-    ctx.sidebar.reveal(ws.key);
+  const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  let ws: Workstream | undefined;
+  if (!linked.length) {
+    ws = await newItemWorktree(ctx, item, false);
   } else {
-    const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
-    const branch = item.branch ?? branchFor(item, pattern);
-    const branches = await ctx.service.listBranches();
-    const problem = branches.local.includes(branch) ? undefined : branchNameProblem(branch, []);
-    if (problem) {
-      void vscode.window.showErrorMessage(`Can't start ${item.id}: ${problem} Change flotilla.backlog.branchPattern or the item's title.`);
-      return;
-    }
-    const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
-    const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
-    const key = await createWorkstream(ctx, request);
-    await ctx.backlog.change((d) => updateItem(d, id, { status: 'doing', branch }));
-    ws = ctx.repository.current.find((w) => w.key === key);
+    // An epic has several worktrees: start in one of them, or in a new one.
+    type Pick = vscode.QuickPickItem & { ws?: Workstream };
+    const now = new Date();
+    const picks: Pick[] = [
+      ...linked.map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, detail: describeWorkstream(w, now), ws: w })),
+      { label: `$(add) New Worktree for ${item.id}…`, detail: 'Another branch for this item, e.g. one part of an epic' },
+    ];
+    const picked = await vscode.window.showQuickPick(picks, {
+      title: agent ? `Start an agent on ${item.id}` : `Work on ${item.id}`,
+      placeHolder: 'In which worktree?',
+    });
+    if (!picked) return;
+    ws = picked.ws ?? (await newItemWorktree(ctx, item, true));
   }
-  if (agent && ws?.worktree.path) await runAgent(ctx, item, ws);
+  if (!ws?.worktree.branch) return;
+  const branch = ws.worktree.branch;
+  await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
+  ctx.sidebar.reveal(ws.key);
+  if (agent && ws.worktree.path) await runAgent(ctx, item, ws);
+}
+
+/**
+ * Creates a worktree for an item on a branch named by flotilla.backlog.branchPattern, from the default branch. For
+ * another worktree of the same item (askName), the name is suggested with a number and can be changed.
+ */
+async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: boolean): Promise<Workstream | undefined> {
+  const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
+  const branches = await ctx.service.listBranches();
+  const checkedOut = new Set(ctx.repository.current.map((w) => w.worktree.branch));
+  // A branch of the item that exists but has no worktree (removed earlier) is picked up again.
+  let branch = itemBranches(item).find((b) => branches.local.includes(b) && !checkedOut.has(b)) ?? branchFor(item, pattern);
+  if (askName || checkedOut.has(branch)) {
+    let suggestion = branchFor(item, pattern);
+    for (let n = 2; branches.local.includes(suggestion) || checkedOut.has(suggestion); n++) suggestion = `${branchFor(item, pattern)}-${n}`;
+    const name = await vscode.window.showInputBox({
+      title: `New worktree for ${item.id}`,
+      prompt: 'Branch name (it should keep the item id, which links it to the item)',
+      value: suggestion,
+      validateInput: (v) => branchNameProblem(v.trim(), branches.local),
+    });
+    if (!name) return undefined;
+    branch = name.trim();
+  }
+  const problem = branches.local.includes(branch) ? undefined : branchNameProblem(branch, []);
+  if (problem) {
+    void vscode.window.showErrorMessage(`Can't start ${item.id}: ${problem} Change flotilla.backlog.branchPattern or the item's title.`);
+    return undefined;
+  }
+  const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
+  const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
+  const key = await createWorkstream(ctx, request);
+  return ctx.repository.current.find((w) => w.key === key);
 }
 
 /** The Claude Code CLI: the one that comes with the Claude Code extension, else `claude` on the PATH. */

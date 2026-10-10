@@ -79,9 +79,9 @@ export class TicketPanels implements vscode.Disposable {
     );
   }
 
-  /** The worktree working on an item: the one started for it, or one whose branch carries its id. */
-  worktreeOf(item: BacklogItem): Workstream | undefined {
-    return this.deps.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  /** The worktrees working on an item: those started for it, or whose branch carries its id. */
+  worktreesOf(item: BacklogItem): Workstream[] {
+    return this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
   }
 
   private async item(id: string): Promise<BacklogItem | undefined> {
@@ -101,19 +101,18 @@ export class TicketPanels implements vscode.Disposable {
     panel.title = `${item.id} ${item.title}`;
     const ticket = await this.deps.backlog.readTicket(item);
     const dir = this.deps.backlog.dir;
-    const ws = this.worktreeOf(item);
     const view: TicketView = {
       item,
       description: ticket.description,
       descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
       activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
-      worktree: ws && {
+      worktrees: this.worktreesOf(item).map((ws) => ({
         key: ws.key,
         branch: workstreamLabel(ws),
         attention: ws.attention,
         status: ATTENTION_LABEL[ws.attention],
         message: ws.agent?.message,
-      },
+      })),
     };
     const message: TicketHostMessage = { type: 'ticket', ticket: view };
     void panel.webview.postMessage(message);
@@ -172,11 +171,9 @@ export class TicketPanels implements vscode.Disposable {
       case 'openFile':
         await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
         return;
-      case 'openWorktree': {
-        const ws = this.worktreeOf(item);
-        if (ws) this.deps.revealWorktree(ws.key);
+      case 'openWorktree':
+        if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
         return;
-      }
     }
     await this.post(id, panel);
   }
