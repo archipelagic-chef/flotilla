@@ -914,29 +914,36 @@ ins {
 }
 
 /* ---- file icons (from the user's icon theme) ---- */
+/*
+ * File icons, measured like VS Code's Explorer: a 16px icon slot plus 6px before the name (here 2px of padding and
+ * the row's 4px gap), the row's full height, and the label's 13px font size, which theme sizes like Seti's "150%"
+ * scale from. Glyphs wider than 16px may use the space before the name, as in VS Code.
+ */
 .fi {
   flex: none;
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
-.fi.none {
-  width: 0;
-}
-.fi {
-  margin-right: 2px;
+  display: inline-block;
+  font-size: 13px;
+  height: var(--row-height);
+  line-height: var(--row-height);
 }
 .fi::before {
   display: inline-block;
-  min-width: 16px;
-  height: 16px;
-  line-height: 16px;
-  text-align: center;
+  box-sizing: content-box;
+  width: 16px;
+  padding-right: 2px;
+  height: var(--row-height);
+  line-height: var(--row-height);
+  vertical-align: top;
+  text-align: left;
   background-size: 16px;
+  background-position: left center;
+  background-repeat: no-repeat;
   -webkit-font-smoothing: antialiased;
+}
+/* Themes without folder icons (like Seti): no icon and no space, as in the Explorer. */
+.fi.none,
+.fi.none::before {
+  display: none;
 }
 .row[aria-selected='true'] {
   background: var(--vscode-list-inactiveSelectionBackground);
