@@ -4,10 +4,12 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { toWorkspaceUri } from '../../core/uris';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { HostMessage, Tab, WebviewMessage } from '../../webview/protocol';
+import { searchWorktree } from '../../features/search/gitGrep';
+import { ALL, type HostMessage, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { excludeMatcher, listDirectory } from './files';
-import { toWorkstreamView } from './viewModel';
+import { tabOrder, toWorkstreamView } from './viewModel';
 
 export interface SidebarDeps {
   extensionUri: vscode.Uri;
@@ -15,6 +17,7 @@ export interface SidebarDeps {
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
   inWorkspace: (ws: Workstream) => boolean;
+  active: ActiveWorktree;
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string) => Promise<boolean>;
   output: vscode.OutputChannel;
@@ -36,7 +39,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       post: (message) => this.post(message),
       dirsChanged: (key, dirs) => this.dirsChanged(key, [...new Set(dirs)]),
     });
-    this.subscriptions.push({ dispose: deps.repository.onDidChange(() => this.postState()).dispose });
+    this.subscriptions.push(
+      { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      deps.active.onDidChange((key) => this.post({ type: 'active', key })),
+    );
   }
 
   get visible(): boolean {
@@ -60,20 +66,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   postState(): void {
     const now = new Date();
     const all = this.deps.repository.current;
-    this.post({ type: 'state', workstreams: all.map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws))) });
+    this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws))) });
   }
 
-  /** Scrolls to a workstream; with path, also expands to and highlights that file in the Files tab. */
-  reveal(key: string, relPath?: string, tab?: Tab): void {
-    const message: HostMessage = { type: 'reveal', key, path: relPath, tab };
+  /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
+  reveal(key: string, relPath?: string, tool?: Tool): void {
+    const message: HostMessage = { type: 'reveal', key, path: relPath, tool };
     if (this.view) this.post(message);
     else this.pendingReveal = message;
   }
 
-  /** Shows the sidebar on the given tab. */
-  async showTab(tab: Tab): Promise<void> {
+  /** Shows the sidebar on the given tool. */
+  async showTool(tool: Tool): Promise<void> {
     await vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`);
-    const message: HostMessage = { type: 'tab', tab };
+    const message: HostMessage = { type: 'tool', tool };
     if (this.view) this.post(message);
     else this.pendingReveal = message;
   }
@@ -104,6 +110,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     switch (m.type) {
       case 'ready':
         this.postState();
+        this.post({ type: 'active', key: this.deps.active.key });
         if (this.pendingReveal) this.post(this.pendingReveal);
         this.pendingReveal = undefined;
         return;
@@ -123,9 +130,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'openFile': {
         const ws = this.find(m.key);
         if (!ws?.worktree.path) return;
-        await vscode.window.showTextDocument(toWorkspaceUri(this.deps.reference, path.join(ws.worktree.path, m.path)), { preview: m.preview, preserveFocus: m.preview });
+        const uri = toWorkspaceUri(this.deps.reference, path.join(ws.worktree.path, m.path));
+        const selection = m.line ? new vscode.Range(m.line - 1, m.range?.[0] ?? 0, m.line - 1, m.range?.[1] ?? 0) : undefined;
+        await vscode.window.showTextDocument(uri, { preview: m.preview, preserveFocus: m.preview && !selection, selection });
         return;
       }
+      case 'active':
+        this.deps.active.set(m.key);
+        return;
+      case 'search':
+        await this.search(m.id, m.scope, m.query, m.options);
+        return;
+      case 'openView':
+        await vscode.commands.executeCommand(m.view === 'debug' ? 'workbench.view.debug' : 'workbench.view.extensions');
+        return;
       case 'commit': {
         const ws = this.find(m.key);
         if (ws && (await this.deps.commit(ws, m.message))) this.post({ type: 'committed', key: m.key });
@@ -144,6 +162,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (!m.command.startsWith('flotilla.')) return;
         await vscode.commands.executeCommand(m.command, m.target);
         return;
+    }
+  }
+
+  private async search(id: number, scope: string, query: string, options: Parameters<typeof searchWorktree>[2]): Promise<void> {
+    const targets = this.deps.repository.current.filter((w) => w.worktree.path && (scope === ALL || w.key === scope));
+    try {
+      const results = await Promise.all(targets.map(async (w) => ({ key: w.key, result: await searchWorktree(w.worktree.path!, query, options, 1000) })));
+      const groups: SearchGroup[] = results.filter((r) => r.result.files.length).map((r) => ({ key: r.key, files: r.result.files }));
+      this.post({ type: 'searchResults', id, groups, truncated: results.some((r) => r.result.truncated) });
+    } catch (error) {
+      this.post({ type: 'searchResults', id, groups: [], truncated: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

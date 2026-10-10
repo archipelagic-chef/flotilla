@@ -4,9 +4,19 @@
  */
 import type { ChangeKind } from '../core/git/porcelain';
 import type { ChatState, LinkKind } from '../features/chats/chats';
+import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
-export type Tab = 'files' | 'vc' | 'chats';
+/** The tools in the strip on the left. */
+export type Tool = 'overview' | 'files' | 'search' | 'vc' | 'chats';
+
+/** The worktree tab that shows every worktree. */
+export const ALL = 'all';
+
+export interface SearchGroup {
+  key: string;
+  files: FileMatches[];
+}
 export type ChangeGroup = 'staged' | 'unstaged';
 
 export interface FileChangeView {
@@ -61,8 +71,11 @@ export type HostMessage =
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
   /** Scroll to a workstream; with path, expand to and highlight that file in the Files tab. */
-  | { type: 'reveal'; key: string; path?: string; tab?: Tab }
-  | { type: 'tab'; tab: Tab }
+  | { type: 'reveal'; key: string; path?: string; tool?: Tool }
+  /** The active worktree changed outside the webview (shortcut, status bar). */
+  | { type: 'active'; key: string }
+  | { type: 'searchResults'; id: number; groups: SearchGroup[]; truncated: boolean; error?: string }
+  | { type: 'tool'; tool: Tool }
   /** Show an inline name box: a new file or folder in dir, or a rename of path. */
   | { type: 'edit'; key: string; kind: 'file' | 'folder'; dir: string }
   | { type: 'edit'; key: string; kind: 'rename'; path: string }
@@ -86,7 +99,12 @@ export interface Target {
 export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'listDir'; key: string; path: string }
-  | { type: 'openFile'; key: string; path: string; preview: boolean }
+  | { type: 'openFile'; key: string; path: string; preview: boolean; line?: number; range?: [number, number] }
+  /** The user picked a worktree tab (key or ALL). */
+  | { type: 'active'; key: string }
+  | { type: 'search'; id: number; scope: string; query: string; options: SearchOptions }
+  /** VS Code views Flotilla doesn't replace, from the bottom of the tool strip. */
+  | { type: 'openView'; view: 'extensions' | 'debug' }
   | { type: 'commit'; key: string; message: string }
   | { type: 'create'; key: string; kind: 'file' | 'folder'; dir: string; name: string }
   | { type: 'rename'; key: string; path: string; name: string }

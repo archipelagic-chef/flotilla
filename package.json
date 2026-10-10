@@ -314,6 +314,31 @@
         "command": "flotilla.revealFileInOS",
         "title": "Reveal in File Explorer",
         "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showOverview",
+        "title": "Show Overview",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showSearch",
+        "title": "Search in Active Worktree",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "title": "Switch Active Worktree…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.newTerminal",
+        "title": "New Terminal in Active Worktree",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.configureActivityBar",
+        "title": "Use Flotilla as the Sidebar (Activity Bar Position)…",
+        "category": "Flotilla"
       }
     ],
     "menus": {
@@ -517,6 +542,26 @@
         {
           "command": "flotilla.revealFileInOS",
           "when": "false"
+        },
+        {
+          "command": "flotilla.showOverview",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.showSearch",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.selectWorktree",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.newTerminal",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.configureActivityBar",
+          "when": "flotilla.state == ready"
         }
       ],
       "view/title": [
@@ -962,6 +1007,73 @@
       {
         "id": "flotilla.explorer",
         "label": "Flotilla"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+0",
+        "args": 0,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+1",
+        "args": 1,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+2",
+        "args": 2,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+3",
+        "args": 3,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+4",
+        "args": 4,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+5",
+        "args": 5,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+6",
+        "args": 6,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+7",
+        "args": 7,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+8",
+        "args": 8,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.selectWorktree",
+        "key": "ctrl+alt+9",
+        "args": 9,
+        "when": "flotilla.state == ready"
+      },
+      {
+        "command": "flotilla.showSearch",
+        "key": "ctrl+alt+f",
+        "when": "flotilla.state == ready"
       }
     ]
   },

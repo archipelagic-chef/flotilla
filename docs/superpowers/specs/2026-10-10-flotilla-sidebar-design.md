@@ -10,17 +10,14 @@ Flotilla replaces VS Code's Explorer and Source Control for repositories that us
 
 ## 2. Layout
 
-One webview view (`flotilla.sidebar`) in the Flotilla activity-bar container.
+One webview view (`flotilla.sidebar`), meant to be the whole sidebar (VS Code's activity bar hidden or moved to the top).
 
-- **Tabs across the top**: Files, Version Control, Chats, shown as icons with badges. They pick the lens.
-- **Rail down the side**: one tile per worktree, showing the branch's initials. A dot shows the most urgent chat state (waiting, working); a number shows how many chats are open there.
-  - **Click** a tile: scroll the list to that worktree. Nothing is hidden.
-  - **Double-click** a tile: focus mode, so only that worktree is shown in every tab. Double-click again, press Esc, or use *Show all* to leave focus mode.
-  - Each worktree has a color from the theme's terminal palette, shared by its tile and a stripe along its section. While scrolling, the tile of the worktree at the top of the list is highlighted in that color.
-- **Content**: every worktree is a section with a sticky header (branch, status, sync, chat summary, actions) and a body that depends on the tab.
-  - *Files*: that worktree's file tree. The main worktree hides `.worktrees/`, because each worktree has its own section.
-  - *Version Control*: commit message box, publish/sync, staged and unstaged changes.
-  - *Chats*: open chats with their state, *New chat*, and the history of every chat linked to the worktree.
+- **Worktree tabs across the top**, like editor tabs, in a stable order (main worktree first, then by branch). The first tab, **All**, shows every worktree; the others one each. Each tab has the worktree's color (from the theme's terminal palette), a dot for its most urgent chat state and its open-chat count. The strip scrolls sideways when the tabs don't fit.
+- **The active worktree** is the selected tab. It is the window's context: the tools show it, new terminals start there, and the status bar shows it. Ctrl+Alt+0…9 switch it (0 = All). Remembered per window.
+- **Tool strip down the left**: Overview, Files, Search, Version Control, Chats, with badges counted for the active worktree; Run and Debug and Extensions at the bottom.
+  - *Overview*: every worktree, most urgent first; click one to open its tab.
+  - *Files*, *Version Control*, *Chats*: one worktree with a header, or on the All tab every worktree as a section with a sticky header and a colored stripe.
+  - *Search*: `git grep` (tracked and untracked, not ignored) in the active worktree or all of them; match case, whole word, regex; results grouped by worktree and file.
 
 Built with Preact, `@vscode/codicons` and VS Code's theme variables. Context menus use VS Code's native webview context menus (`webview/context` + `data-vscode-context`), so file and chat actions are ordinary commands.
 

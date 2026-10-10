@@ -12,6 +12,9 @@ import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
 import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
 import { commit, type ScmContext } from './ui/scmCommands';
+import { ActiveWorktree } from './ui/activeWorktree';
+import { offerActivityBar, selectWorktree } from './ui/activeWorktreeCommands';
+import { workstreamLabel } from './ui/format';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
@@ -98,11 +101,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return repository.current.find((w) => w.key === ws.key) ?? ws;
     },
   };
+  const active = new ActiveWorktree(context.workspaceState);
   const sidebar = new SidebarProvider({
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,
     inWorkspace,
+    active,
     commit: (ws, message) => commit(scmCtx, ws, message),
     output,
   });
@@ -120,7 +125,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     sidebar,
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
-    new WorkstreamStatusBar(repository),
+    active,
+    new WorkstreamStatusBar(repository, active),
     decorations,
     vscode.window.registerFileDecorationProvider(decorations),
     new AttentionNotifier(repository, (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow)),
@@ -128,10 +134,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   registerCommands(ctx);
   context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTab('files')),
-    vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTab('vc')),
-    vscode.commands.registerCommand('flotilla.showChats', () => sidebar.showTab('chats')),
+    vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
+    vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
+    vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),
+    vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTool('vc')),
+    vscode.commands.registerCommand('flotilla.showChats', () => sidebar.showTool('chats')),
+    vscode.commands.registerCommand('flotilla.selectWorktree', (arg?: unknown) => selectWorktree(arg, repository, active)),
+    vscode.commands.registerCommand('flotilla.newTerminal', () => {
+      const ws = repository.current.find((w) => w.key === active.key);
+      const terminal = vscode.window.createTerminal({ name: ws ? workstreamLabel(ws) : undefined, cwd: ws?.worktree.path ?? location.worktreeRoot });
+      terminal.show();
+    }),
+    vscode.commands.registerCommand('flotilla.configureActivityBar', () => offerActivityBar(context, true)),
   );
+  void offerActivityBar(context, false);
   registerFileCommands(context, sidebar, folder.uri, output);
   await setState('ready');
   const chats = chatContext(ctx);

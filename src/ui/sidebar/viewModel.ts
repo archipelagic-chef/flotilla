@@ -62,3 +62,8 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     context: workstreamContext(ws, inWorkspace),
   };
 }
+
+/** Tab order: the main worktree first, then by branch. Stable, unlike the attention order, so tabs don't jump. */
+export function tabOrder<T extends Workstream>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => Number(b.worktree.isMain) - Number(a.worktree.isMain) || workstreamLabel(a).localeCompare(workstreamLabel(b)));
+}

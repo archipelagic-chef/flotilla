@@ -1,7 +1,6 @@
 /* Flotilla sidebar. Every color comes from VS Code's theme variables, so it follows any theme, including high contrast. */
 :root {
   --row-height: 22px;
-  --rail-width: 44px;
   --hover: var(--vscode-list-hoverBackground);
   --selected: var(--vscode-list-inactiveSelectionBackground);
   --border: var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, transparent));
@@ -135,144 +134,10 @@ button {
   overflow-y: auto;
   position: relative;
 }
-/* Room to scroll the last worktree to the top when its rail tile is clicked. */
-.content::after {
-  content: '';
-  display: block;
-  height: calc(100% - 64px);
-}
-
-/* ---- rail ---- */
-.rail {
-  width: var(--rail-width);
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.tile {
-  position: relative;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
-.tile::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
-}
-.mono {
-  position: relative;
-  width: 30px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--vscode-editor-background);
-  font-family: var(--vscode-editor-font-family);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  text-transform: uppercase;
-}
-.tile:hover .mono {
-  background: var(--hover);
-}
-.tile.in-view .mono {
-  border-color: var(--muted);
-}
-.tile.focused .mono {
-  border-color: var(--focus);
-  background: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
-}
-.tile.unreachable .mono {
-  opacity: 0.5;
-}
-.tile.add .mono {
-  border-style: dashed;
-  color: var(--muted);
-}
-.dot {
-  position: absolute;
-  right: -4px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 2px solid var(--vscode-sideBar-background);
-}
-.dot.waiting {
-  background: var(--waiting);
-}
-.dot.working {
-  background: var(--working);
-}
-.dot.error {
-  background: var(--error);
-}
-.dot.done {
-  background: var(--done);
-}
-.cnt {
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 2px;
-  border-radius: 7px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  font-family: var(--vscode-font-family);
-  font-size: 9px;
-  line-height: 12px;
-  text-align: center;
-  border: 1px solid var(--vscode-sideBar-background);
-}
-.rail-sep {
-  width: 20px;
-  height: 1px;
-  background: var(--border);
-  flex: none;
-}
 
 /* ---- sections ---- */
-.focus-bar {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 0 12px;
-  background: var(--vscode-list-inactiveSelectionBackground);
-  border-bottom: 1px solid var(--border);
-}
-.focus-bar span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.focus-bar .link {
-  margin-left: auto;
-  flex: none;
-}
 .section {
   scroll-margin-top: 0;
-}
-.focus-bar ~ .section {
-  scroll-margin-top: var(--row-height);
 }
 .section {
   border-bottom: 1px solid var(--border);
@@ -286,25 +151,8 @@ button {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
-.focus-bar + .section .sec-head {
-  top: var(--row-height);
-}
-.section.flash > .sec-head {
-  animation: flash 0.9s ease-out;
-}
-@keyframes flash {
-  from {
-    background: var(--vscode-list-activeSelectionBackground);
-  }
-  to {
-    background: var(--vscode-sideBar-background);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .section.flash > .sec-head {
-    animation: none;
   }
-}
 .sec-line {
   display: flex;
   align-items: center;
@@ -627,49 +475,6 @@ textarea:focus {
   color: var(--muted);
 }
 
-/* ---- icon tabs ---- */
-.tab {
-  padding: 5px 8px 4px;
-  gap: 4px;
-}
-.tab .codicon {
-  font-size: 16px;
-}
-.tabs {
-  gap: 2px;
-}
-
-/* ---- worktree colors: a tile and its section share one, so the rail and the list read as one ---- */
-.tile::before {
-  background: var(--ws-color);
-  opacity: 0;
-}
-.tile .mono {
-  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--ws-color) 70%, transparent);
-}
-.tile.in-view::before,
-.tile.focused::before {
-  opacity: 1;
-}
-.tile.in-view .mono {
-  border-color: var(--ws-color);
-  background: color-mix(in srgb, var(--ws-color) 22%, var(--vscode-editor-background));
-}
-.tile.focused .mono {
-  border-color: var(--ws-color);
-  background: color-mix(in srgb, var(--ws-color) 40%, var(--vscode-editor-background));
-  color: var(--vscode-foreground);
-}
-.section {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ws-color) 45%, transparent);
-}
-.section.active {
-  box-shadow: inset 3px 0 0 var(--ws-color);
-}
-.section.active > .sec-head {
-  background: color-mix(in srgb, var(--ws-color) 10%, var(--vscode-sideBar-background));
-}
-
 /* ---- inline name box (new file/folder, rename) ---- */
 .row.edit {
   height: auto;
@@ -727,4 +532,302 @@ textarea:focus {
 .row.selected:focus-visible {
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* ---- worktree tabs (top) ---- */
+.wt-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  height: 30px;
+  background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.wt-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* Tabs keep their names; the strip scrolls sideways when they don't fit. */
+  flex: none;
+  max-width: 150px;
+  padding: 0 9px 0 8px;
+  border-right: 1px solid var(--border);
+  color: var(--vscode-tab-inactiveForeground, var(--muted));
+  background: var(--vscode-tab-inactiveBackground, transparent);
+  white-space: nowrap;
+}
+.wt-tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--ws-color, var(--focus));
+  opacity: 0.35;
+}
+.wt-tab:hover {
+  color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+}
+.wt-tab[aria-selected='true'] {
+  color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+  background: var(--vscode-tab-activeBackground, var(--vscode-sideBar-background));
+}
+.wt-tab[aria-selected='true']::before {
+  opacity: 1;
+}
+.wt-tab.all {
+  flex: none;
+}
+.wt-tab.all::before {
+  background: var(--vscode-foreground);
+}
+.wt-tab.unreachable {
+  opacity: 0.55;
+}
+.wt-tab .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.wt-tab .codicon {
+  font-size: 14px;
+}
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ws-color);
+  flex: none;
+}
+.wt-tab .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot.waiting {
+  background: var(--waiting);
+}
+.dot.working {
+  background: var(--working);
+}
+.dot.error {
+  background: var(--error);
+}
+.dot.done {
+  background: var(--done);
+}
+.wt-tab .n {
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 10px;
+  line-height: 14px;
+  flex: none;
+}
+.wt-add {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+  color: var(--muted);
+}
+.wt-add:hover {
+  color: var(--vscode-foreground);
+}
+
+/* ---- tool strip (left) ---- */
+.tools {
+  width: 40px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  border-right: 1px solid var(--border);
+  background: var(--vscode-activityBar-background, var(--vscode-sideBar-background));
+}
+.tools button {
+  position: relative;
+  width: 40px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--vscode-activityBar-inactiveForeground, var(--muted));
+}
+.tools button:hover,
+.tools button[aria-selected='true'] {
+  color: var(--vscode-activityBar-foreground, var(--vscode-foreground));
+}
+.tools button[aria-selected='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--ws-color);
+}
+.tools .codicon {
+  font-size: 20px;
+}
+.tools .b {
+  position: absolute;
+  right: 3px;
+  bottom: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--vscode-activityBarBadge-background, var(--vscode-badge-background));
+  color: var(--vscode-activityBarBadge-foreground, var(--vscode-badge-foreground));
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+}
+.tools .b.alert {
+  background: var(--waiting);
+  color: var(--vscode-editor-background);
+}
+.tools .grow {
+  flex: 1;
+}
+
+/* ---- headers ---- */
+.ws-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 6px 4px 8px;
+  background: var(--vscode-sideBar-background);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 2px 0 var(--ws-color);
+}
+.ws-head:hover .actions,
+.ws-head:focus-within .actions {
+  visibility: visible;
+}
+.ws-head .sec-meta,
+.ws-head .sec-msg {
+  padding-left: 20px;
+}
+.section {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ws-color) 60%, transparent);
+}
+.sec-head {
+  padding-left: 4px;
+}
+.sec-head .actions + .actions {
+  margin-left: 0;
+}
+.tool-title {
+  padding: 6px 8px 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* ---- overview ---- */
+.card {
+  padding: 5px 6px 6px 8px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 3px 0 0 var(--ws-color);
+  cursor: pointer;
+}
+.card:hover {
+  background: var(--hover);
+}
+.card.current {
+  background: color-mix(in srgb, var(--ws-color) 10%, var(--vscode-sideBar-background));
+}
+.card:hover .actions,
+.card:focus-within .actions {
+  visibility: visible;
+}
+
+/* ---- search ---- */
+.search-box {
+  padding: 6px 8px 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.search-input {
+  display: flex;
+  align-items: center;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+.search-input:focus-within {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+.search-input input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--vscode-input-foreground);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.search-input input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+.toggle {
+  width: 22px;
+  height: 20px;
+  margin-right: 2px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+.toggle .codicon {
+  font-size: 14px;
+}
+.toggle.on {
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  background: var(--vscode-inputOption-activeBackground);
+  border-color: var(--vscode-inputOption-activeBorder, var(--focus));
+}
+.search-summary {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.search-ws {
+  font-weight: 600;
+  padding-left: 10px;
+  cursor: default;
+  box-shadow: inset 3px 0 0 var(--ws-color);
+}
+.search-ws:hover {
+  background: none;
+}
+.row.hit {
+  padding-left: 42px;
+  font-size: 12px;
+}
+.line-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+mark {
+  color: inherit;
+  background: var(--vscode-editor-findMatchHighlightBackground);
+  outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
 }

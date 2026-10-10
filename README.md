@@ -6,13 +6,17 @@ Flotilla doesn't replace Copilot Chat, Claude Code or any other agent. It **obse
 
 ## Features
 
-The Flotilla sidebar shows every worktree of the repository at once, with three tabs across the top:
+Flotilla is meant to be your sidebar. **Worktree tabs** run across its top, like editor tabs: the first, **All**, shows every worktree at once; the others show one worktree each. The selected tab is the window's **active worktree**: new terminals (*Flotilla: New Terminal in Active Worktree*) and the status bar follow it, and Ctrl+Alt+0…9 switch it (0 is All). Each tab shows the worktree's color, a dot for its most urgent chat state and its open chats.
 
-- **Files**: each worktree's file tree, with git change badges. The active editor's file is revealed in its own worktree. New file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees), and drag and drop, from the right-click menu or the keyboard.
-- **Version Control**: per worktree, a commit message box, publish/sync, and staged and unstaged changes with stage, unstage and discard.
-- **Chats**: the Claude Code chats linked to each worktree: open chats with their state (working, waiting for you, finished), *New chat*, and the history of every chat linked to it. A chat that runs elsewhere but edits a worktree's files is linked to it as well.
+A **tool strip** runs down its left side:
 
-The **rail** on the left has a tile per worktree, with a dot for the most urgent chat state and a count of open chats. Each worktree has a color, shared by its tile and the stripe along its section; the tile of the section at the top of the list is highlighted. Click a tile to scroll to that worktree; double-click it to show only that worktree (Esc or *Show all* to go back). Right-click a worktree, file, change or chat for its actions.
+- **Overview**: every worktree, most urgent first, with its status, changes, sync state and the question a chat is waiting on.
+- **Files**: the file tree with git change badges, reveal of the active editor's file, new file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees) and drag and drop.
+- **Search**: text search in the active worktree (or all of them on the All tab), with match case, whole word and regex. It searches tracked and untracked files and skips ignored ones.
+- **Version Control**: a commit message box, publish/sync, and staged and unstaged changes with stage, unstage and discard.
+- **Chats**: the Claude Code chats linked to the worktree, with their state (working, waiting for you, finished), *New chat* and the history of every chat linked to it.
+
+At the bottom of the strip, buttons open VS Code's Run and Debug and Extensions views. To keep a single icon strip, hide VS Code's activity bar (`workbench.activityBar.location: "hidden"`) or move it to the top; Flotilla offers this once (*Flotilla: Use Flotilla as the Sidebar…*).
 
 Also:
 
