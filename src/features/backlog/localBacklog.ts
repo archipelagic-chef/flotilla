@@ -41,7 +41,7 @@ export class LocalBacklog {
     }
   }
 
-  private async ensureDir(): Promise<void> {
+  async ensureDir(): Promise<void> {
     await fs.promises.mkdir(this.dir, { recursive: true });
     await ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
   }

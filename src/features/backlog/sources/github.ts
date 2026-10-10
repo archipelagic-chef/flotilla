@@ -1,0 +1,99 @@
+import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteIssue } from './source';
+
+type GitHubConfig = Extract<IntegrationConfig, { kind: 'github' }>;
+
+interface GitHubIssue {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  html_url: string;
+  body?: string | null;
+  labels?: Array<{ name?: string } | string>;
+  assignees?: unknown[];
+  pull_request?: unknown;
+}
+
+interface GitHubComment {
+  user?: { login?: string };
+  created_at: string;
+  body: string;
+}
+
+const API = 'https://api.github.com';
+
+/** owner/repo of a GitHub remote URL (https or ssh), if it is one. */
+export function gitHubRepo(remoteUrl: string): { owner: string; repo: string } | undefined {
+  const m = /github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(remoteUrl.trim());
+  return m ? { owner: m[1], repo: m[2] } : undefined;
+}
+
+/** "GH-42" for issue 42 (branch- and tab-friendly, like a Jira key). */
+export const gitHubId = (n: number) => `GH-${n}`;
+
+/** GitHub Issues of one repository, through the user's GitHub sign-in in VS Code. */
+export class GitHubSource implements IssueSource {
+  readonly label: string;
+
+  constructor(
+    readonly config: GitHubConfig,
+    private readonly token: () => Promise<string>,
+    private readonly fetch: Fetch,
+  ) {
+    this.label = `GitHub ${config.owner}/${config.repo}`;
+  }
+
+  private async headers(): Promise<Record<string, string>> {
+    return { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  }
+
+  private get base(): string {
+    return `${API}/repos/${encodeURIComponent(this.config.owner)}/${encodeURIComponent(this.config.repo)}`;
+  }
+
+  private issue(i: GitHubIssue): RemoteIssue {
+    const labels = (i.labels ?? []).map((l) => (typeof l === 'string' ? l : (l.name ?? '')).toLowerCase());
+    const doing = labels.some((l) => /in.?progress|doing|wip/.test(l));
+    return {
+      id: gitHubId(i.number),
+      title: i.title,
+      status: i.state === 'closed' ? 'done' : doing ? 'doing' : 'todo',
+      statusName: i.state === 'closed' ? 'Closed' : doing ? 'In progress' : 'Open',
+      url: i.html_url,
+      source: this.config.id,
+    };
+  }
+
+  private number(id: string): number {
+    const n = Number(/^GH-(\d+)$/.exec(id)?.[1]);
+    if (!n) throw new Error(`'${id}' is not a GitHub issue.`);
+    return n;
+  }
+
+  async list(): Promise<RemoteIssue[]> {
+    const headers = await this.headers();
+    const [open, closed] = await Promise.all(
+      ['open', 'closed'].map((state) => fetchJson<GitHubIssue[]>(this.fetch, `${this.base}/issues?state=${state}&per_page=${state === 'open' ? 100 : 20}&sort=updated`, { headers })),
+    );
+    return [...open, ...closed].filter((i) => !i.pull_request).map((i) => this.issue(i));
+  }
+
+  async details(id: string): Promise<RemoteDetails> {
+    const n = this.number(id);
+    const headers = await this.headers();
+    const [i, comments] = await Promise.all([
+      fetchJson<GitHubIssue>(this.fetch, `${this.base}/issues/${n}`, { headers }),
+      fetchJson<GitHubComment[]>(this.fetch, `${this.base}/issues/${n}/comments?per_page=100`, { headers }),
+    ]);
+    return {
+      issue: this.issue(i),
+      description: i.body ?? '',
+      format: 'markdown',
+      descriptionText: i.body ?? '',
+      comments: comments.map((c) => ({ author: c.user?.login ?? 'someone', date: c.created_at, body: c.body, format: 'markdown' })),
+    };
+  }
+
+  async comment(id: string, text: string): Promise<void> {
+    await fetchJson(this.fetch, `${this.base}/issues/${this.number(id)}/comments`, { method: 'POST', headers: await this.headers(), body: { body: text } });
+  }
+}

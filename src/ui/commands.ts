@@ -9,6 +9,8 @@ import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import { addBranch, branchFor, branchMatches, itemBranches, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
+import type { RemoteIssue } from '../features/backlog/sources/source';
+import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import * as scm from '../features/scm/operations';
@@ -50,6 +52,7 @@ export interface CommandContext {
   output: vscode.OutputChannel;
   backlog: LocalBacklog;
   tickets: TicketPanels;
+  integrations: BacklogIntegrations;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -105,6 +108,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
   register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
   register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
+  register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
@@ -354,8 +358,9 @@ async function createWorkstream(ctx: CommandContext, request: CreateRequest): Pr
 async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown): Promise<void> {
   if (typeof id !== 'string') return;
   const agent = typeof opts === 'object' && opts !== null && (opts as { agent?: unknown }).agent === true;
-  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
-  if (!item) return;
+  const found = await findBacklogItem(ctx, id);
+  if (!found) return;
+  const { item, remote } = found;
   const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
   let ws: Workstream | undefined;
   if (!linked.length) {
@@ -377,9 +382,18 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   }
   if (!ws?.worktree.branch) return;
   const branch = ws.worktree.branch;
-  await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
+  // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
+  if (!remote) await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
   ctx.sidebar.reveal(ws.key);
-  if (agent && ws.worktree.path) await runAgent(ctx, item, ws);
+  if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
+}
+
+/** A local backlog item, or an issue from an integration (then with remote set). */
+async function findBacklogItem(ctx: CommandContext, id: string): Promise<{ item: BacklogItem; remote?: RemoteIssue } | undefined> {
+  const local = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (local) return { item: local };
+  const remote = ctx.integrations.issues().find((i) => i.id === id);
+  return remote && { item: { id: remote.id, title: remote.title, status: remote.status, created: '' }, remote };
 }
 
 /**
@@ -436,8 +450,19 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title'>, ticket: str
 }
 
 /** Starts a Claude Code agent on an item in its worktree, in a terminal of its own. */
-async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream): Promise<void> {
-  const ticket = await ctx.backlog.ensureDocument(item);
+async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, remote?: RemoteIssue): Promise<void> {
+  let ticket: string;
+  if (remote) {
+    // The issue lives in its tracker; the agent gets a local copy of it to read and to report in.
+    const source = await ctx.integrations.sourceOf(item.id);
+    const details = source && (await source.details(item.id));
+    const local = await ctx.backlog.readTicket(item);
+    const description = [details?.descriptionText.trim(), `(The issue in ${source?.label ?? 'its tracker'}: ${remote.url})`].filter(Boolean).join('\n\n');
+    await ctx.backlog.writeTicket(item.id, { title: item.title, description, activity: local.activity });
+    ticket = ctx.backlog.docPath(item.id);
+  } else {
+    ticket = await ctx.backlog.ensureDocument(item);
+  }
   const args = vscode.workspace.getConfiguration('flotilla').get<string[]>('agent.arguments', []);
   const terminal = vscode.window.createTerminal({
     name: `${item.id} agent`,
@@ -453,6 +478,11 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream):
 /** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */
 async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
   if (typeof id !== 'string') return;
+  const remote = ctx.integrations.issues().find((i) => i.id === id);
+  if (remote) {
+    void vscode.window.showInformationMessage(`${id} is written in its tracker.`, 'Open It').then((c) => c && vscode.env.openExternal(vscode.Uri.parse(remote.url)));
+    return;
+  }
   const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!item) return;
   const ticket = await ctx.backlog.ensureDocument(item);

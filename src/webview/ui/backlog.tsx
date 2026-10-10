@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
-import type { BacklogItemView as BacklogItem, BacklogStatus, WorkstreamView } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView } from '../protocol';
 import { send } from './api';
 
 const LANES: Array<{ status: BacklogStatus; title: string; icon: string }> = [
@@ -13,6 +13,10 @@ const DRAG_TYPE = 'application/x-flotilla-backlog';
 
 interface Props {
   items: BacklogItem[] | undefined;
+  /** Integrations whose issues don't load. */
+  problems: BacklogProblem[];
+  /** How many integrations are connected. */
+  integrations: number;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The host asked for the new-item box (Add Backlog Item… command). */
@@ -25,7 +29,7 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, workstreams, colors, adding, setAdding, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, workstreams, colors, adding, setAdding, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
@@ -51,10 +55,28 @@ export function BacklogView({ items, workstreams, colors, adding, setAdding, ope
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <div class="tool-title backlog-title">
         <span>Backlog</span>
-        <button class="icon" aria-label="Add Item" onClick={() => setAdding(true)}>
-          <i class="codicon codicon-add" />
-        </button>
+        <span class="title-actions">
+          {integrations > 0 && (
+            <button class="icon" aria-label="Refresh Issues" onClick={() => send({ type: 'backlog', op: 'refresh' })}>
+              <i class="codicon codicon-refresh" />
+            </button>
+          )}
+          <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
+            <i class="codicon codicon-plug" />
+          </button>
+          <button class="icon" aria-label="Add Item" onClick={() => setAdding(true)}>
+            <i class="codicon codicon-add" />
+          </button>
+        </span>
       </div>
+      {problems.map((p) => (
+        <button key={p.label} class="backlog-problem" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
+          <i class="codicon codicon-warning" />
+          <span>
+            <strong>{p.label}</strong>: {p.error}
+          </span>
+        </button>
+      ))}
       {adding && <NewItem onDone={() => setAdding(false)} />}
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && !adding && (
@@ -168,13 +190,15 @@ const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'wa
 
 function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   const done = item.status === 'done';
+  // Issues from integrations are ordered, renamed and closed in their tracker.
+  const remote = item.source;
   const worktree = worktrees[0];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
-      draggable={!renaming}
+      draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -184,23 +208,29 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       onClick={() => !renaming && send({ type: 'backlog', op: 'open', id: item.id })}
       onKeyDown={(e) => {
         if (renaming) return;
-        if (e.key === 'F2') setRenaming(true);
+        if (e.key === 'F2' && !remote) setRenaming(true);
         else if (e.key === 'Enter') send({ type: 'backlog', op: 'open', id: item.id });
-        else if (e.key === 'Delete') send({ type: 'backlog', op: 'delete', id: item.id });
+        else if (e.key === 'Delete' && !remote) send({ type: 'backlog', op: 'delete', id: item.id });
         else return;
         e.preventDefault();
       }}
     >
-      <button
-        class={`icon status-toggle`}
-        aria-label={done ? 'Reopen' : 'Mark Done'}
-        onClick={(e) => {
-          e.stopPropagation();
-          setStatus(done ? 'todo' : 'done');
-        }}
-      >
-        <i class={`codicon codicon-${icon}`} />
-      </button>
+      {remote ? (
+        <span class="status-toggle source-icon" data-tip={`${remote.label} · ${remote.statusName}`}>
+          <i class={`codicon codicon-${remote.kind === 'github' ? 'github' : 'issues'}`} />
+        </span>
+      ) : (
+        <button
+          class="icon status-toggle"
+          aria-label={done ? 'Reopen' : 'Mark Done'}
+          onClick={(e) => {
+            e.stopPropagation();
+            setStatus(done ? 'todo' : 'done');
+          }}
+        >
+          <i class={`codicon codicon-${icon}`} />
+        </button>
+      )}
       <span class="item-id">{item.id}</span>
       {renaming ? (
         <RenameBox item={item} onDone={() => setRenaming(false)} />
@@ -251,15 +281,23 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
               <i class="codicon codicon-play" />
             </button>
           )}
-          <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
-            <i class="codicon codicon-sparkle" />
-          </button>
-          <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
-            <i class="codicon codicon-edit" />
-          </button>
-          <button class="icon" aria-label="Delete…" onClick={() => send({ type: 'backlog', op: 'delete', id: item.id })}>
-            <i class="codicon codicon-trash" />
-          </button>
+          {remote ? (
+            <a class="icon" href={remote.url} aria-label={`Open in ${remote.label}`}>
+              <i class="codicon codicon-link-external" />
+            </a>
+          ) : (
+            <>
+              <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
+                <i class="codicon codicon-sparkle" />
+              </button>
+              <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
+                <i class="codicon codicon-edit" />
+              </button>
+              <button class="icon" aria-label="Delete…" onClick={() => send({ type: 'backlog', op: 'delete', id: item.id })}>
+                <i class="codicon codicon-trash" />
+              </button>
+            </>
+          )}
         </span>
       )}
     </div>

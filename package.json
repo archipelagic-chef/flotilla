@@ -370,6 +370,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.backlogIntegrations",
+        "title": "Backlog Integrations (Jira, GitHub Issues)…",
+        "category": "Flotilla",
+        "icon": "$(plug)"
+      },
+      {
         "command": "flotilla.showSearch",
         "title": "Search in Active Worktree",
         "category": "Flotilla"
@@ -707,6 +713,10 @@
         {
           "command": "flotilla.openBacklogItem",
           "when": "false"
+        },
+        {
+          "command": "flotilla.backlogIntegrations",
+          "when": "flotilla.state == ready"
         }
       ],
       "view/title": [

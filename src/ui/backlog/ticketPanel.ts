@@ -4,6 +4,8 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { branchMatches, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import type { RemoteIssue } from '../../features/backlog/sources/source';
+import type { BacklogIntegrations } from './integrations';
 import { entryDate, type Ticket } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
@@ -12,6 +14,7 @@ import { ATTENTION_LABEL, workstreamLabel } from '../format';
 export interface TicketDeps {
   extensionUri: vscode.Uri;
   backlog: LocalBacklog;
+  integrations: BacklogIntegrations;
   repository: Repository<Workstream>;
   /** Shows a worktree's tab in the sidebar. */
   revealWorktree(key: string): void;
@@ -48,6 +51,7 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.refreshAll()).dispose },
       deps.backlog.watch(() => this.refreshAll()),
+      deps.integrations.onDidChange(() => this.refreshAll()),
     );
   }
 
@@ -84,8 +88,39 @@ export class TicketPanels implements vscode.Disposable {
     return this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
   }
 
-  private async item(id: string): Promise<BacklogItem | undefined> {
-    return (await this.deps.backlog.read()).items.find((i) => i.id === id);
+  /** A local item, or an issue from an integration (as an item, with remote set). */
+  private async item(id: string): Promise<(BacklogItem & { remote?: RemoteIssue }) | undefined> {
+    const local = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (local) return local;
+    const remote = this.deps.integrations.issues().find((i) => i.id === id);
+    return remote && { id, title: remote.title, status: remote.status, created: '', remote };
+  }
+
+  /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
+  private async remoteView(item: BacklogItem & { remote: RemoteIssue }, webview: vscode.Webview): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'>> {
+    const dir = this.deps.backlog.dir;
+    const local = (await this.deps.backlog.readTicket(item)).activity;
+    const localEntries = await Promise.all(local.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, webview, dir) })));
+    try {
+      const source = await this.deps.integrations.sourceOf(item.id);
+      if (!source) throw new Error('Its integration is no longer connected.');
+      const d = await source.details(item.id);
+      const remoteEntries = await Promise.all(
+        d.comments.map(async (c) => ({
+          date: entryDate(new Date(c.date)),
+          author: c.author,
+          body: c.body,
+          html: c.format === 'html' ? c.body : await renderMarkdown(c.body, webview, dir),
+        })),
+      );
+      return {
+        description: d.descriptionText,
+        descriptionHtml: d.format === 'html' ? d.description : await renderMarkdown(d.description, webview, dir),
+        activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
+      };
+    } catch (error) {
+      return { description: '', descriptionHtml: '', activity: localEntries, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   private refreshAll(): void {
@@ -99,13 +134,24 @@ export class TicketPanels implements vscode.Disposable {
       return;
     }
     panel.title = `${item.id} ${item.title}`;
-    const ticket = await this.deps.backlog.readTicket(item);
     const dir = this.deps.backlog.dir;
+    const { remote, ...plain } = item;
+    let content: Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'>;
+    if (remote) {
+      content = await this.remoteView({ ...plain, remote }, panel.webview);
+    } else {
+      const ticket = await this.deps.backlog.readTicket(item);
+      content = {
+        description: ticket.description,
+        descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
+        activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
+      };
+    }
+    const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const view: TicketView = {
-      item,
-      description: ticket.description,
-      descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
-      activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
+      item: plain,
+      ...content,
+      remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName },
       worktrees: this.worktreesOf(item).map((ws) => ({
         key: ws.key,
         branch: workstreamLabel(ws),
@@ -123,7 +169,7 @@ export class TicketPanels implements vscode.Disposable {
     await this.deps.backlog.writeTicket(item.id, change(await this.deps.backlog.readTicket(item)));
   }
 
-  /** Adds an entry to a ticket's activity: comments, and notes from Flotilla (an agent started). */
+  /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
   async addActivity(id: string, author: string, body: string): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
@@ -149,8 +195,17 @@ export class TicketPanels implements vscode.Disposable {
         break;
       case 'comment':
         if (!m.text.trim()) return;
-        await this.addActivity(id, 'You', m.text);
+        if (item.remote) {
+          const source = await this.deps.integrations.sourceOf(id);
+          if (!source) throw new Error('Its integration is no longer connected.');
+          await source.comment(id, m.text.trim());
+        } else {
+          await this.addActivity(id, 'You', m.text);
+        }
         break;
+      case 'openRemote':
+        if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
+        return;
       case 'status':
         await backlog.change((d) => updateItem(d, id, { status: m.status }));
         break;

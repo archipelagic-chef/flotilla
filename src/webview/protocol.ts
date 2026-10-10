@@ -17,6 +17,14 @@ export type { BacklogItem, BacklogStatus };
 export interface BacklogItemView extends BacklogItem {
   summary?: string;
   activity: number;
+  /** An issue from an integration (Jira, GitHub Issues), not a local item. */
+  source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+}
+
+/** Integrations whose issues don't load, to show in the backlog. */
+export interface BacklogProblem {
+  label: string;
+  error: string;
 }
 
 /** The views under Version Control in the tool strip. */
@@ -148,7 +156,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[] }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** Show an inline box to name a new backlog item. */
@@ -205,6 +213,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
   /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */
   | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai'; id: string }
+  /** The Integrations menu, or reread the integrations' issues. */
+  | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
   | ({ type: 'openCompare'; path?: string } & RefComparison);

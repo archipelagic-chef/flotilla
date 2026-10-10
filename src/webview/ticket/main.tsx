@@ -53,6 +53,7 @@ function MarkdownBox({
   onSubmit,
   autoFocus,
   minRows = 3,
+  images = true,
 }: {
   value: string;
   setValue(text: string): void;
@@ -61,6 +62,8 @@ function MarkdownBox({
   onSubmit(): void;
   autoFocus?: boolean;
   minRows?: number;
+  /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
+  images?: boolean;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -89,7 +92,7 @@ function MarkdownBox({
       }}
       onPaste={(e) => {
         const files = e.clipboardData?.files;
-        if (files?.length && [...files].some((f) => f.type.startsWith('image/'))) {
+        if (images && files?.length && [...files].some((f) => f.type.startsWith('image/'))) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
         }
@@ -97,7 +100,7 @@ function MarkdownBox({
       onDragOver={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
       onDrop={(e) => {
         const files = e.dataTransfer?.files;
-        if (files?.length) {
+        if (images && files?.length) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
         }
@@ -121,6 +124,7 @@ function Title({ ticket }: { ticket: TicketView }) {
     if (title.trim() && title.trim() !== ticket.item.title) send({ type: 'title', title });
     else setTitle(ticket.item.title);
   };
+  if (ticket.remote) return <h1 class="title readonly">{ticket.item.title}</h1>;
   if (editing) {
     return (
       <input
@@ -157,14 +161,19 @@ function Description({ ticket }: { ticket: TicketView }) {
     <section class="block">
       <div class="block-head">
         <h2>Description</h2>
-        {draft === undefined && (
+        {draft === undefined && !ticket.remote && (
           <button class="text-button" onClick={() => setDraft(ticket.description)}>
             <i class="codicon codicon-edit" /> Edit
           </button>
         )}
+        {ticket.remote && (
+          <button class="text-button" onClick={() => send({ type: 'openRemote' })}>
+            <i class="codicon codicon-link-external" /> Edit in {ticket.remote.kind === 'jira' ? 'Jira' : 'GitHub'}
+          </button>
+        )}
       </div>
       {draft === undefined ? (
-        <div onDblClick={() => setDraft(ticket.description)}>
+        <div onDblClick={() => !ticket.remote && setDraft(ticket.description)}>
           <Rendered html={ticket.descriptionHtml} empty="No description yet. Edit it, or have Claude write it." />
         </div>
       ) : (
@@ -220,7 +229,18 @@ function Activity({ ticket }: { ticket: TicketView }) {
         ))}
       </ol>
       <div class="comment-box">
-        <MarkdownBox value={comment} setValue={setComment} placeholder="Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)" label="Comment" onSubmit={post} />
+        <MarkdownBox
+          value={comment}
+          setValue={setComment}
+          placeholder={
+            ticket.remote
+              ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira' : 'GitHub'} (Ctrl+Enter posts it there)`
+              : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
+          }
+          label="Comment"
+          onSubmit={post}
+          images={!ticket.remote}
+        />
         <div class="actions-row">
           <button class="button" disabled={!comment.trim()} onClick={post}>
             Comment
@@ -256,32 +276,61 @@ function App() {
       <header>
         <div class="meta">
           <span class="ticket-id">{ticket.item.id}</span>
-          <div class="segmented" role="radiogroup" aria-label="Status">
-            {STATUSES.map((s) => (
-              <button key={s.status} role="radio" aria-checked={ticket.item.status === s.status} onClick={() => send({ type: 'status', status: s.status })}>
-                <i class={`codicon codicon-${s.icon}`} /> {s.label}
-              </button>
-            ))}
-          </div>
+          {ticket.remote ? (
+            <button class="source" onClick={() => send({ type: 'openRemote' })} title={`Open it in ${ticket.remote.label}`}>
+              <i class={`codicon codicon-${ticket.remote.kind === 'github' ? 'github' : 'issues'}`} />
+              {ticket.remote.label} · {ticket.remote.statusName}
+              <i class="codicon codicon-link-external" />
+            </button>
+          ) : (
+            <div class="segmented" role="radiogroup" aria-label="Status">
+              {STATUSES.map((s) => (
+                <button
+                  key={s.status}
+                  role="radio"
+                  aria-checked={ticket.item.status === s.status}
+                  onClick={() => send({ type: 'status', status: s.status })}
+                >
+                  <i class={`codicon codicon-${s.icon}`} /> {s.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <Title ticket={ticket} />
         <div class="toolbar">
           {!done && (
-            <button class="button" onClick={() => send({ type: 'start', agent: true })} title="Creates its worktree if needed and starts a Claude Code agent there; it reports below">
+            <button
+              class="button"
+              onClick={() => send({ type: 'start', agent: true })}
+              title="Creates its worktree if needed and starts a Claude Code agent there; it reports below"
+            >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
             </button>
           )}
           {!done && (
-            <button class="button secondary" onClick={() => send({ type: 'start', agent: false })} title="Creates a worktree and branch for it, without an agent (an epic can have several)">
+            <button
+              class="button secondary"
+              onClick={() => send({ type: 'start', agent: false })}
+              title="Creates a worktree and branch for it, without an agent (an epic can have several)"
+            >
               <i class="codicon codicon-git-branch" /> {worktrees.length ? 'Add a Worktree' : 'Create Worktree'}
             </button>
           )}
-          <button class="button secondary" onClick={() => send({ type: 'writeWithAI' })} title="Opens a Claude Code chat that helps write this ticket">
-            <i class="codicon codicon-sparkle" /> Write with Claude
-          </button>
-          <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
-            <i class="codicon codicon-go-to-file" /> Open as Markdown
-          </button>
+          {!ticket.remote && (
+            <>
+              <button
+                class="button secondary"
+                onClick={() => send({ type: 'writeWithAI' })}
+                title="Opens a Claude Code chat that helps write this ticket"
+              >
+                <i class="codicon codicon-sparkle" /> Write with Claude
+              </button>
+              <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
+                <i class="codicon codicon-go-to-file" /> Open as Markdown
+              </button>
+            </>
+          )}
         </div>
         {worktrees.length > 0 && (
           <div class="worktrees">
@@ -296,6 +345,11 @@ function App() {
           </div>
         )}
       </header>
+      {ticket.error && (
+        <div class="error-note">
+          <i class="codicon codicon-warning" /> Couldn't read it from {ticket.remote?.label ?? 'its tracker'}: {ticket.error}
+        </div>
+      )}
       <Description ticket={ticket} />
       <Activity ticket={ticket} />
     </main>

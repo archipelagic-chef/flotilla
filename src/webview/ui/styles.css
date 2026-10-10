@@ -1806,3 +1806,32 @@ ins {
 .backlog-item .activity-count .codicon {
   font-size: 12px;
 }
+.backlog-title .title-actions {
+  display: flex;
+  gap: 2px;
+}
+.backlog-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: calc(100% - 16px);
+  margin: 0 8px 6px;
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 12px;
+  border-radius: 3px;
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
+}
+.backlog-problem .codicon {
+  font-size: 14px;
+  margin-top: 1px;
+}
+.backlog-item .source-icon {
+  display: grid;
+  place-items: center;
+}
+.backlog-item a.icon {
+  color: inherit;
+}

@@ -12,6 +12,10 @@ export interface TicketView {
   description: string;
   descriptionHtml: string;
   activity: Array<TicketEntry & { html: string }>;
+  /** For an issue from an integration: where it lives. Its title, status and description are edited there. */
+  remote?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+  /** Reading it from its tracker failed. */
+  error?: string;
   /** The worktrees working on the item (several for an epic), with their agents' state. */
   worktrees: Array<{ key: string; branch: string; attention: AttentionState; status: string; message?: string }>;
 }
@@ -33,4 +37,5 @@ export type TicketWebviewMessage =
   | { type: 'start'; agent: boolean }
   | { type: 'writeWithAI' }
   | { type: 'openFile' }
+  | { type: 'openRemote' }
   | { type: 'openWorktree'; key: string };

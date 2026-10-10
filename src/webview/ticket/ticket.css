@@ -317,3 +317,31 @@ h2 {
   flex-wrap: wrap;
   gap: 6px;
 }
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.source:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-list-hoverBackground);
+}
+.title.readonly {
+  cursor: default;
+}
+.title.readonly:hover {
+  background: none;
+}
+.error-note {
+  margin-top: 12px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
+}

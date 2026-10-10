@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -115,6 +115,7 @@ export function App() {
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   const [addingBacklog, setAddingBacklog] = useState(false);
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -250,6 +251,7 @@ export function App() {
           return;
         case 'backlog':
           setBacklog(m.items);
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations });
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
@@ -424,6 +426,8 @@ export function App() {
     content = (
       <BacklogView
         items={backlog}
+        problems={backlogInfo.problems}
+        integrations={backlogInfo.integrations}
         workstreams={workstreams}
         colors={colors}
         adding={addingBacklog}

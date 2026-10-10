@@ -10,12 +10,13 @@ import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { addItem, moveItem, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import type { BacklogIntegrations } from '../backlog/integrations';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type HostMessage, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import { ALL, type BacklogItemView, type HostMessage, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
@@ -34,6 +35,7 @@ export interface SidebarDeps {
   inWorkspace: (ws: Workstream) => boolean;
   active: ActiveWorktree;
   backlog: LocalBacklog;
+  integrations: BacklogIntegrations;
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string, opts: { amend?: boolean; then?: 'push' | 'sync' }) => Promise<boolean>;
   output: vscode.OutputChannel;
@@ -60,6 +62,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
       deps.backlog.watch(() => void this.backlogChanged()),
+      deps.integrations.onDidChange(() => void this.postBacklog()),
     );
   }
 
@@ -77,7 +80,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length };
       }),
     );
-    this.post({ type: 'backlog', items });
+    // Issues from integrations follow the local items, in their tracker's order.
+    const sources = this.deps.integrations.current;
+    const remote: BacklogItemView[] = sources.flatMap((s) =>
+      s.issues.map((i) => ({
+        id: i.id,
+        title: i.title,
+        status: i.status,
+        created: '',
+        activity: 0,
+        source: { kind: s.config.kind, label: s.label, url: i.url, statusName: i.statusName },
+      })),
+    );
+    const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -127,6 +143,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'ai':
         await vscode.commands.executeCommand('flotilla.writeBacklogItem', m.id);
         return;
+      case 'integrations':
+        await this.deps.integrations.manage();
+        return;
+      case 'refresh':
+        await this.deps.integrations.refresh();
+        break;
     }
     await this.postBacklog();
   }

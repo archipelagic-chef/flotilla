@@ -18,6 +18,7 @@ import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { LocalBacklog } from './features/backlog/localBacklog';
+import { BacklogIntegrations } from './ui/backlog/integrations';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
@@ -110,6 +111,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
+  const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
+  context.subscriptions.push(integrations);
+  void integrations.refresh();
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   const sidebar = new SidebarProvider({
@@ -121,8 +125,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     commit: (ws, message, opts) => commit(scmCtx, ws, message, opts),
     output,
     backlog,
+    integrations,
   });
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, backlog, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
   context.subscriptions.push(tickets);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
@@ -137,6 +142,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     backlog,
     tickets,
+    integrations,
   };
   context.subscriptions.push(
     sidebar,
