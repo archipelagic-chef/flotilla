@@ -345,3 +345,18 @@ h2 {
   background: var(--vscode-inputValidation-warningBackground, transparent);
   border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
 }
+.properties {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: -4px;
+}
+.properties .priority-button {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.chev-small {
+  font-size: 12px !important;
+  color: var(--muted);
+}

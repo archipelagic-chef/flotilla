@@ -2,6 +2,8 @@ import { render } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BacklogStatus } from '../../features/backlog/backlog';
 import type { TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { PriorityPicker } from '../ui/priority';
+import '../ui/priority.css';
 import './ticket.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -298,6 +300,9 @@ function App() {
           )}
         </div>
         <Title ticket={ticket} />
+        <div class="properties">
+          <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
+        </div>
         <div class="toolbar">
           {!done && (
             <button

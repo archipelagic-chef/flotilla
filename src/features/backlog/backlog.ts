@@ -4,12 +4,28 @@
  */
 export type BacklogStatus = 'todo' | 'doing' | 'done';
 
+/** How important an item is; unset means not decided. */
+export type BacklogPriority = 'urgent' | 'high' | 'medium' | 'low';
+
+export const BACKLOG_PRIORITIES: readonly BacklogPriority[] = ['urgent', 'high', 'medium', 'low'];
+
+/** A tracker's priority name ("Highest", "P1", "priority: low") as a backlog priority. */
+export function priorityFromName(name: string | undefined): BacklogPriority | undefined {
+  const n = (name ?? '').toLowerCase();
+  if (/highest|blocker|critical|urgent|\bp0\b/.test(n)) return 'urgent';
+  if (/high|major|\bp1\b/.test(n)) return 'high';
+  if (/medium|normal|\bp2\b/.test(n)) return 'medium';
+  if (/lowest|low|minor|trivial|\bp[34]\b/.test(n)) return 'low';
+  return undefined;
+}
+
 export interface BacklogItem {
   /** Ticket-like id, e.g. "BL-12"; branches started from the item carry it, which links them. */
   id: string;
   title: string;
   notes?: string;
   status: BacklogStatus;
+  priority?: BacklogPriority;
   /** ISO 8601. */
   created: string;
   /** Branches started for it: one for a small item, several for an epic. */
@@ -20,8 +36,10 @@ export interface BacklogItem {
 
 export interface BacklogData {
   version: 1;
-  /** The number the next item gets. */
+  /** Before counters: the number the next item got. Kept, no longer used. */
   next: number;
+  /** The highest number given out per prefix (numbers aren't reused after a delete). */
+  counters?: Record<string, number>;
   /** In priority order (first is most important), across statuses. */
   items: BacklogItem[];
 }
@@ -42,14 +60,57 @@ export function isBacklogData(value: unknown): value is BacklogData {
   );
 }
 
-/** Adds an item at the top of To do (newest ideas start out most visible; drag to reprioritize). */
-export function addItem(data: BacklogData, title: string, prefix: string, now: Date): { data: BacklogData; item: BacklogItem } {
-  const item: BacklogItem = { id: `${prefix}-${data.next}`, title: title.trim(), status: 'todo', created: now.toISOString() };
-  return { data: { ...data, next: data.next + 1, items: [item, ...data.items] }, item };
+/** Ids look like tickets: a prefix of letters and digits, a dash, a number ("BL-12", "WEB-3"). */
+export const ID_PATTERN = /^([A-Za-z][A-Za-z0-9]{0,9})-(\d{1,7})$/;
+
+/** The next id for a prefix: one past the highest given out or in use. */
+export function nextId(data: BacklogData, prefix: string, taken: readonly string[] = []): string {
+  const used = [...data.items.map((i) => i.id), ...taken]
+    .map((id) => ID_PATTERN.exec(id))
+    .filter((m): m is RegExpExecArray => m !== null && m[1].toUpperCase() === prefix.toUpperCase())
+    .map((m) => Number(m[2]));
+  return `${prefix}-${Math.max(data.counters?.[prefix.toUpperCase()] ?? 0, ...used, 0) + 1}`;
 }
 
-export function updateItem(data: BacklogData, id: string, change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>>): BacklogData {
-  return { ...data, items: data.items.map((i) => (i.id === id ? { ...i, ...change } : i)) };
+/** Why an id can't be used for a new item, if it can't. */
+export function idProblem(data: BacklogData, id: string, taken: readonly string[] = []): string | undefined {
+  if (!ID_PATTERN.test(id)) return 'An id is a prefix, a dash and a number, like BL-12.';
+  const lower = id.toLowerCase();
+  if ([...data.items.map((i) => i.id), ...taken].some((t) => t.toLowerCase() === lower)) return `${id} is already taken.`;
+  return undefined;
+}
+
+/**
+ * Adds an item at the top of To do (newest ideas start out most visible; drag to reprioritize), with the given id or
+ * the next one for prefix.
+ */
+export function addItem(data: BacklogData, title: string, prefix: string, now: Date, id = nextId(data, prefix)): { data: BacklogData; item: BacklogItem } {
+  const problem = idProblem(data, id);
+  if (problem) throw new Error(problem);
+  const item: BacklogItem = { id, title: title.trim(), status: 'todo', created: now.toISOString() };
+  const [, p, n] = ID_PATTERN.exec(id)!;
+  const key = p.toUpperCase();
+  const counters = { ...data.counters, [key]: Math.max(data.counters?.[key] ?? 0, Number(n)) };
+  return { data: { ...data, counters, items: [item, ...data.items] }, item };
+}
+
+export function updateItem(
+  data: BacklogData,
+  id: string,
+  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>> & { priority?: BacklogPriority | null },
+): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { priority, ...rest } = change;
+      const next: BacklogItem = { ...i, ...rest };
+      // null clears the priority.
+      if (priority === null) delete next.priority;
+      else if (priority) next.priority = priority;
+      return next;
+    }),
+  };
 }
 
 export function removeItem(data: BacklogData, id: string): BacklogData {

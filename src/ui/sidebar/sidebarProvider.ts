@@ -7,7 +7,7 @@ import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { addItem, moveItem, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { addItem, idProblem, moveItem, nextId, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -44,7 +44,9 @@ export interface SidebarDeps {
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   static readonly viewId = 'flotilla.sidebar';
   private view: vscode.WebviewView | undefined;
-  private pendingReveal: HostMessage | undefined;
+  /** The page has loaded and listens; until then actions wait in pending. */
+  private ready = false;
+  private pending: HostMessage[] = [];
   private readonly visibility = new vscode.EventEmitter<boolean>();
   readonly onDidChangeVisibility = this.visibility.event;
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -74,8 +76,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   private async postBacklog(): Promise<void> {
     const store = this.deps.backlog;
+    const data = await store.read();
     const items = await Promise.all(
-      (await store.read()).items.map(async (item) => {
+      data.items.map(async (item) => {
         const ticket = await store.readTicket(item);
         return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length };
       }),
@@ -87,13 +90,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         id: i.id,
         title: i.title,
         status: i.status,
+        priority: i.priority,
         created: '',
         activity: 0,
         source: { kind: s.config.kind, label: s.label, url: i.url, statusName: i.statusName },
       })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length });
+    const defaultPrefix = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL').trim() || 'BL';
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, defaultPrefix, counters: data.counters ?? {} });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -103,8 +108,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (!m.title.trim()) return;
         const prefix = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL').trim() || 'BL';
         let added: BacklogItem | undefined;
+        const id = m.id?.trim() || undefined;
+        // Ids of issues from integrations are taken too (they'd link to the same branches).
+        const taken = this.deps.integrations.issues().map((i) => i.id);
+        if (id) {
+          const problem = idProblem(await store.read(), id, taken);
+          if (problem) {
+            void vscode.window.showWarningMessage(problem);
+            return;
+          }
+        }
         await store.change((d) => {
-          const result = addItem(d, m.title, prefix, new Date());
+          const result = addItem(d, m.title, prefix, new Date(), id ?? nextId(d, prefix, taken));
           added = result.item;
           return result.data;
         });
@@ -119,6 +134,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
             ...(m.title?.trim() ? { title: m.title.trim() } : {}),
             ...(m.notes !== undefined ? { notes: m.notes.trim() || undefined } : {}),
             ...(m.status ? { status: m.status } : {}),
+            ...(m.priority !== undefined ? { priority: m.priority } : {}),
           }),
         );
         break;
@@ -161,7 +177,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** Shows the Backlog tool with a box to name a new item. */
   async addBacklogItem(): Promise<void> {
     await this.showTool('backlog');
-    this.post({ type: 'backlogAdd' });
+    this.act({ type: 'backlogAdd' });
   }
 
   get visible(): boolean {
@@ -170,6 +186,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    this.ready = false;
     const dist = vscode.Uri.joinPath(this.deps.extensionUri, 'dist');
     const iconRoot = iconThemeRoot(this.deps.extensionUri);
     view.webview.options = { enableScripts: true, localResourceRoots: iconRoot ? [dist, iconRoot] : [dist] };
@@ -178,6 +195,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     view.onDidChangeVisibility(() => this.visibility.fire(view.visible));
     view.onDidDispose(() => {
       this.view = undefined;
+      this.ready = false;
       this.visibility.fire(false);
     });
     this.visibility.fire(view.visible);
@@ -187,6 +205,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         vscode.workspace.onDidChangeConfiguration((e) => {
           if (!e.affectsConfiguration('workbench.iconTheme')) return;
           const root = iconThemeRoot(this.deps.extensionUri);
+          this.ready = false;
           view.webview.options = { enableScripts: true, localResourceRoots: root ? [dist, root] : [dist] };
           void this.postIconTheme();
         }),
@@ -215,17 +234,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
   reveal(key: string, relPath?: string, tool?: Tool): void {
-    const message: HostMessage = { type: 'reveal', key, path: relPath, tool };
-    if (this.view) this.post(message);
-    else this.pendingReveal = message;
+    this.act({ type: 'reveal', key, path: relPath, tool });
+  }
+
+  /** Sends an action (reveal, show a tool, …) now, or once the page is ready, so it isn't lost while it loads. */
+  private act(message: HostMessage): void {
+    if (this.view && this.ready) this.post(message);
+    else this.pending.push(message);
   }
 
   /** Shows the sidebar on the given tool. */
   async showTool(tool: Tool): Promise<void> {
     await vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`);
-    const message: HostMessage = { type: 'tool', tool };
-    if (this.view) this.post(message);
-    else this.pendingReveal = message;
+    this.act({ type: 'tool', tool });
   }
 
   dirsChanged(key: string, paths: string[]): void {
@@ -258,8 +279,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
-        if (this.pendingReveal) this.post(this.pendingReveal);
-        this.pendingReveal = undefined;
+        this.ready = true;
+        this.pending.splice(0).forEach((message) => this.post(message));
         return;
       case 'listDir': {
         const ws = this.find(m.key);

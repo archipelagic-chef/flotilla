@@ -1,3 +1,4 @@
+import { priorityFromName } from '../backlog';
 import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteIssue } from './source';
 
 type GitHubConfig = Extract<IntegrationConfig, { kind: 'github' }>;
@@ -58,6 +59,11 @@ export class GitHubSource implements IssueSource {
       title: i.title,
       status: i.state === 'closed' ? 'done' : doing ? 'doing' : 'todo',
       statusName: i.state === 'closed' ? 'Closed' : doing ? 'In progress' : 'Open',
+      // Priority labels: "priority: high", "P1", "urgent", "critical".
+      priority: labels
+        .filter((l) => /priority|^p[0-4]$|urgent|critical/.test(l))
+        .map((l) => priorityFromName(l))
+        .find(Boolean),
       url: i.html_url,
       source: this.config.id,
     };

@@ -1,4 +1,4 @@
-import type { BacklogStatus } from '../backlog';
+import type { BacklogPriority, BacklogStatus } from '../backlog';
 
 /** A connection to an issue tracker whose issues show in the backlog next to the local items. */
 export type IntegrationConfig =
@@ -13,6 +13,7 @@ export interface RemoteIssue {
   status: BacklogStatus;
   /** The tracker's own status name ("In Review"). */
   statusName: string;
+  priority?: BacklogPriority;
   url: string;
   /** Which integration it comes from. */
   source: string;

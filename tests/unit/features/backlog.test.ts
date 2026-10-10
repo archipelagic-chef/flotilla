@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, branchFor, branchMatches, itemBranches, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -25,7 +25,22 @@ describe('backlog', () => {
       ['BL-2', 'first'],
       ['BL-1', 'second'],
     ]);
-    expect(data.next).toBe(3);
+    expect(data.counters).toEqual({ BL: 2 });
+  });
+
+  it('numbers per prefix, never reuses numbers, and takes chosen ids', () => {
+    let data = backlog('a', 'b'); // BL-2, BL-1
+    data = removeItem(data, 'BL-2');
+    expect(nextId(data, 'BL')).toBe('BL-3');
+    expect(nextId(data, 'WEB')).toBe('WEB-1');
+    expect(nextId(data, 'ABC', ['ABC-41'])).toBe('ABC-42');
+    data = addItem(data, 'chosen', 'BL', now, 'WEB-7').data;
+    expect(data.items[0].id).toBe('WEB-7');
+    expect(nextId(data, 'WEB')).toBe('WEB-8');
+    expect(idProblem(data, 'web-7')).toMatch(/taken/);
+    expect(idProblem(data, 'WEB-8', ['WEB-8'])).toMatch(/taken/);
+    expect(idProblem(data, 'nope')).toMatch(/prefix, a dash and a number/);
+    expect(() => addItem(data, 'x', 'BL', now, 'WEB-7')).toThrow(/taken/);
   });
 
   it('moves items within and between lanes', () => {
@@ -39,6 +54,27 @@ describe('backlog', () => {
     data = moveItem(data, 'BL-1', 'doing');
     expect(order(data)).toEqual(['BL-2:todo', 'BL-3:doing', 'BL-1:doing']);
     expect(moveItem(data, 'BL-9', 'done')).toBe(data);
+  });
+
+  it('sets and clears priorities, and reads the priority names of trackers', () => {
+    let data = backlog('a');
+    data = updateItem(data, 'BL-1', { priority: 'high' });
+    expect(data.items[0].priority).toBe('high');
+    data = updateItem(data, 'BL-1', { title: 'b' });
+    expect(data.items[0].priority).toBe('high');
+    data = updateItem(data, 'BL-1', { priority: null });
+    expect('priority' in data.items[0]).toBe(false);
+    expect(['Highest', 'High', 'Medium', 'Low', 'Lowest', 'P1', 'priority: low', 'Normal', 'whatever'].map(priorityFromName)).toEqual([
+      'urgent',
+      'high',
+      'medium',
+      'low',
+      'low',
+      'high',
+      'low',
+      'medium',
+      undefined,
+    ]);
   });
 
   it('updates and removes items', () => {

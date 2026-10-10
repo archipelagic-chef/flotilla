@@ -2,7 +2,7 @@
  * Messages between the extension host and a ticket editor tab. Type-only: imported by both sides, so it must not
  * import vscode, node or DOM APIs.
  */
-import type { BacklogItem, BacklogStatus } from '../features/backlog/backlog';
+import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -31,6 +31,8 @@ export type TicketWebviewMessage =
   | { type: 'description'; text: string }
   | { type: 'comment'; text: string }
   | { type: 'status'; status: BacklogStatus }
+  /** null clears it. */
+  | { type: 'priority'; priority: BacklogPriority | null }
   /** A pasted or dropped image, base64. */
   | { type: 'image'; requestId: number; name: string; data: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */

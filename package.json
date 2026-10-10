@@ -1238,14 +1238,6 @@
           "type": "string",
           "default": "feature/{id}-{slug}",
           "markdownDescription": "Branch name for work started from a backlog item. `{id}` is the item's id (e.g. `BL-12`), `{slug}` its title in lower case with dashes."
-        },
-        "flotilla.agent.arguments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "markdownDescription": "Extra arguments for Claude Code when ▶ starts an agent on a backlog item, e.g. `[\"--permission-mode\", \"acceptEdits\"]` to let it edit files without asking."
         }
       }
     },

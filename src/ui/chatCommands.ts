@@ -72,18 +72,18 @@ function worktreeLocation(ctx: ChatContext, dir: string): string {
  * Starts a chat in this window. For another worktree, the message box is pre-filled with where to work, and the
  * chat is linked to that worktree as soon as Claude Code creates it (when the first message is sent).
  */
-export async function newChat(ctx: ChatContext, ws: Workstream): Promise<void> {
+export async function newChat(ctx: ChatContext, ws: Workstream, task = ''): Promise<void> {
   if (!claudeAvailable()) return;
   const dir = ws.worktree.path!;
   if (samePath(dir, ctx.currentRoot)) {
-    await vscode.commands.executeCommand(CLAUDE_OPEN);
+    await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, task || undefined);
     return;
   }
   pendingLinks.add(ws.worktree.adminDir, await sessionsHere(ctx), Date.now());
   linkTimer ??= setInterval(() => void linkPendingChats(ctx).catch((e: unknown) => ctx.output.appendLine(`Linking chats failed: ${String(e)}`)), 3000);
   const branch = workstreamLabel(ws);
-  const prompt = `Work in the git worktree at ${worktreeLocation(ctx, dir)} (branch ${branch}): run commands there and only change files under it.\n\n`;
-  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, prompt);
+  const where = `Work in the git worktree at ${worktreeLocation(ctx, dir)} (branch ${branch}): run commands there and only change files under it.`;
+  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, `${where}\n\n${task}`);
 }
 
 /**

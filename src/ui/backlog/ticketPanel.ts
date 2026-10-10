@@ -93,7 +93,7 @@ export class TicketPanels implements vscode.Disposable {
     const local = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (local) return local;
     const remote = this.deps.integrations.issues().find((i) => i.id === id);
-    return remote && { id, title: remote.title, status: remote.status, created: '', remote };
+    return remote && { id, title: remote.title, status: remote.status, priority: remote.priority, created: '', remote };
   }
 
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
@@ -208,6 +208,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'status':
         await backlog.change((d) => updateItem(d, id, { status: m.status }));
+        break;
+      case 'priority':
+        await backlog.change((d) => updateItem(d, id, { priority: m.priority }));
         break;
       case 'image': {
         const bytes = Buffer.from(m.data, 'base64');

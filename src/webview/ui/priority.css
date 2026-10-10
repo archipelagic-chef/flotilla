@@ -1,0 +1,92 @@
+.priority {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.priority-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: inherit;
+  font-size: 12px;
+  line-height: 20px;
+}
+.priority-button:not(:disabled):hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.priority-button:disabled {
+  cursor: default;
+}
+.priority .codicon {
+  font-size: 14px;
+}
+.priority.compact .priority-button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  justify-content: center;
+}
+.priority.unset > .priority-button .codicon {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.45;
+}
+.priority.compact.unset {
+  visibility: hidden;
+}
+.row:hover .priority.compact.unset,
+.priority.compact.unset:focus-within {
+  visibility: visible;
+}
+.p-urgent > .priority-button .codicon,
+.priority-menu .p-urgent .codicon {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.p-high > .priority-button .codicon,
+.priority-menu .p-high .codicon {
+  color: var(--vscode-editorWarning-foreground, #d18616);
+}
+.p-medium > .priority-button .codicon,
+.priority-menu .p-medium .codicon {
+  color: var(--vscode-foreground);
+}
+.p-low > .priority-button .codicon,
+.priority-menu .p-low .codicon {
+  color: var(--vscode-charts-blue, #3794ff);
+}
+.priority-menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: auto;
+  top: calc(100% + 2px);
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, transparent));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+.priority-menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 18px;
+  color: inherit;
+}
+.priority-menu button:hover,
+.priority-menu button:focus-visible {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground));
+  outline: none;
+}
+.priority-menu button[aria-checked='true'] {
+  font-weight: 600;
+}

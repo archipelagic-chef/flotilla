@@ -115,7 +115,12 @@ export function App() {
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   const [addingBacklog, setAddingBacklog] = useState(false);
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; defaultPrefix: string; counters: Record<string, number> }>({
+    problems: [],
+    integrations: 0,
+    defaultPrefix: 'BL',
+    counters: {},
+  });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -251,7 +256,7 @@ export function App() {
           return;
         case 'backlog':
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations, defaultPrefix: m.defaultPrefix, counters: m.counters });
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
@@ -428,6 +433,8 @@ export function App() {
         items={backlog}
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
+        defaultPrefix={backlogInfo.defaultPrefix}
+        counters={backlogInfo.counters}
         workstreams={workstreams}
         colors={colors}
         adding={addingBacklog}

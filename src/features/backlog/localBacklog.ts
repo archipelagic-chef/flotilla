@@ -17,7 +17,6 @@ const EXCLUDE_LINE = '/.flotilla/';
 export class LocalBacklog {
   readonly dir: string;
   readonly file: string;
-  private watcher: fs.FSWatcher | undefined;
 
   constructor(
     mainRoot: string,
@@ -116,40 +115,58 @@ export class LocalBacklog {
     return true;
   }
 
+  /** The backlog folder's files and their change times: a cheap way to notice changes when file events don't come. */
+  private signature(): string {
+    try {
+      return fs
+        .readdirSync(this.dir)
+        .filter((n) => n.endsWith('.md') || n.endsWith('.json'))
+        .sort()
+        .map((n) => {
+          const stat = fs.statSync(path.join(this.dir, n), { throwIfNoEntry: false });
+          return `${n}:${stat?.mtimeMs ?? 0}:${stat?.size ?? 0}`;
+        })
+        .join('|');
+    } catch {
+      return '';
+    }
+  }
+
   /**
-   * Calls onChange when backlog.json or a document changes (in this or another window, or by Claude). Until the
-   * folder exists (no backlog yet) it polls for backlog.json instead of creating the folder.
+   * Calls onChange when backlog.json or a ticket changes (in this or another window, or by Claude). File events
+   * don't arrive in every setup (some container and network mounts), so it also compares the folder every 2 s.
    */
   watch(onChange: () => void): { dispose(): void } {
     let timer: NodeJS.Timeout | undefined;
-    let disposed = false;
     const fire = () => {
       clearTimeout(timer);
       timer = setTimeout(onChange, 150);
     };
+    let watcher: fs.FSWatcher | undefined;
     const watchDir = () => {
       try {
-        this.watcher = fs.watch(this.dir, (_event, name) => {
+        watcher ??= fs.watch(this.dir, (_event, name) => {
           if (name && !name.endsWith('.tmp')) fire();
         });
-        return true;
+        void ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
       } catch {
-        return false;
+        // the folder doesn't exist yet: polling notices it
       }
     };
-    const poll = () => {
-      if (disposed || !fs.existsSync(this.dir)) return;
-      fs.unwatchFile(this.file, poll);
-      if (watchDir()) fire();
-    };
-    if (watchDir()) void ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
-    else fs.watchFile(this.file, { interval: 2000 }, poll);
+    watchDir();
+    let last = this.signature();
+    const poll = setInterval(() => {
+      const now = this.signature();
+      if (now === last) return;
+      last = now;
+      watchDir();
+      fire();
+    }, 2000);
     return {
       dispose: () => {
-        disposed = true;
         clearTimeout(timer);
-        fs.unwatchFile(this.file, poll);
-        this.watcher?.close();
+        clearInterval(poll);
+        watcher?.close();
       },
     };
   }

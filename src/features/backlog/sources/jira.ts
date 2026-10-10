@@ -1,11 +1,17 @@
-import type { BacklogStatus } from '../backlog';
+import { priorityFromName, type BacklogStatus } from '../backlog';
 import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteIssue } from './source';
 
 type JiraConfig = Extract<IntegrationConfig, { kind: 'jira' }>;
 
 interface JiraIssue {
   key: string;
-  fields: { summary: string; status?: { name: string; statusCategory?: { key: string } }; description?: string | null; comment?: { comments: JiraComment[] } };
+  fields: {
+    summary: string;
+    status?: { name: string; statusCategory?: { key: string } };
+    priority?: { name?: string } | null;
+    description?: string | null;
+    comment?: { comments: JiraComment[] };
+  };
   renderedFields?: { description?: string | null; comment?: { comments: JiraComment[] } };
 }
 
@@ -44,20 +50,21 @@ export class JiraSource implements IssueSource {
       title: i.fields.summary,
       status: jiraStatus(i.fields.status?.statusCategory?.key),
       statusName: i.fields.status?.name ?? '',
+      priority: priorityFromName(i.fields.priority?.name ?? undefined),
       url: `${this.site}/browse/${i.key}`,
       source: this.config.id,
     };
   }
 
   async list(): Promise<RemoteIssue[]> {
-    const params = new URLSearchParams({ jql: this.config.jql, fields: 'summary,status', maxResults: '100' });
+    const params = new URLSearchParams({ jql: this.config.jql, fields: 'summary,status,priority', maxResults: '100' });
     const out = await fetchJson<{ issues: JiraIssue[] }>(this.fetch, `${this.site}/rest/api/3/search/jql?${params}`, { headers: this.headers() });
     return out.issues.map((i) => this.issue(i));
   }
 
   async details(id: string): Promise<RemoteDetails> {
     // API v2 gives the description as wiki text (for agents); renderedFields as HTML (for people).
-    const params = new URLSearchParams({ fields: 'summary,status,description,comment', expand: 'renderedFields' });
+    const params = new URLSearchParams({ fields: 'summary,status,priority,description,comment', expand: 'renderedFields' });
     const i = await fetchJson<JiraIssue>(this.fetch, `${this.site}/rest/api/2/issue/${encodeURIComponent(id)}?${params}`, { headers: this.headers() });
     const raw = i.fields.comment?.comments ?? [];
     const rendered = i.renderedFields?.comment?.comments ?? [];

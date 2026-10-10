@@ -3,7 +3,7 @@
  * so it must not import vscode, node or DOM APIs.
  */
 import type { ChangeKind } from '../core/git/porcelain';
-import type { BacklogItem, BacklogStatus } from '../features/backlog/backlog';
+import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
@@ -11,7 +11,7 @@ import type { AttentionState } from '../features/workstreams/attention';
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
 
-export type { BacklogItem, BacklogStatus };
+export type { BacklogItem, BacklogPriority, BacklogStatus };
 
 /** A backlog item as the sidebar lists it: with the first line of its description and its activity count. */
 export interface BacklogItemView extends BacklogItem {
@@ -156,7 +156,8 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number }
+  /** counters: the highest number given out per prefix, so new ids can be suggested. */
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; defaultPrefix: string; counters: Record<string, number> }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** Show an inline box to name a new backlog item. */
@@ -207,8 +208,9 @@ export type WebviewMessage =
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** then: open the new item's ticket, or ask Claude to write it. */
-  | { type: 'backlog'; op: 'add'; title: string; then?: 'open' | 'ai' }
-  | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus }
+  | { type: 'backlog'; op: 'add'; title: string; id?: string; then?: 'open' | 'ai' }
+  /** priority null clears it. */
+  | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
   /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */

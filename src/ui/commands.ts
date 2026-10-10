@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
@@ -429,16 +428,6 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   return ctx.repository.current.find((w) => w.key === key);
 }
 
-/** The Claude Code CLI: the one that comes with the Claude Code extension, else `claude` on the PATH. */
-function claudeCli(): string {
-  const ext = vscode.extensions.getExtension('anthropic.claude-code');
-  if (ext) {
-    const bin = path.join(ext.extensionPath, 'resources', 'native-binary', process.platform === 'win32' ? 'claude.exe' : 'claude');
-    if (fs.existsSync(bin)) return bin;
-  }
-  return 'claude';
-}
-
 /** What an agent is told when it starts on an item. */
 export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title'>, ticket: string, branch: string): string {
   return [
@@ -449,7 +438,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title'>, ticket: str
   ].join('\n\n');
 }
 
-/** Starts a Claude Code agent on an item in its worktree, in a terminal of its own. */
+/** Opens a Claude Code chat for an agent on an item, working in its worktree. */
 async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, remote?: RemoteIssue): Promise<void> {
   let ticket: string;
   if (remote) {
@@ -463,16 +452,9 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   } else {
     ticket = await ctx.backlog.ensureDocument(item);
   }
-  const args = vscode.workspace.getConfiguration('flotilla').get<string[]>('agent.arguments', []);
-  const terminal = vscode.window.createTerminal({
-    name: `${item.id} agent`,
-    cwd: ws.worktree.path,
-    shellPath: claudeCli(),
-    shellArgs: [...args, agentPrompt(item, ticket, workstreamLabel(ws))],
-    iconPath: new vscode.ThemeIcon('hubot'),
-  });
-  terminal.show(true);
-  await ctx.tickets.addActivity(item.id, 'Flotilla', `Started an agent in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+  // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
+  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws)));
+  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened an agent chat for worktree \`${workstreamLabel(ws)}\`. It reports here.`);
 }
 
 /** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */
@@ -486,6 +468,8 @@ async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void>
   const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!item) return;
   const ticket = await ctx.backlog.ensureDocument(item);
+  // The ticket tab shows Claude's edits as they're saved.
+  await ctx.tickets.open(item.id);
   await chatUi.askClaude(
     [
       `Help me write backlog item ${item.id} as a clear ticket. The ticket is ${ticket}: "# <title>", the description, then an "## Activity" log (leave that alone).`,
