@@ -19,6 +19,7 @@ import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
+import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
@@ -161,7 +162,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
     vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),
     vscode.commands.registerCommand('flotilla.unfoldAll', () => sidebar.fold(false)),
-    vscode.commands.registerCommand('flotilla.addBacklogItem', () => sidebar.addBacklogItem()),
+    vscode.commands.registerCommand('flotilla.addBacklogItem', async () => {
+      await sidebar.showTool('backlog');
+      await newBacklogItem(backlog, integrations);
+    }),
     vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
     vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),
     vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTool('vc')),

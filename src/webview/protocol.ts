@@ -158,12 +158,9 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  /** counters: the highest number given out per prefix, so new ids can be suggested. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; defaultPrefix: string; counters: Record<string, number> }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
-  /** Show an inline box to name a new backlog item. */
-  | { type: 'backlogAdd' }
   /** The files a commit changed (against its first parent). */
   | { type: 'commitFiles'; key: string; hash: string; files: FileChangeView[]; error?: string }
   /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
@@ -209,8 +206,8 @@ export type WebviewMessage =
   | { type: 'refs' }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
-  /** then: open the new item's ticket, or ask Claude to write it. */
-  | { type: 'backlog'; op: 'add'; title: string; id?: string; then?: 'open' | 'ai' }
+  /** Add an item (VS Code's input box asks for its title). */
+  | { type: 'backlog'; op: 'new' }
   /** priority null clears it. */
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */

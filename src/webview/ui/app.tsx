@@ -114,13 +114,7 @@ export function App() {
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
-  const [addingBacklog, setAddingBacklog] = useState(false);
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; defaultPrefix: string; counters: Record<string, number> }>({
-    problems: [],
-    integrations: 0,
-    defaultPrefix: 'BL',
-    counters: {},
-  });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -256,14 +250,10 @@ export function App() {
           return;
         case 'backlog':
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations, defaultPrefix: m.defaultPrefix, counters: m.counters });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations });
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
-          return;
-        case 'backlogAdd':
-          update((prev) => ({ ...prev, tool: 'backlog' }));
-          setAddingBacklog(true);
           return;
         case 'refs':
           setRefs({ defaultBase: m.defaultBase, local: m.local, remote: m.remote, tags: m.tags });
@@ -433,12 +423,8 @@ export function App() {
         items={backlog}
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
-        defaultPrefix={backlogInfo.defaultPrefix}
-        counters={backlogInfo.counters}
         workstreams={workstreams}
         colors={colors}
-        adding={addingBacklog}
-        setAdding={setAddingBacklog}
         openWorktree={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);

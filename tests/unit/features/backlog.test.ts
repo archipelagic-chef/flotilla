@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, currentPrefix, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -101,6 +101,12 @@ describe('backlog', () => {
     expect(data.items[0].branches).toEqual(['old', 'feature/BL-1-api']);
     expect(data.items[0].branch).toBeUndefined();
     expect(itemBranches(data.items[0])).toEqual(['old', 'feature/BL-1-api']);
+  });
+
+  it('gives new items the prefix last chosen, else the setting', () => {
+    expect(currentPrefix(EMPTY_BACKLOG, 'WEB')).toBe('WEB');
+    expect(currentPrefix(EMPTY_BACKLOG, ' ')).toBe('BL');
+    expect(currentPrefix({ ...EMPTY_BACKLOG, prefix: 'OPS' }, 'WEB')).toBe('OPS');
   });
 
   it('links items to issues in trackers', () => {

@@ -7,7 +7,7 @@ import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { addItem, idProblem, moveItem, nextId, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -103,37 +103,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
-    const defaultPrefix = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL').trim() || 'BL';
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, defaultPrefix, counters: data.counters ?? {} });
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
     const store = this.deps.backlog;
     switch (m.op) {
-      case 'add': {
-        if (!m.title.trim()) return;
-        const prefix = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL').trim() || 'BL';
-        let added: BacklogItem | undefined;
-        const id = m.id?.trim() || undefined;
-        // Ids of issues from integrations are taken too (they'd link to the same branches).
-        const taken = this.deps.integrations.issues().map((i) => i.id);
-        if (id) {
-          const problem = idProblem(await store.read(), id, taken);
-          if (problem) {
-            void vscode.window.showWarningMessage(problem);
-            return;
-          }
-        }
-        await store.change((d) => {
-          const result = addItem(d, m.title, prefix, new Date(), id ?? nextId(d, prefix, taken));
-          added = result.item;
-          return result.data;
-        });
-        await this.postBacklog();
-        if (added && m.then === 'open') await vscode.commands.executeCommand('flotilla.openBacklogItem', added.id);
-        if (added && m.then === 'ai') await vscode.commands.executeCommand('flotilla.writeBacklogItem', added.id);
+      case 'new':
+        await vscode.commands.executeCommand('flotilla.addBacklogItem');
         return;
-      }
       case 'update':
         await store.change((d) =>
           updateItem(d, m.id, {
@@ -181,12 +159,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** Folds or unfolds every worktree on the All tab (the view title's Fold All / Unfold All). */
   fold(folded: boolean): void {
     this.post({ type: 'fold', folded });
-  }
-
-  /** Shows the Backlog tool with a box to name a new item. */
-  async addBacklogItem(): Promise<void> {
-    await this.showTool('backlog');
-    this.act({ type: 'backlogAdd' });
   }
 
   get visible(): boolean {

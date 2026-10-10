@@ -1242,7 +1242,7 @@
           "default": "BL",
           "pattern": "^[A-Z][A-Z0-9]{1,9}$",
           "patternErrorMessage": "2–10 capital letters or digits, starting with a letter, like BL or WEB.",
-          "markdownDescription": "Prefix of new local backlog item ids, as in `BL-12`. Tabs label worktrees by these ids."
+          "markdownDescription": "Prefix of new local backlog item ids, as in `BL-12`, until another one is chosen when adding an item (the backlog then keeps that one). Tabs label worktrees by these ids."
         },
         "flotilla.backlog.branchPattern": {
           "type": "string",

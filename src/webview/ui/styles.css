@@ -1463,10 +1463,6 @@ ins {
 .backlog-title .icon .codicon {
   font-size: 14px;
 }
-.backlog-new {
-  padding: 2px 8px 8px 12px;
-}
-.backlog-new input,
 .backlog-item .rename {
   width: 100%;
   box-sizing: border-box;
@@ -1478,7 +1474,6 @@ ins {
   border-radius: 2px;
   outline: none;
 }
-.backlog-new input:focus,
 .backlog-item .rename:focus {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
@@ -1853,48 +1848,4 @@ ins {
 }
 .backlog-item a.icon {
   color: inherit;
-}
-.backlog-new {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.backlog-new-box {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.backlog-new-box input {
-  flex: 1;
-  min-width: 0;
-}
-.backlog-new-id {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 12px;
-}
-.backlog-new .backlog-new-id input {
-  width: auto;
-  padding: 1px 4px;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
-  text-align: center;
-}
-.backlog-new-id .number.auto {
-  color: var(--vscode-input-placeholderForeground, var(--muted));
-}
-.backlog-new-id .number.auto:focus {
-  color: var(--vscode-input-foreground);
-}
-.backlog-new-id .dash {
-  color: var(--muted);
-}
-.backlog-new-id .id-problem {
-  margin-left: 6px;
-  color: var(--vscode-errorForeground);
-}
-/* Chromium's suggestions arrow (inputs with a datalist) takes room the prefix needs. */
-.backlog-new-id input::-webkit-calendar-picker-indicator {
-  display: none !important;
 }

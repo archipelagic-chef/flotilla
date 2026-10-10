@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { branchMatches, ID_PATTERN } from '../../features/backlog/backlog';
+import { branchMatches } from '../../features/backlog/backlog';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView } from '../protocol';
 import { send } from './api';
 import { PriorityPicker } from './priority';
@@ -19,15 +19,8 @@ interface Props {
   problems: BacklogProblem[];
   /** How many integrations are connected. */
   integrations: number;
-  /** flotilla.backlog.idPrefix. */
-  defaultPrefix: string;
-  /** The highest number given out per prefix. */
-  counters: Record<string, number>;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
-  /** The host asked for the new-item box (Add Backlog Item… command). */
-  adding: boolean;
-  setAdding(adding: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -35,7 +28,7 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, defaultPrefix, counters, workstreams, colors, adding, setAdding, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, workstreams, colors, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
@@ -70,7 +63,7 @@ export function BacklogView({ items, problems, integrations, defaultPrefix, coun
           <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
             <i class="codicon codicon-plug" />
           </button>
-          <button class="icon" aria-label="Add Item" onClick={() => setAdding(true)}>
+          <button class="icon" aria-label="Add Item" onClick={() => send({ type: 'backlog', op: 'new' })}>
             <i class="codicon codicon-add" />
           </button>
         </span>
@@ -83,12 +76,11 @@ export function BacklogView({ items, problems, integrations, defaultPrefix, coun
           </span>
         </button>
       ))}
-      {adding && <NewItem items={items ?? []} defaultPrefix={defaultPrefix} counters={counters} onDone={() => setAdding(false)} />}
       {!items && <div class="empty">Loading the backlog…</div>}
-      {items?.length === 0 && !adding && (
+      {items?.length === 0 && (
         <div class="empty">
           Nothing in the backlog yet.{' '}
-          <button class="link" onClick={() => setAdding(true)}>
+          <button class="link" onClick={() => send({ type: 'backlog', op: 'new' })}>
             Add an item
           </button>
         </div>
@@ -135,92 +127,6 @@ export function BacklogView({ items, problems, integrations, defaultPrefix, coun
             </div>
           );
         })}
-    </div>
-  );
-}
-
-/** The next number for a prefix: one past the highest given out or in use (as the host counts). */
-function nextNumber(prefix: string, items: BacklogItem[], counters: Record<string, number>): number {
-  const used = items.map((i) => ID_PATTERN.exec(i.id)).filter((m) => m && m[1].toUpperCase() === prefix.toUpperCase()).map((m) => Number(m![2]));
-  return Math.max(counters[prefix.toUpperCase()] ?? 0, ...used, 0) + 1;
-}
-
-/**
- * A box for a new item: its id (a prefix from those in use, and the next number for it, both editable) and its
- * title. Enter adds it and opens its ticket; ✨ also has Claude write it.
- */
-function NewItem({ items, defaultPrefix, counters, onDone }: { items: BacklogItem[]; defaultPrefix: string; counters: Record<string, number>; onDone(): void }) {
-  const input = useRef<HTMLInputElement>(null);
-  const [title, setTitle] = useState('');
-  const local = items.filter((i) => !i.source);
-  const prefixes = [...new Set([defaultPrefix, ...local.map((i) => ID_PATTERN.exec(i.id)?.[1]).filter((p): p is string => !!p)])];
-  const [prefix, setPrefix] = useState(defaultPrefix);
-  // The number follows the prefix until it's typed in.
-  const [number, setNumber] = useState<string>();
-  const shownNumber = number ?? String(nextNumber(prefix, items, counters));
-  const id = `${prefix.trim()}-${shownNumber.trim()}`;
-  const problem = !ID_PATTERN.test(id)
-    ? 'A prefix of letters and digits and a number'
-    : items.some((i) => i.id.toLowerCase() === id.toLowerCase())
-      ? `${id} is taken`
-      : undefined;
-  useEffect(() => input.current?.focus(), []);
-  const add = (then?: 'open' | 'ai') => {
-    if (!title.trim() || problem) return;
-    send({ type: 'backlog', op: 'add', title, id, then });
-    setTitle('');
-    setNumber(undefined);
-    if (then) onDone();
-  };
-  const keys = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') add('open');
-    else if (e.key === 'Escape') onDone();
-  };
-  return (
-    <div
-      class="backlog-new"
-      onFocusOut={(e) => !title.trim() && !(e.relatedTarget as HTMLElement | null)?.closest('.backlog-new') && onDone()}
-    >
-      <div class="backlog-new-id">
-        <input
-          class="prefix"
-          value={prefix}
-          list="backlog-prefixes"
-          aria-label="Id prefix"
-          style={{ width: `calc(${Math.max(2, prefix.length) + 1}ch + 10px)` }}
-          onInput={(e) => setPrefix((e.target as HTMLInputElement).value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
-          onKeyDown={keys}
-        />
-        <datalist id="backlog-prefixes">
-          {prefixes.map((p) => (
-            <option key={p} value={p} />
-          ))}
-        </datalist>
-        <span class="dash">-</span>
-        <input
-          class={`number${number === undefined ? ' auto' : ''}`}
-          value={shownNumber}
-          inputMode="numeric"
-          aria-label="Id number"
-          style={{ width: `calc(${Math.max(2, shownNumber.length) + 1}ch + 10px)` }}
-          onInput={(e) => setNumber((e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 7))}
-          onKeyDown={keys}
-        />
-        {problem && <span class="id-problem">{problem}</span>}
-      </div>
-      <div class="backlog-new-box">
-        <input
-          ref={input}
-          value={title}
-          placeholder="Title (Enter adds it and opens its ticket)"
-          aria-label="New backlog item"
-          onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-          onKeyDown={keys}
-        />
-        <button class="icon" aria-label="Add and Write It with Claude" disabled={!title.trim() || !!problem} onClick={() => add('ai')}>
-          <i class="codicon codicon-sparkle" />
-        </button>
-      </div>
     </div>
   );
 }

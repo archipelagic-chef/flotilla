@@ -53,6 +53,8 @@ export interface BacklogData {
   next: number;
   /** The highest number given out per prefix (numbers aren't reused after a delete). */
   counters?: Record<string, number>;
+  /** The prefix last chosen for a new item; new items get it until another is chosen. */
+  prefix?: string;
   /** In priority order (first is most important), across statuses. */
   items: BacklogItem[];
 }
@@ -83,6 +85,11 @@ export function nextId(data: BacklogData, prefix: string, taken: readonly string
     .filter((m): m is RegExpExecArray => m !== null && m[1].toUpperCase() === prefix.toUpperCase())
     .map((m) => Number(m[2]));
   return `${prefix}-${Math.max(data.counters?.[prefix.toUpperCase()] ?? 0, ...used, 0) + 1}`;
+}
+
+/** The prefix for new items: the one last chosen, else the setting's. */
+export function currentPrefix(data: BacklogData, setting: string): string {
+  return data.prefix ?? (setting.trim() || 'BL');
 }
 
 /** Why an id can't be used for a new item, if it can't. */
