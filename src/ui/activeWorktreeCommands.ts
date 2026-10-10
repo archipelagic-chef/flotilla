@@ -37,10 +37,16 @@ export async function selectWorktree(arg: unknown, repository: Repository<Workst
 }
 
 /**
- * Opens a terminal in a worktree: the active one, or, on the All tab (or when ask is set), the one picked from a list
- * of the reachable worktrees with the active one first. Without reachable worktrees it opens in fallbackCwd.
+ * Where a new terminal starts: the active worktree, or, on the All tab (or when ask is set), the one picked from a
+ * list of the reachable worktrees with the active one first. Without reachable worktrees it starts in fallbackCwd;
+ * undefined when the pick is cancelled.
  */
-export async function newTerminal(repository: Repository<Workstream>, active: ActiveWorktree, fallbackCwd: string | undefined, ask: boolean): Promise<void> {
+export async function worktreeTerminalOptions(
+  repository: Repository<Workstream>,
+  active: ActiveWorktree,
+  fallbackCwd: string | undefined,
+  ask: boolean,
+): Promise<vscode.TerminalOptions | undefined> {
   const reachable = tabOrder(repository.current).filter((w) => w.worktree.path);
   let ws = ask ? undefined : reachable.find((w) => w.key === active.key);
   if (!ws && reachable.length) {
@@ -50,15 +56,71 @@ export async function newTerminal(repository: Repository<Workstream>, active: Ac
       .sort((a, b) => Number(b.key === active.key) - Number(a.key === active.key))
       .map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, description: w.key === active.key ? 'active' : undefined, detail: describeWorkstream(w, now), ws: w }));
     const picked = await vscode.window.showQuickPick(items, { title: 'New Terminal in Worktree', placeHolder: 'Which worktree should the terminal start in?' });
-    if (!picked) return;
+    if (!picked) return undefined;
     ws = picked.ws;
   }
-  const terminal = vscode.window.createTerminal({
-    name: ws ? workstreamLabel(ws) : undefined,
-    cwd: ws?.worktree.path ?? fallbackCwd,
-    iconPath: ws ? new vscode.ThemeIcon('git-branch') : undefined,
+  if (!ws) return { cwd: fallbackCwd };
+  return { name: workstreamLabel(ws), cwd: ws.worktree.path, iconPath: new vscode.ThemeIcon('git-branch') };
+}
+
+export async function newTerminal(repository: Repository<Workstream>, active: ActiveWorktree, fallbackCwd: string | undefined, ask: boolean): Promise<void> {
+  const options = await worktreeTerminalOptions(repository, active, fallbackCwd, ask);
+  if (options) vscode.window.createTerminal(options).show();
+}
+
+/** The terminal profile VS Code's + button uses once it's the default profile (see useWorktreeTerminals). */
+export const TERMINAL_PROFILE_ID = 'flotilla.worktreeTerminal';
+export const TERMINAL_PROFILE_TITLE = 'Worktree (Flotilla)';
+
+const TERMINALS_OFFERED_KEY = 'flotilla.worktreeTerminalsOffered';
+const PLATFORM_KEY: Partial<Record<NodeJS.Platform, string>> = { linux: 'linux', darwin: 'osx', win32: 'windows' };
+
+/** The setting that picks the default terminal profile where terminals run (the extension host's platform). */
+function defaultProfileSetting(): string | undefined {
+  const platform = PLATFORM_KEY[process.platform];
+  return platform && `defaultProfile.${platform}`;
+}
+
+function usesWorktreeTerminals(): boolean {
+  const key = defaultProfileSetting();
+  return key !== undefined && vscode.workspace.getConfiguration('terminal.integrated').get<string>(key) === TERMINAL_PROFILE_TITLE;
+}
+
+/** Makes Flotilla's worktree profile the default, so VS Code's + button and Ctrl+Shift+` open terminals in the active worktree. */
+export async function useWorktreeTerminals(context: vscode.ExtensionContext, confirm: boolean): Promise<void> {
+  await context.globalState.update(TERMINALS_OFFERED_KEY, true);
+  const key = defaultProfileSetting();
+  if (!key) return;
+  if (usesWorktreeTerminals()) {
+    if (confirm) void vscode.window.showInformationMessage('New terminals already open in the active worktree.');
+    return;
+  }
+  await vscode.workspace.getConfiguration('terminal.integrated').update(key, TERMINAL_PROFILE_TITLE, vscode.ConfigurationTarget.Global);
+  if (confirm) {
+    void vscode.window.showInformationMessage(
+      `The terminal's + button now opens terminals in the active worktree (setting terminal.integrated.${key}). They use your default shell.`,
+    );
+  }
+}
+
+/**
+ * Offers once, the first time a terminal opens in this window's folder while another worktree is active, to make +
+ * open terminals in the active worktree.
+ */
+export function offerWorktreeTerminals(context: vscode.ExtensionContext, repository: Repository<Workstream>, active: ActiveWorktree): vscode.Disposable {
+  return vscode.window.onDidOpenTerminal(async (terminal) => {
+    if (context.globalState.get<boolean>(TERMINALS_OFFERED_KEY) || usesWorktreeTerminals()) return;
+    const ws = repository.current.find((w) => w.key === active.key);
+    const options = terminal.creationOptions as vscode.TerminalOptions;
+    if (!ws?.worktree.path || ws.isCurrent || options.cwd !== undefined || options.name !== undefined) return;
+    await context.globalState.update(TERMINALS_OFFERED_KEY, true);
+    const choice = await vscode.window.showInformationMessage(
+      `This terminal opened in the window's folder, not in '${workstreamLabel(ws)}', the active worktree. Should the terminal's + button open terminals in the active worktree?`,
+      'Yes',
+      'Not Now',
+    );
+    if (choice === 'Yes') await useWorktreeTerminals(context, true);
   });
-  terminal.show();
 }
 
 const OFFERED_KEY = 'flotilla.activityBarOffered';

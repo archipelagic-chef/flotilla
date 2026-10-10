@@ -365,6 +365,11 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "flotilla.useWorktreeTerminals",
+        "title": "Open New Terminals in the Active Worktree (+ Button)",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.configureActivityBar",
         "title": "Use Flotilla as the Sidebar (Activity Bar Position)…",
         "category": "Flotilla"
@@ -631,6 +636,10 @@
         },
         {
           "command": "flotilla.newTerminalIn",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.useWorktreeTerminals",
           "when": "flotilla.state == ready"
         }
       ],
@@ -1235,7 +1244,16 @@
         "key": "ctrl+shift+`",
         "when": "flotilla.state == ready"
       }
-    ]
+    ],
+    "terminal": {
+      "profiles": [
+        {
+          "id": "flotilla.worktreeTerminal",
+          "title": "Worktree (Flotilla)",
+          "icon": "git-branch"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",

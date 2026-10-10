@@ -13,7 +13,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { closeTabs, offerActivityBar, selectWorktree, newTerminal } from './ui/activeWorktreeCommands';
+import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
@@ -48,6 +48,16 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitContentProvider()));
+  // The terminal profile VS Code's + button uses once it's the default profile. It's registered first, so that it
+  // always answers (a plain terminal) when Flotilla has no worktrees to offer: the setting applies to every window.
+  let terminalOptions: (() => Promise<vscode.TerminalOptions | undefined>) | undefined;
+  context.subscriptions.push(
+    vscode.window.registerTerminalProfileProvider(TERMINAL_PROFILE_ID, {
+      async provideTerminalProfile() {
+        return new vscode.TerminalProfile((await terminalOptions?.()) ?? {});
+      },
+    }),
+  );
 
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
@@ -97,6 +107,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inWorkspace = (ws: Workstream) => extraWorkspaceFolder(ws.worktree.path) !== undefined;
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
+  // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
+  terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   const sidebar = new SidebarProvider({
     extensionUri: context.extensionUri,
     repository,
@@ -141,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.closeOtherTabs', (arg?: unknown) => closeTabs(arg, repository, active, true)),
     vscode.commands.registerCommand('flotilla.newTerminal', () => newTerminal(repository, active, location.worktreeRoot, false)),
     vscode.commands.registerCommand('flotilla.newTerminalIn', () => newTerminal(repository, active, location.worktreeRoot, true)),
+    vscode.commands.registerCommand('flotilla.useWorktreeTerminals', () => useWorktreeTerminals(context, true)),
     vscode.commands.registerCommand('flotilla.quickOpen', () => {
       const ws = repository.current.find((w) => w.key === active.key);
       if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');
@@ -149,6 +162,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.configureActivityBar', () => offerActivityBar(context, true)),
   );
   void offerActivityBar(context, false);
+  context.subscriptions.push(offerWorktreeTerminals(context, repository, active));
   registerFileCommands(context, sidebar, folder.uri, output);
   await setState('ready');
   const chats = chatContext(ctx);
