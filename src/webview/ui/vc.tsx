@@ -52,13 +52,13 @@ function CommitBox({ ws, draft, update }: Props) {
     const what = ws.staged.length ? `${ws.staged.length} staged change(s)` : `all ${ws.unstaged.length} change(s)`;
     primary = (
       <div class="split-button">
-        <button class="button" title={`Commit ${what} on ${ws.branch}`} onClick={() => commit()}>
+        <button class="button" data-tip={`Commit ${what} on ${ws.branch}`} onClick={() => commit()}>
           <i class="codicon codicon-check" />
           Commit
         </button>
         <button
           class="button more"
-          title="More Commit Actions…"
+          aria-label="More Commit Actions…"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={(e) => {
@@ -88,14 +88,14 @@ function CommitBox({ ws, draft, update }: Props) {
     );
   } else if (ws.sync.kind === 'sync' && (ws.sync.ahead || ws.sync.behind)) {
     primary = (
-      <button class="button wide" title={`Pull ${ws.sync.behind} and push ${ws.sync.ahead} commit(s)`} onClick={() => run('flotilla.sync', target)}>
+      <button class="button wide" data-tip={`Pull ${ws.sync.behind} and push ${ws.sync.ahead} commit(s)`} onClick={() => run('flotilla.sync', target)}>
         <i class="codicon codicon-sync" />
         Sync Changes {ws.sync.behind > 0 && `${ws.sync.behind}↓`} {ws.sync.ahead > 0 && `${ws.sync.ahead}↑`}
       </button>
     );
   } else {
     primary = (
-      <button class="button wide" disabled title="There are no changes to commit">
+      <button class="button wide" disabled data-tip="There are no changes to commit">
         <i class="codicon codicon-check" />
         Commit
       </button>
@@ -155,19 +155,19 @@ function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeG
       >
         <span class="name">{title}</span>
         <span class="hover-actions" hidden={!items.length}>
-          <button class="icon" title="Open Changes" onClick={() => run('flotilla.openChanges', target)}>
+          <button class="icon" aria-label="Open Changes" onClick={() => run('flotilla.openChanges', target)}>
             <i class="codicon codicon-diff-multiple" />
           </button>
           {group === 'staged' ? (
-            <button class="icon" title="Unstage All Changes" onClick={() => run('flotilla.unstageAll', target)}>
+            <button class="icon" aria-label="Unstage All Changes" onClick={() => run('flotilla.unstageAll', target)}>
               <i class="codicon codicon-remove" />
             </button>
           ) : (
             <>
-              <button class="icon" title="Discard All Changes" onClick={() => run('flotilla.discardAll', target)}>
+              <button class="icon" aria-label="Discard All Changes" onClick={() => run('flotilla.discardAll', target)}>
                 <i class="codicon codicon-discard" />
               </button>
-              <button class="icon" title="Stage All Changes" onClick={() => run('flotilla.stageAll', target)}>
+              <button class="icon" aria-label="Stage All Changes" onClick={() => run('flotilla.stageAll', target)}>
                 <i class="codicon codicon-add" />
               </button>
             </>
@@ -193,7 +193,7 @@ function ChangeRow({ ws, group, change }: { ws: WorkstreamView; group: ChangeGro
       class="row change"
       role="button"
       tabIndex={0}
-      title={`${change.path}${change.origPath ? ` ← ${change.origPath}` : ''} · ${change.kind}`}
+      data-tip={`${change.path}${change.origPath ? ` ← ${change.origPath}` : ''} · ${change.kind}`}
       data-vscode-context={menuContext('change', { key: ws.key, path: change.path, group, discardable, flotillaWs: ws.context })}
       onClick={() => run('flotilla.openFileDiff', target)}
       onKeyDown={(e) => e.key === 'Enter' && run('flotilla.openFileDiff', target)}
@@ -203,21 +203,21 @@ function ChangeRow({ ws, group, change }: { ws: WorkstreamView; group: ChangeGro
       <span class="dir">{parts.join('/')}</span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
         {change.kind !== 'deleted' && (
-          <button class="icon" title="Open File" onClick={() => run('flotilla.openFile', target)}>
+          <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', target)}>
             <i class="codicon codicon-go-to-file" />
           </button>
         )}
         {discardable && (
-          <button class="icon" title="Discard Changes" onClick={() => run('flotilla.discard', target)}>
+          <button class="icon" aria-label="Discard Changes" onClick={() => run('flotilla.discard', target)}>
             <i class="codicon codicon-discard" />
           </button>
         )}
         {group === 'staged' ? (
-          <button class="icon" title="Unstage Changes" onClick={() => run('flotilla.unstage', target)}>
+          <button class="icon" aria-label="Unstage Changes" onClick={() => run('flotilla.unstage', target)}>
             <i class="codicon codicon-remove" />
           </button>
         ) : (
-          <button class="icon" title="Stage Changes" onClick={() => run('flotilla.stage', target)}>
+          <button class="icon" aria-label="Stage Changes" onClick={() => run('flotilla.stage', target)}>
             <i class="codicon codicon-add" />
           </button>
         )}

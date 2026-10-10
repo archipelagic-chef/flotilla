@@ -24,7 +24,7 @@ function Title({ ws }: { ws: WorkstreamView }) {
       <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]}`} />
       <span class="branch">{ws.branch}</span>
       {open.length > 0 && (
-        <span class={`chip${waiting ? ' st-waiting' : ''}`} title={`${open.length} open chat(s)`}>
+        <span class={`chip${waiting ? ' st-waiting' : ''}`} data-tip={`${open.length} open chat(s)`}>
           <i class={`codicon codicon-${waiting ? 'bell-dot' : 'comment-discussion'}`} />
           {open.length}
         </span>
@@ -41,34 +41,34 @@ function Actions({ ws, tool }: { ws: WorkstreamView; tool: Tool }) {
     <span class="actions" onClick={(e) => e.stopPropagation()}>
       {tool === 'files' && (
         <>
-          <button class="icon" title="New File…" onClick={() => run('flotilla.newFile', target)}>
+          <button class="icon" aria-label="New File…" onClick={() => run('flotilla.newFile', target)}>
             <i class="codicon codicon-new-file" />
           </button>
-          <button class="icon" title="New Folder…" onClick={() => run('flotilla.newFolder', target)}>
+          <button class="icon" aria-label="New Folder…" onClick={() => run('flotilla.newFolder', target)}>
             <i class="codicon codicon-new-folder" />
           </button>
         </>
       )}
       {tool === 'vc' && ws.sync.kind === 'publish' && (
-        <button class="icon" title="Publish Branch" onClick={() => run('flotilla.publish', target)}>
+        <button class="icon" aria-label="Publish Branch" onClick={() => run('flotilla.publish', target)}>
           <i class="codicon codicon-cloud-upload" />
         </button>
       )}
       {tool === 'vc' && ws.sync.kind === 'sync' && (
-        <button class="icon" title={`Sync Changes (${ws.sync.text})`} onClick={() => run('flotilla.sync', target)}>
+        <button class="icon" aria-label={`Sync Changes (${ws.sync.text})`} onClick={() => run('flotilla.sync', target)}>
           <i class="codicon codicon-sync" />
         </button>
       )}
       {tool !== 'files' && (
-        <button class="icon" title="New Chat" onClick={() => run('flotilla.newChat', target)}>
+        <button class="icon" aria-label="New Chat" onClick={() => run('flotilla.newChat', target)}>
           <i class="codicon codicon-comment-discussion" />
         </button>
       )}
-      <button class="icon" title="Open Terminal Here" onClick={() => run('flotilla.openTerminal', target)}>
+      <button class="icon" aria-label="Open Terminal Here" onClick={() => run('flotilla.openTerminal', target)}>
         <i class="codicon codicon-terminal" />
       </button>
       {!ws.isCurrent && (
-        <button class="icon" title="Open in New Window" onClick={() => run('flotilla.openInNewWindow', target)}>
+        <button class="icon" aria-label="Open in New Window" onClick={() => run('flotilla.openInNewWindow', target)}>
           <i class="codicon codicon-empty-window" />
         </button>
       )}
@@ -96,7 +96,7 @@ export function WorktreeHeader({ ws, tool }: { ws: WorkstreamView; tool: Tool })
   return (
     <div
       class="ws-head"
-      title={ws.tooltip}
+      data-tip-ws={ws.key}
       data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: tool })}
       {...(tool === 'files' && ws.reachable ? dropTarget(ws.key, '') : {})}
     >
@@ -131,13 +131,14 @@ export function Section({ ws, tool, color, collapsed, onToggle, onSelect, childr
         {...(tool === 'files' && ws.reachable ? dropTarget(ws.key, '') : {})}
         onClick={onToggle}
         onDblClick={onSelect}
-        title={`${ws.tooltip}\n\nDouble-click to open its tab`}
+        data-tip-ws={ws.key}
+        data-tip-hint="Double-click to open its tab"
       >
         <div class="sec-line">
           <i class={`codicon codicon-chevron-${collapsed ? 'right' : 'down'} chev`} />
           <Title ws={ws} />
           <span class="actions" onClick={(e) => e.stopPropagation()}>
-            <button class="icon" title="Open Its Tab" onClick={onSelect}>
+            <button class="icon" aria-label="Open Its Tab" onClick={onSelect}>
               <i class="codicon codicon-arrow-right" />
             </button>
           </span>

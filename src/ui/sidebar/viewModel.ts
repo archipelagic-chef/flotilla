@@ -56,6 +56,8 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     attention: ws.attention,
     description: describeWorkstream(ws, now, inWorkspace),
     tooltip,
+    path: ws.worktree.path ?? ws.worktree.recordedPath ?? '',
+    agentMessage: ws.agent?.message || undefined,
     staged: ws.staged,
     unstaged: ws.unstaged,
     sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind },

@@ -80,7 +80,7 @@ function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
       class={`chat${chat.open ? '' : ' past'}`}
       role="button"
       tabIndex={0}
-      title={`${chat.title}\n${chat.open ? 'Open' : 'Resume'} this chat`}
+      data-tip={`${chat.title}\n${chat.open ? 'Open' : 'Resume'} this chat`}
       data-vscode-context={menuContext('chat', { key: ws.key, chatId: chat.id, flotillaWs: ws.context, linkedBy: chat.linkedBy })}
       onClick={() => run('flotilla.openChat', target)}
       onKeyDown={(e) => e.key === 'Enter' && run('flotilla.openChat', target)}
@@ -89,16 +89,16 @@ function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
       <span class="title">
         {chat.title}
         {chat.via && (
-          <span class="tag" title={chat.linkedBy === 'edit' ? `Runs in ${chat.via} and edited files here` : `Runs in ${chat.via}; linked by hand`}>
+          <span class="tag" data-tip={chat.linkedBy === 'edit' ? `Runs in ${chat.via} and edited files here` : `Runs in ${chat.via}; linked by hand`}>
             via {chat.via}
           </span>
         )}
       </span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-        <button class="icon" title={chat.open ? 'Open Chat' : 'Resume Chat'} onClick={() => run('flotilla.openChat', target)}>
+        <button class="icon" aria-label={chat.open ? 'Open Chat' : 'Resume Chat'} onClick={() => run('flotilla.openChat', target)}>
           <i class="codicon codicon-link-external" />
         </button>
-        <button class="icon" title={`Unlink from ${ws.branch}`} onClick={() => run('flotilla.unlinkChat', target)}>
+        <button class="icon" aria-label={`Unlink from ${ws.branch}`} onClick={() => run('flotilla.unlinkChat', target)}>
           <i class="codicon codicon-close" />
         </button>
       </span>

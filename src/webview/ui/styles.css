@@ -139,8 +139,8 @@ button {
 .section {
   scroll-margin-top: 0;
 }
-.section {
-  border-bottom: 1px solid var(--border);
+.section + .section {
+  margin-top: 4px;
 }
 .sec-head {
   position: sticky;
@@ -760,11 +760,15 @@ textarea:focus {
 .ws-head .sec-msg {
   padding-left: 20px;
 }
+/* One color down the whole worktree, header included, so the header reads as part of it. */
 .section {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ws-color) 60%, transparent);
+  box-shadow: inset 3px 0 0 var(--ws-color);
 }
 .sec-head {
   padding-left: 4px;
+  background: color-mix(in srgb, var(--ws-color) 12%, var(--vscode-sideBar-background));
+  box-shadow: inset 3px 0 0 var(--ws-color);
+  border-bottom-color: color-mix(in srgb, var(--ws-color) 25%, var(--border));
 }
 .sec-head .actions + .actions {
   margin-left: 0;
@@ -781,7 +785,6 @@ textarea:focus {
 /* ---- overview ---- */
 .card {
   padding: 5px 6px 6px 8px;
-  border-bottom: 1px solid var(--border);
   box-shadow: inset 3px 0 0 var(--ws-color);
   cursor: pointer;
 }
@@ -1020,4 +1023,150 @@ ins {
 }
 .tree {
   padding-bottom: 12px;
+}
+
+.card + .card {
+  margin-top: 4px;
+}
+
+/* ---- hovers, like VS Code's ---- */
+.hover {
+  position: fixed;
+  z-index: 100;
+  left: -9999px;
+  top: 0;
+  max-width: min(380px, calc(100vw - 8px));
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  font-size: 13px;
+  line-height: 19px;
+  pointer-events: none;
+  animation: hover-in 100ms ease-out;
+}
+@keyframes hover-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hover {
+    animation: none;
+  }
+}
+.hover-arrow {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: inherit;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  transform: rotate(45deg);
+}
+.hover[data-placement='below'] .hover-arrow {
+  top: -5px;
+  left: calc(var(--arrow) - 4px);
+  border-right: 0;
+  border-bottom: 0;
+}
+.hover[data-placement='above'] .hover-arrow {
+  bottom: -5px;
+  left: calc(var(--arrow) - 4px);
+  border-left: 0;
+  border-top: 0;
+}
+.hover[data-placement='right'] .hover-arrow {
+  left: -5px;
+  top: calc(var(--arrow) - 4px);
+  border-right: 0;
+  border-top: 0;
+}
+.hover-plain {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  white-space: pre-line;
+}
+.keys {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.keys .chord {
+  display: inline-flex;
+  gap: 2px;
+}
+.keys kbd {
+  padding: 0 4px;
+  border: 1px solid var(--vscode-keybindingLabel-border, var(--border));
+  border-bottom-color: var(--vscode-keybindingLabel-bottomBorder, var(--border));
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 var(--vscode-widget-shadow, transparent);
+  background: var(--vscode-keybindingLabel-background, transparent);
+  color: var(--vscode-keybindingLabel-foreground, inherit);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 16px;
+}
+.hover-ws {
+  min-width: 220px;
+}
+.hover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 7px;
+  box-shadow: inset 3px 0 0 var(--ws-color);
+  border-radius: 3px 0 0 3px;
+}
+.hover-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.hover-title .tag {
+  margin-left: 0;
+}
+.hover-path {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+  overflow-wrap: anywhere;
+}
+.hover-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  font-size: 12px;
+}
+.hover-row .codicon {
+  font-size: 14px;
+}
+.hover-row span + .codicon {
+  margin-left: 6px;
+}
+.hover-quote {
+  margin: 2px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-textBlockQuote-border, var(--border));
+  font-size: 12px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.hover-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 0 0 3px 3px;
+  background: var(--vscode-editorHoverWidget-statusBarBackground, transparent);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
 }

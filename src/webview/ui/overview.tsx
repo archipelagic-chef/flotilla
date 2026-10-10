@@ -48,7 +48,8 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
             role="button"
             tabIndex={0}
             style={{ '--ws-color': colors.get(ws.key) }}
-            title={`${ws.tooltip}\n\nDouble-click to open its tab`}
+            data-tip-ws={ws.key}
+            data-tip-hint="Double-click to open its tab"
             data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: 'overview' })}
             onClick={() => setHighlighted(ws.key)}
             onDblClick={() => onSelect(ws.key)}
@@ -57,18 +58,18 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
             <div class="sec-line">
               <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]}`} />
               <span class="branch">{ws.branch}</span>
-              {closed.has(ws.key) && <span class="tag" title="Its tab is closed; double-click to open it">tab closed</span>}
+              {closed.has(ws.key) && <span class="tag" data-tip="Its tab is closed; double-click to open it">tab closed</span>}
               <span class="actions" onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
-                <button class="icon" title="Open Its Tab" onClick={() => onSelect(ws.key)}>
+                <button class="icon" aria-label="Open Its Tab" onClick={() => onSelect(ws.key)}>
                   <i class="codicon codicon-arrow-right" />
                 </button>
                 {ws.reachable && (
-                  <button class="icon" title="New Chat" onClick={() => run('flotilla.newChat', { key: ws.key })}>
+                  <button class="icon" aria-label="New Chat" onClick={() => run('flotilla.newChat', { key: ws.key })}>
                     <i class="codicon codicon-comment-discussion" />
                   </button>
                 )}
                 {!ws.isMain && (
-                  <button class="icon" title="Remove Worktree…" onClick={() => run('flotilla.remove', { key: ws.key })}>
+                  <button class="icon" aria-label="Remove Worktree…" onClick={() => run('flotilla.remove', { key: ws.key })}>
                     <i class="codicon codicon-trash" />
                   </button>
                 )}

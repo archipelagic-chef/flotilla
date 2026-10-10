@@ -323,7 +323,7 @@ function Dir({ ws, path, depth, files, open, changes, toggle, targetFor, inIgnor
             class={`row file${selected ? ' selected' : ''}${inIgnored || entry.ignored ? ' ignored' : ''}`}
             role="treeitem"
             style={{ paddingLeft: `${indent + 16}px` }}
-            title={rel}
+            data-tip={rel}
             {...common}
             onClick={(e) => click(e, () => send({ type: 'openFile', key: ws.key, path: rel, preview: true }))}
             onDblClick={() => send({ type: 'openFile', key: ws.key, path: rel, preview: false })}

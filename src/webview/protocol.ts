@@ -51,8 +51,12 @@ export interface WorkstreamView {
   attention: AttentionState;
   /** One line: status, progress, sync, window. */
   description: string;
-  /** Tooltip for the rail tile and header. */
+  /** Plain-text summary (branch, path, status) for screen readers and tests. */
   tooltip: string;
+  /** The worktree's folder (or where it was, when unreachable). */
+  path: string;
+  /** What the agent last said (a question when it waits for input). */
+  agentMessage?: string;
   staged: FileChangeView[];
   unstaged: FileChangeView[];
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number };

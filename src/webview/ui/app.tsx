@@ -3,6 +3,7 @@ import { ALL, type DirEntry, type HostMessage, type Tool, type WorkstreamView } 
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
+import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
@@ -336,7 +337,7 @@ export function App() {
   return (
     <div class="app" style={{ '--ws-color': activeWs ? colors.get(activeWs.key) : 'var(--focus)' }}>
       <div class="wt-tabs" role="tablist" aria-label="Worktrees">
-        <button class="wt-tab all" role="tab" aria-selected={active === ALL} title="All worktrees (Ctrl+Alt+0)" onClick={() => setActive(ALL)}>
+        <button class="wt-tab all" role="tab" aria-selected={active === ALL} data-tip="All Worktrees" data-keys="Ctrl+Alt+0" onClick={() => setActive(ALL)}>
           <i class="codicon codicon-layers" />
           <span class="nm">All</span>
         </button>
@@ -368,7 +369,8 @@ export function App() {
                   tabIndex={0}
                   aria-selected={active === ws.key}
                   style={{ '--ws-color': colors.get(ws.key) }}
-                  title={`${ws.tooltip}${i < 9 ? `\n\nCtrl+Alt+${i + 1}` : ''}`}
+                  data-tip-ws={ws.key}
+                  data-keys={i < 9 ? `Ctrl+Alt+${i + 1}` : undefined}
                   data-vscode-context={menuContext('workstream', { key: ws.key, flotillaWs: ws.context, flotillaTab: tool, flotillaTabItem: true })}
                   onClick={() => setActive(ws.key)}
                   onKeyDown={(e) => {
@@ -391,7 +393,7 @@ export function App() {
                   {open > 0 && <span class="n">{open}</span>}
                   <button
                     class="tab-close"
-                    title="Close Tab (the worktree stays in the Overview)"
+                    data-tip="Close Tab (the worktree stays in the Overview)"
                     aria-label={`Close ${ws.label}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -404,7 +406,7 @@ export function App() {
               );
             })}
         </div>
-        <button class="wt-add" title="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
+        <button class="wt-add" aria-label="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
           <i class="codicon codicon-add" />
         </button>
       </div>
@@ -417,8 +419,8 @@ export function App() {
                 key={t.id}
                 role="tab"
                 aria-selected={tool === t.id}
-                title={t.label}
                 aria-label={t.label}
+                data-tip-pos="right"
                 onClick={() => update((p) => ({ ...p, tool: t.id }))}
               >
                 <i class={`codicon codicon-${t.icon}`} />
@@ -427,15 +429,21 @@ export function App() {
             );
           })}
           <span class="grow" />
-          <button title="Run and Debug" aria-label="Run and Debug" onClick={() => send({ type: 'openView', view: 'debug' })}>
+          <button aria-label="Run and Debug" data-tip-pos="right" onClick={() => send({ type: 'openView', view: 'debug' })}>
             <i class="codicon codicon-debug-alt" />
           </button>
-          <button title="Extensions" aria-label="Extensions" onClick={() => send({ type: 'openView', view: 'extensions' })}>
+          <button aria-label="Extensions" data-tip-pos="right" onClick={() => send({ type: 'openView', view: 'extensions' })}>
             <i class="codicon codicon-extensions" />
           </button>
         </nav>
         <div class="content">{content}</div>
       </div>
+      <Hover
+        render={(el) => {
+          const ws = el.dataset.tipWs ? workstreams.find((w) => w.key === el.dataset.tipWs) : undefined;
+          return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
+        }}
+      />
     </div>
   );
 }

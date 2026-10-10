@@ -92,7 +92,7 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
         <div class="search-rows">
           <button
             class="replace-toggle"
-            title={replacing ? 'Hide Replace' : 'Show Replace'}
+            aria-label={replacing ? 'Hide Replace' : 'Show Replace'}
             aria-expanded={replacing}
             onClick={() => set({ replacing: !replacing })}
           >
@@ -112,7 +112,7 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
                 <button
                   key={t.key}
                   class={`toggle${options[t.key] ? ' on' : ''}`}
-                  title={t.label}
+                  aria-label={t.label}
                   aria-pressed={options[t.key]}
                   onClick={() => set({ options: { ...options, [t.key]: !options[t.key] } })}
                 >
@@ -132,7 +132,7 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && matchCount) replace();
                   }}
                 />
-                <button class="toggle" title="Replace All (Ctrl+Enter)" disabled={!matchCount} onClick={() => replace()}>
+                <button class="toggle" aria-label="Replace All" data-keys="Ctrl+Enter" disabled={!matchCount} onClick={() => replace()}>
                   <i class="codicon codicon-replace-all" />
                 </button>
               </div>
@@ -180,7 +180,7 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
                     <span class="dir">{slash > 0 ? f.path.slice(0, slash) : ''}</span>
                     {replacing && (
                       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-                        <button class="icon" title="Replace in This File" onClick={() => replace(g.key, f.path)}>
+                        <button class="icon" aria-label="Replace in This File" onClick={() => replace(g.key, f.path)}>
                           <i class="codicon codicon-replace" />
                         </button>
                       </span>
@@ -194,7 +194,7 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
                         <button
                           key={m.line}
                           class="row hit"
-                          title={`${f.path}:${m.line}`}
+                          data-tip={`${f.path}:${m.line}`}
                           onClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: true, line: m.line, range: m.ranges[0] })}
                           onDblClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: false, line: m.line, range: m.ranges[0] })}
                         >
