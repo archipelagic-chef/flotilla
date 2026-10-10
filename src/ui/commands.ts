@@ -11,11 +11,12 @@ import { resolveBase } from '../features/workstreams/progress';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
-import type { CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
+import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
+import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import { claudeHookConfig } from './claudeHooks';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
-import { removalToRun, setupsToRun, withoutSetup, type PendingRemoval, type PendingSetup } from './pending';
+import { removalToRun, type PendingRemoval } from './pending';
 import { readSettings } from './settings';
 import type { Node, WorkstreamsView } from './workstreamsView';
 
@@ -32,7 +33,6 @@ export interface CommandContext {
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
-const PENDING_SETUP_KEY = 'flotilla.pendingSetup';
 
 interface PickFilter {
   includeUnreachable?: boolean;
@@ -108,12 +108,6 @@ export function registerCommands(ctx: CommandContext): void {
 export async function resumePendingActions(ctx: CommandContext): Promise<void> {
   const state = ctx.extension.globalState;
   const now = Date.now();
-  const queue = state.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
-  const setups = setupsToRun(queue, ctx.currentRoot, now);
-  if (setups.keep.length !== queue.length) {
-    await state.update(PENDING_SETUP_KEY, setups.keep);
-    for (const p of setups.run) startSetupTerminal(p.worktreeDir, p.command);
-  }
   const removal = removalToRun(state.get<PendingRemoval>(PENDING_REMOVAL_KEY), ctx.service.roots.mainRoot, ctx.currentRoot, now);
   if (removal.clear) await state.update(PENDING_REMOVAL_KEY, undefined);
   const plan = removal.run;
@@ -160,48 +154,82 @@ async function pickWorkstream(ctx: CommandContext, node: Node | undefined, filte
   return picked?.ws;
 }
 
-type SourceItem = vscode.QuickPickItem & { value: CreateRequest['kind'] };
+type BranchItem = vscode.QuickPickItem & { action?: BranchPickAction };
+
+/** One searchable picker, like VS Code's own branch picker. Resolves to the chosen action, or undefined when dismissed. */
+async function pickBranchAction(branches: BranchList, checkedOut: ReadonlyMap<string, string>): Promise<{ action: BranchPickAction; typed: string } | undefined> {
+  const quickPick = vscode.window.createQuickPick<BranchItem>();
+  quickPick.title = 'New workstream';
+  quickPick.placeholder = 'Select a branch for the new worktree, or type a new branch name';
+  const render = () => {
+    quickPick.items = branchPickEntries(quickPick.value, branches, checkedOut).map((e) =>
+      e.separator
+        ? { label: e.label, kind: vscode.QuickPickItemKind.Separator }
+        : { label: e.label, description: e.description, alwaysShow: e.alwaysShow, action: e.action },
+    );
+  };
+  render();
+  const result = await new Promise<{ action: BranchPickAction; typed: string } | undefined>((resolve) => {
+    quickPick.onDidChangeValue(render);
+    quickPick.onDidAccept(() => {
+      const action = quickPick.selectedItems[0]?.action;
+      if (action) resolve({ action, typed: quickPick.value.trim() });
+    });
+    quickPick.onDidHide(() => resolve(undefined));
+    quickPick.show();
+  });
+  quickPick.dispose();
+  return result;
+}
+
+async function askBranchName(branches: BranchList, typed: string): Promise<string | undefined> {
+  return vscode.window.showInputBox({
+    title: 'New branch name',
+    prompt: 'The worktree folder is named after the branch.',
+    value: typed,
+    validateInput: (value) => branchNameProblem(value.trim(), branches.local),
+  });
+}
 
 async function newWorkstream(ctx: CommandContext): Promise<void> {
-  const source = await vscode.window.showQuickPick<SourceItem>(
-    [
-      { label: '$(add) New branch…', value: 'new' },
-      { label: '$(git-branch) Existing local branch', value: 'existing' },
-      { label: '$(cloud) Remote branch', value: 'remote' },
-    ],
-    { title: 'New workstream' },
-  );
-  if (!source) return;
   const branches = await ctx.service.listBranches();
+  const checkedOut = new Map<string, string>();
+  for (const ws of ctx.repository.current) {
+    if (ws.worktree.branch) checkedOut.set(ws.worktree.branch, ws.worktree.isMain ? 'the main worktree' : path.basename(ws.worktree.path ?? ws.worktree.recordedPath));
+  }
+  const picked = await pickBranchAction(branches, checkedOut);
+  if (!picked) return;
+  const { action, typed } = picked;
+
   let request: CreateRequest;
-  if (source.value === 'new') {
-    const branch = await vscode.window.showInputBox({
-      title: 'New branch name',
-      prompt: 'The worktree folder is named after the branch.',
-      validateInput: (value) => branchNameProblem(value, branches.local),
-    });
-    if (!branch) return;
-    const startPoint = await vscode.window.showQuickPick(['HEAD', ...branches.local, ...branches.remote], { title: `Start '${branch}' from…` });
-    if (!startPoint) return;
-    request = { kind: 'new', branch, startPoint };
-  } else if (source.value === 'existing') {
-    const checkedOut = new Set(ctx.repository.current.map((ws) => ws.worktree.branch));
-    const free = branches.local.filter((b) => !checkedOut.has(b));
-    if (free.length === 0) {
-      void vscode.window.showInformationMessage('Every local branch is already checked out in a worktree.');
+  switch (action.kind) {
+    case 'checkedOut':
+      void vscode.window.showInformationMessage(
+        `'${action.branch}' is already checked out in ${action.where}. Git can't check out a branch in two worktrees at once.`,
+      );
       return;
+    case 'existing':
+      request = { kind: 'existing', branch: action.branch };
+      break;
+    case 'remote':
+      request = { kind: 'remote', remoteRef: action.remoteRef };
+      break;
+    case 'createNamed':
+      request = { kind: 'new', branch: action.branch, startPoint: 'HEAD' };
+      break;
+    case 'createPrompt':
+    case 'createFrom': {
+      const branch = (await askBranchName(branches, typed))?.trim();
+      if (!branch) return;
+      let startPoint = 'HEAD';
+      if (action.kind === 'createFrom') {
+        const from = await vscode.window.showQuickPick(['HEAD', ...branches.local, ...branches.remote], { title: `Start '${branch}' from…` });
+        if (!from) return;
+        startPoint = from;
+      }
+      request = { kind: 'new', branch, startPoint };
+      break;
     }
-    const branch = await vscode.window.showQuickPick(free, { title: 'Branch to check out' });
-    if (!branch) return;
-    request = { kind: 'existing', branch };
-  } else {
-    if (branches.remote.length === 0) {
-      void vscode.window.showInformationMessage('No remote branches found. Run git fetch first.');
-      return;
-    }
-    const remoteRef = await vscode.window.showQuickPick(branches.remote, { title: 'Remote branch' });
-    if (!remoteRef) return;
-    request = { kind: 'remote', remoteRef };
   }
 
   const created = await vscode.window.withProgress(
@@ -212,22 +240,10 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
   const settings = readSettings();
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   if (copied.length) ctx.output.appendLine(`Copied into ${dir}: ${copied.join(', ')}`);
+  startSetupTerminal(dir, settings.setupCommand);
   await ctx.repository.refresh();
-  if (settings.openAfterCreate !== 'currentWindow') void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
-  if (settings.openAfterCreate === 'none') {
-    startSetupTerminal(dir, settings.setupCommand);
-    return;
-  }
-  const queued = await queueSetup(ctx, dir, settings.setupCommand);
-  try {
-    await openWorktree(ctx, dir, settings.openAfterCreate === 'newWindow');
-  } catch (error) {
-    if (queued) {
-      const queue = ctx.extension.globalState.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
-      await ctx.extension.globalState.update(PENDING_SETUP_KEY, withoutSetup(queue, queued));
-    }
-    throw error;
-  }
+  await ctx.view.reveal(created.adminDir);
+  void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
 }
 
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {
@@ -246,14 +262,6 @@ function startSetupTerminal(dir: string, command: string): void {
   const terminal = vscode.window.createTerminal({ name: `Setup: ${path.basename(dir)}`, cwd: dir });
   terminal.show(true);
   terminal.sendText(command);
-}
-
-async function queueSetup(ctx: CommandContext, dir: string, command: string): Promise<PendingSetup | undefined> {
-  if (!command.trim()) return undefined;
-  const entry: PendingSetup = { worktreeDir: dir, command, createdAt: Date.now() };
-  const queue = ctx.extension.globalState.get<PendingSetup[]>(PENDING_SETUP_KEY, []);
-  await ctx.extension.globalState.update(PENDING_SETUP_KEY, [...queue, entry]);
-  return entry;
 }
 
 async function quickSwitch(ctx: CommandContext): Promise<void> {

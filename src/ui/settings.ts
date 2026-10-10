@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 
 export interface Settings {
-  openAfterCreate: 'newWindow' | 'currentWindow' | 'none';
   copyFiles: string[];
   setupCommand: string;
   autoAdopt: boolean;
@@ -16,7 +15,6 @@ export interface Settings {
 export function readSettings(): Settings {
   const c = vscode.workspace.getConfiguration('flotilla');
   return {
-    openAfterCreate: c.get<Settings['openAfterCreate']>('openAfterCreate', 'newWindow'),
     copyFiles: c.get<string[]>('copyFiles', []),
     setupCommand: c.get<string>('setupCommand', ''),
     autoAdopt: c.get<boolean>('autoAdopt', true),

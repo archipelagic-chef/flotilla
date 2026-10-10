@@ -69,6 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const view = new WorkstreamsView(repository);
   const treeView = vscode.window.createTreeView('flotilla.workstreams', { treeDataProvider: view, showCollapseAll: true });
+  view.attach(treeView);
   const ctx: CommandContext = { extension: context, service, repository, view, reference: folder.uri, currentRoot: location.worktreeRoot, output };
   context.subscriptions.push(
     view,

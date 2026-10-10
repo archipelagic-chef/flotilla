@@ -211,9 +211,9 @@
           "when": "flotilla.state == ready"
         },
         {
-        "command": "flotilla.copyClaudeHookConfig",
-        "when": "flotilla.state == ready"
-      },
+          "command": "flotilla.copyClaudeHookConfig",
+          "when": "flotilla.state == ready"
+        },
         {
           "command": "flotilla.compareToggleTwoDot",
           "when": "false"
@@ -253,16 +253,6 @@
         }
       ],
       "view/item/context": [
-        {
-          "command": "flotilla.openInNewWindow",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
-          "group": "inline@1"
-        },
-        {
-          "command": "flotilla.switchHere",
-          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
-          "group": "inline@2"
-        },
         {
           "command": "flotilla.remove",
           "when": "view == flotilla.workstreams && viewItem =~ /;linked;/",
@@ -343,21 +333,6 @@
     "configuration": {
       "title": "Flotilla",
       "properties": {
-        "flotilla.openAfterCreate": {
-          "type": "string",
-          "enum": [
-            "newWindow",
-            "currentWindow",
-            "none"
-          ],
-          "enumDescriptions": [
-            "Open the new worktree in a new window",
-            "Switch this window to the new worktree",
-            "Stay where you are"
-          ],
-          "default": "newWindow",
-          "description": "What to do after creating a workstream."
-        },
         "flotilla.copyFiles": {
           "type": "array",
           "items": {

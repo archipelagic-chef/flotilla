@@ -36,7 +36,6 @@ For Claude Code, run **Flotilla: Copy Claude Code Hook Config** and merge the re
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `flotilla.openAfterCreate` | `newWindow` | `newWindow` / `currentWindow` / `none` |
 | `flotilla.copyFiles` | `[]` | Globs copied from the main worktree on create |
 | `flotilla.setupCommand` | `""` | Run in a terminal in the new worktree |
 | `flotilla.autoAdopt` | `true` | Make in-repo worktrees portable automatically |

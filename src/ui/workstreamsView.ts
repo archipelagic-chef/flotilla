@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { samePath } from '../core/paths';
 import { WORKING } from '../core/diff/refs';
 import type { ChangeKind, FileChange } from '../core/git/porcelain';
 import type { Repository } from '../core/repository';
@@ -67,6 +68,7 @@ export class WorkstreamsView implements vscode.TreeDataProvider<Node>, vscode.Di
   readonly onDidChangeTreeData = this.emitter.event;
   private readonly compares = new Map<string, CompareState>();
   private readonly subscription: { dispose(): void };
+  private treeView: vscode.TreeView<Node> | undefined;
 
   constructor(private readonly repository: Repository<Workstream>) {
     this.subscription = repository.onDidChange(() => this.emitter.fire(undefined));
@@ -76,6 +78,26 @@ export class WorkstreamsView implements vscode.TreeDataProvider<Node>, vscode.Di
     if (state) this.compares.set(key, state);
     else this.compares.delete(key);
     this.emitter.fire(undefined);
+  }
+
+  /** Gives the provider its view so it can reveal items. */
+  attach(treeView: vscode.TreeView<Node>): void {
+    this.treeView = treeView;
+  }
+
+  /** Selects a workstream in the view without moving focus. Best effort: the view may be hidden. */
+  async reveal(key: string): Promise<void> {
+    const ws = this.repository.current.find((w) => samePath(w.key, key));
+    if (!ws || !this.treeView) return;
+    try {
+      await this.treeView.reveal({ type: 'workstream', ws }, { select: true, focus: false });
+    } catch {
+      // view not visible yet
+    }
+  }
+
+  getParent(node: Node): Node | undefined {
+    return node.type === 'workstream' || node.type === 'info' ? undefined : { type: 'workstream', ws: node.ws };
   }
 
   dispose(): void {
