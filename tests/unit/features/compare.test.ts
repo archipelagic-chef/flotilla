@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
-import { compareWithBase, compareWithRef, isRefLike, listRefs } from '../../../src/features/diffs/compare';
+import { compareRefs, compareWithBase, isRefLike, listRefs } from '../../../src/features/diffs/compare';
 import { git, initRepo, makeStatDirty, removeDir, restatInPast, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -79,7 +79,7 @@ describe('compareWithBase', () => {
   });
 });
 
-describe('compareWithRef', () => {
+describe('compareRefs', () => {
   it('lists branches and tags, and refuses what is not a ref', async () => {
     const { repo, wt } = fixture();
     git(repo, 'tag', 'v1');
@@ -88,9 +88,25 @@ describe('compareWithRef', () => {
     expect(isRefLike('--output=x')).toBe(false);
     expect(isRefLike('main two')).toBe(false);
     expect(isRefLike('origin/main')).toBe(true);
-    await expect(compareWithRef(wt, '--output=x', 'twoDot')).rejects.toThrow(/not a branch/);
-    await expect(compareWithRef(wt, 'nope', 'twoDot')).rejects.toThrow(/no branch, tag or commit 'nope'/);
-    const result = await compareWithRef(wt, 'v1', 'mergeBase');
-    expect(result.files.length).toBeGreaterThan(0);
+    await expect(compareRefs(repo, '--output=x', 'feat', 'twoDot')).rejects.toThrow(/not a branch/);
+    await expect(compareRefs(repo, 'main', 'nope', 'twoDot')).rejects.toThrow(/no branch, tag or commit 'nope'/);
+  });
+
+  it('compares any two branches, from any worktree', async () => {
+    const { repo } = fixture();
+    // From the main worktree: what feat changed since it split from main, without main's own later commit.
+    const since = await compareRefs(repo, 'main', 'feat', 'mergeBase');
+    expect(sortByPath(since.files).map((f) => f.path)).toEqual(['README.md', 'guide.md', 'new.txt']);
+    expect(since.rightRef).toBe('feat');
+    // Two-dot also shows main's commit (as a deletion seen from feat).
+    const all = await compareRefs(repo, 'main', 'feat', 'twoDot');
+    expect(all.files.map((f) => f.path)).toContain('main-only.txt');
+  });
+
+  it('includes uncommitted changes from the worktree the branch is checked out in', async () => {
+    const { wt } = fixture();
+    const result = await compareRefs(wt, 'main', 'feat', 'mergeBase', true);
+    expect(result.rightRef).toBe(WORKING);
+    expect(result.files.map((f) => f.path)).toContain('shared.txt');
   });
 });

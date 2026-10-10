@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { ChangeGroup, CommitView, CompareMode, FileChangeView, WorkstreamView } from '../protocol';
+import type { ChangeGroup, CommitView, FileChangeView, RefCompareMode, RefComparison, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
@@ -147,7 +147,7 @@ export function VcBody({ ws, draft, update }: Props) {
       {total === 0 && (
         <div class="empty">
           {ws.sync.kind === 'sync' && !ws.sync.ahead && !ws.sync.behind ? 'Up to date with the remote. ' : ''}
-          <button class="link" onClick={() => update((p) => ({ ...p, vcView: 'compare' }))}>
+          <button class="link" onClick={() => update((p) => ({ ...p, vcView: 'compare', comparison: { ...p.comparison, head: ws.branch } }))}>
             Compare with…
           </button>
         </div>
@@ -466,127 +466,164 @@ export function CommitCard({ commit }: { commit: CommitView }) {
   );
 }
 
-/** Branches and tags of a worktree's repository, to compare with. */
+/** Branches and tags to compare. */
 export interface Refs {
   defaultBase?: string;
   refs: string[];
 }
 
-/** The last comparison of a worktree. */
+/** The answer to the latest comparison. */
 export interface Comparison {
-  base: string;
-  mode: CompareMode;
+  id: number;
   files: FileChangeView[];
   loading?: boolean;
   error?: string;
 }
 
-const COMPARE_MODES: Array<{ mode: CompareMode; label: string; tip: (base: string) => string }> = [
-  { mode: 'mergeBase', label: 'Branch', tip: (b) => `What this branch changed since it split from ${b} (merge-base…HEAD)` },
-  { mode: 'uncommitted', label: '+ Uncommitted', tip: (b) => `What this branch changed since it split from ${b}, with uncommitted changes` },
-  { mode: 'twoDot', label: 'Two-dot', tip: (b) => `Every difference between ${b} and HEAD (${b}..HEAD), also what ${b} changed since` },
-];
-
-interface CompareProps {
-  ws: WorkstreamView;
-  /** What the user chose; base defaults to the default branch. */
-  choice: { base?: string; mode: CompareMode } | undefined;
-  refs: Refs | undefined;
-  comparison: Comparison | undefined;
-  choose(key: string, choice: { base?: string; mode: CompareMode }): void;
-  requestRefs(key: string): void;
-  compare(key: string, base: string, mode: CompareMode): void;
+/** What the user picked to compare; unset refs follow the defaults (the default branch, the active worktree's). */
+export interface CompareChoice {
+  base?: string;
+  head?: string;
+  mode: RefCompareMode;
+  /** When head is checked out in a worktree: compare that worktree's files, uncommitted changes included. */
+  uncommitted: boolean;
 }
 
-/** Version Control › Compare: the files that differ between the worktree and a branch, tag or commit. */
-export function CompareBody({ ws, choice, refs, comparison, choose, requestRefs, compare }: CompareProps) {
-  const mode = choice?.mode ?? 'mergeBase';
-  const fallback = refs?.defaultBase && refs.defaultBase !== ws.branch ? refs.defaultBase : undefined;
-  const base = choice?.base ?? fallback ?? '';
-  const [typed, setTyped] = useState(base);
-  useEffect(() => setTyped(base), [base]);
-  useEffect(() => {
-    if (!refs) requestRefs(ws.key);
-  }, [ws.key, refs, requestRefs]);
-  // Again when HEAD moves, and for uncommitted changes when they change.
-  const stamp = `${ws.sync.head}|${mode === 'uncommitted' ? [...ws.staged, ...ws.unstaged].map((c) => c.path).join('\n') : ''}`;
-  useEffect(() => {
-    if (base) compare(ws.key, base, mode);
-  }, [ws.key, base, mode, stamp, compare]);
+const REF_COMPARE_MODES: Array<{ mode: RefCompareMode; label: string; tip: (base: string, head: string) => string }> = [
+  { mode: 'mergeBase', label: 'Since split', tip: (b, h) => `What ${h} changed since it split from ${b} (${b}...${h})` },
+  { mode: 'twoDot', label: 'All differences', tip: (b, h) => `Every difference between ${b} and ${h} (${b}..${h})` },
+];
 
-  const listId = `refs-${ws.key.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+interface CompareViewProps {
+  workstreams: WorkstreamView[];
+  /** The worktree of the active tab, if one is; its branch is the default head. */
+  activeWs: WorkstreamView | undefined;
+  choice: CompareChoice;
+  refs: Refs | undefined;
+  result: Comparison | undefined;
+  choose(change: Partial<CompareChoice>): void;
+  requestRefs(): void;
+  compare(request: RefComparison): void;
+}
+
+/** A ref box with suggestions; it applies on Enter or when it loses focus, and Escape undoes the typing. */
+function RefInput({ label, value, refs, worktreeBranches, onApply }: { label: string; value: string; refs: string[]; worktreeBranches: ReadonlySet<string>; onApply(ref: string): void }) {
+  const [typed, setTyped] = useState(value);
+  useEffect(() => setTyped(value), [value]);
+  const listId = `refs-${label.toLowerCase()}`;
   const apply = () => {
     const next = typed.trim();
-    if (next && next !== base) choose(ws.key, { base: next, mode });
+    if (next && next !== value) onApply(next);
   };
-  const current = comparison && comparison.base === base && comparison.mode === mode ? comparison : undefined;
-  const files = current?.files ?? [];
+  return (
+    <label class="compare-input">
+      <span class="compare-label">{label}</span>
+      <input
+        value={typed}
+        list={listId}
+        placeholder="Branch, tag or commit"
+        onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
+        onChange={apply}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') apply();
+          else if (e.key === 'Escape') setTyped(value);
+        }}
+      />
+      <datalist id={listId}>
+        {refs.map((r) => (
+          <option key={r} value={r} label={worktreeBranches.has(r) ? 'worktree' : undefined} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
+
+/**
+ * Version Control › Compare: the files that differ between any two branches, tags or commits, whichever tab is
+ * active. The second side defaults to the active worktree's branch; when it's checked out in a worktree, that
+ * worktree's uncommitted changes can count too.
+ */
+export function CompareView({ workstreams, activeWs, choice, refs, result, choose, requestRefs, compare }: CompareViewProps) {
+  useEffect(() => {
+    if (!refs) requestRefs();
+  }, [refs, requestRefs]);
+  const current = workstreams.find((w) => w.isCurrent);
+  const base = choice.base ?? refs?.defaultBase ?? '';
+  const head = choice.head ?? (activeWs ?? current)?.branch ?? '';
+  const worktree = workstreams.find((w) => w.reachable && w.branch === head);
+  const withUncommitted = choice.uncommitted && worktree !== undefined;
+  const request: RefComparison = { base, head, mode: choice.mode, worktree: withUncommitted ? worktree!.key : undefined };
+  // Again when the refs move, and for a worktree's files when they change.
+  const stamp = [
+    ...workstreams.map((w) => `${w.branch}@${w.sync.head}`),
+    withUncommitted ? [...worktree!.staged, ...worktree!.unstaged].map((c) => `${c.kind}:${c.path}`).join(',') : '',
+  ].join('|');
+  useEffect(() => {
+    if (base && head) compare(request);
+  }, [base, head, choice.mode, request.worktree, stamp, compare]);
+
+  const worktreeBranches = new Set(workstreams.map((w) => w.branch));
+  const allRefs = [...new Set([...(refs?.refs ?? []), ...worktreeBranches])];
+  const files = result?.files ?? [];
+  const open = (path?: string) => send({ type: 'openCompare', ...request, path });
   return (
     <div class="compare">
+      <div class="tool-title">Compare</div>
       <div class="compare-bar">
-        <div class="compare-input">
-          <i class="codicon codicon-git-compare" />
-          <input
-            value={typed}
-            list={listId}
-            placeholder="Branch, tag or commit"
-            aria-label={`Compare ${ws.branch} with`}
-            onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
-            onChange={apply}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') apply();
-              else if (e.key === 'Escape') setTyped(base);
-            }}
-          />
-          <datalist id={listId}>
-            {(refs?.refs ?? [])
-              .filter((r) => r !== ws.branch)
-              .map((r) => (
-                <option key={r} value={r} />
-              ))}
-          </datalist>
+        <RefInput label="Base" value={base} refs={allRefs} worktreeBranches={worktreeBranches} onApply={(r) => choose({ base: r })} />
+        <div class="compare-swap">
+          <button class="icon" aria-label="Swap" disabled={!base || !head} onClick={() => choose({ base: head, head: base })}>
+            <i class="codicon codicon-arrow-swap" />
+          </button>
         </div>
+        <RefInput label="With" value={head} refs={allRefs} worktreeBranches={worktreeBranches} onApply={(r) => choose({ head: r })} />
         <div class="segmented" role="radiogroup" aria-label="What to compare">
-          {COMPARE_MODES.map((m) => (
+          {REF_COMPARE_MODES.map((m) => (
             <button
               key={m.mode}
               role="radio"
-              aria-checked={mode === m.mode}
-              data-tip={m.tip(base || 'the base')}
-              onClick={() => choose(ws.key, { base: choice?.base, mode: m.mode })}
+              aria-checked={choice.mode === m.mode}
+              data-tip={m.tip(base || 'the base', head || 'the other side')}
+              onClick={() => choose({ mode: m.mode })}
             >
               {m.label}
             </button>
           ))}
         </div>
+        {worktree && (
+          <label class="check" data-tip={`Compare the files in ${worktree.label}'s worktree, not only its commits`}>
+            <input type="checkbox" checked={choice.uncommitted} onChange={(e) => choose({ uncommitted: (e.target as HTMLInputElement).checked })} />
+            Include uncommitted changes
+          </label>
+        )}
       </div>
       <div class="group">
         <div class="row group-head">
-          <span class="name">{base ? `${base} ↔ ${ws.branch}` : 'Files'}</span>
+          <span class="name">{base && head ? `${base} ↔ ${head}` : 'Files'}</span>
           <span class="hover-actions" hidden={!files.length}>
-            <button class="icon" aria-label="Open All Changes" onClick={() => send({ type: 'openCompare', key: ws.key, base, mode })}>
+            <button class="icon" aria-label="Open All Changes" onClick={() => open()}>
               <i class="codicon codicon-diff-multiple" />
             </button>
-            <button class="icon" aria-label="Refresh" onClick={() => compare(ws.key, base, mode)}>
+            <button class="icon" aria-label="Refresh" onClick={() => compare(request)}>
               <i class="codicon codicon-refresh" />
             </button>
           </span>
-          {current && !current.error && <span class="badge">{files.length}</span>}
+          {result && !result.loading && !result.error && <span class="badge">{files.length}</span>}
         </div>
-        {!base && <div class="row group-empty">Pick a branch, tag or commit to compare with</div>}
-        {base && current?.error && <div class="row group-empty error">{current.error}</div>}
-        {base && !current?.error && !files.length && (
-          <div class="row group-empty">{!current || current.loading ? 'Comparing…' : `No differences with ${base}`}</div>
+        {(!base || !head) && <div class="row group-empty">Pick two branches, tags or commits to compare</div>}
+        {base && head && result?.error && <div class="row group-empty error">{result.error}</div>}
+        {base && head && !result?.error && !files.length && (
+          <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>
         )}
         {files.map((f) => (
-          <CompareRow key={f.path} ws={ws} change={f} open={() => send({ type: 'openCompare', key: ws.key, base, mode, path: f.path })} />
+          <CompareRow key={f.path} worktree={worktree?.key} change={f} open={() => open(f.path)} />
         ))}
       </div>
     </div>
   );
 }
 
-function CompareRow({ ws, change, open }: { ws: WorkstreamView; change: FileChangeView; open(): void }) {
+function CompareRow({ worktree, change, open }: { worktree: string | undefined; change: FileChangeView; open(): void }) {
   const parts = change.path.split('/');
   const name = parts.pop()!;
   return (
@@ -598,16 +635,16 @@ function CompareRow({ ws, change, open }: { ws: WorkstreamView; change: FileChan
       onClick={open}
       onKeyDown={(e) => e.key === 'Enter' && open()}
     >
-      <i class="codicon codicon-file" />
+      <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>
-      <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-        {change.kind !== 'deleted' && (
-          <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: ws.key, path: change.path })}>
+      {worktree && change.kind !== 'deleted' && (
+        <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+          <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: worktree, path: change.path })}>
             <i class="codicon codicon-go-to-file" />
           </button>
-        )}
-      </span>
+        </span>
+      )}
       <span class={`letter k-${change.kind}`}>{CHANGE_LETTER[change.kind]}</span>
     </div>
   );

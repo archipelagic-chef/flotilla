@@ -1440,3 +1440,28 @@ ins {
     transition: none;
   }
 }
+.compare-label {
+  flex: none;
+  width: 34px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.compare-swap {
+  display: flex;
+  justify-content: center;
+  margin: -4px 0;
+}
+.compare-swap .codicon {
+  transform: rotate(90deg);
+}
+.compare-bar .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+.compare-bar .check input {
+  margin: 0;
+  accent-color: var(--vscode-checkbox-background, var(--focus));
+}

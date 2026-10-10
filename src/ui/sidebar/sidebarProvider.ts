@@ -6,13 +6,14 @@ import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
-import { compareWithRef, listRefs } from '../../features/diffs/compare';
+import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type HostMessage, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import { ALL, type HostMessage, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
@@ -240,40 +241,49 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         await vscode.env.clipboard.writeText(m.text);
         return;
       case 'refs': {
-        const dir = this.root(m.key);
+        const dir = this.compareDir();
         if (!dir) return;
         const [refs, defaultBase] = await Promise.all([
           listRefs(dir).catch(() => []),
           resolveBase(dir, vscode.workspace.getConfiguration('flotilla').get<string>('defaultBase', '')),
         ]);
-        this.post({ type: 'refs', key: m.key, defaultBase, refs });
+        this.post({ type: 'refs', defaultBase, refs });
         return;
       }
       case 'compare': {
-        const dir = this.root(m.key);
-        if (!dir) return;
         try {
-          const { files } = await compareWithRef(dir, m.base, m.mode);
-          this.post({ type: 'compared', key: m.key, base: m.base, mode: m.mode, files });
+          const { files } = await this.compareRefs(m);
+          this.post({ type: 'compared', id: m.id, files });
         } catch (error) {
-          this.post({ type: 'compared', key: m.key, base: m.base, mode: m.mode, files: [], error: error instanceof Error ? error.message : String(error) });
+          this.post({ type: 'compared', id: m.id, files: [], error: error instanceof Error ? error.message : String(error) });
         }
         return;
       }
       case 'openCompare': {
-        const ws = this.find(m.key);
-        if (!ws?.worktree.path) return;
-        const result = await compareWithRef(ws.worktree.path, m.base, m.mode);
-        const title = `${m.base} ↔ ${ws.worktree.branch ?? 'HEAD'}`;
+        const { dir, result } = await this.compareRefs(m);
+        const title = `${m.base} ↔ ${m.head}${m.worktree ? ' (working tree)' : ''}`;
         if (m.path === undefined) {
-          if (result.files.length) await openChangesEditor(this.deps.reference, ws.worktree.path, result.files, result.leftRef, result.rightRef, title);
+          if (result.files.length) await openChangesEditor(this.deps.reference, dir, result.files, result.leftRef, result.rightRef, title);
           return;
         }
         const change = result.files.find((f) => f.path === m.path);
-        if (change) await openChangeDiff(this.deps.reference, ws.worktree.path, change, result.leftRef, result.rightRef, title);
+        if (change) await openChangeDiff(this.deps.reference, dir, change, result.leftRef, result.rightRef, title);
         return;
       }
     }
+  }
+
+  /** Where refs are compared: any reachable worktree (they share refs), the main one first. */
+  private compareDir(): string | undefined {
+    const reachable = this.deps.repository.current.filter((w) => w.worktree.path);
+    return (reachable.find((w) => w.worktree.isMain) ?? reachable[0])?.worktree.path;
+  }
+
+  private async compareRefs(m: RefComparison): Promise<{ dir: string; result: Awaited<ReturnType<typeof compareRefs>> } & { files: FileChange[] }> {
+    const dir = m.worktree ? this.root(m.worktree) : this.compareDir();
+    if (!dir) throw new Error('That worktree is not reachable from this environment.');
+    const result = await compareRefs(dir, m.base, m.head, m.mode, m.worktree !== undefined);
+    return { dir, result, files: result.files };
   }
 
   private async postLog(key: string, skip: number): Promise<void> {

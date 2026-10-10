@@ -16,6 +16,9 @@ export type VcView = 'changes' | 'history' | 'compare';
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
 
+/** How two refs are compared: what the second changed since it split from the first, or every difference. */
+export type RefCompareMode = 'mergeBase' | 'twoDot';
+
 /** The worktree tab that shows every worktree. */
 export const ALL = 'all';
 
@@ -131,10 +134,10 @@ export type HostMessage =
   | { type: 'editResult'; ok: boolean; error?: string }
   /** A commit from the message box succeeded; the webview clears that box. */
   | { type: 'committed'; key: string }
-  /** Branches and tags to compare a worktree with; defaultBase is flotilla.defaultBase or the remote's default branch. */
-  | { type: 'refs'; key: string; defaultBase?: string; refs: string[] }
-  /** The files that differ between a worktree and a base. */
-  | { type: 'compared'; key: string; base: string; mode: CompareMode; files: FileChangeView[]; error?: string }
+  /** Branches and tags to compare; defaultBase is flotilla.defaultBase or the remote's default branch. */
+  | { type: 'refs'; defaultBase?: string; refs: string[] }
+  /** The files that differ in comparison id. */
+  | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The files a commit changed (against its first parent). */
   | { type: 'commitFiles'; key: string; hash: string; files: FileChangeView[]; error?: string }
   /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
@@ -177,7 +180,15 @@ export type WebviewMessage =
   | { type: 'openCommit'; key: string; hash: string; path?: string }
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
-  | { type: 'refs'; key: string }
-  | { type: 'compare'; key: string; base: string; mode: CompareMode }
+  | { type: 'refs' }
+  | { type: 'compare'; id: number } & RefComparison
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
-  | { type: 'openCompare'; key: string; base: string; mode: CompareMode; path?: string };
+  | ({ type: 'openCompare'; path?: string } & RefComparison);
+
+/** Two refs to compare; with worktree (a key), head's side is that worktree's files, uncommitted changes included. */
+export interface RefComparison {
+  base: string;
+  head: string;
+  mode: RefCompareMode;
+  worktree?: string;
+}

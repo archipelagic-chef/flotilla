@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type CompareMode, type DirEntry, type HostMessage, type Tool, type VcView, type WorkstreamView } from '../protocol';
+import { ALL, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -9,7 +9,7 @@ import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
-import { CommitCard, CompareBody, HistoryBody, VcBody, type CommitFiles, type Comparison, type Log, type Refs } from './vc';
+import { CommitCard, CompareView, HistoryBody, VcBody, type CommitFiles, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -24,12 +24,12 @@ export interface Persisted {
   history: string[];
   /** The view under Version Control. */
   vcView: VcView;
-  /** What each worktree is compared with in Version Control › Compare. */
-  compare: Record<string, { base?: string; mode: CompareMode }>;
+  /** What Version Control › Compare compares. */
+  comparison: CompareChoice;
   search: SearchState;
 }
 
-const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', compare: {}, search: INITIAL_SEARCH };
+const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparison: { mode: 'mergeBase', uncommitted: true }, search: INITIAL_SEARCH };
 
 export type Update = (change: (p: Persisted) => Persisted) => void;
 
@@ -109,10 +109,11 @@ export function App() {
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
   const [searchRefresh, setSearchRefresh] = useState(0);
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
-  const [refs, setRefs] = useState<ReadonlyMap<string, Refs>>(new Map());
+  const [refs, setRefs] = useState<Refs | undefined>(undefined);
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
-  const [comparisons, setComparisons] = useState<ReadonlyMap<string, Comparison>>(new Map());
+  const [comparison, setComparison] = useState<Comparison | undefined>(undefined);
+  const compareId = useRef(0);
   const tabStrip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const searchId = useRef(0);
@@ -153,22 +154,20 @@ export function App() {
     send({ type: 'commitFiles', key, hash });
   }, []);
 
-  const requestRefs = useCallback((key: string) => {
-    setRefs((prev) => new Map(prev).set(key, { refs: [] }));
-    send({ type: 'refs', key });
+  const requestRefs = useCallback(() => {
+    setRefs({ refs: [] });
+    send({ type: 'refs' });
   }, []);
 
-  const compare = useCallback((key: string, base: string, mode: CompareMode) => {
-    setComparisons((prev) => {
-      const old = prev.get(key);
-      const same = old && old.base === base && old.mode === mode;
-      return new Map(prev).set(key, { base, mode, files: same ? old.files : [], loading: true });
-    });
-    send({ type: 'compare', key, base, mode });
+  /** Compares; the list shown stays until the answer comes, and only the latest answer counts. */
+  const compare = useCallback((request: RefComparison) => {
+    const id = ++compareId.current;
+    setComparison((prev) => ({ id, files: prev?.files ?? [], loading: true }));
+    send({ type: 'compare', id, ...request });
   }, []);
 
   const chooseCompare = useCallback(
-    (key: string, choice: { base?: string; mode: CompareMode }) => update((p) => ({ ...p, compare: { ...p.compare, [key]: choice } })),
+    (change: Partial<CompareChoice>) => update((p) => ({ ...p, comparison: { ...INITIAL.comparison, ...p.comparison, ...change } })),
     [update],
   );
 
@@ -232,15 +231,10 @@ export function App() {
           setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
           return;
         case 'refs':
-          setRefs((prev) => new Map(prev).set(m.key, { defaultBase: m.defaultBase, refs: m.refs }));
+          setRefs({ defaultBase: m.defaultBase, refs: m.refs });
           return;
         case 'compared':
-          setComparisons((prev) => {
-            const old = prev.get(m.key);
-            // Only the answer to the latest question counts.
-            if (old && (old.base !== m.base || old.mode !== m.mode)) return prev;
-            return new Map(prev).set(m.key, { base: m.base, mode: m.mode, files: m.files, error: m.error });
-          });
+          if (m.id === compareId.current) setComparison({ id: m.id, files: m.files, error: m.error });
           return;
         case 'committed':
           update((prev) => {
@@ -372,23 +366,26 @@ export function App() {
           requestFiles={requestCommitFiles}
         />
       )}
-      {tool === 'vc' && vcView === 'compare' && (
-        <CompareBody
-          ws={ws}
-          choice={persisted.compare[ws.key]}
-          refs={refs.get(ws.key)}
-          comparison={comparisons.get(ws.key)}
-          choose={chooseCompare}
-          requestRefs={requestRefs}
-          compare={compare}
-        />
-      )}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );
 
   let content;
-  if (tool === 'overview') {
+  if (tool === 'vc' && vcView === 'compare') {
+    // Any two refs, whichever tab is active.
+    content = (
+      <CompareView
+        workstreams={workstreams}
+        activeWs={activeWs}
+        choice={{ ...INITIAL.comparison, ...persisted.comparison }}
+        refs={refs}
+        result={comparison}
+        choose={chooseCompare}
+        requestRefs={requestRefs}
+        compare={compare}
+      />
+    );
+  } else if (tool === 'overview') {
     content = (
       <Overview
         workstreams={workstreams}

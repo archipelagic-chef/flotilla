@@ -666,7 +666,7 @@
         },
         {
           "command": "flotilla.newTerminalIn",
-          "when": "view == terminal && flotilla.state == ready",
+          "when": "view == terminal && flotilla.state == ready && !flotilla.worktreeTerminals",
           "group": "navigation@0"
         }
       ],

@@ -17,7 +17,7 @@ export function setIconTheme(theme: { css: string; map: IconMap } | undefined): 
 export function fileIcon(name: string): string {
   if (!map) return 'codicon codicon-file';
   const lower = name.toLowerCase();
-  let id = map.fileNames[lower];
+  let id: string | undefined = map.fileNames[lower];
   for (let dot = lower.indexOf('.'); !id && dot >= 0; dot = lower.indexOf('.', dot + 1)) id = map.fileExtensions[lower.slice(dot + 1)];
   id ??= map.file;
   return id ? `fi ${cssId(id)}` : 'fi';

@@ -13,7 +13,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
+import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
 import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
@@ -163,6 +163,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   void offerActivityBar(context, false);
   context.subscriptions.push(offerWorktreeTerminals(context, repository, active));
+  // With + opening terminals in the active worktree, the terminal panel's own worktree button is hidden.
+  const updateTerminalContext = () => void vscode.commands.executeCommand('setContext', 'flotilla.worktreeTerminals', usesWorktreeTerminals());
+  updateTerminalContext();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('terminal.integrated') && updateTerminalContext()),
+  );
   registerFileCommands(context, sidebar, folder.uri, output);
   await setState('ready');
   const chats = chatContext(ctx);

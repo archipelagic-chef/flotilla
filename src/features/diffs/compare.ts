@@ -5,7 +5,7 @@ import { runGit } from '../../core/git/gitCli';
 import { parseNameStatus, type FileChange } from '../../core/git/porcelain';
 import { WORKING } from '../../core/diff/refs';
 
-import type { CompareMode } from '../../webview/protocol';
+import type { CompareMode, RefCompareMode } from '../../webview/protocol';
 
 export type { CompareMode };
 
@@ -65,13 +65,32 @@ export async function listRefs(cwd: string): Promise<string[]> {
   return [...strip('refs/heads/'), ...strip('refs/remotes/'), ...strip('refs/tags/')];
 }
 
-/** Compares after checking that base names a commit, with a readable error when it doesn't. */
-export async function compareWithRef(worktreeDir: string, base: string, mode: CompareMode): Promise<CompareResult> {
-  if (!isRefLike(base)) throw new Error(`'${base}' is not a branch, tag or commit.`);
+async function verifyRef(cwd: string, ref: string): Promise<void> {
+  if (!isRefLike(ref)) throw new Error(`'${ref}' is not a branch, tag or commit.`);
   try {
-    await runGit(['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: worktreeDir });
+    await runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd });
   } catch {
-    throw new Error(`There is no branch, tag or commit '${base}'.`);
+    throw new Error(`There is no branch, tag or commit '${ref}'.`);
   }
-  return compareWithBase(worktreeDir, base, mode);
+}
+
+/**
+ * Compares any two refs: what head changed since it split from base (mergeBase), or every difference between them
+ * (twoDot). With workingTree, the right side is the working tree of cwd (head checked out there) instead of a commit,
+ * so uncommitted changes count too.
+ */
+export async function compareRefs(cwd: string, base: string, head: string, mode: RefCompareMode, workingTree = false): Promise<CompareResult> {
+  await verifyRef(cwd, base);
+  await verifyRef(cwd, head);
+  const right = workingTree ? 'HEAD' : head;
+  let left = base;
+  if (mode === 'mergeBase') {
+    try {
+      left = (await runGit(['merge-base', base, right], { cwd })).trim();
+    } catch {
+      throw new Error(`'${base}' and '${head}' have no history in common; compare all differences instead.`);
+    }
+  }
+  if (workingTree) return { leftRef: left, rightRef: WORKING, files: await nameStatusWithWorkingTree(cwd, left) };
+  return { leftRef: left, rightRef: head, files: await nameStatus(cwd, [left, head]) };
 }

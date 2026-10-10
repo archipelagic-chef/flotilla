@@ -81,7 +81,7 @@ function defaultProfileSetting(): string | undefined {
   return platform && `defaultProfile.${platform}`;
 }
 
-function usesWorktreeTerminals(): boolean {
+export function usesWorktreeTerminals(): boolean {
   const key = defaultProfileSetting();
   return key !== undefined && vscode.workspace.getConfiguration('terminal.integrated').get<string>(key) === TERMINAL_PROFILE_TITLE;
 }
