@@ -132,10 +132,9 @@ export function Section({ ws, tool, color, collapsed, onToggle, onSelect, childr
         onClick={onToggle}
         onDblClick={onSelect}
         data-tip-ws={ws.key}
-        data-tip-hint="Double-click to open its tab"
+        data-tip-hint={`Click to ${collapsed ? 'unfold' : 'fold'} · double-click to open its tab`}
       >
         <div class="sec-line">
-          <i class={`codicon codicon-chevron-${collapsed ? 'right' : 'down'} chev`} />
           <Title ws={ws} />
           <span class="actions" onClick={(e) => e.stopPropagation()}>
             <button class="icon" aria-label="Open Its Tab" onClick={onSelect}>
@@ -143,6 +142,12 @@ export function Section({ ws, tool, color, collapsed, onToggle, onSelect, childr
             </button>
           </span>
           <Actions ws={ws} tool={tool} />
+          {/* No chevron on the left (the trees below have those): a fold button, always shown while folded. */}
+          <span class="fold" onClick={(e) => e.stopPropagation()}>
+            <button class="icon" aria-label={collapsed ? 'Unfold' : 'Fold'} aria-expanded={!collapsed} onClick={onToggle}>
+              <i class={`codicon codicon-${collapsed ? 'unfold' : 'fold'}`} />
+            </button>
+          </span>
         </div>
         <Meta ws={ws} tool={tool} />
       </div>

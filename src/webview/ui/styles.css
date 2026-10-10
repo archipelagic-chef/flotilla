@@ -785,7 +785,7 @@ textarea:focus {
   box-shadow: inset 3px 0 0 var(--ws-color);
 }
 .sec-head {
-  padding-left: 4px;
+  padding-left: 8px;
   background: color-mix(in srgb, var(--ws-color) 12%, var(--vscode-sideBar-background));
   box-shadow: inset 3px 0 0 var(--ws-color);
   border-bottom-color: color-mix(in srgb, var(--ws-color) 25%, var(--border));
@@ -1379,4 +1379,23 @@ ins {
 .segmented button[aria-checked='true'] {
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
+}
+
+/* Folding a worktree in the All tab: the button shows on hover, and always while folded. */
+.sec-head .fold {
+  display: flex;
+  flex: none;
+  visibility: hidden;
+}
+.sec-head:hover .fold,
+.sec-head:focus-within .fold,
+.section.collapsed .sec-head .fold {
+  visibility: visible;
+}
+.section.collapsed .sec-head .fold .icon {
+  color: var(--muted);
+}
+.sec-head .sec-meta,
+.sec-head .sec-msg {
+  padding-left: 20px;
 }

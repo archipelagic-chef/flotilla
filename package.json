@@ -647,7 +647,7 @@
         {
           "command": "flotilla.newWorkstream",
           "when": "view == flotilla.sidebar && flotilla.state == ready",
-          "group": "navigation@1"
+          "group": "0_workstreams@0"
         },
         {
           "command": "flotilla.refresh",
