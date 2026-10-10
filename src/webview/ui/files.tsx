@@ -165,6 +165,8 @@ export function FilesBody({ ws, files, expanded, update }: Props) {
         if (e.target === e.currentTarget) focusRow((e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="treeitem"]') ?? undefined);
       }}
       onKeyDown={onKeyDown}
+      // The empty space below the rows acts on the worktree's top folder (rows have their own menus).
+      data-vscode-context={menuContext('filesRoot', { key: ws.key, path: '', isDir: true, flotillaWs: ws.context })}
       {...dropTarget(ws.key, '')}
     >
       <Dir ws={ws} path="" depth={0} files={files} open={open} changes={changes} toggle={toggle} targetFor={targetFor} />

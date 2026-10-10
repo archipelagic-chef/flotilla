@@ -1008,6 +1008,41 @@
           "command": "flotilla.closeOtherTabs",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaTabItem",
           "group": "0_tab@2"
+        },
+        {
+          "command": "flotilla.newFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot'",
+          "group": "2_new@1"
+        },
+        {
+          "command": "flotilla.newFolder",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot'",
+          "group": "2_new@2"
+        },
+        {
+          "command": "flotilla.revealInExplorer",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot'",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "flotilla.revealFileInOS",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot' && !remoteName",
+          "group": "3_reveal@2"
+        },
+        {
+          "command": "flotilla.openTerminal",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot'",
+          "group": "4_terminal@1"
+        },
+        {
+          "command": "flotilla.pasteFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot' && flotilla.canPaste",
+          "group": "5_cutcopypaste@3"
+        },
+        {
+          "command": "flotilla.copyPath",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'filesRoot'",
+          "group": "6_copypath@1"
         }
       ]
     },

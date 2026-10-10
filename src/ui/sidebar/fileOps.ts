@@ -98,23 +98,44 @@ export class FileOps {
     return undefined;
   }
 
+  /**
+   * Deletes like VS Code's Explorer: to the Trash where the file system has one (local windows, files.enableTrash),
+   * after a confirmation you can turn off with explorer.confirmDelete; otherwise (remote windows such as
+   * devcontainers have no Trash) permanently, always after a confirmation.
+   */
   async delete(items: Item[]): Promise<void> {
     if (!items.length) return;
-    const what = items.length === 1 ? `'${path.posix.basename(items[0].path)}'` : `the ${items.length} selected files and folders`;
-    const choice = await vscode.window.showWarningMessage(
-      `Are you sure you want to delete ${what}?`,
-      { modal: true, detail: 'You can restore it from the Trash.' },
-      'Move to Trash',
-    );
-    if (!choice) return;
+    const name = (item: Item) => path.posix.basename(item.path);
+    const what = items.length === 1 ? `'${name(items[0])}'` : `the following ${items.length} files and folders`;
+    const list = items.length === 1 ? '' : `${items.slice(0, 10).map(name).join('\n')}${items.length > 10 ? `\n…and ${items.length - 10} more` : ''}\n\n`;
+    const trash = this.deps.reference.scheme === 'file' && vscode.workspace.getConfiguration('files').get<boolean>('enableTrash', true);
+    if (trash) {
+      if (vscode.workspace.getConfiguration('explorer').get<boolean>('confirmDelete', true)) {
+        const where = process.platform === 'win32' ? 'Recycle Bin' : 'Trash';
+        const choice = await vscode.window.showWarningMessage(
+          `Are you sure you want to delete ${what}?`,
+          { modal: true, detail: `${list}You can restore ${items.length === 1 ? 'this file' : 'these files'} from the ${where}.` },
+          `Move to ${where}`,
+        );
+        if (!choice) return;
+      }
+    } else {
+      const choice = await vscode.window.showWarningMessage(
+        `Are you sure you want to permanently delete ${what}?`,
+        { modal: true, detail: `${list}This action is irreversible!` },
+        'Delete',
+      );
+      if (!choice) return;
+    }
     for (const item of items) {
       const uri = this.uri(item.key, item.path);
       try {
-        await vscode.workspace.fs.delete(uri, { recursive: true, useTrash: true });
+        await vscode.workspace.fs.delete(uri, { recursive: true, useTrash: trash });
       } catch (error) {
-        // Remote file systems (e.g. a devcontainer) often have no trash.
+        if (!trash) throw error;
+        // A Trash that fails (full, or on another drive): offer to delete for good, like the Explorer.
         const permanent = await vscode.window.showWarningMessage(
-          `'${path.posix.basename(item.path)}' could not be moved to the Trash. Delete it permanently?`,
+          `Failed to move '${name(item)}' to the Trash. Do you want to permanently delete it instead?`,
           { modal: true, detail: error instanceof Error ? error.message : String(error) },
           'Delete Permanently',
         );
