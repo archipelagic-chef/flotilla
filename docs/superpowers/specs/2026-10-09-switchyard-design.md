@@ -1,3 +1,5 @@
+> **Renamed:** this project was later renamed from Switchyard to **Flotilla** (identifiers `switchyard.*` became `flotilla.*`). This document is kept as the historical record.
+
 # Switchyard — Design Spec (Sub-project 1: Core + Workstreams)
 
 Date: 2026-10-09

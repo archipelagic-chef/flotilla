@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { readFileAtRef } from './refs';
 
-export const GIT_SCHEME = 'switchyard-git';
+export const GIT_SCHEME = 'flotilla-git';
 
 export interface GitUriParams {
   worktree: string;

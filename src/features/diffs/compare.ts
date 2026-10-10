@@ -23,7 +23,7 @@ async function nameStatus(cwd: string, refs: string[], env?: Record<string, stri
  */
 async function nameStatusWithWorkingTree(cwd: string, ref: string): Promise<FileChange[]> {
   const index = path.resolve(cwd, (await runGit(['rev-parse', '--git-path', 'index'], { cwd })).trim());
-  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'switchyard-index-'));
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'flotilla-index-'));
   try {
     const tempIndex = path.join(tempDir, 'index');
     try {

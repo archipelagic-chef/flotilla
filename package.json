@@ -1,6 +1,6 @@
 {
-  "name": "switchyard",
-  "displayName": "Switchyard",
+  "name": "flotilla",
+  "displayName": "Flotilla",
   "description": "Run parallel workstreams in git worktrees, across host and devcontainer.",
   "version": "0.0.1",
   "publisher": "archipelagic",
@@ -23,327 +23,327 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "switchyard",
-          "title": "Switchyard",
-          "icon": "media/switchyard.svg"
+          "id": "flotilla",
+          "title": "Flotilla",
+          "icon": "media/flotilla.svg"
         }
       ]
     },
     "views": {
-      "switchyard": [
+      "flotilla": [
         {
-          "id": "switchyard.workstreams",
+          "id": "flotilla.workstreams",
           "name": "Workstreams"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "switchyard.workstreams",
-        "contents": "Switchyard needs git 2.17 or newer in this environment.\n[Download git](https://git-scm.com/downloads)",
-        "when": "switchyard.state == gitMissing"
+        "view": "flotilla.workstreams",
+        "contents": "Flotilla needs git 2.17 or newer in this environment.\n[Download git](https://git-scm.com/downloads)",
+        "when": "flotilla.state == gitMissing"
       },
       {
-        "view": "switchyard.workstreams",
+        "view": "flotilla.workstreams",
         "contents": "Open a folder inside a git repository to manage workstreams.",
-        "when": "switchyard.state == noRepo"
+        "when": "flotilla.state == noRepo"
       }
     ],
     "commands": [
       {
-        "command": "switchyard.refresh",
+        "command": "flotilla.refresh",
         "title": "Refresh",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(refresh)"
       },
       {
-        "command": "switchyard.newWorkstream",
+        "command": "flotilla.newWorkstream",
         "title": "New Workstream…",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(add)"
       },
       {
-        "command": "switchyard.quickSwitch",
+        "command": "flotilla.quickSwitch",
         "title": "Switch Workstream…",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.openInNewWindow",
+        "command": "flotilla.openInNewWindow",
         "title": "Open in New Window",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(empty-window)"
       },
       {
-        "command": "switchyard.switchHere",
+        "command": "flotilla.switchHere",
         "title": "Switch This Window Here",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(arrow-swap)"
       },
       {
-        "command": "switchyard.remove",
+        "command": "flotilla.remove",
         "title": "Remove Worktree…",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(trash)"
       },
       {
-        "command": "switchyard.adopt",
+        "command": "flotilla.adopt",
         "title": "Make Portable (Adopt)",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.runSetupHere",
+        "command": "flotilla.runSetupHere",
         "title": "Run Setup Here",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.openTerminal",
+        "command": "flotilla.openTerminal",
         "title": "Open Terminal Here",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.copyPath",
+        "command": "flotilla.copyPath",
         "title": "Copy Path",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.revealInOS",
+        "command": "flotilla.revealInOS",
         "title": "Reveal in File Explorer",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.compareWith",
+        "command": "flotilla.compareWith",
         "title": "Compare with…",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(git-compare)"
       },
       {
-        "command": "switchyard.compareToggleTwoDot",
+        "command": "flotilla.compareToggleTwoDot",
         "title": "Toggle Two-Dot Compare",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(arrow-both)"
       },
       {
-        "command": "switchyard.compareToggleUncommitted",
+        "command": "flotilla.compareToggleUncommitted",
         "title": "Toggle Include Uncommitted",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(edit)"
       },
       {
-        "command": "switchyard.compareDismiss",
+        "command": "flotilla.compareDismiss",
         "title": "Dismiss Compare",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(close)"
       },
       {
-        "command": "switchyard.openFileDiff",
+        "command": "flotilla.openFileDiff",
         "title": "Open Diff",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.openFile",
+        "command": "flotilla.openFile",
         "title": "Open File",
-        "category": "Switchyard",
+        "category": "Flotilla",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "switchyard.clearAgentStatus",
+        "command": "flotilla.clearAgentStatus",
         "title": "Clear Agent Status",
-        "category": "Switchyard"
+        "category": "Flotilla"
       },
       {
-        "command": "switchyard.copyClaudeHookConfig",
+        "command": "flotilla.copyClaudeHookConfig",
         "title": "Copy Claude Code Hook Config",
-        "category": "Switchyard"
+        "category": "Flotilla"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "switchyard.refresh",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.refresh",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.newWorkstream",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.newWorkstream",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.quickSwitch",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.quickSwitch",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.openInNewWindow",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.openInNewWindow",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.switchHere",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.switchHere",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.remove",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.remove",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.adopt",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.adopt",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.runSetupHere",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.runSetupHere",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.openTerminal",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.openTerminal",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.copyPath",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.copyPath",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.revealInOS",
-          "when": "switchyard.state == ready && !remoteName"
+          "command": "flotilla.revealInOS",
+          "when": "flotilla.state == ready && !remoteName"
         },
         {
-          "command": "switchyard.compareWith",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.compareWith",
+          "when": "flotilla.state == ready"
         },
         {
-          "command": "switchyard.clearAgentStatus",
-          "when": "switchyard.state == ready"
+          "command": "flotilla.clearAgentStatus",
+          "when": "flotilla.state == ready"
         },
         {
-        "command": "switchyard.copyClaudeHookConfig",
-        "when": "switchyard.state == ready"
+        "command": "flotilla.copyClaudeHookConfig",
+        "when": "flotilla.state == ready"
       },
         {
-          "command": "switchyard.compareToggleTwoDot",
+          "command": "flotilla.compareToggleTwoDot",
           "when": "false"
         },
         {
-          "command": "switchyard.compareToggleUncommitted",
+          "command": "flotilla.compareToggleUncommitted",
           "when": "false"
         },
         {
-          "command": "switchyard.compareDismiss",
+          "command": "flotilla.compareDismiss",
           "when": "false"
         },
         {
-          "command": "switchyard.openFileDiff",
+          "command": "flotilla.openFileDiff",
           "when": "false"
         },
         {
-          "command": "switchyard.openFile",
+          "command": "flotilla.openFile",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "switchyard.newWorkstream",
-          "when": "view == switchyard.workstreams && switchyard.state == ready",
+          "command": "flotilla.newWorkstream",
+          "when": "view == flotilla.workstreams && flotilla.state == ready",
           "group": "navigation@1"
         },
         {
-          "command": "switchyard.refresh",
-          "when": "view == switchyard.workstreams && switchyard.state == ready",
+          "command": "flotilla.refresh",
+          "when": "view == flotilla.workstreams && flotilla.state == ready",
           "group": "navigation@2"
         },
         {
-          "command": "switchyard.copyClaudeHookConfig",
-          "when": "view == switchyard.workstreams && switchyard.state == ready",
+          "command": "flotilla.copyClaudeHookConfig",
+          "when": "view == flotilla.workstreams && flotilla.state == ready",
           "group": "1_agents@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "switchyard.openInNewWindow",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "command": "flotilla.openInNewWindow",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "inline@1"
         },
         {
-          "command": "switchyard.switchHere",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "command": "flotilla.switchHere",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "inline@2"
         },
         {
-          "command": "switchyard.remove",
-          "when": "view == switchyard.workstreams && viewItem =~ /;linked;/",
+          "command": "flotilla.remove",
+          "when": "view == flotilla.workstreams && viewItem =~ /;linked;/",
           "group": "inline@3"
         },
         {
-          "command": "switchyard.openInNewWindow",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "command": "flotilla.openInNewWindow",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "1_open@1"
         },
         {
-          "command": "switchyard.switchHere",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;notCurrent;/",
+          "command": "flotilla.switchHere",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;notCurrent;/",
           "group": "1_open@2"
         },
         {
-          "command": "switchyard.compareWith",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "command": "flotilla.compareWith",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
           "group": "2_compare@1"
         },
         {
-          "command": "switchyard.openTerminal",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "command": "flotilla.openTerminal",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
           "group": "3_tools@1"
         },
         {
-          "command": "switchyard.copyPath",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/",
+          "command": "flotilla.copyPath",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/",
           "group": "3_tools@2"
         },
         {
-          "command": "switchyard.revealInOS",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;/ && !remoteName",
+          "command": "flotilla.revealInOS",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;/ && !remoteName",
           "group": "3_tools@3"
         },
         {
-          "command": "switchyard.runSetupHere",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;.*;linked;/",
+          "command": "flotilla.runSetupHere",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;.*;linked;/",
           "group": "4_setup@1"
         },
         {
-          "command": "switchyard.adopt",
-          "when": "view == switchyard.workstreams && viewItem =~ /;reachable;.*;linked;notPortable;/",
+          "command": "flotilla.adopt",
+          "when": "view == flotilla.workstreams && viewItem =~ /;reachable;.*;linked;notPortable;/",
           "group": "4_setup@2"
         },
         {
-          "command": "switchyard.clearAgentStatus",
-          "when": "view == switchyard.workstreams && viewItem =~ /;hasAgent;/",
+          "command": "flotilla.clearAgentStatus",
+          "when": "view == flotilla.workstreams && viewItem =~ /;hasAgent;/",
           "group": "5_agent@1"
         },
         {
-          "command": "switchyard.remove",
-          "when": "view == switchyard.workstreams && viewItem =~ /;linked;/",
+          "command": "flotilla.remove",
+          "when": "view == flotilla.workstreams && viewItem =~ /;linked;/",
           "group": "9_remove@1"
         },
         {
-          "command": "switchyard.compareToggleTwoDot",
-          "when": "view == switchyard.workstreams && viewItem == compare",
+          "command": "flotilla.compareToggleTwoDot",
+          "when": "view == flotilla.workstreams && viewItem == compare",
           "group": "inline@1"
         },
         {
-          "command": "switchyard.compareToggleUncommitted",
-          "when": "view == switchyard.workstreams && viewItem == compare",
+          "command": "flotilla.compareToggleUncommitted",
+          "when": "view == flotilla.workstreams && viewItem == compare",
           "group": "inline@2"
         },
         {
-          "command": "switchyard.compareDismiss",
-          "when": "view == switchyard.workstreams && viewItem == compare",
+          "command": "flotilla.compareDismiss",
+          "when": "view == flotilla.workstreams && viewItem == compare",
           "group": "inline@3"
         },
         {
-          "command": "switchyard.openFile",
-          "when": "view == switchyard.workstreams && viewItem == file",
+          "command": "flotilla.openFile",
+          "when": "view == flotilla.workstreams && viewItem == file",
           "group": "inline@1"
         }
       ]
     },
     "configuration": {
-      "title": "Switchyard",
+      "title": "Flotilla",
       "properties": {
-        "switchyard.openAfterCreate": {
+        "flotilla.openAfterCreate": {
           "type": "string",
           "enum": [
             "newWindow",
@@ -358,7 +358,7 @@
           "default": "newWindow",
           "description": "What to do after creating a workstream."
         },
-        "switchyard.copyFiles": {
+        "flotilla.copyFiles": {
           "type": "array",
           "items": {
             "type": "string"
@@ -366,45 +366,45 @@
           "default": [],
           "description": "Glob patterns (relative to the main worktree) of ignored files to copy into new worktrees, e.g. \".env\"."
         },
-        "switchyard.setupCommand": {
+        "flotilla.setupCommand": {
           "type": "string",
           "default": "",
           "description": "Command to run in a terminal in a new worktree, e.g. \"npm ci\"."
         },
-        "switchyard.autoAdopt": {
+        "flotilla.autoAdopt": {
           "type": "boolean",
           "default": true,
           "description": "Automatically make worktrees inside the repository portable across host and container."
         },
-        "switchyard.defaultBase": {
+        "flotilla.defaultBase": {
           "type": "string",
           "default": "",
           "description": "Base branch for progress and comparisons. Empty: origin/HEAD, then main, then master."
         },
-        "switchyard.activeWindowMinutes": {
+        "flotilla.activeWindowMinutes": {
           "type": "number",
           "default": 5,
           "minimum": 1,
           "description": "A workstream with changes newer than this is 'active'."
         },
-        "switchyard.staleAfterDays": {
+        "flotilla.staleAfterDays": {
           "type": "number",
           "default": 7,
           "minimum": 1,
           "description": "A workstream with no activity for this long is 'stale'."
         },
-        "switchyard.agentStatusStaleMinutes": {
+        "flotilla.agentStatusStaleMinutes": {
           "type": "number",
           "default": 10,
           "minimum": 1,
           "description": "A 'working' agent report older than this is shown as last reported."
         },
-        "switchyard.notifyOnAttention": {
+        "flotilla.notifyOnAttention": {
           "type": "boolean",
           "default": true,
           "description": "Notify when a workstream starts waiting for input or reports an error."
         },
-        "switchyard.pollSeconds": {
+        "flotilla.pollSeconds": {
           "type": "number",
           "default": 15,
           "minimum": 5,

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-export const HEARTBEAT_FILE = 'switchyard-window.json';
+export const HEARTBEAT_FILE = 'flotilla-window.json';
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 export const HEARTBEAT_MAX_AGE_MS = 90_000;
 

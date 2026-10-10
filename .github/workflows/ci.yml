@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f test/docker/old-git.Dockerfile -t switchyard-oldgit .
-      - run: docker run --rm switchyard-oldgit
+      - run: docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit .
+      - run: docker run --rm flotilla-oldgit
 
   vscode-smoke:
     runs-on: ubuntu-latest

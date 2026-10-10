@@ -31,8 +31,8 @@ export interface CommandContext {
   output: vscode.OutputChannel;
 }
 
-const PENDING_REMOVAL_KEY = 'switchyard.pendingRemoval';
-const PENDING_SETUP_KEY = 'switchyard.pendingSetup';
+const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
+const PENDING_SETUP_KEY = 'flotilla.pendingSetup';
 
 interface PickFilter {
   includeUnreachable?: boolean;
@@ -54,14 +54,14 @@ export function registerCommands(ctx: CommandContext): void {
       if (ws) await handler(ws);
     };
 
-  register('switchyard.refresh', () => ctx.repository.refresh());
-  register('switchyard.newWorkstream', () => newWorkstream(ctx));
-  register('switchyard.quickSwitch', () => quickSwitch(ctx));
-  register('switchyard.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
-  register('switchyard.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
-  register('switchyard.remove', withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }));
+  register('flotilla.refresh', () => ctx.repository.refresh());
+  register('flotilla.newWorkstream', () => newWorkstream(ctx));
+  register('flotilla.quickSwitch', () => quickSwitch(ctx));
+  register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
+  register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
+  register('flotilla.remove', withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }));
   register(
-    'switchyard.adopt',
+    'flotilla.adopt',
     withWs(
       async (ws) => {
         await ctx.service.adopt(ws.worktree);
@@ -71,24 +71,24 @@ export function registerCommands(ctx: CommandContext): void {
       { excludeMain: true },
     ),
   );
-  register('switchyard.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
-  register('switchyard.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
-  register('switchyard.copyPath', withWs((ws) => vscode.env.clipboard.writeText(ws.worktree.path!)));
-  register('switchyard.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
-  register('switchyard.compareWith', withWs((ws) => compareWith(ctx, ws)));
-  register('switchyard.compareToggleTwoDot', (node?: Node) => toggleCompareMode(ctx, node, 'twoDot'));
-  register('switchyard.compareToggleUncommitted', (node?: Node) => toggleCompareMode(ctx, node, 'uncommitted'));
-  register('switchyard.compareDismiss', (node?: Node) => {
+  register('flotilla.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
+  register('flotilla.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
+  register('flotilla.copyPath', withWs((ws) => vscode.env.clipboard.writeText(ws.worktree.path!)));
+  register('flotilla.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
+  register('flotilla.compareWith', withWs((ws) => compareWith(ctx, ws)));
+  register('flotilla.compareToggleTwoDot', (node?: Node) => toggleCompareMode(ctx, node, 'twoDot'));
+  register('flotilla.compareToggleUncommitted', (node?: Node) => toggleCompareMode(ctx, node, 'uncommitted'));
+  register('flotilla.compareDismiss', (node?: Node) => {
     if (node?.type === 'compare') ctx.view.setCompare(node.ws.key, undefined);
   });
-  register('switchyard.openFileDiff', (node?: Node) => {
+  register('flotilla.openFileDiff', (node?: Node) => {
     if (node?.type === 'file' && node.ws.worktree.path) {
       return openChangeDiff(ctx.reference, node.ws.worktree.path, node.change, node.leftRef, node.rightRef, node.label);
     }
   });
-  register('switchyard.openFile', (node?: Node) => openFile(ctx, node));
+  register('flotilla.openFile', (node?: Node) => openFile(ctx, node));
   register(
-    'switchyard.clearAgentStatus',
+    'flotilla.clearAgentStatus',
     withWs(
       async (ws) => {
         await clearAgentStatus(ws.worktree.adminDir);
@@ -97,7 +97,7 @@ export function registerCommands(ctx: CommandContext): void {
       { includeUnreachable: true },
     ),
   );
-  register('switchyard.copyClaudeHookConfig', async () => {
+  register('flotilla.copyClaudeHookConfig', async () => {
     await vscode.env.clipboard.writeText(claudeHookConfig());
     void vscode.window.showInformationMessage(
       'Claude Code hook config copied. Merge it into the "hooks" section of .claude/settings.json (project) or ~/.claude/settings.json (user).',
@@ -235,7 +235,7 @@ async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   ctx.output.appendLine(copied.length ? `Copied into ${dir}: ${copied.join(', ')}` : `No setup files to copy into ${dir}.`);
   if (!settings.setupCommand.trim()) {
-    if (!copied.length) void vscode.window.showInformationMessage('Nothing to do: set switchyard.copyFiles or switchyard.setupCommand.');
+    if (!copied.length) void vscode.window.showInformationMessage('Nothing to do: set flotilla.copyFiles or flotilla.setupCommand.');
     return;
   }
   startSetupTerminal(dir, settings.setupCommand);

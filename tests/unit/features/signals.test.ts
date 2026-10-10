@@ -58,12 +58,12 @@ describe('heartbeat', () => {
   });
 
   it('recognises the heartbeat file and its temp files in watcher URI paths', () => {
-    expect(isHeartbeatPath('/r/.git/worktrees/a/switchyard-window.json')).toBe(true);
-    expect(isHeartbeatPath('/r/.git/worktrees/a/switchyard-window.json.4242.tmp')).toBe(true);
-    expect(isHeartbeatPath('/c:/r/.git/switchyard-window.json.7.tmp')).toBe(true);
+    expect(isHeartbeatPath('/r/.git/worktrees/a/flotilla-window.json')).toBe(true);
+    expect(isHeartbeatPath('/r/.git/worktrees/a/flotilla-window.json.4242.tmp')).toBe(true);
+    expect(isHeartbeatPath('/c:/r/.git/flotilla-window.json.7.tmp')).toBe(true);
     expect(isHeartbeatPath('/r/.git/worktrees/a/workstream.json')).toBe(false);
     expect(isHeartbeatPath('/r/.git/worktrees/a/HEAD')).toBe(false);
-    expect(isHeartbeatPath('/r/.git/worktrees/switchyard-window.json.d/HEAD')).toBe(false);
+    expect(isHeartbeatPath('/r/.git/worktrees/flotilla-window.json.d/HEAD')).toBe(false);
   });
 
   it('writes, reads, ages and deletes', async () => {

@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { samePath, toGitPath } from '../../core/paths';
 
-export const LOCK_REASON = 'switchyard: portable';
+export const LOCK_REASON = 'flotilla: portable';
 
 /**
  * Overwrites a file in place, preserving attributes like the hidden bit on Windows. Writes at position 0 first

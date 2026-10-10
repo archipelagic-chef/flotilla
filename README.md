@@ -1,8 +1,8 @@
-# Switchyard
+# Flotilla
 
 Run parallel workstreams (typically AI agent sessions) in git worktrees, and see at a glance which one needs you. Works on Windows, Linux and macOS hosts **and** in devcontainers, including a host window and a container window open on the same repository at the same time.
 
-Switchyard doesn't replace Copilot Chat, Claude Code or any other agent. It **observes** (status, activity, progress), **routes** (one click to the right window) and **prepares** (worktree, setup, window). You run your agent in that window as usual.
+Flotilla doesn't replace Copilot Chat, Claude Code or any other agent. It **observes** (status, activity, progress), **routes** (one click to the right window) and **prepares** (worktree, setup, window). You run your agent in that window as usual.
 
 ## Features
 
@@ -14,9 +14,9 @@ Switchyard doesn't replace Copilot Chat, Claude Code or any other agent. It **ob
 
 ## Host + devcontainer: how it works
 
-Git normally links worktrees with absolute paths, which differ between host (`C:\Users\me\repo`) and container (`/workspaces/repo`). Switchyard keeps worktrees inside the repository (`.worktrees/`, ignored through `.git/info/exclude`), rewrites each worktree's `.git` file to a **relative** path, and **locks** the worktree so `git worktree prune` in the other environment never deletes it. It works with git 2.17+ and doesn't need git 2.48's `relativeWorktrees` extension.
+Git normally links worktrees with absolute paths, which differ between host (`C:\Users\me\repo`) and container (`/workspaces/repo`). Flotilla keeps worktrees inside the repository (`.worktrees/`, ignored through `.git/info/exclude`), rewrites each worktree's `.git` file to a **relative** path, and **locks** the worktree so `git worktree prune` in the other environment never deletes it. It works with git 2.17+ and doesn't need git 2.48's `relativeWorktrees` extension.
 
-Worktrees created with plain `git worktree add` inside the repository are adopted automatically (`switchyard.autoAdopt`). Worktrees outside the repository are listed but only reachable from the environment that can see them.
+Worktrees created with plain `git worktree add` inside the repository are adopted automatically (`flotilla.autoAdopt`). Worktrees outside the repository are listed but only reachable from the environment that can see them.
 
 **Tip:** if your host converts line endings (`core.autocrlf=true` on Windows), add a `.gitattributes` with `* text=auto eol=lf`. Otherwise files can show as modified in one environment but not the other.
 
@@ -30,22 +30,22 @@ Agents report status by writing `workstream.json` into their worktree's git dire
 { "state": "working | waiting-for-input | done | error", "message": "optional text", "updatedAt": "2026-10-09T10:00:00Z" }
 ```
 
-For Claude Code, run **Switchyard: Copy Claude Code Hook Config** and merge the result into `.claude/settings.json`. Switchyard never edits agent configuration itself.
+For Claude Code, run **Flotilla: Copy Claude Code Hook Config** and merge the result into `.claude/settings.json`. Flotilla never edits agent configuration itself.
 
 ## Settings
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `switchyard.openAfterCreate` | `newWindow` | `newWindow` / `currentWindow` / `none` |
-| `switchyard.copyFiles` | `[]` | Globs copied from the main worktree on create |
-| `switchyard.setupCommand` | `""` | Run in a terminal in the new worktree |
-| `switchyard.autoAdopt` | `true` | Make in-repo worktrees portable automatically |
-| `switchyard.defaultBase` | `""` | Base branch for progress and compare |
-| `switchyard.activeWindowMinutes` | `5` | Activity → active threshold |
-| `switchyard.staleAfterDays` | `7` | Activity → stale threshold |
-| `switchyard.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
-| `switchyard.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
-| `switchyard.pollSeconds` | `15` | Poll interval while the view is visible |
+| `flotilla.openAfterCreate` | `newWindow` | `newWindow` / `currentWindow` / `none` |
+| `flotilla.copyFiles` | `[]` | Globs copied from the main worktree on create |
+| `flotilla.setupCommand` | `""` | Run in a terminal in the new worktree |
+| `flotilla.autoAdopt` | `true` | Make in-repo worktrees portable automatically |
+| `flotilla.defaultBase` | `""` | Base branch for progress and compare |
+| `flotilla.activeWindowMinutes` | `5` | Activity → active threshold |
+| `flotilla.staleAfterDays` | `7` | Activity → stale threshold |
+| `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
+| `flotilla.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
+| `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
 
 ## Development
 
@@ -57,7 +57,7 @@ npm test               # unit + git integration tests (vitest)
 npm run typecheck
 npm run build
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
-docker build -f test/docker/old-git.Dockerfile -t switchyard-oldgit . && docker run --rm switchyard-oldgit
+docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
 
 Press F5 to launch an Extension Development Host.

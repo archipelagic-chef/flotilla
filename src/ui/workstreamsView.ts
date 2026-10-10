@@ -131,7 +131,7 @@ export class WorkstreamsView implements vscode.TreeDataProvider<Node>, vscode.Di
         item.iconPath = new vscode.ThemeIcon(CHANGE_ICON[change.kind]);
         item.tooltip = `${change.kind}: ${change.path}`;
         item.contextValue = 'file';
-        item.command = { command: 'switchyard.openFileDiff', title: 'Open Diff', arguments: [node] };
+        item.command = { command: 'flotilla.openFileDiff', title: 'Open Diff', arguments: [node] };
         return item;
       }
       case 'info': {

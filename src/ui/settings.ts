@@ -14,7 +14,7 @@ export interface Settings {
 }
 
 export function readSettings(): Settings {
-  const c = vscode.workspace.getConfiguration('switchyard');
+  const c = vscode.workspace.getConfiguration('flotilla');
   return {
     openAfterCreate: c.get<Settings['openAfterCreate']>('openAfterCreate', 'newWindow'),
     copyFiles: c.get<string[]>('copyFiles', []),

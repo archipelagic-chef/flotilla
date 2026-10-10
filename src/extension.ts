@@ -18,11 +18,11 @@ const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
 
 function setState(state: 'ready' | 'noRepo' | 'gitMissing'): Thenable<unknown> {
-  return vscode.commands.executeCommand('setContext', 'switchyard.state', state);
+  return vscode.commands.executeCommand('setContext', 'flotilla.state', state);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const output = vscode.window.createOutputChannel('Switchyard');
+  const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitContentProvider()));
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -35,7 +35,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!version || !versionAtLeast(version, MIN_GIT_VERSION)) {
     await setState('gitMissing');
     void vscode.window.showErrorMessage(
-      `Switchyard needs git ${MIN_GIT_VERSION.join('.')} or newer in this environment (${version ? `found ${version.join('.')}` : 'git not found'}).`,
+      `Flotilla needs git ${MIN_GIT_VERSION.join('.')} or newer in this environment (${version ? `found ${version.join('.')}` : 'git not found'}).`,
     );
     return;
   }
@@ -68,7 +68,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     (error) => output.appendLine(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`),
   );
   const view = new WorkstreamsView(repository);
-  const treeView = vscode.window.createTreeView('switchyard.workstreams', { treeDataProvider: view, showCollapseAll: true });
+  const treeView = vscode.window.createTreeView('flotilla.workstreams', { treeDataProvider: view, showCollapseAll: true });
   const ctx: CommandContext = { extension: context, service, repository, view, reference: folder.uri, currentRoot: location.worktreeRoot, output };
   context.subscriptions.push(
     view,
@@ -122,7 +122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (state.focused) refresh();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('switchyard')) {
+      if (e.affectsConfiguration('flotilla')) {
         schedulePoll();
         refresh();
       }

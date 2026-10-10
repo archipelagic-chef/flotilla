@@ -1,3 +1,5 @@
+> **Renamed:** this project was later renamed from Switchyard to **Flotilla** (identifiers `switchyard.*` became `flotilla.*`). This document is kept as the historical record.
+
 # Switchyard (Sub-project 1: Core + Workstreams) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -13,7 +13,7 @@ export function git(cwd: string, ...args: string[]): string {
   }).trim();
 }
 
-export function makeTempDir(prefix = 'switchyard-'): string {
+export function makeTempDir(prefix = 'flotilla-'): string {
   const base = fs.realpathSync.native(os.tmpdir());
   return fs.realpathSync.native(fs.mkdtempSync(path.join(base, prefix)));
 }
@@ -74,7 +74,7 @@ export function removeDir(dir: string): void {
 export function symlinkedRepo(): { repo: string; linkedRepo: string; dirs: string[] } {
   const realParent = makeTempDir();
   const repo = initRepo(path.join(realParent, 'repo'));
-  const linkHolder = makeTempDir('switchyard-link-');
+  const linkHolder = makeTempDir('flotilla-link-');
   const link = path.join(linkHolder, 'c');
   fs.symlinkSync(realParent, link, 'dir');
   return { repo, linkedRepo: path.join(link, 'repo'), dirs: [realParent, linkHolder] };
@@ -82,7 +82,7 @@ export function symlinkedRepo(): { repo: string; linkedRepo: string; dirs: strin
 
 /** Copies the repo to a new absolute path and renames the original away, like a second environment seeing the repo at a different mount path. */
 export function simulateOtherEnvironment(repo: string): string {
-  const other = makeTempDir('switchyard-other-');
+  const other = makeTempDir('flotilla-other-');
   fs.rmSync(other, { recursive: true, force: true });
   fs.cpSync(repo, other, { recursive: true });
   fs.renameSync(repo, `${repo}-gone`);

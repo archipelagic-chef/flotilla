@@ -24,7 +24,7 @@ async function apply(target: vscode.ConfigurationTarget): Promise<void> {
 }
 
 export async function maybeOfferHygiene(extension: vscode.ExtensionContext, mainRoot: string): Promise<void> {
-  const key = `switchyard.hygieneOffered:${pathKey(mainRoot)}`;
+  const key = `flotilla.hygieneOffered:${pathKey(mainRoot)}`;
   if (extension.globalState.get<boolean>(key)) return;
   await extension.globalState.update(key, true);
   const user = 'User Settings (recommended)';
