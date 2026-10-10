@@ -2,11 +2,13 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { openChangesEditor } from '../../core/diff/openDiff';
+import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
+import { compareWithRef, listRefs } from '../../features/diffs/compare';
 import { commitChanges, readLog } from '../../features/history/log';
+import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
@@ -221,6 +223,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);
         return;
+      case 'refs': {
+        const dir = this.root(m.key);
+        if (!dir) return;
+        const [refs, defaultBase] = await Promise.all([
+          listRefs(dir).catch(() => []),
+          resolveBase(dir, vscode.workspace.getConfiguration('flotilla').get<string>('defaultBase', '')),
+        ]);
+        this.post({ type: 'refs', key: m.key, defaultBase, refs });
+        return;
+      }
+      case 'compare': {
+        const dir = this.root(m.key);
+        if (!dir) return;
+        try {
+          const { files } = await compareWithRef(dir, m.base, m.mode);
+          this.post({ type: 'compared', key: m.key, base: m.base, mode: m.mode, files });
+        } catch (error) {
+          this.post({ type: 'compared', key: m.key, base: m.base, mode: m.mode, files: [], error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+      case 'openCompare': {
+        const ws = this.find(m.key);
+        if (!ws?.worktree.path) return;
+        const result = await compareWithRef(ws.worktree.path, m.base, m.mode);
+        const title = `${m.base} ↔ ${ws.worktree.branch ?? 'HEAD'}`;
+        if (m.path === undefined) {
+          if (result.files.length) await openChangesEditor(this.deps.reference, ws.worktree.path, result.files, result.leftRef, result.rightRef, title);
+          return;
+        }
+        const change = result.files.find((f) => f.path === m.path);
+        if (change) await openChangeDiff(this.deps.reference, ws.worktree.path, change, result.leftRef, result.rightRef, title);
+        return;
+      }
     }
   }
 

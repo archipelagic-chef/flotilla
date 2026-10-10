@@ -10,6 +10,12 @@ import type { AttentionState } from '../features/workstreams/attention';
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'files' | 'search' | 'vc' | 'chats';
 
+/** The views under Version Control in the tool strip. */
+export type VcView = 'changes' | 'history' | 'compare';
+
+/** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
+export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
+
 /** The worktree tab that shows every worktree. */
 export const ALL = 'all';
 
@@ -125,6 +131,10 @@ export type HostMessage =
   | { type: 'editResult'; ok: boolean; error?: string }
   /** A commit from the message box succeeded; the webview clears that box. */
   | { type: 'committed'; key: string }
+  /** Branches and tags to compare a worktree with; defaultBase is flotilla.defaultBase or the remote's default branch. */
+  | { type: 'refs'; key: string; defaultBase?: string; refs: string[] }
+  /** The files that differ between a worktree and a base. */
+  | { type: 'compared'; key: string; base: string; mode: CompareMode; files: FileChangeView[]; error?: string }
   /** A page of a worktree's history, starting at skip; head is the commit it was read from. */
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
@@ -163,4 +173,8 @@ export type WebviewMessage =
   | { type: 'log'; key: string; skip: number }
   /** Open the files a commit changed in a multi-file diff. */
   | { type: 'openCommit'; key: string; hash: string }
-  | { type: 'copy'; text: string };
+  | { type: 'copy'; text: string }
+  | { type: 'refs'; key: string }
+  | { type: 'compare'; key: string; base: string; mode: CompareMode }
+  /** Open the diff of one file of a comparison, or (without path) of all of them. */
+  | { type: 'openCompare'; key: string; base: string; mode: CompareMode; path?: string };

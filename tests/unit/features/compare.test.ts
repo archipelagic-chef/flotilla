@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
-import { compareWithBase } from '../../../src/features/diffs/compare';
+import { compareWithBase, compareWithRef, isRefLike, listRefs } from '../../../src/features/diffs/compare';
 import { git, initRepo, makeStatDirty, removeDir, restatInPast, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -76,5 +76,21 @@ describe('compareWithBase', () => {
     expect(result.files).toEqual([{ path: 'README.md', kind: 'modified' }]);
     expect(fs.statSync(indexPath).mtimeMs).toBe(before);
     expect(fs.readFileSync(indexPath).equals(content)).toBe(true);
+  });
+});
+
+describe('compareWithRef', () => {
+  it('lists branches and tags, and refuses what is not a ref', async () => {
+    const { repo, wt } = fixture();
+    git(repo, 'tag', 'v1');
+    const refs = await listRefs(wt);
+    expect(refs).toEqual(expect.arrayContaining(['main', 'feat', 'v1']));
+    expect(isRefLike('--output=x')).toBe(false);
+    expect(isRefLike('main two')).toBe(false);
+    expect(isRefLike('origin/main')).toBe(true);
+    await expect(compareWithRef(wt, '--output=x', 'twoDot')).rejects.toThrow(/not a branch/);
+    await expect(compareWithRef(wt, 'nope', 'twoDot')).rejects.toThrow(/no branch, tag or commit 'nope'/);
+    const result = await compareWithRef(wt, 'v1', 'mergeBase');
+    expect(result.files.length).toBeGreaterThan(0);
   });
 });

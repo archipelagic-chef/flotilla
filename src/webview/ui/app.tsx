@@ -1,5 +1,6 @@
+import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type DirEntry, type HostMessage, type Tool, type WorkstreamView } from '../protocol';
+import { ALL, type CompareMode, type DirEntry, type HostMessage, type Tool, type VcView, type WorkstreamView } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -8,7 +9,7 @@ import { setIconTheme } from './icons';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
-import { CommitCard, VcBody, type Log } from './vc';
+import { CommitCard, CompareBody, HistoryBody, VcBody, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -21,12 +22,14 @@ export interface Persisted {
   drafts: Record<string, string>;
   /** Workstream keys whose chat history is open. */
   history: string[];
-  /** Workstream keys whose commit history is open in Version Control. */
-  commitsOpen: string[];
+  /** The view under Version Control. */
+  vcView: VcView;
+  /** What each worktree is compared with in Version Control › Compare. */
+  compare: Record<string, { base?: string; mode: CompareMode }>;
   search: SearchState;
 }
 
-const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], commitsOpen: [], search: INITIAL_SEARCH };
+const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', compare: {}, search: INITIAL_SEARCH };
 
 export type Update = (change: (p: Persisted) => Persisted) => void;
 
@@ -54,6 +57,13 @@ export interface FilesApi {
 }
 
 export const dirKey = (key: string, path: string) => `${key}\n${path}`;
+
+/** Under Version Control in the tool strip, shown while it's the tool. */
+const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
+  { id: 'changes', label: 'Changes', icon: 'diff' },
+  { id: 'history', label: 'History', icon: 'history' },
+  { id: 'compare', label: 'Compare', icon: 'git-compare' },
+];
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
@@ -99,6 +109,10 @@ export function App() {
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
   const [searchRefresh, setSearchRefresh] = useState(0);
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
+  const [refs, setRefs] = useState<ReadonlyMap<string, Refs>>(new Map());
+  const [comparisons, setComparisons] = useState<ReadonlyMap<string, Comparison>>(new Map());
+  const tabStrip = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ left: false, right: false });
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
   const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
@@ -131,6 +145,38 @@ export function App() {
     setLogs((prev) => new Map(prev).set(key, { ...(prev.get(key) ?? { commits: [], more: false }), loading: true }));
     send({ type: 'log', key, skip });
   }, []);
+
+  const requestRefs = useCallback((key: string) => {
+    setRefs((prev) => new Map(prev).set(key, { refs: [] }));
+    send({ type: 'refs', key });
+  }, []);
+
+  const compare = useCallback((key: string, base: string, mode: CompareMode) => {
+    setComparisons((prev) => {
+      const old = prev.get(key);
+      const same = old && old.base === base && old.mode === mode;
+      return new Map(prev).set(key, { base, mode, files: same ? old.files : [], loading: true });
+    });
+    send({ type: 'compare', key, base, mode });
+  }, []);
+
+  const chooseCompare = useCallback(
+    (key: string, choice: { base?: string; mode: CompareMode }) => update((p) => ({ ...p, compare: { ...p.compare, [key]: choice } })),
+    [update],
+  );
+
+  /** Which way the tab strip can scroll; the arrows beside it are enabled accordingly. */
+  const measureTabs = useCallback(() => {
+    const el = tabStrip.current;
+    if (!el) return;
+    const left = el.scrollLeft > 1;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setOverflow((o) => (o.left === left && o.right === right ? o : { left, right }));
+  }, []);
+  const scrollTabs = (direction: -1 | 1) => {
+    const el = tabStrip.current;
+    if (el) el.scrollBy({ left: direction * Math.max(60, el.clientWidth * 0.8), behavior: 'smooth' });
+  };
 
   const onMessage = useCallback(
     (m: HostMessage) => {
@@ -173,6 +219,17 @@ export function App() {
             if (m.skip > 0 && old?.head !== m.head) return prev;
             const commits = m.skip > 0 ? [...(old?.commits ?? []).slice(0, m.skip), ...m.commits] : m.commits;
             return new Map(prev).set(m.key, { head: m.head, commits, more: m.more, loading: false, error: m.error });
+          });
+          return;
+        case 'refs':
+          setRefs((prev) => new Map(prev).set(m.key, { defaultBase: m.defaultBase, refs: m.refs }));
+          return;
+        case 'compared':
+          setComparisons((prev) => {
+            const old = prev.get(m.key);
+            // Only the answer to the latest question counts.
+            if (old && (old.base !== m.base || old.mode !== m.mode)) return prev;
+            return new Map(prev).set(m.key, { base: m.base, mode: m.mode, files: m.files, error: m.error });
           });
           return;
         case 'committed':
@@ -252,15 +309,19 @@ export function App() {
     document.querySelector<HTMLElement>('.wt-tab[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [active, workstreams]);
 
+  useEffect(() => {
+    const el = tabStrip.current;
+    if (!el) return;
+    measureTabs();
+    const resized = new ResizeObserver(measureTabs);
+    resized.observe(el);
+    return () => resized.disconnect();
+  }, [workstreams === undefined, measureTabs]);
+  useEffect(measureTabs, [workstreams, closed, active, measureTabs]);
+
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
-  // The arrows step through All and the open tabs, in their order.
-  const tabKeys = [ALL, ...workstreams.filter((ws) => !closed.has(ws.key)).map((ws) => ws.key)];
-  const at = tabKeys.indexOf(active);
-  const prevTab = at > 0 ? tabKeys[at - 1] : undefined;
-  const nextTab = at >= 0 && at < tabKeys.length - 1 ? tabKeys[at + 1] : undefined;
-
-  const { tool } = persisted;
+  const { tool, vcView } = persisted;
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
@@ -291,14 +352,17 @@ export function App() {
   const body = (ws: WorkstreamView) => (
     <>
       {tool === 'files' && <FilesBody ws={ws} files={files} expanded={persisted.expanded[ws.key] ?? []} update={update} />}
-      {tool === 'vc' && (
-        <VcBody
+      {tool === 'vc' && vcView === 'changes' && <VcBody ws={ws} draft={persisted.drafts[ws.key] ?? ''} update={update} />}
+      {tool === 'vc' && vcView === 'history' && <HistoryBody ws={ws} log={logs.get(ws.key)} requestLog={requestLog} />}
+      {tool === 'vc' && vcView === 'compare' && (
+        <CompareBody
           ws={ws}
-          draft={persisted.drafts[ws.key] ?? ''}
-          update={update}
-          commitsOpen={persisted.commitsOpen.includes(ws.key)}
-          log={logs.get(ws.key)}
-          requestLog={requestLog}
+          choice={persisted.compare[ws.key]}
+          refs={refs.get(ws.key)}
+          comparison={comparisons.get(ws.key)}
+          choose={chooseCompare}
+          requestRefs={requestRefs}
+          compare={compare}
         />
       )}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
@@ -374,12 +438,14 @@ export function App() {
           <i class="codicon codicon-layers" />
           <span class="nm">All</span>
         </button>
-        <button class="wt-nav" aria-label="Previous Worktree Tab" disabled={!prevTab} onClick={() => prevTab && setActive(prevTab)}>
+        <button class="wt-nav" aria-label="Scroll Tabs Left" disabled={!overflow.left} onClick={() => scrollTabs(-1)}>
           <i class="codicon codicon-chevron-left" />
         </button>
         {/* Only the worktree tabs scroll; All, the arrows and + stay in place. */}
         <div
           class="wt-scroll"
+          ref={tabStrip}
+          onScroll={measureTabs}
           onWheel={(e) => {
             // A mouse wheel scrolls the tabs sideways, like editor tabs.
             if (e.deltaY && !e.deltaX) {
@@ -441,7 +507,7 @@ export function App() {
               );
             })}
         </div>
-        <button class="wt-nav" aria-label="Next Worktree Tab" disabled={!nextTab} onClick={() => nextTab && setActive(nextTab)}>
+        <button class="wt-nav" aria-label="Scroll Tabs Right" disabled={!overflow.right} onClick={() => scrollTabs(1)}>
           <i class="codicon codicon-chevron-right" />
         </button>
         <button class="wt-add" aria-label="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
@@ -453,17 +519,36 @@ export function App() {
           {TOOLS.map((t) => {
             const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? waitingCount : 0;
             return (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tool === t.id}
-                aria-label={t.label}
-                data-tip-pos="right"
-                onClick={() => update((p) => ({ ...p, tool: t.id }))}
-              >
-                <i class={`codicon codicon-${t.icon}`} />
-                {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
-              </button>
+              <Fragment key={t.id}>
+                <button
+                  role="tab"
+                  aria-selected={tool === t.id}
+                  aria-label={t.label}
+                  data-tip-pos="right"
+                  onClick={() => update((p) => ({ ...p, tool: t.id }))}
+                >
+                  <i class={`codicon codicon-${t.icon}`} />
+                  {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
+                </button>
+                {t.id === 'vc' && tool === 'vc' && (
+                  <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
+                    {VC_VIEWS.map((v) => (
+                      <button
+                        key={v.id}
+                        class="sub-tool"
+                        role="tab"
+                        aria-selected={vcView === v.id}
+                        aria-label={`Version Control: ${v.label}`}
+                        data-tip={v.label}
+                        data-tip-pos="right"
+                        onClick={() => update((p) => ({ ...p, vcView: v.id }))}
+                      >
+                        <i class={`codicon codicon-${v.icon}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Fragment>
             );
           })}
           <span class="grow" />

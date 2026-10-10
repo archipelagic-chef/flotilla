@@ -5,7 +5,9 @@ import { runGit } from '../../core/git/gitCli';
 import { parseNameStatus, type FileChange } from '../../core/git/porcelain';
 import { WORKING } from '../../core/diff/refs';
 
-export type CompareMode = 'mergeBase' | 'twoDot' | 'uncommitted';
+import type { CompareMode } from '../../webview/protocol';
+
+export type { CompareMode };
 
 export interface CompareResult {
   leftRef: string;
@@ -48,4 +50,28 @@ export async function compareWithBase(worktreeDir: string, base: string, mode: C
     return { leftRef: mergeBase, rightRef: 'HEAD', files: await nameStatus(cwd, [mergeBase, 'HEAD']) };
   }
   return { leftRef: mergeBase, rightRef: WORKING, files: await nameStatusWithWorkingTree(cwd, mergeBase) };
+}
+
+/** Accepts what a user may type as a base (a branch, tag or commit), never an option. */
+export function isRefLike(ref: string): boolean {
+  return ref.length > 0 && ref.length <= 250 && !ref.startsWith('-') && !/[\s\x00-\x1f\x7f]/.test(ref);
+}
+
+/** Branches (local, then remote) and tags, to compare with. */
+export async function listRefs(cwd: string): Promise<string[]> {
+  const out = await runGit(['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags'], { cwd });
+  const refs = out.split(/\r?\n/).filter((r) => r && !r.endsWith('/HEAD'));
+  const strip = (prefix: string) => refs.filter((r) => r.startsWith(prefix)).map((r) => r.slice(prefix.length));
+  return [...strip('refs/heads/'), ...strip('refs/remotes/'), ...strip('refs/tags/')];
+}
+
+/** Compares after checking that base names a commit, with a readable error when it doesn't. */
+export async function compareWithRef(worktreeDir: string, base: string, mode: CompareMode): Promise<CompareResult> {
+  if (!isRefLike(base)) throw new Error(`'${base}' is not a branch, tag or commit.`);
+  try {
+    await runGit(['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: worktreeDir });
+  } catch {
+    throw new Error(`There is no branch, tag or commit '${base}'.`);
+  }
+  return compareWithBase(worktreeDir, base, mode);
 }
