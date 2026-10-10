@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "type": "npm", "script": "build", "label": "npm: build", "problemMatcher": [] },
+    { "type": "npm", "script": "playground", "label": "npm: playground", "problemMatcher": [] },
+    {
+      "label": "flotilla: build + playground",
+      "dependsOn": ["npm: build", "npm: playground"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

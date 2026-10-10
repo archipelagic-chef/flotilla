@@ -2,6 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
+      // Opens the test window on .playground. Works the same on the host and in the devcontainer:
+      // press F5 in each to get two windows on the same repo, both running this build.
+      "name": "Run Extension (playground)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/.playground"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "flotilla: build + playground"
+    },
+    {
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",

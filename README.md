@@ -59,4 +59,22 @@ xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
 
-Press F5 to launch an Extension Development Host.
+Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
+
+The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
+
+### Testing across host and container
+
+The extension only loads in a test window started from a window where **this project** is open. Reopening a test window in a container drops the extension, so start one test window on each side:
+
+1. **Host:** open this project locally and press F5. A test window opens on `.playground` (host paths).
+2. **Container:** open the project in a second window with *Dev Containers: Reopen in Container* and press F5 there. A second test window opens on the same `.playground`, running inside the container.
+3. Now exercise both sides on the same repo, for example:
+   - create a workstream in one window; it appears in the other within ~15 s (or when you focus it);
+   - open it from the other window (right-click → Open in New Window) and run `git status` there;
+   - run `git worktree prune` in each environment; no Flotilla worktree disappears;
+   - write `{"state":"waiting-for-input","message":"test","updatedAt":"<now ISO>"}` to the worktree's `workstream.json` (in `.playground/.git/worktrees/<name>/`) on one side; the other window shows it;
+   - remove a workstream from the side that did not create it;
+   - run `git worktree add .worktrees/manual -b manual` in a host terminal inside `.playground`; it shows in both windows and works in the container after the next refresh.
+
+Both sides build into the same `dist/`: after a code change, stop both debug sessions and press F5 again.

@@ -394,7 +394,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
-    "package": "vsce package"
+    "package": "vsce package",
+    "playground": "node scripts/playground.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
