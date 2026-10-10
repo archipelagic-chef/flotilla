@@ -8,6 +8,7 @@ import { ATTENTION_ICON } from './section';
  *   data-tip="text"         plain text; \n starts a new line
  *   data-keys="Ctrl+Alt+1"  a shortcut, drawn as keys
  *   data-tip-pos="right"    where it opens: below (default), above or right
+ *   data-tip-if-cut         only when the element's text doesn't fit (shows an ellipsis)
  * Icon-only buttons need no data-tip: their aria-label is shown. Richer content comes from the render prop
  * (e.g. the worktree card for data-tip-ws).
  */
@@ -41,6 +42,8 @@ export function Keys({ keys }: { keys: string }) {
 }
 
 function plain(el: HTMLElement): ComponentChildren | undefined {
+  // data-tip-if-cut: only when the element's text is cut off (an ellipsis), e.g. a long worktree name.
+  if (el.hasAttribute('data-tip-if-cut') && el.scrollWidth <= el.clientWidth) return undefined;
   const text = el.dataset.tip ?? el.getAttribute('aria-label') ?? '';
   const keys = el.dataset.keys;
   if (!text && !keys) return undefined;

@@ -55,7 +55,9 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
           >
             <div class="sec-line">
               <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]}`} />
-              <span class="branch">{ws.branch}</span>
+              <span class="branch" data-tip={ws.branch} data-tip-if-cut>
+                {ws.branch}
+              </span>
               {closed.has(ws.key) && <span class="tag" data-tip="Its tab is closed; double-click to open it">tab closed</span>}
               <span class="actions" onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
                 <button class="icon" aria-label="Open Its Tab" onClick={() => onSelect(ws.key)}>

@@ -22,7 +22,9 @@ function Title({ ws }: { ws: WorkstreamView }) {
   return (
     <>
       <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]}`} />
-      <span class="branch">{ws.branch}</span>
+      <span class="branch" data-tip={ws.branch} data-tip-if-cut>
+        {ws.branch}
+      </span>
       {open.length > 0 && (
         <span class={`chip${waiting ? ' st-waiting' : ''}`} data-tip={`${open.length} open chat(s)`}>
           <i class={`codicon codicon-${waiting ? 'bell-dot' : 'comment-discussion'}`} />
