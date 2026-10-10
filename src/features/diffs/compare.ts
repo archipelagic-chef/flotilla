@@ -57,12 +57,18 @@ export function isRefLike(ref: string): boolean {
   return ref.length > 0 && ref.length <= 250 && !ref.startsWith('-') && !/[\s\x00-\x1f\x7f]/.test(ref);
 }
 
-/** Branches (local, then remote) and tags, to compare with. */
-export async function listRefs(cwd: string): Promise<string[]> {
+export interface RefLists {
+  local: string[];
+  remote: string[];
+  tags: string[];
+}
+
+/** Branches (local and remote) and tags, to compare. */
+export async function listRefs(cwd: string): Promise<RefLists> {
   const out = await runGit(['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags'], { cwd });
   const refs = out.split(/\r?\n/).filter((r) => r && !r.endsWith('/HEAD'));
   const strip = (prefix: string) => refs.filter((r) => r.startsWith(prefix)).map((r) => r.slice(prefix.length));
-  return [...strip('refs/heads/'), ...strip('refs/remotes/'), ...strip('refs/tags/')];
+  return { local: strip('refs/heads/'), remote: strip('refs/remotes/'), tags: strip('refs/tags/') };
 }
 
 async function verifyRef(cwd: string, ref: string): Promise<void> {

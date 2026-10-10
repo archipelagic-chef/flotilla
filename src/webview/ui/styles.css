@@ -1625,3 +1625,154 @@ ins {
 .tools .sub-tool.add:hover .codicon {
   color: var(--vscode-activityBar-foreground, var(--vscode-foreground));
 }
+
+/* + under Version Control: its menu opens to the right of the tool strip. */
+.add-view {
+  position: relative;
+}
+.tools .tool-menu {
+  left: calc(100% + 4px);
+  right: auto;
+  top: -4px;
+  z-index: 50;
+  min-width: 210px;
+}
+.tools .tool-menu button {
+  width: auto;
+  height: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 12px;
+  color: inherit;
+}
+.tools .tool-menu .codicon {
+  font-size: 16px;
+  margin-top: 1px;
+}
+.tool-menu .menu-label {
+  display: block;
+}
+.tool-menu .menu-detail {
+  display: block;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+/* ---- comparison: two branch pickers ---- */
+.compare-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 8px 20px;
+}
+.compare-pick .compare-swap {
+  align-self: center;
+  margin: -2px 0;
+}
+.compare-pick .compare-swap .codicon {
+  transform: rotate(90deg);
+  font-size: 14px;
+}
+.compare-pick .check {
+  margin-top: 6px;
+}
+.ref-picker {
+  position: relative;
+}
+.ref-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+  text-align: left;
+}
+.ref-button:hover {
+  border-color: var(--focus);
+}
+.ref-button[aria-expanded='true'] {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+.ref-button.empty .ref-name {
+  color: var(--vscode-input-placeholderForeground, var(--muted));
+}
+.ref-button .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.ref-button .codicon-chevron-down {
+  color: var(--muted);
+}
+.ref-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-menu {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  overflow: hidden;
+}
+.ref-filter {
+  margin: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--focus);
+  border-radius: 3px;
+  outline: none;
+}
+.ref-options {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.ref-group {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ref-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  text-align: left;
+  line-height: 20px;
+}
+.ref-option span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-option .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.ref-option.active {
+  background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground));
+}

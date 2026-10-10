@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { ChangeGroup, CommitView, FileChangeView, RefCompareMode, RefComparison, Tool, VcView, WorkstreamView } from '../protocol';
+import type { ChangeGroup, CommitView, FileChangeView, RefComparison, Tool, VcView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
@@ -421,7 +421,9 @@ function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: Com
 /** Branches and tags to compare. */
 export interface Refs {
   defaultBase?: string;
-  refs: string[];
+  local: string[];
+  remote: string[];
+  tags: string[];
 }
 
 /** The answer to a comparison's latest request. */
@@ -433,68 +435,135 @@ export interface Comparison {
   error?: string;
 }
 
-/** One comparison in Version Control › Compare (several, like GitLens). Unset refs follow the defaults. */
+/** One comparison in Version Control › Compare (several, like GitLens). */
 export interface CompareChoice {
   id: number;
   base?: string;
   head?: string;
-  mode: RefCompareMode;
   /** When head is checked out in a worktree: compare that worktree's files, uncommitted changes included. */
   uncommitted: boolean;
   /** Shows only its header. */
   collapsed?: boolean;
 }
 
-/** Adds a comparison to the UI state and shows it: Compare's + and "Compare with…" in Changes. */
+/** Adds a comparison to the UI state and shows it. */
 export function withComparison<P extends { comparisons: CompareChoice[]; nextComparison: number; tool: Tool; vcView: VcView }>(
   p: P,
   init: Partial<Omit<CompareChoice, 'id'>>,
 ): P {
-  const choice: CompareChoice = { mode: 'mergeBase', uncommitted: true, ...init, id: p.nextComparison };
+  const choice: CompareChoice = { uncommitted: true, ...init, id: p.nextComparison };
   // Earlier ones fold away, so the new one is in view.
   const folded = p.comparisons.map((c) => ({ ...c, collapsed: true }));
   return { ...p, tool: 'vc', vcView: 'compare', comparisons: [choice, ...folded], nextComparison: p.nextComparison + 1 };
 }
 
-const REF_COMPARE_MODES: Array<{ mode: RefCompareMode; label: string; tip: (base: string, head: string) => string }> = [
-  { mode: 'mergeBase', label: 'Since split', tip: (b, h) => `What ${h} changed since it split from ${b} (${b}...${h})` },
-  { mode: 'twoDot', label: 'All differences', tip: (b, h) => `Every difference between ${b} and ${h} (${b}..${h})` },
-];
+interface RefGroup {
+  label: string;
+  icon: string;
+  refs: string[];
+}
 
-/** A ref box with suggestions; it applies on Enter or when it loses focus, and Escape undoes the typing. */
-function RefInput({ label, value, refs, worktreeBranches, onApply }: { label: string; value: string; refs: string[]; worktreeBranches: ReadonlySet<string>; onApply(ref: string): void }) {
-  const [typed, setTyped] = useState(value);
-  useEffect(() => setTyped(value), [value]);
-  const listId = `refs-${label.toLowerCase()}`;
-  const apply = () => {
-    const next = typed.trim();
-    if (next && next !== value) onApply(next);
+/**
+ * A branch picker: a button with the chosen branch that opens a searchable list of the worktrees' branches, other
+ * branches, remote branches and tags. Anything else typed (a commit, HEAD~2) can be used as is.
+ */
+function RefPicker({ value, placeholder, groups, colorOf, onPick }: { value: string; placeholder: string; groups: RefGroup[]; colorOf(ref: string): string | undefined; onPick(ref: string): void }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [at, setAt] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  const needle = filter.trim().toLowerCase();
+  const shown = groups.map((g) => ({ ...g, refs: g.refs.filter((r) => r.toLowerCase().includes(needle)).slice(0, 50) })).filter((g) => g.refs.length);
+  const flat = shown.flatMap((g) => g.refs);
+  const typed = filter.trim();
+  const options = typed && !flat.includes(typed) ? [...flat, typed] : flat;
+  const pick = (ref: string) => {
+    setOpen(false);
+    setFilter('');
+    if (ref && ref !== value) onPick(ref);
   };
+  const icon = (ref: string) => groups.find((g) => g.refs.includes(ref))?.icon ?? 'git-commit';
   return (
-    <label class="compare-input">
-      <span class="compare-label">{label}</span>
-      <input
-        value={typed}
-        list={listId}
-        placeholder="Branch, tag or commit"
-        onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
-        onChange={apply}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') apply();
-          else if (e.key === 'Escape') setTyped(value);
+    <div class="ref-picker" ref={box}>
+      <button
+        class={`ref-button${value ? '' : ' empty'}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open);
+          setAt(0);
         }}
-      />
-      <datalist id={listId}>
-        {refs.map((r) => (
-          <option key={r} value={r} label={worktreeBranches.has(r) ? 'worktree' : undefined} />
-        ))}
-      </datalist>
-    </label>
+      >
+        <i class={`codicon codicon-${value ? icon(value) : 'git-branch'}`} style={value && colorOf(value) ? { color: colorOf(value) } : undefined} />
+        <span class="ref-name">{value || placeholder}</span>
+        <i class="codicon codicon-chevron-down" />
+      </button>
+      {open && (
+        <div class="ref-menu" role="listbox">
+          <input
+            class="ref-filter"
+            value={filter}
+            placeholder="Search branches and tags, or type a commit"
+            aria-label="Search branches"
+            ref={(el) => el?.focus()}
+            onInput={(e) => {
+              setFilter((e.target as HTMLInputElement).value);
+              setAt(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') setAt((n) => Math.min(n + 1, options.length - 1));
+              else if (e.key === 'ArrowUp') setAt((n) => Math.max(n - 1, 0));
+              else if (e.key === 'Enter') pick(options[at] ?? typed);
+              else if (e.key === 'Escape') setOpen(false);
+              else return;
+              e.preventDefault();
+            }}
+          />
+          <div class="ref-options">
+            {shown.map((g) => (
+              <div key={g.label}>
+                <div class="ref-group">{g.label}</div>
+                {g.refs.map((r) => (
+                  <button
+                    key={r}
+                    role="option"
+                    aria-selected={r === value}
+                    class={`ref-option${options[at] === r ? ' active' : ''}`}
+                    onMouseEnter={() => setAt(options.indexOf(r))}
+                    onClick={() => pick(r)}
+                  >
+                    <i class={`codicon codicon-${g.icon}`} style={colorOf(r) ? { color: colorOf(r) } : undefined} />
+                    <span>{r}</span>
+                    {r === value && <i class="codicon codicon-check" />}
+                  </button>
+                ))}
+              </div>
+            ))}
+            {typed && !flat.includes(typed) && (
+              <button class={`ref-option${options[at] === typed ? ' active' : ''}`} onClick={() => pick(typed)}>
+                <i class="codicon codicon-git-commit" />
+                <span>
+                  Use <strong>{typed}</strong>
+                </span>
+              </button>
+            )}
+            {!options.length && <div class="ref-group">No branches or tags</div>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 interface CompareViewProps {
   workstreams: WorkstreamView[];
+  colors: ReadonlyMap<string, string>;
   comparisons: CompareChoice[];
   refs: Refs | undefined;
   results: ReadonlyMap<number, Comparison>;
@@ -506,17 +575,17 @@ interface CompareViewProps {
 }
 
 /**
- * Version Control › Compare: comparisons of any two branches, tags or commits, whichever tab is active. Add them
- * with + under Version Control in the tool strip; closing the last one hides this view again.
+ * Version Control › Compare: what differs between two branches (or tags, or commits), whichever tab is active.
+ * Several comparisons can be open; closing the last one hides this view again.
  */
-export function CompareView({ workstreams, comparisons, refs, results, choose, close, add, requestRefs, compare }: CompareViewProps) {
+export function CompareView({ workstreams, colors, comparisons, refs, results, choose, close, add, requestRefs, compare }: CompareViewProps) {
   useEffect(() => {
     if (!refs) requestRefs();
   }, [refs, requestRefs]);
   return (
     <div class="compare">
       <div class="tool-title backlog-title">
-        <span>Comparisons</span>
+        <span>Compare</span>
         <button class="icon" aria-label="New Comparison" onClick={add}>
           <i class="codicon codicon-add" />
         </button>
@@ -525,6 +594,7 @@ export function CompareView({ workstreams, comparisons, refs, results, choose, c
         <ComparisonCard
           key={c.id}
           workstreams={workstreams}
+          colors={colors}
           choice={c}
           refs={refs}
           result={results.get(c.id)}
@@ -539,6 +609,7 @@ export function CompareView({ workstreams, comparisons, refs, results, choose, c
 
 interface CardProps {
   workstreams: WorkstreamView[];
+  colors: ReadonlyMap<string, string>;
   choice: CompareChoice;
   refs: Refs | undefined;
   result: Comparison | undefined;
@@ -547,12 +618,12 @@ interface CardProps {
   compare(request: RefComparison): void;
 }
 
-function ComparisonCard({ workstreams, choice, refs, result, choose, close, compare }: CardProps) {
+function ComparisonCard({ workstreams, colors, choice, refs, result, choose, close, compare }: CardProps) {
   const base = choice.base ?? refs?.defaultBase ?? '';
   const head = choice.head ?? '';
   const worktree = workstreams.find((w) => w.reachable && w.branch === head);
   const withUncommitted = choice.uncommitted && worktree !== undefined;
-  const request: RefComparison = { base, head, mode: choice.mode, worktree: withUncommitted ? worktree!.key : undefined };
+  const request: RefComparison = { base, head, worktree: withUncommitted ? worktree!.key : undefined };
   // Again when the refs move, and for a worktree's files when they change.
   const stamp = [
     ...workstreams.map((w) => `${w.branch}@${w.sync.head}`),
@@ -560,33 +631,38 @@ function ComparisonCard({ workstreams, choice, refs, result, choose, close, comp
   ].join('|');
   useEffect(() => {
     if (base && head) compare(request);
-  }, [base, head, choice.mode, request.worktree, stamp]);
+  }, [base, head, request.worktree, stamp]);
 
-  const worktreeBranches = new Set(workstreams.map((w) => w.branch));
-  const allRefs = [...new Set([...(refs?.refs ?? []), ...worktreeBranches])];
+  const worktreeBranches = workstreams.map((w) => w.branch).filter((b) => !b.startsWith('detached'));
+  const groups: RefGroup[] = [
+    { label: 'Worktrees', icon: 'git-branch', refs: worktreeBranches },
+    { label: 'Branches', icon: 'git-branch', refs: (refs?.local ?? []).filter((r) => !worktreeBranches.includes(r)) },
+    { label: 'Remote branches', icon: 'cloud', refs: refs?.remote ?? [] },
+    { label: 'Tags', icon: 'tag', refs: refs?.tags ?? [] },
+  ];
+  const colorOf = (ref: string) => {
+    const ws = workstreams.find((w) => w.branch === ref);
+    return ws && colors.get(ws.key);
+  };
   const files = result?.files ?? [];
   const open = (path?: string) => send({ type: 'openCompare', ...request, path });
-  const title = base && head ? `${base} ↔ ${head}${withUncommitted ? ' (working tree)' : ''}` : 'New comparison';
+  const title = base && head ? `${base} ↔ ${head}` : 'New comparison';
   return (
     <div class={`group comparison${choice.collapsed ? ' collapsed' : ''}`}>
       <div class="row group-head comparison-head" onClick={() => choose({ collapsed: !choice.collapsed })}>
         <i class={`codicon codicon-chevron-${choice.collapsed ? 'right' : 'down'} lane-chev-left`} />
-        <i class="codicon codicon-git-compare" />
-        <span class="name" data-tip={title}>
+        <span class="name" data-tip={title} data-tip-if-cut>
           {title}
         </span>
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
           <button class="icon" aria-label="Open All Changes" disabled={!files.length} onClick={() => open()}>
             <i class="codicon codicon-diff-multiple" />
           </button>
-          <button class="icon" aria-label="Swap" disabled={!base || !head} onClick={() => choose({ base: head, head: base })}>
-            <i class="codicon codicon-arrow-swap" />
-          </button>
           <button class="icon" aria-label="Refresh" disabled={!base || !head} onClick={() => compare(request)}>
             <i class="codicon codicon-refresh" />
           </button>
         </span>
-        {result && !result.loading && !result.error && <span class="badge">{files.length}</span>}
+        {result && !result.loading && !result.error && base && head && <span class="badge">{files.length}</span>}
         <button
           class="icon close"
           aria-label="Close Comparison"
@@ -600,30 +676,19 @@ function ComparisonCard({ workstreams, choice, refs, result, choose, close, comp
       </div>
       {!choice.collapsed && (
         <>
-          <div class="compare-bar">
-            <RefInput label="Base" value={base} refs={allRefs} worktreeBranches={worktreeBranches} onApply={(r) => choose({ base: r })} />
-            <RefInput label="With" value={head} refs={allRefs} worktreeBranches={worktreeBranches} onApply={(r) => choose({ head: r })} />
-            <div class="segmented" role="radiogroup" aria-label="What to compare">
-              {REF_COMPARE_MODES.map((m) => (
-                <button
-                  key={m.mode}
-                  role="radio"
-                  aria-checked={choice.mode === m.mode}
-                  data-tip={m.tip(base || 'the base', head || 'the other side')}
-                  onClick={() => choose({ mode: m.mode })}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+          <div class="compare-pick">
+            <RefPicker value={base} placeholder="Pick a branch" groups={groups} colorOf={colorOf} onPick={(r) => choose({ base: r })} />
+            <button class="icon compare-swap" aria-label="Swap" disabled={!base || !head} onClick={() => choose({ base: head, head: base })}>
+              <i class="codicon codicon-arrow-swap" />
+            </button>
+            <RefPicker value={head} placeholder="Pick a branch to compare" groups={groups} colorOf={colorOf} onPick={(r) => choose({ head: r })} />
             {worktree && (
-              <label class="check" data-tip={`Compare the files in ${worktree.label}'s worktree, not only its commits`}>
+              <label class="check">
                 <input type="checkbox" checked={choice.uncommitted} onChange={(e) => choose({ uncommitted: (e.target as HTMLInputElement).checked })} />
-                Include uncommitted changes
+                With uncommitted changes in {worktree.label}
               </label>
             )}
           </div>
-          {(!base || !head) && <div class="row group-empty">Pick two branches, tags or commits to compare</div>}
           {base && head && result?.error && <div class="row group-empty error">{result.error}</div>}
           {base && head && !result?.error && !files.length && (
             <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>

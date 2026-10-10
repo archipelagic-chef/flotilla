@@ -336,10 +336,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const dir = this.compareDir();
         if (!dir) return;
         const [refs, defaultBase] = await Promise.all([
-          listRefs(dir).catch(() => []),
+          listRefs(dir).catch(() => ({ local: [], remote: [], tags: [] })),
           resolveBase(dir, vscode.workspace.getConfiguration('flotilla').get<string>('defaultBase', '')),
         ]);
-        this.post({ type: 'refs', defaultBase, refs });
+        this.post({ type: 'refs', defaultBase, ...refs });
         return;
       }
       case 'compare': {
@@ -374,7 +374,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async compareRefs(m: RefComparison): Promise<{ dir: string; result: Awaited<ReturnType<typeof compareRefs>> } & { files: FileChange[] }> {
     const dir = m.worktree ? this.root(m.worktree) : this.compareDir();
     if (!dir) throw new Error('That worktree is not reachable from this environment.');
-    const result = await compareRefs(dir, m.base, m.head, m.mode, m.worktree !== undefined);
+    const result = await compareRefs(dir, m.base, m.head, 'twoDot', m.worktree !== undefined);
     return { dir, result, files: result.files };
   }
 

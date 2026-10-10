@@ -84,7 +84,7 @@ describe('compareRefs', () => {
     const { repo, wt } = fixture();
     git(repo, 'tag', 'v1');
     const refs = await listRefs(wt);
-    expect(refs).toEqual(expect.arrayContaining(['main', 'feat', 'v1']));
+    expect(refs).toEqual({ local: expect.arrayContaining(['main', 'feat']), remote: [], tags: ['v1'] });
     expect(isRefLike('--output=x')).toBe(false);
     expect(isRefLike('main two')).toBe(false);
     expect(isRefLike('origin/main')).toBe(true);

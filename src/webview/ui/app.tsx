@@ -161,7 +161,7 @@ export function App() {
   }, []);
 
   const requestRefs = useCallback(() => {
-    setRefs({ refs: [] });
+    setRefs({ local: [], remote: [], tags: [] });
     send({ type: 'refs' });
   }, []);
 
@@ -259,7 +259,7 @@ export function App() {
           setAddingBacklog(true);
           return;
         case 'refs':
-          setRefs({ defaultBase: m.defaultBase, refs: m.refs });
+          setRefs({ defaultBase: m.defaultBase, local: m.local, remote: m.remote, tags: m.tags });
           return;
         case 'compared': {
           const r = compareRequests.current;
@@ -370,6 +370,10 @@ export function App() {
   // With the active worktree's branch, unless that's the base (main, or the All tab): then it's left to pick.
   const addComparison = () =>
     update((p) => withComparison(p, { base: refs?.defaultBase, head: activeWs && activeWs.branch !== refs?.defaultBase ? activeWs.branch : undefined }));
+  // Views that + under Version Control can add: those not showing yet.
+  const addable: AddableView[] = [
+    { label: 'Compare Branches', detail: 'What differs between two branches', icon: 'git-compare', shown: persisted.comparisons.length > 0, add: addComparison },
+  ].filter((v) => !v.shown);
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
@@ -436,6 +440,7 @@ export function App() {
     content = (
       <CompareView
         workstreams={workstreams}
+        colors={colors}
         comparisons={persisted.comparisons}
         refs={refs}
         results={compareResults}
@@ -627,9 +632,7 @@ export function App() {
                         <i class={`codicon codicon-${v.icon}`} />
                       </button>
                     ))}
-                    <button class="sub-tool add" aria-label="New Comparison…" data-tip-pos="right" onClick={addComparison}>
-                      <i class="codicon codicon-add" />
-                    </button>
+                    {addable.length > 0 && <AddViewMenu views={addable} />}
                   </div>
                 )}
               </Fragment>
@@ -651,6 +654,60 @@ export function App() {
           return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
         }}
       />
+    </div>
+  );
+}
+
+interface AddableView {
+  label: string;
+  detail: string;
+  icon: string;
+  shown: boolean;
+  add(): void;
+}
+
+/** + under Version Control: a menu of the views that can be added to it; gone once they all show. */
+function AddViewMenu({ views }: { views: AddableView[] }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => (e instanceof KeyboardEvent ? e.key === 'Escape' : !box.current?.contains(e.target as Node)) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  return (
+    <div class="add-view" ref={box}>
+      <button class="sub-tool add" aria-label="Add a View…" aria-haspopup="menu" aria-expanded={open} data-tip-pos="right" onClick={() => setOpen(!open)}>
+        <i class="codicon codicon-add" />
+      </button>
+      {open && (
+        <div class="menu tool-menu" role="menu">
+          {views.map((v) => (
+            <button
+              key={v.label}
+              role="menuitem"
+              ref={(el) => {
+                if (views[0] === v) el?.focus();
+              }}
+              onClick={() => {
+                setOpen(false);
+                v.add();
+              }}
+            >
+              <i class={`codicon codicon-${v.icon}`} />
+              <span>
+                <span class="menu-label">{v.label}</span>
+                <span class="menu-detail">{v.detail}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

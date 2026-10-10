@@ -144,7 +144,7 @@ export type HostMessage =
   /** A commit from the message box succeeded; the webview clears that box. */
   | { type: 'committed'; key: string }
   /** Branches and tags to compare; defaultBase is flotilla.defaultBase or the remote's default branch. */
-  | { type: 'refs'; defaultBase?: string; refs: string[] }
+  | { type: 'refs'; defaultBase?: string; local: string[]; remote: string[]; tags: string[] }
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
@@ -209,10 +209,9 @@ export type WebviewMessage =
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
   | ({ type: 'openCompare'; path?: string } & RefComparison);
 
-/** Two refs to compare; with worktree (a key), head's side is that worktree's files, uncommitted changes included. */
+/** Two refs to compare (what differs between them); with worktree (a key), head's side is that worktree's files, uncommitted changes included. */
 export interface RefComparison {
   base: string;
   head: string;
-  mode: RefCompareMode;
   worktree?: string;
 }
