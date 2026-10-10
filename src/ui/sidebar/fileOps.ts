@@ -108,7 +108,9 @@ export class FileOps {
     const name = (item: Item) => path.posix.basename(item.path);
     const what = items.length === 1 ? `'${name(items[0])}'` : `the following ${items.length} files and folders`;
     const list = items.length === 1 ? '' : `${items.slice(0, 10).map(name).join('\n')}${items.length > 10 ? `\n…and ${items.length - 10} more` : ''}\n\n`;
-    const trash = this.deps.reference.scheme === 'file' && vscode.workspace.getConfiguration('files').get<boolean>('enableTrash', true);
+    // In a remote window (devcontainer, SSH, WSL) Flotilla runs remotely and sees file: URIs, but there's no Trash there.
+    const trash =
+      this.deps.reference.scheme === 'file' && !vscode.env.remoteName && vscode.workspace.getConfiguration('files').get<boolean>('enableTrash', true);
     if (trash) {
       if (vscode.workspace.getConfiguration('explorer').get<boolean>('confirmDelete', true)) {
         const where = process.platform === 'win32' ? 'Recycle Bin' : 'Trash';
