@@ -645,12 +645,8 @@ textarea:focus {
   place-items: center;
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
 }
-.wt-nav:hover:not(:disabled) {
+.wt-nav:hover {
   background: var(--vscode-toolbar-hoverBackground);
-}
-.wt-nav:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 .wt-nav .codicon {
   font-size: 14px;
@@ -1398,4 +1394,16 @@ ins {
 .sec-head .sec-meta,
 .sec-head .sec-msg {
   padding-left: 20px;
+}
+/* Hovering a header deepens its tint: it's clickable (folds the worktree). */
+.sec-head {
+  transition: background-color 0.1s ease-out;
+}
+.sec-head:hover {
+  background: color-mix(in srgb, var(--ws-color) 22%, var(--vscode-sideBar-background));
+}
+@media (prefers-reduced-motion: reduce) {
+  .sec-head {
+    transition: none;
+  }
 }

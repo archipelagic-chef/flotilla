@@ -438,9 +438,12 @@ export function App() {
           <i class="codicon codicon-layers" />
           <span class="nm">All</span>
         </button>
-        <button class="wt-nav" aria-label="Scroll Tabs Left" disabled={!overflow.left} onClick={() => scrollTabs(-1)}>
-          <i class="codicon codicon-chevron-left" />
-        </button>
+        {/* The arrows show only when there are hidden tabs that way. */}
+        {overflow.left && (
+          <button class="wt-nav" aria-label="Scroll Tabs Left" onClick={() => scrollTabs(-1)}>
+            <i class="codicon codicon-chevron-left" />
+          </button>
+        )}
         {/* Only the worktree tabs scroll; All, the arrows and + stay in place. */}
         <div
           class="wt-scroll"
@@ -507,9 +510,11 @@ export function App() {
               );
             })}
         </div>
-        <button class="wt-nav" aria-label="Scroll Tabs Right" disabled={!overflow.right} onClick={() => scrollTabs(1)}>
-          <i class="codicon codicon-chevron-right" />
-        </button>
+        {overflow.right && (
+          <button class="wt-nav" aria-label="Scroll Tabs Right" onClick={() => scrollTabs(1)}>
+            <i class="codicon codicon-chevron-right" />
+          </button>
+        )}
         <button class="wt-add" aria-label="New Workstream…" onClick={() => run('flotilla.newWorkstream')}>
           <i class="codicon codicon-add" />
         </button>
