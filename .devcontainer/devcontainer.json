@@ -10,7 +10,7 @@
     // Keeps the Claude Code login across container rebuilds; separate from the host's ~/.claude.
     "source=flotilla-claude-config-${devcontainerId},target=/home/node/.claude,type=volume"
   ],
-  "postCreateCommand": "sudo chown -R node:node ${containerWorkspaceFolder}/node_modules /home/node/.claude && git config --global --add safe.directory '*' && sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libasound2 libgbm1 libgtk-3-0 libnss3 libxss1 libxkbfile1 libsecret-1-0 && npm ci",
+  "postCreateCommand": "sudo chown -R node:node ${containerWorkspaceFolder}/node_modules /home/node/.claude && git config --global --add safe.directory '*' && sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xauth libasound2 libgbm1 libgtk-3-0 libnss3 libxss1 libxkbfile1 libsecret-1-0 && npm ci",
   "customizations": {
     "vscode": {
       "extensions": ["anthropic.claude-code", "vitest.explorer"]
