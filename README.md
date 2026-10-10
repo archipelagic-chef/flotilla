@@ -13,7 +13,7 @@ Flotilla is meant to be your sidebar. **Worktree tabs** run across its top, like
 A **tool strip** runs down its left side:
 
 - **Overview**: every worktree, most urgent first, with its status, changes, sync state and the question a chat is waiting on. Double-click one to open it; remove worktrees from here or from a tab's context menu.
-- **Files**: the file tree with git change badges, reveal of the active editor's file, new file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees) and drag and drop.
+- **Files**: the file tree with your file icon theme (or VS Code's Seti, in a devcontainer where your theme isn't installed), git change badges, git-ignored files greyed out, reveal of the active editor's file, new file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees) and drag and drop.
 - **Search**: text search and replace in the active worktree (or all of them on the All tab), with match case, whole word and regex. It searches tracked and untracked files and skips ignored ones.
 - **Version Control**: like VS Code's Source Control, per worktree: a message box with Commit (and Commit & Push, Commit & Sync, Amend), Publish Branch or Sync Changes, and staged and unstaged changes with stage, unstage and discard.
 - **Chats**: the Claude Code chats linked to the worktree, with their state (working, waiting for you, finished), *New chat* and the history of every chat linked to it.

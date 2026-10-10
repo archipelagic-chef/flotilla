@@ -11,7 +11,7 @@ import { ALL, type HostMessage, type SearchGroup, type Tool, type WebviewMessage
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
-import { excludeMatcher, listDirectory } from './files';
+import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
 
 export interface SidebarDeps {
@@ -56,7 +56,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     const dist = vscode.Uri.joinPath(this.deps.extensionUri, 'dist');
-    const iconRoot = iconThemeRoot();
+    const iconRoot = iconThemeRoot(this.deps.extensionUri);
     view.webview.options = { enableScripts: true, localResourceRoots: iconRoot ? [dist, iconRoot] : [dist] };
     view.webview.html = this.html(view.webview, dist);
     view.webview.onDidReceiveMessage((m: WebviewMessage) => this.onMessage(m).catch((e: unknown) => this.report(e)));
@@ -71,7 +71,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       vscode.Disposable.from(
         vscode.workspace.onDidChangeConfiguration((e) => {
           if (!e.affectsConfiguration('workbench.iconTheme')) return;
-          const root = iconThemeRoot();
+          const root = iconThemeRoot(this.deps.extensionUri);
           view.webview.options = { enableScripts: true, localResourceRoots: root ? [dist, root] : [dist] };
           void this.postIconTheme();
         }),
@@ -83,7 +83,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async postIconTheme(): Promise<void> {
     if (!this.view) return;
     try {
-      const theme = await loadIconTheme(this.view.webview);
+      const theme = await loadIconTheme(this.view.webview, this.deps.extensionUri);
       this.post({ type: 'iconTheme', theme: theme && { css: theme.css, map: theme.map } });
     } catch (error) {
       this.deps.output.appendLine(`Could not load the file icon theme: ${error instanceof Error ? error.message : String(error)}`);
@@ -152,6 +152,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         let entries: Awaited<ReturnType<typeof listDirectory>> = [];
         try {
           entries = await listDirectory(ws.worktree.path, m.path, { hideWorktrees: ws.worktree.isMain, isExcluded: excludeMatcher(exclude) });
+          entries = await markIgnored(ws.worktree.path, m.path, entries);
         } catch {
           // deleted meanwhile: show it empty
         }

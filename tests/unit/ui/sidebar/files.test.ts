@@ -38,3 +38,33 @@ describe('listDirectory', () => {
     expect(await listDirectory(root, 'src', { hideWorktrees: true, isExcluded })).toEqual([{ name: 'x.ts', dir: false }]);
   });
 });
+
+describe('markIgnored', () => {
+  it('marks ignored files and folders, but not tracked ones', async () => {
+    const { git, initRepo } = await import('../../../helpers/gitRepo');
+    const { markIgnored } = await import('../../../../src/ui/sidebar/files');
+    const repo = initRepo();
+    cleanup.push(repo);
+    writeFile(repo, '.gitignore', 'dist/\n*.log\ntracked.log\n');
+    writeFile(repo, 'tracked.log', 'x');
+    git(repo, 'add', '-f', 'tracked.log', '.gitignore');
+    git(repo, 'commit', '-q', '-m', 'x');
+    writeFile(repo, 'dist/out.js', 'x');
+    writeFile(repo, 'debug.log', 'x');
+    writeFile(repo, 'src/a.log', 'x');
+    writeFile(repo, 'dist/é ö.txt', 'x');
+    const entries = [
+      { name: 'dist', dir: true },
+      { name: 'src', dir: true },
+      { name: 'debug.log', dir: false },
+      { name: 'tracked.log', dir: false },
+      { name: 'README.md', dir: false },
+    ];
+    expect((await markIgnored(repo, '', entries)).filter((e) => e.ignored).map((e) => e.name)).toEqual(['dist', 'debug.log']);
+    expect(await markIgnored(repo, 'src', [{ name: 'a.log', dir: false }])).toEqual([{ name: 'a.log', dir: false, ignored: true }]);
+    expect(await markIgnored(repo, '', [{ name: 'README.md', dir: false }])).toEqual([{ name: 'README.md', dir: false }]);
+    writeFile(repo, '.gitignore', 'dist/\n*.log\nü*.txt\n');
+    writeFile(repo, 'üb.txt', 'x');
+    expect((await markIgnored(repo, '', [{ name: 'üb.txt', dir: false }]))[0].ignored).toBe(true);
+  });
+});

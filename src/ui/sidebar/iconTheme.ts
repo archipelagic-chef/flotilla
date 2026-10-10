@@ -99,8 +99,10 @@ export function buildIconMap(theme: ThemeJson, light: boolean, languages: { exte
   };
 }
 
+type Languages = { extensions: Record<string, string>; filenames: Record<string, string> };
+
 /** File extensions and names of every language contributed by installed extensions. */
-function contributedLanguages(): { extensions: Record<string, string>; filenames: Record<string, string> } {
+function contributedLanguages(): Languages {
   const extensions: Record<string, string> = {};
   const filenames: Record<string, string> = {};
   for (const ext of vscode.extensions.all) {
@@ -113,41 +115,66 @@ function contributedLanguages(): { extensions: Record<string, string>; filenames
   return { extensions, filenames };
 }
 
-/** Loads the file icon theme the user picked (`workbench.iconTheme`); undefined when there is none. */
-export async function loadIconTheme(webview: vscode.Webview): Promise<LoadedIconTheme | undefined> {
+/** Where Flotilla's copy of Seti lives (see scripts/update-icons.mjs). */
+export function bundledIconRoot(extensionUri: vscode.Uri): vscode.Uri {
+  return vscode.Uri.joinPath(extensionUri, 'media', 'seti');
+}
+
+/**
+ * Languages known where Flotilla runs, on top of the ones VS Code ships (bundled). In a devcontainer most language
+ * extensions run on the host, so without the bundled table most files would match no language.
+ */
+async function knownLanguages(extensionUri: vscode.Uri): Promise<Languages> {
+  let bundled: Languages = { extensions: {}, filenames: {} };
+  try {
+    bundled = JSON.parse(await fs.readFile(path.join(bundledIconRoot(extensionUri).fsPath, 'languages.json'), 'utf8')) as Languages;
+  } catch {
+    // no table: installed languages only
+  }
+  const installed = contributedLanguages();
+  return { extensions: { ...bundled.extensions, ...installed.extensions }, filenames: { ...bundled.filenames, ...installed.filenames } };
+}
+
+/**
+ * The icon theme file to use: the one the user picked (`workbench.iconTheme`) when its extension is installed where
+ * Flotilla runs, otherwise Flotilla's copy of Seti, VS Code's default (icon themes usually run on the host, so a
+ * devcontainer window can't see them). Undefined when the user turned file icons off.
+ */
+function themeFile(extensionUri: vscode.Uri): string | undefined {
   const id = vscode.workspace.getConfiguration('workbench').get<string | null>('iconTheme');
-  if (!id) return undefined;
+  if (id === null || id === '') return undefined;
   for (const ext of vscode.extensions.all) {
     const themes = (ext.packageJSON as { contributes?: { iconThemes?: Array<{ id: string; path: string }> } }).contributes?.iconThemes ?? [];
     const contribution = themes.find((t) => t.id === id);
-    if (!contribution) continue;
-    const file = path.join(ext.extensionPath, contribution.path);
-    const theme = parseJsonc(await fs.readFile(file, 'utf8')) as ThemeJson;
-    const base = vscode.Uri.file(path.dirname(file));
-    const asset = (rel: string) => webview.asWebviewUri(vscode.Uri.joinPath(base, rel)).toString();
-    const fonts = (theme.fonts ?? []).map(
-      (f) =>
-        `@font-face { font-family: "fi-font-${f.id}"; src: ${f.src.map((s) => `url("${asset(s.path)}") format("${s.format}")`).join(', ')}; font-weight: ${f.weight ?? 'normal'}; font-style: ${f.style ?? 'normal'}; }`,
-    );
-    const defaultFont = theme.fonts?.[0];
-    const icons = Object.entries(theme.iconDefinitions ?? {}).map(([iconId, def]) => {
-      if (def.iconPath) return `.${cssId(iconId)}::before { content: ""; background: url("${asset(def.iconPath)}") center / contain no-repeat; }`;
-      const font = def.fontId ?? defaultFont?.id;
-      return `.${cssId(iconId)}::before { content: "${def.fontCharacter ?? ''}"; font-family: "fi-font-${font}"; ${def.fontColor ? `color: ${def.fontColor};` : ''} ${def.fontSize ?? defaultFont?.size ? `font-size: ${def.fontSize ?? defaultFont?.size};` : ''} }`;
-    });
-    const light = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light || vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight;
-    return { css: [...fonts, ...icons].join('\n'), map: buildIconMap(theme, light, contributedLanguages()), roots: [base] };
+    if (contribution) return path.join(ext.extensionPath, contribution.path);
   }
-  return undefined;
+  return path.join(bundledIconRoot(extensionUri).fsPath, 'vs-seti-icon-theme.json');
 }
 
-/** The folder of the active file icon theme, which the webview must be allowed to load fonts and images from. */
-export function iconThemeRoot(): vscode.Uri | undefined {
-  const id = vscode.workspace.getConfiguration('workbench').get<string | null>('iconTheme');
-  for (const ext of id ? vscode.extensions.all : []) {
-    const themes = (ext.packageJSON as { contributes?: { iconThemes?: Array<{ id: string; path: string }> } }).contributes?.iconThemes ?? [];
-    const contribution = themes.find((t) => t.id === id);
-    if (contribution) return vscode.Uri.file(path.dirname(path.join(ext.extensionPath, contribution.path)));
-  }
-  return undefined;
+/** Loads the file icon theme for the Files tool; undefined when file icons are off. */
+export async function loadIconTheme(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<LoadedIconTheme | undefined> {
+  const file = themeFile(extensionUri);
+  if (!file) return undefined;
+  const theme = parseJsonc(await fs.readFile(file, 'utf8')) as ThemeJson;
+  const base = vscode.Uri.file(path.dirname(file));
+  const asset = (rel: string) => webview.asWebviewUri(vscode.Uri.joinPath(base, rel)).toString();
+  const fonts = (theme.fonts ?? []).map(
+    (f) =>
+      `@font-face { font-family: "fi-font-${f.id}"; src: ${f.src.map((s) => `url("${asset(s.path)}") format("${s.format}")`).join(', ')}; font-weight: ${f.weight ?? 'normal'}; font-style: ${f.style ?? 'normal'}; }`,
+  );
+  const defaultFont = theme.fonts?.[0];
+  const icons = Object.entries(theme.iconDefinitions ?? {}).map(([iconId, def]) => {
+    if (def.iconPath) return `.${cssId(iconId)}::before { content: ""; background: url("${asset(def.iconPath)}") left center / 16px no-repeat; }`;
+    const font = def.fontId ?? defaultFont?.id;
+    return `.${cssId(iconId)}::before { content: "${def.fontCharacter ?? ''}"; font-family: "fi-font-${font}"; ${def.fontColor ? `color: ${def.fontColor};` : ''} ${def.fontSize ?? defaultFont?.size ? `font-size: ${def.fontSize ?? defaultFont?.size};` : ''} }`;
+  });
+  const kind = vscode.window.activeColorTheme.kind;
+  const light = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;
+  return { css: [...fonts, ...icons].join('\n'), map: buildIconMap(theme, light, await knownLanguages(extensionUri)), roots: [base] };
+}
+
+/** The folder the webview must be allowed to load the icon theme's fonts and images from. */
+export function iconThemeRoot(extensionUri: vscode.Uri): vscode.Uri | undefined {
+  const file = themeFile(extensionUri);
+  return file ? vscode.Uri.file(path.dirname(file)) : undefined;
 }

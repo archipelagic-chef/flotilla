@@ -998,3 +998,8 @@ ins {
 .row.group-empty:hover {
   background: none;
 }
+
+/* Git-ignored files and folders, greyed out like in the Explorer (git change colors still win). */
+.row.ignored .name:not([class*='k-']) {
+  color: var(--vscode-gitDecoration-ignoredResourceForeground, var(--muted));
+}

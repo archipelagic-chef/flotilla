@@ -181,6 +181,8 @@ interface DirProps {
   changes: Map<string, ChangeKind>;
   toggle(dir: string): void;
   targetFor(path: string, isDir: boolean): Target;
+  /** Inside a git-ignored folder: everything here is ignored too. */
+  inIgnored?: boolean;
 }
 
 function NameBox({ initial, icon, depth, error, onSubmit, onCancel }: { initial: string; icon: string; depth: number; error?: string; onSubmit(name: string): void; onCancel(): void }) {
@@ -224,7 +226,7 @@ function NameBox({ initial, icon, depth, error, onSubmit, onCancel }: { initial:
   );
 }
 
-function Dir({ ws, path, depth, files, open, changes, toggle, targetFor }: DirProps) {
+function Dir({ ws, path, depth, files, open, changes, toggle, targetFor, inIgnored }: DirProps) {
   const entries = files.dirs.get(dirKey(ws.key, path));
   useEffect(() => {
     if (!entries) files.requestDir(ws.key, path);
@@ -290,13 +292,25 @@ function Dir({ ws, path, depth, files, open, changes, toggle, targetFor }: DirPr
           const kind = folderKind(changes, rel);
           return (
             <div key={rel} role="none" {...dropTarget(ws.key, rel)}>
-              <button class={`row${selected ? ' selected' : ''}`} role="treeitem" aria-expanded={isOpen} style={{ paddingLeft: `${indent}px` }} {...common} onClick={(e) => click(e, () => toggle(rel))}>
+              <button class={`row${selected ? ' selected' : ''}${inIgnored || entry.ignored ? ' ignored' : ''}`} role="treeitem" aria-expanded={isOpen} style={{ paddingLeft: `${indent}px` }} {...common} onClick={(e) => click(e, () => toggle(rel))}>
                 <i class={`codicon codicon-chevron-${isOpen ? 'down' : 'right'} chev`} />
                 <i class={folderIcon(entry.name, isOpen)} />
                 <span class={`name${kind ? ` k-${kind}` : ''}`}>{entry.name}</span>
                 {kind && <span class={`letter k-${kind}`}>•</span>}
               </button>
-              {isOpen && <Dir ws={ws} path={rel} depth={depth + 1} files={files} open={open} changes={changes} toggle={toggle} targetFor={targetFor} />}
+              {isOpen && (
+                <Dir
+                  ws={ws}
+                  path={rel}
+                  depth={depth + 1}
+                  files={files}
+                  open={open}
+                  changes={changes}
+                  toggle={toggle}
+                  targetFor={targetFor}
+                  inIgnored={inIgnored || entry.ignored}
+                />
+              )}
             </div>
           );
         }
@@ -304,7 +318,7 @@ function Dir({ ws, path, depth, files, open, changes, toggle, targetFor }: DirPr
         return (
           <button
             key={rel}
-            class={`row file${selected ? ' selected' : ''}`}
+            class={`row file${selected ? ' selected' : ''}${inIgnored || entry.ignored ? ' ignored' : ''}`}
             role="treeitem"
             style={{ paddingLeft: `${indent + 16}px` }}
             title={rel}

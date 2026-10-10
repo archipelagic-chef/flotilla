@@ -76,6 +76,8 @@ export interface IconMap {
 export interface DirEntry {
   name: string;
   dir: boolean;
+  /** Ignored by git (.gitignore, info/exclude, core.excludesFile); shown greyed out, like in the Explorer. */
+  ignored?: boolean;
 }
 
 export type HostMessage =

@@ -131,3 +131,7 @@ MIT License
 ## Codicons font 0.0.45 (CC BY 4.0)
 
 The icon font (`codicon.ttf`) is [Codicons](https://github.com/microsoft/vscode-codicons) by Microsoft, licensed under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/). It is included unchanged.
+
+## Seti file icons (MIT)
+
+`media/seti/` is VS Code's built-in Seti file icon theme (`vscode-theme-seti`, from https://github.com/microsoft/vscode, MIT), with icons from [seti-ui](https://github.com/jesseweed/seti-ui) by Jesse Weed (MIT). Flotilla uses it when the icon theme you picked isn't installed where Flotilla runs, such as in a devcontainer. `media/seti/languages.json` lists the file extensions and names of VS Code's built-in languages. The upstream notices are in `media/seti/ThirdPartyNotices.txt`.

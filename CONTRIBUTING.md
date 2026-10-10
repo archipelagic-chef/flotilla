@@ -33,6 +33,10 @@ The extension only loads in a test window started from a window where **this pro
 
 Both sides build into the same `dist/`: after a code change, stop both debug sessions and press F5 again.
 
+## File icons
+
+`media/seti/` is a copy of VS Code's Seti icon theme plus a table of the built-in languages' file extensions, used when the user's icon theme isn't available where Flotilla runs (devcontainers). To refresh it from a newer VS Code: `node scripts/update-icons.mjs <path to a VS Code installation>`, e.g. `.vscode-test/vscode-linux-x64-<version>`.
+
 ## Releasing
 
 1. Update `CHANGELOG.md` and bump `version` in `package.json`.

@@ -1,3 +1,4 @@
+import { GitError, runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -45,4 +46,28 @@ export async function listDirectory(root: string, relDir: string, opts: ListOpti
     entries.push({ name: d.name, dir: isDir });
   }
   return entries.sort((a, b) => Number(b.dir) - Number(a.dir) || collator.compare(a.name, b.name));
+}
+
+const IGNORE_CHUNK = 200;
+
+/**
+ * Marks the entries git ignores. Tracked files are never reported as ignored, as in the Explorer. One `git
+ * check-ignore` per listed folder; errors (not a repository, old git) leave everything unmarked.
+ */
+export async function markIgnored(root: string, relDir: string, entries: DirEntry[]): Promise<DirEntry[]> {
+  if (!entries.length) return entries;
+  const rel = (e: DirEntry) => `${relDir ? `${relDir}/` : ''}${e.name}${e.dir ? '/' : ''}`;
+  const ignored = new Set<string>();
+  for (let i = 0; i < entries.length; i += IGNORE_CHUNK) {
+    const chunk = entries.slice(i, i + IGNORE_CHUNK).map(rel);
+    try {
+      // One path per line, unescaped (-z needs --stdin, which runGit doesn't feed).
+      const out = await runGit(['-c', 'core.quotePath=false', 'check-ignore', '--', ...chunk], { cwd: root });
+      out.split('\n').filter(Boolean).forEach((p) => ignored.add(p));
+    } catch (error) {
+      // Exit code 1: none of them is ignored.
+      if (!(error instanceof GitError && error.exitCode === 1)) return entries;
+    }
+  }
+  return entries.map((e) => (ignored.has(rel(e)) ? { ...e, ignored: true } : e));
 }
