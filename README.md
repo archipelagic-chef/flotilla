@@ -2,7 +2,7 @@
 
 Work on several branches at once, each in its own git worktree, from one VS Code window: files, search, version control and Claude Code chats per worktree, and a view of which worktree needs you. Works on Windows, Linux and macOS hosts **and** in devcontainers, including a host window and a container window open on the same repository at the same time.
 
-Flotilla doesn't replace Claude Code or any other agent. Your chats run in Claude Code as usual; Flotilla links each one to its worktree and shows whether it is working, waiting for you or finished.
+Flotilla doesn't replace Claude Code or any other agent. Your chats run in Claude Code as usual; Flotilla links each one to its worktree and shows whether it is working, waiting for you or finished. Its **backlog** keeps the work as tickets, which agents pick up, report in and hand over for review.
 
 > **Preview:** Flotilla is young and changes quickly. Feedback and bug reports are welcome on [GitHub](https://github.com/archipelagic-chef/flotilla/issues).
 
@@ -16,7 +16,8 @@ A **tool strip** runs down its left side:
 - **Files**: the file tree with your file icon theme (or VS Code's Seti, in a devcontainer where your theme isn't installed), git change badges, git-ignored files greyed out, reveal of the active editor's file, new file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees) and drag and drop.
 - **Search**: text search and replace in the active worktree (or all of them on the All tab), with match case, whole word and regex. It searches tracked and untracked files and skips ignored ones.
 - **Version Control**: like VS Code's Source Control, per worktree: a message box with Commit (and Commit & Push, Commit & Sync, Amend), Publish Branch or Sync Changes, and staged and unstaged changes with stage, unstage and discard.
-- **Chats**: the Claude Code chats linked to the worktree, with their state (working, waiting for you, finished), *New chat* and the history of every chat linked to it.
+- **Backlog**: tickets in To Do, In Progress, In Review and Done (see below).
+- **Chats**: the Claude Code chats linked to the worktree, with their state (working, waiting for you, finished), *New chat* and the history of every chat linked to it. Its icon counts the chats waiting for you (an approval, or output to reply to).
 
 At the bottom of the strip, buttons open VS Code's Run and Debug and Extensions views. To keep a single icon strip, move VS Code's activity bar to the top or hide it (`workbench.activityBar.location`); Flotilla offers this once (*Flotilla: Use Flotilla as the Sidebar…*). With it hidden, the Flotilla item in the status bar and Ctrl+Shift+E / F / G bring Flotilla back.
 
@@ -37,6 +38,19 @@ Worktrees created with plain `git worktree add` inside the repository are adopte
 **Tip:** if your host converts line endings (`core.autocrlf=true` on Windows), add a `.gitattributes` with `* text=auto eol=lf`. Otherwise files can show as modified in one environment but not the other.
 
 **Native dependencies:** `node_modules` (or similar) installed on a Windows host won't run inside a Linux container. Use **Run Setup Here** to re-run setup in the environment you're in.
+
+## Backlog and agents
+
+The **Backlog** keeps the repository's work as tickets, in `.flotilla/backlog/` in the main worktree (kept out of git): `backlog.json` for the order and status, and a Markdown file per ticket with its description and its activity. A ticket opens in an editor tab, with its status, priority, worktrees, commits, the agents that worked on it, and an activity feed of comments, agents' reports and everything that changed.
+
+- **Agents on tickets**: *Start an Agent* opens a Claude Code chat in the ticket's worktree (created if needed). Agents report in the ticket, start commit messages with its id (a commit-msg hook checks it), keep its description up to date, ask when they need you, and end with "Ready for review." Pick each ticket's model and effort; with one chosen, the agent runs as a Claude Code session in a terminal.
+- **Any chat works through the backlog**: chats learn about it from `AGENTS.md` next to it, claim or add tickets through its inbox, and can split work into sub-tickets (as proposals you accept, or straight in: `flotilla.backlog.agentTickets`).
+- **Reviews**: a reviewer agent reviews work in review and gives a verdict; requested changes go back to the implementer. Review it yourself with *Approve* and *Request Changes*; the agent picks your changes up, asking first if it needs to. A stopped review offers the fixes for why it stopped.
+- **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.autopilot.maxAgents` at once. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
+- **History clean-up**: rewrite a ticket's branch into a few clean commits (an agent with you, or yourself); the old history is kept under `refs/flotilla/history/`.
+- **Jira and GitHub Issues**: list their issues in the backlog, link local tickets to them, and post comments, change status and priority, or create issues from a ticket. Every write asks you first; agents are told never to change trackers.
+
+Agents Flotilla starts without a window (the autopilot's, reviewers, and those making requested changes) run the Claude Code CLI with `flotilla.agents.permissionMode` (default `auto`): nobody is there to approve a request, so what that mode doesn't allow is refused. Choose it with care, especially `bypassPermissions`.
 
 ## Chats and agent status
 
@@ -65,6 +79,15 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |
+| `flotilla.backlog.commitPrefix` | `agents` | Whose commits in a ticket's worktree must start with its id: `agents`, `everyone` or `off` |
+| `flotilla.backlog.agentTickets` | `propose` | Whether tickets agents add wait for you to accept them, or join the backlog at once |
+| `flotilla.review.automatic` | `true` | A reviewer agent reviews work that goes to review |
+| `flotilla.review.maxRounds` | `3` | Review rounds before the decision is left to you |
+| `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
+| `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
+| `flotilla.autopilot.maxAgents` | `2` | How many agents the autopilot runs at once |
+| `flotilla.agents.permissionMode` | `auto` | What agents without a window may do (user settings only) |
+| `flotilla.agents.claudePath` | `""` | The Claude Code CLI agents run with (user settings only) |
 
 ## Requirements
 
@@ -73,15 +96,21 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 
 ## Privacy and security
 
-- **Nothing leaves your machine.** Flotilla has no telemetry and makes no network requests of its own. It only runs git, including the push, pull and fetch you ask for.
+- **No telemetry.** Flotilla makes network requests only to what you connect: Jira (with the API token you give it) and GitHub Issues (with VS Code's GitHub sign-in), to read issues, and to write to them only after you confirm each write. Besides that it runs git, including the push, pull and fetch you ask for.
+- **Agents are Claude Code.** The agents Flotilla starts run the Claude Code CLI with your account and your Claude Code settings; what they send to Anthropic is as with any Claude Code chat.
+- **Credentials** (the Jira token) are kept in VS Code's secret storage, never in files.
 - **What it writes:**
   - Files you create, edit or move through it.
-  - In each worktree's git directory: `flotilla/` (chat records) and a heartbeat file.
+  - In each worktree's git directory: `flotilla/` (chat records, the ticket it works on) and a heartbeat file.
+  - The backlog, in `.flotilla/backlog/` in the main worktree (kept out of git): tickets, their images, the integrations you connect (no credentials), and the autopilot's switch (signed with a key in secret storage, so agents can't turn it on).
+  - When a ticket's worktree is set up: a `commit-msg` hook that checks commit messages start with the ticket's id (an existing hook is kept and still runs). Hooks kept in your repository's files (`core.hooksPath`) are left alone.
+  - When you clean up a ticket's history: the old commits under `refs/flotilla/history/` (local refs, not pushed).
   - With your consent: `.claude/settings.local.json` and `.claude/flotilla-hook.js` in each worktree (both kept out of git through `.git/info/exclude`).
   - When you open a chat from another worktree: a copy of its transcript in Claude Code's chat folder. When linked chats get titles: a title line in their transcript (`flotilla.tagChatTitles`).
 - **What it reads:** your repository and its worktrees, and Claude Code's transcripts in `~/.claude/projects/`.
-- **The Claude Code hook** is a readable script, `.claude/flotilla-hook.js`. It only records each chat's state in the worktree's git directory.
-- **Trusted workspaces only:** Flotilla runs git, your `flotilla.setupCommand` and the hooks, so it stays off in VS Code's Restricted Mode.
+- **The Claude Code hook** is a readable script, `.claude/flotilla-hook.js`. It records each chat's state in the worktree's git directory, and tells new chats about the backlog's guide.
+- **Settings a repository can't change**: `flotilla.agents.permissionMode` and `flotilla.agents.claudePath` are read from your user settings only.
+- **Trusted workspaces only:** Flotilla runs git, your `flotilla.setupCommand`, the hooks and agents, so it stays off in VS Code's Restricted Mode.
 
 Please report security issues privately through [GitHub's security advisories](https://github.com/archipelagic-chef/flotilla/security/advisories/new) rather than in a public issue.
 
