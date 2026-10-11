@@ -926,3 +926,14 @@ button.work-row:hover {
     animation: none;
   }
 }
+/* The Commits head's action (Clean Up History…), on its right; in the case its head keeps. */
+.work-head .work-head-action {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+/* A kept history's commits, under it. */
+.work-row.nested {
+  padding-left: 32px;
+}

@@ -379,6 +379,73 @@ function Parts({ ticket }: { ticket: TicketView }) {
 
 const COMMITS_SHOWN = 8;
 
+/** A history kept from a clean-up: what it was, and (opened) its commits. */
+function HistoryVersionRow({ version: v }: { version: TicketView['history'][number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button class="work-row" onClick={() => setOpen(!open)} aria-expanded={open} title={`Kept as ${v.ref}: not a branch, and not pushed`}>
+        <i class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
+        <span class="work-main">
+          v{v.version} <span class="muted">{v.branch}</span>
+        </span>
+        <span class="muted">
+          {v.commits} commit{v.commits === 1 ? '' : 's'}, cleaned up into {v.cleanCommits} · {ago(v.archived)}
+        </span>
+      </button>
+      {open &&
+        v.log.map((c) => (
+          <button key={c.hash} class="work-row commit nested" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show what it changed`}>
+            <span class="hash">{c.short}</span>
+            <span class="work-main subject">{c.subject}</span>
+            <span class="muted work-when">
+              {c.author} · {ago(c.date)}
+            </span>
+          </button>
+        ))}
+    </>
+  );
+}
+
+/** A clean-up of the ticket's history in progress: how far it is; compare, finish or cancel it. */
+function CleanUpPanel({ ticket }: { ticket: TicketView }) {
+  const r = ticket.rewrite!;
+  const same = !r.differs.length;
+  const ready = same && r.cleanCommits > 0 && !r.changes;
+  const who = r.by === 'agent' ? (r.agent ? `${r.agent} (an agent) is` : 'An agent is') : 'You are';
+  const state = !r.cleanCommits
+    ? 'No clean commits yet.'
+    : same
+      ? r.changes
+        ? `${r.cleanCommits} clean commit${r.cleanCommits === 1 ? '' : 's'}, with the same files; ${r.changes} uncommitted change${r.changes === 1 ? '' : 's'} left there.`
+        : `${r.cleanCommits} clean commit${r.cleanCommits === 1 ? '' : 's'}, with the same files as ${r.branch}: ready to finish.`
+      : `${r.cleanCommits} clean commit${r.cleanCommits === 1 ? '' : 's'} so far; ${r.differs.length} file${r.differs.length === 1 ? '' : 's'} still differ${r.differs.length === 1 ? 's' : ''}.`;
+  return (
+    <div class={`review-panel ${ready ? 'done' : 'working'}`}>
+      <i class={`codicon codicon-${ready ? 'pass-filled' : 'wand'}`} />
+      <span class="review-text">
+        <strong>Cleaning up the history</strong> {who} rewriting the {r.commits} commit{r.commits === 1 ? '' : 's'} of {r.branch} in {r.clean}. {state}
+      </span>
+      {!same && r.cleanCommits > 0 && (
+        <button class="button secondary" onClick={() => send({ type: 'compareCleanUp' })} title="What still differs between the clean history and the branch">
+          <i class="codicon codicon-diff" /> Compare
+        </button>
+      )}
+      <button class="button secondary" onClick={() => send({ type: 'cancelCleanUp' })} title="Removes the clean-up's worktree and branch; the branch stays as it is">
+        Cancel
+      </button>
+      <button
+        class={`button${ready ? '' : ' secondary'}`}
+        disabled={!ready}
+        onClick={() => send({ type: 'finishCleanUp' })}
+        title={ready ? 'Keeps the old history, and moves the branch to the clean commits (asks first)' : 'Once the clean history ends at the same files, with nothing uncommitted'}
+      >
+        <i class="codicon codicon-check" /> Finish Clean-Up
+      </button>
+    </div>
+  );
+}
+
 /** Where the work on the ticket is: its worktrees (and branches without one), and its commits. */
 function Work({ ticket }: { ticket: TicketView }) {
   const [allCommits, setAllCommits] = useState(false);
@@ -430,6 +497,15 @@ function Work({ ticket }: { ticket: TicketView }) {
         ))}
         <div class="work-head">
           <i class="codicon codicon-git-commit" /> Commits <span class="count">{ticket.commits.length}</span>
+          {ticket.canCleanUp && (
+            <button
+              class="text-button work-head-action"
+              onClick={() => send({ type: 'cleanUp' })}
+              title="Rewrite the branch's commits into a clean history (an agent with you, or yourself). The old history is kept, and shown here."
+            >
+              <i class="codicon codicon-wand" /> Clean Up History…
+            </button>
+          )}
         </div>
         {!ticket.commits.length && <div class="work-empty muted">None yet. Commits on its branches, or that mention {ticket.item.id}, show here.</div>}
         {commits.map((c) => (
@@ -456,6 +532,16 @@ function Work({ ticket }: { ticket: TicketView }) {
           <button class="text-button work-more" onClick={() => setAllCommits(!allCommits)}>
             {allCommits ? 'Show fewer' : `Show all ${ticket.commits.length}`}
           </button>
+        )}
+        {ticket.history.length > 0 && (
+          <>
+            <div class="work-head">
+              <i class="codicon codicon-history" /> Earlier Histories <span class="count">{ticket.history.length}</span>
+            </div>
+            {ticket.history.map((v) => (
+              <HistoryVersionRow key={v.ref} version={v} />
+            ))}
+          </>
         )}
       </div>
     </section>
@@ -902,6 +988,7 @@ function App() {
           )}
         </div>
         {ticket.review && <ReviewPanel ticket={ticket} />}
+        {ticket.rewrite && <CleanUpPanel ticket={ticket} />}
       </header>
       {ticket.error && (
         <div class="error-note">
@@ -910,7 +997,7 @@ function App() {
       )}
       <Description ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
-      {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0) && <Work ticket={ticket} />}
+      {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
       {ticket.agents.length > 0 && <Agents ticket={ticket} />}
       <Activity ticket={ticket} />
     </main>

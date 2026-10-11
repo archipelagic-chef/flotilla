@@ -365,6 +365,26 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "flotilla.cleanUpHistory",
+        "title": "Clean Up Ticket History…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.finishCleanUp",
+        "title": "Finish Clean-Up of Ticket History",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.cancelCleanUp",
+        "title": "Cancel Clean-Up of Ticket History",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.compareCleanUp",
+        "title": "Compare Clean-Up with Ticket Branch",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.reviewBacklogItem",
         "title": "Review Ticket…",
         "category": "Flotilla"
@@ -729,6 +749,22 @@
         },
         {
           "command": "flotilla.openBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.cleanUpHistory",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.finishCleanUp",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.cancelCleanUp",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.compareCleanUp",
           "when": "false"
         },
         {

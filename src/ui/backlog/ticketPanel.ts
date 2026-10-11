@@ -13,7 +13,8 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
-import { ticketCommits } from '../../features/history/log';
+import { compareRewrite } from '../../features/backlog/history';
+import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
@@ -366,6 +367,8 @@ export class TicketPanels implements vscode.Disposable {
           canCreateIssue: false,
           branches: [],
           commits: [],
+          history: [],
+          canCleanUp: false,
           children: [],
           canReview: false,
         }),
@@ -409,6 +412,8 @@ export class TicketPanels implements vscode.Disposable {
       })),
       branches: [],
       commits: [],
+      history: [],
+      canCleanUp: false,
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
@@ -425,8 +430,11 @@ export class TicketPanels implements vscode.Disposable {
     };
   }
 
-  /** An item's branches without a worktree, and its commits (read from git: quick, and local). */
-  private async work(item: BacklogItem): Promise<Pick<TicketView, 'branches' | 'commits'>> {
+  /**
+   * An item's branches without a worktree, its commits, and its history clean-ups: the one in progress, and the
+   * histories kept (read from git: quick, and local).
+   */
+  private async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp'>> {
     const cwd = this.deps.mainRoot;
     try {
       const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
@@ -434,10 +442,24 @@ export class TicketPanels implements vscode.Disposable {
       const checkedOut = new Set(this.worktreesOf(item).map((w) => w.worktree.branch));
       const base = await resolveBase(cwd, readSettings().defaultBase);
       const ids = [item.id, ...(item.links ?? []).map((l) => l.id)];
-      const commits = await ticketCommits(cwd, { branches: branches.filter((b) => b !== base), base, ids, limit: 100 });
-      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits };
+      const [commits, history, rewrite] = await Promise.all([
+        ticketCommits(cwd, { branches: branches.filter((b) => b !== base), base, ids, limit: 100 }),
+        Promise.all([...(item.history ?? [])].reverse().map(async (v) => ({ ...v, log: await versionCommits(cwd, v.base, v.ref, 100) }))),
+        item.rewrite &&
+          compareRewrite(cwd, item.rewrite).then(
+            (c) => ({ ...item.rewrite!, ...c, changes: this.deps.repository.current.find((w) => w.worktree.branch === item.rewrite!.clean)?.changes.length ?? 0 }),
+            () => ({ ...item.rewrite!, differs: ['(a branch is missing)'], commits: 0, cleanCommits: 0, changes: 0 }),
+          ),
+      ]);
+      // A local item's branch with commits of its own (not a clean-up's) can have its history cleaned up.
+      const canCleanUp =
+        !item.remote &&
+        !item.rewrite &&
+        !!base &&
+        commits.some((c) => c.branches.some((b) => b !== base && !/-clean(-\d+)?$/.test(b)));
+      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits, history, canCleanUp, ...(rewrite ? { rewrite } : {}) };
     } catch {
-      return { branches: [], commits: [] };
+      return { branches: [], commits: [], history: [], canCleanUp: false };
     }
   }
 
@@ -548,9 +570,14 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'openCommit': {
         // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
-        const { commits } = await this.work(item);
+        const work = await this.work(item);
+        const { commits } = work;
         const commit = commits.find((c) => c.hash === m.hash);
-        if (!commit) return;
+        // A commit of a kept history is on no branch: its diff.
+        if (!commit) {
+          if (work.history.some((v) => v.log.some((c) => c.hash === m.hash))) await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
+          return;
+        }
         const candidates = [
           ...this.worktreesOf(item).filter((w) => w.worktree.branch && commit.branches.includes(w.worktree.branch)),
           ...this.worktreesOf(item),
@@ -570,6 +597,18 @@ export class TicketPanels implements vscode.Disposable {
         await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
         return;
       }
+      case 'cleanUp':
+        await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
+        return;
+      case 'finishCleanUp':
+        await vscode.commands.executeCommand('flotilla.finishCleanUp', id);
+        return;
+      case 'cancelCleanUp':
+        await vscode.commands.executeCommand('flotilla.cancelCleanUp', id);
+        return;
+      case 'compareCleanUp':
+        await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
+        return;
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;

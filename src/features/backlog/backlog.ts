@@ -1,3 +1,4 @@
+import type { HistoryRewrite, HistoryVersion } from './history';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -42,6 +43,9 @@ export interface BacklogItem {
   proposed?: { by?: string };
   /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
   review?: ReviewState;
+  /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
+  rewrite?: HistoryRewrite;
+  history?: HistoryVersion[];
 }
 
 /** A local item's link to an issue in a tracker. */

@@ -107,7 +107,8 @@ export async function ticketCommits(cwd: string, opts: { branches: string[]; bas
   const not = opts.base ? ['--not', opts.base] : [];
   const [onBranches, mentions] = await Promise.all([
     Promise.all(opts.branches.map(async (b) => ({ branch: b, commits: await log([`refs/heads/${b}`, ...not, '--']) }))),
-    opts.ids.length ? log(['--all', '-i', '--fixed-strings', ...opts.ids.map((id) => `--grep=${id}`), '--']) : Promise.resolve([]),
+    // Histories kept from clean-ups aren't the work anymore: they show as the ticket's versions (versionCommits).
+    opts.ids.length ? log(['--exclude=refs/flotilla/*', '--all', '-i', '--fixed-strings', ...opts.ids.map((id) => `--grep=${id}`), '--']) : Promise.resolve([]),
   ]);
   const byHash = new Map<string, TicketCommit>();
   const add = (c: Omit<CommitView, 'outgoing'>, branch?: string) => {
@@ -120,4 +121,12 @@ export async function ticketCommits(cwd: string, opts: { branches: string[]; bas
   const whole = opts.ids.map((id) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9])`, 'i'));
   for (const c of mentions) if (whole.some((r) => r.test(`${c.subject}\n${c.body}`))) add(c);
   return [...byHash.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, opts.limit);
+}
+
+/** The commits of a history kept from a clean-up (from where it started to its tip), newest first. */
+export async function versionCommits(cwd: string, base: string, tip: string, limit: number): Promise<TicketCommit[]> {
+  const commits = await runGit(['-c', 'log.showSignature=false', 'log', `--format=${FORMAT}`, '-n', String(limit), `${base}..${tip}`, '--'], { cwd })
+    .then(parseLog)
+    .catch(() => []);
+  return commits.map((c) => ({ hash: c.hash, short: c.short, subject: c.subject, author: c.author, date: c.date, branches: [] }));
 }

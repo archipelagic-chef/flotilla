@@ -11,6 +11,7 @@ import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
+import { cancelCleanUp, compareCleanUp, finishCleanUp, startCleanUp, type CleanUpDeps } from './backlog/historyCleanup';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
@@ -115,6 +116,16 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.planBacklog', () => planBacklog(ctx));
   register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
+  const cleanUp: CleanUpDeps = {
+    ctx,
+    chats,
+    createWorkstream: (request) => createWorkstream(ctx, request),
+    enforceCommitPrefix: (ws, id) => enforceCommitPrefix(ctx, ws, id),
+  };
+  register('flotilla.cleanUpHistory', (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts));
+  register('flotilla.finishCleanUp', (id?: unknown, opts?: unknown) => finishCleanUp(cleanUp, id, opts));
+  register('flotilla.cancelCleanUp', (id?: unknown) => cancelCleanUp(cleanUp, id));
+  register('flotilla.compareCleanUp', (id?: unknown) => compareCleanUp(cleanUp, id));
   register('flotilla.reviewBacklogItem', (id?: unknown, verdict?: unknown, text?: unknown) =>
     ctx.tickets.review(
       typeof id === 'string' ? id : undefined,

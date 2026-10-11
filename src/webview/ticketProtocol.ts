@@ -4,6 +4,7 @@
  */
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
+import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { ReviewState } from '../features/backlog/review';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AttentionState } from '../features/workstreams/attention';
@@ -81,6 +82,12 @@ export interface TicketView {
   branches: string[];
   /** Its commits: on its branches (not yet on the base), or mentioning it or a linked issue. Newest first. */
   commits: TicketCommit[];
+  /** A clean-up of its history in progress: how far the clean history is (it can be finished once no files differ). */
+  rewrite?: HistoryRewrite & { differs: string[]; commits: number; cleanCommits: number; changes: number };
+  /** Its histories kept from clean-ups, with their commits (newest first). */
+  history: Array<HistoryVersion & { log: TicketCommit[] }>;
+  /** It has a branch whose history can be cleaned up. */
+  canCleanUp: boolean;
 }
 
 export type TicketHostMessage =
@@ -128,5 +135,10 @@ export type TicketWebviewMessage =
   | { type: 'openChat'; key: string; id: string }
   /** Open what a commit changed. */
   | { type: 'openCommit'; hash: string }
+  /** Clean up the history of its branch; and the clean-up's actions. */
+  | { type: 'cleanUp' }
+  | { type: 'finishCleanUp' }
+  | { type: 'cancelCleanUp' }
+  | { type: 'compareCleanUp' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string };
