@@ -35,6 +35,7 @@ import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
 import * as scmUi from './scmCommands';
 import { readSettings } from './settings';
+import { runWorkflowByHand } from './ci/runWorkflow';
 import { addWorkspaceFolder, extraWorkspaceFolder, removeWorkspaceFolder } from './workspaceFolders';
 
 /** What the sidebar offers to commands. */
@@ -138,6 +139,7 @@ export function registerCommands(ctx: CommandContext): void {
   );
   register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
+  register('flotilla.runWorkflow', () => runWorkflowByHand(ctx.currentRoot));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
   register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
   register('flotilla.remove', withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }));

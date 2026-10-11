@@ -80,6 +80,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.runWorkflow",
+        "title": "Run Workflow…",
+        "category": "Flotilla",
+        "icon": "$(play)"
+      },
+      {
         "command": "flotilla.openInNewWindow",
         "title": "Open in New Window",
         "category": "Flotilla",
@@ -495,6 +501,10 @@
         },
         {
           "command": "flotilla.quickSwitch",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.runWorkflow",
           "when": "flotilla.state == ready"
         },
         {
