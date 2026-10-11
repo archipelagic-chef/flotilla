@@ -1902,3 +1902,24 @@ ins {
 .tools .b.busy .codicon {
   font-size: 10px;
 }
+/* The autopilot: its switch in the backlog's title (lit while on), and a line saying what it's doing. */
+.autopilot-toggle.on {
+  color: var(--vscode-charts-green, var(--working));
+}
+.autopilot-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--vscode-charts-green, var(--working));
+  background: color-mix(in srgb, var(--vscode-charts-green, var(--working)) 10%, transparent);
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+}
+.autopilot-bar .codicon {
+  margin-top: 1px;
+  color: var(--vscode-charts-green, var(--working));
+}

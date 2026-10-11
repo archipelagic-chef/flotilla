@@ -13,6 +13,7 @@ const PRIORITY: Record<string, string> = { urgent: 'Urgent', high: 'High', mediu
 function subject(by: string): string {
   if (by === 'You') return 'You';
   if (by === 'Agent') return 'An agent';
+  if (by === 'Autopilot') return 'The autopilot';
   const agent = entryAgent(by);
   if (agent) return `${agent} (an agent)`;
   return '';

@@ -11,11 +11,24 @@ export interface ReviewState {
   /** 1 for the first review. */
   round: number;
   /**
-   * reviewing: the reviewer is at it; revising: the implementer is making the changes asked for; asking: the
+   * working: an agent the autopilot started is doing the work; reviewing: the reviewer is at it; revising: the implementer is making the changes asked for; asking: the
    * implementer asked something and waits for the user's answer (a comment); yours: the work waits for the user's
    * review; approved; stopped: no verdict, too many rounds, or stopped by the user.
    */
-  state: 'reviewing' | 'revising' | 'asking' | 'yours' | 'approved' | 'stopped';
+  state: 'working' | 'reviewing' | 'revising' | 'asking' | 'yours' | 'approved' | 'stopped' | 'paused';
+  /** Paused on Claude's usage limit: the agent's chat goes on at until, by itself, then back in resume's state. */
+  paused?: {
+    /** ISO 8601. */
+    until: string;
+    /** The reset was said (not a guess). */
+    known: boolean;
+    phase: 'review' | 'work';
+    session: string;
+    agent: string;
+    resume: 'working' | 'reviewing' | 'revising';
+  };
+  /** The autopilot started the work (no one asked an agent to). */
+  autopilot?: boolean;
   /** The reviewer agent ('' when there has been none yet). */
   reviewer: string;
   /** The user gave the last verdict (approved, or changes requested), not the reviewer agent. */
@@ -54,7 +67,7 @@ export interface RevisionTask {
 }
 
 /** How a stopped review is fixed from the ticket. */
-export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'worktree';
+export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'worktree' | 'resumeNow';
 
 /** A fix's button, as fits why it stopped. */
 export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
@@ -69,6 +82,8 @@ export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): stri
       return 'Another Round';
     case 'worktree':
       return 'Create Worktree';
+    case 'resumeNow':
+      return 'Go On Now';
   }
 }
 
@@ -250,3 +265,14 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }
+
+/** What an agent paused on a usage limit is told when it goes on (its chat resumed). */
+export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
+  return phase === 'review'
+    ? "Claude's usage limit stopped you before you finished; it has reset. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked."
+    : 'Claude\'s usage limit stopped you before you finished; it has reset. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or with "Waiting for you." if you need the user).';
+}
+
+/** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
+export const AUTOPILOT_NOTE =
+  'Flotilla\'s autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, end that report with a line "Waiting for you.", and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';

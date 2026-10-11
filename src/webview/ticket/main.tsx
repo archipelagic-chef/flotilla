@@ -307,6 +307,7 @@ const FIX_ICON: Record<ReviewFix, string> = {
   inChat: 'comment-discussion',
   anotherRound: 'refresh',
   worktree: 'git-branch',
+  resumeNow: 'debug-continue',
 };
 
 const FIX_TIP: Record<ReviewFix, string> = {
@@ -315,31 +316,50 @@ const FIX_TIP: Record<ReviewFix, string> = {
   inChat: "Opens the agent's chat with the request in its message box (and on the clipboard): send it there",
   anotherRound: 'Allow one more round of review and changes',
   worktree: 'Creates a worktree for it, then goes on',
+  resumeNow: "Goes on now, without waiting for the limit's reset (if it hasn't reset, it pauses again)",
 };
 
 /** Where the review loop is: who reviews, the round, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
-  const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking';
+  const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
   const who = r.implementer ?? 'the implementer';
   const [icon, cls, text] =
-    r.state === 'reviewing'
-      ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
-      : r.state === 'revising'
-        ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
-        : r.state === 'asking'
-          ? ['question', 'waiting', `${who} has a question for you. Answer it in a comment below; it goes on from there.`]
-          : r.state === 'yours'
-            ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
-            : r.state === 'approved'
-              ? ['pass-filled', 'done', `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.`]
-              : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
+    r.state === 'working'
+      ? ['rocket', 'working', `${who} is working on it (the autopilot started it); it reports below`]
+      : r.state === 'paused' && r.paused
+        ? [
+            'debug-pause',
+            'waiting',
+            `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          ]
+        : r.state === 'reviewing'
+          ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
+          : r.state === 'revising'
+            ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
+            : r.state === 'asking'
+              ? ['question', 'waiting', `${who} has a question for you. Answer it in a comment below; it goes on from there.`]
+              : r.state === 'yours'
+                ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
+                : r.state === 'approved'
+                  ? ['pass-filled', 'done', `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.`]
+                  : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
   return (
     <div class={`review-panel ${cls}`}>
       <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
       <span class="review-text">
-        <strong>Review{r.round ? ` · round ${r.round}` : ''}</strong> {text}
+        <strong>
+          {r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot)
+            ? 'Autopilot'
+            : `Review${r.round ? ` · round ${r.round}` : ''}`}
+        </strong>{' '}
+        {text}
       </span>
+      {r.state === 'paused' && (
+        <button class="button secondary" onClick={() => send({ type: 'reviewFix', fix: 'resumeNow' })} title={FIX_TIP.resumeNow}>
+          <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+        </button>
+      )}
       {r.state === 'yours' ? (
         <>
           <button
@@ -395,7 +415,12 @@ function Parts({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="work">
         {ticket.children.map((c) => (
-          <button key={c.id} class={`work-row${c.status === 'done' ? ' dim' : ''}`} onClick={() => send({ type: 'openTicket', id: c.id })} title="Open its ticket">
+          <button
+            key={c.id}
+            class={`work-row${c.status === 'done' ? ' dim' : ''}`}
+            onClick={() => send({ type: 'openTicket', id: c.id })}
+            title="Open its ticket"
+          >
             <i class={`codicon codicon-${c.proposed ? 'lightbulb' : LANE_ICON[c.status]}`} />
             <span class="hash">{c.id}</span>
             <span class="work-main subject">{c.title}</span>
@@ -427,7 +452,12 @@ function HistoryVersionRow({ version: v }: { version: TicketView['history'][numb
       </button>
       {open &&
         v.log.map((c) => (
-          <button key={c.hash} class="work-row commit nested" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show what it changed`}>
+          <button
+            key={c.hash}
+            class="work-row commit nested"
+            onClick={() => send({ type: 'openCommit', hash: c.hash })}
+            title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show what it changed`}
+          >
             <span class="hash">{c.short}</span>
             <span class="work-main subject">{c.subject}</span>
             <span class="muted work-when">
@@ -463,14 +493,22 @@ function CleanUpPanel({ ticket }: { ticket: TicketView }) {
           <i class="codicon codicon-diff" /> Compare
         </button>
       )}
-      <button class="button secondary" onClick={() => send({ type: 'cancelCleanUp' })} title="Removes the clean-up's worktree and branch; the branch stays as it is">
+      <button
+        class="button secondary"
+        onClick={() => send({ type: 'cancelCleanUp' })}
+        title="Removes the clean-up's worktree and branch; the branch stays as it is"
+      >
         Cancel
       </button>
       <button
         class={`button${ready ? '' : ' secondary'}`}
         disabled={!ready}
         onClick={() => send({ type: 'finishCleanUp' })}
-        title={ready ? 'Keeps the old history, and moves the branch to the clean commits (asks first)' : 'Once the clean history ends at the same files, with nothing uncommitted'}
+        title={
+          ready
+            ? 'Keeps the old history, and moves the branch to the clean commits (asks first)'
+            : 'Once the clean history ends at the same files, with nothing uncommitted'
+        }
       >
         <i class="codicon codicon-check" /> Finish Clean-Up
       </button>
@@ -541,7 +579,12 @@ function Work({ ticket }: { ticket: TicketView }) {
         </div>
         {!ticket.commits.length && <div class="work-empty muted">None yet. Commits on its branches, or that mention {ticket.item.id}, show here.</div>}
         {commits.map((c) => (
-          <button key={c.hash} class="work-row commit" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}>
+          <button
+            key={c.hash}
+            class="work-row commit"
+            onClick={() => send({ type: 'openCommit', hash: c.hash })}
+            title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
+          >
             <span class="hash">{c.short}</span>
             <span class="work-main subject">{c.subject}</span>
             {c.branches.length ? (
@@ -599,7 +642,12 @@ function Agents({ ticket }: { ticket: TicketView }) {
         {ticket.agents.map((a) => {
           const state = CHAT_STATE[a.state] ?? CHAT_STATE.ended;
           return (
-            <button key={a.id} class={`agent-row ${state.cls}`} onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open this chat in Claude Code">
+            <button
+              key={a.id}
+              class={`agent-row ${state.cls}`}
+              onClick={() => send({ type: 'openChat', key: a.key, id: a.id })}
+              title="Open this chat in Claude Code"
+            >
               <span class="chat-icon small">
                 <i class="codicon codicon-hubot" />
                 <span class={`dot ${state.cls}`} />
@@ -698,7 +746,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
-          const count = ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length + (!t.kind || t.kind === 'history' ? ticket.commits.length : 0);
+          const count =
+            ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length + (!t.kind || t.kind === 'history' ? ticket.commits.length : 0);
           return (
             <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
               {t.label}
@@ -714,7 +763,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
             const c = f.commit;
             return (
               <li key={c.hash} class="entry kind-commit">
-                <button class="commit-line" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}>
+                <button
+                  class="commit-line"
+                  onClick={() => send({ type: 'openCommit', hash: c.hash })}
+                  title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
+                >
                   <i class="codicon codicon-git-commit" />
                   <span class="hash">{c.short}</span>
                   <span class="subject">{c.subject}</span>
@@ -754,7 +807,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
                   </span>
                 )}
                 {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
-                  <button class="text-button post-entry" onClick={() => send({ type: 'postEntry', key: e.key! })} title="Shows what will be posted and asks first">
+                  <button
+                    class="text-button post-entry"
+                    onClick={() => send({ type: 'postEntry', key: e.key! })}
+                    title="Shows what will be posted and asks first"
+                  >
                     <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
                   </button>
                 )}
@@ -773,8 +830,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
             asking
               ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
               : ticket.remote
-              ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
-              : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
+                ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
+                : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
           }
           label="Comment"
           onSubmit={post}
@@ -1066,7 +1123,11 @@ function App() {
         <Title ticket={ticket} />
         <div class="properties">
           {ticket.parent && (
-            <button class="parent-link" onClick={() => send({ type: 'openTicket', id: ticket.parent!.id })} title={`Part of ${ticket.parent.id}: ${ticket.parent.title}`}>
+            <button
+              class="parent-link"
+              onClick={() => send({ type: 'openTicket', id: ticket.parent!.id })}
+              title={`Part of ${ticket.parent.id}: ${ticket.parent.title}`}
+            >
               <i class="codicon codicon-type-hierarchy-super" />
               Part of <strong>{ticket.parent.id}</strong> <span class="muted">{ticket.parent.title}</span>
             </button>

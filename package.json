@@ -365,6 +365,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "flotilla.toggleAutopilot",
+        "title": "Toggle Autopilot (Agents Take To Do Tickets)",
+        "category": "Flotilla",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "flotilla.cleanUpHistory",
         "title": "Clean Up Ticket History…",
         "category": "Flotilla"
@@ -1354,6 +1360,13 @@
           "enumDescriptions": ["Claude Code's default (your /effort setting).", "", "", "", "", ""],
           "default": "",
           "markdownDescription": "How hard reviewer agents think. Empty: the ticket's choice, else `#flotilla.agents.effort#`."
+        },
+        "flotilla.autopilot.maxAgents": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "With the autopilot on (the rocket in the backlog's title), how many agents work on tickets at once. Each takes the next To Do ticket from the top of the backlog, in a worktree of its own. They run without a window, allowed what `#flotilla.agents.permissionMode#` allows."
         },
         "flotilla.agents.claudePath": {
           "type": "string",

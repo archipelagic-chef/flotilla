@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { Autopilot } from '../backlog/autopilot';
 import type { Repository } from '../../core/repository';
 import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
@@ -76,6 +77,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     await this.postBacklog();
   }
 
+  private autopilot: Autopilot | undefined;
+
+  /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
+  useAutopilot(autopilot: Autopilot): void {
+    this.autopilot = autopilot;
+    this.subscriptions.push(autopilot.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   private async postBacklog(): Promise<void> {
     const store = this.deps.backlog;
     const data = await store.read();
@@ -105,7 +115,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length });
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}) });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -165,6 +175,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
       case 'plan':
         await vscode.commands.executeCommand('flotilla.planBacklog');
+        return;
+      case 'autopilot':
+        await vscode.commands.executeCommand('flotilla.toggleAutopilot');
         return;
       case 'integrations':
         await this.deps.integrations.manage();

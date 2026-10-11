@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
+import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -47,6 +48,16 @@ export function choiceArgs(c: AgentChoice): string[] {
   return [...(c.model ? ['--model', c.model] : []), ...(c.effort ? ['--effort', c.effort] : [])];
 }
 
+/** The text of a run's JSON result (what it said last), if it printed one. */
+function resultText(stdout: string): string | undefined {
+  try {
+    const r = JSON.parse(stdout.trim()) as { result?: unknown };
+    return typeof r.result === 'string' ? r.result.slice(0, 300) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The sessions of agents running without a window now (in this window's extension host). */
 const running = new Set<string>();
 
@@ -54,11 +65,18 @@ export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
 
+export interface AgentResult {
+  code: number | null;
+  error?: string;
+  /** It stopped on Claude's usage (or rate) limit: when to go on. */
+  limit?: UsageLimit;
+}
+
 export interface AgentRun {
   /** The chat's session: new (chosen here, so it's known at once) or resumed. */
   sessionId: string;
-  /** Resolves when the agent stops: its exit code, and what it wrote last on stderr when it failed. */
-  done: Promise<{ code: number | null; error?: string }>;
+  /** Resolves when the agent stops: its exit code, what it wrote last when it failed, and a usage limit it hit. */
+  done: Promise<AgentResult>;
   stop(): void;
 }
 
@@ -94,9 +112,10 @@ export function runAgentHeadless(o: {
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
   let stderr = '';
-  child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
-  child.stdout.on('data', () => undefined);
-  const done = new Promise<{ code: number | null; error?: string }>((resolve) => {
+  let stdout = '';
+  child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
+  child.stdout.on('data', (d: Buffer) => (stdout = (stdout + d.toString()).slice(-8000)));
+  const done = new Promise<AgentResult>((resolve) => {
     child.on('exit', () => running.delete(sessionId));
     child.on('error', (e) => {
       running.delete(sessionId);
@@ -104,7 +123,11 @@ export function runAgentHeadless(o: {
     });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
-      resolve(code === 0 ? { code } : { code, error: stderr.trim() || `exit code ${code}` });
+      // A run that failed (or whose result is an error) may have hit a limit: it goes on when that resets.
+      const failed = code !== 0 || /"is_error"\s*:\s*true/.test(stdout);
+      const limit = failed ? parseUsageLimit(`${stdout}\n${stderr}`, new Date()) : undefined;
+      if (limit) o.output.appendLine(`${o.name} hit a ${limit.kind} limit; it goes on at ${limit.until.toLocaleString()}.`);
+      resolve(code === 0 && !limit ? { code } : { code, error: stderr.trim() || resultText(stdout) || `exit code ${code}`, ...(limit ? { limit } : {}) });
     });
   });
   return { sessionId, done, stop: () => child.kill() };

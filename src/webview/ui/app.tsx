@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -118,7 +118,7 @@ export function App() {
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
   const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -254,7 +254,7 @@ export function App() {
           return;
         case 'backlog':
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot });
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
@@ -453,6 +453,7 @@ export function App() {
         items={backlog}
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
+        autopilot={backlogInfo.autopilot}
         workstreams={workstreams}
         colors={colors}
         openWorktree={(key) => {

@@ -16,6 +16,8 @@ import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import {
   answerPrompt,
+  AUTOPILOT_NOTE,
+  resumeAfterLimitPrompt,
   fixesFor,
   fixLabel,
   readyReport,
@@ -33,15 +35,18 @@ import {
   type Verdict,
 } from '../../features/backlog/review';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
+import type { UsageLimit } from '../../features/backlog/limits';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';
-import { agentChoice, describeChoice, isRunningHeadless, runAgentHeadless, type AgentRun } from './agentRunner';
+import { agentChoice, describeChoice, isRunningHeadless, runAgentHeadless, type AgentResult, type AgentRun } from './agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
+  /** Whether this window acts on its own (agents going on after a usage limit): one window does. */
+  isLeader?(): boolean;
   backlog: LocalBacklog;
   repository: Repository<Workstream>;
   mainRoot: string;
@@ -71,10 +76,17 @@ export class ReviewLoop implements vscode.Disposable {
   constructor(private readonly deps: ReviewDeps) {
     this.watcher = deps.backlog.watch(() => this.schedule());
     this.schedule();
+    // Agents paused on a usage limit go on when it resets (checked each minute too: a sleeping computer skips timers).
+    this.ticker = setInterval(() => void this.resumePaused(), 60_000);
   }
+
+  private readonly ticker: NodeJS.Timeout;
+  private resumeTimer: NodeJS.Timeout | undefined;
 
   dispose(): void {
     this.watcher.dispose();
+    clearInterval(this.ticker);
+    clearTimeout(this.resumeTimer);
     this.runs.forEach((r) => r.stop());
     this.changed.dispose();
   }
@@ -113,7 +125,10 @@ export class ReviewLoop implements vscode.Disposable {
       }
       // Changes the user asked for come back to the user, whether reviewer agents run or not.
       const byUser = !!item.review?.byUser && item.review.state === 'revising';
-      if (!automatic && !byUser) continue;
+      // The autopilot's work goes on to review too: to the reviewer agent, or (without automatic reviews) to the user.
+      const autopilot = item.review?.state === 'working';
+      const toUser = byUser || (autopilot && !automatic);
+      if (!automatic && !byUser && !autopilot) continue;
       // An implementer that reports "Ready for review" sends its item to review.
       if (item.status === 'doing' || item.status === 'todo') {
         const ticket = await this.deps.backlog.readTicket(item);
@@ -123,21 +138,26 @@ export class ReviewLoop implements vscode.Disposable {
         };
         const ready = readyReport(ticket.activity, seen, this.key(item.id));
         if (ready) {
-          if (byUser) this.statuses.set(item.id, 'review');
+          if (toUser) this.statuses.set(item.id, 'review');
           await this.setReview(
             item.id,
             (r) => ({
               ...(r ?? { round: 0, state: 'revising', reviewer: '' }),
-              ...(byUser ? { state: 'yours' as const } : {}),
+              ...(toUser ? { state: 'yours' as const } : {}),
               implementer: r?.implementer ?? ready.agent,
               handled: [...(r?.handled ?? []), this.key(item.id)(ready.entry)],
             }),
             'review',
             `Agent ${ready.agent}`,
           );
-          if (byUser) {
+          if (toUser) {
             void vscode.window
-              .showInformationMessage(`${ready.agent} made the changes you asked for on ${item.id} "${item.title}". It's ready for your review.`, 'Open')
+              .showInformationMessage(
+                byUser
+                  ? `${ready.agent} made the changes you asked for on ${item.id} "${item.title}". It's ready for your review.`
+                  : `${ready.agent} finished ${item.id} "${item.title}". It's ready for your review.`,
+                'Open',
+              )
               .then((c) => c && this.deps.openTicket(item.id));
           }
           continue;
@@ -180,11 +200,115 @@ export class ReviewLoop implements vscode.Disposable {
     });
   }
 
+  /** Pauses an agent that hit Claude's usage limit: its chat goes on by itself when the limit resets. */
+  private async pause(
+    id: string,
+    o: { phase: 'review' | 'work'; session: string; agent: string; resume: 'working' | 'reviewing' | 'revising'; limit: UsageLimit },
+  ): Promise<void> {
+    const until = o.limit.until;
+    await this.setReview(id, (r) => ({
+      ...(r ?? { round: 0, reviewer: '' }),
+      state: 'paused',
+      paused: { until: until.toISOString(), known: o.limit.known, phase: o.phase, session: o.session, agent: o.agent, resume: o.resume },
+    }));
+    const what = o.limit.kind === 'usage' ? "Claude's usage limit" : o.limit.kind === 'rate' ? "Claude's rate limit" : 'Claude being overloaded';
+    const when = until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    await this.note(id, `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must`}.`);
+    this.scheduleResume();
+  }
+
+  /** The next resume, timed to the earliest paused agent. */
+  private scheduleResume(): void {
+    void this.deps.backlog.read().then((d) => {
+      const next = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused ? [Date.parse(i.review.paused.until)] : [])).sort((a, b) => a - b)[0];
+      clearTimeout(this.resumeTimer);
+      if (next === undefined) return;
+      this.resumeTimer = setTimeout(() => void this.resumePaused(), Math.min(Math.max(1000, next - Date.now()), 2 ** 31 - 1));
+    });
+  }
+
+  /** The earliest time paused agents go on (for the autopilot: no new work starts before). */
+  async pausedUntil(): Promise<Date | undefined> {
+    const d = await this.deps.backlog.read();
+    const times = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused?.known !== undefined ? [Date.parse(i.review.paused.until)] : []));
+    const next = times.filter((t) => t > Date.now()).sort((a, b) => a - b)[0];
+    return next === undefined ? undefined : new Date(next);
+  }
+
+  /** Paused agents whose limit has reset go on (in the leading window only; now, for force). */
+  async resumePaused(force?: string): Promise<void> {
+    if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
+    const d = await this.deps.backlog.read();
+    for (const item of d.items) {
+      const p = item.review?.state === 'paused' ? item.review.paused : undefined;
+      if (!p || this.runs.has(item.id)) continue;
+      if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
+      const ws = this.worktreeOf(item);
+      const run = runAgentHeadless({
+        cwd: ws?.worktree.path ?? this.deps.mainRoot,
+        resume: p.session,
+        prompt: resumeAfterLimitPrompt(p.phase),
+        name: `${p.agent} · ${p.phase === 'review' ? `review ${item.id}` : item.id}`,
+        choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'),
+        output: this.deps.output,
+      });
+      this.runs.set(item.id, run);
+      void trackProgress('backlog', `${p.agent} goes on with ${item.id}`, () => run.done);
+      await this.setReview(item.id, (r) => ({ ...r!, state: p.resume, paused: undefined }));
+      // "chat for agent <name>": the ticket links the note to the chat.
+      await this.note(item.id, `The limit reset: resumed the chat for agent ${p.agent} to go on.`);
+      void run.done.then((result) => (p.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
+    }
+    this.scheduleResume();
+  }
+
+  /** The number of agents running for items now, in this window (the autopilot keeps to its maximum). */
+  get running(): number {
+    return this.runs.size;
+  }
+
+  /**
+   * Starts an agent on an item's work, without a window (for the autopilot): it reports in the ticket, asks there when
+   * it must ("Waiting for you."), and its "Ready for review." goes on to review.
+   */
+  async startWork(item: BacklogItem, ws: Workstream): Promise<void> {
+    if (!ws.worktree.path || !ws.worktree.branch || this.runs.has(item.id)) return;
+    const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
+    const agent = agentName(taken);
+    const ticket = await this.deps.backlog.ensureDocument(item);
+    const guide = path.join(this.deps.backlog.dir, GUIDE);
+    const choice = agentChoice(item);
+    const task: RevisionTask = { prompt: AUTOPILOT_NOTE, why: 'the autopilot started it' };
+    const run = runAgentHeadless({
+      cwd: ws.worktree.path,
+      prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide), AUTOPILOT_NOTE].join('\n\n'),
+      name: `${agent} · ${item.id}`,
+      choice,
+      output: this.deps.output,
+    });
+    this.runs.set(item.id, run);
+    this.tasks.set(item.id, task);
+    void trackProgress('backlog', `${agent} is working on ${item.id} (autopilot)`, () => run.done);
+    await this.setReview(item.id, (r) => ({
+      ...(r ?? { round: 0, reviewer: '' }),
+      state: 'working',
+      autopilot: true,
+      implementer: agent,
+      implementerSession: run.sessionId,
+      worktree: ws.key,
+      reason: undefined,
+      stop: undefined,
+    }));
+    await this.note(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
+    void run.done.then((result) => this.afterRevision(item.id, run, result));
+  }
+
   /** Fixes a stopped review (a button on the ticket or the notification). */
   async fix(id: string, fix: ReviewFix): Promise<void> {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     const r = item?.review;
     if (!item || !r || this.runs.has(id)) return;
+    if (fix === 'resumeNow') return this.resumePaused(id);
     const task: RevisionTask | undefined =
       r.stop?.task ??
       (r.reviewer && r.stop?.kind !== 'no-verdict' && r.stop?.kind !== 'no-worktree'
@@ -317,12 +441,18 @@ export class ReviewLoop implements vscode.Disposable {
       item.id,
       `Review round ${round}: ${round > 1 && item.review?.reviewerSession ? 'resumed' : 'opened'} a chat for agent ${reviewer}${describeChoice(agentChoice(item, 'review'))} in worktree \`${workstreamLabel(ws)}\`. It reviews ${item.review?.implementer ?? 'the work'} and gives a verdict here.`,
     );
-    void run.done.then((result) => this.afterReview(item.id, run, result.error));
+    void run.done.then((result) => this.afterReview(item.id, run, result));
   }
 
-  private async afterReview(id: string, run: AgentRun, error?: string): Promise<void> {
+  private async afterReview(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id) !== run) return; // stopped
     this.runs.delete(id);
+    const error = result.error;
+    if (result.limit) {
+      const reviewer = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review?.reviewer ?? 'The reviewer';
+      await this.pause(id, { phase: 'review', session: run.sessionId, agent: reviewer, resume: 'reviewing', limit: result.limit });
+      return;
+    }
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item?.review) return;
     const ticket = await this.deps.backlog.readTicket(item);
@@ -463,17 +593,23 @@ export class ReviewLoop implements vscode.Disposable {
         ? `You answered ${implementer}'s question; resumed ${where} to go on.`
         : `Review round ${review.round}: ${task.why}; ${chat ? 'resumed' : 'opened'} ${where} to make them.`,
     );
-    void run.done.then((result) => this.afterRevision(item.id, run, result.error));
+    void run.done.then((result) => this.afterRevision(item.id, run, result));
   }
 
-  private async afterRevision(id: string, run: AgentRun, error?: string): Promise<void> {
+  private async afterRevision(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id) !== run) return;
     this.runs.delete(id);
+    const error = result.error;
+    if (result.limit) {
+      const r = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review;
+      await this.pause(id, { phase: 'work', session: run.sessionId, agent: r?.implementer ?? 'The agent', resume: r?.state === 'working' ? 'working' : 'revising', limit: result.limit });
+      return;
+    }
     // A "Ready for review" report sends it to review (the scan sees it), and the next round starts.
     this.schedule();
     await this.queue;
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
-    if (item?.review?.state === 'revising' && item.status !== 'review') {
+    if ((item?.review?.state === 'revising' || item?.review?.state === 'working') && item.status !== 'review') {
       // It asked the user something: it waits for their answer (a comment).
       const ticket = await this.deps.backlog.readTicket(item);
       const last = ticket.activity.filter((e) => sameAgent(entryAgent(e.author), item.review!.implementer)).at(-1);

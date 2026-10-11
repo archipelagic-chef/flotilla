@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
-import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
 import { send } from './api';
 import { PriorityPicker } from './priority';
 import './priority.css';
@@ -27,6 +27,7 @@ interface Props {
   problems: BacklogProblem[];
   /** How many integrations are connected. */
   integrations: number;
+  autopilot?: AutopilotState;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   openWorktree(key: string): void;
@@ -36,7 +37,7 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, workstreams, colors, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
@@ -70,6 +71,20 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
               <i class="codicon codicon-refresh" />
             </button>
           )}
+          {autopilot && (
+            <button
+              class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
+              aria-pressed={autopilot.enabled}
+              aria-label={
+                autopilot.enabled
+                  ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
+                  : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
+              }
+              onClick={() => send({ type: 'backlog', op: 'autopilot' })}
+            >
+              <i class="codicon codicon-rocket" />
+            </button>
+          )}
           <button class="icon" aria-label="Plan the Backlog with Claude" onClick={() => send({ type: 'backlog', op: 'plan' })}>
             <i class="codicon codicon-sparkle" />
           </button>
@@ -81,6 +96,19 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
           </button>
         </span>
       </div>
+      {autopilot?.enabled && (
+        <button class="autopilot-bar" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
+          <i class="codicon codicon-rocket" />
+          <span>
+            <strong>Autopilot</strong>{' '}
+            {autopilot.elsewhere
+              ? 'runs in another window.'
+              : autopilot.waitingUntil
+                ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
+                : `· ${autopilot.running} of ${autopilot.max} agents working. It takes To Do tickets from the top.`}
+          </span>
+        </button>
+      )}
       {problems.map((p) => (
         <button key={p.label} class="backlog-problem" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
           <i class="codicon codicon-warning" />

@@ -162,7 +162,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
   /** Fold (or unfold) every worktree section of the All tab. */
@@ -173,6 +173,17 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
+/** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit to reset. */
+export interface AutopilotState {
+  enabled: boolean;
+  running: number;
+  max: number;
+  /** ISO 8601. */
+  waitingUntil?: string;
+  /** Another window runs it. */
+  elsewhere: boolean;
+}
+
 export interface Target {
   key: string;
   path?: string;
@@ -224,6 +235,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss'; id: string }
   /** Accept every proposed item; plan the backlog with Claude. */
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
+  /** Turn the autopilot on or off. */
+  | { type: 'backlog'; op: 'autopilot' }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison

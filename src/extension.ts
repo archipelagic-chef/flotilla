@@ -11,7 +11,9 @@ import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
-import { chatContext, commitPrefixMode, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { Autopilot } from './ui/backlog/autopilot';
+import { Leader } from './features/backlog/leader';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
@@ -136,7 +138,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
   });
   context.subscriptions.push(tickets);
-  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
+  // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
+  const leader = new Leader(backlog.dir);
+  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
   context.subscriptions.push(reviews);
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
@@ -171,6 +175,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  const autopilot = new Autopilot({ backlog, repository, reviews, leader, output, prepareWorktree: (item) => prepareItemWorktree(ctx, item) });
+  context.subscriptions.push(
+    autopilot,
+    leader.start(() => {
+      void autopilot.tick();
+      void reviews.resumePaused();
+    }),
+    vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
+      const on = !autopilot.enabled;
+      await autopilot.setEnabled(on);
+      if (on) {
+        void vscode.window.showInformationMessage(
+          `Autopilot on: up to ${autopilot.view().max} agents take To Do tickets from the top of the backlog and work on them without a window. They report in the tickets; their work goes on to review.`,
+        );
+      }
+    }),
+  );
+  sidebar.useAutopilot(autopilot);
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });
