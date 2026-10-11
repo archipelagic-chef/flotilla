@@ -1,8 +1,9 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
+import { CiBody } from './ci';
 import { FilesBody, type Editing } from './files';
 import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
@@ -65,6 +66,7 @@ const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
   { id: 'changes', label: 'Changes', icon: 'diff' },
   { id: 'history', label: 'History', icon: 'history' },
   { id: 'compare', label: 'Compare', icon: 'git-compare' },
+  { id: 'ci', label: 'CI/CD', icon: 'github-action' },
 ];
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
@@ -114,6 +116,8 @@ export function App() {
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
+  /** The CI/CD view of each worktree, by key. */
+  const [ci, setCi] = useState<Record<string, CiView>>({});
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
@@ -248,6 +252,9 @@ export function App() {
             const commits = m.skip > 0 ? [...(old?.commits ?? []).slice(0, m.skip), ...m.commits] : m.commits;
             return new Map(prev).set(m.key, { head: m.head, commits, more: m.more, loading: false, error: m.error });
           });
+          return;
+        case 'ci':
+          setCi(m.views);
           return;
         case 'commitFiles':
           setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
@@ -441,6 +448,7 @@ export function App() {
           requestFiles={requestCommitFiles}
         />
       )}
+      {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} />}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );
