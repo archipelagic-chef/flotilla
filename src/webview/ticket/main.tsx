@@ -371,7 +371,7 @@ function Work({ ticket }: { ticket: TicketView }) {
         </div>
         {!ticket.commits.length && <div class="work-empty muted">None yet. Commits on its branches, or that mention {ticket.item.id}, show here.</div>}
         {commits.map((c) => (
-          <button key={c.hash} class="work-row commit" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to see its changes`}>
+          <button key={c.hash} class="work-row commit" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}>
             <span class="hash">{c.short}</span>
             <span class="work-main subject">{c.subject}</span>
             {c.branches.length ? (

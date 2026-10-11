@@ -136,6 +136,8 @@ export type HostMessage =
   | { type: 'dirsChanged'; key: string; paths: string[] }
   /** Scroll to a workstream; with path, expand to and highlight that file in the Files tab. */
   | { type: 'reveal'; key: string; path?: string; tool?: Tool }
+  /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
+  | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** The active worktree changed outside the webview (shortcut, status bar). */
   | { type: 'active'; key: string }
   /** Worktrees whose tab is closed (still in the Overview). */

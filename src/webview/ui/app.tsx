@@ -10,7 +10,7 @@ import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
-import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
+import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CommitHighlight, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -114,6 +114,8 @@ export function App() {
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
+  /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
+  const [highlight, setHighlight] = useState<CommitHighlight>();
   const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
@@ -292,6 +294,11 @@ export function App() {
         case 'editResult':
           setEditing((e) => (m.ok ? undefined : e && { ...e, error: m.error }));
           return;
+        case 'showCommits':
+          setActive(m.key);
+          update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
+          setHighlight({ key: m.key, ticket: m.ticket, hashes: new Set(m.hashes), selected: m.selected });
+          return;
         case 'reveal': {
           if (m.path === undefined) {
             // A worktree to show (e.g. one just created): make it active.
@@ -405,6 +412,8 @@ export function App() {
       {tool === 'vc' && vcView === 'history' && (
         <HistoryBody
           ws={ws}
+          highlight={highlight?.key === ws.key ? highlight : undefined}
+          clearHighlight={() => setHighlight(undefined)}
           log={logs.get(ws.key)}
           requestLog={requestLog}
           files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}

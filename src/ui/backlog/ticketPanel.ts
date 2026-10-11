@@ -29,6 +29,8 @@ export interface TicketDeps {
   repository: Repository<Workstream>;
   /** Shows a worktree's tab in the sidebar. */
   revealWorktree(key: string): void;
+  /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
+  showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -475,9 +477,30 @@ export class TicketPanels implements vscode.Disposable {
       case 'postEntry':
         await this.postEntry(item, m.key);
         return;
-      case 'openCommit':
+      case 'openCommit': {
+        // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
+        const { commits } = await this.work(item);
+        const commit = commits.find((c) => c.hash === m.hash);
+        if (!commit) return;
+        const candidates = [
+          ...this.worktreesOf(item).filter((w) => w.worktree.branch && commit.branches.includes(w.worktree.branch)),
+          ...this.worktreesOf(item),
+          ...this.deps.repository.current.filter((w) => w.worktree.isMain),
+        ];
+        for (const ws of candidates) {
+          if (!ws.worktree.path) continue;
+          const has = await runGit(['merge-base', '--is-ancestor', m.hash, 'HEAD'], { cwd: ws.worktree.path }).then(
+            () => true,
+            () => false,
+          );
+          if (has) {
+            await this.deps.showCommits(ws.key, id, commits.map((c) => c.hash), m.hash);
+            return;
+          }
+        }
         await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
         return;
+      }
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;

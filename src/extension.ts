@@ -131,7 +131,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     integrations,
   });
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
+    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
+  });
   context.subscriptions.push(tickets);
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
   context.subscriptions.push(inbox);

@@ -236,6 +236,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'reveal', key, path: relPath, tool });
   }
 
+  /**
+   * Shows a worktree's history with a ticket's commits highlighted, keeping the focus where it is (the ticket): the
+   * sidebar is only brought into view.
+   */
+  async showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void> {
+    if (this.view) this.view.show(true);
+    else {
+      // Not created yet: opening it takes the focus; give it back to the editor.
+      await vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`);
+      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    }
+    this.act({ type: 'showCommits', key, ticket, hashes, selected });
+  }
+
   /** Sends an action (reveal, show a tool, …) now, or once the page is ready, so it isn't lost while it loads. */
   private act(message: HostMessage): void {
     if (this.view && this.ready) this.post(message);

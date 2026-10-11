@@ -1871,3 +1871,20 @@ ins {
 .proposed-lane .backlog-item .status-toggle {
   color: var(--vscode-editorLightBulb-foreground, #ffcc00);
 }
+/* A ticket's commits, highlighted in a history (clicked on the ticket). */
+.log-row.mark-ticket {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+}
+.log-row.mark-selected {
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent));
+  box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
+}
+.ticket-commits-note {
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.ticket-commits-note .name {
+  flex: 1;
+}

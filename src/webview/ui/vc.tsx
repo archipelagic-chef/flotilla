@@ -1,4 +1,4 @@
-import { Fragment } from 'preact';
+import { Fragment, type Ref } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ChangeGroup, CommitView, FileChangeView, RefComparison, Tool, VcView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
@@ -271,10 +271,24 @@ interface HistoryProps {
   requestLog(key: string, skip: number): void;
   files(hash: string): CommitFiles | undefined;
   requestFiles(key: string, hash: string): void;
+  highlight?: CommitHighlight;
+  clearHighlight(): void;
 }
 
-export function HistoryBody({ ws, log, requestLog, files, requestFiles }: HistoryProps) {
+/** A ticket's commits, highlighted in a history; selected: the one clicked on the ticket. */
+export interface CommitHighlight {
+  key: string;
+  ticket: string;
+  hashes: ReadonlySet<string>;
+  selected: string;
+}
+
+/** How many pages a history loads, at most, to find a commit to show. */
+const FIND_PAGES = 10;
+
+export function HistoryBody({ ws, log, requestLog, files, requestFiles, highlight, clearHighlight }: HistoryProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const selectedRow = useRef<HTMLDivElement>(null);
   const toggle = (hash: string) => {
     const open = !expanded.has(hash);
     if (open) requestFiles(ws.key, hash);
@@ -291,6 +305,15 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles }: Histor
   }, [stamp, ws.key, requestLog]);
   const commits = log?.commits ?? [];
   const outgoing = commits.filter((c) => c.outgoing).length;
+  const found = !!highlight && commits.some((c) => c.hash === highlight.selected);
+  // The commit to show may be further back: load pages until it's there (a few at most).
+  useEffect(() => {
+    if (highlight && log && !found && log.more && !log.loading && commits.length < FIND_PAGES * 50) requestLog(ws.key, commits.length);
+  }, [highlight, found, log, commits.length, ws.key, requestLog]);
+  useEffect(() => {
+    if (found) selectedRow.current?.scrollIntoView({ block: 'center' });
+  }, [found, highlight?.selected]);
+  const inTicket = highlight ? commits.filter((c) => highlight.hashes.has(c.hash)).length : 0;
   return (
     <div class="group history">
       <div class="row group-head">
@@ -306,11 +329,30 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles }: Histor
           </span>
         )}
       </div>
+      {highlight && (
+        <div class="row ticket-commits-note">
+          <i class="codicon codicon-issues" />
+          <span class="name">
+            {inTicket} commit{inTicket === 1 ? '' : 's'} of {highlight.ticket}
+            {!found && !log?.loading && ' (the one clicked is further back)'}
+          </span>
+          <button class="icon" aria-label="Stop Highlighting" onClick={clearHighlight}>
+            <i class="codicon codicon-close" />
+          </button>
+        </div>
+      )}
       {log?.error && <div class="row group-empty error">{log.error}</div>}
       {!log?.error && !commits.length && <div class="row group-empty">{log?.loading || !log ? 'Loading…' : 'No commits yet'}</div>}
       {commits.map((c) => (
         <Fragment key={c.hash}>
-          <CommitRow ws={ws} commit={c} open={expanded.has(c.hash)} onToggle={() => toggle(c.hash)} />
+          <CommitRow
+            ws={ws}
+            commit={c}
+            open={expanded.has(c.hash)}
+            onToggle={() => toggle(c.hash)}
+            mark={highlight?.selected === c.hash ? 'selected' : highlight?.hashes.has(c.hash) ? 'ticket' : undefined}
+            rowRef={highlight?.selected === c.hash ? selectedRow : undefined}
+          />
           {expanded.has(c.hash) && <CommitDetails ws={ws} commit={c} files={files(c.hash)} />}
         </Fragment>
       ))}
@@ -326,11 +368,27 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles }: Histor
 }
 
 /** A commit: click to expand it into its message and changed files. */
-function CommitRow({ ws, commit, open, onToggle }: { ws: WorkstreamView; commit: CommitView; open: boolean; onToggle(): void }) {
+function CommitRow({
+  ws,
+  commit,
+  open,
+  onToggle,
+  mark,
+  rowRef,
+}: {
+  ws: WorkstreamView;
+  commit: CommitView;
+  open: boolean;
+  onToggle(): void;
+  /** Part of a highlighted ticket, or the one selected on it. */
+  mark?: 'ticket' | 'selected';
+  rowRef?: Ref<HTMLDivElement>;
+}) {
   const icon = commit.parents.length > 1 ? 'git-merge' : 'git-commit';
   return (
     <div
-      class={`row log-row${commit.outgoing ? ' outgoing' : ''}`}
+      ref={rowRef}
+      class={`row log-row${commit.outgoing ? ' outgoing' : ''}${mark ? ` mark-${mark}` : ''}`}
       role="treeitem"
       aria-expanded={open}
       tabIndex={0}
