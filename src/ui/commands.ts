@@ -20,6 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { reviewNotes } from '../features/backlog/review';
+import { failureTask, parseFailedJob } from '../features/ci/failureTask';
 import { agentChoice, describeChoice } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
@@ -119,6 +120,8 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.planBacklog', () => planBacklog(ctx));
   register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
+  // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
+  register('flotilla.ci.fixWithAgent', (failure?: unknown) => fixWithAgent(ctx, failure));
   const cleanUp: CleanUpDeps = {
     ctx,
     chats,
@@ -526,6 +529,46 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, t
   ].join('\n\n');
 }
 
+/** A short name for a new agent, not used by another agent's chat: its chat's first line and its reports carry it. */
+function newAgentName(ctx: CommandContext): string {
+  return agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
+}
+
+/**
+ * Starts an agent to fix a failed CI job, in the worktree on the run's branch. When the branch carries a backlog item's
+ * id, the agent works through that item's ticket, and the ticket's activity notes the failure; otherwise the task alone.
+ */
+async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void> {
+  const job = parseFailedJob(failure);
+  if (!job) {
+    void vscode.window.showWarningMessage('Fix with Agent needs a failed CI job.');
+    return;
+  }
+  const ws = ctx.repository.current.find((w) => w.worktree.path && w.worktree.branch === job.branch);
+  if (!ws?.worktree.path) {
+    void vscode.window.showWarningMessage(`No worktree is on branch ${job.branch}, so an agent has nowhere to fix its failed job.`);
+    return;
+  }
+  const task = failureTask(job);
+  const item = (await ctx.backlog.read()).items.find((i) => branchMatches(i, job.branch));
+  if (!item) {
+    const choice = agentChoice(undefined);
+    await chatUi.startAgent(chatContext(ctx), ws, task, '', { choice, name: `Fix CI · ${job.branch}` });
+    return;
+  }
+  const agent = newAgentName(ctx);
+  const ticket = await ctx.backlog.ensureDocument(item);
+  const choice = agentChoice(item);
+  const prompt = [task, agentPrompt(item, ticket, job.branch, agent, path.join(ctx.backlog.dir, GUIDE))].join('\n\n');
+  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
+  const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
+  await ctx.tickets.addActivity(
+    item.id,
+    'Flotilla',
+    `The CI run [${job.run.name}](${job.run.url}) failed: job ${job.job.name}${steps}, on commit ${job.run.commit}. Opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`${where === 'terminal' ? ', in a terminal' : ''}, to fix it. It reports here.`,
+  );
+}
+
 /** Opens a Claude Code chat for an agent on an item, working in its worktree. */
 async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, remote?: RemoteIssue): Promise<void> {
   let ticket: string;
@@ -542,8 +585,7 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   }
   // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
-  // A short name for the agent: its chat's first line and its reports carry it, which links them.
-  const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
+  const agent = newAgentName(ctx);
   const choice = agentChoice(item);
   const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent), {
     choice,
