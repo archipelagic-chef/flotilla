@@ -5,7 +5,7 @@ import * as os from 'node:os';
 export type GitPriority = 'foreground' | 'background';
 
 /** Most git processes at once: one per CPU, at most 8, so a refresh of many worktrees can't swamp the machine. */
-export const MAX_GIT_PROCESSES = Math.min(8, Math.max(1, os.cpus().length));
+export const MAX_GIT_PROCESSES = Math.min(8, os.availableParallelism());
 
 const priorityScope = new AsyncLocalStorage<GitPriority>();
 
@@ -25,10 +25,6 @@ export class ProcessQueue {
   private readonly waiting: Record<GitPriority, Array<() => void>> = { foreground: [], background: [] };
 
   constructor(readonly limit: number) {}
-
-  get active(): number {
-    return this.running;
-  }
 
   async run<T>(priority: GitPriority, task: () => Promise<T>): Promise<T> {
     await new Promise<void>((start) => {

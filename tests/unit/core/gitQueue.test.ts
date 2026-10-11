@@ -28,7 +28,6 @@ describe('ProcessQueue', () => {
     };
     await Promise.all(Array.from({ length: 10 }, () => queue.run('foreground', task)));
     expect(most).toBe(2);
-    expect(queue.active).toBe(0);
   });
 
   it('starts foreground work before waiting background work', async () => {
