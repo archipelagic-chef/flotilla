@@ -208,3 +208,18 @@ describe('session id validation', () => {
     expect((await readTranscripts('/r', home)).map((t) => t.sessionId)).toEqual(['good-1']);
   });
 });
+
+describe('the model and effort of a chat', () => {
+  it("are its last reply's, not a subagent's", async () => {
+    const { parseTranscript } = await import('../../../../src/features/chats/chats');
+    const line = (o: object) => JSON.stringify(o);
+    const raw = [
+      line({ type: 'user', timestamp: '2026-10-11T08:00:00Z', message: { content: 'Fix it' } }),
+      line({ type: 'assistant', effort: 'medium', message: { model: 'claude-sonnet-5-5' } }),
+      line({ type: 'assistant', effort: 'high', message: { model: 'claude-opus-5-5' } }),
+      line({ type: 'assistant', isSidechain: true, effort: 'low', message: { model: 'claude-haiku-5-5' } }),
+      '',
+    ].join('\n');
+    expect(parseTranscript('s', raw, new Date())).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' });
+  });
+});

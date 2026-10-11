@@ -260,6 +260,16 @@ export class TicketPanels implements vscode.Disposable {
         .filter((n): n is string => !!n)
         .map((n) => n.toLowerCase()),
     );
+    // What Flotilla started each agent with ("chat for agent Nova-7 (opus, high effort)"), until its chat says.
+    const startedWith = new Map<string, { model?: string; effort?: string }>();
+    for (const e of entries) {
+      const m = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+) \(([^)]*)\)/.exec(e.body) : undefined;
+      if (!m) continue;
+      const parts = m[2].split(', ');
+      const effort = parts.find((p) => p.endsWith(' effort'))?.replace(/ effort$/, '');
+      const model = parts.find((p) => !p.endsWith(' effort'));
+      startedWith.set(m[1].toLowerCase(), { ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+    }
     const seen = new Set<string>();
     return this.deps.repository.current
       .flatMap((ws) =>
@@ -280,6 +290,8 @@ export class TicketPanels implements vscode.Disposable {
               branch: workstreamLabel(ws),
               started: (c.startedAt ?? c.updatedAt).toISOString(),
               updated: c.updatedAt.toISOString(),
+              ...((c.model ?? startedWith.get(agent.toLowerCase())?.model) ? { model: c.model ?? startedWith.get(agent.toLowerCase())?.model } : {}),
+              ...((c.effort ?? startedWith.get(agent.toLowerCase())?.effort) ? { effort: c.effort ?? startedWith.get(agent.toLowerCase())?.effort } : {}),
             },
           ];
         }),
@@ -517,7 +529,7 @@ export class TicketPanels implements vscode.Disposable {
   async addActivity(id: string, author: string, body: string): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
-    await this.changeTicket(item, (t) => ({ ...t, activity: [...t.activity, { date: entryDate(new Date()), author, body: body.trim() }] }));
+    await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author, body: body.trim() });
   }
 
   private async onMessage(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
@@ -544,7 +556,11 @@ export class TicketPanels implements vscode.Disposable {
           await this.writeRemote(id, (s) => s.update(id, { description: m.text }));
           return;
         }
-        await this.changeTicket(item, (t) => ({ ...t, title: item.title, description: m.text }));
+        {
+          const before = (await backlog.readTicket(item)).description;
+          await this.changeTicket(item, (t) => ({ ...t, title: item.title, description: m.text }));
+          if (before.trim() !== m.text.trim()) await backlog.noteDescriptions({ id, before, by: 'You' });
+        }
         break;
       case 'comment':
         if (!m.text.trim()) return;

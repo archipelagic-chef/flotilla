@@ -33,7 +33,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';
-import { agentChoice, runAgentHeadless, type AgentRun } from './agentRunner';
+import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
@@ -128,6 +128,7 @@ export class ReviewLoop implements vscode.Disposable {
               handled: [...(r?.handled ?? []), this.key(item.id)(ready.entry)],
             }),
             'review',
+            `Agent ${ready.agent}`,
           );
           if (byUser) {
             void vscode.window
@@ -142,19 +143,22 @@ export class ReviewLoop implements vscode.Disposable {
     }
   }
 
-  private async setReview(id: string, change: (r: ReviewState | undefined) => ReviewState, status?: BacklogStatus): Promise<void> {
-    await this.deps.backlog.change((d) => ({
-      ...d,
-      items: d.items.map((i) => (i.id === id ? { ...i, review: change(i.review), ...(status ? { status } : {}) } : i)),
-    }));
+  /** Changes an item's review (and status: moved by `by`, noted in its ticket). */
+  private async setReview(id: string, change: (r: ReviewState | undefined) => ReviewState, status?: BacklogStatus, by = 'Flotilla'): Promise<void> {
+    await this.deps.backlog.change(
+      (d) => ({
+        ...d,
+        items: d.items.map((i) => (i.id === id ? { ...i, review: change(i.review), ...(status ? { status } : {}) } : i)),
+      }),
+      { by },
+    );
     this.changed.fire();
   }
 
   private async note(id: string, body: string): Promise<void> {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item) return;
-    const ticket = await this.deps.backlog.readTicket(item);
-    await this.deps.backlog.writeTicket(id, { ...ticket, activity: [...ticket.activity, { date: entryDate(new Date()), author: 'Flotilla', body }] });
+    await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
   }
 
   private async stopLoop(id: string, reason: string, notify = true): Promise<void> {
@@ -186,7 +190,7 @@ export class ReviewLoop implements vscode.Disposable {
     if (!item || this.runs.has(id)) return;
     if (item.status !== 'review') {
       this.statuses.set(id, 'review');
-      await this.deps.backlog.change((d) => updateItem(d, id, { status: 'review' }));
+      await this.deps.backlog.change((d) => updateItem(d, id, { status: 'review' }), { by: 'Flotilla' });
     }
     // A loop that stopped or ended starts over in its rounds count.
     const fresh = item.review && item.review.state !== 'revising' ? { ...item, review: { ...item.review, round: 0 } } : item;
@@ -240,7 +244,7 @@ export class ReviewLoop implements vscode.Disposable {
     }));
     await this.note(
       item.id,
-      `Review round ${round}: ${round > 1 && item.review?.reviewerSession ? 'resumed' : 'opened'} a chat for agent ${reviewer} in worktree \`${workstreamLabel(ws)}\`. It reviews ${item.review?.implementer ?? 'the work'} and gives a verdict here.`,
+      `Review round ${round}: ${round > 1 && item.review?.reviewerSession ? 'resumed' : 'opened'} a chat for agent ${reviewer}${describeChoice(agentChoice(item, 'review'))} in worktree \`${workstreamLabel(ws)}\`. It reviews ${item.review?.implementer ?? 'the work'} and gives a verdict here.`,
     );
     void run.done.then((result) => this.afterReview(item.id, run, result.error));
   }
@@ -271,7 +275,7 @@ export class ReviewLoop implements vscode.Disposable {
       return;
     }
     this.statuses.set(id, 'doing');
-    await this.setReview(id, (r) => ({ ...r!, state: 'revising', handled }), 'doing');
+    await this.setReview(id, (r) => ({ ...r!, state: 'revising', handled }), 'doing', `Agent ${item.review.reviewer}`);
     const revising: BacklogItem = { ...item, status: 'doing', review: { ...item.review, state: 'revising', handled } };
     await this.startRevision(revising, {
       prompt: revisionPrompt({ item, reviewer: item.review.reviewer, ticket: this.deps.backlog.docPath(id), round: item.review.round }),
@@ -315,7 +319,7 @@ export class ReviewLoop implements vscode.Disposable {
       handled,
     };
     this.statuses.set(id, 'doing');
-    await this.setReview(id, () => review, 'doing');
+    await this.setReview(id, () => review, 'doing', 'You');
     await this.startRevision(
       { ...item, status: 'doing', review },
       { prompt: userRevisionPrompt({ item, ticket: this.deps.backlog.docPath(id), feedback: text }), why: 'you requested changes' },
@@ -377,7 +381,7 @@ export class ReviewLoop implements vscode.Disposable {
     void trackProgress('backlog', `${implementer} is working on ${item.id}: ${task.why}`, () => run.done);
     await this.setReview(item.id, (r) => ({ ...r!, implementer, implementerSession: run.sessionId }));
     // "chat for agent <name>": the ticket links the note to the chat by it.
-    const where = `a chat for agent ${implementer} in worktree \`${workstreamLabel(ws)}\``;
+    const where = `a chat for agent ${implementer}${describeChoice(agentChoice(item))} in worktree \`${workstreamLabel(ws)}\``;
     await this.note(
       item.id,
       task.resumeOnly

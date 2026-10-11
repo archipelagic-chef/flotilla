@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
 import { EMPTY_BACKLOG, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
-import { formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
+import { describeChanges, descriptionHash, lineDelta } from './changes';
+import { entryDate, formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
 
 /** The local backlog's folder, in the main worktree; git ignores it (info/exclude), like .worktrees/. */
 export const BACKLOG_DIR = path.join('.flotilla', 'backlog');
@@ -46,14 +47,79 @@ export class LocalBacklog {
     await ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
   }
 
-  /** Applies change to the current contents and saves the result. */
-  async change(change: (data: BacklogData) => BacklogData): Promise<BacklogData> {
-    const next = change(await this.read());
+  /**
+   * Applies change to the current contents and saves the result. What changed about each item (its status, priority…)
+   * is noted in its ticket's activity, as done by `by`: "You" (the default: changes from the views), an agent ("Agent
+   * Nova-7"), or "Flotilla".
+   */
+  async change(change: (data: BacklogData) => BacklogData, opts: { by?: string } = {}): Promise<BacklogData> {
+    const before = await this.read();
+    const next = change(before);
     await this.ensureDir();
     const tmp = `${this.file}.${process.pid}.tmp`;
     await fs.promises.writeFile(tmp, `${JSON.stringify(next, null, 1)}\n`);
     await fs.promises.rename(tmp, this.file);
+    const was = new Map(before.items.map((i) => [i.id, i]));
+    for (const item of next.items) {
+      const old = was.get(item.id);
+      const lines = old ? describeChanges(old, item, opts.by ?? 'You') : [];
+      if (lines.length) await this.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: lines.join('\n\n') });
+    }
     return next;
+  }
+
+  /** The descriptions last seen, for how much an edit changed (this session only). */
+  private readonly descriptions = new Map<string, string>();
+
+  /**
+   * Notes changed descriptions in their tickets' activity: an edit by `by` (with what it was before, when known), or,
+   * without, any made in the ticket files since last seen (by an agent, or in an editor). Descriptions not seen before
+   * are only remembered.
+   */
+  noteDescriptions(edit?: { id: string; before: string; by: string }): Promise<void> {
+    // One at a time: an edit noted here isn't noted again by the scan its write sets off.
+    const run = this.describing.then(() => this.describe(edit));
+    this.describing = run.catch(() => undefined);
+    return run;
+  }
+
+  private describing: Promise<unknown> = Promise.resolve();
+
+  private async describe(edit?: { id: string; before: string; by: string }): Promise<void> {
+    const data = await this.read();
+    const changed: Array<{ item: BacklogItem; hash: string; body?: string }> = [];
+    for (const item of data.items.filter((i) => !edit || i.id === edit.id)) {
+      const description = (await this.readTicket(item)).description;
+      const hash = descriptionHash(description);
+      const before = edit?.before ?? this.descriptions.get(item.id);
+      this.descriptions.set(item.id, description);
+      if (item.descriptionHash === hash) continue;
+      let body: string | undefined;
+      if (item.descriptionHash !== undefined || edit) {
+        const delta = before === undefined ? undefined : lineDelta(before, description);
+        const size = delta && (delta.added || delta.removed) ? ` (+${delta.added} −${delta.removed} lines)` : '';
+        body = edit
+          ? `${edit.by === 'You' ? 'You' : edit.by} edited the description${size}.`
+          : `The description was edited in its file${size}: by an agent, or in an editor.`;
+      }
+      changed.push({ item, hash, body });
+    }
+    if (!changed.length) return;
+    const hashes = new Map(changed.map((c) => [c.item.id, c.hash]));
+    await this.change((d) => ({ ...d, items: d.items.map((i) => (hashes.has(i.id) ? { ...i, descriptionHash: hashes.get(i.id) } : i)) }));
+    for (const c of changed) if (c.body) await this.appendActivity(c.item, { date: entryDate(new Date()), author: 'Flotilla', body: c.body });
+  }
+
+  private appending: Promise<unknown> = Promise.resolve();
+
+  /** Adds an entry at the end of an item's ticket activity; one at a time, so entries written together all stay. */
+  appendActivity(item: Pick<BacklogItem, 'id' | 'title' | 'notes'>, entry: TicketEntry): Promise<void> {
+    const run = this.appending.then(async () => {
+      const ticket = await this.readTicket(item);
+      await this.writeTicket(item.id, { ...ticket, activity: [...ticket.activity, entry] });
+    });
+    this.appending = run.catch(() => undefined);
+    return run;
   }
 
   /** An item's ticket; one without a file yet has its title (and any old notes) and no activity. */

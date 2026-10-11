@@ -43,6 +43,8 @@ export interface BacklogItem {
   proposed?: { by?: string };
   /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
   review?: ReviewState;
+  /** Its description's fingerprint when last seen: a change to it (in the ticket file) is noted in its activity. */
+  descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
   agent?: AgentChoice;
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */

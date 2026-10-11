@@ -18,6 +18,7 @@ import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
+import { entryDate } from '../features/backlog/ticket';
 import { reviewNotes } from '../features/backlog/review';
 import { agentChoice, describeChoice } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
@@ -760,6 +761,7 @@ async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promis
   }
   if (extraWorkspaceFolder(wt.path)) removeWorkspaceFolder(wt.path);
   await ctx.service.remove(wt, { force: plan.force });
+  let deleted = false;
   if (plan.deleteBranch && plan.branch) {
     try {
       await ctx.service.deleteBranch(plan.branch, false);
@@ -770,6 +772,19 @@ async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promis
         'Delete Anyway',
       );
       if (choice) await ctx.service.deleteBranch(plan.branch, true);
+      deleted = !!choice;
+    }
+    deleted ||= !(await ctx.service.listBranches()).local.includes(plan.branch);
+  }
+  // The tickets the worktree worked on say so.
+  if (plan.branch) {
+    const branch = plan.branch;
+    for (const item of (await ctx.backlog.read()).items.filter((i) => branchMatches(i, branch))) {
+      await ctx.backlog.appendActivity(item, {
+        date: entryDate(new Date()),
+        author: 'Flotilla',
+        body: `You removed the worktree of \`${branch}\`${deleted ? ', and deleted the branch' : '; the branch stays'}.`,
+      });
     }
   }
   await ctx.repository.refresh();

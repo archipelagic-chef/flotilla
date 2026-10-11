@@ -556,6 +556,14 @@ function Work({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/** A model as people say it: "claude-opus-5-5" is Opus 5.5, an alias ("sonnet") is Sonnet. */
+function modelName(model: string): string {
+  const m = /^(?:claude-)?([a-z]+)(?:-(\d+)(?:-(\d{1,2}))?)?(?:-\d{8})?$/i.exec(model);
+  if (!m) return model;
+  const family = `${m[1][0].toUpperCase()}${m[1].slice(1)}`;
+  return m[2] ? `${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : family;
+}
+
 /** Every agent that worked on the ticket: its chat, its state, how much it reported. */
 function Agents({ ticket }: { ticket: TicketView }) {
   return (
@@ -578,6 +586,11 @@ function Agents({ ticket }: { ticket: TicketView }) {
               <span class="muted agent-meta">
                 <i class="codicon codicon-git-branch" /> {a.branch}
               </span>
+              {(a.model || a.effort) && (
+                <span class="muted agent-meta" title={[a.model && `Model: ${a.model}`, a.effort && `Effort: ${a.effort}`].filter(Boolean).join('\n')}>
+                  <i class="codicon codicon-chip" /> {[a.model && modelName(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(' · ')}
+                </span>
+              )}
               <span class="muted agent-meta">
                 {a.reports} report{a.reports === 1 ? '' : 's'} · {ago(a.updated)}
               </span>
@@ -597,6 +610,26 @@ function kindOf(author: string): EntryKind {
   if (entryAgent(author) || author.toLowerCase() === 'agent') return 'agent';
   if (author === 'Flotilla' || !author) return 'history';
   return 'comment';
+}
+
+/** When an entry was written ("2026-10-11 09:30", local time); undefined if it doesn't say. */
+function entryTime(date: string): number | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(date);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0)).getTime() : undefined;
+}
+
+/** The entries (in their order) with the commits merged in by time, oldest first. */
+function withCommits<E extends { date: string }>(entries: E[], commits: TicketView['commits']): Array<E | { commit: TicketView['commits'][number] }> {
+  const pending = [...commits].sort((a, b) => a.date.localeCompare(b.date));
+  const out: Array<E | { commit: TicketView['commits'][number] }> = [];
+  for (const e of entries) {
+    const at = entryTime(e.date);
+    // Entries are written to the minute: a commit in that minute comes first.
+    while (at !== undefined && pending.length && new Date(pending[0].date).getTime() < at + 60_000) out.push({ commit: pending.shift()! });
+    out.push(e);
+  }
+  for (const c of pending) out.push({ commit: c });
+  return out;
 }
 
 const TABS: Array<{ kind?: EntryKind; label: string }> = [
@@ -631,6 +664,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
   // A local item with work to review: the user can review it here, as in a pull request.
   const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
   const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
+  // Commits are part of what happened: in All and History, in time order among the entries.
+  const commits = !tab || tab === 'history' ? ticket.commits : [];
+  const feed = withCommits(shown, commits);
   return (
     <section class="block">
       <div class="block-head">
@@ -638,7 +674,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
-          const count = ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length;
+          const count = ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length + (!t.kind || t.kind === 'history' ? ticket.commits.length : 0);
           return (
             <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
               {t.label}
@@ -647,9 +683,26 @@ function Activity({ ticket }: { ticket: TicketView }) {
           );
         })}
       </div>
-      {!shown.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
+      {!feed.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
-        {shown.map((e, i) => {
+        {feed.map((f, i) => {
+          if ('commit' in f) {
+            const c = f.commit;
+            return (
+              <li key={c.hash} class="entry kind-commit">
+                <button class="commit-line" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}>
+                  <i class="codicon codicon-git-commit" />
+                  <span class="hash">{c.short}</span>
+                  <span class="subject">{c.subject}</span>
+                  {c.branches[0] && <span class="branch-tag">{c.branches[0]}</span>}
+                  <span class="muted">
+                    {c.author} · {ago(c.date)}
+                  </span>
+                </button>
+              </li>
+            );
+          }
+          const e = f;
           const kind = kindOf(e.author);
           const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
           return (

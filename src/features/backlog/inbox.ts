@@ -130,7 +130,7 @@ export async function takeInbox(
         }
         item = r.item;
         return r.data;
-      });
+      }, { by: proposal.agent ? `Agent ${proposal.agent}` : 'Agent' });
       if (item) {
         const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
         if (proposal.claim) {

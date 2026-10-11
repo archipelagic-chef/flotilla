@@ -32,6 +32,9 @@ export interface TranscriptInfo {
   firstPrompt?: string;
   startedAt?: Date;
   updatedAt: Date;
+  /** The model and effort of its last reply (the user can switch them during a chat). */
+  model?: string;
+  effort?: string;
 }
 
 export interface Chat {
@@ -51,6 +54,9 @@ export interface Chat {
   /** The agent name the hook gave it; a name in its first message (Flotilla's agents) comes first. */
   agent?: string;
   startedAt?: Date;
+  /** The model and effort of its last reply, from its transcript. */
+  model?: string;
+  effort?: string;
 }
 
 const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1, done: 2, ended: 3 };
@@ -273,6 +279,22 @@ export function parseTranscript(sessionId: string, raw: string, updatedAt: Date)
       info.firstPrompt = promptText((entry.message as { content?: unknown } | undefined)?.content)?.slice(0, 200);
     }
   }
+  // The model and effort: its last reply's (not a subagent's).
+  const lines = raw.split('\n');
+  for (let n = lines.length - 1; n >= 0; n--) {
+    const line = lines[n];
+    if (!line.includes('"type":"assistant"')) continue;
+    let entry: { type?: unknown; isSidechain?: unknown; effort?: unknown; message?: { model?: unknown } };
+    try {
+      entry = JSON.parse(line) as typeof entry;
+    } catch {
+      continue;
+    }
+    if (entry.type !== 'assistant' || entry.isSidechain) continue;
+    if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') info.model = entry.message.model;
+    if (typeof entry.effort === 'string') info.effort = entry.effort;
+    if (info.model) break;
+  }
   // A title the user set wins; Flotilla's own "<worktree>: <AI title>" tag is shown without the worktree.
   if (custom && !(info.title && custom.endsWith(`: ${info.title}`))) info.title = custom;
   return info;
@@ -348,6 +370,8 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('firstPrompt', r.firstPrompt ?? t?.firstPrompt),
       ...optional('agent', r.agent),
       ...optional('startedAt', r.startedAt ?? t?.startedAt),
+      ...optional('model', t?.model),
+      ...optional('effort', t?.effort),
     });
   }
   for (const t of transcripts) {
@@ -362,6 +386,8 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       open: false,
       ...optional('firstPrompt', t.firstPrompt),
       ...optional('startedAt', t.startedAt),
+      ...optional('model', t.model),
+      ...optional('effort', t.effort),
     });
   }
   return [...byId.values()].sort(
