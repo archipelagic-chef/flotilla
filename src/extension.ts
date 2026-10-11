@@ -148,6 +148,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
   });
   context.subscriptions.push(tickets);
+  // A ticket's run block (its Run button names the entry and the block; without one, the ticket's run), after asking.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.runBacklogItem', (id?: unknown, block?: unknown) => {
+      if (typeof id !== 'string') return;
+      const ref = block as { key?: unknown; index?: unknown } | undefined;
+      return tickets.run(id, typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index } : undefined);
+    }),
+  );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
