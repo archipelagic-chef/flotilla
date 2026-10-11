@@ -19,6 +19,8 @@ export interface BacklogItemView extends BacklogItem {
   activity: number;
   /** An issue from an integration (Jira, GitHub Issues), not a local item. */
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+  /** The ticket has a run block (BL-19 finds it): its card gets a Run button and a Run menu item. */
+  runnable?: boolean;
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
 }
@@ -231,8 +233,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
-  /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss'; id: string }
+  /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude; run: its run block (BL-20). */
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
   /** Accept every proposed item; plan the backlog with Claude. */
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
