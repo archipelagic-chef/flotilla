@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import { GIT_SCHEME, GitFileSystemProvider } from './core/diff/gitContentProvider';
 import { getGitVersion, GitError, MIN_GIT_VERSION, runGit, versionAtLeast } from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
-import { Repository } from './core/repository';
+import { Repository, type Scope } from './core/repository';
+import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
@@ -104,14 +105,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     onAdoptError: (wt, error) =>
       output.appendLine(`Could not make ${wt.path ?? wt.adminDir} portable: ${error instanceof Error ? error.message : String(error)}`),
   }));
-  const repository = new Repository<Workstream>(
-    () =>
-      buildWorkstreams(service, {
-        currentWorktreeRoot: location.worktreeRoot,
-        settings: readSettings(),
-        now: new Date(),
-        onInvalidStatus: (file) => output.appendLine(`Ignoring invalid agent status file: ${file}`),
-      }),
+  const repository: Repository<Workstream> = new Repository<Workstream>(
+    (scope) => {
+      const build = () =>
+        buildWorkstreams(service, {
+          currentWorktreeRoot: location.worktreeRoot,
+          settings: readSettings(),
+          now: new Date(),
+          onInvalidStatus: (file) => output.appendLine(`Ignoring invalid agent status file: ${file}`),
+          refresh: { scope, previous: repository.current, pollMs: Math.max(5, readSettings().pollSeconds) * 1000, activeKey: active.key },
+        });
+      // Only a refresh the user asked for (scope 'all') goes ahead of the git processes of other refreshes.
+      return scope === 'all' ? build() : inBackground(build);
+    },
     300,
     (error) => output.appendLine(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`),
   );
@@ -317,7 +323,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.onDidChangeActiveTextEditor(revealActive),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (findWorkstreamFor(repository.current, doc.uri.fsPath)) void repository.refresh();
+      const ws = findWorkstreamFor(repository.current, doc.uri.fsPath);
+      if (ws) void repository.refresh(new Set([ws.key]));
     }),
   );
 
@@ -329,18 +336,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
   context.subscriptions.push({ dispose: () => clearInterval(heartbeatTimer) });
 
-  // Refresh triggers: watchers (unreliable on bind mounts), focus, polling, settings.
-  const refresh = () => void repository.refresh();
-  const watched: Array<[string, string]> = [
-    [path.join(location.commonDir, 'worktrees'), '**'],
-    [location.commonDir, '{HEAD,workstream.json,flotilla/**}'],
-    [path.join(location.mainRoot, '.worktrees'), '*'],
+  // Refresh triggers: watchers (unreliable on bind mounts), focus, polling, settings. A change names the worktree it's
+  // in (the main worktree's admin dir is the common dir), so only that one is rebuilt. Polling and focus rebuild the
+  // worktrees that are due (see refreshPlan.ts); a settings change or a worktree added or removed rebuilds all.
+  const worktreesDir = path.join(location.commonDir, 'worktrees');
+  const adminDirOf = (file: string) => path.join(worktreesDir, path.relative(worktreesDir, file).split(path.sep)[0]);
+  const scheduled: Scope = new Set();
+  const refreshDue = () => void repository.refresh(scheduled);
+  const watched: Array<[string, string, (file: string) => Scope]> = [
+    [worktreesDir, '**', (file) => new Set([adminDirOf(file)])],
+    // The main worktree's index and HEAD log: staging and committing there.
+    [location.commonDir, '{HEAD,index,logs/HEAD,workstream.json,flotilla/**}', () => new Set([location.commonDir])],
+    [path.join(location.mainRoot, '.worktrees'), '*', () => 'all'],
   ];
-  for (const [base, glob] of watched) {
+  for (const [base, glob, scopeOf] of watched) {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
       // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
-      if (!isHeartbeatPath(uri.path)) refresh();
+      if (!isHeartbeatPath(uri.path)) void repository.refresh(scopeOf(uri.fsPath));
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);
@@ -351,21 +364,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const schedulePoll = () => {
     if (pollTimer) clearInterval(pollTimer);
     const seconds = sidebar.visible ? readSettings().pollSeconds : BACKGROUND_POLL_SECONDS;
-    pollTimer = setInterval(refresh, Math.max(5, seconds) * 1000);
+    pollTimer = setInterval(refreshDue, Math.max(5, seconds) * 1000);
   };
   schedulePoll();
   context.subscriptions.push(
     sidebar.onDidChangeVisibility((visible) => {
       schedulePoll();
-      if (visible) refresh();
+      if (visible) refreshDue();
     }),
     vscode.window.onDidChangeWindowState((state) => {
-      if (state.focused) refresh();
+      if (state.focused) refreshDue();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('flotilla')) {
         schedulePoll();
-        refresh();
+        void repository.refresh();
       }
     }),
     { dispose: () => pollTimer && clearInterval(pollTimer) },

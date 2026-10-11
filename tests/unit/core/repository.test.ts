@@ -32,6 +32,35 @@ describe('Repository', () => {
     expect(repo.current).toEqual([2]);
   });
 
+  it('passes each load the scope of the refreshes it answers, merged', async () => {
+    const scopes: unknown[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const repo = new Repository<string>(async (scope) => {
+      scopes.push(scope);
+      if (scopes.length === 1) await gate;
+      return [];
+    }, 5);
+    const first = repo.refresh(new Set(['a']));
+    await new Promise((r) => setTimeout(r, 20));
+    const second = repo.refresh(new Set(['b']));
+    const third = repo.refresh(new Set(['c']));
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await Promise.all([first, second, third]);
+    expect(scopes).toEqual([new Set(['a']), new Set(['b', 'c'])]);
+  });
+
+  it('rebuilds everything when a full refresh is merged with scoped ones', async () => {
+    const scopes: unknown[] = [];
+    const repo = new Repository<string>(async (scope) => {
+      scopes.push(scope);
+      return [];
+    }, 10);
+    await Promise.all([repo.refresh(new Set(['a'])), repo.refresh(), repo.refresh(new Set(['b']))]);
+    expect(scopes).toEqual(['all']);
+  });
+
   it('keeps the previous snapshot and reports errors', async () => {
     let fail = false;
     const errors: unknown[] = [];
