@@ -629,7 +629,6 @@ export function App() {
               <Fragment key={t.id}>
                 <button
                   role="tab"
-                  class={busy.length ? 'busy' : undefined}
                   aria-selected={tool === t.id}
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
@@ -639,6 +638,11 @@ export function App() {
                 >
                   <i class={`codicon codicon-${t.icon}`} />
                   {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
+                  {busy.length > 0 && (
+                    <span class={`b busy${badge > 0 ? ' top' : ''}`}>
+                      <i class="codicon codicon-sync" />
+                    </span>
+                  )}
                 </button>
                 {t.id === 'vc' && tool === 'vc' && (
                   <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
