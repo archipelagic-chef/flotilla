@@ -23,7 +23,8 @@ import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import { agentChoice, validModel } from './agentRunner';
-import { isReport, latestRun, parseRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { openTarget } from '../../features/backlog/runTarget';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -41,6 +42,11 @@ export interface TicketDeps {
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/** A path's real location (through symlinks), or the path itself when there's no such file. */
+function realPath(p: string): string {
+  return fs.existsSync(p) ? fs.realpathSync(p) : p;
+}
 
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
 async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
@@ -617,10 +623,7 @@ export class TicketPanels implements vscode.Disposable {
     const item = await this.item(id);
     if (!item || item.remote) return;
     const ticket = await this.deps.backlog.readTicket(item);
-    const blocks = ticket.activity.flatMap((e) =>
-      isReport(e.author) ? parseRunBlocks(e.body).map((block, index) => ({ key: Store.entryKey(id, e), index, block })) : [],
-    );
-    const picked = ref ? blocks.find((b) => b.key === ref.key && b.index === ref.index) : blocks[blocks.length - 1];
+    const picked = pickRunBlock(placedRunBlocks(ticket.activity, (e) => Store.entryKey(id, e)), ref);
     if (!picked) {
       void vscode.window.showWarningMessage(
         ref ? `That run block of ${id} isn't in the ticket any more: its report changed. Use the ticket's Run button.` : `${id} has no run block: its agent didn't give one. Ask it for one, in a comment.`,
@@ -640,10 +643,6 @@ export class TicketPanels implements vscode.Disposable {
       void vscode.window.showWarningMessage(`The run block "${title ?? id}" has no commands.`);
       return;
     }
-    if (kind === 'open' && !lines[0] && !title) {
-      void vscode.window.showWarningMessage(`The open block of ${id} says nothing to open: a web link or a file.`);
-      return;
-    }
     const places = this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [{ label: w.worktree.branch ?? w.key, dir: w.worktree.path }] : []));
     if (!places.length) {
       void vscode.window.showWarningMessage(`${id} has no worktree to run it in: start it first.`);
@@ -651,7 +650,17 @@ export class TicketPanels implements vscode.Disposable {
     }
     const place = places.length === 1 ? places[0] : (await vscode.window.showQuickPick(places.map((p) => ({ ...p, description: p.dir, p })), { title: `Run ${id} in Which Worktree?` }))?.p;
     if (!place) return;
+    // What an open block opens is checked before anyone is asked: a refused one doesn't get a dialog.
     const target = lines[0] ?? title ?? '';
+    const opened = kind === 'open' ? openTarget(target, place.dir, realPath) : undefined;
+    if (opened && 'refused' in opened) {
+      void vscode.window.showWarningMessage(`${id}'s open block: ${opened.refused}.`);
+      return;
+    }
+    if (opened && 'file' in opened && !fs.existsSync(opened.file)) {
+      void vscode.window.showWarningMessage(`${target} isn't in ${place.dir}.`);
+      return;
+    }
     const shown = kind === 'shell' ? `In ${place.dir}:\n\n${lines.join('\n')}` : `${target}\n\nIn ${place.dir}`;
     const answer = await vscode.window.showWarningMessage(`Run ${title ?? kind} for ${id}?`, { modal: true, detail: shown }, 'Run');
     if (answer !== 'Run') return;
@@ -659,23 +668,10 @@ export class TicketPanels implements vscode.Disposable {
       const terminal = vscode.window.createTerminal({ name: `Run ${id}`, cwd: place.dir });
       terminal.show();
       for (const line of lines) terminal.sendText(line);
-    } else if (/^https?:\/\//i.test(target)) {
-      await vscode.env.openExternal(vscode.Uri.parse(target));
-    } else if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
-      void vscode.window.showWarningMessage(`${id}'s open block can open web links (http, https) and files of its worktree, not ${target}.`);
-      return;
-    } else {
-      const file = path.resolve(place.dir, target);
-      const rel = path.relative(place.dir, file);
-      if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
-        void vscode.window.showWarningMessage(`${target} is outside the worktree ${place.dir}: a run block opens only its files.`);
-        return;
-      }
-      if (!fs.existsSync(file)) {
-        void vscode.window.showWarningMessage(`${target} isn't in ${place.dir}.`);
-        return;
-      }
-      await vscode.commands.executeCommand('vscode.open', toWorkspaceUri(this.deps.reference, file), { preview: false });
+    } else if (opened && 'url' in opened) {
+      await vscode.env.openExternal(vscode.Uri.parse(opened.url));
+    } else if (opened && 'file' in opened) {
+      await vscode.commands.executeCommand('vscode.open', toWorkspaceUri(this.deps.reference, opened.file), { preview: false });
     }
     await this.addActivity(id, 'Flotilla', `You ${kind === 'open' ? 'opened' : 'ran'} ${title ? `"${title}"` : `the ${kind} block`} in \`${place.label}\`.`);
   }

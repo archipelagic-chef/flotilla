@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReport, latestRun, parseRunBlocks, withRunButtons } from '../../../src/features/backlog/runBlocks';
+import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 describe('run blocks', () => {
   it('reads each kind, with its title or name', () => {
@@ -103,5 +103,30 @@ describe('run blocks', () => {
     const out = withRunButtons(html, parseRunBlocks('```run launch Run Extension\n```'), 'k');
     expect(out).toContain('launch · Run Extension');
     expect(out).not.toContain('<pre>');
+  });
+
+  it('matches the renderer\'s attributes on the pre and the code (VS Code adds data-line, class and dir)', () => {
+    const html = '<pre class="hljs code-line" dir="auto" data-line="3"><code class="hljs language-run">npm test\n</code></pre>';
+    const out = withRunButtons(html, parseRunBlocks('```run T\nnpm test\n```'), 'k');
+    expect(out).toContain('data-run-index="0"');
+    expect(out).toContain('<pre><code>npm test\n</code></pre>');
+  });
+
+  it('looks a block up by its entry and index: a stale reference finds nothing', () => {
+    const entries = [
+      { date: '2026-10-11 09:00', author: 'Agent Nova-7', body: '```run one\nnpm test\n```\n```run two\nnpm run build\n```' },
+      { date: '2026-10-11 10:00', author: 'You', body: '```run mine\nrm -rf x\n```' },
+    ];
+    const blocks = placedRunBlocks(entries, (e) => e.date);
+    expect(blocks.map((b) => [b.key, b.index])).toEqual([
+      ['2026-10-11 09:00', 0],
+      ['2026-10-11 09:00', 1],
+    ]);
+    expect(pickRunBlock(blocks, { key: '2026-10-11 09:00', index: 0 })?.block.title).toBe('one');
+    expect(pickRunBlock(blocks)?.block.title).toBe('two');
+    expect(pickRunBlock(blocks, { key: '2026-10-11 09:00', index: 2 })).toBeUndefined();
+    expect(pickRunBlock(blocks, { key: '2026-10-11 08:00', index: 0 })).toBeUndefined();
+    expect(pickRunBlock(blocks, { key: '2026-10-11 10:00', index: 0 })).toBeUndefined();
+    expect(pickRunBlock([], undefined)).toBeUndefined();
   });
 });

@@ -36,8 +36,11 @@ const KINDS: readonly string[] = ['shell', 'launch', 'task', 'open'];
 const OPENING = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const CLOSING = /^ {0,3}(`{3,}|~{3,})\s*$/;
 const RUN = /^run(?:\s+(.*))?$/;
-/** How Markdown renders a fenced block with the info string `run` (its first word is the language). */
-const RENDERED_RUN = /<pre><code class="language-run">([\s\S]*?)<\/code><\/pre>/g;
+/**
+ * How the Markdown renderer emits a fenced block with the info string `run` (its first word is the language). VS Code's
+ * renderer adds attributes to the `<pre>` (a class, `data-line`, `dir`) and may add classes to the `<code>`.
+ */
+const RENDERED_RUN = /<pre\b[^>]*><code\b[^>]*\bclass="[^"]*\blanguage-run\b[^"]*"[^>]*>([\s\S]*?)<\/code><\/pre>/g;
 
 /** Whether an entry's author is one whose run blocks count: an agent, or Flotilla. */
 export function isReport(author: string): boolean {
@@ -80,21 +83,29 @@ export function parseRunBlocks(markdown: string): RunBlock[] {
   return blocks;
 }
 
-/**
- * The ticket's run: the last run block of its reports (the Run button in review runs it), or undefined if none.
- * `key` names an entry (its key in the ticket).
- */
+/** A run block with its place: its entry (by key), and its index among that entry's blocks. */
+export interface PlacedRunBlock {
+  key: string;
+  index: number;
+  block: RunBlock;
+}
+
+/** The run blocks of a ticket's reports, in order. `key` names an entry (its key in the ticket). */
+export function placedRunBlocks(entries: readonly TicketEntry[], key: (entry: TicketEntry) => string): PlacedRunBlock[] {
+  return entries.flatMap((e) => (isReport(e.author) ? parseRunBlocks(e.body).map((block, index) => ({ key: key(e), index, block })) : []));
+}
+
+/** The block a reference names (an entry's key and index), or the last one without a reference; undefined if it's gone. */
+export function pickRunBlock(blocks: readonly PlacedRunBlock[], ref?: { key: string; index: number }): PlacedRunBlock | undefined {
+  return ref ? blocks.find((b) => b.key === ref.key && b.index === ref.index) : blocks[blocks.length - 1];
+}
+
+/** The ticket's run: the last run block of its reports (the Run button in review runs it), or undefined if none. */
 export function latestRun(entries: readonly TicketEntry[], key: (entry: TicketEntry) => string): RunBlockRef | undefined {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i];
-    if (!isReport(e.author)) continue;
-    const blocks = parseRunBlocks(e.body);
-    if (blocks.length) {
-      const block = blocks[blocks.length - 1];
-      return { key: key(e), index: blocks.length - 1, kind: block.kind, ...(block.title ? { title: block.title } : {}) };
-    }
-  }
-  return undefined;
+  const last = pickRunBlock(placedRunBlocks(entries, key));
+  if (!last) return undefined;
+  const { kind, title } = last.block;
+  return { key: last.key, index: last.index, kind, ...(title ? { title } : {}) };
 }
 
 /**
