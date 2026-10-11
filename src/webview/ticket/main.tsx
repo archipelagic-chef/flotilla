@@ -122,7 +122,15 @@ function MarkdownBox({
 /** Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). */
 function Rendered({ html, empty }: { html: string; empty: string }) {
   if (!html) return <div class="rendered empty-text">{empty}</div>;
-  return <div class="rendered" dangerouslySetInnerHTML={{ __html: html }} />;
+  // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
+  const onClick = (e: MouseEvent) => {
+    const a = (e.target as HTMLElement).closest('a');
+    const href = a?.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    e.preventDefault();
+    send({ type: 'openHref', href });
+  };
+  return <div class="rendered" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function Title({ ticket }: { ticket: TicketView }) {

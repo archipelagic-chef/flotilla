@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
+import { reviewNotes } from './review';
 import { entryDate, parseTicket } from './ticket';
 import type { LocalBacklog } from './localBacklog';
 
@@ -188,7 +189,7 @@ explanations that change nothing don't need one.
    comments and reviews in the ticket), work it into the description (between "# Title" and "## Activity"), usually as
    acceptance criteria. Edit only the description; leave the activity as it is.
 6. When the work is done, end your final report with a line \`Ready for review.\` It's then reviewed: by another
-   agent, or by the user.
+   agent, or by the user. ${reviewNotes({ id: '<id>', backlogDir })}
 
 ## Adding tickets
 

@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
@@ -13,6 +14,8 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
+import { toWorkspaceUri } from '../../core/uris';
+import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
 import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -463,6 +466,38 @@ export class TicketPanels implements vscode.Disposable {
     }
   }
 
+  /**
+   * Opens a link from a description or an entry: a web page in the browser, or a file at its lines. A file's path is
+   * from the repository root (in the ticket's worktrees first, then the main one: after a merge it's there) or next to
+   * the ticket (its pictures); "path#L10-L20" and "path:10" select lines.
+   */
+  private async openHref(item: BacklogItem, href: string): Promise<void> {
+    if (/^(https?|mailto):/i.test(href)) {
+      await vscode.env.openExternal(vscode.Uri.parse(href));
+      return;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return;
+    const link = parseFileLink(/^file:/i.test(href) ? vscode.Uri.parse(href).fsPath + (href.includes('#') ? href.slice(href.indexOf('#')) : '') : href);
+    const roots = [
+      ...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])),
+      this.deps.mainRoot,
+      this.deps.backlog.dir,
+    ];
+    const candidates = path.isAbsolute(link.path) ? [link.path] : roots.map((r) => path.join(r, link.path));
+    const found = candidates.find((f) => fs.existsSync(f));
+    if (!found) {
+      void vscode.window.showWarningMessage(`${link.path} isn't there (anymore): not in ${item.id}'s worktrees, nor in the main worktree.`);
+      return;
+    }
+    const uri = toWorkspaceUri(this.deps.reference, found);
+    if (fs.statSync(found).isDirectory()) {
+      await vscode.commands.executeCommand('revealInExplorer', uri);
+      return;
+    }
+    const selection = link.start ? new vscode.Range(link.start - 1, 0, (link.end ?? link.start) - 1, link.end ? Number.MAX_SAFE_INTEGER : 0) : undefined;
+    await vscode.commands.executeCommand('vscode.open', uri, { preview: true, ...(selection ? { selection } : {}) });
+  }
+
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
   private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
     await this.deps.backlog.writeTicket(item.id, change(await this.deps.backlog.readTicket(item)));
@@ -597,6 +632,9 @@ export class TicketPanels implements vscode.Disposable {
         await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
         return;
       }
+      case 'openHref':
+        await this.openHref(item, m.href);
+        return;
       case 'cleanUp':
         await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
         return;

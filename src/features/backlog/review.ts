@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
 import type { TicketEntry } from './ticket';
@@ -118,6 +119,15 @@ export function verdictReport(
   return undefined;
 }
 
+/**
+ * How a report that hands work over for review says what to look at: in order, with links to the files (which the
+ * ticket opens at their lines), and pictures where they explain better (files next to the ticket, which it shows).
+ */
+export function reviewNotes(o: { id: string; backlogDir: string }): string {
+  const folder = `${o.backlogDir}/${o.id}`;
+  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. Where a picture explains it better than words (a flow, a structure, before and after, a screenshot), add one: save it as an SVG (or PNG) file in ${folder}/ and show it with ![What it shows](${o.id}/name.svg).`;
+}
+
 /** What the reviewer is told. Its first line names it and the item (that's how the ticket finds its chat). */
 export function reviewerPrompt(o: {
   item: Pick<BacklogItem, 'id' | 'title'>;
@@ -132,7 +142,7 @@ export function reviewerPrompt(o: {
   return [
     `You are agent ${o.reviewer}, working on backlog item ${o.item.id}: "${o.item.title}". You are its reviewer.`,
     o.round === 1
-      ? `${who} did the work, in this git worktree on branch ${o.branch}. Review it: read the ticket ${o.ticket} (the description and its acceptance criteria, then the activity), the changes (git diff ${o.base}...HEAD, and the commit messages), and run the tests.`
+      ? `${who} did the work, in this git worktree on branch ${o.branch}. Review it: read the ticket ${o.ticket} (the description and its acceptance criteria, then the activity, starting from the "How to review" notes in its last report), the changes (git diff ${o.base}...HEAD, and the commit messages), and run the tests.`
       : `Round ${o.round}: ${who} made changes after your last review (see the ticket ${o.ticket}). Review again: check that what you asked for was done, and look at the new changes (git diff ${o.base}...HEAD).`,
     `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time) followed by your review in Markdown: what's good, and what must change, as a checklist, specific enough to act on.`,
     `End the entry with a line saying your verdict, exactly "Verdict: approved" or "Verdict: changes requested". Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
@@ -146,6 +156,7 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
     MAY_ASK,
     `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. End that report with a line "Ready for review." so it's reviewed again.`,
+    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
     `If you disagree with a request, say why in your report instead of making the change.`,
   ].join('\n\n');
 }
@@ -167,6 +178,7 @@ export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: s
     MAY_ASK,
     UPDATE_DESCRIPTION(o.ticket),
     `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
   ].join('\n\n');
 }
 
@@ -177,5 +189,6 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
     o.answer.trim().replace(/^/gm, '> '),
     UPDATE_DESCRIPTION(o.ticket),
     `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket, ending with a line "Ready for review." If you still need to know more, ask again the same way (end the report with "Waiting for you.").`,
+    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
   ].join('\n\n');
 }

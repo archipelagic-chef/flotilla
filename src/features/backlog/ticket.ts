@@ -85,3 +85,33 @@ export function summaryOf(description: string): string | undefined {
     .find(Boolean);
   return line && (line.length > 140 ? `${line.slice(0, 139)}…` : line);
 }
+
+/** A link to a file in a ticket ("src/a.ts#L10-L20", "src/a.ts:10"): its path, and the lines it points at. */
+export function parseFileLink(href: string): { path: string; start?: number; end?: number } {
+  let rest = href;
+  let start: number | undefined;
+  let end: number | undefined;
+  const hash = rest.indexOf('#');
+  if (hash >= 0) {
+    const m = /^L(\d+)(?:-L?(\d+))?$/i.exec(rest.slice(hash + 1));
+    if (m) {
+      start = Number(m[1]);
+      end = m[2] ? Number(m[2]) : undefined;
+    }
+    rest = rest.slice(0, hash);
+  } else {
+    const m = /^(.*?):(\d+)(?:[:-](\d+))?$/.exec(rest);
+    // Not a Windows drive ("C:\\…").
+    if (m && !/^[a-z]$/i.test(m[1])) {
+      rest = m[1];
+      start = Number(m[2]);
+    }
+  }
+  let decoded = rest;
+  try {
+    decoded = decodeURIComponent(rest);
+  } catch {
+    // As written.
+  }
+  return { path: decoded.replace(/^\.\//, ''), ...(start ? { start } : {}), ...(end && start && end > start ? { end } : {}) };
+}

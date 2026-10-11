@@ -131,6 +131,8 @@ export type TicketWebviewMessage =
   | { type: 'accept' }
   | { type: 'dismiss' }
   | { type: 'openTicket'; id: string }
+  /** A link in a description or an entry: a file in the repository (path#L10-L20), or a web page. */
+  | { type: 'openHref'; href: string }
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
   /** Open what a commit changed. */
