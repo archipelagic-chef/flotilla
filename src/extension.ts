@@ -30,6 +30,7 @@ import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
 import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
+import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
@@ -144,7 +145,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     integrations,
   });
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
+  const runTerminals = new RunTerminals();
+  context.subscriptions.push(runTerminals);
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
   });
   context.subscriptions.push(tickets);
