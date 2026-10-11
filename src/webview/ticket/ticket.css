@@ -937,3 +937,7 @@ button.work-row:hover {
 .work-row.nested {
   padding-left: 32px;
 }
+/* The ticket's agent choice (model, effort): muted while it's the default. */
+.agent-choice.unset > .priority-button {
+  color: var(--vscode-descriptionForeground);
+}

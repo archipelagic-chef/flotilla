@@ -21,6 +21,7 @@ import * as chatUi from '../chatCommands';
 import type { CommandContext } from '../commands';
 import { workstreamLabel } from '../format';
 import { trackProgress } from '../progress';
+import { agentChoice, describeChoice } from './agentRunner';
 import { readSettings } from '../settings';
 
 /** What the clean-ups need from the commands (worktrees are created and set up there). */
@@ -123,17 +124,19 @@ export async function startCleanUp(d: CleanUpDeps, id: unknown, opts?: unknown):
   const where = `worktree \`${workstreamLabel(ws)}\``;
   if (agent) {
     const ticket = await d.ctx.backlog.ensureDocument(item);
-    await chatUi.newChat(
+    const choice = agentChoice(item);
+    const shown = await chatUi.startAgent(
       d.chats,
       ws,
       cleanUpPrompt({ id: item.id, ticket, branch: target.branch, clean, base: target.start, commits: target.commits, agent }),
       agentLead(item, agent),
+      { choice, name: `${agent} · ${item.id} history` },
     );
     // "chat for agent <name>": the ticket links the note to the chat by it.
     await d.ctx.tickets.addActivity(
       item.id,
       'Flotilla',
-      `Started cleaning up the history of \`${target.branch}\` (${target.commits} commits): opened a chat for agent ${agent} in ${where}. It proposes the clean commits to you there.`,
+      `Started cleaning up the history of \`${target.branch}\` (${target.commits} commits): opened a chat for agent ${agent}${describeChoice(choice)} in ${where}${shown === 'terminal' ? ', in a terminal' : ''}. It proposes the clean commits to you there.`,
     );
   } else {
     await d.ctx.tickets.addActivity(

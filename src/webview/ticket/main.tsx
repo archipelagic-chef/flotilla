@@ -1,6 +1,6 @@
 import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
+import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -853,6 +853,76 @@ function RemotePriority({ current, names }: { current?: string; names: string[] 
   );
 }
 
+const MODELS: Array<{ model: string; label: string; detail: string }> = [
+  { model: 'fable', label: 'Fable', detail: 'The most capable' },
+  { model: 'opus', label: 'Opus', detail: 'Strong all-rounder' },
+  { model: 'sonnet', label: 'Sonnet', detail: 'Fast and capable' },
+  { model: 'haiku', label: 'Haiku', detail: 'Fastest, for small tasks' },
+];
+
+const modelLabel = (model: string) => MODELS.find((m) => m.model === model.toLowerCase())?.label ?? model;
+
+/**
+ * Which model the ticket's agents run and how hard they think: the ticket's choice, or the default (the settings, else
+ * Claude Code's).
+ */
+function AgentPicker({ ticket }: { ticket: TicketView }) {
+  const chosen = ticket.item.agent ?? {};
+  const defaults = ticket.agentDefaults;
+  const model = chosen.model ?? defaults.model;
+  const effort = chosen.effort ?? defaults.effort;
+  const defaultModel = defaults.model ? `Default (${modelLabel(defaults.model)})` : "Default (Claude Code's)";
+  const defaultEffort = defaults.effort ? `Default (${defaults.effort})` : "Default (Claude Code's)";
+  const custom = chosen.model && !MODELS.some((m) => m.model === chosen.model!.toLowerCase()) ? [chosen.model] : [];
+  return (
+    <>
+      <Dropdown
+        class={`priority agent-choice${chosen.model ? '' : ' unset'}`}
+        label={`Agents' model: ${model ? modelLabel(model) : 'default'}. Change…`}
+        button={
+          <>
+            <i class="codicon codicon-hubot" />
+            <span>{model ? modelLabel(model) : 'Model'}</span>
+          </>
+        }
+        items={[
+          { key: '', label: defaultModel, icon: 'circle-small', checked: !chosen.model, onSelect: () => send({ type: 'agentModel', model: null }) },
+          ...MODELS.map((m) => ({
+            key: m.model,
+            label: m.label,
+            detail: m.detail,
+            icon: 'hubot',
+            checked: chosen.model?.toLowerCase() === m.model,
+            onSelect: () => send({ type: 'agentModel', model: m.model }),
+          })),
+          ...custom.map((c) => ({ key: c, label: c, icon: 'hubot', checked: true, onSelect: () => send({ type: 'agentModel', model: c }) })),
+          { key: 'other', label: 'Other Model…', icon: 'edit', onSelect: () => send({ type: 'agentModel', model: 'other' }) },
+        ]}
+      />
+      <Dropdown
+        class={`priority agent-choice${chosen.effort ? '' : ' unset'}`}
+        label={`Agents' effort: ${effort ?? 'default'}. Change…`}
+        button={
+          <>
+            <i class="codicon codicon-dashboard" />
+            <span>{effort ? `${effort[0].toUpperCase()}${effort.slice(1)} effort` : 'Effort'}</span>
+          </>
+        }
+        items={[
+          { key: '', label: defaultEffort, icon: 'circle-small', checked: !chosen.effort, onSelect: () => send({ type: 'agentEffort', effort: null }) },
+          ...AGENT_EFFORTS.map((e) => ({
+            key: e,
+            label: `${e[0].toUpperCase()}${e.slice(1)}`,
+            icon: 'dashboard',
+            checked: chosen.effort === e,
+            onSelect: () => send({ type: 'agentEffort', effort: e }),
+          })),
+        ]}
+      />
+    </>
+  );
+}
+
 const AGENT_STATE_CLASS: Record<string, string | undefined> = {
   'waiting-for-input': 'waiting',
   error: 'error',
@@ -929,6 +999,7 @@ function App() {
           ) : (
             <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
           )}
+          {!ticket.remote && <AgentPicker ticket={ticket} />}
           {ticket.links.map((l) => (
             <span key={l.id} class="link-chip">
               <button
@@ -956,7 +1027,11 @@ function App() {
             <button
               class="button"
               onClick={() => send({ type: 'start', agent: true })}
-              title="Creates its worktree if needed and starts a Claude Code agent there; it reports below"
+              title={
+                ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
+                  ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
+                  : 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+              }
             >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
             </button>

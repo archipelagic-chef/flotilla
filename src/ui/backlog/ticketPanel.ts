@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -22,6 +22,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
+import { agentChoice } from './agentRunner';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -58,6 +59,13 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
     if (!file.startsWith(dir + path.sep)) return m;
     return `${a}${webview.asWebviewUri(vscode.Uri.file(file)).toString()}${c}`;
   });
+}
+
+/** An item with its agent choice (none, when both are the defaults). */
+function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
+  const { agent: _old, ...rest } = item;
+  const clean: AgentChoice = { ...(agent.model ? { model: agent.model } : {}), ...(agent.effort ? { effort: agent.effort } : {}) };
+  return clean.model || clean.effort ? { ...rest, agent: clean } : rest;
 }
 
 /** Markdown (as comments and reports are written here) in a tracker's markup. */
@@ -372,6 +380,7 @@ export class TicketPanels implements vscode.Disposable {
           commits: [],
           history: [],
           canCleanUp: false,
+          agentDefaults: {},
           children: [],
           canReview: false,
         }),
@@ -417,6 +426,7 @@ export class TicketPanels implements vscode.Disposable {
       commits: [],
       history: [],
       canCleanUp: false,
+      agentDefaults: agentChoice(undefined),
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
@@ -635,6 +645,26 @@ export class TicketPanels implements vscode.Disposable {
       case 'openHref':
         await this.openHref(item, m.href);
         return;
+      case 'agentModel': {
+        if (item.remote) return;
+        let model = m.model?.trim() || undefined;
+        if (model === 'other') {
+          model = (
+            await vscode.window.showInputBox({
+              title: `The model for agents on ${id}`,
+              prompt: "An alias (opus, sonnet, haiku, fable) or a model's full name (claude-opus-5-5)",
+              value: item.agent?.model ?? '',
+            })
+          )?.trim();
+          if (model === undefined) return;
+        }
+        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined }) : i)) }));
+        break;
+      }
+      case 'agentEffort':
+        if (item.remote) return;
+        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, effort: m.effort ?? undefined }) : i)) }));
+        break;
       case 'cleanUp':
         await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
         return;

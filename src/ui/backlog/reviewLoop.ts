@@ -33,7 +33,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';
-import { runAgentHeadless, type AgentRun } from './agentRunner';
+import { agentChoice, runAgentHeadless, type AgentRun } from './agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
@@ -223,6 +223,7 @@ export class ReviewLoop implements vscode.Disposable {
       prompt: round === 1 || !item.review?.reviewerSession ? prompt : prompt.split('\n\n').slice(1).join('\n\n'),
       resume: round > 1 ? item.review?.reviewerSession : undefined,
       name: `${reviewer} · review ${item.id}`,
+      choice: agentChoice(item, 'review'),
       output: this.deps.output,
     });
     this.runs.set(item.id, run);
@@ -354,6 +355,7 @@ export class ReviewLoop implements vscode.Disposable {
         resume: chat.id,
         prompt: task.prompt,
         name: `${implementer} · ${item.id}`,
+        choice: agentChoice(item),
         output: this.deps.output,
       });
     } else if (task.resumeOnly) {
@@ -367,6 +369,7 @@ export class ReviewLoop implements vscode.Disposable {
         cwd: ws.worktree.path,
         prompt: [agentLead(item, implementer), agentPrompt(item, ticket, ws.worktree.branch, implementer, guide), task.prompt].join('\n\n'),
         name: `${implementer} · ${item.id}`,
+        choice: agentChoice(item),
         output: this.deps.output,
       });
     }

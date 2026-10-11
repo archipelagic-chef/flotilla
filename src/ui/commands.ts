@@ -19,6 +19,7 @@ import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
 import { reviewNotes } from '../features/backlog/review';
+import { agentChoice, describeChoice } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
@@ -524,8 +525,16 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
   // A short name for the agent: its chat's first line and its reports carry it, which links them.
   const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
-  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent));
-  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+  const choice = agentChoice(item);
+  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent), {
+    choice,
+    name: `${agent} · ${item.id}`,
+  });
+  await ctx.tickets.addActivity(
+    item.id,
+    'Flotilla',
+    `Opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`${where === 'terminal' ? ', in a terminal' : ''}. It reports here.`,
+  );
 }
 
 /**

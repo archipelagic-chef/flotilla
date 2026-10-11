@@ -2,7 +2,7 @@
  * Messages between the extension host and a ticket editor tab. Type-only: imported by both sides, so it must not
  * import vscode, node or DOM APIs.
  */
-import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type { AgentChoice, AgentEffort, BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { ReviewState } from '../features/backlog/review';
@@ -88,6 +88,8 @@ export interface TicketView {
   history: Array<HistoryVersion & { log: TicketCommit[] }>;
   /** It has a branch whose history can be cleaned up. */
   canCleanUp: boolean;
+  /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
+  agentDefaults: AgentChoice;
 }
 
 export type TicketHostMessage =
@@ -133,6 +135,9 @@ export type TicketWebviewMessage =
   | { type: 'openTicket'; id: string }
   /** A link in a description or an entry: a file in the repository (path#L10-L20), or a web page. */
   | { type: 'openHref'; href: string }
+  /** The model and effort agents use on it: null is the default; 'other' asks for a model's name. */
+  | { type: 'agentModel'; model: string | null }
+  | { type: 'agentEffort'; effort: AgentEffort | null }
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
   /** Open what a commit changed. */

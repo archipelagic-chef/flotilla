@@ -1331,6 +1331,30 @@
           "default": "auto",
           "markdownDescription": "What agents Flotilla runs without a window (reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused."
         },
+        "flotilla.agents.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The model agents Flotilla starts on tickets use, unless a ticket chooses its own: an alias (`opus`, `sonnet`, `haiku`, `fable`) or a model's full name. Empty: Claude Code's default."
+        },
+        "flotilla.agents.effort": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "enumDescriptions": ["Claude Code's default (your /effort setting).", "", "", "", "", ""],
+          "default": "",
+          "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
+        },
+        "flotilla.review.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The model reviewer agents use. Empty: the ticket's choice, else `#flotilla.agents.model#`."
+        },
+        "flotilla.review.effort": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "enumDescriptions": ["Claude Code's default (your /effort setting).", "", "", "", "", ""],
+          "default": "",
+          "markdownDescription": "How hard reviewer agents think. Empty: the ticket's choice, else `#flotilla.agents.effort#`."
+        },
         "flotilla.agents.claudePath": {
           "type": "string",
           "default": "",

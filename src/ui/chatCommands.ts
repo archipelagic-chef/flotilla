@@ -7,7 +7,8 @@ import { hooksPresent, installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
-import { isRunningHeadless } from './backlog/agentRunner';
+import type { AgentChoice } from '../features/backlog/backlog';
+import { choiceArgs, claudeBinary, isRunningHeadless } from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
 
@@ -91,6 +92,28 @@ export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead 
   const branch = workstreamLabel(ws);
   const where = `Work in the git worktree at ${worktreeLocation(ctx, dir)} (branch ${branch}): run commands there and only change files under it.`;
   await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, where, task].filter(Boolean).join('\n\n'));
+}
+
+/**
+ * Starts an agent in a worktree, with its task: in Claude Code's panel (message filled in, sent by the user), or, when
+ * a model or an effort is chosen (which the panel can't be started with), as an interactive Claude Code session in a
+ * terminal in the worktree, the task sent at once.
+ */
+export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string }): Promise<'panel' | 'terminal'> {
+  const args = choiceArgs(o.choice);
+  if (!args.length || !ws.worktree.path) {
+    await newChat(ctx, ws, task, lead);
+    return 'panel';
+  }
+  const terminal = vscode.window.createTerminal({
+    name: o.name,
+    cwd: ws.worktree.path,
+    shellPath: claudeBinary(),
+    shellArgs: [...args, '--name', o.name, [lead, task].filter(Boolean).join('\n\n')],
+    iconPath: new vscode.ThemeIcon('hubot'),
+  });
+  terminal.show();
+  return 'terminal';
 }
 
 /**

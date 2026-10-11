@@ -43,9 +43,22 @@ export interface BacklogItem {
   proposed?: { by?: string };
   /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
   review?: ReviewState;
+  /** The model and effort agents use on it (unset: the settings'). */
+  agent?: AgentChoice;
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+}
+
+/** How hard an agent thinks (Claude Code's --effort). */
+export type AgentEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const AGENT_EFFORTS: readonly AgentEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Which model an agent runs, and how hard it thinks: unset, Claude Code's default. */
+export interface AgentChoice {
+  /** An alias ("opus", "sonnet") or a model's full name. */
+  model?: string;
+  effort?: AgentEffort;
 }
 
 /** A local item's link to an issue in a tracker. */
