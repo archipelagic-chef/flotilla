@@ -97,6 +97,8 @@ export class Repository<T> {
         loaded = true;
       }
     } catch (error) {
+      // What this load was asked to rebuild is still owed: the next load gets it.
+      this.pending = mergeScopes(scope, this.pending);
       this.onError(error);
     } finally {
       this.running = false;

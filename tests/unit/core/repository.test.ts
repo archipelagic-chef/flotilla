@@ -61,6 +61,21 @@ describe('Repository', () => {
     expect(scopes).toEqual(['all']);
   });
 
+  it('gives the next load the scope of a load that failed', async () => {
+    const scopes: unknown[] = [];
+    let fail = true;
+    const repo = new Repository<string>(async (scope) => {
+      scopes.push(scope);
+      if (fail) throw new Error('boom');
+      return ['ok'];
+    }, 5, () => undefined);
+    await repo.refresh(new Set(['a']));
+    fail = false;
+    await repo.refresh(new Set(['b']));
+    expect(scopes).toEqual([new Set(['a']), new Set(['a', 'b'])]);
+    expect(repo.current).toEqual(['ok']);
+  });
+
   it('keeps the previous snapshot and reports errors', async () => {
     let fail = false;
     const errors: unknown[] = [];
