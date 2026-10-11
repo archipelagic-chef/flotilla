@@ -122,6 +122,47 @@ export class TicketPanels implements vscode.Disposable {
     );
   }
 
+  /**
+   * The user reviews an item's work (Flotilla: Review Ticket…): asks for what isn't given. Approve, or request changes
+   * that an agent then picks up.
+   */
+  async review(id?: string, verdict?: 'approved' | 'changes', text?: string): Promise<void> {
+    if (!this.reviews) return;
+    const items = (await this.deps.backlog.read()).items.filter((i) => !i.proposed && i.status !== 'done' && this.worktreesOf(i).length > 0);
+    if (!id) {
+      const order = (i: BacklogItem) => (i.status === 'review' ? 0 : 1);
+      const picked = await vscode.window.showQuickPick(
+        [...items].sort((a, b) => order(a) - order(b)).map((i) => ({ label: i.id, description: i.title, detail: i.status === 'review' ? 'In review' : undefined })),
+        { title: 'Review a Ticket', placeHolder: 'The ticket whose work to review' },
+      );
+      if (!picked) return;
+      id = picked.label;
+    }
+    if (!items.some((i) => i.id === id)) {
+      void vscode.window.showWarningMessage(`${id} has no work to review: it needs a worktree.`);
+      return;
+    }
+    if (!verdict) {
+      const picked = await vscode.window.showQuickPick(
+        [
+          { label: '$(check) Approve', verdict: 'approved' as const },
+          { label: '$(request-changes) Request Changes', verdict: 'changes' as const, detail: 'An agent picks them up, and asks you first if it needs more context' },
+        ],
+        { title: `Review ${id}` },
+      );
+      if (!picked) return;
+      verdict = picked.verdict;
+    }
+    if (text === undefined) {
+      text = await vscode.window.showInputBox({
+        title: `${verdict === 'approved' ? 'Approve' : 'Request changes on'} ${id}`,
+        prompt: verdict === 'approved' ? 'A comment (optional)' : 'What should change (Markdown; leave it empty and the agent asks you)',
+      });
+      if (text === undefined) return;
+    }
+    await this.reviews.userReview(id, verdict, text);
+  }
+
   /** The worktrees working on an item: those started for it, or whose branch carries its id. */
   worktreesOf(item: BacklogItem): Workstream[] {
     return this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
@@ -535,6 +576,9 @@ export class TicketPanels implements vscode.Disposable {
       case 'startReview':
         await this.reviews?.start(id);
         return;
+      case 'userReview':
+        await this.reviews?.userReview(id, m.verdict, m.text);
+        break;
       case 'stopReview':
         await this.reviews?.stop(id);
         return;

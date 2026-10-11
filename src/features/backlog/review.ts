@@ -11,11 +11,15 @@ export interface ReviewState {
   /** 1 for the first review. */
   round: number;
   /**
-   * reviewing: the reviewer is at it; revising: the implementer is making the changes asked for; approved; stopped:
-   * no verdict, too many rounds, or stopped by the user.
+   * reviewing: the reviewer is at it; revising: the implementer is making the changes asked for; asking: the
+   * implementer asked something and waits for the user's answer (a comment); yours: the work waits for the user's
+   * review; approved; stopped: no verdict, too many rounds, or stopped by the user.
    */
-  state: 'reviewing' | 'revising' | 'approved' | 'stopped';
+  state: 'reviewing' | 'revising' | 'asking' | 'yours' | 'approved' | 'stopped';
+  /** The reviewer agent ('' when there has been none yet). */
   reviewer: string;
+  /** The user gave the last verdict (approved, or changes requested), not the reviewer agent. */
+  byUser?: boolean;
   reviewerSession?: string;
   implementer?: string;
   implementerSession?: string;
@@ -49,11 +53,45 @@ export function saysReadyForReview(body: string): boolean {
   return !!last && /^[*_]*ready for review[.!]?[*_]*$/i.test(last);
 }
 
+/** Whether an implementer's report asks the user something and waits for the answer (its last line says so). */
+export function saysWaitingForUser(body: string): boolean {
+  const last = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .at(-1);
+  return !!last && /^[*_]*waiting for (you|the user|your answer)[.!]?[*_]*$/i.test(last);
+}
+
+/** The user's comments since the agent's last report (the answer to its question), once: none that were acted on. */
+export function userAnswer(entries: TicketEntry[], review: ReviewState, key: (e: TicketEntry) => string): TicketEntry[] {
+  const answer: TicketEntry[] = [];
+  for (let n = entries.length - 1; n >= 0; n--) {
+    const e = entries[n];
+    if (e.author !== 'You') {
+      if (e.author === 'Flotilla') continue;
+      break;
+    }
+    if (review.handled?.includes(key(e))) break;
+    answer.unshift(e);
+  }
+  return answer;
+}
+
+/** The user's review as a ticket entry's body: what they wrote, and their verdict. */
+export function userReviewBody(verdict: Verdict, text: string): string {
+  return [text.trim(), verdict === 'approved' ? 'Verdict: approved' : 'Verdict: changes requested'].filter(Boolean).join('\n\n');
+}
+
 /**
  * The newest report by an agent that says it's ready for review and hasn't been acted on, with its index. The
  * reviewer's own reports don't count.
  */
-export function readyReport(entries: TicketEntry[], review: ReviewState | undefined, key: (e: TicketEntry) => string): { entry: TicketEntry; agent: string } | undefined {
+export function readyReport(
+  entries: TicketEntry[],
+  review: ReviewState | undefined,
+  key: (e: TicketEntry) => string,
+): { entry: TicketEntry; agent: string } | undefined {
   for (let n = entries.length - 1; n >= 0; n--) {
     const e = entries[n];
     const agent = entryAgent(e.author);
@@ -65,7 +103,11 @@ export function readyReport(entries: TicketEntry[], review: ReviewState | undefi
 }
 
 /** The reviewer's newest report with a verdict that hasn't been acted on. */
-export function verdictReport(entries: TicketEntry[], review: ReviewState, key: (e: TicketEntry) => string): { entry: TicketEntry; verdict: Verdict } | undefined {
+export function verdictReport(
+  entries: TicketEntry[],
+  review: ReviewState,
+  key: (e: TicketEntry) => string,
+): { entry: TicketEntry; verdict: Verdict } | undefined {
   for (let n = entries.length - 1; n >= 0; n--) {
     const e = entries[n];
     if (!sameAgent(entryAgent(e.author), review.reviewer)) continue;
@@ -102,7 +144,38 @@ export function reviewerPrompt(o: {
 export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: string; ticket: string; round: number }): string {
   return [
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
+    MAY_ASK,
     `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. End that report with a line "Ready for review." so it's reviewed again.`,
     `If you disagree with a request, say why in your report instead of making the change.`,
+  ].join('\n\n');
+}
+
+/** The ticket's description stays what's to be done: the implementer works the user's requests into it. */
+const UPDATE_DESCRIPTION = (ticket: string) =>
+  `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. Edit only the description there, and leave the activity as it is.`;
+
+/** How the implementer may ask the user before (or instead of) making changes, when it needs to. */
+const MAY_ASK = `If you need more context to do it well (what's asked is unclear, or there's a choice only the user can make), ask first: report in the ticket with your questions, end the report with a line "Waiting for you.", and stop without changing anything. You're resumed with the answer. Otherwise start on it directly.`;
+
+/** What the implementer is told when the user reviewed the work and requested changes. */
+export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string; feedback: string }): string {
+  const feedback = o.feedback.trim();
+  return [
+    `The user reviewed your work on ${o.item.id} and requested changes${feedback ? ':' : ', without saying more (their review is at the end of the ticket ' + o.ticket + ').'}`,
+    ...(feedback ? [feedback.replace(/^/gm, '> ')] : []),
+    `Read the ticket ${o.ticket} for the context (the description, and the activity).`,
+    MAY_ASK,
+    UPDATE_DESCRIPTION(o.ticket),
+    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+  ].join('\n\n');
+}
+
+/** What the implementer is told when the user answered its question (its chat resumed). */
+export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string; answer: string }): string {
+  return [
+    `The user answered you in the ticket ${o.ticket}:`,
+    o.answer.trim().replace(/^/gm, '> '),
+    UPDATE_DESCRIPTION(o.ticket),
+    `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket, ending with a line "Ready for review." If you still need to know more, ask again the same way (end the report with "Waiting for you.").`,
   ].join('\n\n');
 }

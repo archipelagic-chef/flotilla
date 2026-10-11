@@ -365,6 +365,11 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "flotilla.reviewBacklogItem",
+        "title": "Review Ticket…",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.openBacklogItem",
         "title": "Open Backlog Ticket",
         "category": "Flotilla"

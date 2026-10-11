@@ -118,6 +118,8 @@ export type TicketWebviewMessage =
   | { type: 'createIssue' }
   /** Accept or dismiss an agent's proposal; open another ticket (a parent, a sub-ticket). */
   | { type: 'startReview' }
+  /** The user's own review: approve, or request changes (an agent picks them up). */
+  | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
   | { type: 'accept' }
   | { type: 'dismiss' }

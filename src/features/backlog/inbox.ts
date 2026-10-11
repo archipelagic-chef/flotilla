@@ -184,7 +184,11 @@ explanations that change nothing don't need one.
 4. Report in its ticket: append entries at the end of "## Activity", each headed
    \`### YYYY-MM-DD HH:MM · Agent <your name>\` (local time): your plan when you start, questions when you need a
    decision, and what you did when you finish.
-5. When the work is done, end your final report with a line \`Ready for review.\` Another agent then reviews it.
+5. Keep its description what's to be done: when the user asks for more or for something else (in the chat, or in
+   comments and reviews in the ticket), work it into the description (between "# Title" and "## Activity"), usually as
+   acceptance criteria. Edit only the description; leave the activity as it is.
+6. When the work is done, end your final report with a line \`Ready for review.\` It's then reviewed: by another
+   agent, or by the user.
 
 ## Adding tickets
 
@@ -227,6 +231,6 @@ to \`<name>.error\`). ${
       : 'New tickets join the backlog at once (the user can still remove them).'
   } With \`start: true\`, read the new id from \`<name>.added\` and use it in your commits.
 
-Don't edit other tickets' descriptions, and never change issue trackers (Jira, GitHub Issues) yourself.
+Don't edit the descriptions of tickets you aren't working on, and never change issue trackers (Jira, GitHub Issues) yourself.
 `;
 }

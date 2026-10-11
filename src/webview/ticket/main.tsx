@@ -295,22 +295,45 @@ const AUTHOR_ICON: Record<string, string> = {
 /** Where the review loop is: who reviews, the round, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
-  const active = r.state === 'reviewing' || r.state === 'revising';
+  const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking';
+  const who = r.implementer ?? 'the implementer';
   const [icon, cls, text] =
     r.state === 'reviewing'
       ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
       : r.state === 'revising'
-        ? ['tools', 'waiting', `${r.reviewer} requested changes; ${r.implementer ?? 'the implementer'} is making them`]
-        : r.state === 'approved'
-          ? ['pass-filled', 'done', `Approved by ${r.reviewer}. Ready for you to merge.`]
-          : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
+        ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
+        : r.state === 'asking'
+          ? ['question', 'waiting', `${who} has a question for you. Answer it in a comment below; it goes on from there.`]
+          : r.state === 'yours'
+            ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
+            : r.state === 'approved'
+              ? ['pass-filled', 'done', `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.`]
+              : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
   return (
     <div class={`review-panel ${cls}`}>
       <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
       <span class="review-text">
         <strong>Review{r.round ? ` · round ${r.round}` : ''}</strong> {text}
       </span>
-      {active ? (
+      {r.state === 'yours' ? (
+        <>
+          <button
+            class="button secondary"
+            onClick={() => {
+              // What should change is written in the comment box: Request Changes sends it.
+              const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+              box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              box?.focus();
+            }}
+            title="Write what should change below, then Request Changes"
+          >
+            <i class="codicon codicon-request-changes" /> Request Changes…
+          </button>
+          <button class="button" onClick={() => send({ type: 'userReview', verdict: 'approved', text: '' })}>
+            <i class="codicon codicon-check" /> Approve
+          </button>
+        </>
+      ) : active ? (
         <button class="button secondary" onClick={() => send({ type: 'stopReview' })} title="Stops the running agent and the handoffs">
           <i class="codicon codicon-debug-stop" /> Stop
         </button>
@@ -505,6 +528,14 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setComment('');
     if (tab && tab !== 'comment') setTab(undefined);
   };
+  const review = (verdict: 'approved' | 'changes') => {
+    send({ type: 'userReview', verdict, text: comment });
+    setComment('');
+    if (tab && tab !== 'comment') setTab(undefined);
+  };
+  const asking = ticket.review?.state === 'asking' ? (ticket.review.implementer ?? 'The agent') : undefined;
+  // A local item with work to review: the user can review it here, as in a pull request.
+  const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
   const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
   return (
     <section class="block">
@@ -568,7 +599,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
           value={comment}
           setValue={setComment}
           placeholder={
-            ticket.remote
+            asking
+              ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
+              : ticket.remote
               ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
               : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
           }
@@ -577,8 +610,22 @@ function Activity({ ticket }: { ticket: TicketView }) {
           images={!ticket.remote}
         />
         <div class="actions-row">
+          {reviewable && (
+            <>
+              <button
+                class="button secondary"
+                onClick={() => review('changes')}
+                title="Sends the work back with your comment: an agent picks it up (its implementer's chat, resumed), and asks you first if it needs more context"
+              >
+                <i class="codicon codicon-request-changes" /> Request Changes
+              </button>
+              <button class="button secondary" onClick={() => review('approved')} title="Approves the work, with your comment if you wrote one">
+                <i class="codicon codicon-check" /> Approve
+              </button>
+            </>
+          )}
           <button class="button" disabled={!comment.trim()} onClick={post}>
-            Comment
+            {asking ? 'Answer' : 'Comment'}
           </button>
         </div>
       </div>
