@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
-import type { WorkstreamView } from '../protocol';
+import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
+import type { MachineState, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 
@@ -18,6 +19,7 @@ const RANK: Record<AttentionState, number> = {
 
 interface Props {
   workstreams: readonly WorkstreamView[];
+  machine?: MachineState;
   active: string;
   colors: ReadonlyMap<string, string>;
   /** Worktrees whose tab is closed. */
@@ -26,12 +28,30 @@ interface Props {
 }
 
 /** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
-export function Overview({ workstreams, active, colors, closed, onSelect }: Props) {
+export function Overview({ workstreams, machine, active, colors, closed, onSelect }: Props) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
+  const low = machine !== undefined && isMemoryShort(machine.freeMB, machine.minFreeMB);
   return (
     <div class="overview">
       <div class="tool-title">All worktrees, most urgent first</div>
+      {machine && (
+        <div class="machine">
+          <div class="sec-meta">
+            {[
+              `${machine.agents} ${machine.agents === 1 ? 'agent' : 'agents'} working`,
+              `${machine.windows} ${machine.windows === 1 ? 'window' : 'windows'} open`,
+              `${formatMemory(machine.freeMB)} memory free`,
+            ].join(' · ')}
+          </div>
+          {low && (
+            <div class="sec-msg">
+              <i class="codicon codicon-warning" />
+              <span>Low on memory: no agent starts below {formatMemory(machine.minFreeMB)} free (flotilla.agents.minFreeMemoryMB).</span>
+            </div>
+          )}
+        </div>
+      )}
       {sorted.map((ws) => {
         const open = ws.chats.filter((c) => c.open);
         const waiting = open.find((c) => c.state === 'waiting-for-input');

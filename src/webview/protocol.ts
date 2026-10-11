@@ -132,7 +132,7 @@ export interface CommitView {
 }
 
 export type HostMessage =
-  | { type: 'state'; workstreams: WorkstreamView[] }
+  | { type: 'state'; workstreams: WorkstreamView[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
@@ -173,13 +173,27 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
-/** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit to reset. */
+/** The machine, for the Overview: its free memory, the agents working in every window, and the windows open on worktrees. */
+export interface MachineState {
+  /** Free memory, in MB. */
+  freeMB: number;
+  /** Below this (flotilla.agents.minFreeMemoryMB), no agent starts. */
+  minFreeMB: number;
+  /** Claude Code chats working now (in any window). */
+  agents: number;
+  /** Worktrees with a window open on them. */
+  windows: number;
+}
+
+/** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
 export interface AutopilotState {
   enabled: boolean;
   running: number;
   max: number;
   /** ISO 8601. */
   waitingUntil?: string;
+  /** Too little memory free to start an agent. */
+  waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
 }

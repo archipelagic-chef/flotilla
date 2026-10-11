@@ -20,7 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { reviewNotes } from '../features/backlog/review';
-import { agentChoice, describeChoice } from './backlog/agentRunner';
+import { agentChoice, confirmMemory, describeChoice } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
@@ -389,6 +389,8 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const found = await findBacklogItem(ctx, id);
   if (!found) return;
   const { item, remote } = found;
+  // An agent needs memory to start: when there's little, the user decides (before a worktree is made for it).
+  if (agent && !(await confirmMemory(`The agent for ${item.id}`))) return;
   // A branch of the item that has no worktree (anymore): a worktree for it.
   const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
   if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {

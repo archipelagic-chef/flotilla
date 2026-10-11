@@ -1350,6 +1350,12 @@
           "default": "",
           "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
         },
+        "flotilla.agents.minFreeMemoryMB": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 0,
+          "markdownDescription": "Free memory (MB) the machine needs before Flotilla starts an agent: each agent's Claude Code process takes about 300 MB, and builds and tests more. The autopilot and reviews wait until there's room; a manual start says so and offers to start anyway. 0 turns the check off."
+        },
         "flotilla.review.model": {
           "type": "string",
           "default": "",
