@@ -35,7 +35,7 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
       {sorted.map((ws) => {
         const open = ws.chats.filter((c) => c.open);
         const waiting = open.find((c) => c.state === 'waiting-for-input');
-        const changes = ws.staged.length + ws.unstaged.length;
+        const changes = ws.totals.staged + ws.totals.unstaged;
         const facts = [
           changes ? `${changes} changed` : 'no changes',
           ws.sync.text,

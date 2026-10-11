@@ -87,8 +87,10 @@ export interface WorkstreamView {
   path: string;
   /** What the agent last said (a question when it waits for input). */
   agentMessage?: string;
+  /** The first changes of each list (flotilla.changes.limit); totals has how many there are in all. */
   staged: FileChangeView[];
   unstaged: FileChangeView[];
+  totals: { staged: number; unstaged: number };
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
@@ -132,7 +134,8 @@ export interface CommitView {
 }
 
 export type HostMessage =
-  | { type: 'state'; workstreams: WorkstreamView[] }
+  /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
+  | { type: 'state'; workstreams: WorkstreamView[]; keys: string[] }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
