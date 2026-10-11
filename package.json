@@ -370,6 +370,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.planBacklog",
+        "title": "Plan the Backlog with Claude",
+        "category": "Flotilla",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "flotilla.linkBacklogItem",
         "title": "Link Backlog Item to an Issue…",
         "category": "Flotilla",
@@ -1259,6 +1265,16 @@
           ],
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
+        },
+        "flotilla.backlog.agentTickets": {
+          "type": "string",
+          "enum": ["propose", "add"],
+          "enumDescriptions": [
+            "Tickets agents add are proposals: they wait in the backlog's Proposed group for you to accept or dismiss them.",
+            "Tickets agents add join the backlog at once."
+          ],
+          "default": "propose",
+          "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how)."
         }
       }
     },

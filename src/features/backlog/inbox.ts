@@ -1,0 +1,189 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, type BacklogData, type BacklogItem } from './backlog';
+import { entryDate, parseTicket } from './ticket';
+import type { LocalBacklog } from './localBacklog';
+
+/**
+ * The backlog's inbox: how agents add tickets. An agent writes a Markdown file into .flotilla/backlog/inbox/ (the
+ * ticket's title and description, after optional front matter); Flotilla takes it in, gives it the next id, and
+ * writes that id next to it (<name>.added) for the agent to read. Any agent can, not only those Flotilla started.
+ */
+export const INBOX = 'inbox';
+export const GUIDE = 'AGENTS.md';
+
+/** Whether agents' tickets wait for the user to accept them, or join the backlog at once. */
+export type AgentTicketMode = 'propose' | 'add';
+
+export interface Proposal {
+  title: string;
+  description: string;
+  /** The item it's a part of. */
+  parent?: string;
+  priority?: string;
+  /** The agent starts on it now, on branch (its current one). */
+  start: boolean;
+  branch?: string;
+  /** The agent that wrote it ("a3f9"), when it signed. */
+  agent?: string;
+}
+
+/** Reads a proposal: "---" front matter (key: value lines), then a ticket ("# Title", description). */
+export function parseProposal(text: string): Proposal | { error: string } {
+  const normalized = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const front = /^---\n([\s\S]*?)\n---\n?/.exec(normalized);
+  const fields = new Map<string, string>();
+  for (const line of (front?.[1] ?? '').split('\n')) {
+    const m = /^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$/.exec(line);
+    if (m) fields.set(m[1].toLowerCase(), m[2].replace(/^["']|["']$/g, ''));
+  }
+  const ticket = parseTicket(front ? normalized.slice(front[0].length) : normalized);
+  if (!ticket.title.trim()) return { error: 'It has no title: start the ticket with "# Title".' };
+  const agent = fields.get('agent');
+  return {
+    title: ticket.title.trim(),
+    description: ticket.description,
+    ...(fields.get('parent') ? { parent: fields.get('parent')!.toUpperCase() } : {}),
+    ...(fields.get('priority') ? { priority: fields.get('priority') } : {}),
+    start: /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
+    ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
+    ...(agent ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
+  };
+}
+
+/** Adds a proposal to the backlog: its item (and what's wrong with it, if it can't be added). */
+export function addProposal(
+  data: BacklogData,
+  p: Proposal,
+  opts: { prefix: string; mode: AgentTicketMode; now: Date; taken: readonly string[] },
+): { data: BacklogData; item: BacklogItem } | { error: string } {
+  if (p.parent && !data.items.some((i) => i.id.toLowerCase() === p.parent!.toLowerCase())) {
+    return { error: `Its parent ${p.parent} isn't in the backlog.` };
+  }
+  const parent = p.parent && data.items.find((i) => i.id.toLowerCase() === p.parent!.toLowerCase())!.id;
+  // Parts get their parent's prefix (BL-1's parts are BL-…).
+  const prefix = (parent && ID_PATTERN.exec(parent)?.[1]) || opts.prefix;
+  const added = addItem(data, p.title, prefix, opts.now, nextId(data, prefix, opts.taken));
+  const priority = priorityFromName(p.priority);
+  const item: BacklogItem = {
+    ...added.item,
+    status: p.start ? 'doing' : 'todo',
+    ...(priority ? { priority } : {}),
+    ...(parent ? { parent } : {}),
+    ...(opts.mode === 'propose' ? { proposed: p.agent ? { by: p.agent } : {} } : {}),
+  };
+  let next: BacklogData = { ...added.data, items: added.data.items.map((i) => (i.id === item.id ? item : i)) };
+  if (p.start && p.branch) next = addBranch(next, item.id, p.branch);
+  return { data: next, item: next.items.find((i) => i.id === item.id)! };
+}
+
+/**
+ * Takes in the inbox's proposals: each becomes an item (with its ticket), its file is removed, and the id is written
+ * to <name>.added (or the problem to <name>.error). onStarted: a proposal the agent starts on now, on its branch.
+ */
+export async function takeInbox(
+  store: LocalBacklog,
+  opts: { prefix: string; mode: AgentTicketMode; taken: readonly string[]; onStarted?(item: BacklogItem, branch: string): Promise<void> },
+): Promise<BacklogItem[]> {
+  const dir = path.join(store.dir, INBOX);
+  let names: string[];
+  try {
+    names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('.')).sort();
+  } catch {
+    return [];
+  }
+  const added: BacklogItem[] = [];
+  for (const name of names) {
+    const file = path.join(dir, name);
+    const base = path.join(dir, name.slice(0, -'.md'.length));
+    let text: string;
+    try {
+      // A file still being written is taken next time.
+      const stat = await fs.promises.stat(file);
+      if (Date.now() - stat.mtimeMs < 1000) continue;
+      text = await fs.promises.readFile(file, 'utf8');
+    } catch {
+      continue;
+    }
+    const proposal = parseProposal(text);
+    let item: BacklogItem | undefined;
+    let error = 'error' in proposal ? proposal.error : 'Not added.';
+    if (!('error' in proposal)) {
+      await store.change((d) => {
+        const r = addProposal(d, proposal, { prefix: opts.prefix, mode: opts.mode, now: new Date(), taken: opts.taken });
+        if ('error' in r) {
+          error = r.error;
+          return d;
+        }
+        item = r.item;
+        return r.data;
+      });
+      if (item) {
+        const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
+        await store.writeTicket(item.id, {
+          title: proposal.title,
+          description: proposal.description,
+          activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
+        });
+        if (proposal.start && proposal.branch) await opts.onStarted?.(item, proposal.branch);
+        added.push(item);
+      }
+    }
+    await fs.promises.rm(file, { force: true });
+    if (item) await fs.promises.writeFile(`${base}.added`, `${item.id}\n`);
+    else await fs.promises.writeFile(`${base}.error`, `${error}\n`);
+  }
+  // Answers older than a day have been read.
+  for (const n of await fs.promises.readdir(dir).catch(() => [] as string[])) {
+    if (!/\.(added|error)$/.test(n)) continue;
+    const stat = await fs.promises.stat(path.join(dir, n)).catch(() => undefined);
+    if (stat && Date.now() - stat.mtimeMs > 86_400_000) await fs.promises.rm(path.join(dir, n), { force: true });
+  }
+  return added;
+}
+
+/** The guide agents read (AGENTS.md next to the backlog): how the backlog works and how to add to it. */
+export function agentGuide(backlogDir: string, mode: AgentTicketMode): string {
+  const inbox = path.join(backlogDir, INBOX);
+  return `# The backlog (Flotilla)
+
+This repository has a backlog managed by Flotilla, in ${backlogDir}:
+
+- \`backlog.json\`: the items in priority order, with id, title, status (todo, doing, review, done), priority and
+  parent (the item one is part of). Read it; never edit it.
+- \`<id>.md\`: each item's ticket: "# Title", the description, then "## Activity" (comments and agents' reports).
+
+## Adding tickets
+
+Any agent can add tickets. Do it when:
+
+- the task you're on turns out to be several pieces of work: add one ticket per piece, with \`parent:\` set to your
+  ticket's id;
+- you find other work that should be done (a bug, a follow-up), but isn't your task;
+- the user asks you to work on something that isn't in the backlog yet: add it with \`start: true\` before you start.
+
+To add one, write a Markdown file into ${inbox}/ (any name ending in .md, e.g. \`${inbox}/split-login-1.md\`):
+
+\`\`\`markdown
+---
+parent: BL-1        # optional: the item it's part of
+priority: high      # optional: urgent, high, medium or low
+start: true         # optional: you start on it now...
+branch: feature/x   # ...on this branch (your current one: git branch --show-current)
+agent: a3f9         # optional: your agent name, if you were given one
+---
+# A short title
+
+What and why, and how to tell it's done (a checklist of acceptance criteria).
+\`\`\`
+
+Flotilla takes it in within seconds, gives it an id and writes the id to \`<name>.added\` next to your file (or the
+problem to \`<name>.error\`). ${
+    mode === 'propose'
+      ? 'New tickets are proposals: the user accepts or dismisses them.'
+      : 'New tickets join the backlog at once (the user can still remove them).'
+  } With \`start: true\`, read the id from \`<name>.added\` and start every commit message with it (\`BL-7: ...\`).
+
+Don't edit other tickets' descriptions, and never change issue trackers (Jira, GitHub Issues) yourself.
+`;
+}

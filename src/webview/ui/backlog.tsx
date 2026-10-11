@@ -40,6 +40,8 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
   const [doneOpen, setDoneOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
+  // Agents' proposals wait above the lanes until they're accepted.
+  const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
 
   const drop = (e: DragEvent, status: BacklogStatus, before?: string) => {
@@ -68,6 +70,9 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
               <i class="codicon codicon-refresh" />
             </button>
           )}
+          <button class="icon" aria-label="Plan the Backlog with Claude" onClick={() => send({ type: 'backlog', op: 'plan' })}>
+            <i class="codicon codicon-sparkle" />
+          </button>
           <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
             <i class="codicon codicon-plug" />
           </button>
@@ -93,10 +98,38 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
           </button>
         </div>
       )}
+      {proposed.length > 0 && (
+        <div class="group lane proposed-lane">
+          <div class="row group-head">
+            <span class="name">Proposed by Agents</span>
+            <button class="icon" aria-label="Accept All" onClick={() => send({ type: 'backlog', op: 'acceptAll' })}>
+              <i class="codicon codicon-check-all" />
+            </button>
+            <span class="badge">{proposed.length}</span>
+          </div>
+          <div class="lane-body">
+            {proposed.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                icon="lightbulb"
+                worktrees={worktreesOf(item)}
+                color={(ws) => colors.get(ws.key)}
+                renaming={renaming === item.id}
+                setRenaming={(on) => setRenaming(on ? item.id : undefined)}
+                dropBefore={false}
+                onDragOver={() => undefined}
+                onDrop={() => undefined}
+                openWorktree={openWorktree}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       {items &&
         items.length > 0 &&
         LANES.map((lane) => {
-          const laneItems = items.filter((i) => i.status === lane.status);
+          const laneItems = items.filter((i) => i.status === lane.status && !i.proposed);
           const open = lane.status !== 'done' || doneOpen;
           return (
             <div key={lane.status} class={`group lane${dropAt?.status === lane.status && !dropAt.before ? ' drop-end' : ''}`}>
@@ -205,6 +238,12 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         onChange={remote ? undefined : (priority) => send({ type: 'backlog', op: 'update', id: item.id, priority })}
       />
       <span class="item-id">{item.id}</span>
+      {item.parent && (
+        <span class="parent-chip" data-tip={`Part of ${item.parent}`}>
+          <i class="codicon codicon-type-hierarchy-sub" />
+          {item.parent}
+        </span>
+      )}
       {renaming ? (
         <RenameBox item={item} onDone={() => setRenaming(false)} />
       ) : (
@@ -213,7 +252,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {item.summary && <span class="desc">{item.summary}</span>}
         </>
       )}
-      {!renaming && item.activity > 0 && (
+      {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
           {item.activity}
@@ -256,7 +295,17 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           +{worktrees.length - 2}
         </span>
       )}
-      {!renaming && (
+      {!renaming && item.proposed && (
+        <span class="proposal-actions" onClick={(e) => e.stopPropagation()}>
+          <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by Agent ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
+            <i class="codicon codicon-check" />
+          </button>
+          <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>
+            <i class="codicon codicon-close" />
+          </button>
+        </span>
+      )}
+      {!renaming && !item.proposed && (
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
           {!done && (
             <button

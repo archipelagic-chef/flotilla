@@ -60,6 +60,14 @@ if (sid && state) {
     }
   }
 }
+// A new chat learns about the repository's backlog (how to read it and add tickets) from its guide, if it has one.
+if (event === 'SessionStart') {
+  try {
+    const common = cp.execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: input.cwd || process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
+    const guide = path.join(path.dirname(common), '.flotilla', 'backlog', 'AGENTS.md');
+    if (fs.existsSync(guide)) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: fs.readFileSync(guide, 'utf8') } }));
+  } catch (e) {}
+}
 `;
 
 /** Marks Flotilla's hook commands so a reinstall can find and replace them. */
@@ -81,7 +89,8 @@ export function hookFileContent(): string {
     '// Flotilla hook for Claude Code (https://github.com/archipelagic-chef/flotilla).',
     '// Installed by the Flotilla VS Code extension; reinstalling the hooks overwrites this file.',
     '// It records each chat\'s state (working, waiting for input, done) in this worktree\'s git directory,',
-    '// in flotilla/chats/<session>.json, so Flotilla can show it. It sends nothing anywhere.',
+    '// in flotilla/chats/<session>.json, so Flotilla can show it, and gives new chats the backlog\'s guide',
+    '// (.flotilla/backlog/AGENTS.md) so agents can add tickets. It sends nothing anywhere.',
     hookSource(),
     '',
   ].join('\n');

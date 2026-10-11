@@ -35,6 +35,10 @@ export interface BacklogItem {
   branch?: string;
   /** Issues in trackers (Jira, GitHub Issues) this item is linked to. */
   links?: IssueLink[];
+  /** The item it's a part of (an epic, or a task an agent broke down). */
+  parent?: string;
+  /** Added by an agent and not accepted yet (by: the agent's name, when it signed). */
+  proposed?: { by?: string };
 }
 
 /** A local item's link to an issue in a tracker. */
@@ -151,6 +155,23 @@ export function updateItem(
       return next;
     }),
   };
+}
+
+/** Accepts an agent's proposed item: it becomes an ordinary one. */
+export function acceptItem(data: BacklogData, id: string): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { proposed: _p, ...rest } = i;
+      return rest;
+    }),
+  };
+}
+
+/** The items that are parts of an item, in backlog order. */
+export function childrenOf(data: BacklogData, id: string): BacklogItem[] {
+  return data.items.filter((i) => i.parent === id);
 }
 
 export function removeItem(data: BacklogData, id: string): BacklogData {

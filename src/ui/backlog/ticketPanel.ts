@@ -2,7 +2,7 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, branchMatches, entryAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -268,7 +268,7 @@ export class TicketPanels implements vscode.Disposable {
       panel.title = `${item.id} ${item.title}`;
       const dir = this.deps.backlog.dir;
       const { remote, ...plain } = item;
-      base = { ...this.baseView(plain, remote), ...(await this.work(plain)) };
+      base = { ...this.baseView(plain, remote), ...(await this.work(plain)), ...(await this.family(plain)) };
       chats = this.agentChats(plain);
       if (remote) {
         // What the backlog knows shows at once; the description and comments follow from the tracker.
@@ -298,6 +298,7 @@ export class TicketPanels implements vscode.Disposable {
           canCreateIssue: false,
           branches: [],
           commits: [],
+          children: [],
         }),
         error: message,
       });
@@ -339,6 +340,17 @@ export class TicketPanels implements vscode.Disposable {
       })),
       branches: [],
       commits: [],
+      children: [],
+    };
+  }
+
+  /** An item's parent and its parts. */
+  private async family(item: BacklogItem): Promise<Pick<TicketView, 'parent' | 'children'>> {
+    const data = await this.deps.backlog.read();
+    const parent = item.parent ? data.items.find((i) => i.id === item.parent) : undefined;
+    return {
+      ...(parent ? { parent: { id: parent.id, title: parent.title, status: parent.status } } : {}),
+      children: childrenOf(data, item.id).map((c) => ({ id: c.id, title: c.title, status: c.status, priority: c.priority, proposed: !!c.proposed })),
     };
   }
 
@@ -468,6 +480,17 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
+        return;
+      case 'accept':
+        await backlog.change((d) => acceptItem(d, id));
+        break;
+      case 'dismiss':
+        if (!item.proposed) return;
+        await backlog.change((d) => removeItem(d, id));
+        await backlog.deleteDocument(id);
+        return;
+      case 'openTicket':
+        await this.open(m.id);
         return;
       case 'openChat':
         if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });

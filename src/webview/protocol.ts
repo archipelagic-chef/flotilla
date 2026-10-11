@@ -213,7 +213,9 @@ export type WebviewMessage =
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
   /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link'; id: string }
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss'; id: string }
+  /** Accept every proposed item; plan the backlog with Claude. */
+  | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison

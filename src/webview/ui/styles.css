@@ -1849,3 +1849,25 @@ ins {
 .backlog-item a.icon {
   color: inherit;
 }
+.backlog-item .parent-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.backlog-item .parent-chip .codicon {
+  font-size: 11px;
+}
+.proposal-actions {
+  display: flex;
+  margin-left: auto;
+  flex: none;
+}
+.proposed-lane .group-head .icon {
+  margin-left: auto;
+}
+.proposed-lane .backlog-item .status-toggle {
+  color: var(--vscode-editorLightBulb-foreground, #ffcc00);
+}

@@ -69,6 +69,9 @@ export interface TicketView {
     behind: number;
     upstream?: string;
   }>;
+  /** The item it's a part of, and its own parts (sub-tickets). */
+  parent?: { id: string; title: string; status: BacklogStatus };
+  children: Array<{ id: string; title: string; status: BacklogStatus; priority?: BacklogPriority; proposed: boolean }>;
   /** Its branches that have no worktree (anymore). */
   branches: string[];
   /** Its commits: on its branches (not yet on the base), or mentioning it or a linked issue. Newest first. */
@@ -108,6 +111,10 @@ export type TicketWebviewMessage =
   | { type: 'postEntry'; key: string }
   /** Create an issue for a local item in a connected tracker, and link it. */
   | { type: 'createIssue' }
+  /** Accept or dismiss an agent's proposal; open another ticket (a parent, a sub-ticket). */
+  | { type: 'accept' }
+  | { type: 'dismiss' }
+  | { type: 'openTicket'; id: string }
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
   /** Open what a commit changed. */

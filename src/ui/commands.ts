@@ -17,6 +17,7 @@ import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
+import { GUIDE } from '../features/backlog/inbox';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
@@ -110,6 +111,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
   register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
+  register('flotilla.planBacklog', () => planBacklog(ctx));
   register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
   register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
@@ -469,13 +471,14 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
 }
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string, agent: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string, agent: string, guide: string): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   return [
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
+    `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
   ].join('\n\n');
 }
@@ -498,8 +501,25 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
   // A short name for the agent: its chat's first line and its reports carry it, which links them.
   const agent = crypto.randomBytes(2).toString('hex');
-  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent), agentLead(item, agent));
+  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent));
   await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+}
+
+/**
+ * Opens a Claude Code chat that plans the backlog with the user: it reads the backlog, breaks work down, and adds
+ * tickets through the inbox. One way among others: any agent can add tickets.
+ */
+async function planBacklog(ctx: CommandContext): Promise<void> {
+  await ctx.backlog.ensureDir();
+  const guide = path.join(ctx.backlog.dir, GUIDE);
+  await chatUi.askClaude(
+    [
+      `Help me plan this repository's backlog. First read ${guide}: it explains the backlog (backlog.json, a ticket file per item) and how to add tickets (the inbox).`,
+      `Look at the backlog and, where it helps, at the code. Then ask me what I want to get done. Break big work down into tickets (parts of an item get parent: <its id>), add new tickets through the inbox, and improve the tickets I point you to by editing their descriptions in their .md files.`,
+      `Don't implement anything yourself: work is started from the tickets, by me or by agents.`,
+      '',
+    ].join('\n\n'),
+  );
 }
 
 /** Links a local item to an issue in a connected tracker (Jira, GitHub Issues). */

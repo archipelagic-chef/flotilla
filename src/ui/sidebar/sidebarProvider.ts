@@ -6,7 +6,7 @@ import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -123,7 +123,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         );
         break;
       case 'move':
-        await store.change((d) => moveItem(d, m.id, m.status, m.before));
+        // Dragging a proposal into a lane accepts it.
+        await store.change((d) => acceptItem(moveItem(d, m.id, m.status, m.before), m.id));
         break;
       case 'delete': {
         const item = (await store.read()).items.find((i) => i.id === m.id);
@@ -145,6 +146,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'link':
         await vscode.commands.executeCommand('flotilla.linkBacklogItem', m.id);
+        return;
+      case 'accept':
+        await store.change((d) => acceptItem(d, m.id));
+        break;
+      case 'acceptAll':
+        await store.change((d) => d.items.filter((i) => i.proposed).reduce((acc, i) => acceptItem(acc, i.id), d));
+        break;
+      case 'dismiss': {
+        // A proposal goes without asking (it's the agent's suggestion, not the user's work).
+        const item = (await store.read()).items.find((i) => i.id === m.id);
+        if (!item?.proposed) return;
+        await store.change((d) => removeItem(d, m.id));
+        await store.deleteDocument(m.id);
+        break;
+      }
+      case 'plan':
+        await vscode.commands.executeCommand('flotilla.planBacklog');
         return;
       case 'integrations':
         await this.deps.integrations.manage();

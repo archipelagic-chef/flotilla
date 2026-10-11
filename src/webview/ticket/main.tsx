@@ -286,6 +286,35 @@ const AUTHOR_ICON: Record<string, string> = {
   flotilla: 'info',
 };
 
+/** The ticket's parts (sub-tickets), with how far along they are. */
+function Parts({ ticket }: { ticket: TicketView }) {
+  const done = ticket.children.filter((c) => c.status === 'done').length;
+  return (
+    <section class="block">
+      <div class="block-head">
+        <h2>
+          Parts{' '}
+          <span class="muted parts-progress">
+            {done} of {ticket.children.length} done
+          </span>
+        </h2>
+      </div>
+      <div class="work">
+        {ticket.children.map((c) => (
+          <button key={c.id} class={`work-row${c.status === 'done' ? ' dim' : ''}`} onClick={() => send({ type: 'openTicket', id: c.id })} title="Open its ticket">
+            <i class={`codicon codicon-${c.proposed ? 'lightbulb' : LANE_ICON[c.status]}`} />
+            <span class="hash">{c.id}</span>
+            <span class="work-main subject">{c.title}</span>
+            {c.proposed && <span class="branch-tag mention">proposed</span>}
+            {c.priority && <i class={`codicon codicon-${PRIORITY[c.priority].icon} prio-${c.priority}`} />}
+            <i class="codicon codicon-arrow-right open-arrow" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const COMMITS_SHOWN = 8;
 
 /** Where the work on the ticket is: its worktrees (and branches without one), and its commits. */
@@ -691,8 +720,28 @@ function App() {
             </div>
           )}
         </div>
+        {ticket.item.proposed && (
+          <div class="proposal-banner">
+            <i class="codicon codicon-lightbulb" />
+            <span>
+              {ticket.item.proposed.by ? `Agent ${ticket.item.proposed.by}` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
+            </span>
+            <button class="button" onClick={() => send({ type: 'accept' })}>
+              <i class="codicon codicon-check" /> Accept
+            </button>
+            <button class="button secondary" onClick={() => send({ type: 'dismiss' })}>
+              Dismiss
+            </button>
+          </div>
+        )}
         <Title ticket={ticket} />
         <div class="properties">
+          {ticket.parent && (
+            <button class="parent-link" onClick={() => send({ type: 'openTicket', id: ticket.parent!.id })} title={`Part of ${ticket.parent.id}: ${ticket.parent.title}`}>
+              <i class="codicon codicon-type-hierarchy-super" />
+              Part of <strong>{ticket.parent.id}</strong> <span class="muted">{ticket.parent.title}</span>
+            </button>
+          )}
           {ticket.remote?.edit?.priorities ? (
             <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
           ) : (
@@ -766,6 +815,7 @@ function App() {
         </div>
       )}
       <Description ticket={ticket} />
+      {ticket.children.length > 0 && <Parts ticket={ticket} />}
       {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0) && <Work ticket={ticket} />}
       {ticket.agents.length > 0 && <Agents ticket={ticket} />}
       <Activity ticket={ticket} />
