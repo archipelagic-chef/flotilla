@@ -365,6 +365,11 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "flotilla.hideWorktrees",
+        "title": "Hide Worktrees from File Watching, Search and the Git Scan",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.toggleAutopilot",
         "title": "Toggle Autopilot (Agents Take To Do Tickets)",
         "category": "Flotilla",
@@ -483,6 +488,18 @@
         "icon": "$(expand-all)"
       }
     ],
+    "configurationDefaults": {
+      "files.watcherExclude": {
+        ".worktrees/**": true
+      },
+      "search.exclude": {
+        ".worktrees": true
+      },
+      "git.repositoryScanIgnoredFolders": [
+        "node_modules",
+        ".worktrees"
+      ]
+    },
     "menus": {
       "commandPalette": [
         {

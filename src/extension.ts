@@ -34,6 +34,7 @@ import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
+import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
@@ -135,6 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,
+    mainRoot: location.mainRoot,
     inWorkspace,
     active,
     commit: (ws, message, opts) => commit(scmCtx, ws, message, opts),
@@ -208,6 +210,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void autopilot.tick();
       void reviews.resumePaused();
     }),
+    vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
       const on = !autopilot.enabled;
       await autopilot.setEnabled(on);

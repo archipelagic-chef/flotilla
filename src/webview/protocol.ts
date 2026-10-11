@@ -147,6 +147,8 @@ export type HostMessage =
   | { type: 'active'; key: string }
   /** Worktrees whose tab is closed (still in the Overview). */
   | { type: 'tabs'; closed: string[] }
+  /** Exclusions VS Code's settings still lack for a worktrees folder in the main folder (empty: none to show). */
+  | { type: 'exclusions'; missing: string[] }
   | { type: 'searchResults'; id: number; groups: SearchGroup[]; truncated: boolean; limit: number; error?: string }
   /** The file icon theme (undefined: none, use generic icons). */
   | { type: 'iconTheme'; theme: { css: string; map: IconMap } | undefined }
