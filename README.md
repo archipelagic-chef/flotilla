@@ -76,6 +76,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.staleAfterDays` | `7` | Activity → stale threshold |
 | `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
 | `flotilla.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
+| `flotilla.ci.notify` | `failures` | Notify when a CI run on a worktree's branch finishes: `failures`, `all` or `off` |
 | `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |

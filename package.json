@@ -1268,6 +1268,21 @@
           "default": true,
           "description": "Notify when a workstream starts waiting for input or reports an error."
         },
+        "flotilla.ci.notify": {
+          "type": "string",
+          "enum": [
+            "failures",
+            "all",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Notify when a run on a worktree's branch fails.",
+            "Notify when a run on a worktree's branch finishes, passed or failed.",
+            "Don't notify about CI runs."
+          ],
+          "default": "failures",
+          "description": "Notify when a CI run you watched (on a worktree's branch) finishes. Only the window that leads the backlog notifies."
+        },
         "flotilla.pollSeconds": {
           "type": "number",
           "default": 15,

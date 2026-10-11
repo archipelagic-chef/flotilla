@@ -31,6 +31,7 @@ import { TicketPanels } from './ui/backlog/ticketPanel';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
+import { CiMonitor } from './ui/ci/ciMonitor';
 import { readSettings } from './ui/settings';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
@@ -143,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const leader = new Leader(backlog.dir);
   const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
   context.subscriptions.push(reviews);
+  // The CI of each worktree's branch, read while VS Code is open; the leading window tells the user about finished runs.
+  context.subscriptions.push(new CiMonitor({ repository, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, onChange: (views) => sidebar.setCi(views), output }));
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(noteDescriptions));

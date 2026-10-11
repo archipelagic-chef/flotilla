@@ -7,6 +7,7 @@ import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/ba
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
+import type { CiView } from '../features/ci/ciWatcher';
 
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
@@ -92,6 +93,8 @@ export interface WorkstreamView {
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
+  /** The branch's CI, when it has been read (or why it can't be). */
+  ci?: CiView;
   /** `;`-separated tokens for context-menu when-clauses, as in `webviewWorkstream =~ /;linked;/`. */
   context: string;
 }

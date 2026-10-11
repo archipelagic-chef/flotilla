@@ -1,5 +1,6 @@
 import { gitHubName } from '../backlog/sources/github';
 import { fetchJson, fetchText, type Fetch } from '../backlog/sources/source';
+import { worstStatus } from './summary';
 
 /** Where a run, a job or a step is: waiting to start, running, or how it ended. */
 export type CiStatus = 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped' | 'neutral';
@@ -278,13 +279,11 @@ export function fixPrompt(o: { run: CiRun; job: CiJob; branch: string; repo: str
   ].join('\n\n');
 }
 
-/** What a branch's CI says overall: its latest run of each workflow, the worst first (failure, running, success). */
+/** What a branch's CI says overall: its latest run of each workflow, the worst first. */
 export function overall(runs: readonly CiRun[]): CiStatus | undefined {
   const latest = new Map<string, CiRun>();
   for (const r of runs) if (!latest.has(r.workflow)) latest.set(r.workflow, r);
-  const statuses = [...latest.values()].map((r) => r.status);
-  const order: CiStatus[] = ['failure', 'running', 'queued', 'cancelled', 'success', 'neutral', 'skipped'];
-  return order.find((s) => statuses.includes(s));
+  return worstStatus([...latest.values()].map((r) => r.status));
 }
 
 /** Runs that finished since the last look (they were going then): to tell the user about. */

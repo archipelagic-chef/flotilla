@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { CiNotify } from '../features/ci/ciWatcher';
 
 export interface Settings {
   copyFiles: string[];
@@ -10,6 +11,7 @@ export interface Settings {
   agentStatusStaleMinutes: number;
   notifyOnAttention: boolean;
   pollSeconds: number;
+  ciNotify: CiNotify;
 }
 
 export function readSettings(): Settings {
@@ -24,5 +26,6 @@ export function readSettings(): Settings {
     agentStatusStaleMinutes: c.get<number>('agentStatusStaleMinutes', 10),
     notifyOnAttention: c.get<boolean>('notifyOnAttention', true),
     pollSeconds: c.get<number>('pollSeconds', 15),
+    ciNotify: c.get<CiNotify>('ci.notify', 'failures'),
   };
 }

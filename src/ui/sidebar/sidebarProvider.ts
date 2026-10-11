@@ -25,6 +25,7 @@ import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
+import type { CiView } from '../../features/ci/ciWatcher';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -78,6 +79,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private autopilot: Autopilot | undefined;
+  private ci: Record<string, CiView> = {};
+
+  /** The CI of each worktree, as the CI monitor last read it. */
+  setCi(views: Record<string, CiView>): void {
+    this.ci = views;
+    this.postState();
+  }
 
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
@@ -243,7 +251,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const now = new Date();
     const all = this.deps.repository.current;
     const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('tabLabelPattern') || undefined;
-    this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern)) });
+    this.post({
+      type: 'state',
+      workstreams: tabOrder(all).map((ws) => {
+        const view = toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern);
+        return this.ci[ws.key] ? { ...view, ci: this.ci[ws.key] } : view;
+      }),
+    });
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
