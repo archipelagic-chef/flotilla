@@ -189,10 +189,12 @@ export class LocalBacklog {
     await writeAtomic(this.docPath(id), formatTicket(ticket));
   }
 
-  /** Writes an item's ticket file if it has none yet; returns its path. */
+  /** Writes an item's ticket file if it has none yet; returns its path. The check and the write wait their turn together. */
   async ensureDocument(item: BacklogItem): Promise<string> {
     const file = this.docPath(item.id);
-    if (!fs.existsSync(file)) await this.writeTicket(item.id, await this.readTicket(item));
+    await this.exclusive(async () => {
+      if (!fs.existsSync(file)) await this.writeTicketFile(item.id, await this.readTicket(item));
+    });
     return file;
   }
 
