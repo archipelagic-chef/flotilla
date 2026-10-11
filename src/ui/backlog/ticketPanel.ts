@@ -670,12 +670,12 @@ export class TicketPanels implements vscode.Disposable {
       }
     }
     const fingerprint = runFingerprint(id, place.dir, picked.block);
-    if (!this.deps.approvals.has(fingerprint)) {
+    const approved = this.deps.approvals.has(fingerprint);
+    if (!approved) {
       const what = kind === 'shell' ? lines.join('\n') : kind === 'open' ? target : `${kind === 'launch' ? 'Launch configuration' : 'Task'} "${title ?? ''}"`;
       const shown = kind === 'shell' ? `In ${place.dir}:\n\n${what}` : `${what}\n\nIn ${place.dir}`;
       const answer = await vscode.window.showWarningMessage(`Run ${title ?? kind} for ${id}?`, { modal: true, detail: shown }, 'Run');
       if (answer !== 'Run') return;
-      await this.deps.approvals.add(fingerprint);
     }
     if (kind === 'shell') {
       const terminal = await this.deps.terminals.forRun(id, place.dir);
@@ -691,6 +691,8 @@ export class TicketPanels implements vscode.Disposable {
     } else if (opened && 'file' in opened) {
       await vscode.commands.executeCommand('vscode.open', toWorkspaceUri(this.deps.reference, opened.file), { preview: false });
     }
+    // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
+    if (!approved) await this.deps.approvals.add(fingerprint);
     const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : 'ran';
     await this.addActivity(id, 'Flotilla', `You ${verb} ${title ? `"${title}"` : `the ${kind} block`} in \`${place.label}\`.`);
   }

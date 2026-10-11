@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RunBlock } from '../../../src/features/backlog/runBlocks';
-import { runFingerprint, runPlaces, unknownNameMessage } from '../../../src/features/backlog/runWorktree';
+import { planTerminal, runFingerprint, runPlaces, unknownNameMessage } from '../../../src/features/backlog/runWorktree';
 
 const wt = (branch: string | undefined, path: string | undefined) => ({ branch, path, adminDir: `/repo/.git/worktrees/${branch ?? 'x'}` });
 
@@ -80,5 +80,23 @@ describe('a launch or task name that the worktree lacks', () => {
   it('says when the block has no name', () => {
     expect(unknownNameMessage('launch', undefined, ['A'], dir)).toBe('The launch block has no name: write the configuration\'s name after `launch`.');
     expect(unknownNameMessage('task', undefined, [], dir)).toBe('The task block has no name: write the task\'s name after `task`.');
+  });
+});
+
+describe('the terminal of a run', () => {
+  it('makes a new one when there is none', () => {
+    expect(planTerminal('none')).toEqual({ action: 'new' });
+  });
+
+  it('reuses an idle one without asking', () => {
+    expect(planTerminal('idle')).toEqual({ action: 'reuse' });
+  });
+
+  it('asks before stopping what runs there, and says so when that is known', () => {
+    expect(planTerminal('running')).toEqual({ action: 'ask', known: true });
+  });
+
+  it('asks when shell integration is missing, and says it cannot tell', () => {
+    expect(planTerminal('unknown')).toEqual({ action: 'ask', known: false });
   });
 });

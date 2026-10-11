@@ -55,3 +55,21 @@ export function unknownNameMessage(kind: 'launch' | 'task', name: string | undef
   const what = kind === 'launch' ? 'launch configuration' : 'task';
   return `There's no ${what} named "${name}" in ${dir}.${names.length ? ` Its ${what}s are: ${names.join(', ')}.` : ` It has no ${what}s.`}`;
 }
+
+/**
+ * What the ticket's terminal is like: none yet; idle; running something (shell integration says so); or a terminal
+ * whose shell integration isn't there, so that nobody can tell whether something runs in it.
+ */
+export type TerminalState = 'none' | 'idle' | 'running' | 'unknown';
+
+/**
+ * What to do with it: make a new terminal, send the commands to the one there, or ask first (then "Stop and Run" stops
+ * what runs and sends them; without it nothing runs). `known` says whether we could tell that something runs.
+ */
+export type TerminalPlan = { action: 'new' } | { action: 'reuse' } | { action: 'ask'; known: boolean };
+
+export function planTerminal(state: TerminalState): TerminalPlan {
+  if (state === 'none') return { action: 'new' };
+  if (state === 'idle') return { action: 'reuse' };
+  return { action: 'ask', known: state === 'running' };
+}

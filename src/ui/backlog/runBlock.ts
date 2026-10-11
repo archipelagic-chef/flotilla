@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import { samePath } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
-import { unknownNameMessage } from '../../features/backlog/runWorktree';
+import { planTerminal, unknownNameMessage } from '../../features/backlog/runWorktree';
 import { addWorkspaceFolder } from '../workspaceFolders';
 
 const APPROVALS = 'flotilla.backlog.runApprovals';
@@ -28,7 +28,8 @@ export class RunApprovals {
 
 /**
  * The terminals of run blocks: one per ticket and worktree, named "Run BL-3", and reused. Something still running in
- * one (VS Code's shell integration says so) is stopped only after asking.
+ * one is stopped only after asking. Whether something runs comes from VS Code's shell integration; without it, the
+ * terminal is asked about all the same (we can't tell).
  */
 export class RunTerminals implements vscode.Disposable {
   private readonly busy = new Set<vscode.Terminal>();
@@ -46,9 +47,12 @@ export class RunTerminals implements vscode.Disposable {
   async forRun(id: string, dir: string): Promise<vscode.Terminal | undefined> {
     const name = `Run ${id}`;
     const existing = vscode.window.terminals.find((t) => t.name === name && samePath(terminalCwd(t) ?? '', dir));
-    if (!existing) return vscode.window.createTerminal({ name, cwd: dir });
-    if (this.busy.has(existing)) {
-      const answer = await vscode.window.showWarningMessage(`${name} is still running something. Stop it and run the new commands?`, { modal: true }, 'Stop and Run');
+    const plan = planTerminal(!existing ? 'none' : existing.shellIntegration === undefined ? 'unknown' : this.busy.has(existing) ? 'running' : 'idle');
+    if (plan.action === 'new') return vscode.window.createTerminal({ name, cwd: dir });
+    if (!existing) return undefined;
+    if (plan.action === 'ask') {
+      const question = plan.known ? `${name} is still running something.` : `${name} can't tell whether something is still running in its terminal.`;
+      const answer = await vscode.window.showWarningMessage(`${question} Stop it and run the new commands?`, { modal: true }, 'Stop and Run');
       if (answer !== 'Stop and Run') return undefined;
       existing.sendText('\x03', false);
       this.busy.delete(existing);
@@ -64,15 +68,19 @@ function terminalCwd(t: vscode.Terminal): string | undefined {
 
 /**
  * The workspace folder of a worktree in this window, for launch and task blocks. When it isn't here, asks whether to
- * add it to this workspace or open it in a window of its own (then the run is done again there). Undefined when neither.
+ * add it to this workspace or open it in a window of its own. The run is then done again there (or here, once it's
+ * added): undefined in both cases.
  */
 export async function folderFor(dir: string, reference: vscode.Uri, label: string): Promise<vscode.WorkspaceFolder | undefined> {
   const here = vscode.workspace.workspaceFolders?.find((f) => samePath(f.uri.fsPath, dir));
   if (here) return here;
   const answer = await vscode.window.showInformationMessage(`${label} is in ${dir}, which isn't in this window.`, 'Add to Workspace', 'Open in New Window');
   if (answer === 'Add to Workspace') {
+    // The folder list may not be updated yet (or the window may restart with the new workspace): so this run stops here,
+    // and the block is run again once the folder is there.
     addWorkspaceFolder(reference, dir, label);
-    return vscode.workspace.workspaceFolders?.find((f) => samePath(f.uri.fsPath, dir));
+    void vscode.window.showInformationMessage(`${label} added to this workspace: run the block again.`);
+    return undefined;
   }
   if (answer === 'Open in New Window') {
     await vscode.commands.executeCommand('vscode.openFolder', toWorkspaceUri(reference, dir), { forceNewWindow: true });
