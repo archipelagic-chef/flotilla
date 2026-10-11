@@ -1285,6 +1285,12 @@
           "minimum": 100,
           "description": "Search results per worktree before Flotilla asks you to refine the search or show more."
         },
+        "flotilla.changes.limit": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 100,
+          "description": "Changes shown per worktree (staged and unstaged together) before Flotilla says \"and N more\". Stage All, Discard All and commits still cover every change; open a terminal in the worktree to see them all."
+        },
         "flotilla.tabLabelPattern": {
           "type": "string",
           "default": "",

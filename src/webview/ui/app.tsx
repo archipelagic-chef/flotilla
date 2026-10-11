@@ -1,5 +1,5 @@
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
@@ -54,6 +54,8 @@ export interface FilesApi {
   isSelected(key: string, path: string): boolean;
   /** single: just this row; toggle: add or remove it (Ctrl/Cmd); range: from the anchor to it (Shift). */
   select(key: string, path: string, mode: 'single' | 'toggle' | 'range'): void;
+  /** The paths of a worktree's tree rows in the order shown (drawn or not): a range covers them. */
+  publishRows(key: string, paths: string[]): void;
   editing: Editing | undefined;
   stopEditing(): void;
 }
@@ -128,7 +130,8 @@ export function App() {
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
-  const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
+  /** Each worktree's Files rows in the order they're shown: a Shift range covers them, drawn or not. */
+  const treeOrder = useRef(new Map<string, string[]>());
   const stateRef = useRef({ persisted, active, workstreams });
   stateRef.current = { persisted, active, workstreams };
 
@@ -211,7 +214,13 @@ export function App() {
       const { persisted: p, active: current } = stateRef.current;
       switch (m.type) {
         case 'state':
-          setWorkstreams(m.workstreams);
+          // Only the worktrees that changed come; the others keep their views (and the same objects, so nothing re-renders).
+          setWorkstreams((prev) => {
+            const views = new Map((prev ?? []).map((w) => [w.key, w]));
+            for (const w of m.workstreams) views.set(w.key, w);
+            const next = m.keys.flatMap((key) => views.get(key) ?? []);
+            return prev && next.length === prev.length && next.every((w, i) => w === prev[i]) ? prev : next;
+          });
           return;
         case 'active':
           setActiveState(m.key);
@@ -321,7 +330,6 @@ export function App() {
           }));
           for (const d of ['', ...parents]) requestDir(m.key, d);
           setSelection({ key: m.key, paths: [m.path], anchor: m.path });
-          pendingScroll.current = { key: m.key, path: m.path, until: Date.now() + 3000 };
           return;
         }
       }
@@ -335,21 +343,6 @@ export function App() {
     send({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
   }, [onMessage]);
-
-  // Scrolls a revealed file into view once it is rendered (it may need folder listings first).
-  useLayoutEffect(() => {
-    const pending = pendingScroll.current;
-    if (!pending) return;
-    if (Date.now() > pending.until) {
-      pendingScroll.current = undefined;
-      return;
-    }
-    const row = document.querySelector<HTMLElement>(`[data-section="${CSS.escape(pending.key)}"] [data-path="${CSS.escape(pending.path ?? '')}"]`);
-    if (row) {
-      row.scrollIntoView({ block: 'nearest' });
-      pendingScroll.current = undefined;
-    }
-  });
 
   // Keep the active worktree tab visible when there are more tabs than room.
   useEffect(() => {
@@ -386,7 +379,7 @@ export function App() {
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
-  const changeCount = scope.reduce((n, w) => n + w.staged.length + w.unstaged.length, 0);
+  const changeCount = scope.reduce((n, w) => n + w.totals.staged + w.totals.unstaged, 0);
   // Chats waiting for the user, in every worktree (a chat waits wherever it runs): approvals, and output to reply to.
   // A chat linked to several worktrees counts once.
   const pending = new Map<string, 'approval' | 'reply'>();
@@ -416,13 +409,14 @@ export function App() {
           const paths = sel.paths.includes(path) ? sel.paths.filter((p) => p !== path) : [...sel.paths, path];
           return { key, paths, anchor: path };
         }
-        // A range covers the visible rows between the anchor and this one, in the order they are shown.
-        const rows = [...document.querySelectorAll<HTMLElement>(`.content [role="treeitem"][data-key="${CSS.escape(key)}"]`)].map(
-          (r) => r.dataset.path!,
-        );
+        // A range covers the rows between the anchor and this one, in the order they are shown.
+        const rows = treeOrder.current.get(key) ?? [];
         const [a, b] = [rows.indexOf(sel.anchor), rows.indexOf(path)].sort((x, y) => x - y);
         return a < 0 ? { key, paths: [path], anchor: path } : { key, paths: rows.slice(a, b + 1), anchor: sel.anchor };
       }),
+    publishRows: (key, paths) => {
+      treeOrder.current.set(key, paths);
+    },
     editing,
     stopEditing: () => setEditing(undefined),
   };

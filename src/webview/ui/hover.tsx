@@ -190,7 +190,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export function WorktreeCard({ ws, color, keys, hint }: { ws: WorkstreamView; color: string; keys?: string; hint?: string }) {
   const open = ws.chats.filter((c) => c.open);
   const waiting = open.filter((c) => c.state === 'waiting-for-input').length;
-  const changes = [ws.staged.length ? `${ws.staged.length} staged` : '', ws.unstaged.length ? plural(ws.unstaged.length, 'change') : '']
+  const changes = [ws.totals.staged ? `${ws.totals.staged} staged` : '', ws.totals.unstaged ? plural(ws.totals.unstaged, 'change') : '']
     .filter(Boolean)
     .join(', ');
   const chats = open.length ? `${plural(open.length, 'open chat')}${waiting ? ` (${waiting} waiting)` : ''}` : '';

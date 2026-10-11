@@ -22,7 +22,7 @@ import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
-import { tabOrder, toWorkstreamView } from './viewModel';
+import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 
@@ -52,6 +52,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private readonly visibility = new vscode.EventEmitter<boolean>();
   readonly onDidChangeVisibility = this.visibility.event;
   private readonly subscriptions: vscode.Disposable[] = [];
+  /** The view of each worktree as the webview last got it (JSON, by key): only changed ones are sent. */
+  private readonly sent = new Map<string, string>();
   readonly files: FileOps;
 
   constructor(private readonly deps: SidebarDeps) {
@@ -239,11 +241,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
+  /** Sends the worktrees whose view changed since the last state (all of them after the page loads). */
   postState(): void {
     const now = new Date();
     const all = this.deps.repository.current;
-    const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('tabLabelPattern') || undefined;
-    this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern)) });
+    const config = vscode.workspace.getConfiguration('flotilla');
+    const pattern = config.get<string>('tabLabelPattern') || undefined;
+    const limit = config.get<number>('changes.limit', 5000);
+    const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit));
+    const { changed, keys } = changedViews(views, this.sent);
+    this.post({ type: 'state', workstreams: changed, keys });
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
@@ -303,6 +310,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     switch (m.type) {
       case 'ready':
         void this.postIconTheme();
+        // A page that has just loaded has none of the views: send them all.
+        this.sent.clear();
         this.postState();
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
