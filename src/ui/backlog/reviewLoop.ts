@@ -443,15 +443,16 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Starts a review round now (Start Review, or a move into review: automatic, unless manual). */
   async start(id: string, manual = false): Promise<void> {
-    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    let item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item || this.runs.has(id)) return;
     if (item.status !== 'review') {
       this.statuses.set(id, 'review');
       await this.deps.backlog.change((d) => updateItem(d, id, { status: 'review' }), { by: 'Flotilla' });
+      // The item as stored now (in review), so a start that waits for memory records what retry will read.
+      item = (await this.deps.backlog.read()).items.find((i) => i.id === id) ?? item;
     }
     // A loop that stopped or ended starts over in its rounds count.
-    const fresh = item.review && item.review.state !== 'revising' ? { ...item, review: { ...item.review, round: 0 } } : item;
-    await this.startRound(fresh, manual);
+    await this.startRound(item, manual, item.review !== undefined && item.review.state !== 'revising');
   }
 
   /** Stops the loop: the running agent, if any, and the handoffs. */
@@ -463,9 +464,10 @@ export class ReviewLoop implements vscode.Disposable {
     await this.stopLoop(id, 'stopped by you.', { kind: 'user', notify: false });
   }
 
-  private async startRound(item: BacklogItem, manual = false): Promise<void> {
+  /** `restart`: a loop that stopped or ended starts over at round 1 (the stored round is left as it is). */
+  private async startRound(item: BacklogItem, manual = false, restart = false): Promise<void> {
     const max = Math.max(1, settings().get<number>('review.maxRounds', 3)) + (item.review?.extraRounds ?? 0);
-    const round = (item.review?.round ?? 0) + 1;
+    const round = (restart ? 0 : (item.review?.round ?? 0)) + 1;
     if (round > max) {
       await this.stopLoop(item.id, `still not approved after ${max} rounds; it's yours to decide.`, { kind: 'rounds' });
       return;
@@ -475,7 +477,7 @@ export class ReviewLoop implements vscode.Disposable {
       await this.stopLoop(item.id, 'it has no worktree to review.', { kind: 'no-worktree' });
       return;
     }
-    if (!(await this.mayStart(item, manual, (fresh) => this.startRound(fresh)))) return;
+    if (!(await this.mayStart(item, manual, (fresh) => this.startRound(fresh, false, restart)))) return;
     const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
     const reviewer = item.review?.reviewer || agentName([...taken, item.review?.implementer ?? '']);
     const base = (await resolveBase(this.deps.mainRoot, readSettings().defaultBase)) ?? 'HEAD';

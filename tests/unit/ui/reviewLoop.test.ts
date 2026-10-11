@@ -97,4 +97,27 @@ describe('the review loop and memory', () => {
     expect(spawn).toHaveBeenCalledTimes(1);
     loop.dispose();
   });
+  it('runs a manual start on an item that Start Review moves into review, once there is room', async () => {
+    data.items[0].status = 'doing';
+    await loop.start('BL-1');
+    expect(spawn).not.toHaveBeenCalled();
+
+    memory.short = undefined;
+    await retry();
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect((data.items[0] as { status: string }).status).toBe('review');
+    loop.dispose();
+  });
+
+  it('runs a restarted loop once there is room, from round 1', async () => {
+    data.items[0].review = { round: 3, state: 'stopped', reviewer: 'Astro-3', implementer: 'Servo-7', reason: 'rounds', handled: [] };
+    await loop.start('BL-1');
+    expect(spawn).not.toHaveBeenCalled();
+
+    memory.short = undefined;
+    await retry();
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect((data.items[0].review as { round: number }).round).toBe(1);
+    loop.dispose();
+  });
 });
