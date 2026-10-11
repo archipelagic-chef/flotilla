@@ -391,6 +391,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.runBacklogItem",
+        "title": "Run a Ticket's Run Block",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.reviewBacklogItem",
         "title": "Review Ticket…",
         "category": "Flotilla"
@@ -771,6 +776,10 @@
         },
         {
           "command": "flotilla.compareCleanUp",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.runBacklogItem",
           "when": "false"
         },
         {

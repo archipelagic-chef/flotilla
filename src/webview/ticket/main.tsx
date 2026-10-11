@@ -747,8 +747,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
   // A ticket in review (or approved) runs its latest run block from here, next to Approve and Request Changes.
   const showRun = !ticket.remote && (ticket.item.status === 'review' || ticket.review?.state === 'approved');
+  // It goes in the comment box, after a draft. Request Changes sends it to the agent: a Comment is only a note.
   const askForRun = () => {
-    setComment(ASK_FOR_RUN);
+    setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
   const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
@@ -883,9 +884,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
                   <i class="codicon codicon-play" /> Run
                 </button>
                 <span class="muted">The agent didn't give a run block.</span>
-                <button class="text-button" onClick={askForRun} title="Writes a comment asking the agent for one">
-                  Ask it for one
-                </button>
+                {reviewable && (
+                  <button class="text-button" onClick={askForRun} title="Puts a request for one in the comment box. Request Changes sends it to the agent; Comment would only leave a note.">
+                    Ask it for one
+                  </button>
+                )}
               </>
             ))}
           <button class="button" disabled={!comment.trim()} onClick={post}>
