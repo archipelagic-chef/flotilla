@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import type { Scope } from '../../core/repository';
 import type { Workstream } from './workstream';
 
@@ -11,6 +12,20 @@ const SLACK_MS = 1000;
 export function isLive(ws: Workstream, activeKey: string | undefined): boolean {
   const agentRunning = ws.agent?.state === 'working' || ws.agent?.state === 'waiting-for-input';
   return ws.isCurrent || ws.windowOpen || agentRunning || ws.activity === 'active' || ws.key === activeKey;
+}
+
+/**
+ * What a change to a file under the git common dir asks a refresh to rebuild. A linked worktree's files
+ * (`worktrees/<name>/…`) name that worktree; the rest (HEAD, index, the log, …) belong to the main worktree, whose
+ * admin dir is the common dir. Changes outside the common dir rebuild everything.
+ */
+export function scopeForChange(file: string, commonDir: string): Scope {
+  const rel = path.relative(commonDir, file);
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return 'all';
+  const [first, name] = rel.split(path.sep);
+  if (first !== 'worktrees') return new Set([commonDir]);
+  // The worktrees directory itself names no worktree.
+  return name === undefined ? new Set() : new Set([path.join(commonDir, 'worktrees', name)]);
 }
 
 /**

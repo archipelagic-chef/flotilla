@@ -9,6 +9,7 @@ import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
+import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
@@ -339,14 +340,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Refresh triggers: watchers (unreliable on bind mounts), focus, polling, settings. A change names the worktree it's
   // in (the main worktree's admin dir is the common dir), so only that one is rebuilt. Polling and focus rebuild the
   // worktrees that are due (see refreshPlan.ts); a settings change or a worktree added or removed rebuilds all.
-  const worktreesDir = path.join(location.commonDir, 'worktrees');
-  const adminDirOf = (file: string) => path.join(worktreesDir, path.relative(worktreesDir, file).split(path.sep)[0]);
   const scheduled: Scope = new Set();
   const refreshDue = () => void repository.refresh(scheduled);
+  const scopeOf = (file: string) => scopeForChange(file, location.commonDir);
   const watched: Array<[string, string, (file: string) => Scope]> = [
-    [worktreesDir, '**', (file) => new Set([adminDirOf(file)])],
+    [path.join(location.commonDir, 'worktrees'), '**', scopeOf],
     // The main worktree's index and HEAD log: staging and committing there.
-    [location.commonDir, '{HEAD,index,logs/HEAD,workstream.json,flotilla/**}', () => new Set([location.commonDir])],
+    [location.commonDir, '{HEAD,index,logs/HEAD,workstream.json,flotilla/**}', scopeOf],
     [path.join(location.mainRoot, '.worktrees'), '*', () => 'all'],
   ];
   for (const [base, glob, scopeOf] of watched) {

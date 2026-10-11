@@ -1,5 +1,6 @@
+import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { IDLE_REFRESH_MS, isLive, isRebuildDue } from '../../../src/features/workstreams/refreshPlan';
+import { IDLE_REFRESH_MS, isLive, isRebuildDue, scopeForChange } from '../../../src/features/workstreams/refreshPlan';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z');
@@ -54,5 +55,24 @@ describe('isRebuildDue', () => {
 
   it('treats the sidebar pick as live', () => {
     expect(isRebuildDue(entry(), new Set(), NOW + POLL, POLL, '/r/.git/worktrees/a')).toBe(true);
+  });
+});
+
+describe('scopeForChange', () => {
+  const common = path.join('/r', '.git');
+  it('names the linked worktree a file under worktrees/<name> belongs to', () => {
+    expect(scopeForChange(path.join(common, 'worktrees', 'feat', 'logs', 'HEAD'), common)).toEqual(new Set([path.join(common, 'worktrees', 'feat')]));
+    expect(scopeForChange(path.join(common, 'worktrees', 'feat', 'index'), common)).toEqual(new Set([path.join(common, 'worktrees', 'feat')]));
+  });
+
+  it('names the main worktree for files directly in the common dir', () => {
+    expect(scopeForChange(path.join(common, 'index'), common)).toEqual(new Set([common]));
+    expect(scopeForChange(path.join(common, 'logs', 'HEAD'), common)).toEqual(new Set([common]));
+    expect(scopeForChange(path.join(common, 'flotilla', 'chats', 'x.json'), common)).toEqual(new Set([common]));
+  });
+
+  it('names no worktree for the worktrees directory itself, and everything for files outside', () => {
+    expect(scopeForChange(path.join(common, 'worktrees'), common)).toEqual(new Set());
+    expect(scopeForChange(path.join('/elsewhere', 'x'), common)).toBe('all');
   });
 });
