@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import { StartingAgents } from '../../features/workstreams/startingAgents';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -78,6 +79,14 @@ function resultText(stdout: string): string | undefined {
 /** The sessions of agents running without a window now (in this window's extension host). */
 const running = new Set<string>();
 
+/** The agents started in the last minute, not running yet (in this window's extension host). */
+const starting = new StartingAgents();
+
+/** The memory the agents starting now take, in MB (counts against the free memory before they're running). */
+export function startingMemoryMB(): number {
+  return starting.memoryMB();
+}
+
 export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
@@ -131,14 +140,19 @@ export function runAgentHeadless(o: {
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
+  const start = starting.begin();
   let stderr = '';
   let stdout = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
   child.stdout.on('data', (d: Buffer) => (stdout = (stdout + d.toString()).slice(-8000)));
   const done = new Promise<AgentResult>((resolve) => {
-    child.on('exit', () => running.delete(sessionId));
+    child.on('exit', () => {
+      running.delete(sessionId);
+      starting.end(start);
+    });
     child.on('error', (e) => {
       running.delete(sessionId);
+      starting.end(start);
       resolve({ code: null, error: e.message });
     });
     child.on('close', (code) => {
