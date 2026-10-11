@@ -38,6 +38,28 @@ describe('ShownFolders', () => {
     expect(calls).toEqual([['wt', 'src']]);
   });
 
+  it('does not report a write to a file that changes no listing', async () => {
+    fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'one');
+    shown.watch('wt', root, 'src');
+    fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'two, longer');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(calls).toEqual([]);
+    fs.writeFileSync(path.join(root, 'src', 'b.ts'), '');
+    await until(() => calls.length > 0);
+    expect(calls).toEqual([['wt', 'src']]);
+  });
+
+  it('stops watching the least recently listed folder when there are too many', async () => {
+    const dirs = Array.from({ length: 101 }, (_, i) => `d${i}`);
+    for (const d of dirs) fs.mkdirSync(path.join(root, d));
+    for (const d of dirs) shown.watch('wt', root, d);
+    fs.writeFileSync(path.join(root, 'd0', 'x.ts'), '');
+    fs.writeFileSync(path.join(root, 'd100', 'x.ts'), '');
+    await until(() => calls.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(calls).toEqual([['wt', 'd100']]);
+  });
+
   it('stops watching the folders of worktrees that are gone', async () => {
     shown.watch('gone', root, 'src');
     shown.watch('kept', root, '');

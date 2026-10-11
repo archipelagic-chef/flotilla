@@ -22,7 +22,7 @@ import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
-import { isSelfOrInside } from './fileNames';
+import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
 import { tabOrder, toWorkstreamView } from './viewModel';
@@ -258,10 +258,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.postExclusions();
   }
 
-  /** The Overview says what still lets VS Code see the worktrees in the main folder, when there are any there. */
+  /** The Overview says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
   private postExclusions(): void {
-    const inMain = this.deps.repository.current.some((ws) => !ws.worktree.isMain && ws.worktree.path && isSelfOrInside(this.deps.mainRoot, ws.worktree.path));
-    this.post({ type: 'exclusions', missing: inMain ? currentMissingExclusions() : [] });
+    const inFolder = this.deps.repository.current.some((ws) => ws.worktree.path && isInWorktreesFolder(this.deps.mainRoot, ws.worktree.path));
+    this.post({ type: 'exclusions', missing: inFolder ? currentMissingExclusions() : [] });
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */

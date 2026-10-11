@@ -494,7 +494,11 @@
       },
       "search.exclude": {
         ".worktrees": true
-      }
+      },
+      "git.repositoryScanIgnoredFolders": [
+        "node_modules",
+        ".worktrees"
+      ]
     },
     "menus": {
       "commandPalette": [

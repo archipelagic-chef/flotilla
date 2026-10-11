@@ -9,6 +9,17 @@ interface Watched {
   key: string;
   rel: string;
   watcher: fs.FSWatcher;
+  /** The folder's entry names at the last check: a watch also reports writes into files, which change no listing. */
+  names: string;
+}
+
+/** The entry names of a folder, as one comparable string; empty when it can't be read (gone). */
+function namesIn(dir: string): string {
+  try {
+    return fs.readdirSync(dir).sort().join('\0');
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -30,22 +41,20 @@ export class ShownFolders {
     const existing = this.watched.get(dir);
     if (existing) {
       this.watched.delete(dir);
+      existing.names = namesIn(dir);
       this.watched.set(dir, existing);
       return;
     }
     if (this.watched.size >= MAX_WATCHED) this.close(this.watched.keys().next().value!);
     let watcher: fs.FSWatcher;
     try {
-      watcher = fs.watch(dir, () => {
-        if (!fs.existsSync(dir)) this.close(dir);
-        this.schedule(key, rel);
-      });
+      watcher = fs.watch(dir, () => this.check(dir));
     } catch {
       // Gone, or not watchable here: the Files tab then just doesn't update on its own.
       return;
     }
     watcher.on('error', () => this.close(dir));
-    this.watched.set(dir, { key, rel, watcher });
+    this.watched.set(dir, { key, rel, watcher, names: namesIn(dir) });
   }
 
   /** Stops watching the folders of worktrees that aren't in keys any more. */
@@ -58,6 +67,17 @@ export class ShownFolders {
     clearTimeout(this.timer);
     this.timer = undefined;
     this.pending.clear();
+  }
+
+  /** Reports the folder only when its entries changed: a create or delete, not a write to a file in it. */
+  private check(dir: string): void {
+    const w = this.watched.get(dir);
+    if (!w) return;
+    const names = namesIn(dir);
+    if (names === w.names) return;
+    w.names = names;
+    if (!fs.existsSync(dir)) this.close(dir);
+    this.schedule(w.key, w.rel);
   }
 
   private schedule(key: string, rel: string): void {

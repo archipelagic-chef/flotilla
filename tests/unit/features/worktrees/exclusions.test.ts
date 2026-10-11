@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missingExclusions } from '../../../../src/features/worktrees/exclusions';
+import { isInWorktreesFolder, missingExclusions } from '../../../../src/features/worktrees/exclusions';
 
 const excluded = {
   watcherExclude: { '.worktrees/**': true },
@@ -24,5 +24,18 @@ describe('missingExclusions', () => {
 
   it('lists every missing one', () => {
     expect(missingExclusions({ watcherExclude: {}, searchExclude: {}, scanIgnoredFolders: [] })).toEqual(['file watching', 'search', 'the Git repository scan']);
+  });
+});
+
+describe('isInWorktreesFolder', () => {
+  it('is true for a worktree under the main checkout\'s .worktrees folder', () => {
+    expect(isInWorktreesFolder('/repo', '/repo/.worktrees/feature-x')).toBe(true);
+  });
+
+  it('is false for the main checkout, for the folder itself, and for worktrees elsewhere', () => {
+    expect(isInWorktreesFolder('/repo', '/repo')).toBe(false);
+    expect(isInWorktreesFolder('/repo', '/repo/.worktrees')).toBe(false);
+    expect(isInWorktreesFolder('/repo', '/repo/feature-x')).toBe(false);
+    expect(isInWorktreesFolder('/repo', '/elsewhere/.worktrees/feature-x')).toBe(false);
   });
 });
