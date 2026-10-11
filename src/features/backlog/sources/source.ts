@@ -101,12 +101,19 @@ export type Fetch = (url: string, init?: { method?: string; headers?: Record<str
 export const TIMEOUT_MS = 20_000;
 
 export async function fetchJson<T>(fetch: Fetch, url: string, init: { method?: string; headers: Record<string, string>; body?: unknown }): Promise<T> {
+  // Some writes answer with no content (204).
+  const text = await fetchText(fetch, url, { ...init, headers: { Accept: 'application/json', ...init.headers } });
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** A request's answer as text (an error for a status other than 2xx), within TIMEOUT_MS. */
+export async function fetchText(fetch: Fetch, url: string, init: { method?: string; headers: Record<string, string>; body?: unknown }): Promise<string> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: init.method ?? 'GET',
-      headers: { Accept: 'application/json', ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
+      headers: { ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
       signal: abort.signal,
     });
@@ -114,9 +121,7 @@ export async function fetchJson<T>(fetch: Fetch, url: string, init: { method?: s
       const detail = (await res.text().catch(() => '')).slice(0, 300);
       throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
     }
-    // Some writes answer with no content (204).
-    const text = await res.text();
-    return (text ? JSON.parse(text) : undefined) as T;
+    return await res.text();
   } catch (error) {
     if (abort.signal.aborted) throw new Error(`${new URL(url).host} didn't answer within ${TIMEOUT_MS / 1000} seconds.`);
     throw error;
