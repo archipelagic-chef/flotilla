@@ -20,7 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { reviewNotes } from '../features/backlog/review';
-import { failureTask, parseFailedJob } from '../features/ci/failureTask';
+import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { agentChoice, describeChoice } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
@@ -545,8 +545,9 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
     return;
   }
   const ws = ctx.repository.current.find((w) => w.worktree.path && w.worktree.branch === job.branch);
-  if (!ws?.worktree.path) {
-    void vscode.window.showWarningMessage(`No worktree is on branch ${job.branch}, so an agent has nowhere to fix its failed job.`);
+  const refusal = fixRefusal(job, ws?.worktree);
+  if (!ws?.worktree.path || refusal) {
+    void vscode.window.showWarningMessage(refusal ?? `No worktree has branch ${job.branch}.`);
     return;
   }
   const task = failureTask(job);
@@ -560,7 +561,7 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const agent = newAgentName(ctx);
   const ticket = await ctx.backlog.ensureDocument(item);
   const choice = agentChoice(item);
-  const prompt = [task, agentPrompt(item, ticket, job.branch, agent, path.join(ctx.backlog.dir, GUIDE))].join('\n\n');
+  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE))].join('\n\n');
   const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
   const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
   await ctx.tickets.addActivity(
