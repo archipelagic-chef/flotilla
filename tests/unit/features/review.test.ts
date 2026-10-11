@@ -57,10 +57,13 @@ describe('review loop', () => {
     const args = { item: { id: 'BL-1', title: 'SSO' }, reviewer: 'Vega-2', ticket: '/t/BL-1.md', branch: 'feature/BL-1', base: 'main' };
     for (const round of [1, 2]) {
       const prompt = reviewerPrompt({ ...args, round });
-      expect(prompt).toMatch(/run block is the last fenced block with the info string `run`/);
-      expect(prompt).toMatch(/shell command that needs no window/);
+      expect(prompt).toMatch(/run block is the last fenced block whose info string is `run`/);
+      expect(prompt).toMatch(/a block whose kind is `launch`, `task` or `open` is skipped/);
+      expect(prompt).toMatch(/run the window-free lines and skip the rest/);
+      expect(prompt).toMatch(/shell lines that need no window/);
       expect(prompt).toMatch(/`launch`, `task` or `open`/);
       expect(prompt).toMatch(/Say what you ran, and what it gave/);
+      expect(prompt).toMatch(/git status/);
     }
     // Round 2 drops only the first paragraph, so the run instruction stays in it.
     const later = reviewerPrompt({ ...args, round: 2 }).split('\n\n').slice(1).join('\n\n');
