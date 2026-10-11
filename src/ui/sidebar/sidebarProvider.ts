@@ -25,6 +25,7 @@ import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
+import { CiRuns } from '../ci/ciRuns';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -53,8 +54,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   readonly onDidChangeVisibility = this.visibility.event;
   private readonly subscriptions: vscode.Disposable[] = [];
   readonly files: FileOps;
+  /** The CI/CD view's runs, read while the sidebar is visible. */
+  private readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
+    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }));
     this.files = new FileOps({
       reference: deps.reference,
       find: (key) => this.find(key),
@@ -68,6 +72,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
+      this.visibility.event((visible) => this.ci.setVisible(visible)),
+      this.ci,
     );
   }
 
@@ -244,6 +250,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const all = this.deps.repository.current;
     const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('tabLabelPattern') || undefined;
     this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern)) });
+    this.ci.update(all);
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
@@ -308,6 +315,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
         this.post({ type: 'progress', tools: progressByTool() });
+        this.post({ type: 'ci', views: this.ci.snapshot() });
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;
@@ -391,6 +399,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);
+        return;
+      case 'openUrl':
+        // Only GitHub pages (a workflow run) open from the sidebar.
+        if (/^https:\/\/github\.com\//.test(m.url)) await vscode.env.openExternal(vscode.Uri.parse(m.url));
+        return;
+      case 'ci':
+        if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
+        else await this.ci.refresh();
         return;
       case 'refs': {
         const dir = this.compareDir();
