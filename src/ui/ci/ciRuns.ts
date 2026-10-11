@@ -61,7 +61,8 @@ export class CiRuns implements vscode.Disposable {
 
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
   async signIn(): Promise<void> {
-    await vscode.authentication.getSession('github', SCOPES, { createIfNone: true });
+    // A dismissed dialog is not an error: the view stays at "Sign in to GitHub".
+    await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
     await this.load();
   }
 
@@ -74,28 +75,32 @@ export class CiRuns implements vscode.Disposable {
     clearTimeout(this.timer);
     const targets = this.workstreams.filter((ws) => !keys || keys.includes(ws.key));
     const wheres = await Promise.all(targets.map(async (ws) => ({ ws, where: await this.where(ws) })));
-    const github = wheres.some((w) => w.where?.kind === 'github');
+    const github = wheres.some((w) => w.where.kind === 'github');
     // Without a sign-in (or a provider to ask), the runs say so: they're not read.
     const session = github ? await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined) : undefined;
     // Worktrees on the same branch share one read.
     const reads = new Map<string, Promise<CiRun[]>>();
     await Promise.all(
       wheres.map(async ({ ws, where }) => {
-        if (where) this.views.set(ws.key, await this.viewOf(ws, where, session, reads));
+        const view = await this.viewOf(ws, where, session, reads);
+        // A worktree removed while its runs were read has no view any more.
+        if (this.workstreams.some((w) => w.key === ws.key)) this.views.set(ws.key, view);
       }),
     );
     this.post(this.snapshot());
     // The last load to finish sets the next one (a load that overlapped another doesn't leave a second timer running).
-    const anyActive = anyRunActive([...this.views.values()].flatMap((v) => (v.kind === 'runs' ? v.runs : [])));
+    // Only the worktrees there are now count: a run on a removed one doesn't keep the timer short.
+    const anyActive = anyRunActive(Object.values(this.snapshot()).flatMap((v) => (v.kind === 'runs' ? v.runs : [])));
     const delay = refreshDelay(this.visible, anyActive);
     clearTimeout(this.timer);
     this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
   }
 
-  /** Where a worktree's runs are; undefined when its folder isn't reachable here. */
-  private async where(ws: Workstream): Promise<Where | undefined> {
+  /** Where a worktree's runs are: its branch on GitHub, or the view that says why there are none. */
+  private async where(ws: Workstream): Promise<Where> {
     const cwd = ws.worktree.path;
-    if (!cwd) return undefined;
+    // Every worktree gets a view, so the All tab never waits on one that can't be read.
+    if (!cwd) return { kind: 'view', view: { kind: 'error', error: "This worktree's folder isn't reachable from this environment." } };
     const upstream = ws.sync.upstream;
     if (!upstream) return { kind: 'view', view: { kind: 'unpublished' } };
     try {
