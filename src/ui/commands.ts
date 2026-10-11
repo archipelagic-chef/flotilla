@@ -556,6 +556,7 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
     await chatUi.startAgent(chatContext(ctx), ws, task, '', { choice, name: `Fix CI · ${job.branch}` });
     return;
   }
+  await enforceCommitPrefix(ctx, ws, item.id);
   const agent = newAgentName(ctx);
   const ticket = await ctx.backlog.ensureDocument(item);
   const choice = agentChoice(item);
