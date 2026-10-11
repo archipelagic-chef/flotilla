@@ -22,16 +22,27 @@ interface Props {
   colors: ReadonlyMap<string, string>;
   /** Worktrees whose tab is closed. */
   closed: ReadonlySet<string>;
+  /** What VS Code's settings still let see the worktrees in the main folder (empty: nothing to show). */
+  missing: readonly string[];
   onSelect(key: string): void;
 }
 
 /** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
-export function Overview({ workstreams, active, colors, closed, onSelect }: Props) {
+export function Overview({ workstreams, active, colors, closed, missing, onSelect }: Props) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
   return (
     <div class="overview">
       <div class="tool-title">All worktrees, most urgent first</div>
+      {missing.length > 0 && (
+        <div class="notice">
+          <i class="codicon codicon-info" />
+          <span>Worktrees here aren't excluded from: {missing.join(', ')}. That slows every window and can exhaust the file watchers.</span>
+          <button class="link" onClick={() => run('flotilla.hideWorktrees')}>
+            Hide Worktrees
+          </button>
+        </div>
+      )}
       {sorted.map((ws) => {
         const open = ws.chats.filter((c) => c.open);
         const waiting = open.find((c) => c.state === 'waiting-for-input');

@@ -106,6 +106,7 @@ export function App() {
   const [active, setActiveState] = useState<string>(ALL);
   /** Worktrees whose tab is closed; they stay in the Overview. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
   const [selection, setSelection] = useState<Selection | undefined>(undefined);
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
@@ -218,6 +219,9 @@ export function App() {
           return;
         case 'tabs':
           setClosed(new Set(m.closed));
+          return;
+        case 'exclusions':
+          setMissingExclusions(m.missing);
           return;
         case 'dir':
           setDirs((prev) => new Map(prev).set(dirKey(m.key, m.path), m.entries));
@@ -486,6 +490,7 @@ export function App() {
         active={active}
         colors={colors}
         closed={closed}
+        missing={missingExclusions}
         onSelect={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);

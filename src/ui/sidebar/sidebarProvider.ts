@@ -22,6 +22,9 @@ import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
+import { isSelfOrInside } from './fileNames';
+import { ShownFolders } from './shownFolders';
+import { currentMissingExclusions } from '../hygiene';
 import { tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
@@ -34,6 +37,8 @@ export interface SidebarDeps {
   repository: Repository<Workstream>;
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
+  /** The main checkout's folder (worktrees inside it are the ones VS Code's watcher and search would see). */
+  mainRoot: string;
   inWorkspace: (ws: Workstream) => boolean;
   active: ActiveWorktree;
   backlog: LocalBacklog;
@@ -53,6 +58,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   readonly onDidChangeVisibility = this.visibility.event;
   private readonly subscriptions: vscode.Disposable[] = [];
   readonly files: FileOps;
+  /** The folders the Files tab lists, watched directly: VS Code's watcher skips the worktrees (files.watcherExclude). */
+  private readonly shown = new ShownFolders((key, rel) => this.dirsChanged(key, [rel]));
 
   constructor(private readonly deps: SidebarDeps) {
     this.files = new FileOps({
@@ -63,6 +70,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
+      }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
       deps.backlog.watch(() => void this.backlogChanged()),
@@ -244,6 +254,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const all = this.deps.repository.current;
     const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('tabLabelPattern') || undefined;
     this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern)) });
+    this.shown.retain(new Set(all.map((ws) => ws.key)));
+    this.postExclusions();
+  }
+
+  /** The Overview says what still lets VS Code see the worktrees in the main folder, when there are any there. */
+  private postExclusions(): void {
+    const inMain = this.deps.repository.current.some((ws) => !ws.worktree.isMain && ws.worktree.path && isSelfOrInside(this.deps.mainRoot, ws.worktree.path));
+    this.post({ type: 'exclusions', missing: inMain ? currentMissingExclusions() : [] });
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
@@ -283,6 +301,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   dispose(): void {
     this.subscriptions.forEach((d) => d.dispose());
+    this.shown.dispose();
     this.visibility.dispose();
   }
 
@@ -322,6 +341,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         } catch {
           // deleted meanwhile: show it empty
         }
+        this.shown.watch(m.key, ws.worktree.path, m.path);
         this.post({ type: 'dir', key: m.key, path: m.path, entries });
         return;
       }
