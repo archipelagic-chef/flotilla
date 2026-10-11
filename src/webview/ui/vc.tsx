@@ -311,7 +311,11 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles, highligh
     if (highlight && log && !found && log.more && !log.loading && commits.length < FIND_PAGES * 50) requestLog(ws.key, commits.length);
   }, [highlight, found, log, commits.length, ws.key, requestLog]);
   useEffect(() => {
-    if (found) selectedRow.current?.scrollIntoView({ block: 'center' });
+    if (!found || !highlight) return;
+    // The commit clicked on the ticket opens, with its message and files.
+    requestFiles(ws.key, highlight.selected);
+    setExpanded((prev) => (prev.has(highlight.selected) ? prev : new Set(prev).add(highlight.selected)));
+    requestAnimationFrame(() => selectedRow.current?.scrollIntoView({ block: 'center' }));
   }, [found, highlight?.selected]);
   const inTicket = highlight ? commits.filter((c) => highlight.hashes.has(c.hash)).length : 0;
   return (
