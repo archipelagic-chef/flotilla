@@ -161,6 +161,8 @@ export type HostMessage =
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
   | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number }
+  /** What's in progress per tool (titles), for the tool strip's icons. */
+  | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** The files a commit changed (against its first parent). */

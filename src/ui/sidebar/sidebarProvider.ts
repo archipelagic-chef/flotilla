@@ -23,6 +23,7 @@ import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
+import { onDidChangeProgress, progressByTool } from '../progress';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -65,6 +66,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
+      onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
     );
   }
 
@@ -292,6 +294,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
+        this.post({ type: 'progress', tools: progressByTool() });
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;

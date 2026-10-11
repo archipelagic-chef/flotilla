@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
+import { trackProgress } from '../progress';
 import type { IssueLink } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { GitHubSource, gitHubRepo } from '../../features/backlog/sources/github';
@@ -229,7 +230,7 @@ export class BacklogIntegrations implements vscode.Disposable {
 
   /** Reads every integration's issues (one read at a time; a refresh while reading waits for it). */
   refresh(): Promise<void> {
-    this.loading ??= (async () => {
+    this.loading ??= trackProgress('backlog', 'Reading issues from Jira and GitHub', async () => {
       try {
         const configs = await this.configs();
         this.states = await Promise.all(
@@ -246,7 +247,7 @@ export class BacklogIntegrations implements vscode.Disposable {
       } finally {
         this.loading = undefined;
       }
-    })();
+    });
     return this.loading;
   }
 

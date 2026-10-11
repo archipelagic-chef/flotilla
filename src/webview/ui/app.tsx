@@ -116,6 +116,8 @@ export function App() {
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
+  /** What the extension says is in progress, per tool. */
+  const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
   const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
@@ -294,6 +296,9 @@ export function App() {
         case 'editResult':
           setEditing((e) => (m.ok ? undefined : e && { ...e, error: m.error }));
           return;
+        case 'progress':
+          setProgress(m.tools);
+          return;
         case 'showCommits':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
@@ -383,6 +388,15 @@ export function App() {
   const scope = activeWs ? [activeWs] : workstreams;
   const changeCount = scope.reduce((n, w) => n + w.staged.length + w.unstaged.length, 0);
   const waitingCount = scope.reduce((n, w) => n + w.chats.filter((c) => c.open && c.state === 'waiting-for-input').length, 0);
+  const workingCount = scope.reduce((n, w) => n + w.chats.filter((c) => c.open && c.state === 'working').length, 0);
+  const proposedCount = (backlog ?? []).filter((i) => i.proposed).length;
+  const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
+  /** What's in progress for a tool, to show on its icon (and say in its hover). */
+  const busyFor = (id: Tool): string[] => [
+    ...(progress[id] ?? []),
+    ...(id === 'chats' && workingCount ? [`${workingCount} chat${workingCount === 1 ? ' is' : 's are'} working`] : []),
+    ...(id === 'search' && searching ? ['Searching…'] : []),
+  ];
   const files: FilesApi = {
     dirs,
     requestDir,
@@ -609,13 +623,17 @@ export function App() {
       <div class="body">
         <nav class="tools" role="tablist" aria-orientation="vertical" aria-label="Tools">
           {TOOLS.map((t) => {
-            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? waitingCount : 0;
+            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? waitingCount : t.id === 'backlog' ? proposedCount : 0;
+            const busy = busyFor(t.id);
             return (
               <Fragment key={t.id}>
                 <button
                   role="tab"
+                  class={busy.length ? 'busy' : undefined}
                   aria-selected={tool === t.id}
                   aria-label={t.label}
+                  aria-busy={busy.length > 0}
+                  data-tip={busy.length ? [t.label, ...busy].join('\n') : undefined}
                   data-tip-pos="right"
                   onClick={() => update((p) => ({ ...p, tool: t.id }))}
                 >

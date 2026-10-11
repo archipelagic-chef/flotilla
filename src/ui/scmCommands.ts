@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { trackProgress } from './progress';
 import type { FileChange } from '../core/git/porcelain';
 import * as scm from '../features/scm/operations';
 import type { Repository } from '../core/repository';
@@ -39,7 +40,7 @@ const drafts = new Map<string, string>();
 
 function withProgress<T>(title: string, task: () => Promise<T>): Thenable<T> {
   return vscode.window.withProgress({ location: { viewId: 'flotilla.sidebar' }, title }, () =>
-    vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, task),
+    vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, () => trackProgress('vc', title, task)),
   );
 }
 

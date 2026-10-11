@@ -12,6 +12,7 @@ import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';
 import { runAgentHeadless, type AgentRun } from './agentRunner';
+import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
   backlog: LocalBacklog;
@@ -178,6 +179,7 @@ export class ReviewLoop implements vscode.Disposable {
       output: this.deps.output,
     });
     this.runs.set(item.id, run);
+    void trackProgress('backlog', `${reviewer} is reviewing ${item.id}`, () => run.done);
     await this.setReview(item.id, (r) => ({ ...(r ?? { reviewer }), round, state: 'reviewing', reviewer, reviewerSession: run.sessionId, worktree: ws.key, reason: undefined }));
     await this.note(item.id, `Review round ${round}: ${round > 1 && item.review?.reviewerSession ? 'resumed' : 'opened'} a chat for agent ${reviewer} in worktree \`${workstreamLabel(ws)}\`. It reviews ${item.review?.implementer ?? 'the work'} and gives a verdict here.`);
     void run.done.then((result) => this.afterReview(item.id, run, result.error));
@@ -252,6 +254,7 @@ export class ReviewLoop implements vscode.Disposable {
       });
     }
     this.runs.set(item.id, run);
+    void trackProgress('backlog', `${implementer} is making the changes ${review.reviewer} asked for on ${item.id}`, () => run.done);
     await this.setReview(item.id, (r) => ({ ...r!, implementer, implementerSession: run.sessionId }));
     await this.note(item.id, `Review round ${review.round}: ${review.reviewer} requested changes; ${chat ? 'resumed' : 'opened'} a chat for agent ${implementer} in worktree \`${workstreamLabel(ws)}\` to make them.`);
     void run.done.then((result) => this.afterRevision(item.id, run, result.error));
