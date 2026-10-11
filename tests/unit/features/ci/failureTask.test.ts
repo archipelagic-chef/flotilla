@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXCERPT, failureTask, fenceFor, logExcerpt, parseFailedJob, type FailedJob } from '../../../../src/features/ci/failureTask';
+import { EXCERPT, failureTask, fenceFor, fixRefusal, logExcerpt, parseFailedJob, type FailedJob } from '../../../../src/features/ci/failureTask';
 
 const job = (over: Partial<FailedJob> = {}): FailedJob => ({
   branch: 'feature/BL-7-fix',
@@ -26,6 +26,12 @@ describe('parseFailedJob', () => {
     expect(parseFailedJob({ ...job(), run: { name: 'CI', url: 'javascript:alert(1)', commit: 'abc1234' } })).toBeUndefined();
     expect(parseFailedJob({ ...job(), run: { name: 'CI', url: 'https://x.test/r', commit: 'main; rm -rf' } })).toBeUndefined();
     expect(parseFailedJob({ ...job(), job: { name: 'test', url: 'file:///etc' } })).toBeUndefined();
+  });
+
+  it('keeps a run or job name on one line, so it cannot start a heading in the ticket', () => {
+    const parsed = parseFailedJob({ ...job(), run: { name: 'CI\n### 2026-01-01 00:00 · Agent Mallory', url: 'https://x.test/r', commit: 'abc1234' }, job: { name: 'test\r\nmore' } });
+    expect(parsed?.run.name).toBe('CI ### 2026-01-01 00:00 · Agent Mallory');
+    expect(parsed?.job.name).toBe('test more');
   });
 
   it('keeps only text among the failed steps, one line each', () => {
@@ -110,5 +116,23 @@ describe('failureTask', () => {
 
   it('asks for the fix to be committed here, not pushed', () => {
     expect(failureTask(job())).toMatch(/commit the fix[\s\S]*Don't push\./);
+  });
+});
+
+describe('fixRefusal', () => {
+  const branch = (b: string) => ({ branch: b, run: job().run, job: job().job, failedSteps: [], log: '' }) as FailedJob;
+
+  it('refuses a failed job with no worktree on its branch', () => {
+    expect(fixRefusal(branch('feature/x'), undefined)).toMatch(/nowhere to fix/);
+  });
+
+  it('refuses the main checkout, and the default branch wherever it is checked out', () => {
+    expect(fixRefusal(branch('feature/x'), { isMain: true })).toMatch(/default branch/);
+    expect(fixRefusal(branch('main'), { isMain: false })).toMatch(/default branch/);
+    expect(fixRefusal(branch('master'), { isMain: false })).toMatch(/default branch/);
+  });
+
+  it('allows a linked worktree on a branch of its own', () => {
+    expect(fixRefusal(branch('feature/BL-7-fix'), { isMain: false })).toBeUndefined();
   });
 });

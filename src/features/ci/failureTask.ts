@@ -23,6 +23,21 @@ function oneLine(text: string, max = 200): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/** The branches that aren't work: a failed run on one of them doesn't send an agent to commit there. */
+const DEFAULT_BRANCHES = ['main', 'master'];
+
+/**
+ * Why no agent may fix a failed job in this worktree (undefined: it may). The main checkout and the default branch are
+ * refused: an agent there would commit to the branch everyone else builds on, without an item's id.
+ */
+export function fixRefusal(job: Pick<FailedJob, 'branch'>, worktree: { isMain: boolean } | undefined): string | undefined {
+  if (!worktree) return `No worktree is on branch ${job.branch}, so an agent has nowhere to fix its failed job.`;
+  if (worktree.isMain || DEFAULT_BRANCHES.includes(job.branch)) {
+    return `The failed run is on ${job.branch}, the default branch: an agent doesn't fix failures there. Fix it on a branch of its own.`;
+  }
+  return undefined;
+}
+
 /**
  * The failure as the agent gets it from a view or a notice, or undefined when it isn't one. The values come from CI
  * (and from backlog files that agents write), so only plain strings and a commit id pass.
@@ -39,8 +54,8 @@ export function parseFailedJob(value: unknown): FailedJob | undefined {
   const steps = Array.isArray(v.failedSteps) ? v.failedSteps.filter((s): s is string => typeof s === 'string') : [];
   return {
     branch: v.branch.trim(),
-    run: { name: run.name, url: run.url, commit: run.commit },
-    job: { name: job.name, ...(typeof job.url === 'string' ? { url: job.url } : {}) },
+    run: { name: oneLine(run.name), url: run.url, commit: run.commit },
+    job: { name: oneLine(job.name), ...(typeof job.url === 'string' ? { url: job.url } : {}) },
     failedSteps: steps.map((s) => oneLine(s)).filter(Boolean),
     log: v.log,
   };
