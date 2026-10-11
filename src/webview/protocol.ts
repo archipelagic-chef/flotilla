@@ -5,6 +5,7 @@
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
+import type { CiRun } from '../features/ci/githubActions';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -30,7 +31,20 @@ export interface BacklogProblem {
 }
 
 /** The views under Version Control in the tool strip. */
-export type VcView = 'changes' | 'history' | 'compare';
+export type VcView = 'changes' | 'history' | 'compare' | 'ci';
+
+/** A workflow run as the CI/CD view shows it; current: it runs the commit checked out in the worktree. */
+export interface CiRunView extends CiRun {
+  current: boolean;
+}
+
+/** A worktree's CI/CD: its branch's latest runs on GitHub, or why there are none. */
+export type CiView =
+  | { kind: 'signIn' }
+  | { kind: 'unpublished' }
+  | { kind: 'unsupported' }
+  | { kind: 'error'; error: string }
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[] };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
@@ -168,6 +182,8 @@ export type HostMessage =
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
   | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
+  /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
+  | { type: 'ci'; views: Record<string, CiView> }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
   /** Fold (or unfold) every worktree section of the All tab. */
@@ -242,6 +258,10 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
+  /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
+  | { type: 'ci'; op: 'signIn' | 'refresh' }
+  /** Opens a link on GitHub (a workflow run). */
+  | { type: 'openUrl'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */

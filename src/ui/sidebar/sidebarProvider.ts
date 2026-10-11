@@ -29,6 +29,7 @@ import { currentMissingExclusions } from '../hygiene';
 import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
+import { CiRuns } from '../ci/ciRuns';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -63,8 +64,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   readonly files: FileOps;
   /** The folders the Files tab lists, watched directly: VS Code's watcher skips the worktrees (files.watcherExclude). */
   private readonly shown = new ShownFolders((key, rel) => this.dirsChanged(key, [rel]));
+  /** The CI/CD view's runs, read while the sidebar is visible. */
+  private readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
+    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }));
     this.files = new FileOps({
       reference: deps.reference,
       find: (key) => this.find(key),
@@ -81,6 +85,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
+      this.visibility.event((visible) => this.ci.setVisible(visible)),
+      this.ci,
     );
   }
 
@@ -270,6 +276,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.post({ type: 'state', workstreams: changed, keys, machine });
     this.shown.retain(new Set(all.map((ws) => ws.key)));
     this.postExclusions();
+    this.ci.update(all);
   }
 
   /** The Overview says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
@@ -343,6 +350,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
         this.post({ type: 'progress', tools: progressByTool() });
+        this.post({ type: 'ci', views: this.ci.snapshot() });
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;
@@ -427,6 +435,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);
+        return;
+      case 'openUrl':
+        // Only GitHub pages (a workflow run) open from the sidebar.
+        if (/^https:\/\/github\.com\//.test(m.url)) await vscode.env.openExternal(vscode.Uri.parse(m.url));
+        return;
+      case 'ci':
+        if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
+        else await this.ci.refresh();
         return;
       case 'refs': {
         const dir = this.compareDir();
