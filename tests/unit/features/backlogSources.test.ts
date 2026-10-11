@@ -34,12 +34,15 @@ describe('Jira', () => {
     expect(jira.label).toBe('Jira acme');
     const issues = await jira.list();
     expect(issues).toEqual([
-      { id: 'ABC-1', title: 'One', status: 'doing', statusName: 'In Review', url: 'https://acme.atlassian.net/browse/ABC-1', source: 'jira-1' },
+      { id: 'ABC-1', title: 'One', status: 'review', statusName: 'In Review', url: 'https://acme.atlassian.net/browse/ABC-1', source: 'jira-1' },
       { id: 'ABC-2', title: 'Two', status: 'done', statusName: 'Closed', url: 'https://acme.atlassian.net/browse/ABC-2', source: 'jira-1' },
     ]);
     expect(new URL(calls[0].url).searchParams.get('jql')).toBe('project = ABC');
     expect(calls[0].headers.Authorization).toBe(`Basic ${Buffer.from('me@acme.test:tok').toString('base64')}`);
     expect(jiraStatus(undefined)).toBe('todo');
+    expect(jiraStatus('indeterminate', 'Code Review')).toBe('review');
+    expect(jiraStatus('indeterminate', 'QA')).toBe('review');
+    expect(jiraStatus('indeterminate', 'In Progress')).toBe('doing');
   });
 
   it('reads details with rendered HTML, and posts comments', async () => {
@@ -165,7 +168,7 @@ describe('editing issues', () => {
     const options = await new JiraSource(config, 'tok', fetch).editOptions('ABC-1');
     expect(options).toEqual({
       transitions: [
-        { id: '21', name: 'Start review', to: 'In Review', status: 'doing' },
+        { id: '21', name: 'Start review', to: 'In Review', status: 'review' },
         { id: '31', name: 'Close', to: 'Closed', status: 'done', needs: ['Resolution'] },
       ],
       priorities: ['P1', 'P2'],

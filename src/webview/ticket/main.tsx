@@ -13,6 +13,7 @@ const send = (message: TicketWebviewMessage) => vscode.postMessage(message);
 const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = [
   { status: 'todo', label: 'To Do', icon: 'circle-large-outline' },
   { status: 'doing', label: 'In Progress', icon: 'circle-large-filled' },
+  { status: 'review', label: 'In Review', icon: 'eye' },
   { status: 'done', label: 'Done', icon: 'pass-filled' },
 ];
 
@@ -581,6 +582,7 @@ function Dropdown({ class: cls, button, label, items }: { class: string; button:
 const LANE_ICON: Record<BacklogStatus, string> = {
   todo: 'circle-large-outline',
   doing: 'circle-large-filled',
+  review: 'eye',
   done: 'pass-filled',
 };
 

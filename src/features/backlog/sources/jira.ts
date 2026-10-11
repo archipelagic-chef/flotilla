@@ -54,8 +54,11 @@ export function missingFields(fields: Iterable<[string, JiraField]>, filled: Rea
 }
 
 /** Jira's status categories: To Do (new), In Progress (indeterminate), Done. */
-export function jiraStatus(category: string | undefined): BacklogStatus {
-  return category === 'done' ? 'done' : category === 'indeterminate' ? 'doing' : 'todo';
+export function jiraStatus(category: string | undefined, name = ''): BacklogStatus {
+  if (category === 'done') return 'done';
+  // Jira has no review category: review-like statuses ("In Review", "Code Review", "QA", "Testing") are in progress.
+  if (category === 'indeterminate') return /review|\bqa\b|test|verif|approv/i.test(name) ? 'review' : 'doing';
+  return 'todo';
 }
 
 /** Jira Cloud, with an API token (https://id.atlassian.com/manage-profile/security/api-tokens). */
@@ -81,7 +84,7 @@ export class JiraSource implements IssueSource {
     return {
       id: i.key,
       title: i.fields.summary,
-      status: jiraStatus(i.fields.status?.statusCategory?.key),
+      status: jiraStatus(i.fields.status?.statusCategory?.key, i.fields.status?.name),
       statusName: i.fields.status?.name ?? '',
       priority: priorityFromName(i.fields.priority?.name ?? undefined),
       ...(i.fields.priority?.name ? { priorityName: i.fields.priority.name } : {}),
@@ -134,7 +137,7 @@ export class JiraSource implements IssueSource {
           id: x.id,
           name: x.name,
           to: x.to?.name ?? x.name,
-          status: jiraStatus(x.to?.statusCategory?.key),
+          status: jiraStatus(x.to?.statusCategory?.key, x.to?.name),
           ...(needs.length ? { needs } : {}),
         };
       }),

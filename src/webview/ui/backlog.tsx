@@ -8,8 +8,16 @@ import './priority.css';
 const LANES: Array<{ status: BacklogStatus; title: string; icon: string }> = [
   { status: 'todo', title: 'To Do', icon: 'circle-large-outline' },
   { status: 'doing', title: 'In Progress', icon: 'circle-large-filled' },
+  { status: 'review', title: 'In Review', icon: 'eye' },
   { status: 'done', title: 'Done', icon: 'pass-filled' },
 ];
+
+const EMPTY_LANE: Record<BacklogStatus, string> = {
+  todo: 'Nothing here',
+  doing: 'Start an item to work on it',
+  review: 'Move items here when their work waits for a review',
+  done: 'Nothing here',
+};
 
 const DRAG_TYPE = 'application/x-flotilla-backlog';
 
@@ -121,7 +129,7 @@ export function BacklogView({ items, problems, integrations, workstreams, colors
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{lane.status === 'doing' ? 'Start an item to work on it' : 'Nothing here'}</div>}
+                  {!laneItems.length && <div class="row group-empty">{EMPTY_LANE[lane.status]}</div>}
                 </div>
               )}
             </div>

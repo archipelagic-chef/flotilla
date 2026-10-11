@@ -2,7 +2,8 @@
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
  * backlog (below) to begin with; Jira and GitHub Issues can be added as sources with the same item shape.
  */
-export type BacklogStatus = 'todo' | 'doing' | 'done';
+/** To do, in progress, in review (done, waiting for someone to look at it), done. */
+export type BacklogStatus = 'todo' | 'doing' | 'review' | 'done';
 
 /** How important an item is; unset means not decided. */
 export type BacklogPriority = 'urgent' | 'high' | 'medium' | 'low';
@@ -61,7 +62,7 @@ export interface BacklogData {
 
 export const EMPTY_BACKLOG: BacklogData = { version: 1, next: 1, items: [] };
 
-export const BACKLOG_STATUSES: readonly BacklogStatus[] = ['todo', 'doing', 'done'];
+export const BACKLOG_STATUSES: readonly BacklogStatus[] = ['todo', 'doing', 'review', 'done'];
 
 export function isBacklogData(value: unknown): value is BacklogData {
   const v = value as BacklogData;

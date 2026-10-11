@@ -55,11 +55,12 @@ export class GitHubSource implements IssueSource {
   private issue(i: GitHubIssue): RemoteIssue {
     const labels = (i.labels ?? []).map((l) => (typeof l === 'string' ? l : (l.name ?? '')).toLowerCase());
     const doing = labels.some((l) => /in.?progress|doing|wip/.test(l));
+    const review = labels.some((l) => /review|\bqa\b/.test(l));
     return {
       id: gitHubId(i.number),
       title: i.title,
-      status: i.state === 'closed' ? 'done' : doing ? 'doing' : 'todo',
-      statusName: i.state === 'closed' ? 'Closed' : doing ? 'In progress' : 'Open',
+      status: i.state === 'closed' ? 'done' : review ? 'review' : doing ? 'doing' : 'todo',
+      statusName: i.state === 'closed' ? 'Closed' : review ? 'In review' : doing ? 'In progress' : 'Open',
       // Priority labels: "priority: high", "P1", "urgent", "critical".
       priority: labels
         .filter((l) => /priority|^p[0-4]$|urgent|critical/.test(l))
