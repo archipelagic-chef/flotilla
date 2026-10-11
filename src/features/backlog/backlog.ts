@@ -285,12 +285,22 @@ export function sameAgent(a: string | undefined, b: string | undefined): boolean
 }
 
 /** Names for agents: short and friendly, robot-like with their number ("Nova-7"), so they're easy to tell apart. */
-const AGENT_NAMES = [
+export const AGENT_NAMES = [
   'Ada', 'Astro', 'Atlas', 'Bolt', 'Byte', 'Cog', 'Comet', 'Cosmo', 'Dash', 'Dex', 'Echo', 'Ember', 'Flux', 'Gizmo',
   'Halo', 'Hex', 'Ion', 'Iris', 'Jet', 'Juno', 'Kit', 'Lumen', 'Mica', 'Neon', 'Nova', 'Onyx', 'Orbit', 'Pip',
   'Pixel', 'Quill', 'Rex', 'Rivet', 'Rune', 'Sage', 'Servo', 'Spark', 'Sprocket', 'Tango', 'Tesla', 'Tink', 'Vega',
   'Volt', 'Watt', 'Wren', 'Zephyr', 'Ziggy', 'Zinc',
 ];
+
+/**
+ * The name of a chat Flotilla didn't start, from its session id (the same everywhere: the hook computes it too, see
+ * hookScript.ts, which must stay in step with this).
+ */
+export function sessionAgentName(sessionId: string): string {
+  let h = 0;
+  for (const ch of sessionId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `${AGENT_NAMES[h % AGENT_NAMES.length]}-${1 + (Math.floor(h / AGENT_NAMES.length) % 9)}`;
+}
 
 /** A new agent's name, not one of taken (the repository's other agents). random: [0, 1), injectable for tests. */
 export function agentName(taken: Iterable<string>, random: () => number = Math.random): string {

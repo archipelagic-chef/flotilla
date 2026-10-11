@@ -56,6 +56,22 @@ async function hookFileIsCurrent(worktreeRoot: string): Promise<boolean> {
   }
 }
 
+/** Whether Flotilla's hooks were ever installed in a worktree (current or not): the user agreed to them there. */
+export async function hooksPresent(worktreeRoot: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(worktreeRoot, HOOK_FILE));
+    return true;
+  } catch {
+    try {
+      return Object.values((await readSettings(path.join(worktreeRoot, SETTINGS_FILE))).hooks ?? {}).some((entries) =>
+        (Array.isArray(entries) ? entries : []).some((e) => e.hooks?.some((h) => isOurs(h.command))),
+      );
+    } catch {
+      return false;
+    }
+  }
+}
+
 export async function hooksInstalled(worktreeRoot: string): Promise<boolean> {
   try {
     return hasCurrentHooks(await readSettings(path.join(worktreeRoot, SETTINGS_FILE))) && (await hookFileIsCurrent(worktreeRoot));

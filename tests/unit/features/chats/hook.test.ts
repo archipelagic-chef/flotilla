@@ -3,9 +3,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readChatRecords } from '../../../../src/features/chats/chats';
-import { hasCurrentHooks, hooksInstalled, installHooks, withFlotillaHooks } from '../../../../src/features/chats/hookInstall';
+import { hasCurrentHooks, hooksInstalled, hooksPresent, installHooks, withFlotillaHooks } from '../../../../src/features/chats/hookInstall';
 import { HOOK_EVENTS, hookCommand, hookSource } from '../../../../src/features/chats/hookScript';
 import { git, initRepo, removeDir } from '../../../helpers/gitRepo';
+import { sessionAgentName } from '../../../../src/features/backlog/backlog';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -49,6 +50,22 @@ describe('hook script', () => {
     // Later events are mirrored too.
     fire(repo, { session_id: 'm1', hook_event_name: 'Stop' });
     expect((await readChatRecords(wtGitDir))[0].state).toBe('done');
+  });
+
+  it("names the chat's agent and gives a new chat the backlog's guide", async () => {
+    const { repo, wt, wtGitDir } = setup();
+    fs.mkdirSync(path.join(repo, '.flotilla', 'backlog'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.flotilla', 'backlog', 'AGENTS.md'), '# The backlog (Flotilla)\n');
+    const out = execFileSync(process.execPath, ['-e', hookSource(), 'flotilla-hook'], {
+      cwd: wt,
+      input: JSON.stringify({ cwd: wt, session_id: 'sess-42', hook_event_name: 'SessionStart' }),
+      encoding: 'utf8',
+    });
+    const name = sessionAgentName('sess-42');
+    const context = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+    expect(context).toContain('# The backlog (Flotilla)');
+    expect(context).toContain(`you are agent ${name}`);
+    expect((await readChatRecords(wtGitDir))[0]).toMatchObject({ sessionId: 'sess-42', agent: name });
   });
 
   it('does nothing outside a git repository or without a session id', () => {
@@ -117,5 +134,16 @@ describe('hook installation', () => {
     fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), '{ broken');
     await expect(installHooks(wt, path.join(repo, '.git'))).rejects.toThrow();
     expect(fs.readFileSync(path.join(wt, '.claude', 'settings.local.json'), 'utf8')).toBe('{ broken');
+  });
+});
+
+describe('hooks present', () => {
+  it('tells installed hooks (current or older) from none', async () => {
+    const { wt } = setup();
+    expect(await hooksPresent(wt)).toBe(false);
+    fs.mkdirSync(path.join(wt, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node old flotilla-hook' }] }] } }));
+    expect(await hooksPresent(wt)).toBe(true);
+    expect(await hooksInstalled(wt)).toBe(false);
   });
 });

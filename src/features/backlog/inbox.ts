@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, type BacklogData, type BacklogItem } from './backlog';
+import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
 import { entryDate, parseTicket } from './ticket';
 import type { LocalBacklog } from './localBacklog';
 
@@ -16,6 +16,8 @@ export const GUIDE = 'AGENTS.md';
 export type AgentTicketMode = 'propose' | 'add';
 
 export interface Proposal {
+  /** An existing item the agent starts on (claims), instead of a new one. */
+  claim?: string;
   title: string;
   description: string;
   /** The item it's a part of. */
@@ -38,14 +40,16 @@ export function parseProposal(text: string): Proposal | { error: string } {
     if (m) fields.set(m[1].toLowerCase(), m[2].replace(/^["']|["']$/g, ''));
   }
   const ticket = parseTicket(front ? normalized.slice(front[0].length) : normalized);
-  if (!ticket.title.trim()) return { error: 'It has no title: start the ticket with "# Title".' };
+  const claim = fields.get('claim')?.toUpperCase();
+  if (!claim && !ticket.title.trim()) return { error: 'It has no title: start the ticket with "# Title".' };
   const agent = fields.get('agent');
   return {
+    ...(claim ? { claim } : {}),
     title: ticket.title.trim(),
     description: ticket.description,
     ...(fields.get('parent') ? { parent: fields.get('parent')!.toUpperCase() } : {}),
     ...(fields.get('priority') ? { priority: fields.get('priority') } : {}),
-    start: /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
+    start: !!claim || /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
     ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
     ...(agent && entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
   };
@@ -57,6 +61,14 @@ export function addProposal(
   p: Proposal,
   opts: { prefix: string; mode: AgentTicketMode; now: Date; taken: readonly string[] },
 ): { data: BacklogData; item: BacklogItem } | { error: string } {
+  if (p.claim) {
+    // An agent starts on an existing item: in progress, on its branch.
+    const found = data.items.find((i) => i.id.toLowerCase() === p.claim!.toLowerCase());
+    if (!found) return { error: `${p.claim} isn't in the backlog.` };
+    let next = updateItem(data, found.id, { status: found.status === 'done' || found.status === 'review' ? found.status : 'doing' });
+    if (p.branch) next = addBranch(next, found.id, p.branch);
+    return { data: next, item: next.items.find((i) => i.id === found.id)! };
+  }
   if (p.parent && !data.items.some((i) => i.id.toLowerCase() === p.parent!.toLowerCase())) {
     return { error: `Its parent ${p.parent} isn't in the backlog.` };
   }
@@ -120,13 +132,20 @@ export async function takeInbox(
       });
       if (item) {
         const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
-        await store.writeTicket(item.id, {
-          title: proposal.title,
-          description: proposal.description,
-          activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
-        });
+        if (proposal.claim) {
+          const ticket = await store.readTicket(item);
+          const where = proposal.branch ? ` on branch \`${proposal.branch}\`` : '';
+          await store.writeTicket(item.id, { ...ticket, activity: [...ticket.activity, { date: entryDate(new Date()), author: by, body: `Started on this ticket${where}.` }] });
+        } else {
+          await store.writeTicket(item.id, {
+            title: proposal.title,
+            description: proposal.description,
+            activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
+          });
+        }
         if (proposal.start && proposal.branch) await opts.onStarted?.(item, proposal.branch);
-        added.push(item);
+        // Claims aren't new tickets: their ticket says who started, nobody needs telling.
+        if (!proposal.claim) added.push(item);
       }
     }
     await fs.promises.rm(file, { force: true });
@@ -142,25 +161,39 @@ export async function takeInbox(
   return added;
 }
 
-/** The guide agents read (AGENTS.md next to the backlog): how the backlog works and how to add to it. */
+/** The guide agents read (AGENTS.md next to the backlog): how to work through the backlog and add to it. */
 export function agentGuide(backlogDir: string, mode: AgentTicketMode): string {
   const inbox = path.join(backlogDir, INBOX);
   return `# The backlog (Flotilla)
 
-This repository has a backlog managed by Flotilla, in ${backlogDir}:
+This repository's work is tracked in a backlog, in ${backlogDir}:
 
 - \`backlog.json\`: the items in priority order, with id, title, status (todo, doing, review, done), priority and
   parent (the item one is part of). Read it; never edit it.
 - \`<id>.md\`: each item's ticket: "# Title", the description, then "## Activity" (comments and agents' reports).
 
+## Work through a ticket
+
+Whenever you're asked to change this repository (fix, build, refactor), do it as a ticket. Questions and
+explanations that change nothing don't need one.
+
+1. Find the ticket: the one the user names ("BL-3"), or one in \`backlog.json\` whose title and description cover the
+   task. If none does, add one with \`start: true\` (see "Adding tickets").
+2. Claim it before you start: write an inbox file (below) with \`claim: BL-3\` and your branch. Read its ticket.
+3. Start every commit message with its id: \`BL-3: Fix the token refresh\`.
+4. Report in its ticket: append entries at the end of "## Activity", each headed
+   \`### YYYY-MM-DD HH:MM · Agent <your name>\` (local time): your plan when you start, questions when you need a
+   decision, and what you did when you finish.
+5. When the work is done, end your final report with a line \`Ready for review.\` Another agent then reviews it.
+
 ## Adding tickets
 
 Any agent can add tickets. Do it when:
 
+- the user asks for work that isn't in the backlog yet: add it with \`start: true\` before you start;
 - the task you're on turns out to be several pieces of work: add one ticket per piece, with \`parent:\` set to your
   ticket's id;
-- you find other work that should be done (a bug, a follow-up), but isn't your task;
-- the user asks you to work on something that isn't in the backlog yet: add it with \`start: true\` before you start.
+- you find other work that should be done (a bug, a follow-up), but isn't your task.
 
 To add one, write a Markdown file into ${inbox}/ (any name ending in .md, e.g. \`${inbox}/split-login-1.md\`):
 
@@ -170,19 +203,29 @@ parent: BL-1        # optional: the item it's part of
 priority: high      # optional: urgent, high, medium or low
 start: true         # optional: you start on it now...
 branch: feature/x   # ...on this branch (your current one: git branch --show-current)
-agent: Nova-7       # optional: your agent name, if you were given one
+agent: Nova-7       # your agent name
 ---
 # A short title
 
 What and why, and how to tell it's done (a checklist of acceptance criteria).
 \`\`\`
 
-Flotilla takes it in within seconds, gives it an id and writes the id to \`<name>.added\` next to your file (or the
-problem to \`<name>.error\`). ${
+To claim an existing ticket, the file needs only front matter:
+
+\`\`\`markdown
+---
+claim: BL-3
+branch: feature/x
+agent: Nova-7
+---
+\`\`\`
+
+Flotilla takes it in within seconds and writes the ticket's id to \`<name>.added\` next to your file (or the problem
+to \`<name>.error\`). ${
     mode === 'propose'
-      ? 'New tickets are proposals: the user accepts or dismisses them.'
+      ? 'New tickets are proposals: the user accepts or dismisses them (you can still work on one you started).'
       : 'New tickets join the backlog at once (the user can still remove them).'
-  } With \`start: true\`, read the id from \`<name>.added\` and start every commit message with it (\`BL-7: ...\`).
+  } With \`start: true\`, read the new id from \`<name>.added\` and use it in your commits.
 
 Don't edit other tickets' descriptions, and never change issue trackers (Jira, GitHub Issues) yourself.
 `;

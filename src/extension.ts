@@ -259,6 +259,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     filesWatcher,
     repository.onDidChange(updateExplorerContext),
     repository.onDidChange(() => void chatUi.maybeOfferHooks(chats)),
+    repository.onDidChange(() => void chatUi.upgradeHooks(chats)),
     repository.onDidChange(() => {
       const report = (e: unknown) => output.appendLine(`Chat linking failed: ${e instanceof Error ? e.message : String(e)}`);
       void chatUi.linkPendingChats(chats).catch(report);

@@ -82,3 +82,16 @@ describe('backlog inbox', () => {
     expect(ticket).toMatchObject({ title: 'Log out of the IdP too', activity: [{ author: 'Agent Nova-7', body: 'Added this ticket and started on it.' }] });
   });
 });
+
+describe('claims', () => {
+  it('starts an agent on an existing item, on its branch', () => {
+    const data = addItem(EMPTY_BACKLOG, 'SSO', 'BL', new Date()).data;
+    const p = parseProposal('---\nclaim: bl-1\nbranch: fix/sso\nagent: Nova-7\n---\n');
+    expect(p).toMatchObject({ claim: 'BL-1', start: true, branch: 'fix/sso', agent: 'Nova-7' });
+    if ('error' in p) throw new Error(p.error);
+    const r = addProposal(data, p, { prefix: 'BL', mode: 'propose', now: new Date(), taken: [] });
+    expect(r).toMatchObject({ item: { id: 'BL-1', status: 'doing', branches: ['fix/sso'] } });
+    expect('item' in r && r.item.proposed).toBeUndefined();
+    expect(addProposal(data, { ...p, claim: 'BL-9' }, { prefix: 'BL', mode: 'propose', now: new Date(), taken: [] })).toEqual({ error: expect.stringMatching(/BL-9/) });
+  });
+});

@@ -13,6 +13,8 @@ export interface ChatRecord {
   state: ChatState;
   message?: string;
   firstPrompt?: string;
+  /** The agent name the hook gave the chat (its ticket reports are signed with it). */
+  agent?: string;
   cwd?: string;
   linkedBy: LinkKind;
   /** Git dir of the worktree the chat belongs to, when that is not the one it runs in (set by linking). */
@@ -46,6 +48,8 @@ export interface Chat {
   open: boolean;
   /** The first message (its first 200 characters), when known: agents started for backlog items name the item there. */
   firstPrompt?: string;
+  /** The agent name the hook gave it; a name in its first message (Flotilla's agents) comes first. */
+  agent?: string;
   startedAt?: Date;
 }
 
@@ -96,6 +100,7 @@ export function parseChatRecord(raw: string): ChatRecord | undefined {
     state: data.state as ChatState,
     message: text(data.message),
     firstPrompt: text(data.firstPrompt),
+    agent: text(data.agent),
     cwd: text(data.cwd),
     linkedBy: LINKS.includes(data.linkedBy as LinkKind) ? (data.linkedBy as LinkKind) : 'cwd',
     home: text(data.home),
@@ -341,6 +346,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       updatedAt: t && t.updatedAt > r.updatedAt ? t.updatedAt : r.updatedAt,
       open: state !== 'ended' && age <= opts.openHours * 3_600_000,
       ...optional('firstPrompt', r.firstPrompt ?? t?.firstPrompt),
+      ...optional('agent', r.agent),
       ...optional('startedAt', r.startedAt ?? t?.startedAt),
     });
   }

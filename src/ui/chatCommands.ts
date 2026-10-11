@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside, samePath, toGitPath } from '../core/paths';
 import { claudeHome, importTranscript, linkChat, readChatRecords, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
-import { installHooks } from '../features/chats/hookInstall';
+import { hooksPresent, installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
@@ -245,6 +245,27 @@ export async function installChatHooks(ctx: ChatContext, only?: Workstream): Pro
 }
 
 /** Once per repository: offers the hooks when a worktree has chats but no hooks. */
+const upgraded = new Set<string>();
+
+/**
+ * Brings Flotilla's hooks up to date (quietly) in worktrees where they were installed before: a new version adds
+ * what chats get from them (the backlog's guide, agent names). Where they never were, nothing is installed.
+ */
+export async function upgradeHooks(ctx: ChatContext): Promise<void> {
+  for (const ws of ctx.workstreams()) {
+    const root = ws.worktree.path;
+    if (!root || ws.hasHooks || upgraded.has(root)) continue;
+    upgraded.add(root);
+    if (!(await hooksPresent(root))) continue;
+    try {
+      await installHooks(root, ctx.commonDir);
+      ctx.output.appendLine(`Updated the Claude Code hooks in ${root}.`);
+    } catch (error) {
+      ctx.output.appendLine(`Could not update the hooks in ${root}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 export async function maybeOfferHooks(ctx: ChatContext): Promise<void> {
   const key = `${HOOKS_OFFERED_KEY}:${ctx.mainRoot}`;
   if (ctx.extension.globalState.get<boolean>(key)) return;

@@ -174,7 +174,7 @@ export class TicketPanels implements vscode.Disposable {
    */
   private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
     const posted = await this.deps.backlog.posted();
-    const agents = new Map(this.agentChats(item).map((c) => [c.agent.toLowerCase(), c]));
+    const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
     return Promise.all(
       entries.map(async (e) => {
         const key = Store.entryKey(item.id, e);
@@ -196,17 +196,31 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** The chats of agents started for an item (their first message names it), in its worktrees, oldest first. */
-  private agentChats(item: BacklogItem): Array<Exclude<AgentChatView, { pending: true }>> {
-    return this.worktreesOf(item)
+  /**
+   * The chats of agents that worked on an item, oldest first: those started for it (their first message names it),
+   * and any chat (in any worktree) whose agent signed one of its entries or that an entry says was opened for it.
+   */
+  private agentChats(item: BacklogItem, entries: TicketEntry[]): Array<Exclude<AgentChatView, { pending: true }>> {
+    const named = new Set(
+      entries
+        .map((e) => entryAgent(e.author) ?? (e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined))
+        .filter((n): n is string => !!n)
+        .map((n) => n.toLowerCase()),
+    );
+    const seen = new Set<string>();
+    return this.deps.repository.current
       .flatMap((ws) =>
         ws.chats.flatMap((c) => {
           const started = agentChatItem(c.firstPrompt);
-          if (started?.item !== item.id) return [];
+          const agent = started?.agent ?? c.agent;
+          if (!agent || seen.has(c.id)) return [];
+          if (started?.item !== item.id && !named.has(agent.toLowerCase())) return [];
+          seen.add(c.id);
           return [
             {
               key: ws.key,
               id: c.id,
-              agent: started.agent,
+              agent,
               title: agentChatItem(c.title) ? item.title : c.title,
               state: c.state,
               message: c.message,
@@ -219,6 +233,7 @@ export class TicketPanels implements vscode.Disposable {
       )
       .sort((a, b) => a.started.localeCompare(b.started));
   }
+
 
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
   private async remoteView(
@@ -261,9 +276,10 @@ export class TicketPanels implements vscode.Disposable {
   private async post(id: string, panel: vscode.WebviewPanel): Promise<void> {
     const seq = (this.posts.get(panel) ?? 0) + 1;
     this.posts.set(panel, seq);
-    let chats: ReturnType<TicketPanels['agentChats']> = [];
+    let shown: BacklogItem | undefined;
     const send = (view: Omit<TicketView, 'agents'>) => {
       if (this.posts.get(panel) !== seq) return;
+      const chats = shown ? this.agentChats(shown, view.activity) : [];
       // Each agent with the reports it signed.
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
@@ -280,7 +296,7 @@ export class TicketPanels implements vscode.Disposable {
       const dir = this.deps.backlog.dir;
       const { remote, ...plain } = item;
       base = { ...this.baseView(plain, remote), ...(await this.work(plain)), ...(await this.family(plain)) };
-      chats = this.agentChats(plain);
+      shown = plain;
       if (remote) {
         // What the backlog knows shows at once; the description and comments follow from the tracker.
         if (!this.details.get(id)?.settled) send({ ...base, loading: true });

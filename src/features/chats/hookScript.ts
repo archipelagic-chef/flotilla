@@ -1,3 +1,5 @@
+import { AGENT_NAMES } from '../backlog/backlog';
+
 /**
  * The Claude Code hook. Flotilla installs it as a readable file, `.claude/flotilla-hook.js`, next to each worktree's
  * `.claude/settings.local.json`; the hook command only loads that file (see hookCommand). It reads the hook event
@@ -6,6 +8,9 @@
  */
 const SOURCE = String.raw`
 const fs = require('fs'), path = require('path'), cp = require('child_process');
+// The chat's agent name (as sessionAgentName in backlog.ts computes it): its ticket reports are signed with it.
+const NAMES = ${JSON.stringify(AGENT_NAMES)};
+const agentName = (id) => { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return NAMES[h % NAMES.length] + '-' + (1 + (Math.floor(h / NAMES.length) % 9)); };
 const STATES = { SessionStart: 'done', UserPromptSubmit: 'working', PostToolUse: 'working', Notification: 'waiting-for-input', Stop: 'done', SessionEnd: 'ended' };
 let input = {};
 try { input = JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) {}
@@ -38,6 +43,7 @@ if (sid && state) {
     const now = new Date().toISOString();
     const record = read(fileFor(own)) || { sessionId: sid, source: 'claude-code', linkedBy: 'cwd', startedAt: now, linkedDirs: [] };
     if (!Array.isArray(record.linkedDirs)) record.linkedDirs = [];
+    if (!record.agent) record.agent = agentName(sid);
     record.state = state;
     record.updatedAt = now;
     record.cwd = cwd;
@@ -65,7 +71,11 @@ if (event === 'SessionStart') {
   try {
     const common = cp.execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: input.cwd || process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
     const guide = path.join(path.dirname(common), '.flotilla', 'backlog', 'AGENTS.md');
-    if (fs.existsSync(guide)) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: fs.readFileSync(guide, 'utf8') } }));
+    if (fs.existsSync(guide) && sid) {
+      const name = agentName(sid);
+      const context = fs.readFileSync(guide, 'utf8') + '\n\nIn this chat you are agent ' + name + ' (unless your first message gives you another name): sign your ticket reports "Agent ' + name + '" and use "agent: ' + name + '" in inbox files.\n';
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
+    }
   } catch (e) {}
 }
 `;

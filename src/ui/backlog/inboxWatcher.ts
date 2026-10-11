@@ -65,7 +65,8 @@ export class BacklogInbox implements vscode.Disposable {
         mode,
         taken: this.integrations.issues().map((i) => i.id),
         onStarted: async (item, branch) => {
-          const ws = this.repository.current.find((w) => w.worktree.branch === branch);
+          // The main worktree isn't marked: the mark would stay on everything committed there.
+          const ws = this.repository.current.find((w) => w.worktree.branch === branch && !w.worktree.isMain);
           if (!ws) return;
           await markWorktree(ws.worktree.adminDir, item.id);
           await installCommitHook(this.roots.mainRoot, this.roots.commonDir, commitPrefixMode()).catch(() => undefined);
