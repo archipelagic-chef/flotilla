@@ -1272,7 +1272,7 @@
           "type": "number",
           "default": 15,
           "minimum": 5,
-          "description": "How often to refresh while the Workstreams view is visible."
+          "description": "How often to refresh the worktrees in use (a window open, an agent running, recent changes) while the Workstreams view is visible. Other worktrees are refreshed every few minutes, so a commit on the base branch reaches them within that time; a commit, stage or checkout in a worktree shows there within this interval."
         },
         "flotilla.tagChatTitles": {
           "type": "boolean",
