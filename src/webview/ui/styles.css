@@ -1923,3 +1923,34 @@ ins {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
 }
+
+/* CI: a static dot on the Version Control tool for the scope's state (no spinner; its hover names the failed workflows), and a worktree's CI line in the same colors. */
+.tools .ci-dot {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vscode-descriptionForeground);
+}
+.ci-dot.success {
+  background: var(--done);
+}
+.ci-dot.failure {
+  background: var(--error);
+}
+.ci-dot.running,
+.ci-dot.queued {
+  background: var(--working);
+}
+.ci-state.success {
+  color: var(--done);
+}
+.ci-state.failure {
+  color: var(--error);
+}
+.ci-state.running,
+.ci-state.queued {
+  color: var(--working);
+}

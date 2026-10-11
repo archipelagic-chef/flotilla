@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
 import type { WorkstreamView } from '../protocol';
+import { ciSummary } from '../../features/ci/summary';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 
@@ -39,6 +40,7 @@ export function Overview({ workstreams, active, colors, closed, onSelect }: Prop
         const facts = [
           changes ? `${changes} changed` : 'no changes',
           ws.sync.text,
+          ciSummary(ws.ci),
           open.length ? `${open.length} open chat${open.length === 1 ? '' : 's'}` : '',
         ].filter(Boolean);
         return (

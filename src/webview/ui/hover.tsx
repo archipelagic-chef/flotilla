@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { ciSummary } from '../../features/ci/summary';
 import type { WorkstreamView } from '../protocol';
 import { ATTENTION_ICON } from './section';
 
@@ -207,6 +208,12 @@ export function WorktreeCard({ ws, color, keys, hint }: { ws: WorkstreamView; co
           <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]} ${STATE_CLASS[ws.attention] ?? ''}`} />
           <span>{ws.description}</span>
         </div>
+        {ws.ci && ciSummary(ws.ci) && (
+          <div class="hover-row">
+            <i class={`codicon codicon-github-action${ws.ci.state ? ` ci-state ${ws.ci.state}` : ''}`} />
+            <span>{ciSummary(ws.ci)}</span>
+          </div>
+        )}
         {ws.agentMessage && <div class="hover-quote">{ws.agentMessage}</div>}
         {(changes || chats) && (
           <div class="hover-row">

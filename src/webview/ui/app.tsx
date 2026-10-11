@@ -6,6 +6,7 @@ import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
 import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
+import { ciSummary, scopeState } from '../../features/ci/summary';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
@@ -404,6 +405,10 @@ export function App() {
     ...(progress[id] ?? []),
     ...(id === 'search' && searching ? ['Searching…'] : []),
   ];
+  /** CI of the scope (the active worktree, or all of them on the All tab): its state on the Version Control tool, and what failed. */
+  const ciScope = active === ALL ? workstreams : workstreams.filter((w) => w.key === active);
+  const ciState = scopeState(ciScope.map((w) => w.ci));
+  const ciTip = ciState ? ciSummary({ state: ciState, failed: ciState === 'failure' ? [...new Set(ciScope.flatMap((w) => w.ci?.failed ?? []))] : [] }) : '';
   const files: FilesApi = {
     dirs,
     requestDir,
@@ -641,13 +646,14 @@ export function App() {
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
                   data-tip={(() => {
-                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : [])];
+                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : []), ...(t.id === 'vc' && ciTip ? [ciTip] : [])];
                     return lines.length ? [t.label, ...lines].join('\n') : undefined;
                   })()}
                   data-tip-pos="right"
                   onClick={() => update((p) => ({ ...p, tool: t.id }))}
                 >
                   <i class={`codicon codicon-${t.icon}`} />
+                  {t.id === 'vc' && ciState && <span class={`ci-dot ${ciState}`} />}
                   {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
                   {busy.length > 0 && (
                     <span class={`b busy${badge > 0 ? ' top' : ''}`}>
