@@ -1,4 +1,4 @@
-import { runGit } from '../git/gitCli';
+import { runGit, runGitBytes } from '../git/gitCli';
 import type { FileChange } from '../git/porcelain';
 
 /** Right side is the file on disk. */
@@ -26,5 +26,15 @@ export async function readFileAtRef(worktreeDir: string, ref: string, relPath: s
     return await runGit(['show', `${ref === INDEX ? '' : ref}:${relPath}`], { cwd: worktreeDir });
   } catch {
     return '';
+  }
+}
+
+/** A file's bytes at a ref (images and other binary files too); empty when it isn't there. */
+export async function readFileBytesAtRef(worktreeDir: string, ref: string, relPath: string): Promise<Uint8Array> {
+  if (ref === EMPTY) return new Uint8Array();
+  try {
+    return await runGitBytes(['show', `${ref === INDEX ? '' : ref}:${relPath}`], { cwd: worktreeDir });
+  } catch {
+    return new Uint8Array();
   }
 }

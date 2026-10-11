@@ -37,4 +37,11 @@ suite('Flotilla smoke test', () => {
     const doc = await vscode.workspace.openTextDocument(uri);
     assert.strictEqual(doc.getText(), 'fixture\n');
   });
+
+  test('serves the same bytes to editors that read files (image previews)', async () => {
+    const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
+    const uri = vscode.Uri.from({ scheme: 'flotilla-git', path: '/README.md', query: JSON.stringify({ worktree: root, ref: 'HEAD', path: 'README.md' }) });
+    assert.strictEqual((await vscode.workspace.fs.stat(uri)).size, 'fixture\n'.length);
+    assert.strictEqual(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString(), 'fixture\n');
+  });
 });

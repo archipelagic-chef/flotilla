@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { GIT_SCHEME, GitContentProvider } from './core/diff/gitContentProvider';
+import { GIT_SCHEME, GitFileSystemProvider } from './core/diff/gitContentProvider';
 import { getGitVersion, GitError, MIN_GIT_VERSION, runGit, versionAtLeast } from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
 import { Repository } from './core/repository';
@@ -55,7 +55,7 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
-  context.subscriptions.push(output, vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitContentProvider()));
+  context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
   // The terminal profile VS Code's + button uses once it's the default profile. It's registered first, so that it
   // always answers (a plain terminal) when Flotilla has no worktrees to offer: the setting applies to every window.
   let terminalOptions: (() => Promise<vscode.TerminalOptions | undefined>) | undefined;

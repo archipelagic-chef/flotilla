@@ -45,6 +45,32 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
   });
 }
 
+/** runGit, for output that may not be text (a file's bytes). */
+export function runGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      [...args],
+      {
+        cwd: opts.cwd,
+        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        maxBuffer: 256 * 1024 * 1024,
+        encoding: 'buffer',
+        windowsHide: true,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...opts.env },
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          const code = (error as { code?: unknown }).code;
+          reject(new GitError(args, typeof code === 'number' ? code : null, stderr.toString() || error.message));
+        } else {
+          resolve(stdout);
+        }
+      },
+    );
+  });
+}
+
 export type GitVersion = readonly [number, number, number];
 
 export const MIN_GIT_VERSION: GitVersion = [2, 17, 0];
