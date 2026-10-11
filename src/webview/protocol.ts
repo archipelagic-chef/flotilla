@@ -178,6 +178,8 @@ export interface Target {
   path?: string;
   group?: ChangeGroup;
   chatId?: string;
+  /** With chatId: a message to fill in the chat's message box. */
+  prompt?: string;
   /** Files of a multi-selection, in the same group. */
   paths?: string[];
   /** In the Files tab: path is a folder. */

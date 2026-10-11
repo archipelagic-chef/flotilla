@@ -192,7 +192,7 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.revealInExplorer', (arg?: Arg) => revealInExplorer(ctx, arg));
   // Chats
   register('flotilla.newChat', withWs((ws) => chatUi.newChat(chats, ws)));
-  register('flotilla.openChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.openChat(chats, ws, arg.chatId)));
+  register('flotilla.openChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.openChat(chats, ws, arg.chatId, arg.prompt)));
   register('flotilla.unlinkChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.unlink(chats, ws, arg.chatId)));
   register('flotilla.linkChat', withWs((ws) => chatUi.link(chats, ws)));
   register('flotilla.installClaudeHooks', (arg?: Arg) => chatUi.installChatHooks(chats, isTarget(arg) ? ctx.repository.current.find((w) => w.key === arg.key) : undefined));

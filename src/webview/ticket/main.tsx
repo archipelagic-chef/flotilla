@@ -1,6 +1,7 @@
 import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
+import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -300,6 +301,22 @@ const AUTHOR_ICON: Record<string, string> = {
   flotilla: 'info',
 };
 
+const FIX_ICON: Record<ReviewFix, string> = {
+  retry: 'debug-restart',
+  newAgent: 'hubot',
+  inChat: 'comment-discussion',
+  anotherRound: 'refresh',
+  worktree: 'git-branch',
+};
+
+const FIX_TIP: Record<ReviewFix, string> = {
+  retry: 'Go on where it stopped',
+  newAgent: 'Hand the request to a new agent, running without a window',
+  inChat: "Opens the agent's chat with the request in its message box (and on the clipboard): send it there",
+  anotherRound: 'Allow one more round of review and changes',
+  worktree: 'Creates a worktree for it, then goes on',
+};
+
 /** Where the review loop is: who reviews, the round, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
@@ -345,6 +362,13 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         <button class="button secondary" onClick={() => send({ type: 'stopReview' })} title="Stops the running agent and the handoffs">
           <i class="codicon codicon-debug-stop" /> Stop
         </button>
+      ) : r.state === 'stopped' ? (
+        // Fixes for why it stopped, the first one first.
+        fixesFor(r.stop?.kind, !!r.stop?.task).map((fix, i) => (
+          <button key={fix} class={`button${i ? ' secondary' : ''}`} onClick={() => send({ type: 'reviewFix', fix })} title={FIX_TIP[fix]}>
+            <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
+          </button>
+        ))
       ) : (
         ticket.canReview && (
           <button class="button secondary" onClick={() => send({ type: 'startReview' })}>

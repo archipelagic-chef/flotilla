@@ -121,7 +121,7 @@ export async function startAgent(ctx: ChatContext, ws: Workstream, task: string,
  * so a chat that ran in another worktree's folder is first copied there (its transcript; the original stays) and
  * linked to its worktree. It then continues in this window, like chats started here for a worktree.
  */
-export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string): Promise<void> {
+export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string, prompt?: string): Promise<void> {
   const chat = ws.chats.find((c) => c.id === chatId);
   if (!chat) return;
   const dir = chat.cwd ?? ws.worktree.path;
@@ -150,7 +150,7 @@ export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string)
     });
     void ctx.refresh();
   }
-  await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id);
+  await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id, prompt);
 }
 
 /**

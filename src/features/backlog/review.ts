@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
 import type { TicketEntry } from './ticket';
@@ -28,11 +27,70 @@ export interface ReviewState {
   worktree?: string;
   /** Why it stopped, for the user. */
   reason?: string;
+  /** Why it stopped, for fixing it from the ticket; and the implementer's task that didn't get done, if any. */
+  stop?: { kind: ReviewStopKind; task?: RevisionTask };
+  /** Rounds allowed beyond flotilla.review.maxRounds (Another Round). */
+  extraRounds?: number;
   /** Reports already acted on ("Ready for review", verdicts), by entry key. */
   handled?: string[];
 }
 
 export type Verdict = 'approved' | 'changes';
+
+/** The folder a ticket file is in (this module is also used in webviews: no node:path). */
+const folderOf = (file: string) => file.replace(/[\\/][^\\/]*$/, '');
+
+/**
+ * Why a review stopped: the implementer is busy in its chat, stopped without reporting "Ready for review", or its chat
+ * is gone; the reviewer gave no verdict; too many rounds; no worktree; or the user stopped it.
+ */
+export type ReviewStopKind = 'busy' | 'no-report' | 'chat-gone' | 'no-verdict' | 'rounds' | 'no-worktree' | 'user';
+
+/** What the implementer is asked to do: the prompt, why (for notes), and whether only its own chat may do it. */
+export interface RevisionTask {
+  prompt: string;
+  why: string;
+  resumeOnly?: boolean;
+}
+
+/** How a stopped review is fixed from the ticket. */
+export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'worktree';
+
+/** A fix's button, as fits why it stopped. */
+export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
+  switch (fix) {
+    case 'retry':
+      return kind === 'no-report' ? 'Resume It' : kind === 'busy' ? 'Try Again' : kind === 'no-verdict' || kind === 'user' || !kind ? 'Review Again' : 'Try Again';
+    case 'newAgent':
+      return 'New Agent';
+    case 'inChat':
+      return 'Give It in Its Chat';
+    case 'anotherRound':
+      return 'Another Round';
+    case 'worktree':
+      return 'Create Worktree';
+  }
+}
+
+/** The fixes for a stop, the first the one to offer first. */
+export function fixesFor(kind: ReviewStopKind | undefined, hasTask: boolean): ReviewFix[] {
+  switch (kind) {
+    case 'busy':
+      return ['inChat', 'newAgent', 'retry'];
+    case 'no-report':
+      return ['retry', 'newAgent'];
+    case 'chat-gone':
+      return ['newAgent'];
+    case 'rounds':
+      return ['anotherRound'];
+    case 'no-worktree':
+      return ['worktree'];
+    case 'no-verdict':
+    case 'user':
+    default:
+      return hasTask ? ['retry', 'newAgent'] : ['retry'];
+  }
+}
 
 /** A review's verdict, from its last "Verdict: …" line. */
 export function parseVerdict(body: string): Verdict | undefined {
@@ -156,7 +214,7 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
     MAY_ASK,
     `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. End that report with a line "Ready for review." so it's reviewed again.`,
-    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
+    reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
     `If you disagree with a request, say why in your report instead of making the change.`,
   ].join('\n\n');
 }
@@ -178,7 +236,7 @@ export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: s
     MAY_ASK,
     UPDATE_DESCRIPTION(o.ticket),
     `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
-    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
+    reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }
 
@@ -189,6 +247,6 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
     o.answer.trim().replace(/^/gm, '> '),
     UPDATE_DESCRIPTION(o.ticket),
     `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket, ending with a line "Ready for review." If you still need to know more, ask again the same way (end the report with "Waiting for you.").`,
-    reviewNotes({ id: o.item.id, backlogDir: path.dirname(o.ticket) }),
+    reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }

@@ -88,3 +88,14 @@ describe('review loop', () => {
     expect(answerPrompt({ item: { id: 'BL-1' }, ticket: '/t/BL-1.md', answer: 'Per key.' })).toMatch(/> Per key\./);
   });
 });
+
+describe('fixing a stopped review', () => {
+  it('offers the fixes that fit why it stopped', async () => {
+    const { fixesFor, fixLabel } = await import('../../../src/features/backlog/review');
+    expect(fixesFor('busy', true)).toEqual(['inChat', 'newAgent', 'retry']);
+    expect(fixesFor('no-report', true).map((f) => fixLabel(f, 'no-report'))).toEqual(['Resume It', 'New Agent']);
+    expect(fixesFor('no-verdict', false).map((f) => fixLabel(f, 'no-verdict'))).toEqual(['Review Again']);
+    expect(fixesFor('rounds', true)).toEqual(['anotherRound']);
+    expect(fixesFor('no-worktree', false)).toEqual(['worktree']);
+  });
+});

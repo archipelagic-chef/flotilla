@@ -702,6 +702,9 @@ export class TicketPanels implements vscode.Disposable {
       case 'userReview':
         await this.reviews?.userReview(id, m.verdict, m.text);
         break;
+      case 'reviewFix':
+        await this.reviews?.fix(id, m.fix);
+        return;
       case 'stopReview':
         await this.reviews?.stop(id);
         return;

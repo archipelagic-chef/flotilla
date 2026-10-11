@@ -5,7 +5,7 @@
 import type { AgentChoice, AgentEffort, BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
-import type { ReviewState } from '../features/backlog/review';
+import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -133,6 +133,8 @@ export type TicketWebviewMessage =
   /** The user's own review: approve, or request changes (an agent picks them up). */
   | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
+  /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
+  | { type: 'reviewFix'; fix: ReviewFix }
   | { type: 'accept' }
   | { type: 'dismiss' }
   | { type: 'openTicket'; id: string }
