@@ -7,6 +7,9 @@ import { installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
+import { isRunningHeadless } from './backlog/agentRunner';
+import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
+import type { WindowEnv } from '../features/workstreams/heartbeat';
 
 const CLAUDE_EXTENSION = 'anthropic.claude-code';
 const CLAUDE_OPEN = 'claude-vscode.editor.open';
@@ -23,6 +26,10 @@ export interface ChatContext {
   workstreams(): readonly Workstream[];
   refresh(): Promise<void>;
   output: vscode.OutputChannel;
+  /** Brings the window open on a folder to the front (VS Code focuses it rather than opening another). */
+  focusWindow(dir: string): Promise<void>;
+  /** This window's environment, as heartbeats name it: a window in another one can't be brought forward from here. */
+  env: WindowEnv;
 }
 
 function claudeAvailable(): boolean {
@@ -92,19 +99,16 @@ export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead 
  * linked to its worktree. It then continues in this window, like chats started here for a worktree.
  */
 export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string): Promise<void> {
-  if (!claudeAvailable()) return;
   const chat = ws.chats.find((c) => c.id === chatId);
   if (!chat) return;
   const dir = chat.cwd ?? ws.worktree.path;
+  // An active chat is selected where it runs (another window can do that without Claude Code here); it's never copied.
+  if (dir && !samePath(dir, ctx.currentRoot) && chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
+    await selectActiveChat(ctx, chat.id, chat.title, dir);
+    return;
+  }
+  if (!claudeAvailable()) return;
   if (dir && !samePath(dir, ctx.currentRoot)) {
-    if (chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
-      const choice = await vscode.window.showWarningMessage(
-        `'${chat.title}' is still active in a window on ${workstreamLabel(ws)}.`,
-        { modal: true, detail: 'Opening it here continues a copy of the chat; the other window keeps its own copy.' },
-        'Open Here',
-      );
-      if (!choice) return;
-    }
     const result = await importTranscript(dir, ctx.currentRoot, chat.id);
     if (result === 'missing') {
       void vscode.window.showWarningMessage(
@@ -124,6 +128,33 @@ export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string)
     void ctx.refresh();
   }
   await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id);
+}
+
+/**
+ * Selects a chat that's active in another folder: in the Flotilla window open on that folder (which brings it to the
+ * front), or, running without a window, says so. Otherwise it's in this window's Claude Code (or a terminal), which is
+ * asked to select it.
+ */
+async function selectActiveChat(ctx: ChatContext, chatId: string, title: string, dir: string): Promise<void> {
+  if (isRunningHeadless(chatId)) {
+    void vscode.window.showInformationMessage(`'${title}' is an agent running without a window; it reports in its ticket. Open it once it's done.`);
+    return;
+  }
+  const owner = ctx.workstreams().find((w) => w.worktree.path && samePath(w.worktree.path, dir));
+  if (owner?.windowOpen && !samePath(owner.worktree.adminDir, ctx.currentGitDir)) {
+    await sendWindowRequest(owner.worktree.adminDir, { type: 'openChat', sessionId: chatId });
+    if (owner.heartbeat?.env === ctx.env) await ctx.focusWindow(dir);
+    else void vscode.window.showInformationMessage(`'${title}' is selected in the window on ${workstreamLabel(owner)}.`);
+    return;
+  }
+  if (claudeAvailable()) await vscode.commands.executeCommand(CLAUDE_OPEN, chatId);
+}
+
+/** Handles what other windows ask of this one (select a chat that runs here). */
+export async function handleWindowRequests(ctx: ChatContext): Promise<void> {
+  for (const r of await takeWindowRequests(ctx.currentGitDir)) {
+    if (r.type === 'openChat' && claudeAvailable()) await vscode.commands.executeCommand(CLAUDE_OPEN, r.sessionId);
+  }
 }
 
 /** Shows each linked chat's worktree in Claude Code's own session list (setting flotilla.tagChatTitles). */

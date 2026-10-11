@@ -17,6 +17,7 @@ import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
+import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
@@ -91,6 +92,8 @@ export function chatContext(ctx: CommandContext): chatUi.ChatContext {
     workstreams: () => ctx.repository.current,
     refresh: () => ctx.repository.refresh(),
     output: ctx.output,
+    focusWindow: (dir) => openWorktree(ctx, dir, true),
+    env: envFromRemoteName(vscode.env.remoteName),
   };
 }
 

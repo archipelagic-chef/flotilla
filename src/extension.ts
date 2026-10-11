@@ -167,6 +167,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
+  const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
+  context.subscriptions.push({ dispose: () => clearInterval(requests) });
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {

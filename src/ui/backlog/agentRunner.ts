@@ -22,6 +22,13 @@ export function claudeBinary(): string {
   return 'claude';
 }
 
+/** The sessions of agents running without a window now (in this window's extension host). */
+const running = new Set<string>();
+
+export function isRunningHeadless(sessionId: string): boolean {
+  return running.has(sessionId);
+}
+
 export interface AgentRun {
   /** The chat's session: new (chosen here, so it's known at once) or resumed. */
   sessionId: string;
@@ -40,11 +47,16 @@ export function runAgentHeadless(o: { cwd: string; prompt: string; resume?: stri
   const args = ['-p', o.prompt, '--output-format', 'json', '--permission-mode', mode, '--name', o.name, ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId])];
   o.output.appendLine(`Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}).`);
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  running.add(sessionId);
   let stderr = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
   child.stdout.on('data', () => undefined);
   const done = new Promise<{ code: number | null; error?: string }>((resolve) => {
-    child.on('error', (e) => resolve({ code: null, error: e.message }));
+    child.on('exit', () => running.delete(sessionId));
+    child.on('error', (e) => {
+      running.delete(sessionId);
+      resolve({ code: null, error: e.message });
+    });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
       resolve(code === 0 ? { code } : { code, error: stderr.trim() || `exit code ${code}` });
