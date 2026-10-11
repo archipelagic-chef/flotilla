@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { buildSync } from 'esbuild';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { addItem } from '../../../src/features/backlog/backlog';
+import { addItem, parseNewItem } from '../../../src/features/backlog/backlog';
 import { takeInbox } from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
@@ -93,6 +94,44 @@ describe('backlog writes at once', () => {
     expect(ticket.activity).toHaveLength(20);
   });
 
+  it('ensuring a ticket file and an entry written at once both stay', async () => {
+    const repo = newRepo();
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const other = new LocalBacklog(repo, path.join(repo, '.git'));
+    const data = await store.change((d) => ['A', 'B'].reduce((acc, t) => addItem(acc, t, 'BL', new Date()).data, d));
+    await Promise.all(
+      data.items.flatMap((item) => [
+        store.ensureDocument(item),
+        other.appendActivity(item, { date: '2026-10-11 15:52', author: 'Test', body: `entry for ${item.id}` }),
+      ]),
+    );
+    for (const item of data.items) {
+      expect((await store.readTicket(item)).activity.map((e) => e.body)).toEqual([`entry for ${item.id}`]);
+    }
+  });
+
+  it('an entry written while the ticket file is being ensured is not overwritten', async () => {
+    const repo = newRepo();
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const other = new LocalBacklog(repo, path.join(repo, '.git'));
+    const data = await store.change((d) => addItem(d, 'Slow', 'BL', new Date()).data);
+    const item = data.items[0];
+    // The first read of the ticket (ensureDocument's) is slow to come back, with what it read then: an entry written
+    // meanwhile must not be lost when ensureDocument writes that back.
+    const read = store.readTicket.bind(store);
+    let first = true;
+    store.readTicket = async (i) => {
+      const ticket = await read(i);
+      if (first) {
+        first = false;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return ticket;
+    };
+    await Promise.all([store.ensureDocument(item), other.appendActivity(item, { date: '2026-10-11 15:53', author: 'Test', body: 'kept' })]);
+    expect((await store.readTicket(item)).activity.map((e) => e.body)).toEqual(['kept']);
+  });
+
   it('takes over a lock file a crashed process left behind', async () => {
     const repo = newRepo();
     const store = new LocalBacklog(repo, path.join(repo, '.git'));
@@ -150,5 +189,44 @@ describe('inbox at once', () => {
     const added = await takeInbox(store, { prefix: 'BL', mode: 'add', taken: [] });
     expect(added.map((i) => i.id)).toEqual(['BL-3']);
     expect(fs.readFileSync(path.join(inbox, 'new.added'), 'utf8')).toBe('BL-3\n');
+  });
+});
+
+describe('ids and inbox answers', () => {
+  it('a new item skips the ids of ticket files, as the new-item form does', async () => {
+    const repo = newRepo();
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    await store.change((d) => addItem(d, 'Base', 'BL', new Date()).data);
+    await store.writeTicket('BL-2', { title: 'Left behind', description: '', activity: [] });
+    const data = await store.read();
+    expect(parseNewItem('', data, 'BL', await store.ticketIds()).id).toBe('BL-3');
+    expect(parseNewItem('BL-2 Again', data, 'BL', await store.ticketIds()).problem).toMatch(/already taken/);
+  });
+
+  it('answers a file it can not read with the problem', async () => {
+    const repo = newRepo();
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const inbox = path.join(store.dir, 'inbox');
+    fs.mkdirSync(path.join(inbox, 'broken.md'), { recursive: true });
+    const old = new Date(Date.now() - 5000);
+    fs.utimesSync(path.join(inbox, 'broken.md'), old, old);
+    await takeInbox(store, { prefix: 'BL', mode: 'add', taken: [] });
+    expect(fs.readFileSync(path.join(inbox, 'broken.error'), 'utf8')).toMatch(/couldn't be read/);
+    expect(fs.readdirSync(inbox).filter((n) => n.endsWith('.taking'))).toEqual([]);
+  });
+
+  it('puts back a file that a crashed process left taken', async () => {
+    const repo = newRepo();
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const inbox = path.join(store.dir, 'inbox');
+    fs.mkdirSync(inbox, { recursive: true });
+    const taking = path.join(inbox, `left.md.4242.${crypto.randomUUID()}.taking`);
+    fs.writeFileSync(taking, '# Left behind by a crash\n');
+    const old = new Date(Date.now() - 10 * 60_000);
+    fs.utimesSync(taking, old, old);
+    const added = await takeInbox(store, { prefix: 'BL', mode: 'add', taken: [] });
+    expect(added.map((i) => i.title)).toEqual(['Left behind by a crash']);
+    expect(fs.readFileSync(path.join(inbox, 'left.added'), 'utf8')).toBe(`${added[0].id}\n`);
+    expect(fs.existsSync(taking)).toBe(false);
   });
 });
