@@ -59,6 +59,8 @@ export interface ChatView {
   state: ChatState;
   message?: string;
   open: boolean;
+  /** What it waits for from the user: an approval (a command, an edit), or a reply to its output. */
+  awaiting?: 'approval' | 'reply';
   linkedBy: LinkKind;
   /** Branch (or folder) the chat runs in, when it is linked here from elsewhere. */
   via?: string;

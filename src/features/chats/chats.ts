@@ -432,3 +432,15 @@ export async function importTranscript(fromCwd: string, toCwd: string, sessionId
   }
   return 'copied';
 }
+
+/**
+ * What an open chat waits for from the user, if anything: an approval (a permission prompt: a command, an edit), or a
+ * reply (it finished its turn, and its output waits for the user). A chat that hasn't had a prompt yet waits for
+ * nothing.
+ */
+export function awaiting(chat: Pick<Chat, 'state' | 'message' | 'open' | 'firstPrompt'>): 'approval' | 'reply' | undefined {
+  if (!chat.open) return undefined;
+  if (chat.state === 'waiting-for-input') return /permission|approv|allow/i.test(chat.message ?? '') ? 'approval' : 'reply';
+  if (chat.state === 'done' && chat.firstPrompt) return 'reply';
+  return undefined;
+}

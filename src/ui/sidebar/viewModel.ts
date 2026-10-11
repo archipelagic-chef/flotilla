@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { samePath } from '../../core/paths';
-import type { Chat } from '../../features/chats/chats';
+import { awaiting, type Chat } from '../../features/chats/chats';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ChatView, WorkstreamView } from '../../webview/protocol';
 import { tabLabel } from './tabLabel';
@@ -32,6 +32,7 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): C
     state: chat.state,
     message: chat.message,
     open: chat.open,
+    ...(awaiting(chat) ? { awaiting: awaiting(chat) } : {}),
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),
     age: chatAge(chat, now),

@@ -387,14 +387,21 @@ export function App() {
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
   const changeCount = scope.reduce((n, w) => n + w.staged.length + w.unstaged.length, 0);
-  const waitingCount = scope.reduce((n, w) => n + w.chats.filter((c) => c.open && c.state === 'waiting-for-input').length, 0);
-  const workingCount = scope.reduce((n, w) => n + w.chats.filter((c) => c.open && c.state === 'working').length, 0);
+  // Chats waiting for the user, in every worktree (a chat waits wherever it runs): approvals, and output to reply to.
+  // A chat linked to several worktrees counts once.
+  const pending = new Map<string, 'approval' | 'reply'>();
+  for (const w of workstreams) for (const c of w.chats) if (c.awaiting) pending.set(c.id, c.awaiting);
+  const approvals = [...pending.values()].filter((a) => a === 'approval').length;
+  const replies = pending.size - approvals;
+  const pendingTip = [
+    ...(approvals ? [`${approvals} chat${approvals === 1 ? ' needs' : 's need'} your approval`] : []),
+    ...(replies ? [`${replies} chat${replies === 1 ? ' waits' : 's wait'} for your reply`] : []),
+  ];
   const proposedCount = (backlog ?? []).filter((i) => i.proposed).length;
   const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
   const busyFor = (id: Tool): string[] => [
     ...(progress[id] ?? []),
-    ...(id === 'chats' && workingCount ? [`${workingCount} chat${workingCount === 1 ? ' is' : 's are'} working`] : []),
     ...(id === 'search' && searching ? ['Searching…'] : []),
   ];
   const files: FilesApi = {
@@ -623,7 +630,7 @@ export function App() {
       <div class="body">
         <nav class="tools" role="tablist" aria-orientation="vertical" aria-label="Tools">
           {TOOLS.map((t) => {
-            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? waitingCount : t.id === 'backlog' ? proposedCount : 0;
+            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? proposedCount : 0;
             const busy = busyFor(t.id);
             return (
               <Fragment key={t.id}>
@@ -632,7 +639,10 @@ export function App() {
                   aria-selected={tool === t.id}
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
-                  data-tip={busy.length ? [t.label, ...busy].join('\n') : undefined}
+                  data-tip={(() => {
+                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : [])];
+                    return lines.length ? [t.label, ...lines].join('\n') : undefined;
+                  })()}
                   data-tip-pos="right"
                   onClick={() => update((p) => ({ ...p, tool: t.id }))}
                 >
