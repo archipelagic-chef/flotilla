@@ -47,7 +47,7 @@ export function parseProposal(text: string): Proposal | { error: string } {
     ...(fields.get('priority') ? { priority: fields.get('priority') } : {}),
     start: /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
     ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
-    ...(agent ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
+    ...(agent && entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
   };
 }
 
@@ -170,7 +170,7 @@ parent: BL-1        # optional: the item it's part of
 priority: high      # optional: urgent, high, medium or low
 start: true         # optional: you start on it now...
 branch: feature/x   # ...on this branch (your current one: git branch --show-current)
-agent: a3f9         # optional: your agent name, if you were given one
+agent: Nova-7       # optional: your agent name, if you were given one
 ---
 # A short title
 

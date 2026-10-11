@@ -250,7 +250,7 @@ function ChatCard({ chat }: { chat: AgentChatView }) {
           <i class="codicon codicon-comment-discussion" />
         </span>
         <span class="chat-text">
-          <span class="chat-title">Agent {chat.agent}: waiting for its chat to start</span>
+          <span class="chat-title">{chat.agent}: waiting for its chat to start</span>
           <span class="muted">Send the message waiting in Claude Code's chat; the chat shows here then.</span>
         </span>
       </div>
@@ -264,7 +264,9 @@ function ChatCard({ chat }: { chat: AgentChatView }) {
         <span class={`dot ${state.cls}`} />
       </span>
       <span class="chat-text">
-        <span class="chat-title">{chat.title}</span>
+        <span class="chat-title">
+          {chat.agent} <span class="chat-subtitle">· {chat.title}</span>
+        </span>
         <span class="chat-meta">
           <span class={`state ${state.cls}`}>{state.label}</span>
           <span class="muted">
@@ -416,7 +418,7 @@ function Agents({ ticket }: { ticket: TicketView }) {
                 <i class="codicon codicon-hubot" />
                 <span class={`dot ${state.cls}`} />
               </span>
-              <span class="agent-name">Agent {a.agent}</span>
+              <span class="agent-name">{a.agent}</span>
               <span class="chat-title">{a.title}</span>
               <span class={`state ${state.cls}`}>{state.label}</span>
               <span class="muted agent-meta">
@@ -492,7 +494,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
             <li key={`${e.date}${e.author}${i}`} class={`entry kind-${kind}`}>
               <div class="entry-head">
                 <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
-                <strong>{e.author || 'Note'}</strong>
+                {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
+                <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
+                {kind === 'agent' && <span class="bot-tag">agent</span>}
                 {e.date && <span class="muted">{e.date}</span>}
                 {agentChat && (
                   <button
@@ -724,7 +728,7 @@ function App() {
           <div class="proposal-banner">
             <i class="codicon codicon-lightbulb" />
             <span>
-              {ticket.item.proposed.by ? `Agent ${ticket.item.proposed.by}` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
+              {ticket.item.proposed.by ? `${ticket.item.proposed.by} (an agent)` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
             </span>
             <button class="button" onClick={() => send({ type: 'accept' })}>
               <i class="codicon codicon-check" /> Accept

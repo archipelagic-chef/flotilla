@@ -1,4 +1,3 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
@@ -7,7 +6,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, agentLead, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -500,7 +499,7 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
   // A short name for the agent: its chat's first line and its reports carry it, which links them.
-  const agent = crypto.randomBytes(2).toString('hex');
+  const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
   await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent));
   await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
 }

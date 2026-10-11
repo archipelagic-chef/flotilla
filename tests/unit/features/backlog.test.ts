@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, agentChatItem, agentLead, currentPrefix, entryAgent, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, agentChatItem, agentLead, agentName, currentPrefix, entryAgent, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -122,13 +122,25 @@ describe('backlog', () => {
   });
 
   it("names an agent's item and agent in its chat's first line, and in its reports", () => {
-    const lead = agentLead({ id: 'BL-4', title: 'A very long title '.repeat(20) }, 'a3f9');
+    const lead = agentLead({ id: 'BL-4', title: 'A very long title '.repeat(20) }, 'Nova-7');
     // Flotilla reads the first 200 characters of a chat's first message.
-    expect(agentChatItem(`${lead}\n\nWork in the git worktree at …`.slice(0, 200))).toEqual({ agent: 'a3f9', item: 'BL-4' });
+    expect(agentChatItem(`${lead}\n\nWork in the git worktree at …`.slice(0, 200))).toEqual({ agent: 'Nova-7', item: 'BL-4' });
     expect(agentChatItem('Fix the login form')).toBeUndefined();
+    expect(entryAgent('Agent Nova-7')).toBe('Nova-7');
     expect(entryAgent('Agent a3f9')).toBe('a3f9');
     expect(entryAgent('Agent')).toBeUndefined();
     expect(entryAgent('You')).toBeUndefined();
+  });
+
+  it('names agents like robots, each name once', () => {
+    let n = 0;
+    // The same draw twice: the second time it's taken, and the next draw is used.
+    const draws = [0, 0.7, 0, 0.7, 0.5, 0.1];
+    const random = () => draws[n++ % draws.length];
+    expect(agentName([], random)).toBe('Ada-7');
+    n = 0;
+    expect(agentName(['ada-7'], random)).toMatch(/^[A-Z][a-z]+-[1-9]$/);
+    expect(agentName(['ada-7'], () => 0.0)).toBe(agentName(['ada-7'], () => 0.0));
   });
 
   it('links items to issues in trackers', () => {

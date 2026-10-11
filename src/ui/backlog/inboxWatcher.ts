@@ -73,7 +73,7 @@ export class BacklogInbox implements vscode.Disposable {
       });
       if (!added.length) return;
       const first = added[0];
-      const by = first.proposed?.by ? `Agent ${first.proposed.by}` : 'An agent';
+      const by = first.proposed?.by ? `${first.proposed.by} (an agent)` : 'An agent';
       const what = added.length === 1 ? `${first.id} "${first.title}"` : `${added.length} tickets (${added.map((i) => i.id).join(', ')})`;
       const message = mode === 'propose' ? `${by} proposed ${what}.` : `${by} added ${what} to the backlog.`;
       void vscode.window.showInformationMessage(message, 'Open').then((c) => c && this.openTicket(first.id));

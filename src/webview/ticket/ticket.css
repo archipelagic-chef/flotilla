@@ -864,3 +864,17 @@ button.work-row:hover {
 .prio-low {
   color: var(--vscode-charts-blue, #3794ff);
 }
+.bot-tag {
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+}
+.chat-subtitle {
+  font-weight: normal;
+  color: var(--muted);
+}

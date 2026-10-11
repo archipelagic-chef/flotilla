@@ -297,7 +297,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       )}
       {!renaming && item.proposed && (
         <span class="proposal-actions" onClick={(e) => e.stopPropagation()}>
-          <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by Agent ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
+          <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
             <i class="codicon codicon-check" />
           </button>
           <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>

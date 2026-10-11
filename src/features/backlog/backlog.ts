@@ -267,11 +267,38 @@ export function agentLead(item: Pick<BacklogItem, 'id' | 'title'>, agent: string
 
 /** The item and agent name an agent chat was started for, from its first message. */
 export function agentChatItem(firstPrompt: string | undefined): { item: string; agent: string } | undefined {
-  const m = /^You are agent ([a-z0-9]+), working on backlog item ([A-Za-z0-9_-]+)/.exec(firstPrompt?.trim() ?? '');
+  const m = /^You are agent ([A-Za-z0-9-]+), working on backlog item ([A-Za-z0-9_-]+)/.exec(firstPrompt?.trim() ?? '');
   return m ? { agent: m[1], item: m[2] } : undefined;
 }
 
-/** The agent name of a ticket entry's author ("Agent a3f9"); undefined for others (and for "Agent" alone). */
+/** The agent name of a ticket entry's author ("Agent Nova-7"), as written; undefined for others (and "Agent" alone). */
 export function entryAgent(author: string): string | undefined {
-  return /^agent\s+([a-z0-9]+)$/i.exec(author.trim())?.[1]?.toLowerCase();
+  return /^agent\s+([A-Za-z0-9][A-Za-z0-9-]*)$/i.exec(author.trim())?.[1];
+}
+
+/** Whether two agent names are the same agent ("Nova-7", "nova-7"). */
+export function sameAgent(a: string | undefined, b: string | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
+
+/** Names for agents: short and friendly, robot-like with their number ("Nova-7"), so they're easy to tell apart. */
+const AGENT_NAMES = [
+  'Ada', 'Astro', 'Atlas', 'Bolt', 'Byte', 'Cog', 'Comet', 'Cosmo', 'Dash', 'Dex', 'Echo', 'Ember', 'Flux', 'Gizmo',
+  'Halo', 'Hex', 'Ion', 'Iris', 'Jet', 'Juno', 'Kit', 'Lumen', 'Mica', 'Neon', 'Nova', 'Onyx', 'Orbit', 'Pip',
+  'Pixel', 'Quill', 'Rex', 'Rivet', 'Rune', 'Sage', 'Servo', 'Spark', 'Sprocket', 'Tango', 'Tesla', 'Tink', 'Vega',
+  'Volt', 'Watt', 'Wren', 'Zephyr', 'Ziggy', 'Zinc',
+];
+
+/** A new agent's name, not one of taken (the repository's other agents). random: [0, 1), injectable for tests. */
+export function agentName(taken: Iterable<string>, random: () => number = Math.random): string {
+  const used = new Set([...taken].map((t) => t.toLowerCase()));
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const name = `${AGENT_NAMES[Math.floor(random() * AGENT_NAMES.length)]}-${1 + Math.floor(random() * 9)}`;
+    if (!used.has(name.toLowerCase())) return name;
+  }
+  // Hundreds of agents: numbers grow.
+  for (let n = 10; ; n++) {
+    const name = `${AGENT_NAMES[n % AGENT_NAMES.length]}-${n}`;
+    if (!used.has(name.toLowerCase())) return name;
+  }
 }

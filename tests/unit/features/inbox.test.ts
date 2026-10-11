@@ -14,7 +14,7 @@ parent: bl-1
 priority: High
 start: yes
 branch: feature/BL-1-logout
-agent: a3f9
+agent: Nova-7
 ---
 # Log out of the IdP too
 
@@ -32,7 +32,7 @@ describe('backlog inbox', () => {
       priority: 'High',
       start: true,
       branch: 'feature/BL-1-logout',
-      agent: 'a3f9',
+      agent: 'Nova-7',
     });
     expect(parseProposal('# Just a title')).toMatchObject({ title: 'Just a title', start: false });
     expect(parseProposal('No heading here')).toEqual({ error: expect.stringMatching(/no title/) });
@@ -44,7 +44,7 @@ describe('backlog inbox', () => {
     if ('error' in p) throw new Error(p.error);
     const r = addProposal(data, p, { prefix: 'BL', mode: 'propose', now: new Date(), taken: [] });
     if ('error' in r) throw new Error(r.error);
-    expect(r.item).toMatchObject({ id: 'BL-2', parent: 'BL-1', priority: 'high', status: 'doing', branches: ['feature/BL-1-logout'], proposed: { by: 'a3f9' } });
+    expect(r.item).toMatchObject({ id: 'BL-2', parent: 'BL-1', priority: 'high', status: 'doing', branches: ['feature/BL-1-logout'], proposed: { by: 'Nova-7' } });
     expect(childrenOf(r.data, 'BL-1').map((i) => i.id)).toEqual(['BL-2']);
     expect(acceptItem(r.data, 'BL-2').items.find((i) => i.id === 'BL-2')!.proposed).toBeUndefined();
     // Added at once in 'add' mode; a missing parent is refused.
@@ -79,6 +79,6 @@ describe('backlog inbox', () => {
     expect(fs.readFileSync(path.join(inbox, 'b.error'), 'utf8')).toMatch(/no title/);
     expect(fs.existsSync(path.join(inbox, 'a.md'))).toBe(false);
     const ticket = await store.readTicket({ id: 'BL-2', title: '' });
-    expect(ticket).toMatchObject({ title: 'Log out of the IdP too', activity: [{ author: 'Agent a3f9', body: 'Added this ticket and started on it.' }] });
+    expect(ticket).toMatchObject({ title: 'Log out of the IdP too', activity: [{ author: 'Agent Nova-7', body: 'Added this ticket and started on it.' }] });
   });
 });

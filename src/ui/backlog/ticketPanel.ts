@@ -2,7 +2,7 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -165,13 +165,13 @@ export class TicketPanels implements vscode.Disposable {
    */
   private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
     const posted = await this.deps.backlog.posted();
-    const agents = new Map(this.agentChats(item).map((c) => [c.agent, c]));
+    const agents = new Map(this.agentChats(item).map((c) => [c.agent.toLowerCase(), c]));
     return Promise.all(
       entries.map(async (e) => {
         const key = Store.entryKey(item.id, e);
-        const opened = e.author === 'Flotilla' ? /chat for agent ([a-z0-9]+)/.exec(e.body)?.[1] : undefined;
+        const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
-        const found = agent ? agents.get(agent) : undefined;
+        const found = agent ? agents.get(agent.toLowerCase()) : undefined;
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
         const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened } : undefined);
@@ -256,7 +256,7 @@ export class TicketPanels implements vscode.Disposable {
     const send = (view: Omit<TicketView, 'agents'>) => {
       if (this.posts.get(panel) !== seq) return;
       // Each agent with the reports it signed.
-      const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => entryAgent(e.author) === c.agent).length }));
+      const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
       void panel.webview.postMessage(message);
     };
