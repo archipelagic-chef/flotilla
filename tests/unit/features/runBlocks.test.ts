@@ -18,6 +18,11 @@ describe('run blocks', () => {
     expect(runBlocks('```run open Docs\nREADME.md\n```')).toEqual([{ kind: 'open', title: 'Docs', lines: ['README.md'] }]);
   });
 
+  it('reads a first word of launch, task or open as the kind, even in a shell title (the notes ask agents not to write one)', () => {
+    expect(runBlocks('```run launch the dev server\nnpm start\n```')).toEqual([{ kind: 'launch', title: 'the dev server', lines: ['npm start'] }]);
+    expect(runBlocks('```run Launch the dev server\nnpm start\n```')).toEqual([{ kind: 'shell', title: 'Launch the dev server', lines: ['npm start'] }]);
+  });
+
   it('reads a block with no title and no body', () => {
     expect(runBlocks('```run\n```')).toEqual([{ kind: 'shell', title: '', lines: [] }]);
   });
