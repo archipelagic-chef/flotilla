@@ -105,7 +105,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
               ? 'runs in another window.'
               : autopilot.waitingUntil
                 ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
-                : `· ${autopilot.running} of ${autopilot.max} agents working. It takes To Do tickets from the top.`}
+                : autopilot.waitingForMemory
+                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                  : `· ${autopilot.running} of ${autopilot.max} agents working. It takes To Do tickets from the top.`}
           </span>
         </button>
       )}

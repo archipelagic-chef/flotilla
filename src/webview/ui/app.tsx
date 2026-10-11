@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { ALL, type BacklogItemView, type BacklogProblem, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { FilesBody, type Editing } from './files';
@@ -105,6 +105,7 @@ export function App() {
     return { ...INITIAL, ...saved, search: { ...INITIAL_SEARCH, ...saved.search } };
   });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
+  const [machine, setMachine] = useState<MachineState | undefined>(undefined);
   const [active, setActiveState] = useState<string>(ALL);
   /** Worktrees whose tab is closed; they stay in the Overview. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
@@ -221,6 +222,7 @@ export function App() {
             const next = m.keys.flatMap((key) => views.get(key) ?? []);
             return prev && next.length === prev.length && next.every((w, i) => w === prev[i]) ? prev : next;
           });
+          setMachine(m.machine);
           return;
         case 'active':
           setActiveState(m.key);
@@ -477,6 +479,7 @@ export function App() {
     content = (
       <Overview
         workstreams={workstreams}
+        machine={machine}
         active={active}
         colors={colors}
         closed={closed}

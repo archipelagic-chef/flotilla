@@ -799,6 +799,9 @@ textarea:focus {
 }
 
 /* ---- overview ---- */
+.machine {
+  padding: 0 8px 6px 10px;
+}
 .card {
   padding: 5px 6px 6px 8px;
   box-shadow: inset 3px 0 0 var(--ws-color);

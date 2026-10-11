@@ -773,7 +773,7 @@ export class TicketPanels implements vscode.Disposable {
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;
       case 'startReview':
-        await this.reviews?.start(id);
+        await this.reviews?.start(id, true);
         return;
       case 'userReview':
         await this.reviews?.userReview(id, m.verdict, m.text);

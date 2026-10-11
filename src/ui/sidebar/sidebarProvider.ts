@@ -11,12 +11,13 @@ import { acceptItem, moveItem, removeItem, updateItem } from '../../features/bac
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
+import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type BacklogItemView, type HostMessage, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
@@ -250,7 +251,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const limit = config.get<number>('changes.limit', 5000);
     const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit));
     const { changed, keys } = changedViews(views, this.sent);
-    this.post({ type: 'state', workstreams: changed, keys });
+    const machine: MachineState = {
+      freeMB: freeMemoryMB(),
+      minFreeMB: minFreeMemoryMB(),
+      agents: all.reduce((n, ws) => n + ws.chats.filter((c) => c.state === 'working').length, 0),
+      windows: all.filter((ws) => ws.windowOpen).length,
+    };
+    this.post({ type: 'state', workstreams: changed, keys, machine });
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
