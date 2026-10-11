@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { GIT_SCHEME, GitContentProvider } from './core/diff/gitContentProvider';
@@ -10,7 +11,8 @@ import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
-import { chatContext, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { chatContext, commitPrefixMode, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { installCommitHook } from './features/backlog/commitHook';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -156,6 +158,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('flotilla.backlog.commitPrefix')) return;
+      if (fs.existsSync(path.join(location.commonDir, 'flotilla', 'commit-prefix'))) {
+        void installCommitHook(location.mainRoot, location.commonDir, commitPrefixMode()).catch(() => undefined);
+      }
+    }),
+  );
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),

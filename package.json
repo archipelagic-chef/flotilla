@@ -1248,6 +1248,17 @@
           "type": "string",
           "default": "feature/{id}-{slug}",
           "markdownDescription": "Branch name for work started from a backlog item. `{id}` is the item's id (e.g. `BL-12`), `{slug}` its title in lower case with dashes."
+        },
+        "flotilla.backlog.commitPrefix": {
+          "type": "string",
+          "enum": ["agents", "everyone", "off"],
+          "enumDescriptions": [
+            "Agents' commits (Claude Code's) in a worktree working on an item must start with its id, like \"BL-12: \".",
+            "Everyone's commits in such a worktree must start with the item's id.",
+            "Commit messages aren't checked."
+          ],
+          "default": "agents",
+          "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
         }
       }
     },

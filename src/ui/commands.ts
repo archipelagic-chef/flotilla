@@ -16,6 +16,7 @@ import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import * as scm from '../features/scm/operations';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
+import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
@@ -366,6 +367,8 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
   if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {
     const key = await createWorkstream(ctx, { kind: 'existing', branch: branchOpt });
+    const created = ctx.repository.current.find((w) => w.key === key);
+    if (created) await enforceCommitPrefix(ctx, created, item.id);
     if (key) ctx.sidebar.reveal(key);
     return;
   }
@@ -390,10 +393,38 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   }
   if (!ws?.worktree.branch) return;
   const branch = ws.worktree.branch;
+  await enforceCommitPrefix(ctx, ws, item.id);
   // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
   if (!remote) await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
+}
+
+/** Readers of flotilla.backlog.commitPrefix. */
+export function commitPrefixMode(): CommitPrefixMode {
+  return vscode.workspace.getConfiguration('flotilla').get<CommitPrefixMode>('backlog.commitPrefix', 'agents');
+}
+
+let warnedTrackedHooks = false;
+
+/**
+ * Marks a worktree as working on an item, so that its commits start with the item's id (checked by the commit-msg
+ * hook, installed here if needed). Hooks kept in the repository's files (Husky) aren't changed: the agent is then
+ * only asked to.
+ */
+async function enforceCommitPrefix(ctx: CommandContext, ws: Workstream, id: string): Promise<void> {
+  try {
+    await markWorktree(ws.worktree.adminDir, id);
+    const mode = commitPrefixMode();
+    if ((await installCommitHook(ctx.service.roots.mainRoot, ctx.service.roots.commonDir, mode)) === 'tracked' && mode !== 'off' && !warnedTrackedHooks) {
+      warnedTrackedHooks = true;
+      void vscode.window.showWarningMessage(
+        `This repository keeps its git hooks in its files (core.hooksPath), so Flotilla doesn't add its commit check there. Agents are still told to start commit messages with "${id}: ".`,
+      );
+    }
+  } catch (error) {
+    ctx.output.appendLine(`Couldn't set up the commit message check for ${id}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** A local backlog item, or an issue from an integration (then with remote set). */
@@ -443,7 +474,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, t
   return [
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
-    `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages; don't push.`,
+    `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
   ].join('\n\n');
