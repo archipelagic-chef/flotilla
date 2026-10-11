@@ -100,6 +100,7 @@ export async function takeInbox(
   opts: { prefix: string; mode: AgentTicketMode; taken: readonly string[]; onStarted?(item: BacklogItem, branch: string): Promise<void> },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
+  await requeueStaleTaking(dir);
   let names: string[];
   try {
     names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('.')).sort();
@@ -112,17 +113,24 @@ export async function takeInbox(
     const base = path.join(dir, name.slice(0, -'.md'.length));
     // Taken by renaming it: a window that lists the inbox at the same time finds it gone and skips it.
     const taking = `${file}.${process.pid}.${crypto.randomUUID()}.taking`;
-    let text: string;
     try {
       // A file still being written is taken next time.
       const stat = await fs.promises.stat(file);
       if (Date.now() - stat.mtimeMs < 1000) continue;
       await fs.promises.rename(file, taking);
-      text = await fs.promises.readFile(taking, 'utf8');
+      // Its time is now the time it was taken: requeueStaleTaking looks at it.
+      const now = new Date();
+      await fs.promises.utimes(taking, now, now);
     } catch {
       continue;
     }
-    const proposal = parseProposal(text);
+    // A file that can't be read is answered with the problem, so its agent doesn't wait for an answer that never comes.
+    let proposal: ReturnType<typeof parseProposal>;
+    try {
+      proposal = parseProposal(await fs.promises.readFile(taking, 'utf8'));
+    } catch {
+      proposal = { error: "It couldn't be read." };
+    }
     let item: BacklogItem | undefined;
     let error = 'error' in proposal ? proposal.error : 'Not added.';
     if (!('error' in proposal)) {
@@ -153,7 +161,7 @@ export async function takeInbox(
         if (!proposal.claim) added.push(item);
       }
     }
-    await fs.promises.rm(taking, { force: true });
+    await fs.promises.rm(taking, { recursive: true, force: true });
     if (item) await writeAtomic(`${base}.added`, `${item.id}\n`);
     else await writeAtomic(`${base}.error`, `${error}\n`);
   }
@@ -164,6 +172,19 @@ export async function takeInbox(
     if (stat && Date.now() - stat.mtimeMs > 86_400_000) await fs.promises.rm(path.join(dir, n), { force: true });
   }
   return added;
+}
+
+/** A file taken by a process that died before answering it goes back to the inbox, once it has sat taken for five minutes. */
+async function requeueStaleTaking(dir: string): Promise<void> {
+  for (const n of await fs.promises.readdir(dir).catch(() => [] as string[])) {
+    if (!n.endsWith('.taking')) continue;
+    const taking = path.join(dir, n);
+    const stat = await fs.promises.stat(taking).catch(() => undefined);
+    if (!stat || Date.now() - stat.mtimeMs < 300_000) continue;
+    const original = path.join(dir, n.replace(/\.\d+\.[0-9a-f-]{36}\.taking$/, ''));
+    if (fs.existsSync(original)) continue;
+    await fs.promises.rename(taking, original).catch(() => undefined);
+  }
 }
 
 /** The guide agents read (AGENTS.md next to the backlog): how to work through the backlog and add to it. */
