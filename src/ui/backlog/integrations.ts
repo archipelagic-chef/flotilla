@@ -6,6 +6,7 @@ import type { IssueLink } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { GitHubSource, gitHubRepo } from '../../features/backlog/sources/github';
 import { JiraSource } from '../../features/backlog/sources/jira';
+import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { Fetch, IntegrationConfig, IssueSource, RemoteIssue } from '../../features/backlog/sources/source';
 
 interface IntegrationsFile {
@@ -113,6 +114,68 @@ export class BacklogIntegrations implements vscode.Disposable {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Creates an issue for a local item in a connected tracker, asking where (the integration, and for Jira the project
+   * and issue type), then confirming. The description is the ticket's, in the tracker's markup. Undefined if cancelled.
+   */
+  async createIssue(itemId: string, title: string, markdown: string): Promise<IssueLink | undefined> {
+    if (!this.states.length) {
+      const choice = await vscode.window.showInformationMessage('Connect Jira or GitHub Issues to create issues there.', 'Connect…');
+      if (choice) await this.manage();
+      if (!this.states.length) return undefined;
+    }
+    const state =
+      this.states.length === 1
+        ? this.states[0]
+        : (
+            await vscode.window.showQuickPick(
+              this.states.map((s) => ({ label: `$(${s.config.kind === 'github' ? 'github' : 'issues'}) ${s.label}`, state: s })),
+              { title: `Create an Issue for ${itemId}`, placeHolder: 'In which tracker?' },
+            )
+          )?.state;
+    if (!state) return undefined;
+    const source = await this.source(state.config);
+    const target: { project?: string; issueType?: string } = {};
+    let where = state.label;
+    if (source instanceof JiraSource) {
+      const projects = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Reading Jira projects…' }, () => source.projects());
+      const project = await vscode.window.showQuickPick(
+        projects.map((p) => ({ label: p.key, description: p.name })),
+        { title: `Create a Jira Issue for ${itemId} (1/2)`, placeHolder: 'Project', matchOnDescription: true },
+      );
+      if (!project) return undefined;
+      const types = await source.issueTypes(project.label);
+      const type = await vscode.window.showQuickPick(
+        types.map((t) => ({ label: t.name, id: t.id })),
+        { title: `Create a Jira Issue for ${itemId} (2/2)`, placeHolder: `Issue type in ${project.label}` },
+      );
+      if (!type) return undefined;
+      // Projects can require fields of their own (a team, a component): those are filled in in Jira.
+      const missing = await source.missingOnCreate(project.label, type.id).catch(() => []);
+      if (missing.length) {
+        const open = await vscode.window.showWarningMessage(
+          `${project.label} requires ${missing.join(', ')} on a new ${type.label}, which Flotilla can't fill in. Create it in Jira, then link it.`,
+          'Open Jira',
+        );
+        if (open) await vscode.env.openExternal(vscode.Uri.parse(`${state.config.kind === 'jira' ? state.config.site : ''}/jira/software/projects/${project.label}`));
+        return undefined;
+      }
+      target.project = project.label;
+      target.issueType = type.id;
+      where = `${project.label} (${type.label})`;
+    }
+    const confirmed = await vscode.window.showInformationMessage(
+      `Create "${title}" in ${where}?`,
+      { modal: true, detail: 'Its description is the ticket\'s. The new issue is linked to the item.' },
+      'Create',
+    );
+    if (confirmed !== 'Create') return undefined;
+    const description = source.markup === 'jira' ? markdownToJira(markdown) : markdown;
+    const issue = await source.create(target, title, description);
+    void this.refresh();
+    return { id: issue.id, source: issue.source, url: issue.url, title: issue.title };
   }
 
   /**

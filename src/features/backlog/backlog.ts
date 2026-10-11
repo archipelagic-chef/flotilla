@@ -233,3 +233,23 @@ export function branchMatches(item: Pick<BacklogItem, 'id' | 'branches' | 'branc
     return new RegExp(`(^|[^A-Za-z0-9])${escaped}(?![0-9])`, 'i').test(branch);
   });
 }
+
+/**
+ * The first line of an agent's chat: it names the item and the agent (a short name, "a3f9", that it signs its
+ * reports in the ticket with). That's how a ticket finds its agents' chats, and which chat wrote which report.
+ */
+export function agentLead(item: Pick<BacklogItem, 'id' | 'title'>, agent: string): string {
+  // Names first: Flotilla reads only the start of a chat's first message.
+  return `You are agent ${agent}, working on backlog item ${item.id}: "${item.title}".`;
+}
+
+/** The item and agent name an agent chat was started for, from its first message. */
+export function agentChatItem(firstPrompt: string | undefined): { item: string; agent: string } | undefined {
+  const m = /^You are agent ([a-z0-9]+), working on backlog item ([A-Za-z0-9_-]+)/.exec(firstPrompt?.trim() ?? '');
+  return m ? { agent: m[1], item: m[2] } : undefined;
+}
+
+/** The agent name of a ticket entry's author ("Agent a3f9"); undefined for others (and for "Agent" alone). */
+export function entryAgent(author: string): string | undefined {
+  return /^agent\s+([a-z0-9]+)$/i.exec(author.trim())?.[1]?.toLowerCase();
+}

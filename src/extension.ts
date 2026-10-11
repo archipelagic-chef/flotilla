@@ -128,7 +128,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     integrations,
   });
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files') });
   context.subscriptions.push(tickets);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {

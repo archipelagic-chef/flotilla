@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { commitChanges, readLog } from '../../../src/features/history/log';
+import { commitChanges, readLog, ticketCommits } from '../../../src/features/history/log';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -74,5 +74,26 @@ describe('commitChanges', () => {
     const c = await commitChanges(repo, root);
     expect(c.changes.length).toBeGreaterThan(0);
     expect(c.changes.every((x) => x.kind === 'added')).toBe(true);
+  });
+});
+
+describe('ticketCommits', () => {
+  it("finds a ticket's commits: on its branches past the base, and mentioning it anywhere", async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const main = git(repo, 'branch', '--show-current').trim();
+    commit(repo, 'a.txt', 'Fix BL-12 on main');
+    commit(repo, 'b.txt', 'Prepare ABC-7 on main');
+    git(repo, 'switch', '-q', '-c', 'feature/BL-1-sso');
+    commit(repo, 'c.txt', 'SAML flow');
+    commit(repo, 'd.txt', 'Logout');
+    git(repo, 'switch', '-q', main);
+    const commits = await ticketCommits(repo, { branches: ['feature/BL-1-sso'], base: main, ids: ['BL-1', 'ABC-7'], limit: 50 });
+    expect(commits.map((c) => [c.subject, c.branches])).toEqual([
+      ['Logout', ['feature/BL-1-sso']],
+      ['SAML flow', ['feature/BL-1-sso']],
+      // "BL-12" isn't BL-1.
+      ['Prepare ABC-7 on main', []],
+    ]);
   });
 });

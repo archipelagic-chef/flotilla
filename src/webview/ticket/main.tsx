@@ -1,8 +1,8 @@
 import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { BacklogStatus } from '../../features/backlog/backlog';
-import type { TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
-import { PriorityPicker } from '../ui/priority';
+import { entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
+import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import './ticket.css';
 
@@ -36,7 +36,14 @@ async function attachImages(files: FileList | File[], area: HTMLTextAreaElement,
     const requestId = nextImage++;
     const markdown = await new Promise<string>((resolve) => {
       imageReplies.set(requestId, resolve);
-      void readAsBase64(file).then((data) => send({ type: 'image', requestId, name: file.name || 'pasted.png', data }));
+      void readAsBase64(file).then((data) =>
+        send({
+          type: 'image',
+          requestId,
+          name: file.name || 'pasted.png',
+          data,
+        }),
+      );
     });
     const at = area.selectionStart ?? area.value.length;
     const before = area.value.slice(0, at);
@@ -126,7 +133,7 @@ function Title({ ticket }: { ticket: TicketView }) {
     if (title.trim() && title.trim() !== ticket.item.title) send({ type: 'title', title });
     else setTitle(ticket.item.title);
   };
-  if (ticket.remote) return <h1 class="title readonly">{ticket.item.title}</h1>;
+  if (ticket.remote && !ticket.remote.edit?.canEditTitle) return <h1 class="title readonly">{ticket.item.title}</h1>;
   if (editing) {
     return (
       <input
@@ -147,7 +154,7 @@ function Title({ ticket }: { ticket: TicketView }) {
     );
   }
   return (
-    <h1 class="title" title="Click to edit" onClick={() => setEditing(true)}>
+    <h1 class="title" title={ticket.remote ? `Click to edit (in ${ticket.remote.label})` : 'Click to edit'} onClick={() => setEditing(true)}>
       {ticket.item.title}
     </h1>
   );
@@ -155,6 +162,8 @@ function Title({ ticket }: { ticket: TicketView }) {
 
 function Description({ ticket }: { ticket: TicketView }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
+  const editable = !ticket.remote || !!ticket.remote.edit?.canEditDescription;
+  const jira = ticket.remote?.kind === 'jira';
   const save = () => {
     if (draft !== undefined && draft !== ticket.description) send({ type: 'description', text: draft });
     setDraft(undefined);
@@ -163,21 +172,23 @@ function Description({ ticket }: { ticket: TicketView }) {
     <section class="block">
       <div class="block-head">
         <h2>Description</h2>
-        {draft === undefined && !ticket.remote && (
-          <button class="text-button" onClick={() => setDraft(ticket.description)}>
-            <i class="codicon codicon-edit" /> Edit
-          </button>
-        )}
-        {ticket.remote && (
-          <button class="text-button" onClick={() => send({ type: 'openRemote' })}>
-            <i class="codicon codicon-link-external" /> Edit in {ticket.remote.kind === 'jira' ? 'Jira' : 'GitHub'}
-          </button>
-        )}
+        <span class="head-actions">
+          {draft === undefined && editable && !ticket.loading && (
+            <button class="text-button" onClick={() => setDraft(ticket.description)}>
+              <i class="codicon codicon-edit" /> Edit
+            </button>
+          )}
+          {ticket.remote && (
+            <button class="text-button" onClick={() => send({ type: 'openRemote' })}>
+              <i class="codicon codicon-link-external" /> Open in {jira ? 'Jira' : 'GitHub'}
+            </button>
+          )}
+        </span>
       </div>
       {ticket.loading ? (
         <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
       ) : draft === undefined ? (
-        <div onDblClick={() => !ticket.remote && setDraft(ticket.description)}>
+        <div onDblClick={() => editable && setDraft(ticket.description)}>
           <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
         </div>
       ) : (
@@ -185,12 +196,20 @@ function Description({ ticket }: { ticket: TicketView }) {
           <MarkdownBox
             value={draft}
             setValue={setDraft}
-            placeholder="What and why, in Markdown. Paste or drop images. Ctrl+Enter saves."
+            placeholder={
+              jira
+                ? 'In Jira formatting (h2. Heading, *bold*, * list). Ctrl+Enter saves it in Jira.'
+                : ticket.remote
+                  ? 'Markdown. Ctrl+Enter saves it in GitHub.'
+                  : 'What and why, in Markdown. Paste or drop images. Ctrl+Enter saves.'
+            }
             label="Description"
             onSubmit={save}
             autoFocus
             minRows={8}
+            images={!ticket.remote}
           />
+          {jira && <div class="hint">Jira's own formatting: this is the description as Jira stores it.</div>}
           <div class="actions-row">
             <button class="button" onClick={save}>
               Save
@@ -205,32 +224,273 @@ function Description({ ticket }: { ticket: TicketView }) {
   );
 }
 
-const AUTHOR_ICON: Record<string, string> = { you: 'account', agent: 'hubot', flotilla: 'info' };
+const CHAT_STATE: Record<string, { label: string; cls: string }> = {
+  working: { label: 'Working', cls: 'working' },
+  'waiting-for-input': { label: 'Waiting for you', cls: 'waiting' },
+  done: { label: 'Done', cls: 'done' },
+  ended: { label: 'Ended', cls: 'ended' },
+};
+
+/** "5 min ago", "3 h ago", "2 d ago". */
+function ago(iso: string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
+
+/** An agent's chat, linked from the entry that started it: click to open it in Claude Code. */
+function ChatCard({ chat }: { chat: AgentChatView }) {
+  if ('pending' in chat) {
+    return (
+      <div class="chat-card pending">
+        <span class="chat-icon">
+          <i class="codicon codicon-comment-discussion" />
+        </span>
+        <span class="chat-text">
+          <span class="chat-title">Agent {chat.agent}: waiting for its chat to start</span>
+          <span class="muted">Send the message waiting in Claude Code's chat; the chat shows here then.</span>
+        </span>
+      </div>
+    );
+  }
+  const state = CHAT_STATE[chat.state] ?? CHAT_STATE.ended;
+  return (
+    <button class={`chat-card ${state.cls}`} onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
+      <span class="chat-icon">
+        <i class="codicon codicon-comment-discussion" />
+        <span class={`dot ${state.cls}`} />
+      </span>
+      <span class="chat-text">
+        <span class="chat-title">{chat.title}</span>
+        <span class="chat-meta">
+          <span class={`state ${state.cls}`}>{state.label}</span>
+          <span class="muted">
+            <i class="codicon codicon-git-branch" /> {chat.branch} · {ago(chat.updated)}
+          </span>
+        </span>
+        {chat.message && <span class="chat-message">“{chat.message}”</span>}
+      </span>
+      <span class="chat-open">
+        Open Chat <i class="codicon codicon-arrow-right" />
+      </span>
+    </button>
+  );
+}
+
+const AUTHOR_ICON: Record<string, string> = {
+  you: 'account',
+  agent: 'hubot',
+  flotilla: 'info',
+};
+
+const COMMITS_SHOWN = 8;
+
+/** Where the work on the ticket is: its worktrees (and branches without one), and its commits. */
+function Work({ ticket }: { ticket: TicketView }) {
+  const [allCommits, setAllCommits] = useState(false);
+  const commits = allCommits ? ticket.commits : ticket.commits.slice(0, COMMITS_SHOWN);
+  return (
+    <section class="block">
+      <div class="block-head">
+        <h2>Work</h2>
+      </div>
+      <div class="work">
+        <div class="work-head">
+          <i class="codicon codicon-git-branch" /> Worktrees <span class="count">{ticket.worktrees.length}</span>
+        </div>
+        {!ticket.worktrees.length && <div class="work-empty muted">None yet. Create one above to work on it.</div>}
+        {ticket.worktrees.map((ws) => (
+          <button key={ws.key} class="work-row" onClick={() => send({ type: 'openWorktree', key: ws.key })} title="Open its tab in Flotilla">
+            <span class="work-main">{ws.branch}</span>
+            <span class={`state ${AGENT_STATE_CLASS[ws.attention] ?? ''}`}>{ws.status}</span>
+            {ws.message && <span class="muted work-message">“{ws.message}”</span>}
+            <span class="work-facts muted">
+              {ws.changes > 0 && (
+                <span title="Uncommitted changes">
+                  <i class="codicon codicon-diff" /> {ws.changes}
+                </span>
+              )}
+              {ws.upstream ? (
+                (ws.ahead > 0 || ws.behind > 0) && (
+                  <span title={`Against ${ws.upstream}: ${ws.ahead} to push, ${ws.behind} to pull`}>
+                    {ws.ahead > 0 && `↑${ws.ahead}`} {ws.behind > 0 && `↓${ws.behind}`}
+                  </span>
+                )
+              ) : (
+                <span title="Not pushed yet">
+                  <i class="codicon codicon-cloud" /> not pushed
+                </span>
+              )}
+            </span>
+            <i class="codicon codicon-arrow-right open-arrow" />
+          </button>
+        ))}
+        {ticket.branches.map((b) => (
+          <div key={b} class="work-row dim">
+            <span class="work-main">{b}</span>
+            <span class="muted">branch, no worktree</span>
+            <button class="text-button work-action" onClick={() => send({ type: 'checkout', branch: b })} title="Create a worktree for this branch">
+              <i class="codicon codicon-add" /> Worktree
+            </button>
+          </div>
+        ))}
+        <div class="work-head">
+          <i class="codicon codicon-git-commit" /> Commits <span class="count">{ticket.commits.length}</span>
+        </div>
+        {!ticket.commits.length && <div class="work-empty muted">None yet. Commits on its branches, or that mention {ticket.item.id}, show here.</div>}
+        {commits.map((c) => (
+          <button key={c.hash} class="work-row commit" onClick={() => send({ type: 'openCommit', hash: c.hash })} title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to see its changes`}>
+            <span class="hash">{c.short}</span>
+            <span class="work-main subject">{c.subject}</span>
+            {c.branches.length ? (
+              c.branches.map((b) => (
+                <span key={b} class="branch-tag">
+                  {b}
+                </span>
+              ))
+            ) : (
+              <span class="branch-tag mention" title={`Its message mentions ${ticket.item.id} or a linked issue`}>
+                mentions it
+              </span>
+            )}
+            <span class="muted work-when">
+              {c.author} · {ago(c.date)}
+            </span>
+          </button>
+        ))}
+        {ticket.commits.length > COMMITS_SHOWN && (
+          <button class="text-button work-more" onClick={() => setAllCommits(!allCommits)}>
+            {allCommits ? 'Show fewer' : `Show all ${ticket.commits.length}`}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Every agent that worked on the ticket: its chat, its state, how much it reported. */
+function Agents({ ticket }: { ticket: TicketView }) {
+  return (
+    <section class="block">
+      <div class="block-head">
+        <h2>Agents</h2>
+      </div>
+      <div class="agents">
+        {ticket.agents.map((a) => {
+          const state = CHAT_STATE[a.state] ?? CHAT_STATE.ended;
+          return (
+            <button key={a.id} class={`agent-row ${state.cls}`} onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open this chat in Claude Code">
+              <span class="chat-icon small">
+                <i class="codicon codicon-hubot" />
+                <span class={`dot ${state.cls}`} />
+              </span>
+              <span class="agent-name">Agent {a.agent}</span>
+              <span class="chat-title">{a.title}</span>
+              <span class={`state ${state.cls}`}>{state.label}</span>
+              <span class="muted agent-meta">
+                <i class="codicon codicon-git-branch" /> {a.branch}
+              </span>
+              <span class="muted agent-meta">
+                {a.reports} report{a.reports === 1 ? '' : 's'} · {ago(a.updated)}
+              </span>
+              <i class="codicon codicon-arrow-right open-arrow" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+type EntryKind = 'comment' | 'agent' | 'history';
+
+/** People's comments (here or in the tracker), agents' reports, and Flotilla's notes (what happened). */
+function kindOf(author: string): EntryKind {
+  if (entryAgent(author) || author.toLowerCase() === 'agent') return 'agent';
+  if (author === 'Flotilla' || !author) return 'history';
+  return 'comment';
+}
+
+const TABS: Array<{ kind?: EntryKind; label: string }> = [
+  { label: 'All' },
+  { kind: 'comment', label: 'Comments' },
+  { kind: 'agent', label: 'Agent Reports' },
+  { kind: 'history', label: 'History' },
+];
+
+const EMPTY: Record<string, string> = {
+  all: 'No comments or reports yet. Agents report here as they work.',
+  comment: 'No comments yet.',
+  agent: 'No agent reports yet. Start an agent: it reports here as it works.',
+  history: 'Nothing has happened yet.',
+};
 
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
+  const [tab, setTab] = useState<EntryKind | undefined>(undefined);
   const post = () => {
     if (!comment.trim()) return;
     send({ type: 'comment', text: comment });
     setComment('');
+    if (tab && tab !== 'comment') setTab(undefined);
   };
+  const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
   return (
     <section class="block">
       <div class="block-head">
         <h2>Activity</h2>
       </div>
-      {!ticket.activity.length && !ticket.loading && <div class="empty-text">No comments or reports yet. Agents report here as they work.</div>}
+      <div class="tabs" role="tablist" aria-label="Show">
+        {TABS.map((t) => {
+          const count = ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length;
+          return (
+            <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
+              {t.label}
+              {count > 0 && <span class="count">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {!shown.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
-        {ticket.activity.map((e, i) => (
-          <li key={i} class={`entry author-${e.author.toLowerCase()}`}>
-            <div class="entry-head">
-              <i class={`codicon codicon-${AUTHOR_ICON[e.author.toLowerCase()] ?? 'account'}`} />
-              <strong>{e.author || 'Note'}</strong>
-              {e.date && <span class="muted">{e.date}</span>}
-            </div>
-            <Rendered html={e.html} empty="" />
-          </li>
-        ))}
+        {shown.map((e, i) => {
+          const kind = kindOf(e.author);
+          const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
+          return (
+            <li key={`${e.date}${e.author}${i}`} class={`entry kind-${kind}`}>
+              <div class="entry-head">
+                <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
+                <strong>{e.author || 'Note'}</strong>
+                {e.date && <span class="muted">{e.date}</span>}
+                {agentChat && (
+                  <button
+                    class="chat-chip"
+                    onClick={() => send({ type: 'openChat', key: agentChat.key, id: agentChat.id })}
+                    title={`Written in the chat "${agentChat.title}". Click to open it in Claude Code.`}
+                  >
+                    <span class={`dot ${CHAT_STATE[agentChat.state]?.cls ?? 'ended'}`} />
+                    <i class="codicon codicon-comment-discussion" />
+                    <span class="chat-chip-title">{agentChat.title}</span>
+                  </button>
+                )}
+                {e.posted && (
+                  <span class="posted" title={`Posted as a comment on ${e.posted}`}>
+                    <i class="codicon codicon-check" /> Posted to {e.posted}
+                  </span>
+                )}
+                {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
+                  <button class="text-button post-entry" onClick={() => send({ type: 'postEntry', key: e.key! })} title="Shows what will be posted and asks first">
+                    <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
+                  </button>
+                )}
+              </div>
+              <Rendered html={e.html} empty="" />
+              {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
+            </li>
+          );
+        })}
       </ol>
       <div class="comment-box">
         <MarkdownBox
@@ -238,7 +498,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
           setValue={setComment}
           placeholder={
             ticket.remote
-              ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira' : 'GitHub'} (Ctrl+Enter posts it there)`
+              ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
               : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
           }
           label="Comment"
@@ -255,7 +515,137 @@ function Activity({ ticket }: { ticket: TicketView }) {
   );
 }
 
-const AGENT_STATE_CLASS: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
+interface MenuItem {
+  key: string;
+  label: string;
+  icon: string;
+  /** Classes on the item (colours its icon). */
+  class?: string;
+  detail?: string;
+  checked?: boolean;
+  onSelect(): void;
+}
+
+/** A button that opens a menu below it. */
+function Dropdown({ class: cls, button, label, items }: { class: string; button: ComponentChildren; label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => (e instanceof KeyboardEvent ? e.key === 'Escape' : !box.current?.contains(e.target as Node)) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  return (
+    <span class={`dropdown ${cls}`} ref={box}>
+      <button
+        class="dropdown-button priority-button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={!items.length}
+        onClick={() => setOpen(!open)}
+      >
+        {button}
+        {items.length > 0 && <i class="codicon codicon-chevron-down chev-small" />}
+      </button>
+      {open && (
+        <span class="menu priority-menu" role="menu">
+          {items.map((i) => (
+            <button
+              key={i.key}
+              role={i.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              aria-checked={i.checked}
+              class={i.class}
+              title={i.detail}
+              onClick={() => {
+                setOpen(false);
+                i.onSelect();
+              }}
+            >
+              <i class={`codicon codicon-${i.icon}`} />
+              <span>{i.label}</span>
+              {i.detail && <span class="menu-detail">{i.detail}</span>}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const LANE_ICON: Record<BacklogStatus, string> = {
+  todo: 'circle-large-outline',
+  doing: 'circle-large-filled',
+  done: 'pass-filled',
+};
+
+/** An issue's status, with the moves its tracker's workflow offers from it now. */
+function StatusMenu({ ticket }: { ticket: TicketView }) {
+  const remote = ticket.remote!;
+  const moves = remote.edit?.transitions ?? [];
+  return (
+    <Dropdown
+      class="status-menu"
+      label={`Status: ${remote.statusName}${moves.length ? '. Change…' : ''}`}
+      button={
+        <>
+          <i class={`codicon codicon-${LANE_ICON[ticket.item.status]}`} />
+          <span>{remote.statusName || STATUSES.find((s) => s.status === ticket.item.status)?.label}</span>
+        </>
+      }
+      items={moves.map((t) => ({
+        key: t.id,
+        // A move is named after its target status in most workflows; when it isn't, both show.
+        label: t.name.toLowerCase() === t.to.toLowerCase() ? t.to : `${t.name} → ${t.to}`,
+        icon: t.needs ? 'warning' : LANE_ICON[t.status],
+        detail: t.needs ? `Needs ${t.needs.join(', ')}: done in the tracker` : undefined,
+        onSelect: () => send({ type: 'transition', id: t.id }),
+      }))}
+    />
+  );
+}
+
+/** An issue's priority, from the priorities its tracker has (P1–P5, Blocker…, whatever the site uses). */
+function RemotePriority({ current, names }: { current?: string; names: string[] }) {
+  const level = (name?: string) => priorityFromName(name);
+  const icon = (name?: string) => {
+    const l = level(name);
+    return l ? PRIORITY[l].icon : 'circle-small';
+  };
+  const cur = level(current);
+  return (
+    <Dropdown
+      class={`priority${cur ? ` p-${cur}` : ' unset'}`}
+      label={`Priority: ${current ?? 'none'}. Change…`}
+      button={
+        <>
+          <i class={`codicon codicon-${icon(current)}`} />
+          <span>{current ?? 'Priority'}</span>
+        </>
+      }
+      items={names.map((n) => ({
+        key: n,
+        label: n,
+        icon: icon(n),
+        class: level(n) ? `p-${level(n)}` : undefined,
+        checked: n === current,
+        onSelect: () => send({ type: 'remotePriority', name: n }),
+      }))}
+    />
+  );
+}
+
+const AGENT_STATE_CLASS: Record<string, string | undefined> = {
+  'waiting-for-input': 'waiting',
+  error: 'error',
+  working: 'working',
+  done: 'done',
+};
 
 function App() {
   const [ticket, setTicket] = useState<TicketView>();
@@ -281,20 +671,18 @@ function App() {
         <div class="meta">
           <span class="ticket-id">{ticket.item.id}</span>
           {ticket.remote ? (
-            <button class="source" onClick={() => send({ type: 'openRemote' })} title={`Open it in ${ticket.remote.label}`}>
-              <i class={`codicon codicon-${ticket.remote.kind === 'github' ? 'github' : 'issues'}`} />
-              {ticket.remote.label} · {ticket.remote.statusName}
-              <i class="codicon codicon-link-external" />
-            </button>
+            <div class="remote-meta">
+              <StatusMenu ticket={ticket} />
+              <button class="source" onClick={() => send({ type: 'openRemote' })} title={`Open it in ${ticket.remote.label}`}>
+                <i class={`codicon codicon-${ticket.remote.kind === 'github' ? 'github' : 'issues'}`} />
+                {ticket.remote.label}
+                <i class="codicon codicon-link-external" />
+              </button>
+            </div>
           ) : (
             <div class="segmented" role="radiogroup" aria-label="Status">
               {STATUSES.map((s) => (
-                <button
-                  key={s.status}
-                  role="radio"
-                  aria-checked={ticket.item.status === s.status}
-                  onClick={() => send({ type: 'status', status: s.status })}
-                >
+                <button key={s.status} role="radio" aria-checked={ticket.item.status === s.status} onClick={() => send({ type: 'status', status: s.status })}>
                   <i class={`codicon codicon-${s.icon}`} /> {s.label}
                 </button>
               ))}
@@ -303,10 +691,18 @@ function App() {
         </div>
         <Title ticket={ticket} />
         <div class="properties">
-          <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
+          {ticket.remote?.edit?.priorities ? (
+            <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
+          ) : (
+            <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
+          )}
           {ticket.links.map((l) => (
             <span key={l.id} class="link-chip">
-              <button class="link-open" onClick={() => send({ type: 'openLink', id: l.id })} title={`${l.title}\nOpen it in ${l.kind === 'jira' ? 'Jira' : 'GitHub'}`}>
+              <button
+                class="link-open"
+                onClick={() => send({ type: 'openLink', id: l.id })}
+                title={`${l.title}\nOpen it in ${l.kind === 'jira' ? 'Jira' : 'GitHub'}`}
+              >
                 <i class={`codicon codicon-${l.kind === 'github' ? 'github' : 'issues'}`} />
                 <span class="link-id">{l.id}</span>
                 {l.statusName && <span class="muted">{l.statusName}</span>}
@@ -343,31 +739,24 @@ function App() {
           )}
           {!ticket.remote && (
             <>
-              <button
-                class="button secondary"
-                onClick={() => send({ type: 'writeWithAI' })}
-                title="Opens a Claude Code chat that helps write this ticket"
-              >
+              <button class="button secondary" onClick={() => send({ type: 'writeWithAI' })} title="Opens a Claude Code chat that helps write this ticket">
                 <i class="codicon codicon-sparkle" /> Write with Claude
               </button>
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>
+              {ticket.canCreateIssue && !ticket.links.length && (
+                <button
+                  class="button secondary"
+                  onClick={() => send({ type: 'createIssue' })}
+                  title="Creates an issue from this ticket in Jira or GitHub (asks first) and links it"
+                >
+                  <i class="codicon codicon-cloud-upload" /> Create Issue…
+                </button>
+              )}
             </>
           )}
         </div>
-        {worktrees.length > 0 && (
-          <div class="worktrees">
-            {worktrees.map((ws) => (
-              <button key={ws.key} class="worktree" onClick={() => send({ type: 'openWorktree', key: ws.key })} title="Open its tab in Flotilla">
-                <i class="codicon codicon-git-branch" />
-                <span>{ws.branch}</span>
-                <span class={`state ${AGENT_STATE_CLASS[ws.attention] ?? ''}`}>{ws.status}</span>
-                {ws.message && <span class="muted">“{ws.message}”</span>}
-              </button>
-            ))}
-          </div>
-        )}
       </header>
       {ticket.error && (
         <div class="error-note">
@@ -375,6 +764,8 @@ function App() {
         </div>
       )}
       <Description ticket={ticket} />
+      {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0) && <Work ticket={ticket} />}
+      {ticket.agents.length > 0 && <Agents ticket={ticket} />}
       <Activity ticket={ticket} />
     </main>
   );
@@ -384,7 +775,9 @@ function App() {
 class ErrorBoundary extends Component<{ children: ComponentChildren }, { error?: string }> {
   state: { error?: string } = {};
   componentDidCatch(error: unknown) {
-    this.setState({ error: error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error) });
+    this.setState({
+      error: error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error),
+    });
   }
   render() {
     if (!this.state.error) return this.props.children;

@@ -1,5 +1,14 @@
 import { priorityFromName, type BacklogStatus } from '../backlog';
-import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteIssue } from './source';
+import {
+  fetchJson,
+  type CreateTarget,
+  type Fetch,
+  type IntegrationConfig,
+  type IssueSource,
+  type RemoteDetails,
+  type RemoteEditOptions,
+  type RemoteIssue,
+} from './source';
 
 type JiraConfig = Extract<IntegrationConfig, { kind: 'jira' }>;
 
@@ -21,6 +30,29 @@ interface JiraComment {
   body: string;
 }
 
+interface JiraField {
+  name?: string;
+  fieldId?: string;
+  required?: boolean;
+  hasDefaultValue?: boolean;
+  allowedValues?: Array<{ id?: string; name?: string }>;
+}
+
+interface JiraTransition {
+  id: string;
+  name: string;
+  to?: { name?: string; statusCategory?: { key?: string } };
+  fields?: Record<string, JiraField>;
+}
+
+/** Fields Flotilla fills in itself when it creates an issue. */
+const FILLED_ON_CREATE = new Set(['project', 'issuetype', 'summary', 'description', 'reporter']);
+
+/** The required fields without a default: what a transition or a new issue needs that Flotilla can't give. */
+export function missingFields(fields: Iterable<[string, JiraField]>, filled: ReadonlySet<string> = new Set()): string[] {
+  return [...fields].filter(([id, f]) => f.required && !f.hasDefaultValue && !filled.has(id)).map(([id, f]) => f.name ?? id);
+}
+
 /** Jira's status categories: To Do (new), In Progress (indeterminate), Done. */
 export function jiraStatus(category: string | undefined): BacklogStatus {
   return category === 'done' ? 'done' : category === 'indeterminate' ? 'doing' : 'todo';
@@ -29,6 +61,7 @@ export function jiraStatus(category: string | undefined): BacklogStatus {
 /** Jira Cloud, with an API token (https://id.atlassian.com/manage-profile/security/api-tokens). */
 export class JiraSource implements IssueSource {
   readonly label: string;
+  readonly markup = 'jira';
   private readonly site: string;
 
   constructor(
@@ -51,6 +84,7 @@ export class JiraSource implements IssueSource {
       status: jiraStatus(i.fields.status?.statusCategory?.key),
       statusName: i.fields.status?.name ?? '',
       priority: priorityFromName(i.fields.priority?.name ?? undefined),
+      ...(i.fields.priority?.name ? { priorityName: i.fields.priority.name } : {}),
       url: `${this.site}/browse/${i.key}`,
       source: this.config.id,
     };
@@ -79,5 +113,87 @@ export class JiraSource implements IssueSource {
 
   async comment(id: string, text: string): Promise<void> {
     await fetchJson(this.fetch, `${this.site}/rest/api/2/issue/${encodeURIComponent(id)}/comment`, { method: 'POST', headers: this.headers(), body: { body: text } });
+  }
+
+  private issueUrl(id: string, rest = ''): string {
+    return `${this.site}/rest/api/2/issue/${encodeURIComponent(id)}${rest}`;
+  }
+
+  /** The issue's workflow moves (from its project's workflow, as Jira offers them now) and its editable fields. */
+  async editOptions(id: string): Promise<RemoteEditOptions> {
+    const [t, meta] = await Promise.all([
+      fetchJson<{ transitions?: JiraTransition[] }>(this.fetch, this.issueUrl(id, '/transitions?expand=transitions.fields'), { headers: this.headers() }),
+      fetchJson<{ fields?: Record<string, JiraField> }>(this.fetch, this.issueUrl(id, '/editmeta'), { headers: this.headers() }),
+    ]);
+    const fields = meta?.fields ?? {};
+    const priorities = fields.priority?.allowedValues?.map((v) => v.name).filter((n): n is string => !!n);
+    return {
+      transitions: (t?.transitions ?? []).map((x) => {
+        const needs = missingFields(Object.entries(x.fields ?? {}));
+        return {
+          id: x.id,
+          name: x.name,
+          to: x.to?.name ?? x.name,
+          status: jiraStatus(x.to?.statusCategory?.key),
+          ...(needs.length ? { needs } : {}),
+        };
+      }),
+      ...(priorities?.length ? { priorities } : {}),
+      canEditTitle: 'summary' in fields,
+      canEditDescription: 'description' in fields,
+    };
+  }
+
+  async transition(id: string, transition: string): Promise<void> {
+    await fetchJson(this.fetch, this.issueUrl(id, '/transitions'), { method: 'POST', headers: this.headers(), body: { transition: { id: transition } } });
+  }
+
+  async update(id: string, change: { title?: string; description?: string; priority?: string }): Promise<void> {
+    const fields: Record<string, unknown> = {};
+    if (change.title !== undefined) fields.summary = change.title;
+    if (change.description !== undefined) fields.description = change.description;
+    if (change.priority !== undefined) fields.priority = { name: change.priority };
+    await fetchJson(this.fetch, this.issueUrl(id), { method: 'PUT', headers: this.headers(), body: { fields } });
+  }
+
+  /** The projects issues can be created in. */
+  async projects(): Promise<Array<{ key: string; name: string }>> {
+    const out = await fetchJson<{ values?: Array<{ key: string; name: string }> }>(this.fetch, `${this.site}/rest/api/2/project/search?maxResults=100&orderBy=name`, {
+      headers: this.headers(),
+    });
+    return out?.values ?? [];
+  }
+
+  /** A project's issue types (not sub-tasks, which need a parent). */
+  async issueTypes(project: string): Promise<Array<{ id: string; name: string }>> {
+    const out = await fetchJson<{ issueTypes?: Array<{ id: string; name: string; subtask?: boolean }>; values?: Array<{ id: string; name: string; subtask?: boolean }> }>(
+      this.fetch,
+      `${this.site}/rest/api/2/issue/createmeta/${encodeURIComponent(project)}/issuetypes`,
+      { headers: this.headers() },
+    );
+    return (out?.issueTypes ?? out?.values ?? []).filter((t) => !t.subtask).map(({ id, name }) => ({ id, name }));
+  }
+
+  /** The fields a new issue of a type needs that Flotilla doesn't fill in (the project's own required fields). */
+  async missingOnCreate(project: string, issueType: string): Promise<string[]> {
+    const out = await fetchJson<{ fields?: JiraField[]; values?: JiraField[] }>(
+      this.fetch,
+      `${this.site}/rest/api/2/issue/createmeta/${encodeURIComponent(project)}/issuetypes/${encodeURIComponent(issueType)}?maxResults=200`,
+      { headers: this.headers() },
+    );
+    return missingFields(
+      (out?.fields ?? out?.values ?? []).map((f) => [f.fieldId ?? f.name ?? '', f]),
+      FILLED_ON_CREATE,
+    );
+  }
+
+  async create(target: CreateTarget, title: string, description: string): Promise<RemoteIssue> {
+    if (!target.project || !target.issueType) throw new Error('Choose a Jira project and issue type.');
+    const created = await fetchJson<{ key: string }>(this.fetch, `${this.site}/rest/api/2/issue`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: { fields: { project: { key: target.project }, issuetype: { id: target.issueType }, summary: title, ...(description.trim() ? { description } : {}) } },
+    });
+    return { id: created.key, title, status: 'todo', statusName: '', url: `${this.site}/browse/${created.key}`, source: this.config.id };
   }
 }

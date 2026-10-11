@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GitHubSource, gitHubRepo } from '../../../src/features/backlog/sources/github';
-import { JiraSource, jiraStatus } from '../../../src/features/backlog/sources/jira';
+import { JiraSource, jiraStatus, missingFields } from '../../../src/features/backlog/sources/jira';
+import { markdownToJira } from '../../../src/features/backlog/sources/jiraMarkup';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 
 /** A fake server: answers by URL prefix and records requests. */
@@ -12,7 +13,7 @@ function fakeFetch(routes: Record<string, unknown>) {
       .filter((r) => url.startsWith(r))
       .sort((a, b) => b.length - a.length)[0];
     const found = match !== undefined;
-    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => '' };
+    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => (found ? JSON.stringify(routes[match]) : '') };
   };
   return { fetch, calls };
 }
@@ -101,5 +102,104 @@ describe('GitHub Issues', () => {
     await gh.comment('GH-7', 'On it');
     expect(calls.at(-1)).toMatchObject({ url: `${base}/issues/7/comments`, method: 'POST' });
     await expect(gh.details('ABC-1')).rejects.toThrow(/not a GitHub issue/);
+  });
+});
+
+describe('Markdown to Jira', () => {
+  it('converts what tickets use', () => {
+    const md = [
+      '## Plan',
+      'Use **bold**, *italics*, `code` and [docs](https://x.test/d).',
+      '- [ ] write tests',
+      '- [x] done',
+      '  - nested',
+      '1. first',
+      '> quoted',
+      '```ts',
+      'const a = **1**;',
+      '```',
+      '![shot](BL-3/shot.png)',
+      '| A | B |',
+      '|---|---|',
+      '| 1 | 2 |',
+      '---',
+    ].join('\n');
+    expect(markdownToJira(md).split('\n')).toEqual([
+      'h2. Plan',
+      'Use *bold*, _italics_, {{code}} and [docs|https://x.test/d].',
+      '* ☐ write tests',
+      '* ☑ done',
+      '** nested',
+      '# first',
+      'bq. quoted',
+      '{code:ts}',
+      'const a = **1**;',
+      '{code}',
+      '(image: shot)',
+      '||A||B||',
+      '|1|2|',
+      '----',
+    ]);
+  });
+});
+
+describe('editing issues', () => {
+  const site = 'https://acme.atlassian.net';
+  const config = { kind: 'jira' as const, id: 'jira-1', site, email: 'me@acme.test', jql: 'project = ABC' };
+
+  it("offers Jira's own transitions and priorities, and says what a move needs", async () => {
+    const { fetch } = fakeFetch({
+      [`${site}/rest/api/2/issue/ABC-1/transitions`]: {
+        transitions: [
+          { id: '21', name: 'Start review', to: { name: 'In Review', statusCategory: { key: 'indeterminate' } } },
+          {
+            id: '31',
+            name: 'Close',
+            to: { name: 'Closed', statusCategory: { key: 'done' } },
+            fields: { resolution: { name: 'Resolution', required: true }, assignee: { name: 'Assignee', required: true, hasDefaultValue: true } },
+          },
+        ],
+      },
+      [`${site}/rest/api/2/issue/ABC-1/editmeta`]: { fields: { summary: {}, priority: { allowedValues: [{ name: 'P1' }, { name: 'P2' }] } } },
+    });
+    const options = await new JiraSource(config, 'tok', fetch).editOptions('ABC-1');
+    expect(options).toEqual({
+      transitions: [
+        { id: '21', name: 'Start review', to: 'In Review', status: 'doing' },
+        { id: '31', name: 'Close', to: 'Closed', status: 'done', needs: ['Resolution'] },
+      ],
+      priorities: ['P1', 'P2'],
+      canEditTitle: true,
+      canEditDescription: false,
+    });
+  });
+
+  it('moves, edits and creates Jira issues', async () => {
+    const { fetch, calls } = fakeFetch({
+      [`${site}/rest/api/2/issue/ABC-1/transitions`]: '',
+      [`${site}/rest/api/2/issue/ABC-1`]: '',
+      [`${site}/rest/api/2/issue`]: { key: 'ABC-9' },
+    });
+    const jira = new JiraSource(config, 'tok', fetch);
+    await jira.transition('ABC-1', '21');
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', body: JSON.stringify({ transition: { id: '21' } }) });
+    await jira.update('ABC-1', { priority: 'P1', title: 'New' });
+    expect(calls.at(-1)).toMatchObject({ method: 'PUT', body: JSON.stringify({ fields: { summary: 'New', priority: { name: 'P1' } } }) });
+    const created = await jira.create({ project: 'ABC', issueType: '10001' }, 'Title', 'h2. Hi');
+    expect(created).toMatchObject({ id: 'ABC-9', url: `${site}/browse/ABC-9` });
+    expect(JSON.parse(calls.at(-1)!.body!)).toEqual({ fields: { project: { key: 'ABC' }, issuetype: { id: '10001' }, summary: 'Title', description: 'h2. Hi' } });
+  });
+
+  it('lists the fields a project requires on new issues', () => {
+    expect(missingFields([['customfield_1', { name: 'Team', required: true }], ['summary', { name: 'Summary', required: true }]], new Set(['summary']))).toEqual(['Team']);
+  });
+
+  it('closes and reopens GitHub issues', async () => {
+    const base = 'https://api.github.com/repos/acme/app';
+    const { fetch, calls } = fakeFetch({ [`${base}/issues/4`]: { number: 4, title: 'Bug', state: 'open', html_url: 'u' } });
+    const gh = new GitHubSource({ kind: 'github', id: 'gh-1', owner: 'acme', repo: 'app' }, async () => 't', fetch);
+    expect((await gh.editOptions('GH-4')).transitions.map((t) => t.id)).toEqual(['completed', 'not_planned']);
+    await gh.transition('GH-4', 'not_planned');
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
   });
 });

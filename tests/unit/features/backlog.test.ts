@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, currentPrefix, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, agentChatItem, agentLead, currentPrefix, entryAgent, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -119,6 +119,16 @@ describe('backlog', () => {
     expect(parseNewItem('WEB-12', data, 'BL')).toMatchObject({ id: 'WEB-12', title: '' });
     // Words with a dash aren't ids.
     expect(parseNewItem('Re-enable login', data, 'BL')).toMatchObject({ id: 'BL-3', title: 'Re-enable login' });
+  });
+
+  it("names an agent's item and agent in its chat's first line, and in its reports", () => {
+    const lead = agentLead({ id: 'BL-4', title: 'A very long title '.repeat(20) }, 'a3f9');
+    // Flotilla reads the first 200 characters of a chat's first message.
+    expect(agentChatItem(`${lead}\n\nWork in the git worktree at …`.slice(0, 200))).toEqual({ agent: 'a3f9', item: 'BL-4' });
+    expect(agentChatItem('Fix the login form')).toBeUndefined();
+    expect(entryAgent('Agent a3f9')).toBe('a3f9');
+    expect(entryAgent('Agent')).toBeUndefined();
+    expect(entryAgent('You')).toBeUndefined();
   });
 
   it('links items to issues in trackers', () => {

@@ -3,7 +3,6 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
-import { runGit } from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
@@ -23,6 +22,7 @@ import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
 import { tabOrder, toWorkstreamView } from './viewModel';
+import { openCommit } from '../openCommit';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -327,19 +327,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'openCommit': {
         const ws = this.find(m.key);
-        if (!ws?.worktree.path || !/^[0-9a-f]{4,64}$/.test(m.hash)) return;
-        const { changes, parent } = await commitChanges(ws.worktree.path, m.hash);
-        const subject = (await runGit(['log', '-n', '1', '--format=%h %s', m.hash, '--'], { cwd: ws.worktree.path })).trim();
-        if (m.path !== undefined) {
-          const change = changes.find((c) => c.path === m.path);
-          if (change) await openChangeDiff(this.deps.reference, ws.worktree.path, change, parent, m.hash, subject);
-          return;
-        }
-        if (!changes.length) {
-          void vscode.window.showInformationMessage(`${subject} changes no files.`);
-          return;
-        }
-        await openChangesEditor(this.deps.reference, ws.worktree.path, changes, parent, m.hash, subject);
+        if (ws?.worktree.path) await openCommit(this.deps.reference, ws.worktree.path, m.hash, m.path);
         return;
       }
       case 'commitFiles': {

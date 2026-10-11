@@ -1,8 +1,9 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
 import { EMPTY_BACKLOG, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
-import { formatTicket, parseTicket, type Ticket } from './ticket';
+import { formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
 
 /** The local backlog's folder, in the main worktree; git ignores it (info/exclude), like .worktrees/. */
 export const BACKLOG_DIR = path.join('.flotilla', 'backlog');
@@ -91,6 +92,31 @@ export class LocalBacklog {
     for (let n = 2; fs.existsSync(path.join(folder, file)); n++) file = `${base}-${n}${ext}`;
     await fs.promises.writeFile(path.join(folder, file), bytes);
     return `${id}/${file}`;
+  }
+
+  /** Identifies an activity entry of a ticket (it has no id of its own) to remember that it was posted. */
+  static entryKey(id: string, e: TicketEntry): string {
+    return crypto.createHash('sha1').update(`${id}\n${e.date}\n${e.author}\n${e.body.trim()}`).digest('hex').slice(0, 16);
+  }
+
+  private get postedFile(): string {
+    return path.join(this.dir, 'posted.json');
+  }
+
+  /** Which activity entries were posted to which issue (by entry key). */
+  async posted(): Promise<Record<string, string>> {
+    try {
+      const data: unknown = JSON.parse(await fs.promises.readFile(this.postedFile, 'utf8'));
+      return typeof data === 'object' && data !== null ? (data as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async markPosted(key: string, issue: string): Promise<void> {
+    const posted = { ...(await this.posted()), [key]: issue };
+    await this.ensureDir();
+    await fs.promises.writeFile(this.postedFile, `${JSON.stringify(posted, null, 1)}\n`);
   }
 
   async deleteDocument(id: string): Promise<void> {

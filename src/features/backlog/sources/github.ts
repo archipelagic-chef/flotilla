@@ -1,5 +1,5 @@
 import { priorityFromName } from '../backlog';
-import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteIssue } from './source';
+import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteEditOptions, type RemoteIssue } from './source';
 
 type GitHubConfig = Extract<IntegrationConfig, { kind: 'github' }>;
 
@@ -34,6 +34,7 @@ export const gitHubId = (n: number) => `GH-${n}`;
 /** GitHub Issues of one repository, through the user's GitHub sign-in in VS Code. */
 export class GitHubSource implements IssueSource {
   readonly label: string;
+  readonly markup = 'markdown';
 
   constructor(
     readonly config: GitHubConfig,
@@ -101,5 +102,38 @@ export class GitHubSource implements IssueSource {
 
   async comment(id: string, text: string): Promise<void> {
     await fetchJson(this.fetch, `${this.base}/issues/${this.number(id)}/comments`, { method: 'POST', headers: await this.headers(), body: { body: text } });
+  }
+
+  /** GitHub's workflow: open, or closed as completed or as not planned. Priorities are labels, not set from here. */
+  async editOptions(id: string): Promise<RemoteEditOptions> {
+    const i = await fetchJson<GitHubIssue>(this.fetch, `${this.base}/issues/${this.number(id)}`, { headers: await this.headers() });
+    return {
+      transitions:
+        i.state === 'open'
+          ? [
+              { id: 'completed', name: 'Close as Completed', to: 'Closed', status: 'done' },
+              { id: 'not_planned', name: 'Close as Not Planned', to: 'Closed', status: 'done' },
+            ]
+          : [{ id: 'reopen', name: 'Reopen', to: 'Open', status: 'todo' }],
+      canEditTitle: true,
+      canEditDescription: true,
+    };
+  }
+
+  async transition(id: string, transition: string): Promise<void> {
+    const body = transition === 'reopen' ? { state: 'open' } : { state: 'closed', state_reason: transition };
+    await fetchJson(this.fetch, `${this.base}/issues/${this.number(id)}`, { method: 'PATCH', headers: await this.headers(), body });
+  }
+
+  async update(id: string, change: { title?: string; description?: string }): Promise<void> {
+    const body: Record<string, string> = {};
+    if (change.title !== undefined) body.title = change.title;
+    if (change.description !== undefined) body.body = change.description;
+    await fetchJson(this.fetch, `${this.base}/issues/${this.number(id)}`, { method: 'PATCH', headers: await this.headers(), body });
+  }
+
+  async create(_target: unknown, title: string, description: string): Promise<RemoteIssue> {
+    const i = await fetchJson<GitHubIssue>(this.fetch, `${this.base}/issues`, { method: 'POST', headers: await this.headers(), body: { title, body: description } });
+    return this.issue(i);
   }
 }

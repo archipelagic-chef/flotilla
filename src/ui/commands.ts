@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
@@ -6,7 +7,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, agentLead, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -361,6 +362,13 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const found = await findBacklogItem(ctx, id);
   if (!found) return;
   const { item, remote } = found;
+  // A branch of the item that has no worktree (anymore): a worktree for it.
+  const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
+  if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {
+    const key = await createWorkstream(ctx, { kind: 'existing', branch: branchOpt });
+    if (key) ctx.sidebar.reveal(key);
+    return;
+  }
   const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
   let ws: Workstream | undefined;
   if (!linked.length) {
@@ -430,14 +438,14 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
 }
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string, agent: string): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   return [
-    `You're working on backlog item ${item.id}: "${item.title}".`,
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages; don't push.`,
-    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent" (local time) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
+    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
+    `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
   ].join('\n\n');
 }
 
@@ -456,8 +464,11 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
     ticket = await ctx.backlog.ensureDocument(item);
   }
   // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
-  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws)));
-  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened an agent chat for worktree \`${workstreamLabel(ws)}\`. It reports here.`);
+  // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
+  // A short name for the agent: its chat's first line and its reports carry it, which links them.
+  const agent = crypto.randomBytes(2).toString('hex');
+  await chatUi.newChat(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent), agentLead(item, agent));
+  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in worktree \`${workstreamLabel(ws)}\`. It reports here.`);
 }
 
 /** Links a local item to an issue in a connected tracker (Jira, GitHub Issues). */

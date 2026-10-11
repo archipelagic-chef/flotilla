@@ -2,17 +2,28 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { branchMatches, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { agentChatItem, branchMatches, entryAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import type { RemoteDetails, RemoteIssue } from '../../features/backlog/sources/source';
+import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
+import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
-import { entryDate, type Ticket } from '../../features/backlog/ticket';
+import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
+import { runGit } from '../../core/git/gitCli';
+import { ticketCommits } from '../../features/history/log';
+import { resolveBase } from '../../features/workstreams/progress';
+import { readSettings } from '../settings';
+import { openCommit } from '../openCommit';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
+  /** The main worktree, where branches and commits are read. */
+  mainRoot: string;
+  /** This window's folder, for opening diffs. */
+  reference: vscode.Uri;
   backlog: LocalBacklog;
   integrations: BacklogIntegrations;
   repository: Repository<Workstream>;
@@ -40,6 +51,17 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
     if (!file.startsWith(dir + path.sep)) return m;
     return `${a}${webview.asWebviewUri(vscode.Uri.file(file)).toString()}${c}`;
   });
+}
+
+/** Markdown (as comments and reports are written here) in a tracker's markup. */
+function inMarkup(source: IssueSource, markdown: string): string {
+  return source.markup === 'jira' ? markdownToJira(markdown.trim()) : markdown.trim();
+}
+
+/** An issue as read from its tracker: its details, and what can be changed (unknown if asking failed). */
+interface RemoteRead {
+  details: RemoteDetails;
+  edit?: RemoteEditOptions;
 }
 
 /** Ticket editor tabs: one per backlog item, kept up to date with the ticket file and the item's worktree. */
@@ -103,19 +125,20 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Issues read from their trackers, for a minute: views refresh often (worktrees change), trackers can be slow. */
-  private readonly details = new Map<string, { at: number; settled: boolean; value: Promise<RemoteDetails> }>();
+  private readonly details = new Map<string, { at: number; settled: boolean; value: Promise<RemoteRead> }>();
 
   /** An issue's details, cached (fresh: read again, e.g. after commenting); refreshes while it's read share the read. */
-  private remoteDetails(id: string, fresh = false): Promise<RemoteDetails> {
+  private remoteDetails(id: string, fresh = false): Promise<RemoteRead> {
     const cached = this.details.get(id);
     if (cached && !fresh && Date.now() - cached.at < 60_000) return cached.value;
     const entry = {
       at: Date.now(),
       settled: false,
       value: (async () => {
-        const source = await this.deps.integrations.sourceOf(id);
-        if (!source) throw new Error('Its integration is no longer connected.');
-        return source.details(id);
+        const source = await this.source(id);
+        // What can be changed is asked of the tracker too (its workflow, its fields); without it, the issue just shows.
+        const [details, edit] = await Promise.all([source.details(id), source.editOptions(id).catch(() => undefined)]);
+        return { details, edit };
       })(),
     };
     this.details.set(id, entry);
@@ -126,13 +149,76 @@ export class TicketPanels implements vscode.Disposable {
     return entry.value;
   }
 
+  /** The integration an issue is in (a listed one, or one linked to a local item). */
+  private async source(issue: string): Promise<IssueSource> {
+    const link = (await this.deps.backlog.read()).items.flatMap((i) => i.links ?? []).find((l) => l.id === issue);
+    const source = await this.deps.integrations.sourceOf(issue, link?.source);
+    if (!source) throw new Error(`The integration of ${issue} is no longer connected.`);
+    return source;
+  }
+
+  /**
+   * A ticket's local activity entries, rendered, with their keys, where they were posted, and their agent's chat: for
+   * an agent's report, the chat that wrote it; for "Opened a chat for agent …", the chat it opened.
+   */
+  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
+    const posted = await this.deps.backlog.posted();
+    const agents = new Map(this.agentChats(item).map((c) => [c.agent, c]));
+    return Promise.all(
+      entries.map(async (e) => {
+        const key = Store.entryKey(item.id, e);
+        const opened = e.author === 'Flotilla' ? /chat for agent ([a-z0-9]+)/.exec(e.body)?.[1] : undefined;
+        const agent = opened ?? entryAgent(e.author);
+        const found = agent ? agents.get(agent) : undefined;
+        const at = new Date(e.date.replace(' ', 'T')).getTime();
+        // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
+        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened } : undefined);
+        return {
+          ...e,
+          html: await renderMarkdown(e.body, webview, this.deps.backlog.dir),
+          key,
+          ...(posted[key] ? { posted: posted[key] } : {}),
+          ...(chat ? { chat } : {}),
+        };
+      }),
+    );
+  }
+
+  /** The chats of agents started for an item (their first message names it), in its worktrees, oldest first. */
+  private agentChats(item: BacklogItem): Array<Exclude<AgentChatView, { pending: true }>> {
+    return this.worktreesOf(item)
+      .flatMap((ws) =>
+        ws.chats.flatMap((c) => {
+          const started = agentChatItem(c.firstPrompt);
+          if (started?.item !== item.id) return [];
+          return [
+            {
+              key: ws.key,
+              id: c.id,
+              agent: started.agent,
+              title: agentChatItem(c.title) ? item.title : c.title,
+              state: c.state,
+              message: c.message,
+              branch: workstreamLabel(ws),
+              started: (c.startedAt ?? c.updatedAt).toISOString(),
+              updated: c.updatedAt.toISOString(),
+            },
+          ];
+        }),
+      )
+      .sort((a, b) => a.started.localeCompare(b.started));
+  }
+
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
-  private async remoteView(item: BacklogItem & { remote: RemoteIssue }, webview: vscode.Webview): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'>> {
+  private async remoteView(
+    item: BacklogItem & { remote: RemoteIssue },
+    webview: vscode.Webview,
+  ): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'> & { edit?: RemoteEditOptions; priorityName?: string }> {
     const dir = this.deps.backlog.dir;
-    const local = (await this.deps.backlog.readTicket(item)).activity;
-    const localEntries = await Promise.all(local.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, webview, dir) })));
+    // Entries posted to the issue show as its comments.
+    const localEntries = (await this.localEntries(item, (await this.deps.backlog.readTicket(item)).activity, webview)).filter((e) => !e.posted);
     try {
-      const d = await this.remoteDetails(item.id);
+      const { details: d, edit } = await this.remoteDetails(item.id);
       const remoteEntries = await Promise.all(
         d.comments.map(async (c) => ({
           date: entryDate(new Date(c.date)),
@@ -145,6 +231,8 @@ export class TicketPanels implements vscode.Disposable {
         description: d.descriptionText,
         descriptionHtml: d.format === 'html' ? d.description : await renderMarkdown(d.description, webview, dir),
         activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
+        edit,
+        priorityName: d.issue.priorityName,
       };
     } catch (error) {
       return { description: '', descriptionHtml: '', activity: localEntries, error: error instanceof Error ? error.message : String(error) };
@@ -162,12 +250,15 @@ export class TicketPanels implements vscode.Disposable {
   private async post(id: string, panel: vscode.WebviewPanel): Promise<void> {
     const seq = (this.posts.get(panel) ?? 0) + 1;
     this.posts.set(panel, seq);
-    const send = (ticket: TicketView) => {
+    let chats: ReturnType<TicketPanels['agentChats']> = [];
+    const send = (view: Omit<TicketView, 'agents'>) => {
       if (this.posts.get(panel) !== seq) return;
-      const message: TicketHostMessage = { type: 'ticket', ticket };
+      // Each agent with the reports it signed.
+      const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => entryAgent(e.author) === c.agent).length }));
+      const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
       void panel.webview.postMessage(message);
     };
-    let base: TicketView | undefined;
+    let base: Omit<TicketView, 'agents'> | undefined;
     try {
       const item = await this.item(id);
       if (!item) {
@@ -177,31 +268,44 @@ export class TicketPanels implements vscode.Disposable {
       panel.title = `${item.id} ${item.title}`;
       const dir = this.deps.backlog.dir;
       const { remote, ...plain } = item;
-      base = this.baseView(plain, remote);
+      base = { ...this.baseView(plain, remote), ...(await this.work(plain)) };
+      chats = this.agentChats(plain);
       if (remote) {
         // What the backlog knows shows at once; the description and comments follow from the tracker.
         if (!this.details.get(id)?.settled) send({ ...base, loading: true });
-        send({ ...base, ...(await this.remoteView({ ...plain, remote }, panel.webview)) });
+        const { edit, priorityName, ...content } = await this.remoteView({ ...plain, remote }, panel.webview);
+        send({ ...base, ...content, remote: base.remote && { ...base.remote, edit, priorityName: priorityName ?? base.remote.priorityName } });
       } else {
         const ticket = await this.deps.backlog.readTicket(item);
         send({
           ...base,
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
-          activity: await Promise.all(ticket.activity.map(async (e) => ({ ...e, html: await renderMarkdown(e.body, panel.webview, dir) }))),
+          activity: await this.localEntries(item, ticket.activity, panel.webview),
         });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       send({
-        ...(base ?? { item: { id, title: id, status: 'todo', created: '' }, description: '', descriptionHtml: '', activity: [], links: [], worktrees: [] }),
+        ...(base ?? {
+          item: { id, title: id, status: 'todo', created: '' },
+          description: '',
+          descriptionHtml: '',
+          activity: [],
+          links: [],
+          worktrees: [],
+          postTargets: [],
+          canCreateIssue: false,
+          branches: [],
+          commits: [],
+        }),
         error: message,
       });
     }
   }
 
   /** A ticket's view without its description and activity. */
-  private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): TicketView {
+  private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents'> {
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -219,15 +323,39 @@ export class TicketPanels implements vscode.Disposable {
           statusName: now?.statusName,
         };
       }),
-      remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName },
+      remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName, priorityName: remote.priorityName },
+      postTargets: remote ? [remote.id] : (plain.links ?? []).map((l) => l.id),
+      canCreateIssue: !remote && this.deps.integrations.current.length > 0,
       worktrees: this.worktreesOf(plain).map((ws) => ({
         key: ws.key,
         branch: workstreamLabel(ws),
         attention: ws.attention,
         status: ATTENTION_LABEL[ws.attention],
         message: ws.agent?.message,
+        changes: ws.changes.length,
+        ahead: ws.sync.ahead,
+        behind: ws.sync.behind,
+        ...(ws.sync.upstream ? { upstream: ws.sync.upstream } : {}),
       })),
+      branches: [],
+      commits: [],
     };
+  }
+
+  /** An item's branches without a worktree, and its commits (read from git: quick, and local). */
+  private async work(item: BacklogItem): Promise<Pick<TicketView, 'branches' | 'commits'>> {
+    const cwd = this.deps.mainRoot;
+    try {
+      const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
+      const branches = local.filter((b) => branchMatches(item, b));
+      const checkedOut = new Set(this.worktreesOf(item).map((w) => w.worktree.branch));
+      const base = await resolveBase(cwd, readSettings().defaultBase);
+      const ids = [item.id, ...(item.links ?? []).map((l) => l.id)];
+      const commits = await ticketCommits(cwd, { branches: branches.filter((b) => b !== base), base, ids, limit: 100 });
+      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits };
+    } catch {
+      return { branches: [], commits: [] };
+    }
   }
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
@@ -252,20 +380,27 @@ export class TicketPanels implements vscode.Disposable {
       case 'title': {
         const title = m.title.trim();
         if (!title || title === item.title) return;
+        if (item.remote) {
+          await this.writeRemote(id, (s) => s.update(id, { title }));
+          return;
+        }
         await backlog.change((d) => updateItem(d, id, { title }));
         await this.changeTicket(item, (t) => ({ ...t, title }));
         break;
       }
       case 'description':
+        if (item.remote) {
+          // As the tracker writes it (Jira: wiki markup), as it was shown for editing.
+          await this.writeRemote(id, (s) => s.update(id, { description: m.text }));
+          return;
+        }
         await this.changeTicket(item, (t) => ({ ...t, title: item.title, description: m.text }));
         break;
       case 'comment':
         if (!m.text.trim()) return;
         if (item.remote) {
-          const source = await this.deps.integrations.sourceOf(id);
-          if (!source) throw new Error('Its integration is no longer connected.');
-          await source.comment(id, m.text.trim());
-          void this.remoteDetails(id, true).catch(() => undefined);
+          await this.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
+          return;
         } else {
           await this.addActivity(id, 'You', m.text);
         }
@@ -310,8 +445,77 @@ export class TicketPanels implements vscode.Disposable {
       case 'openWorktree':
         if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
         return;
+      case 'transition': {
+        const move = (await this.remoteDetails(id)).edit?.transitions.find((t) => t.id === m.id);
+        if (!move || !item.remote) return;
+        if (move.needs?.length) {
+          // The workflow asks for more on this move (a resolution, a reviewer): that's done in the tracker.
+          const open = await vscode.window.showWarningMessage(`"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`, 'Do It in the Tracker');
+          if (open) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
+          return;
+        }
+        await this.writeRemote(id, (s) => s.transition(id, move.id));
+        return;
+      }
+      case 'remotePriority':
+        await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
+        return;
+      case 'postEntry':
+        await this.postEntry(item, m.key);
+        return;
+      case 'openCommit':
+        await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
+        return;
+      case 'checkout':
+        if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
+        return;
+      case 'openChat':
+        if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
+        return;
+      case 'createIssue': {
+        if (item.remote) return;
+        const ticket = await backlog.readTicket(item);
+        const link = await this.deps.integrations.createIssue(id, item.title, ticket.description);
+        if (!link) return;
+        await backlog.change((d) => linkIssue(d, id, link));
+        await this.addActivity(id, 'Flotilla', `Created [${link.id}](${link.url}) and linked it.`);
+        break;
+      }
     }
     await this.post(id, panel);
+  }
+
+  /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
+  private async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
+    await write(await this.source(issue));
+    this.details.delete(issue);
+    // The list has the status and priority the backlog shows; refreshing it refreshes the open tickets too.
+    await this.deps.integrations.refresh();
+  }
+
+  /**
+   * Posts a local activity entry (a comment or an agent's report) to the issue, or to one of a local item's linked
+   * issues, after showing what will be posted and asking. Agents never post: they only write the ticket file.
+   */
+  private async postEntry(item: BacklogItem & { remote?: RemoteIssue }, key: string): Promise<void> {
+    const entry = (await this.deps.backlog.readTicket(item)).activity.find((e) => Store.entryKey(item.id, e) === key);
+    if (!entry) return;
+    const targets = item.remote ? [item.remote.id] : (item.links ?? []).map((l) => l.id);
+    const target = targets.length === 1 ? targets[0] : await vscode.window.showQuickPick(targets, { title: 'Post to Which Issue?' });
+    if (!target) return;
+    const source = await this.source(target);
+    const text = inMarkup(source, `${entry.author && entry.author !== 'You' ? `**${entry.author}** (${entry.date}):\n\n` : ''}${entry.body}`);
+    const preview = text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+    const choice = await vscode.window.showInformationMessage(
+      `Post this ${entryAgent(entry.author) || entry.author === 'Agent' ? "agent's report" : 'entry'} to ${target} in ${source.label}?`,
+      { modal: true, detail: preview },
+      'Post',
+    );
+    if (choice !== 'Post') return;
+    await source.comment(target, text);
+    await this.deps.backlog.markPosted(key, target);
+    this.details.delete(target);
+    this.refreshAll();
   }
 
   private html(webview: vscode.Webview, dist: vscode.Uri): string {

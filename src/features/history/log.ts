@@ -82,3 +82,42 @@ export async function commitChanges(cwd: string, hash: string): Promise<{ change
   const changes = parseNameStatus(await runGit(['diff', '--name-status', '-z', '-M', parent, hash, '--'], { cwd }));
   return { changes, parent };
 }
+
+/** A commit linked to a ticket: on one of its branches, or mentioning it (or a linked issue) in its message. */
+export interface TicketCommit {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  /** ISO 8601. */
+  date: string;
+  /** The ticket's branches it's on (not yet on the base). */
+  branches: string[];
+}
+
+/**
+ * The commits linked to a ticket, newest first: those on its branches that the base doesn't have, and those anywhere
+ * whose message mentions one of ids (the ticket's, its linked issues').
+ */
+export async function ticketCommits(cwd: string, opts: { branches: string[]; base?: string; ids: string[]; limit: number }): Promise<TicketCommit[]> {
+  const log = (args: string[]) =>
+    runGit(['-c', 'log.showSignature=false', 'log', `--format=${FORMAT}`, '-n', String(opts.limit), ...args], { cwd })
+      .then(parseLog)
+      .catch(() => []);
+  const not = opts.base ? ['--not', opts.base] : [];
+  const [onBranches, mentions] = await Promise.all([
+    Promise.all(opts.branches.map(async (b) => ({ branch: b, commits: await log([`refs/heads/${b}`, ...not, '--']) }))),
+    opts.ids.length ? log(['--all', '-i', '--fixed-strings', ...opts.ids.map((id) => `--grep=${id}`), '--']) : Promise.resolve([]),
+  ]);
+  const byHash = new Map<string, TicketCommit>();
+  const add = (c: Omit<CommitView, 'outgoing'>, branch?: string) => {
+    const known = byHash.get(c.hash) ?? { hash: c.hash, short: c.short, subject: c.subject, author: c.author, date: c.date, branches: [] };
+    if (branch && !known.branches.includes(branch)) known.branches.push(branch);
+    byHash.set(c.hash, known);
+  };
+  for (const { branch, commits } of onBranches) commits.forEach((c) => add(c, branch));
+  // "BL-1" also finds "BL-12": only whole ids count.
+  const whole = opts.ids.map((id) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9])`, 'i'));
+  for (const c of mentions) if (whole.some((r) => r.test(`${c.subject}\n${c.body}`))) add(c);
+  return [...byHash.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, opts.limit);
+}

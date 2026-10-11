@@ -44,6 +44,9 @@ export interface Chat {
   updatedAt: Date;
   /** Open chats are shown above the history and counted on the rail. */
   open: boolean;
+  /** The first message (its first 200 characters), when known: agents started for backlog items name the item there. */
+  firstPrompt?: string;
+  startedAt?: Date;
 }
 
 const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1, done: 2, ended: 3 };
@@ -337,6 +340,8 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       cwd: r.linkedBy === 'cwd' ? undefined : r.cwd,
       updatedAt: t && t.updatedAt > r.updatedAt ? t.updatedAt : r.updatedAt,
       open: state !== 'ended' && age <= opts.openHours * 3_600_000,
+      ...optional('firstPrompt', r.firstPrompt ?? t?.firstPrompt),
+      ...optional('startedAt', r.startedAt ?? t?.startedAt),
     });
   }
   for (const t of transcripts) {
@@ -349,11 +354,18 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       linkedBy: 'cwd',
       updatedAt: t.updatedAt,
       open: false,
+      ...optional('firstPrompt', t.firstPrompt),
+      ...optional('startedAt', t.startedAt),
     });
   }
   return [...byId.values()].sort(
     (a, b) => Number(b.open) - Number(a.open) || (a.open ? URGENCY[a.state] - URGENCY[b.state] : 0) || b.updatedAt.getTime() - a.updatedAt.getTime(),
   );
+}
+
+/** { [key]: value } when there's a value; nothing otherwise (keeps chats free of undefined fields). */
+function optional<K extends string, V>(key: K, value: V | undefined): { [k in K]?: V } {
+  return (value === undefined ? {} : { [key]: value }) as { [k in K]?: V };
 }
 
 /** The most urgent open chat, which stands for the worktree's agent state. */

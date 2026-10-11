@@ -270,13 +270,13 @@ h2 {
   border-left: 3px solid var(--border);
   border-radius: 3px;
 }
-.entry.author-agent {
+.entry.kind-agent {
   border-left-color: var(--working);
 }
-.entry.author-you {
+.entry.kind-comment {
   border-left-color: var(--focus);
 }
-.entry.author-flotilla {
+.entry.kind-history {
   border-style: dashed;
   border-left-style: solid;
 }
@@ -410,4 +410,408 @@ h2 {
 .chev-small {
   font-size: 12px !important;
   color: var(--muted);
+}
+.dropdown {
+  position: relative;
+  display: inline-flex;
+}
+.remote-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.remote-meta .dropdown-button,
+.properties .dropdown-button {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.status-menu .dropdown-button {
+  font-weight: 600;
+}
+.status-menu .priority-menu {
+  left: auto;
+  right: 0;
+  min-width: 200px;
+}
+.priority-menu .menu-detail {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.entry-head .posted {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.entry-head .post-entry {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0;
+}
+.entry:hover .post-entry,
+.post-entry:focus-visible {
+  opacity: 1;
+}
+.head-actions {
+  display: flex;
+  gap: 14px;
+}
+.chat-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, transparent);
+  color: var(--vscode-foreground);
+}
+button.chat-card:hover {
+  border-color: var(--focus);
+  background: var(--vscode-list-hoverBackground);
+}
+.chat-card.pending {
+  border-style: dashed;
+  background: none;
+}
+.chat-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.chat-card.pending .chat-icon {
+  background: none;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+.chat-icon .codicon {
+  font-size: 16px;
+}
+.chat-icon .dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  background: var(--muted);
+}
+.chat-icon .dot.working {
+  background: var(--working);
+}
+.chat-icon .dot.waiting {
+  background: var(--waiting);
+}
+.chat-icon .dot.done {
+  background: var(--done);
+}
+.chat-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.chat-title {
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+.chat-meta .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.chat-message {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--vscode-foreground);
+}
+.chat-open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+}
+.chat-card.waiting {
+  border-color: var(--waiting);
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 2px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tabs button:hover {
+  color: var(--vscode-foreground);
+}
+.tabs button[aria-selected='true'] {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--focus);
+}
+.tabs .count {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}
+.chat-chip:hover {
+  border-color: var(--focus);
+  background: var(--vscode-list-hoverBackground);
+}
+.chat-chip .codicon {
+  font-size: 12px !important;
+}
+.chat-chip-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-chip .dot,
+.agent-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.chat-chip .dot.working {
+  background: var(--working);
+}
+.chat-chip .dot.waiting {
+  background: var(--waiting);
+}
+.chat-chip .dot.done {
+  background: var(--done);
+}
+.agents {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+.agent-row + .agent-row {
+  border-top: 1px solid var(--border);
+}
+.agent-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.agent-row .chat-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: normal;
+}
+.agent-name {
+  flex: none;
+  font-weight: 600;
+}
+.agent-meta {
+  flex: none;
+  white-space: nowrap;
+}
+.agent-meta .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.chat-icon.small {
+  width: 24px;
+  height: 24px;
+}
+.chat-icon.small .codicon {
+  font-size: 13px;
+}
+.agent-row .chat-icon .dot {
+  width: 9px;
+  height: 9px;
+}
+.open-arrow {
+  color: var(--muted);
+}
+.agent-row:hover .open-arrow {
+  color: var(--vscode-textLink-foreground);
+}
+.work {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--vscode-sideBar-background, transparent);
+}
+.work-head + * {
+  border-top: 1px solid var(--border);
+}
+* + .work-head {
+  border-top: 1px solid var(--border);
+}
+.work-head .count,
+.tabs .count {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.work-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.work-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+.work-row + .work-row {
+  border-top: 1px solid var(--border);
+}
+button.work-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.work-row.dim .work-main {
+  color: var(--muted);
+}
+.work-main {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.work-row.commit .work-main {
+  flex: 1;
+  font-weight: normal;
+}
+.work-message {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.work-facts {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.work-facts .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.work-action {
+  margin-left: auto;
+  font-size: 12px;
+}
+.hash {
+  flex: none;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textLink-foreground);
+}
+.branch-tag {
+  flex: none;
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.branch-tag.mention {
+  border-style: dashed;
+}
+.work-when {
+  flex: none;
+  white-space: nowrap;
+}
+.work-more {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
 }
