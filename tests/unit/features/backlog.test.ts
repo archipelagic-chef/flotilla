@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, currentPrefix, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import { addBranch, addItem, currentPrefix, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -107,6 +107,18 @@ describe('backlog', () => {
     expect(currentPrefix(EMPTY_BACKLOG, 'WEB')).toBe('WEB');
     expect(currentPrefix(EMPTY_BACKLOG, ' ')).toBe('BL');
     expect(currentPrefix({ ...EMPTY_BACKLOG, prefix: 'OPS' }, 'WEB')).toBe('OPS');
+  });
+
+  it('reads an id or a prefix typed before the title', () => {
+    const data = backlog('a', 'b'); // BL-1, BL-2
+    expect(parseNewItem('Fix login', data, 'BL')).toEqual({ id: 'BL-3', prefix: 'BL', title: 'Fix login', chosen: false });
+    expect(parseNewItem('web-0012 Fix login', data, 'BL')).toEqual({ id: 'WEB-12', prefix: 'WEB', title: 'Fix login', chosen: true, problem: undefined });
+    expect(parseNewItem('WEB-12: Fix login', data, 'BL').title).toBe('Fix login');
+    expect(parseNewItem('OPS- Rotate keys', data, 'BL')).toMatchObject({ id: 'OPS-1', prefix: 'OPS', title: 'Rotate keys', chosen: false });
+    expect(parseNewItem('BL-2 Again', data, 'BL').problem).toBe('BL-2 is already taken.');
+    expect(parseNewItem('WEB-12', data, 'BL')).toMatchObject({ id: 'WEB-12', title: '' });
+    // Words with a dash aren't ids.
+    expect(parseNewItem('Re-enable login', data, 'BL')).toMatchObject({ id: 'BL-3', title: 'Re-enable login' });
   });
 
   it('links items to issues in trackers', () => {

@@ -92,6 +92,25 @@ export function currentPrefix(data: BacklogData, setting: string): string {
   return data.prefix ?? (setting.trim() || 'BL');
 }
 
+/**
+ * What's typed to add an item: its title, optionally after an id ("WEB-12 Fix login") or a prefix for its next number
+ * ("WEB- Fix login"). Without either, the item gets the next number for the current prefix.
+ */
+export function parseNewItem(
+  text: string,
+  data: BacklogData,
+  prefix: string,
+  taken: readonly string[] = [],
+): { id: string; prefix: string; title: string; chosen: boolean; problem?: string } {
+  const m = /^\s*([A-Za-z][A-Za-z0-9]{0,9})-(\d{1,7})?(?=[\s:]|$)[\s:]*([\s\S]*)$/.exec(text);
+  if (!m) return { id: nextId(data, prefix, taken), prefix, title: text.trim(), chosen: false };
+  const p = m[1].toUpperCase();
+  const title = m[3].trim();
+  if (!m[2]) return { id: nextId(data, p, taken), prefix: p, title, chosen: false };
+  const id = `${p}-${Number(m[2])}`;
+  return { id, prefix: p, title, chosen: true, problem: idProblem(data, id, taken) };
+}
+
 /** Why an id can't be used for a new item, if it can't. */
 export function idProblem(data: BacklogData, id: string, taken: readonly string[] = []): string | undefined {
   if (!ID_PATTERN.test(id)) return 'An id is a prefix, a dash and a number, like BL-12.';
