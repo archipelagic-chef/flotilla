@@ -14,6 +14,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, commitPrefixMode, openWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
+import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -135,6 +136,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
   });
   context.subscriptions.push(tickets);
+  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
+  context.subscriptions.push(reviews);
+  tickets.useReviews(reviews);
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);

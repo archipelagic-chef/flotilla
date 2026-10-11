@@ -4,6 +4,7 @@
  */
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
+import type { ReviewState } from '../features/backlog/review';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -25,7 +26,7 @@ export type AgentChatView =
       updated: string;
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
-  | { pending: true; agent: string };
+  | { pending: true; agent: string; headless?: boolean };
 
 export interface TicketView {
   item: BacklogItem;
@@ -69,6 +70,10 @@ export interface TicketView {
     behind: number;
     upstream?: string;
   }>;
+  /** Its review loop, and whether an agent of it is running now. */
+  review?: ReviewState & { running: boolean };
+  /** Review can be started (a local item with a worktree). */
+  canReview: boolean;
   /** The item it's a part of, and its own parts (sub-tickets). */
   parent?: { id: string; title: string; status: BacklogStatus };
   children: Array<{ id: string; title: string; status: BacklogStatus; priority?: BacklogPriority; proposed: boolean }>;
@@ -112,6 +117,8 @@ export type TicketWebviewMessage =
   /** Create an issue for a local item in a connected tracker, and link it. */
   | { type: 'createIssue' }
   /** Accept or dismiss an agent's proposal; open another ticket (a parent, a sub-ticket). */
+  | { type: 'startReview' }
+  | { type: 'stopReview' }
   | { type: 'accept' }
   | { type: 'dismiss' }
   | { type: 'openTicket'; id: string }

@@ -878,3 +878,51 @@ button.work-row:hover {
   font-weight: normal;
   color: var(--muted);
 }
+.review-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.review-panel > .codicon {
+  font-size: 16px;
+}
+.review-text {
+  flex: 1;
+}
+.review-panel.working {
+  border-left-color: var(--working);
+}
+.review-panel.working > .codicon {
+  color: var(--working);
+}
+.review-panel.waiting {
+  border-left-color: var(--waiting);
+}
+.review-panel.waiting > .codicon {
+  color: var(--waiting);
+}
+.review-panel.done {
+  border-left-color: var(--done);
+}
+.review-panel.done > .codicon {
+  color: var(--done);
+}
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}

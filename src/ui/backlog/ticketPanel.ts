@@ -17,6 +17,7 @@ import { ticketCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
+import type { ReviewLoop } from './reviewLoop';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -70,6 +71,14 @@ interface RemoteRead {
 export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly subscriptions: vscode.Disposable[] = [];
+
+  private reviews: ReviewLoop | undefined;
+
+  /** The review loop, for the tickets' review panel (created after the tickets). */
+  useReviews(reviews: ReviewLoop): void {
+    this.reviews = reviews;
+    this.subscriptions.push(reviews.onDidChange(() => this.refreshAll()));
+  }
 
   constructor(private readonly deps: TicketDeps) {
     this.subscriptions.push(
@@ -174,7 +183,7 @@ export class TicketPanels implements vscode.Disposable {
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
-        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened } : undefined);
+        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
         return {
           ...e,
           html: await renderMarkdown(e.body, webview, this.deps.backlog.dir),
@@ -301,6 +310,7 @@ export class TicketPanels implements vscode.Disposable {
           branches: [],
           commits: [],
           children: [],
+          canReview: false,
         }),
         error: message,
       });
@@ -343,6 +353,8 @@ export class TicketPanels implements vscode.Disposable {
       branches: [],
       commits: [],
       children: [],
+      ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
+      canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
     };
   }
 
@@ -503,6 +515,12 @@ export class TicketPanels implements vscode.Disposable {
       }
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
+        return;
+      case 'startReview':
+        await this.reviews?.start(id);
+        return;
+      case 'stopReview':
+        await this.reviews?.stop(id);
         return;
       case 'accept':
         await backlog.change((d) => acceptItem(d, id));

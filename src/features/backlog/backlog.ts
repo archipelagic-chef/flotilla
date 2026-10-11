@@ -1,3 +1,4 @@
+import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
  * backlog (below) to begin with; Jira and GitHub Issues can be added as sources with the same item shape.
@@ -39,6 +40,8 @@ export interface BacklogItem {
   parent?: string;
   /** Added by an agent and not accepted yet (by: the agent's name, when it signed). */
   proposed?: { by?: string };
+  /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
+  review?: ReviewState;
 }
 
 /** A local item's link to an issue in a tracker. */

@@ -477,6 +477,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, t
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title or description.`,
+    `When the work is done, end your final report with a line "Ready for review." Another agent then reviews it; you may be asked to make changes.`,
     `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
   ].join('\n\n');

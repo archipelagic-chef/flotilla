@@ -250,8 +250,12 @@ function ChatCard({ chat }: { chat: AgentChatView }) {
           <i class="codicon codicon-comment-discussion" />
         </span>
         <span class="chat-text">
-          <span class="chat-title">{chat.agent}: waiting for its chat to start</span>
-          <span class="muted">Send the message waiting in Claude Code's chat; the chat shows here then.</span>
+          <span class="chat-title">{chat.headless ? `${chat.agent} is running without a window` : `${chat.agent}: waiting for its chat to start`}</span>
+          <span class="muted">
+            {chat.headless
+              ? 'Its chat shows here once Flotilla sees it (with chat hooks installed in the worktree).'
+              : "Send the message waiting in Claude Code's chat; the chat shows here then."}
+          </span>
         </span>
       </div>
     );
@@ -287,6 +291,39 @@ const AUTHOR_ICON: Record<string, string> = {
   agent: 'hubot',
   flotilla: 'info',
 };
+
+/** Where the review loop is: who reviews, the round, the verdict; stop it, or start it again. */
+function ReviewPanel({ ticket }: { ticket: TicketView }) {
+  const r = ticket.review!;
+  const active = r.state === 'reviewing' || r.state === 'revising';
+  const [icon, cls, text] =
+    r.state === 'reviewing'
+      ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
+      : r.state === 'revising'
+        ? ['tools', 'waiting', `${r.reviewer} requested changes; ${r.implementer ?? 'the implementer'} is making them`]
+        : r.state === 'approved'
+          ? ['pass-filled', 'done', `Approved by ${r.reviewer}. Ready for you to merge.`]
+          : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
+  return (
+    <div class={`review-panel ${cls}`}>
+      <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
+      <span class="review-text">
+        <strong>Review{r.round ? ` · round ${r.round}` : ''}</strong> {text}
+      </span>
+      {active ? (
+        <button class="button secondary" onClick={() => send({ type: 'stopReview' })} title="Stops the running agent and the handoffs">
+          <i class="codicon codicon-debug-stop" /> Stop
+        </button>
+      ) : (
+        ticket.canReview && (
+          <button class="button secondary" onClick={() => send({ type: 'startReview' })}>
+            <i class="codicon codicon-eye" /> Review Again
+          </button>
+        )
+      )}
+    </div>
+  );
+}
 
 /** The ticket's parts (sub-tickets), with how far along they are. */
 function Parts({ ticket }: { ticket: TicketView }) {
@@ -800,6 +837,11 @@ function App() {
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>
+              {ticket.canReview && !ticket.review && (
+                <button class="button secondary" onClick={() => send({ type: 'startReview' })} title="Another agent reviews the work and gives a verdict here">
+                  <i class="codicon codicon-eye" /> Start Review
+                </button>
+              )}
               {ticket.canCreateIssue && !ticket.links.length && (
                 <button
                   class="button secondary"
@@ -812,6 +854,7 @@ function App() {
             </>
           )}
         </div>
+        {ticket.review && <ReviewPanel ticket={ticket} />}
       </header>
       {ticket.error && (
         <div class="error-note">

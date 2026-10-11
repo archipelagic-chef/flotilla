@@ -1266,6 +1266,35 @@
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
         },
+        "flotilla.review.automatic": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When a backlog item goes to In Review (moved there, or its agent reports `Ready for review.`), start a reviewer agent: a different agent that reviews the work and gives a verdict in the ticket. Changes requested go back to the implementer, and the reviewer looks again, until it approves or `#flotilla.review.maxRounds#` is reached. The agents run without a window (`claude -p`); their chats open from the ticket."
+        },
+        "flotilla.review.maxRounds": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "How many review rounds the reviewer and the implementer go through before the loop stops and leaves the decision to you."
+        },
+        "flotilla.agents.permissionMode": {
+          "type": "string",
+          "enum": ["auto", "acceptEdits", "dontAsk", "bypassPermissions"],
+          "enumDescriptions": [
+            "Claude Code decides what's safe to do without asking (auto mode).",
+            "File edits are allowed; commands only if your Claude Code settings allow them.",
+            "Only what your Claude Code settings allow; everything else is refused.",
+            "Everything is allowed. Only in a sandbox (a dev container you can throw away)."
+          ],
+          "default": "auto",
+          "markdownDescription": "What agents Flotilla runs without a window (reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused."
+        },
+        "flotilla.agents.claudePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The Claude Code CLI to run agents with. Empty: the one the Claude Code extension comes with, else `claude` on the PATH."
+        },
         "flotilla.backlog.agentTickets": {
           "type": "string",
           "enum": ["propose", "add"],
