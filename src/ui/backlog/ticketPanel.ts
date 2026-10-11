@@ -594,7 +594,7 @@ export class TicketPanels implements vscode.Disposable {
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
   private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
-    await this.deps.backlog.writeTicket(item.id, change(await this.deps.backlog.readTicket(item)));
+    await this.deps.backlog.editTicket(item, change);
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */

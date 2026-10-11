@@ -2,21 +2,36 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { EMPTY_BACKLOG, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
+import { EMPTY_BACKLOG, ID_PATTERN, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
 import { describeChanges, descriptionHash, lineDelta } from './changes';
 import { entryDate, formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
 
 /** The local backlog's folder, in the main worktree; git ignores it (info/exclude), like .worktrees/. */
 export const BACKLOG_DIR = path.join('.flotilla', 'backlog');
 const EXCLUDE_LINE = '/.flotilla/';
+/** The lock file that keeps writes of the folder apart in every process; one older than this was left by a crash. */
+const LOCK_FILE = 'backlog.lock';
+const LOCK_STALE_MS = 30_000;
+
+/** Writes a file as a whole: a temporary file next to it, renamed over it, so a reader never sees half of it. */
+export async function writeAtomic(file: string, text: string): Promise<void> {
+  const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await fs.promises.writeFile(tmp, text);
+  await fs.promises.rename(tmp, file);
+}
 
 /**
  * The local backlog, in the main worktree's .flotilla/backlog/: backlog.json holds the items' order, status and
  * ids; each item has a ticket (<id>.md, see ticket.ts) with its description and activity, and its images in <id>/.
- * People edit tickets in Flotilla's ticket editor, agents edit the file. Every worktree and window of the repository shares it. Changes to backlog.json are read-modify-write of
- * the whole file, written atomically; other windows notice through a file watch.
+ * People edit tickets in Flotilla's ticket editor, agents edit the file. Every worktree and window of the repository shares it.
+ * Every write of the folder's files that is read-modify-write (backlog.json, ticket activity, posted.json) runs one at a
+ * time: in this window through a queue, and across windows and processes through the lock file LOCK_FILE. Files are
+ * written atomically; other windows notice through a file watch.
  */
 export class LocalBacklog {
+  /** The writes queued in this window, each after the one before. */
+  private queue: Promise<unknown> = Promise.resolve();
+
   readonly dir: string;
   readonly file: string;
 
@@ -47,18 +62,46 @@ export class LocalBacklog {
     await ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
   }
 
+  /** Runs fn after the writes queued before it, here and in other processes (holding the lock file). */
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(() => this.withLockFile(fn));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async withLockFile<T>(fn: () => Promise<T>): Promise<T> {
+    await this.ensureDir();
+    const lock = path.join(this.dir, LOCK_FILE);
+    for (;;) {
+      try {
+        await fs.promises.writeFile(lock, `${process.pid}\n`, { flag: 'wx' });
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        const stat = await fs.promises.stat(lock).catch(() => undefined);
+        if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) await fs.promises.rm(lock, { force: true });
+        else await new Promise((resolve) => setTimeout(resolve, 10 + Math.random() * 30));
+      }
+    }
+    try {
+      return await fn();
+    } finally {
+      await fs.promises.rm(lock, { force: true });
+    }
+  }
+
   /**
    * Applies change to the current contents and saves the result. What changed about each item (its status, priority…)
    * is noted in its ticket's activity, as done by `by`: "You" (the default: changes from the views), an agent ("Agent
-   * Nova-7"), or "Flotilla".
+   * Nova-7"), or "Flotilla". change may be async (it runs with the lock held: it must not call change itself).
    */
-  async change(change: (data: BacklogData) => BacklogData, opts: { by?: string } = {}): Promise<BacklogData> {
-    const before = await this.read();
-    const next = change(before);
-    await this.ensureDir();
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    await fs.promises.writeFile(tmp, `${JSON.stringify(next, null, 1)}\n`);
-    await fs.promises.rename(tmp, this.file);
+  async change(change: (data: BacklogData) => BacklogData | Promise<BacklogData>, opts: { by?: string } = {}): Promise<BacklogData> {
+    const { before, next } = await this.exclusive(async () => {
+      const before = await this.read();
+      const next = await change(before);
+      await writeAtomic(this.file, `${JSON.stringify(next, null, 1)}\n`);
+      return { before, next };
+    });
     const was = new Map(before.items.map((i) => [i.id, i]));
     for (const item of next.items) {
       const old = was.get(item.id);
@@ -66,6 +109,12 @@ export class LocalBacklog {
       if (lines.length) await this.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: lines.join('\n\n') });
     }
     return next;
+  }
+
+  /** The ids that have a ticket file or folder, listed in backlog.json or not: a new item doesn't get one of these. */
+  async ticketIds(): Promise<string[]> {
+    const names = await fs.promises.readdir(this.dir).catch(() => [] as string[]);
+    return names.map((n) => n.replace(/\.md$/, '')).filter((n) => ID_PATTERN.test(n));
   }
 
   /** The descriptions last seen, for how much an edit changed (this session only). */
@@ -110,16 +159,16 @@ export class LocalBacklog {
     for (const c of changed) if (c.body) await this.appendActivity(c.item, { date: entryDate(new Date()), author: 'Flotilla', body: c.body });
   }
 
-  private appending: Promise<unknown> = Promise.resolve();
-
-  /** Adds an entry at the end of an item's ticket activity; one at a time, so entries written together all stay. */
+  /** Adds an entry at the end of an item's ticket activity; entries written together all stay. */
   appendActivity(item: Pick<BacklogItem, 'id' | 'title' | 'notes'>, entry: TicketEntry): Promise<void> {
-    const run = this.appending.then(async () => {
-      const ticket = await this.readTicket(item);
-      await this.writeTicket(item.id, { ...ticket, activity: [...ticket.activity, entry] });
+    return this.editTicket(item, (ticket) => ({ ...ticket, activity: [...ticket.activity, entry] }));
+  }
+
+  /** Changes an item's ticket as it is when written: read and written back under the lock, so nothing written meanwhile is lost. */
+  editTicket(item: Pick<BacklogItem, 'id' | 'title' | 'notes'>, change: (ticket: Ticket) => Ticket): Promise<void> {
+    return this.exclusive(async () => {
+      await this.writeTicketFile(item.id, change(await this.readTicket(item)));
     });
-    this.appending = run.catch(() => undefined);
-    return run;
   }
 
   /** An item's ticket; one without a file yet has its title (and any old notes) and no activity. */
@@ -131,12 +180,13 @@ export class LocalBacklog {
     }
   }
 
-  async writeTicket(id: string, ticket: Ticket): Promise<void> {
-    await this.ensureDir();
-    const file = this.docPath(id);
-    const tmp = `${file}.${process.pid}.tmp`;
-    await fs.promises.writeFile(tmp, formatTicket(ticket));
-    await fs.promises.rename(tmp, file);
+  /** Writes an item's whole ticket file (not while another write of the backlog is in progress: that waits its turn). */
+  writeTicket(id: string, ticket: Ticket): Promise<void> {
+    return this.exclusive(() => this.writeTicketFile(id, ticket));
+  }
+
+  private async writeTicketFile(id: string, ticket: Ticket): Promise<void> {
+    await writeAtomic(this.docPath(id), formatTicket(ticket));
   }
 
   /** Writes an item's ticket file if it has none yet; returns its path. */
@@ -179,10 +229,11 @@ export class LocalBacklog {
     }
   }
 
-  async markPosted(key: string, issue: string): Promise<void> {
-    const posted = { ...(await this.posted()), [key]: issue };
-    await this.ensureDir();
-    await fs.promises.writeFile(this.postedFile, `${JSON.stringify(posted, null, 1)}\n`);
+  markPosted(key: string, issue: string): Promise<void> {
+    return this.exclusive(async () => {
+      const posted = { ...(await this.posted()), [key]: issue };
+      await writeAtomic(this.postedFile, `${JSON.stringify(posted, null, 1)}\n`);
+    });
   }
 
   async deleteDocument(id: string): Promise<void> {
@@ -238,7 +289,7 @@ export class LocalBacklog {
     const watchDir = () => {
       try {
         watcher ??= fs.watch(this.dir, (_event, name) => {
-          if (name && !name.endsWith('.tmp')) fire();
+          if (name && !name.endsWith('.tmp') && name !== LOCK_FILE) fire();
         });
         void ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
       } catch {

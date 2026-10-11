@@ -533,9 +533,8 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
     // The issue lives in its tracker; the agent gets a local copy of it to read and to report in.
     const source = await ctx.integrations.sourceOf(item.id);
     const details = source && (await source.details(item.id));
-    const local = await ctx.backlog.readTicket(item);
     const description = [details?.descriptionText.trim(), `(The issue in ${source?.label ?? 'its tracker'}: ${remote.url})`].filter(Boolean).join('\n\n');
-    await ctx.backlog.writeTicket(item.id, { title: item.title, description, activity: local.activity });
+    await ctx.backlog.editTicket(item, (local) => ({ title: item.title, description, activity: local.activity }));
     ticket = ctx.backlog.docPath(item.id);
   } else {
     ticket = await ctx.backlog.ensureDocument(item);
