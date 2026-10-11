@@ -41,7 +41,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';
-import { agentChoice, describeChoice, isRunningHeadless, runAgentHeadless, type AgentResult, type AgentRun } from './agentRunner';
+import { agentChoice, describeChoice, isRunningHeadless, runAgentHeadless, validSession, type AgentResult, type AgentRun } from './agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
@@ -244,6 +244,10 @@ export class ReviewLoop implements vscode.Disposable {
       if (!p || this.runs.has(item.id)) continue;
       if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
       const ws = this.worktreeOf(item);
+      if (!validSession(p.session)) {
+        await this.stopLoop(item.id, `its paused chat isn't a valid session (${p.session.slice(0, 40)}).`, { kind: 'chat-gone' });
+        continue;
+      }
       const run = runAgentHeadless({
         cwd: ws?.worktree.path ?? this.deps.mainRoot,
         resume: p.session,
@@ -418,8 +422,8 @@ export class ReviewLoop implements vscode.Disposable {
     const prompt = reviewerPrompt({ item, reviewer, implementer: item.review?.implementer, ticket, branch: ws.worktree.branch, base, round });
     const run = runAgentHeadless({
       cwd: ws.worktree.path,
-      prompt: round === 1 || !item.review?.reviewerSession ? prompt : prompt.split('\n\n').slice(1).join('\n\n'),
-      resume: round > 1 ? item.review?.reviewerSession : undefined,
+      prompt: round === 1 || !validSession(item.review?.reviewerSession) ? prompt : prompt.split('\n\n').slice(1).join('\n\n'),
+      resume: round > 1 ? validSession(item.review?.reviewerSession) : undefined,
       name: `${reviewer} · review ${item.id}`,
       choice: agentChoice(item, 'review'),
       output: this.deps.output,
@@ -549,7 +553,8 @@ export class ReviewLoop implements vscode.Disposable {
     const ticket = this.deps.backlog.docPath(item.id);
     // Its chat (as the repository sees it now: it may be open and busy), unless a new agent is asked for.
     const known = this.chatById(review.implementerSession) ?? this.chatOf(review.implementer);
-    const chat = o.fresh ? undefined : (known ?? (review.implementerSession ? { id: review.implementerSession, cwd: undefined, state: 'done' } : undefined));
+    const session = validSession(review.implementerSession);
+    const chat = o.fresh ? undefined : (known ?? (session ? { id: session, cwd: undefined, state: 'done' } : undefined));
     if (chat && (chat.state === 'working' || chat.state === 'waiting-for-input') && !isRunningHeadless(chat.id)) {
       await this.stopLoop(item.id, `${review.implementer} is still busy in its chat: give it the request there, or hand it to a new agent.`, { kind: 'busy', task });
       return;

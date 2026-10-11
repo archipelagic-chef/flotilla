@@ -43,9 +43,26 @@ export function describeChoice(c: AgentChoice): string {
   return parts.length ? ` (${parts.join(', ')})` : '';
 }
 
-/** The Claude Code CLI's flags for a choice. */
+/**
+ * A model name as the CLI takes it: an alias or a model id, nothing else. The choice is read from backlog.json, which
+ * agents can write: a value like "--dangerously-skip-permissions" must never reach the command line as an option.
+ */
+export function validModel(model: string | undefined): string | undefined {
+  return model && /^[A-Za-z0-9][A-Za-z0-9._:[\]/@-]{0,99}$/.test(model) ? model : undefined;
+}
+
+/** A chat session id (a UUID), as --resume takes it; anything else is refused. */
+export function validSession(id: string | undefined): string | undefined {
+  return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : undefined;
+}
+
+const PERMISSION_MODES: readonly AgentPermissionMode[] = ['auto', 'acceptEdits', 'dontAsk', 'bypassPermissions'];
+
+/** The Claude Code CLI's flags for a choice (invalid parts left out). */
 export function choiceArgs(c: AgentChoice): string[] {
-  return [...(c.model ? ['--model', c.model] : []), ...(c.effort ? ['--effort', c.effort] : [])];
+  const model = validModel(c.model);
+  const effort = c.effort && AGENT_EFFORTS.includes(c.effort) ? c.effort : undefined;
+  return [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
 }
 
 /** The text of a run's JSON result (what it said last), if it printed one. */
@@ -92,8 +109,11 @@ export function runAgentHeadless(o: {
   choice?: AgentChoice;
   output: vscode.OutputChannel;
 }): AgentRun {
+  // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
+  if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
   const sessionId = o.resume ?? crypto.randomUUID();
-  const mode = vscode.workspace.getConfiguration('flotilla').get<AgentPermissionMode>('agents.permissionMode', 'auto');
+  const configured = vscode.workspace.getConfiguration('flotilla').get<string>('agents.permissionMode', 'auto');
+  const mode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
   const args = [
     '-p',
     o.prompt,

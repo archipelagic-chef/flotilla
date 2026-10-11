@@ -1327,6 +1327,7 @@
         },
         "flotilla.agents.permissionMode": {
           "type": "string",
+          "scope": "machine",
           "enum": ["auto", "acceptEdits", "dontAsk", "bypassPermissions"],
           "enumDescriptions": [
             "Claude Code decides what's safe to do without asking (auto mode).",
@@ -1335,7 +1336,7 @@
             "Everything is allowed. Only in a sandbox (a dev container you can throw away)."
           ],
           "default": "auto",
-          "markdownDescription": "What agents Flotilla runs without a window (reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused."
+          "markdownDescription": "What agents Flotilla runs without a window (the autopilot's, reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused. Set in your user settings only: a repository can't change it."
         },
         "flotilla.agents.model": {
           "type": "string",
@@ -1370,8 +1371,9 @@
         },
         "flotilla.agents.claudePath": {
           "type": "string",
+          "scope": "machine",
           "default": "",
-          "markdownDescription": "The Claude Code CLI to run agents with. Empty: the one the Claude Code extension comes with, else `claude` on the PATH."
+          "markdownDescription": "The Claude Code CLI to run agents with. Empty: the one the Claude Code extension comes with, else `claude` on the PATH. Set in your user settings only: a repository can't change it."
         },
         "flotilla.backlog.agentTickets": {
           "type": "string",

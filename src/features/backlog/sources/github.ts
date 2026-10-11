@@ -41,6 +41,9 @@ export class GitHubSource implements IssueSource {
     private readonly token: () => Promise<string>,
     private readonly fetch: Fetch,
   ) {
+    // Names only (the config file is in the backlog's folder, which agents can write): no paths into other API routes.
+    const name = (n: string) => /^[A-Za-z0-9_.-]+$/.test(n) && n !== '.' && n !== '..';
+    if (!name(config.owner) || !name(config.repo)) throw new Error(`Not a GitHub repository: ${config.owner}/${config.repo}.`);
     this.label = `GitHub ${config.owner}/${config.repo}`;
   }
 

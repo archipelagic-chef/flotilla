@@ -206,3 +206,13 @@ describe('editing issues', () => {
     expect(calls.at(-1)).toMatchObject({ method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }) });
   });
 });
+
+describe('GitHub repository names', () => {
+  it("can't lead into other API routes", async () => {
+    const { GitHubSource } = await import('../../../src/features/backlog/sources/github');
+    const make = (owner: string, repo: string) => () => new GitHubSource({ kind: 'github', id: 'g', owner, repo, prefix: 'GH' } as never, async () => 't', (async () => ({})) as never);
+    expect(make('acme', 'web.app')).not.toThrow();
+    expect(make('..', 'users')).toThrow();
+    expect(make('acme', 'x/../../user')).toThrow();
+  });
+});

@@ -22,7 +22,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { agentChoice } from './agentRunner';
+import { agentChoice, validModel } from './agentRunner';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -745,6 +745,10 @@ export class TicketPanels implements vscode.Disposable {
             })
           )?.trim();
           if (model === undefined) return;
+        }
+        if (model && !validModel(model)) {
+          void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
+          return;
         }
         await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined }) : i)) }));
         break;

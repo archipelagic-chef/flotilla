@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -175,7 +176,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
-  const autopilot = new Autopilot({ backlog, repository, reviews, leader, output, prepareWorktree: (item) => prepareItemWorktree(ctx, item) });
+  let autopilotKey: Promise<string> | undefined;
+  const autopilot = new Autopilot({
+    backlog,
+    repository,
+    reviews,
+    leader,
+    output,
+    prepareWorktree: (item) => prepareItemWorktree(ctx, item),
+    // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
+    key: () =>
+      (autopilotKey ??= (async () => {
+        let key = await context.secrets.get('flotilla.autopilot.key');
+        if (!key) {
+          key = crypto.randomBytes(32).toString('hex');
+          await context.secrets.store('flotilla.autopilot.key', key);
+        }
+        return key;
+      })()),
+  });
   context.subscriptions.push(
     autopilot,
     leader.start(() => {

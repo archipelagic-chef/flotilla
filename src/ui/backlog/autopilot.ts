@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -18,6 +19,11 @@ export interface AutopilotDeps {
   reviews: ReviewLoop;
   leader: Leader;
   output: vscode.OutputChannel;
+  /**
+   * The key that signs the switch (from VS Code's secret storage): agents can write the backlog's folder, but can't
+   * turn the autopilot on.
+   */
+  key(): Promise<string>;
   /** A worktree for an item, ready for an agent (created without asking; undefined if it can't be). */
   prepareWorktree(item: BacklogItem): Promise<Workstream | undefined>;
 }
@@ -55,13 +61,33 @@ export class Autopilot implements vscode.Disposable {
   private waitingUntil: Date | undefined;
 
   constructor(private readonly deps: AutopilotDeps) {
-    const watch = deps.backlog.watch(() => {
-      this.changed.fire();
-      void this.tick();
-    });
+    const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
     const timer = setInterval(() => void this.tick(), 30_000);
     this.subscriptions.push({ dispose: () => watch.dispose() }, { dispose: () => clearInterval(timer) }, this.changed);
-    void this.tick();
+    void this.refresh().then(() => this.tick());
+  }
+
+  /** Whether it's on: the switch says so, signed with this machine's key (cached; read again when files change). */
+  private on = false;
+
+  private sign(key: string, enabled: boolean): string {
+    return crypto.createHmac('sha256', key).update(`flotilla-autopilot:${this.deps.backlog.dir}:${enabled}`).digest('hex');
+  }
+
+  private async refresh(): Promise<void> {
+    let on = false;
+    try {
+      const data = JSON.parse(await fs.promises.readFile(this.file, 'utf8')) as { enabled?: unknown; mac?: unknown };
+      const mac = typeof data.mac === 'string' ? data.mac : '';
+      const expected = this.sign(await this.deps.key(), true);
+      on = data.enabled === true && mac.length === expected.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected));
+    } catch {
+      on = false;
+    }
+    if (on !== this.on) {
+      this.on = on;
+      this.changed.fire();
+    }
   }
 
   dispose(): void {
@@ -73,11 +99,7 @@ export class Autopilot implements vscode.Disposable {
   }
 
   get enabled(): boolean {
-    try {
-      return (JSON.parse(fs.readFileSync(this.file, 'utf8')) as { enabled?: unknown }).enabled === true;
-    } catch {
-      return false;
-    }
+    return this.on;
   }
 
   private get max(): number {
@@ -86,7 +108,9 @@ export class Autopilot implements vscode.Disposable {
 
   async setEnabled(enabled: boolean): Promise<void> {
     await this.deps.backlog.ensureDir();
-    await fs.promises.writeFile(this.file, `${JSON.stringify({ enabled }, null, 1)}\n`);
+    const mac = this.sign(await this.deps.key(), enabled);
+    await fs.promises.writeFile(this.file, `${JSON.stringify({ enabled, mac }, null, 1)}\n`);
+    await this.refresh();
     this.changed.fire();
     if (enabled) {
       // This window runs it, unless another one leads.
