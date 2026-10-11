@@ -157,15 +157,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // Dragging a proposal into a lane accepts it.
         await store.change((d) => acceptItem(moveItem(d, m.id, m.status, m.before), m.id));
         break;
-      case 'delete': {
-        const item = (await store.read()).items.find((i) => i.id === m.id);
-        if (!item) return;
-        const choice = await vscode.window.showWarningMessage(`Delete ${item.id} '${item.title}' from the backlog?`, { modal: true }, 'Delete');
-        if (choice !== 'Delete') return;
-        await store.change((d) => removeItem(d, m.id));
-        await store.deleteDocument(m.id);
-        break;
-      }
+      case 'delete':
+        await vscode.commands.executeCommand('flotilla.deleteBacklogItem', m.id);
+        return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;
@@ -177,6 +171,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'link':
         await vscode.commands.executeCommand('flotilla.linkBacklogItem', m.id);
+        return;
+      case 'run':
+        await vscode.commands.executeCommand('flotilla.runBacklogItem', m.id);
         return;
       case 'accept':
         await store.change((d) => acceptItem(d, m.id));

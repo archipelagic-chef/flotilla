@@ -6,7 +6,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -28,6 +28,7 @@ import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
 import type { ChangeGroup, Target } from '../webview/protocol';
+import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
 import { claudeHookConfig } from './claudeHooks';
@@ -115,11 +116,17 @@ export function registerCommands(ctx: CommandContext): void {
 
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
-  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
-  register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
+  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts));
+  register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, backlogIdOf(id)));
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.planBacklog', () => planBacklog(ctx));
-  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
+  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
+  // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
+  register('flotilla.startBacklogItemFromCard', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }));
+  register('flotilla.renameBacklogItem', (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)));
+  register('flotilla.deleteBacklogItem', (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)));
+  register('flotilla.selectBacklogWorktree', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false));
+  register('flotilla.openBacklogWorktreeInNewWindow', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true));
   // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
   register('flotilla.ci.fixWithAgent', (failure?: unknown) => fixWithAgent(ctx, failure));
   const cleanUp: CleanUpDeps = {
@@ -139,7 +146,10 @@ export function registerCommands(ctx: CommandContext): void {
       typeof text === 'string' ? text : undefined,
     ),
   );
-  register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
+  register('flotilla.openBacklogItem', (id?: unknown) => {
+    const itemId = backlogIdOf(id);
+    return itemId && ctx.tickets.open(itemId);
+  });
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
   register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
@@ -403,7 +413,7 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
     if (key) ctx.sidebar.reveal(key);
     return;
   }
-  const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  const linked = linkedWorktrees(item, ctx.repository.current);
   let ws: Workstream | undefined;
   if (!linked.length) {
     ws = await newItemWorktree(ctx, item, false);
@@ -429,6 +439,55 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   if (!remote) await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
+}
+
+/**
+ * Makes an item's worktree the sidebar's active tab, or opens it in a new window (BL-21, the card's menu). With
+ * several worktrees (an epic), the user picks one.
+ */
+async function selectBacklogWorktree(ctx: CommandContext, id: string | undefined, newWindow: boolean): Promise<void> {
+  if (!id) return;
+  const found = await findBacklogItem(ctx, id);
+  if (!found) return;
+  const linked = linkedWorktrees(found.item, ctx.repository.current);
+  let ws: Workstream | undefined = linked[0];
+  if (linked.length > 1) {
+    type Pick = vscode.QuickPickItem & { ws: Workstream };
+    const now = new Date();
+    const picked = await vscode.window.showQuickPick<Pick>(
+      linked.map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, detail: describeWorkstream(w, now), ws: w })),
+      { title: `Worktrees of ${id}`, placeHolder: newWindow ? 'Open which worktree in a new window?' : 'Show which worktree?' },
+    );
+    ws = picked?.ws;
+  }
+  if (!ws?.worktree.path) return;
+  if (newWindow) await openWorktree(ctx, ws.worktree.path, true);
+  else ctx.sidebar.reveal(ws.key);
+}
+
+/** Renames a local item in an input box (the card's menu); the title is the one thing it changes. */
+async function renameBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  const title = await vscode.window.showInputBox({
+    title: `Rename ${id}`,
+    value: item.title,
+    validateInput: (value) => (value.trim() ? undefined : 'A title is needed'),
+  });
+  if (!title?.trim() || title.trim() === item.title) return;
+  await ctx.backlog.change((d) => updateItem(d, id, { title: title.trim() }));
+}
+
+/** Deletes a local item and its ticket, after a confirmation (the card's menu and the sidebar's trash button). */
+async function deleteBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  const choice = await vscode.window.showWarningMessage(`Delete ${item.id} '${item.title}' from the backlog?`, { modal: true }, 'Delete');
+  if (choice !== 'Delete') return;
+  await ctx.backlog.change((d) => removeItem(d, id));
+  await ctx.backlog.deleteDocument(id);
 }
 
 /** Readers of flotilla.backlog.commitPrefix. */
