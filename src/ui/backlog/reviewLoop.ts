@@ -501,7 +501,7 @@ export class ReviewLoop implements vscode.Disposable {
     if (!item) return;
     const ticket = await this.deps.backlog.readTicket(item);
     const entry = { date: entryDate(new Date()), author: 'You', body: userReviewBody(verdict, text) };
-    await this.deps.backlog.writeTicket(id, { ...ticket, activity: [...ticket.activity, entry] });
+    await this.deps.backlog.appendActivity(item, entry);
     const handled = [...(item.review?.handled ?? []), this.key(id)(entry)];
     if (verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'approved', byUser: true, reason: undefined, handled }));
