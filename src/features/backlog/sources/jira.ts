@@ -8,6 +8,7 @@ import {
   type RemoteDetails,
   type RemoteEditOptions,
   type RemoteIssue,
+  TIMEOUT_MS,
 } from './source';
 
 type JiraConfig = Extract<IntegrationConfig, { kind: 'jira' }>;
@@ -91,6 +92,29 @@ export class JiraSource implements IssueSource {
       url: `${this.site}/browse/${i.key}`,
       source: this.config.id,
     };
+  }
+
+  /** Jira's attachments (and other images on its site) need the login: fetched with it. */
+  async image(src: string): Promise<{ type: string; data: Buffer } | undefined> {
+    let url: URL;
+    try {
+      url = new URL(src, `${this.site}/`);
+    } catch {
+      return undefined;
+    }
+    if (url.origin !== new URL(this.site).origin) return undefined;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    try {
+      const res = await this.fetch(url.toString(), { headers: { Accept: 'image/*', ...this.headers() }, signal: abort.signal });
+      if (!res.ok || !res.arrayBuffer) return undefined;
+      const type = res.headers?.get('content-type')?.split(';')[0].trim() ?? 'image/png';
+      if (!type.startsWith('image/')) return undefined;
+      const data = Buffer.from(await res.arrayBuffer());
+      return data.length <= 10 * 1024 * 1024 ? { type, data } : undefined;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async list(): Promise<RemoteIssue[]> {

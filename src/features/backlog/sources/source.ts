@@ -82,6 +82,8 @@ export interface IssueSource {
   /** description in the tracker's markup; priority by name. */
   update(id: string, change: { title?: string; description?: string; priority?: string }): Promise<void>;
   create(target: CreateTarget, title: string, description: string): Promise<RemoteIssue>;
+  /** An image its pages show that needs its login (src as in its HTML); undefined if it isn't one of its own. */
+  image?(src: string): Promise<{ type: string; data: Buffer } | undefined>;
 }
 
 /** fetch, injectable for tests. */
@@ -91,6 +93,8 @@ export type Fetch = (url: string, init?: { method?: string; headers?: Record<str
   statusText: string;
   json(): Promise<unknown>;
   text(): Promise<string>;
+  arrayBuffer?(): Promise<ArrayBuffer>;
+  headers?: { get(name: string): string | null };
 }>;
 
 /** How long a tracker gets to answer. */

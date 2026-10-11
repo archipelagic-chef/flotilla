@@ -7,7 +7,7 @@ describe('the autopilot', () => {
     const { nextForAutopilot } = await import('../../../src/ui/backlog/autopilot');
     const at = '2026-10-11T00:00:00Z';
     const data = {
-      version: 1,
+      version: 1 as const,
       next: 1,
       items: [
         { id: 'BL-1', title: 'Doing', status: 'doing' as const, created: at },

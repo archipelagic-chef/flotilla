@@ -42,7 +42,7 @@ export interface TicketDeps {
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
-async function renderMarkdown(text: string, webview: vscode.Webview, dir: string): Promise<string> {
+async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
   if (!text.trim()) return '';
   let html: string;
   try {
@@ -53,11 +53,59 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
   // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
-  return html.replace(/(<img\b[^>]*?\ssrc=")([^"]+)(")/g, (m, a: string, src: string, c: string) => {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')) return m;
-    const file = path.resolve(dir, decodeURIComponent(src));
-    if (!file.startsWith(dir + path.sep)) return m;
-    return `${a}${webview.asWebviewUri(vscode.Uri.file(file)).toString()}${c}`;
+  // Others, in the repository (from its root: the ticket's worktrees, then the main one) or anywhere on disk, are
+  // embedded.
+  return replaceImages(html, async (src) => {
+    if (/^(https?|data):/i.test(src) || src.startsWith('//')) return undefined;
+    let rel = src;
+    try {
+      rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
+    } catch {
+      // As written.
+    }
+    const besideTicket = path.resolve(dir, rel);
+    if (besideTicket.startsWith(dir + path.sep) && fs.existsSync(besideTicket)) return webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString();
+    const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
+    for (const file of candidates) {
+      const uri = await imageDataUri(file);
+      if (uri) return uri;
+    }
+    return undefined;
+  });
+}
+
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+};
+
+/** An image file as a data: URI (at most MAX_IMAGE_BYTES); undefined if it isn't one, or isn't there. */
+async function imageDataUri(file: string): Promise<string | undefined> {
+  const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
+  if (!type) return undefined;
+  try {
+    const stat = await fs.promises.stat(file);
+    if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return undefined;
+    return `data:${type};base64,${(await fs.promises.readFile(file)).toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Replaces the images' sources in html (src: the new one, or undefined to keep it). */
+export async function replaceImages(html: string, src: (current: string) => Promise<string | undefined>): Promise<string> {
+  const pattern = /(<img\b[^>]*?\ssrc=")([^"]+)(")/g;
+  const found = [...new Set([...html.matchAll(pattern)].map((m) => m[2].replace(/&amp;/g, '&')))];
+  const replaced = new Map(await Promise.all(found.map(async (s) => [s, await src(s).catch(() => undefined)] as const)));
+  return html.replace(pattern, (m, a: string, s: string, c: string) => {
+    const next = replaced.get(s.replace(/&amp;/g, '&'));
+    return next ? `${a}${next}${c}` : m;
   });
 }
 
@@ -239,7 +287,7 @@ export class TicketPanels implements vscode.Disposable {
         const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
         return {
           ...e,
-          html: await renderMarkdown(e.body, webview, this.deps.backlog.dir),
+          html: await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item)),
           key,
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
@@ -300,6 +348,30 @@ export class TicketPanels implements vscode.Disposable {
   }
 
 
+  /** Where a ticket's images and links are looked for: its worktrees, then the main one. */
+  private roots(item: BacklogItem): string[] {
+    return [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot];
+  }
+
+  /** Images in a tracker's HTML that need its login (Jira's attachments), fetched with it and embedded; cached. */
+  private readonly trackerImageCache = new Map<string, Promise<string | undefined>>();
+
+  private async trackerImages(issue: string, html: string): Promise<string> {
+    if (!html.includes('<img')) return html;
+    const source = await this.source(issue).catch(() => undefined);
+    if (!source?.image) return html;
+    return replaceImages(html, (src) => {
+      let cached = this.trackerImageCache.get(src);
+      if (!cached) {
+        cached = source.image!(src).then((img) => img && `data:${img.type};base64,${img.data.toString('base64')}`);
+        // A failure is tried again next time.
+        cached.catch(() => undefined).then((v) => v === undefined && this.trackerImageCache.delete(src));
+        this.trackerImageCache.set(src, cached);
+      }
+      return cached;
+    });
+  }
+
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
   private async remoteView(
     item: BacklogItem & { remote: RemoteIssue },
@@ -315,12 +387,12 @@ export class TicketPanels implements vscode.Disposable {
           date: entryDate(new Date(c.date)),
           author: c.author,
           body: c.body,
-          html: c.format === 'html' ? c.body : await renderMarkdown(c.body, webview, dir),
+          html: c.format === 'html' ? await this.trackerImages(item.id, c.body) : await renderMarkdown(c.body, webview, dir, this.roots(item)),
         })),
       );
       return {
         description: d.descriptionText,
-        descriptionHtml: d.format === 'html' ? d.description : await renderMarkdown(d.description, webview, dir),
+        descriptionHtml: d.format === 'html' ? await this.trackerImages(item.id, d.description) : await renderMarkdown(d.description, webview, dir, this.roots(item)),
         activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
         edit,
         priorityName: d.issue.priorityName,
@@ -372,7 +444,7 @@ export class TicketPanels implements vscode.Disposable {
         send({
           ...base,
           description: ticket.description,
-          descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir),
+          descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
           activity: await this.localEntries(item, ticket.activity, panel.webview),
         });
       }
