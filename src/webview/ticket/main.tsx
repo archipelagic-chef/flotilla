@@ -1,6 +1,6 @@
 import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
+import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
@@ -1065,11 +1065,16 @@ const AGENT_STATE_CLASS: Record<string, string | undefined> = {
 };
 
 function App() {
-  const [ticket, setTicket] = useState<TicketView>();
+  const [received, setTicket] = useState<TicketView>();
+  // What was just picked (status, priority) shows at once; the view the host sends after the action is the truth.
+  const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
-      if (m.type === 'ticket') setTicket(m.ticket);
+      if (m.type === 'ticket') {
+        setTicket(m.ticket);
+        setPicked({});
+      }
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
@@ -1079,7 +1084,15 @@ function App() {
     send({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
   }, []);
-  if (!ticket) return <div class="empty-text">Loading…</div>;
+  if (!received) return <div class="empty-text">Loading…</div>;
+  const ticket: TicketView =
+    picked.status || picked.priority !== undefined
+      ? { ...received, item: { ...received.item, ...(picked.status ? { status: picked.status } : {}), ...(picked.priority !== undefined ? { priority: picked.priority ?? undefined } : {}) } }
+      : received;
+  const pick = (change: typeof picked, message: TicketWebviewMessage) => {
+    setPicked((p) => ({ ...p, ...change }));
+    send(message);
+  };
   const worktrees = ticket.worktrees;
   const done = ticket.item.status === 'done';
   return (
@@ -1099,7 +1112,7 @@ function App() {
           ) : (
             <div class="segmented" role="radiogroup" aria-label="Status">
               {STATUSES.map((s) => (
-                <button key={s.status} role="radio" aria-checked={ticket.item.status === s.status} onClick={() => send({ type: 'status', status: s.status })}>
+                <button key={s.status} role="radio" aria-checked={ticket.item.status === s.status} onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}>
                   <i class={`codicon codicon-${s.icon}`} /> {s.label}
                 </button>
               ))}
@@ -1135,7 +1148,7 @@ function App() {
           {ticket.remote?.edit?.priorities ? (
             <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
           ) : (
-            <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => send({ type: 'priority', priority })} />
+            <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })} />
           )}
           {!ticket.remote && <AgentPicker ticket={ticket} />}
           {ticket.links.map((l) => (
