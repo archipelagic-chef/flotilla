@@ -8,12 +8,18 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { seedPlayground } from './playground-seed.mjs';
 import { describeDebugProfile, fakesArg, syncDebugProfile } from './debug-profile.mjs';
 
 // Every run, the debug window's own profile is made ready (it doesn't use the user's VS Code profile); --fakes and
 // --no-fakes switch the fake Claude and GitHub on and off.
 console.log(describeDebugProfile(syncDebugProfile({ fakes: fakesArg() })));
+
+// The seed takes the app's code from dist/, which `npm run build` makes (the launch configurations run it first).
+if (!fs.existsSync(fileURLToPath(new URL('../dist/playground-seed-kit.mjs', import.meta.url)))) {
+  console.error('The playground needs the build first: run `npm run build`, then `npm run playground` again.');
+  process.exit(1);
+}
+const { seedPlayground } = await import('./playground-seed.mjs');
 
 // Bump when this script changes what a new playground looks like or how it is built.
 const PLAYGROUND_VERSION = 1;
