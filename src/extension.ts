@@ -136,7 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     integrations,
   });
   const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
-    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
+    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState,
   });
   context.subscriptions.push(tickets);
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).

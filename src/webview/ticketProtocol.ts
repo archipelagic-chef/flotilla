@@ -93,6 +93,8 @@ export interface TicketView {
   canCleanUp: boolean;
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
+  /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
+  showActivity: boolean;
 }
 
 export type TicketHostMessage =
@@ -153,4 +155,6 @@ export type TicketWebviewMessage =
   | { type: 'cancelCleanUp' }
   | { type: 'compareCleanUp' }
   /** Create a worktree for a branch of the item that has none. */
-  | { type: 'checkout'; branch: string };
+  | { type: 'checkout'; branch: string }
+  /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
+  | { type: 'showActivity'; shown: boolean };
