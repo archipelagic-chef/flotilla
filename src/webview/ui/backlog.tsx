@@ -261,7 +261,8 @@ function NeedRow({ item }: { item: BacklogItem }) {
       title={NEED_TITLE[need.kind]}
       onClick={open}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') open();
+        // Enter on one of the row's buttons is theirs: only the row itself opens the ticket.
+        if (e.key === 'Enter' && e.target === e.currentTarget) open();
       }}
     >
       <i class={`codicon codicon-${NEED_ICON[need.kind]} need-icon`} />
