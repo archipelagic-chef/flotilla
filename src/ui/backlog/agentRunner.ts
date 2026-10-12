@@ -122,15 +122,15 @@ export function startingMemoryMB(): number {
 }
 
 /**
- * Takes an agent's memory off the free memory from now: call it where the memory check passes, before the first await,
- * so another start checked meanwhile sees it. The slot goes to runAgentHeadless (or releaseStart, if the start is given
- * up).
+ * Takes an agent's memory off the free memory from now, until its agent spawns (runAgentHeadless takes the slot) or the
+ * start is given up (releaseStart). Call it where the memory check passes, before the first await, so another start
+ * checked meanwhile sees it.
  */
 export function reserveStart(): number {
-  return starting.begin();
+  return starting.reserve();
 }
 
-/** Gives a reserved slot back (a start given up before its agent spawned). */
+/** Gives a reserved slot back (a start given up before its agent spawned). Harmless when it's already given back. */
 export function releaseStart(slot: number | undefined): void {
   if (slot !== undefined) starting.end(slot);
 }
@@ -165,7 +165,7 @@ export function runAgentHeadless(o: {
   name: string;
   choice?: AgentChoice;
   output: vscode.OutputChannel;
-  /** The start's reserved slot (see reserveStart); without one, the start counts from its spawn. */
+  /** The start's reserved slot (see reserveStart); without one, the start counts from now. */
   slot?: number;
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
@@ -194,6 +194,7 @@ export function runAgentHeadless(o: {
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
   const start = o.slot ?? starting.begin();
+  if (o.slot !== undefined) starting.spawned(o.slot);
   let stderr = '';
   let stdout = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
