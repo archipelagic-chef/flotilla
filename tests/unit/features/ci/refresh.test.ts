@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CI_ACTIVE_INTERVAL_MS, CI_INTERVAL_MS, anyRunActive, ciStamp, refreshDelay } from '../../../../src/features/ci/refresh';
+import { CI_ACTIVE_INTERVAL_MS, CI_INTERVAL_MS, anyDeploymentActive, anyRunActive, ciStamp, refreshDelay } from '../../../../src/features/ci/refresh';
+import type { CiDeployment } from '../../../../src/features/ci/githubDeployments';
 import type { CiRun } from '../../../../src/features/ci/githubActions';
 
 describe('refreshDelay', () => {
@@ -40,5 +41,15 @@ describe('anyRunActive', () => {
   it('is false when every run has finished, or there are none', () => {
     expect(anyRunActive([run('success'), run('failure'), run('cancelled')])).toBe(false);
     expect(anyRunActive([])).toBe(false);
+  });
+});
+
+describe('anyDeploymentActive', () => {
+  const deployment = (state: CiDeployment['state']): CiDeployment => ({ id: 1, environment: 'staging', state, sha: 'abc', created: '2026-10-10T10:00:00Z', url: 'https://github.com/a/b' });
+
+  it('is true while a deployment is in progress, and only then', () => {
+    expect(anyDeploymentActive([deployment('success'), deployment('in_progress')])).toBe(true);
+    expect(anyDeploymentActive([deployment('success'), deployment('failure'), deployment('inactive')])).toBe(false);
+    expect(anyDeploymentActive([])).toBe(false);
   });
 });

@@ -61,16 +61,26 @@ function remotes(urls: Record<string, string> = { origin: GITHUB }) {
  * GitHub answers with each branch's runs (runs.feat, …); the object can change between reads. options.status makes it
  * refuse; options.hold makes it wait until release() (a read still in flight).
  */
-function github(runs: Record<string, ApiRun[]> = { feat: [apiRun()] }, options: { status?: number; hold?: boolean } = {}) {
+function github(
+  runs: Record<string, ApiRun[]> = { feat: [apiRun()] },
+  options: { status?: number; hold?: boolean; deployments?: Record<string, unknown[]>; deploymentsStatus?: number } = {},
+) {
   let release!: () => void;
   const gate = options.hold ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
   const fetch = vi.fn(async (url: string) => {
     await gate;
-    const ok = options.status === undefined;
-    const body = JSON.stringify({ workflow_runs: runs[new URL(url).searchParams.get('branch') ?? ''] ?? [] });
+    const u = new URL(url);
+    // Deployments: a branch's list (deployments.feat), and each deployment's statuses (deployments.statuses-<id>).
+    const deploymentRoute = u.pathname.includes('/deployments');
+    const status = deploymentRoute ? (options.deploymentsStatus ?? options.status) : options.status;
+    const ok = status === undefined;
+    const payload = deploymentRoute
+      ? (options.deployments?.[u.pathname.endsWith('/statuses') ? `statuses-${u.pathname.split('/')[5]}` : (u.searchParams.get('ref') ?? '')] ?? [])
+      : { workflow_runs: runs[u.searchParams.get('branch') ?? ''] ?? [] };
+    const body = JSON.stringify(payload);
     return {
       ok,
-      status: options.status ?? 200,
+      status: status ?? 200,
       statusText: ok ? 'OK' : 'Server Error',
       json: async () => JSON.parse(body),
       text: async () => (ok ? body : 'boom'),
@@ -102,6 +112,9 @@ function setup() {
   const last = () => post.mock.lastCall?.[0] as Record<string, CiView>;
   return { ci, post, last };
 }
+
+/** How many reads of the runs GitHub got (a read of a branch is also a read of its deployments). */
+const runReads = (fetch: { mock: { calls: unknown[][] } }) => fetch.mock.calls.filter(([url]) => String(url).includes('/actions/runs')).length;
 
 /** Lets the reads that are waiting on each other finish (a read takes several awaits). */
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -172,7 +185,7 @@ describe('CiRuns: what each worktree shows', () => {
     await ci.signIn();
 
     expect(auth.getSession).toHaveBeenCalledWith('github', ['repo'], { createIfNone: true });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
     expect(last().a.kind).toBe('runs');
     ci.dispose();
   });
@@ -255,7 +268,7 @@ describe('CiRuns: what each worktree shows', () => {
     ci.setVisible(true);
     await settle();
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
     expect(last().a.kind).toBe('runs');
     expect(last().b.kind).toBe('runs');
     ci.dispose();
@@ -327,10 +340,10 @@ describe('CiRuns: when it reads', () => {
     const { ci } = setup();
     ci.update([ws('a')]);
     await ci.refresh();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
 
     await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
     ci.dispose();
   });
 
@@ -340,12 +353,12 @@ describe('CiRuns: when it reads', () => {
     ci.update([ws('a')]);
     ci.setVisible(true);
     await settle();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
 
     await vi.advanceTimersByTimeAsync(59_999);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(runReads(fetch)).toBe(2);
     ci.dispose();
   });
 
@@ -355,19 +368,19 @@ describe('CiRuns: when it reads', () => {
     ci.update([ws('a')]);
     ci.setVisible(true);
     await settle();
-    expect(reads.fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(reads.fetch)).toBe(1);
 
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(reads.fetch).toHaveBeenCalledTimes(2);
+    expect(runReads(reads.fetch)).toBe(2);
 
     // The run finishes: the read 10 seconds on sees it, and the one after waits a minute.
     reads.runs.feat = [apiRun()];
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(reads.fetch).toHaveBeenCalledTimes(3);
+    expect(runReads(reads.fetch)).toBe(3);
     await vi.advanceTimersByTimeAsync(59_999);
-    expect(reads.fetch).toHaveBeenCalledTimes(3);
+    expect(runReads(reads.fetch)).toBe(3);
     await vi.advanceTimersByTimeAsync(1);
-    expect(reads.fetch).toHaveBeenCalledTimes(4);
+    expect(runReads(reads.fetch)).toBe(4);
     ci.dispose();
   });
 
@@ -377,12 +390,12 @@ describe('CiRuns: when it reads', () => {
     ci.update([ws('a', { head: 'abc' }), ws('b', { head: 'abc', upstream: undefined })]);
     ci.setVisible(true);
     await settle();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
 
     ci.update([ws('a', { head: 'def' }), ws('b', { head: 'abc', upstream: undefined })]);
     await settle();
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(runReads(fetch)).toBe(2);
     ci.dispose();
   });
 
@@ -395,7 +408,7 @@ describe('CiRuns: when it reads', () => {
     ci.setVisible(false);
 
     await vi.advanceTimersByTimeAsync(5 * 60_000);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runReads(fetch)).toBe(1);
     ci.dispose();
   });
 
@@ -405,16 +418,77 @@ describe('CiRuns: when it reads', () => {
     ci.update([ws('a', { upstream: 'origin/active' }), ws('b', { upstream: 'origin/done' })]);
     ci.setVisible(true);
     await settle();
-    expect(reads.fetch).toHaveBeenCalledTimes(2);
+    expect(runReads(reads.fetch)).toBe(2);
 
     // a goes; the 10-second read due next reads only b, which has no run in progress, so the one after waits a minute.
     ci.update([ws('b', { upstream: 'origin/done' })]);
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(reads.fetch).toHaveBeenCalledTimes(3);
+    expect(runReads(reads.fetch)).toBe(3);
     await vi.advanceTimersByTimeAsync(59_999);
-    expect(reads.fetch).toHaveBeenCalledTimes(3);
+    expect(runReads(reads.fetch)).toBe(3);
     await vi.advanceTimersByTimeAsync(1);
-    expect(reads.fetch).toHaveBeenCalledTimes(4);
+    expect(runReads(reads.fetch)).toBe(4);
+    ci.dispose();
+  });
+});
+
+describe('CiRuns: deployments', () => {
+  const deployment = { id: 11, sha: 'abc1234def', environment: 'staging', created_at: '2026-10-10T10:00:00Z' };
+
+  it('shows the latest deployment of each environment of the branch, with its state and site', async () => {
+    github(
+      { feat: [apiRun()] },
+      { deployments: { feat: [deployment], 'statuses-11': [{ state: 'success', environment_url: 'https://staging.acme.test/' }] } },
+    );
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+
+    const view = last().a;
+    expect(view.kind).toBe('runs');
+    if (view.kind !== 'runs') return;
+    expect(view.deployments).toEqual([expect.objectContaining({ environment: 'staging', state: 'success', sha: 'abc1234def', siteUrl: 'https://staging.acme.test/' })]);
+    expect(view.deploymentsError).toBeUndefined();
+    ci.dispose();
+  });
+
+  it('has no deployments when the branch was never deployed', async () => {
+    github({ feat: [apiRun()] }, { deployments: { feat: [] } });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+
+    const view = last().a;
+    expect(view.kind === 'runs' && view.deployments).toEqual([]);
+    ci.dispose();
+  });
+
+  it('keeps the runs when only the deployments fail, and says why there are no deployments', async () => {
+    github({ feat: [apiRun()] }, { deploymentsStatus: 403 });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+
+    const view = last().a;
+    expect(view.kind).toBe('runs');
+    if (view.kind !== 'runs') return;
+    expect(view.runs.map((r) => r.number)).toEqual([7]);
+    expect(view.deployments).toEqual([]);
+    expect(view.deploymentsError).toBe('403 Server Error: boom');
+    ci.dispose();
+  });
+
+  it('shows the runs\' error, and no deployments, when the runs cannot be read', async () => {
+    github({ feat: [apiRun()] }, { status: 500 });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+
+    expect(last().a).toEqual({ kind: 'error', error: '500 Server Error: boom' });
     ci.dispose();
   });
 });

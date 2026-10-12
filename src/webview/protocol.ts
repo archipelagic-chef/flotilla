@@ -6,6 +6,7 @@ import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { CiRun } from '../features/ci/githubActions';
+import type { CiDeployment } from '../features/ci/githubDeployments';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -40,13 +41,16 @@ export interface CiRunView extends CiRun {
   current: boolean;
 }
 
-/** A worktree's CI/CD: its branch's latest runs on GitHub, or why there are none. */
+/**
+ * A worktree's CI/CD: its branch's latest runs and deployments on GitHub, or why there are none. Deployments are read
+ * apart from the runs: when they can't be read, the runs still show and deploymentsError says why.
+ */
 export type CiView =
   | { kind: 'signIn' }
   | { kind: 'unpublished' }
   | { kind: 'unsupported' }
   | { kind: 'error'; error: string }
-  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[] };
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
@@ -264,6 +268,7 @@ export type WebviewMessage =
   | { type: 'ci'; op: 'signIn' | 'refresh' }
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
+  | { type: 'openSite'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */

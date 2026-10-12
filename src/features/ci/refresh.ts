@@ -1,5 +1,6 @@
 import type { Workstream } from '../workstreams/workstream';
 import { isActive, type CiRun } from './githubActions';
+import type { CiDeployment } from './githubDeployments';
 
 /** The CI/CD view looks again every minute while the sidebar is visible… */
 export const CI_INTERVAL_MS = 60_000;
@@ -17,3 +18,6 @@ export const ciStamp = (ws: Pick<Workstream, 'sync'>): string => `${ws.sync.head
 
 /** Whether any of the runs is still going. */
 export const anyRunActive = (runs: readonly CiRun[]): boolean => runs.some((r) => isActive(r.status));
+
+/** Whether any deployment is still going (a deploy that is in progress is read again at the same pace as a run). */
+export const anyDeploymentActive = (deployments: readonly CiDeployment[]): boolean => deployments.some((d) => d.state === 'in_progress');
