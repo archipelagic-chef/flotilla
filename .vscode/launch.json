@@ -12,6 +12,15 @@
       "preLaunchTask": "flotilla: build + playground"
     },
     {
+      // Like the one above, but first moves .playground aside (to .playground.old-<date>) and builds a fresh one.
+      "name": "Run Extension (fresh playground)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/.playground"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "flotilla: build + fresh playground"
+    },
+    {
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
