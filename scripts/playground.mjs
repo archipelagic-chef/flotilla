@@ -9,6 +9,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedPlayground } from './playground-seed.mjs';
+import { describeDebugProfile, fakesArg, syncDebugProfile } from './debug-profile.mjs';
+
+// Every run, the debug window's own profile is made ready (it doesn't use the user's VS Code profile); --fakes and
+// --no-fakes switch the fake Claude and GitHub on and off.
+console.log(describeDebugProfile(syncDebugProfile({ fakes: fakesArg() })));
 
 // Bump when this script changes what a new playground looks like or how it is built.
 const PLAYGROUND_VERSION = 1;

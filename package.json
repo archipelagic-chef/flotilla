@@ -1654,6 +1654,7 @@
     "package": "vsce package",
     "playground": "node scripts/playground.mjs",
     "bench": "node scripts/bench-refresh.mjs",
+    "debug-profile": "node scripts/debug-profile.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
