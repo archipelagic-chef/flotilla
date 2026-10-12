@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
+import { acceptItem, agentChatItem, branchMatches, childrenOf, itemBranches, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -23,6 +23,10 @@ import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import { agentChoice, validModel } from './agentRunner';
+import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { openTarget } from '../../features/backlog/runTarget';
+import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
+import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -33,6 +37,9 @@ export interface TicketDeps {
   backlog: LocalBacklog;
   integrations: BacklogIntegrations;
   repository: Repository<Workstream>;
+  /** Run blocks: the approvals the user gave, and the terminals they run in. */
+  approvals: RunApprovals;
+  terminals: RunTerminals;
   /** Shows a worktree's tab in the sidebar. */
   revealWorktree(key: string): void;
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
@@ -40,6 +47,11 @@ export interface TicketDeps {
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/** A path's real location (through symlinks), or the path itself when there's no such file. */
+function realPath(p: string): string {
+  return fs.existsSync(p) ? fs.realpathSync(p) : p;
+}
 
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
 async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
@@ -157,12 +169,16 @@ export class TicketPanels implements vscode.Disposable {
     this.panels.forEach((p) => p.dispose());
   }
 
-  async open(id: string): Promise<void> {
+  /** Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes). */
+  private readonly focusOnPost = new WeakSet<vscode.WebviewPanel>();
+
+  async open(id: string, o: { focus?: 'comment' } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
     id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
     if (existing) {
       existing.reveal();
+      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
       return;
     }
     const item = await this.item(id);
@@ -176,6 +192,7 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
+    if (o.focus) this.focusOnPost.add(panel);
     panel.onDidDispose(() => this.panels.delete(id));
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
       this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
@@ -285,9 +302,10 @@ export class TicketPanels implements vscode.Disposable {
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
         const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
+        const html = await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
         return {
           ...e,
-          html: await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item)),
+          html: isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
           key,
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
@@ -421,6 +439,7 @@ export class TicketPanels implements vscode.Disposable {
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
       void panel.webview.postMessage(message);
+      if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents'> | undefined;
     try {
@@ -446,6 +465,7 @@ export class TicketPanels implements vscode.Disposable {
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
           activity: await this.localEntries(item, ticket.activity, panel.webview),
+          run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
         });
       }
     } catch (error) {
@@ -594,7 +614,7 @@ export class TicketPanels implements vscode.Disposable {
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
   private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
-    await this.deps.backlog.writeTicket(item.id, change(await this.deps.backlog.readTicket(item)));
+    await this.deps.backlog.editTicket(item, change);
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
@@ -602,6 +622,115 @@ export class TicketPanels implements vscode.Disposable {
     const item = await this.item(id);
     if (!item) return;
     await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author, body: body.trim() });
+  }
+
+  /**
+   * Runs a run block of a ticket's reports (BL-24, BL-20; the command flotilla.runBacklogItem): the one `ref` names, or
+   * the ticket's run (its last block). It runs in the ticket's worktree: shell commands one after the other in that
+   * worktree's terminal, `launch` and `task` by name, and `open` a web link or a file of the worktree. The first time
+   * (and whenever the block or its worktree changed) it asks, showing what runs. The block is read from the ticket when
+   * it runs: one that's gone (its entry was edited) isn't run.
+   */
+  async run(id: string, ref?: { key: string; index: number }): Promise<void> {
+    const item = await this.item(id);
+    if (!item || item.remote) return;
+    const ticket = await this.deps.backlog.readTicket(item);
+    const picked = pickRunBlock(placedRunBlocks(ticket.activity, (e) => Store.entryKey(id, e)), ref);
+    if (!picked) {
+      void vscode.window.showWarningMessage(
+        ref ? `That run block of ${id} isn't in the ticket any more: its report changed. Use the ticket's Run button.` : `${id} has no run block: its agent didn't give one. Ask it for one, in a comment.`,
+      );
+      return;
+    }
+    if (!vscode.workspace.isTrusted) {
+      void vscode.window.showWarningMessage('Run blocks run only in a trusted workspace.');
+      return;
+    }
+    const { kind, title, lines } = picked.block;
+    if (kind === 'shell' && !lines.length) {
+      void vscode.window.showWarningMessage(`The run block "${title ?? id}" has no commands.`);
+      return;
+    }
+    const place = await this.runPlace(id, item);
+    if (!place) return;
+    // What an open block opens is checked before anyone is asked: a refused one doesn't get a dialog.
+    const target = lines[0] ?? title ?? '';
+    const opened = kind === 'open' ? openTarget(target, place.dir, realPath) : undefined;
+    if (opened && 'refused' in opened) {
+      void vscode.window.showWarningMessage(`${id}'s open block: ${opened.refused}.`);
+      return;
+    }
+    if (opened && 'file' in opened && !fs.existsSync(opened.file)) {
+      void vscode.window.showWarningMessage(`${target} isn't in ${place.dir}.`);
+      return;
+    }
+    // A launch or task needs its worktree in this window (added, or opened in a window of its own), and a name it has.
+    let folder: vscode.WorkspaceFolder | undefined;
+    if (kind === 'launch' || kind === 'task') {
+      folder = await folderFor(place.dir, this.deps.reference, place.label);
+      if (!folder) return;
+      const missing = await missingName(kind, folder, title);
+      if (missing) {
+        void vscode.window.showWarningMessage(missing);
+        return;
+      }
+    }
+    const fingerprint = runFingerprint(id, place.dir, picked.block);
+    const approved = this.deps.approvals.has(fingerprint);
+    if (!approved) {
+      const what = kind === 'shell' ? lines.join('\n') : kind === 'open' ? target : `${kind === 'launch' ? 'Launch configuration' : 'Task'} "${title ?? ''}"`;
+      const shown = kind === 'shell' ? `In ${place.dir}:\n\n${what}` : `${what}\n\nIn ${place.dir}`;
+      const answer = await vscode.window.showWarningMessage(`Run ${title ?? kind} for ${id}?`, { modal: true, detail: shown }, 'Run');
+      if (answer !== 'Run') return;
+    }
+    if (kind === 'shell') {
+      const terminal = await this.deps.terminals.forRun(id, place.dir);
+      if (!terminal) return;
+      terminal.show();
+      for (const line of lines) terminal.sendText(line);
+    } else if (folder && kind === 'launch') {
+      await startLaunch(folder, title ?? '');
+    } else if (folder && kind === 'task') {
+      await startTask(folder, title ?? '');
+    } else if (opened && 'url' in opened) {
+      await vscode.env.openExternal(vscode.Uri.parse(opened.url));
+    } else if (opened && 'file' in opened) {
+      await vscode.commands.executeCommand('vscode.open', toWorkspaceUri(this.deps.reference, opened.file), { preview: false });
+    }
+    // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
+    if (!approved) await this.deps.approvals.add(fingerprint);
+    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : 'ran';
+    await this.addActivity(id, 'Flotilla', `You ${verb} ${title ? `"${title}"` : `the ${kind} block`} in \`${place.label}\`.`);
+  }
+
+  /**
+   * The worktree a run block runs in: the ticket's worktree here (a pick when there are several). With none here, says
+   * why: its worktree isn't reachable from this window, or a branch's worktree is gone (then it offers to create one).
+   * Undefined when there's nothing to run in.
+   */
+  private async runPlace(id: string, item: BacklogItem): Promise<RunPlace | undefined> {
+    const worktrees = this.worktreesOf(item).map((w) => ({ branch: w.worktree.branch, path: w.worktree.path, adminDir: w.worktree.adminDir }));
+    const found = runPlaces(itemBranches(item), worktrees);
+    if (found.reachable.length === 1) return found.reachable[0];
+    if (found.reachable.length > 1) {
+      const picked = await vscode.window.showQuickPick(
+        found.reachable.map((p) => ({ label: p.label, description: p.dir, place: p })),
+        { title: `Run ${id} in Which Worktree?` },
+      );
+      return picked?.place;
+    }
+    if (found.unreachable.length) {
+      void vscode.window.showWarningMessage(`${id}'s worktree (${found.unreachable.join(', ')}) isn't reachable from this window: it's in another environment, so run the block there.`);
+      return undefined;
+    }
+    const branch = found.missing[0];
+    if (branch) {
+      const answer = await vscode.window.showWarningMessage(`${id}'s worktree for ${branch} is gone. Create one to run the block in?`, 'Create Worktree');
+      if (answer === 'Create Worktree') await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch });
+      return undefined;
+    }
+    void vscode.window.showWarningMessage(`${id} has no worktree to run it in: start it first.`);
+    return undefined;
   }
 
   private async onMessage(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
@@ -769,11 +898,14 @@ export class TicketPanels implements vscode.Disposable {
       case 'compareCleanUp':
         await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
         return;
+      case 'run':
+        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index });
+        return;
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;
       case 'startReview':
-        await this.reviews?.start(id);
+        await this.reviews?.start(id, true);
         return;
       case 'userReview':
         await this.reviews?.userReview(id, m.verdict, m.text);

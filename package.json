@@ -365,6 +365,11 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "flotilla.hideWorktrees",
+        "title": "Hide Worktrees from File Watching, Search and the Git Scan",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.toggleAutopilot",
         "title": "Toggle Autopilot (Agents Take To Do Tickets)",
         "category": "Flotilla",
@@ -391,6 +396,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.runBacklogItem",
+        "title": "Run a Ticket's Run Block",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.reviewBacklogItem",
         "title": "Review Ticket…",
         "category": "Flotilla"
@@ -398,6 +408,11 @@
       {
         "command": "flotilla.openBacklogItem",
         "title": "Open Backlog Ticket",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.fixBacklogReview",
+        "title": "Fix a Stopped Review",
         "category": "Flotilla"
       },
       {
@@ -411,6 +426,36 @@
         "title": "Link Backlog Item to an Issue…",
         "category": "Flotilla",
         "icon": "$(link)"
+      },
+      {
+        "command": "flotilla.runBacklogItem",
+        "title": "Run Backlog Item",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.startBacklogItemFromCard",
+        "title": "Start an Agent on Backlog Item",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.renameBacklogItem",
+        "title": "Rename Backlog Item…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.deleteBacklogItem",
+        "title": "Delete Backlog Item…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.selectBacklogWorktree",
+        "title": "Select Worktree of Backlog Item",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openBacklogWorktreeInNewWindow",
+        "title": "Open Worktree of Backlog Item in New Window",
+        "category": "Flotilla"
       },
       {
         "command": "flotilla.backlogIntegrations",
@@ -460,6 +505,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.showJobLog",
+        "title": "Show CI Job Log",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showNeedsYou",
+        "title": "Show Needs You…",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.closeTab",
         "title": "Close Tab",
         "category": "Flotilla",
@@ -483,8 +538,24 @@
         "icon": "$(expand-all)"
       }
     ],
+    "configurationDefaults": {
+      "files.watcherExclude": {
+        ".worktrees/**": true
+      },
+      "search.exclude": {
+        ".worktrees": true
+      },
+      "git.repositoryScanIgnoredFolders": [
+        "node_modules",
+        ".worktrees"
+      ]
+    },
     "menus": {
       "commandPalette": [
+        {
+          "command": "flotilla.showJobLog",
+          "when": "false"
+        },
         {
           "command": "flotilla.refresh",
           "when": "flotilla.state == ready"
@@ -758,6 +829,10 @@
           "when": "false"
         },
         {
+          "command": "flotilla.fixBacklogReview",
+          "when": "false"
+        },
+        {
           "command": "flotilla.cleanUpHistory",
           "when": "false"
         },
@@ -774,7 +849,35 @@
           "when": "false"
         },
         {
+          "command": "flotilla.runBacklogItem",
+          "when": "false"
+        },
+        {
           "command": "flotilla.linkBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.runBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.startBacklogItemFromCard",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.renameBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.deleteBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.selectBacklogWorktree",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.openBacklogWorktreeInNewWindow",
           "when": "false"
         },
         {
@@ -867,6 +970,51 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "flotilla.runBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogRunnable",
+          "group": "1_run@1"
+        },
+        {
+          "command": "flotilla.openBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "flotilla.selectBacklogWorktree",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogWorktree",
+          "group": "1_open@2"
+        },
+        {
+          "command": "flotilla.openBacklogWorktreeInNewWindow",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogWorktree",
+          "group": "1_open@3"
+        },
+        {
+          "command": "flotilla.startBacklogItemFromCard",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && !backlogDone",
+          "group": "2_work@1"
+        },
+        {
+          "command": "flotilla.writeBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
+          "group": "2_work@2"
+        },
+        {
+          "command": "flotilla.linkBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
+          "group": "2_work@3"
+        },
+        {
+          "command": "flotilla.renameBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
+          "group": "9_edit@1"
+        },
+        {
+          "command": "flotilla.deleteBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
+          "group": "9_edit@2"
+        },
         {
           "command": "flotilla.openInNewWindow",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;notCurrent;/",
@@ -1263,16 +1411,26 @@
           "minimum": 1,
           "description": "A 'working' agent report older than this is shown as last reported."
         },
-        "flotilla.notifyOnAttention": {
-          "type": "boolean",
-          "default": true,
-          "description": "Notify when a workstream starts waiting for input or reports an error."
+        "flotilla.notify": {
+          "type": "string",
+          "enum": [
+            "needsYou",
+            "all",
+            "off"
+          ],
+          "enumDescriptions": [
+            "One notification for what needs you (tickets asking a question, ready for review, approved, stopped; worktrees waiting for input or reporting an error), gathered for about a minute. Only the leading window shows it.",
+            "A notification for each of those as it happens.",
+            "No notifications. The Needs you count in the status bar still shows."
+          ],
+          "default": "needsYou",
+          "description": "Which notifications Flotilla shows for what needs you."
         },
         "flotilla.pollSeconds": {
           "type": "number",
           "default": 15,
           "minimum": 5,
-          "description": "How often to refresh while the Workstreams view is visible."
+          "description": "How often to refresh the worktrees in use (a window open, an agent running, recent changes) while the Workstreams view is visible. Other worktrees are refreshed every few minutes, so a commit on the base branch reaches them within that time; a commit, stage or checkout in a worktree shows there within this interval."
         },
         "flotilla.tagChatTitles": {
           "type": "boolean",
@@ -1284,6 +1442,12 @@
           "default": 2000,
           "minimum": 100,
           "description": "Search results per worktree before Flotilla asks you to refine the search or show more."
+        },
+        "flotilla.changes.limit": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 100,
+          "description": "Changes shown per worktree (staged and unstaged together) before Flotilla says \"and N more\". Stage All, Discard All and commits still cover every change; open a terminal in the worktree to see them all."
         },
         "flotilla.tabLabelPattern": {
           "type": "string",
@@ -1350,6 +1514,12 @@
           "default": "",
           "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
         },
+        "flotilla.agents.minFreeMemoryMB": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 0,
+          "markdownDescription": "Free memory (MB) the machine needs before Flotilla starts an agent: each agent's Claude Code process takes about 300 MB, and builds and tests more. The autopilot and reviews wait until there's room; a manual start says so and offers to start anyway. 0 turns the check off."
+        },
         "flotilla.review.model": {
           "type": "string",
           "default": "",
@@ -1384,6 +1554,11 @@
           ],
           "default": "propose",
           "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how)."
+        },
+        "flotilla.dev.githubApi": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
         }
       }
     },
@@ -1507,6 +1682,9 @@
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "vsce package",
     "playground": "node scripts/playground.mjs",
+    "bench": "node scripts/bench-refresh.mjs",
+    "debug-profile": "node scripts/debug-profile.mjs",
+    "fake-github": "node scripts/fake-github.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

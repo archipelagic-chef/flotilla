@@ -230,6 +230,24 @@ h2 {
   padding: 0;
   background: none;
 }
+/* A run block in an agent's report: its kind and title, and the Run button, above its commands. */
+.run-block {
+  margin: 8px 0;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+}
+.run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--muted);
+}
+.run-block pre {
+  margin: 0;
+  border-radius: 0 0 4px 4px;
+}
 .rendered blockquote {
   margin: 0;
   padding-left: 10px;

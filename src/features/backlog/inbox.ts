@@ -1,9 +1,10 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
 import { reviewNotes } from './review';
 import { entryDate, parseTicket } from './ticket';
-import type { LocalBacklog } from './localBacklog';
+import { writeAtomic, type LocalBacklog } from './localBacklog';
 
 /**
  * The backlog's inbox: how agents add tickets. An agent writes a Markdown file into .flotilla/backlog/inbox/ (the
@@ -99,6 +100,7 @@ export async function takeInbox(
   opts: { prefix: string; mode: AgentTicketMode; taken: readonly string[]; onStarted?(item: BacklogItem, branch: string): Promise<void> },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
+  await requeueStaleTaking(dir);
   let names: string[];
   try {
     names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('.')).sort();
@@ -109,34 +111,44 @@ export async function takeInbox(
   for (const name of names) {
     const file = path.join(dir, name);
     const base = path.join(dir, name.slice(0, -'.md'.length));
-    let text: string;
+    // Taken by renaming it: a window that lists the inbox at the same time finds it gone and skips it.
+    const taking = `${file}.${process.pid}.${crypto.randomUUID()}.taking`;
     try {
       // A file still being written is taken next time.
       const stat = await fs.promises.stat(file);
       if (Date.now() - stat.mtimeMs < 1000) continue;
-      text = await fs.promises.readFile(file, 'utf8');
+      await fs.promises.rename(file, taking);
+      // Its time is now the time it was taken: requeueStaleTaking looks at it.
+      const now = new Date();
+      await fs.promises.utimes(taking, now, now);
     } catch {
       continue;
     }
-    const proposal = parseProposal(text);
+    // A file that can't be read is answered with the problem, so its agent doesn't wait for an answer that never comes.
+    let proposal: ReturnType<typeof parseProposal>;
+    try {
+      proposal = parseProposal(await fs.promises.readFile(taking, 'utf8'));
+    } catch {
+      proposal = { error: "It couldn't be read." };
+    }
     let item: BacklogItem | undefined;
     let error = 'error' in proposal ? proposal.error : 'Not added.';
     if (!('error' in proposal)) {
-      await store.change((d) => {
-        const r = addProposal(d, proposal, { prefix: opts.prefix, mode: opts.mode, now: new Date(), taken: opts.taken });
+      const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
+      await store.change(async (d) => {
+        // Ids on disk count too: a ticket file whose item isn't in backlog.json keeps its id.
+        const r = addProposal(d, proposal, { prefix: opts.prefix, mode: opts.mode, now: new Date(), taken: [...opts.taken, ...(await store.ticketIds())] });
         if ('error' in r) {
           error = r.error;
           return d;
         }
         item = r.item;
         return r.data;
-      }, { by: proposal.agent ? `Agent ${proposal.agent}` : 'Agent' });
+      }, { by });
       if (item) {
-        const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
         if (proposal.claim) {
-          const ticket = await store.readTicket(item);
           const where = proposal.branch ? ` on branch \`${proposal.branch}\`` : '';
-          await store.writeTicket(item.id, { ...ticket, activity: [...ticket.activity, { date: entryDate(new Date()), author: by, body: `Started on this ticket${where}.` }] });
+          await store.appendActivity(item, { date: entryDate(new Date()), author: by, body: `Started on this ticket${where}.` });
         } else {
           await store.writeTicket(item.id, {
             title: proposal.title,
@@ -149,9 +161,9 @@ export async function takeInbox(
         if (!proposal.claim) added.push(item);
       }
     }
-    await fs.promises.rm(file, { force: true });
-    if (item) await fs.promises.writeFile(`${base}.added`, `${item.id}\n`);
-    else await fs.promises.writeFile(`${base}.error`, `${error}\n`);
+    await fs.promises.rm(taking, { recursive: true, force: true });
+    if (item) await writeAtomic(`${base}.added`, `${item.id}\n`);
+    else await writeAtomic(`${base}.error`, `${error}\n`);
   }
   // Answers older than a day have been read.
   for (const n of await fs.promises.readdir(dir).catch(() => [] as string[])) {
@@ -160,6 +172,19 @@ export async function takeInbox(
     if (stat && Date.now() - stat.mtimeMs > 86_400_000) await fs.promises.rm(path.join(dir, n), { force: true });
   }
   return added;
+}
+
+/** A file taken by a process that died before answering it goes back to the inbox, once it has sat taken for five minutes. */
+async function requeueStaleTaking(dir: string): Promise<void> {
+  for (const n of await fs.promises.readdir(dir).catch(() => [] as string[])) {
+    if (!n.endsWith('.taking')) continue;
+    const taking = path.join(dir, n);
+    const stat = await fs.promises.stat(taking).catch(() => undefined);
+    if (!stat || Date.now() - stat.mtimeMs < 300_000) continue;
+    const original = path.join(dir, n.replace(/\.\d+\.[0-9a-f-]{36}\.taking$/, ''));
+    if (fs.existsSync(original)) continue;
+    await fs.promises.rename(taking, original).catch(() => undefined);
+  }
 }
 
 /** The guide agents read (AGENTS.md next to the backlog): how to work through the backlog and add to it. */

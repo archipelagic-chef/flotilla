@@ -126,6 +126,12 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
+    // The Run button of a run block in an agent's report (the host puts it in the html).
+    const run = (e.target as HTMLElement).closest<HTMLElement>('[data-run-key]');
+    if (run) {
+      send({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) });
+      return;
+    }
     const a = (e.target as HTMLElement).closest('a');
     const href = a?.getAttribute('href');
     if (!href || href.startsWith('#')) return;
@@ -815,6 +821,10 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
   );
 }
 
+/** What the link under a ticket in review without a run block puts in the comment box: a request to the agent. */
+const ASK_FOR_RUN =
+  'Please end your report with a run block: a fenced block with the info string `run`, and the commands that try the work (or a `launch`, `task` or `open` block), so it can be run from here.';
+
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
@@ -832,6 +842,13 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const asking = ticket.review?.state === 'asking' ? (ticket.review.implementer ?? 'The agent') : undefined;
   // A local item with work to review: the user can review it here, as in a pull request.
   const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
+  // A ticket in review (or approved) runs its latest run block from here, next to Approve and Request Changes.
+  const showRun = !ticket.remote && (ticket.item.status === 'review' || ticket.review?.state === 'approved');
+  // It goes in the comment box, after a draft. Request Changes sends it to the agent: a Comment is only a note.
+  const askForRun = () => {
+    setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
+    document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
+  };
   const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
   // Commits are part of what happened: in All and History, in time order among the entries.
   const commits = !tab || tab === 'history' ? ticket.commits : [];
@@ -897,6 +914,28 @@ function Activity({ ticket }: { ticket: TicketView }) {
               </button>
             </>
           )}
+          {showRun &&
+            (ticket.run ? (
+              <button
+                class="button secondary"
+                onClick={() => send({ type: 'run', key: ticket.run!.key, index: ticket.run!.index })}
+                title={`Runs ${ticket.run.title ? `"${ticket.run.title}"` : 'the latest run block'} in the ticket's worktree, after asking`}
+              >
+                <i class="codicon codicon-play" /> Run
+              </button>
+            ) : (
+              <>
+                <button class="button secondary" disabled title="The agent didn't give a run block: there's nothing to run">
+                  <i class="codicon codicon-play" /> Run
+                </button>
+                <span class="muted">The agent didn't give a run block.</span>
+                {reviewable && (
+                  <button class="text-button" onClick={askForRun} title="Puts a request for one in the comment box. Request Changes sends it to the agent; Comment would only leave a note.">
+                    Ask it for one
+                  </button>
+                )}
+              </>
+            ))}
           <button class="button" disabled={!comment.trim()} onClick={post}>
             {asking ? 'Answer' : 'Comment'}
           </button>
@@ -1115,6 +1154,7 @@ function App() {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
       if (m.type === 'ticket') setTicket(m.ticket);
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);

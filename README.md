@@ -75,8 +75,8 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.activeWindowMinutes` | `5` | Activity → active threshold |
 | `flotilla.staleAfterDays` | `7` | Activity → stale threshold |
 | `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
-| `flotilla.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
-| `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
+| `flotilla.notify` | `needsYou` | Notifications for what needs you: `needsYou` (one a minute, gathered), `all` (each as it happens), or `off` |
+| `flotilla.pollSeconds` | `15` | Refresh interval for worktrees in use while the view is visible; other worktrees every few minutes |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |
 | `flotilla.backlog.commitPrefix` | `agents` | Whose commits in a ticket's worktree must start with its id: `agents`, `everyone` or `off` |

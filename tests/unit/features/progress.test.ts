@@ -5,6 +5,7 @@ import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
+const headOf = (dir: string, ref: string) => git(dir, 'rev-parse', ref).trim();
 
 describe('resolveBase', () => {
   it('prefers a valid configured base, then origin/HEAD, then main/master', async () => {
@@ -42,16 +43,16 @@ describe('computeProgress', () => {
     git(repo, 'add', '.');
     git(repo, 'commit', '-q', '-m', 'main moves');
 
-    expect(await computeProgress(wt, 'main')).toEqual({ base: 'main', ahead: 2, behind: 1, added: 4, deleted: 1, lastSubject: 'add b' });
+    expect(await computeProgress(wt, 'main', headOf(repo, 'main'))).toEqual({ base: 'main', baseHead: headOf(repo, 'main'), ahead: 2, behind: 1, added: 4, deleted: 1, lastSubject: 'add b' });
   });
 
   it('returns zeros for a repo without commits and for a missing base', async () => {
     const empty = makeTempDir();
     cleanup.push(empty);
     git(empty, 'init', '-q');
-    expect(await computeProgress(empty, 'main')).toEqual({ base: 'main', ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: undefined });
+    expect(await computeProgress(empty, 'main', undefined)).toEqual({ base: 'main', baseHead: undefined, ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: undefined });
     const repo = initRepo();
     cleanup.push(repo);
-    expect(await computeProgress(repo, undefined)).toEqual({ base: undefined, ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: 'initial' });
+    expect(await computeProgress(repo, undefined, undefined)).toEqual({ base: undefined, baseHead: undefined, ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: 'initial' });
   });
 });

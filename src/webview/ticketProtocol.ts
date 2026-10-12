@@ -7,6 +7,7 @@ import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { TicketEntry } from '../features/backlog/ticket';
+import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
 
@@ -74,6 +75,8 @@ export interface TicketView {
     behind: number;
     upstream?: string;
   }>;
+  /** The ticket's run: the last run block its agents and Flotilla wrote (the Run button in review runs it). */
+  run?: RunBlockRef;
   /** Its review loop, and whether an agent of it is running now. */
   review?: ReviewState & { running: boolean };
   /** Review can be started (a local item with a worktree). */
@@ -97,6 +100,8 @@ export interface TicketView {
 
 export type TicketHostMessage =
   | { type: 'ticket'; ticket: TicketView }
+  /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
+  | { type: 'focus'; target: 'comment' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string };
 
@@ -153,4 +158,6 @@ export type TicketWebviewMessage =
   | { type: 'cancelCleanUp' }
   | { type: 'compareCleanUp' }
   /** Create a worktree for a branch of the item that has none. */
-  | { type: 'checkout'; branch: string };
+  | { type: 'checkout'; branch: string }
+  /** Run a run block of an agent's report (after asking): the Run buttons. */
+  | { type: 'run'; key: string; index: number };

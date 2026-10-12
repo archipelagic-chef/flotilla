@@ -268,6 +268,11 @@ button {
 .hover-actions + .badge {
   margin-left: 4px;
 }
+/* A Review card's Run button: always shown, at the end of the row like the hover actions. */
+.run-button {
+  margin-left: auto;
+  flex: none;
+}
 .row:hover .dir {
   flex: 0 1 auto;
 }
@@ -799,6 +804,9 @@ textarea:focus {
 }
 
 /* ---- overview ---- */
+.machine {
+  padding: 0 8px 6px 10px;
+}
 .card {
   padding: 5px 6px 6px 8px;
   box-shadow: inset 3px 0 0 var(--ws-color);
@@ -1290,6 +1298,59 @@ ins {
   color: var(--vscode-errorForeground);
   font-style: normal;
   white-space: normal;
+}
+/* CI/CD runs, jobs and steps: log-style rows with a status icon; the icon's color says the status. */
+.ci-run .ci-status,
+.ci-job .ci-status,
+.ci-step .ci-status {
+  flex: none;
+}
+.ci-status.queued {
+  color: var(--muted);
+}
+.ci-status.running {
+  color: var(--working);
+}
+.ci-status.success {
+  color: var(--done);
+}
+.ci-status.failure {
+  color: var(--error);
+}
+.ci-status.cancelled,
+.ci-status.skipped,
+.ci-status.neutral {
+  color: var(--muted);
+}
+.ci-run.current .name {
+  font-weight: 600;
+}
+.ci-run .ci-age {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* A run's jobs and a job's steps are indented under it; a failed job's name stands out. */
+.ci-toggle {
+  flex: none;
+  color: var(--muted);
+}
+.ci-indent,
+.ci-job {
+  padding-left: 22px;
+}
+.ci-step {
+  padding-left: 40px;
+}
+.ci-job.failure .name,
+.ci-step.failure .name {
+  color: var(--error);
+  font-weight: 600;
+}
+.ci-job .ci-log {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
 }
 .hover-status .codicon {
   font-size: 12px;
@@ -1867,6 +1928,50 @@ ins {
 }
 .proposed-lane .group-head .icon {
   margin-left: auto;
+}
+/* Needs you: what waits on the user, above the lanes; a row says the ask, how long it has waited, and its actions. */
+.needs-lane .group-head {
+  color: var(--waiting);
+}
+.needs-lane .backlog-item {
+  height: auto;
+  min-height: var(--row-height);
+  padding-top: 3px;
+  padding-bottom: 3px;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+.needs-lane .need-icon {
+  flex: none;
+  color: var(--waiting);
+}
+.needs-lane .need-approved .need-icon {
+  color: var(--done);
+}
+.needs-lane .need-stopped .need-icon,
+.needs-lane .need-failed .need-icon {
+  color: var(--error);
+}
+.needs-lane .need-line {
+  flex: 1 1 100%;
+  padding-left: 22px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.needs-lane .need-age {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.needs-lane .need-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
 }
 .proposed-lane .backlog-item .status-toggle {
   color: var(--vscode-editorLightBulb-foreground, #ffcc00);

@@ -15,7 +15,36 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
+The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
+
+An existing playground is never reset by F5; if it was built by an older version of `scripts/playground.mjs`, the task output says so. To start over, run `npm run playground -- --reset` or launch "Run Extension (fresh playground)". The old playground is moved to `.playground.old-<date>` (its worktrees move with it and keep working there, uncommitted changes included).
+The CI/CD view needs GitHub's Actions API, which the test window reads from a fake one when it's offline: run `npm run fake-github` in a terminal (it stays up until Ctrl+C), and switch the fakes on in the debug profile (`npm run debug-profile -- --fakes`), which points the test window at it (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log. The playground's `origin` is a GitHub address that's never pushed to.
+
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
+
+## The debug window's profile
+
+The debug window doesn't use your VS Code profile. Its settings, secret storage, GitHub sign-in and Flotilla's own state live in `.vscode-test/debug-profile`, and its extensions in `.vscode-test/debug-extensions` (both git-ignored). Only Claude Code is in there, a copy of the one you have installed, so chats still work; your installed Flotilla doesn't run next to the one being debugged. Every F5 (and every `npm run playground`) makes this ready; `scripts/debug-profile.mjs` does the work.
+
+The fakes are off by default, so agents and the CI/CD view use the real Claude and GitHub. To switch them on for the debug window:
+
+```bash
+npm run debug-profile -- --fakes     # Flotilla's Claude (flotilla.agents.claudePath) and GitHub (flotilla.dev.githubApi) point at the fakes
+npm run debug-profile -- --no-fakes  # back to the real ones
+npm run debug-profile                # keeps the last choice; F5 does this too
+```
+
+The fakes are `scripts/fake-claude.mjs` and `scripts/fake-github.mjs`; a fake that isn't in `scripts/` isn't used, and the log says so. To start the debug window's profile over (its first-run offers come back), close the debug window and delete `.vscode-test/debug-profile`.
+
+The script edits the debug profile's `User/settings.json` and keeps the settings it doesn't manage. That file must be plain JSON: VS Code allows comments in settings, but if you add one, the script leaves the file as it is and says so (the fakes aren't switched then).
+
+To check once, by hand, that a debug session leaves your own VS Code alone:
+
+1. Close your VS Code windows. Note the checksums of your user files, `User/settings.json` and `User/globalStorage/state.vscdb`, and `ls -R User/globalStorage`. Where the user folder is: `~/.vscode-server/data/User` in a dev container, `%APPDATA%\Code\User` on Windows, `~/Library/Application Support/Code/User` on macOS (`sha256sum`, or `certutil -hashfile` on Windows).
+2. Press F5, and in the debug window sign in to GitHub, answer the offers and turn the autopilot on. Close the debug window.
+3. Check the same checksums and listing again: they must not have changed. `.vscode-test/debug-profile` now holds what the debug window wrote.
+
+What this covers: the two files and the folder listing, on every platform. What it doesn't cover: secret storage (the autopilot key, the GitHub sign-in). Where VS Code keeps secrets wasn't traced: they aren't visible in `state.vscdb` in the dev container, and on desktop they're probably in the OS credential store (Credential Manager on Windows, Keychain on macOS, the keyring on Linux). That isn't verified, so check it by hand: look for the entries your profile has, note them, and compare after the debug session.
 
 ## Testing across host and container
 
@@ -32,6 +61,10 @@ The extension only loads in a test window started from a window where **this pro
    - run `git worktree add .worktrees/manual -b manual` in a host terminal inside `.playground`; it shows in both windows and works in the container after the next refresh.
 
 Both sides build into the same `dist/`: after a code change, stop both debug sessions and press F5 again.
+
+## Trying agents without usage
+
+`scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
 
 ## File icons
 

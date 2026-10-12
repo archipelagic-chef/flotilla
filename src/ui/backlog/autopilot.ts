@@ -3,12 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { childrenOf, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import { memoryShortage, releaseStart, reserveStart } from './agentRunner';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -36,6 +37,8 @@ export interface AutopilotView {
   max: number;
   /** Waiting for Claude's usage limit to reset (ISO 8601). */
   waitingUntil?: string;
+  /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
+  waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
 }
@@ -48,8 +51,8 @@ export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): 
 /**
  * The autopilot: while it's on, agents take the backlog's To Do items in order and work on them without a window, up
  * to flotilla.autopilot.maxAgents at once: a worktree each, In Progress, reports in the ticket; their "Ready for
- * review." goes on to review. On a usage limit no new work starts until it resets (the paused agents go on then). Only
- * the leading window runs it.
+ * review." goes on to review. On a usage limit no new work starts until it resets (the paused agents go on then); nor
+ * while the machine is short of memory (it tries again on the next tick). Only the leading window runs it.
  */
 export class Autopilot implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -59,6 +62,7 @@ export class Autopilot implements vscode.Disposable {
   private readonly failed = new Set<string>();
   private ticking = false;
   private waitingUntil: Date | undefined;
+  private waitingForMemory = false;
 
   constructor(private readonly deps: AutopilotDeps) {
     const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
@@ -125,6 +129,7 @@ export class Autopilot implements vscode.Disposable {
       running: this.deps.reviews.running,
       max: this.max,
       ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now() ? { waitingUntil: this.waitingUntil.toISOString() } : {}),
+      ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
       elsewhere: !this.deps.leader.isLeader,
     };
   }
@@ -133,6 +138,7 @@ export class Autopilot implements vscode.Disposable {
   async tick(): Promise<void> {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
     this.ticking = true;
+    let memoryWait = false;
     try {
       const was = this.waitingUntil?.getTime();
       this.waitingUntil = await this.deps.reviews.pausedUntil();
@@ -141,25 +147,46 @@ export class Autopilot implements vscode.Disposable {
       while (this.enabled && this.deps.reviews.running < this.max) {
         const item = nextForAutopilot(await this.deps.backlog.read(), this.failed);
         if (!item) return;
-        await this.start(item);
+        // Too little memory for another agent: this one waits, and the next tick tries again.
+        if (memoryShortage()) {
+          memoryWait = true;
+          return;
+        }
+        // Reserved before the start's awaits (preparing the worktree takes a while): a start meanwhile sees its memory.
+        await this.start(item, reserveStart());
         this.changed.fire();
       }
     } finally {
       this.ticking = false;
+      if (memoryWait !== this.waitingForMemory) {
+        this.waitingForMemory = memoryWait;
+        this.changed.fire();
+      }
     }
   }
 
-  private async start(item: BacklogItem): Promise<void> {
+  /** Starts an agent on the item; `slot` is its reserved memory (released if the start fails). */
+  private async start(item: BacklogItem, slot: number): Promise<void> {
     try {
       const ws = await this.deps.prepareWorktree(item);
       if (!ws) throw new Error('it has no worktree free for an agent (one of its worktrees is in use, or its branch is checked out elsewhere).');
       const fresh = (await this.deps.backlog.read()).items.find((i) => i.id === item.id) ?? item;
-      await this.deps.reviews.startWork(fresh, ws);
+      // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
+      if (fresh.status !== 'doing') {
+        releaseStart(slot);
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
+        return;
+      }
+      await this.deps.reviews.startWork(fresh, ws, slot);
+      if (fresh.startFailed) await this.deps.backlog.change((d) => setStartFailed(d, item.id));
     } catch (error) {
+      releaseStart(slot);
       this.failed.add(item.id);
       const message = error instanceof Error ? error.message : String(error);
       this.deps.output.appendLine(`Autopilot couldn't start ${item.id}: ${message}`);
-      await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
+      const now = new Date();
+      await this.deps.backlog.change((d) => setStartFailed(d, item.id, { message, since: now.toISOString() }));
+      await this.deps.backlog.appendActivity(item, { date: entryDate(now), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
     }
   }
 }

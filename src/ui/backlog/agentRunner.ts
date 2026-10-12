@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
+import { StartingAgents } from '../../features/workstreams/startingAgents';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -22,6 +25,38 @@ export function claudeBinary(): string {
     if (fs.existsSync(bundled)) return bundled;
   }
   return 'claude';
+}
+
+/** Memory free on this machine, in MB: what Node reports (on Linux, MemAvailable; in WSL, the VM's share of the host's). */
+export function freeMemoryMB(): number {
+  return os.freemem() / (1024 * 1024);
+}
+
+/** The free memory (MB) that agents need before they start: flotilla.agents.minFreeMemoryMB. */
+export function minFreeMemoryMB(): number {
+  return Math.max(0, vscode.workspace.getConfiguration('flotilla').get<number>('agents.minFreeMemoryMB', 2048));
+}
+
+/**
+ * Too little memory free to start an agent (how much is left once the agents starting now are counted, and how much is
+ * asked for); undefined when there's room.
+ */
+export function memoryShortage(): { freeMB: number; minMB: number } | undefined {
+  return shortageAfterStarting(freeMemoryMB(), startingMemoryMB(), minFreeMemoryMB());
+}
+
+/**
+ * For a manual start (the user's own click): when memory is short, says so and offers "Start Anyway". True when the
+ * agent may start.
+ */
+export async function confirmMemory(what: string): Promise<boolean> {
+  const short = memoryShortage();
+  if (!short) return true;
+  const choice = await vscode.window.showWarningMessage(
+    `${what} waits: ${formatMemory(short.freeMB)} of memory is left once the agents starting are counted, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. Starting one now may run the machine out of memory.`,
+    'Start Anyway',
+  );
+  return choice === 'Start Anyway';
 }
 
 /**
@@ -78,6 +113,28 @@ function resultText(stdout: string): string | undefined {
 /** The sessions of agents running without a window now (in this window's extension host). */
 const running = new Set<string>();
 
+/** The agents started in the last minute, not running yet (in this window's extension host). */
+const starting = new StartingAgents();
+
+/** The memory the agents starting now take, in MB (counts against the free memory before they're running). */
+export function startingMemoryMB(): number {
+  return starting.memoryMB();
+}
+
+/**
+ * Takes an agent's memory off the free memory from now, until its agent spawns (runAgentHeadless takes the slot) or the
+ * start is given up (releaseStart). Call it where the memory check passes, before the first await, so another start
+ * checked meanwhile sees it.
+ */
+export function reserveStart(): number {
+  return starting.reserve();
+}
+
+/** Gives a reserved slot back (a start given up before its agent spawned). Harmless when it's already given back. */
+export function releaseStart(slot: number | undefined): void {
+  if (slot !== undefined) starting.end(slot);
+}
+
 export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
@@ -108,9 +165,14 @@ export function runAgentHeadless(o: {
   name: string;
   choice?: AgentChoice;
   output: vscode.OutputChannel;
+  /** The start's reserved slot (see reserveStart); without one, the start counts from now. */
+  slot?: number;
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
-  if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
+  if (o.resume !== undefined && !validSession(o.resume)) {
+    releaseStart(o.slot);
+    throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
+  }
   const sessionId = o.resume ?? crypto.randomUUID();
   const configured = vscode.workspace.getConfiguration('flotilla').get<string>('agents.permissionMode', 'auto');
   const mode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
@@ -131,14 +193,20 @@ export function runAgentHeadless(o: {
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
+  const start = o.slot ?? starting.begin();
+  if (o.slot !== undefined) starting.spawned(o.slot);
   let stderr = '';
   let stdout = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
   child.stdout.on('data', (d: Buffer) => (stdout = (stdout + d.toString()).slice(-8000)));
   const done = new Promise<AgentResult>((resolve) => {
-    child.on('exit', () => running.delete(sessionId));
+    child.on('exit', () => {
+      running.delete(sessionId);
+      starting.end(start);
+    });
     child.on('error', (e) => {
       running.delete(sessionId);
+      starting.end(start);
       resolve({ code: null, error: e.message });
     });
     child.on('close', (code) => {

@@ -3,6 +3,8 @@ import { matcher, replacementFor, type SearchOptions } from '../../features/sear
 import { ALL, type SearchGroup, type WorkstreamView } from '../protocol';
 import { send } from './api';
 import type { Update } from './app';
+import { Virtual } from './virtual';
+import { searchRows, type SearchRow } from './rows';
 
 export interface SearchState {
   query: string;
@@ -157,57 +159,54 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
           </div>
         )}
       </div>
-      {query.trim() &&
-        results?.groups.map((g) => (
-          <div key={g.key} class="search-group">
-            {scope === ALL && (
-              <div class="row search-ws" style={{ '--ws-color': colors.get(g.key) }}>
-                <span class="swatch" />
-                <span class="name">{label(g.key)}</span>
-              </div>
-            )}
-            {g.files.map((f) => {
-              const id = `${g.key}\n${f.path}`;
-              const open = !collapsed.has(id);
-              const slash = f.path.lastIndexOf('/');
-              const count = f.matches.reduce((n, m) => n + m.ranges.length, 0);
+      {query.trim() && results && (
+        <Virtual<SearchRow>
+          items={searchRows(results.groups, collapsed, scope === ALL)}
+          keyOf={(row) => row.key}
+          render={(row) => {
+            if (row.kind === 'ws')
               return (
-                <div key={id}>
-                  <div class="row" style={{ paddingLeft: '8px' }} role="button" tabIndex={0} aria-expanded={open} onClick={() => toggle(id)} onKeyDown={(e) => e.key === 'Enter' && toggle(id)}>
-                    <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} chev`} />
-                    <i class="codicon codicon-file" />
-                    <span class="name">{f.path.slice(slash + 1)}</span>
-                    <span class="dir">{slash > 0 ? f.path.slice(0, slash) : ''}</span>
-                    {replacing && (
-                      <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-                        <button class="icon" aria-label="Replace in This File" onClick={() => replace(g.key, f.path)}>
-                          <i class="codicon codicon-replace" />
-                        </button>
-                      </span>
-                    )}
-                    <span class="badge">{count}</span>
-                  </div>
-                  {open &&
-                    f.matches.map((m) => {
-                      const indent = m.text.length - m.text.trimStart().length;
-                      return (
-                        <button
-                          key={m.line}
-                          class="row hit"
-                          onClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: true, line: m.line, range: m.ranges[0] })}
-                          onDblClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: false, line: m.line, range: m.ranges[0] })}
-                        >
-                          <span class="line-text">
-                            <Highlighted text={m.text.trimStart()} ranges={m.ranges.map(([a, b]) => [a - indent, b - indent])} replace={preview} />
-                          </span>
-                        </button>
-                      );
-                    })}
+                <div class="row search-ws" style={{ '--ws-color': colors.get(row.group.key) }}>
+                  <span class="swatch" />
+                  <span class="name">{label(row.group.key)}</span>
                 </div>
               );
-            })}
-          </div>
-        ))}
+            if (row.kind === 'file') {
+              const { group: g, file: f, id, open, count } = row;
+              const slash = f.path.lastIndexOf('/');
+              return (
+                <div class="row" style={{ paddingLeft: '8px' }} role="button" tabIndex={0} aria-expanded={open} onClick={() => toggle(id)} onKeyDown={(e) => e.key === 'Enter' && toggle(id)}>
+                  <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} chev`} />
+                  <i class="codicon codicon-file" />
+                  <span class="name">{f.path.slice(slash + 1)}</span>
+                  <span class="dir">{slash > 0 ? f.path.slice(0, slash) : ''}</span>
+                  {replacing && (
+                    <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+                      <button class="icon" aria-label="Replace in This File" onClick={() => replace(g.key, f.path)}>
+                        <i class="codicon codicon-replace" />
+                      </button>
+                    </span>
+                  )}
+                  <span class="badge">{count}</span>
+                </div>
+              );
+            }
+            const { group: g, file: f, match: m } = row;
+            const indent = m.text.length - m.text.trimStart().length;
+            return (
+              <button
+                class="row hit"
+                onClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: true, line: m.line, range: m.ranges[0] })}
+                onDblClick={() => send({ type: 'openFile', key: g.key, path: f.path, preview: false, line: m.line, range: m.ranges[0] })}
+              >
+                <span class="line-text">
+                  <Highlighted text={m.text.trimStart()} ranges={m.ranges.map(([a, b]) => [a - indent, b - indent])} replace={preview} />
+                </span>
+              </button>
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
