@@ -157,4 +157,13 @@ describe('the fake claude', () => {
     expect(commits(s)).toBe('1');
     expect(activity(s)).toHaveLength(0);
   });
+
+  // Flotilla spawns claudePath directly (no node in front), so the script must be executable itself.
+  it.skipIf(process.platform === 'win32')('runs directly, as Flotilla spawns claudePath', () => {
+    expect(() => fs.accessSync(SCRIPT, fs.constants.X_OK)).not.toThrow();
+    const r = spawnSync(SCRIPT, ['-p', 'Say hello.', '--output-format', 'json'], { encoding: 'utf8' });
+    expect(r.error).toBeUndefined();
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).result).toContain('Fake Claude');
+  });
 });
