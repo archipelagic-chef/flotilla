@@ -41,11 +41,11 @@ export interface ReportView {
   details: string;
   /** The report asks the user something (its questions, or the Needs line's text). */
   asks: boolean;
-  /** What the Needs line says it needs from the user. */
+  /** What the Needs line says it needs from the user: rendered Markdown. */
   needs?: string;
   questions: Question[];
-  /** A comment of yours came after the report: it's answered. */
-  answered: boolean;
+  /** The comment of yours that answered it (the first after the report); undefined while it's unanswered. */
+  answer?: string;
 }
 
 export interface TicketView {

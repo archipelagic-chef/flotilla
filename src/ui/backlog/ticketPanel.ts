@@ -17,7 +17,7 @@ import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
-import { parseReport } from '../../features/backlog/report';
+import { parseReport, reportAnswer } from '../../features/backlog/report';
 import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
@@ -304,13 +304,14 @@ export class TicketPanels implements vscode.Disposable {
     const parts = parseReport(body);
     if (parts.summary === undefined) return undefined;
     const roots = this.roots(item);
+    const answer = reportAnswer(later);
     return {
       summary: await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots),
       details: await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
       asks: parts.asks,
-      ...(parts.needs !== undefined ? { needs: parts.needs } : {}),
+      ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
       questions: parts.questions,
-      answered: later.some((e) => e.author === 'You'),
+      ...(answer !== undefined ? { answer } : {}),
     };
   }
 
