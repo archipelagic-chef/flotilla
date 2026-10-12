@@ -95,7 +95,7 @@ describe('the autopilot and memory', () => {
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
     }));
-    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short, reserveStart: () => 1, releaseStart: () => undefined }));
     const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
     const at = '2026-10-11T00:00:00Z';
     const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };

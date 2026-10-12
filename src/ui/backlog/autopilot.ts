@@ -9,7 +9,7 @@ import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
-import { memoryShortage } from './agentRunner';
+import { memoryShortage, releaseStart, reserveStart } from './agentRunner';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -152,7 +152,8 @@ export class Autopilot implements vscode.Disposable {
           memoryWait = true;
           return;
         }
-        await this.start(item);
+        // Reserved before the start's awaits (preparing the worktree takes a while): a start meanwhile sees its memory.
+        await this.start(item, reserveStart());
         this.changed.fire();
       }
     } finally {
@@ -164,13 +165,15 @@ export class Autopilot implements vscode.Disposable {
     }
   }
 
-  private async start(item: BacklogItem): Promise<void> {
+  /** Starts an agent on the item; `slot` is its reserved memory (released if the start fails). */
+  private async start(item: BacklogItem, slot: number): Promise<void> {
     try {
       const ws = await this.deps.prepareWorktree(item);
       if (!ws) throw new Error('it has no worktree free for an agent (one of its worktrees is in use, or its branch is checked out elsewhere).');
       const fresh = (await this.deps.backlog.read()).items.find((i) => i.id === item.id) ?? item;
-      await this.deps.reviews.startWork(fresh, ws);
+      await this.deps.reviews.startWork(fresh, ws, slot);
     } catch (error) {
+      releaseStart(slot);
       this.failed.add(item.id);
       const message = error instanceof Error ? error.message : String(error);
       this.deps.output.appendLine(`Autopilot couldn't start ${item.id}: ${message}`);
