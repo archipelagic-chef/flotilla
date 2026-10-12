@@ -30,6 +30,7 @@ import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
+import { webUrl } from '../../features/ci/githubDeployments';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -437,6 +438,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // Only GitHub pages (a workflow run) open from the sidebar.
         if (/^https:\/\/github\.com\//.test(m.url)) await vscode.env.openExternal(vscode.Uri.parse(m.url));
         return;
+      case 'openSite': {
+        // A deployed site (its URL comes from GitHub's deployment status): http or https only.
+        const url = webUrl(m.url);
+        if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+        return;
+      }
       case 'ci':
         if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
         else if (m.op === 'expand' || m.op === 'collapse') await this.ci.expand(m.key, m.runId, m.op === 'expand');

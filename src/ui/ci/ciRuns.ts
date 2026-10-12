@@ -3,7 +3,8 @@ import { runGit } from '../../core/git/gitCli';
 import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
 import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
-import { anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
+import { anyDeploymentActive, anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { CiRunView, CiView } from '../../webview/protocol';
@@ -24,7 +25,26 @@ interface JobsState {
   error?: string;
 }
 
+/** A branch as GitHub answers: its runs, and its deployments (which can fail apart from the runs). */
+interface BranchRead {
+  runs: CiRun[];
+  deployments: CiDeployment[];
+  deploymentsError?: string;
+}
+
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** A branch's runs and deployments. The runs' error is the view's; a deployments error stays with the deployments. */
+async function readBranch(owner: string, repo: string, branch: string, token: () => Promise<string>): Promise<BranchRead> {
+  const fetch = globalThis.fetch as unknown as Fetch;
+  const runs = new GitHubActions(owner, repo, token, fetch).runs(branch);
+  const deployments = new GitHubDeployments(owner, repo, token, fetch).forBranch(branch).then(
+    (found) => ({ deployments: found }),
+    (error: unknown) => ({ deployments: [], deploymentsError: message(error) }),
+  );
+  const [read, found] = await Promise.all([runs, deployments]);
+  return { runs: read, ...found };
+}
 
 /**
  * The CI/CD view's data: the latest workflow runs of each worktree's branch on GitHub, read through the user's GitHub
@@ -211,7 +231,7 @@ export class CiRuns implements vscode.Disposable {
     // Without a sign-in (or a provider to ask), the runs say so: they're not read.
     const session = github ? await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined) : undefined;
     // Worktrees on the same branch share one read.
-    const reads = new Map<string, Promise<CiRun[]>>();
+    const reads = new Map<string, Promise<BranchRead>>();
     await Promise.all(
       wheres.map(async ({ ws, where }) => {
         const view = await this.viewOf(ws, where, session, reads);
@@ -224,8 +244,11 @@ export class CiRuns implements vscode.Disposable {
     await Promise.all(targets.map((ws) => this.readJobs(ws.key, session)));
     this.post(this.snapshot());
     // The last load to finish sets the next one (a load that overlapped another doesn't leave a second timer running).
-    // Only the worktrees there are now count: a run on a removed one doesn't keep the timer short.
-    const anyActive = anyRunActive(Object.values(this.snapshot()).flatMap((v) => (v.kind === 'runs' ? v.runs : [])));
+    // Only the worktrees there are now count: a run or deployment on a removed one doesn't keep the timer short.
+    const views = Object.values(this.snapshot());
+    const anyActive =
+      anyRunActive(views.flatMap((v) => (v.kind === 'runs' ? v.runs : []))) ||
+      anyDeploymentActive(views.flatMap((v) => (v.kind === 'runs' ? v.deployments : [])));
     const delay = refreshDelay(this.visible, anyActive);
     clearTimeout(this.timer);
     this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
@@ -250,7 +273,7 @@ export class CiRuns implements vscode.Disposable {
     }
   }
 
-  private async viewOf(ws: Workstream, where: Where, session: Session | undefined, reads: Map<string, Promise<CiRun[]>>): Promise<CiView> {
+  private async viewOf(ws: Workstream, where: Where, session: Session | undefined, reads: Map<string, Promise<BranchRead>>): Promise<CiView> {
     if (where.kind === 'view') return where.view;
     if (!session) return { kind: 'signIn' };
     const { owner, repo, branch } = where;
@@ -259,12 +282,19 @@ export class CiRuns implements vscode.Disposable {
     try {
       let read = reads.get(id);
       if (!read) {
-        read = new GitHubActions(owner, repo, async () => token, globalThis.fetch as unknown as Fetch).runs(branch);
+        read = readBranch(owner, repo, branch, async () => token);
         reads.set(id, read);
       }
-      const runs = await read;
+      const { runs, deployments, deploymentsError } = await read;
       // The runs of the commit checked out here are marked.
-      return { kind: 'runs', repo: `${owner}/${repo}`, branch, runs: runs.map((r) => ({ ...r, current: r.sha === ws.sync.head })) };
+      return {
+        kind: 'runs',
+        repo: `${owner}/${repo}`,
+        branch,
+        runs: runs.map((r) => ({ ...r, current: r.sha === ws.sync.head })),
+        deployments,
+        deploymentsError,
+      };
     } catch (error) {
       return { kind: 'error', error: message(error) };
     }
