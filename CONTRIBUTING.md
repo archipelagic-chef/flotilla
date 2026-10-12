@@ -17,6 +17,26 @@ Press F5 ("Run Extension (playground)") to launch an Extension Development Host 
 
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
 
+## The debug window's profile
+
+The debug window doesn't use your VS Code profile. Its settings, secret storage, GitHub sign-in and Flotilla's own state live in `.vscode-test/debug-profile`, and its extensions in `.vscode-test/debug-extensions` (both git-ignored). Only Claude Code is in there, a copy of the one you have installed, so chats still work; your installed Flotilla doesn't run next to the one being debugged. Every F5 (and every `npm run playground`) makes this ready; `scripts/debug-profile.mjs` does the work.
+
+The fakes are off by default, so agents and the CI/CD view use the real Claude and GitHub. To switch them on for the debug window:
+
+```bash
+npm run debug-profile -- --fakes     # Flotilla's Claude (flotilla.agents.claudePath) and GitHub (flotilla.dev.githubApi) point at the fakes
+npm run debug-profile -- --no-fakes  # back to the real ones
+npm run debug-profile                # keeps the last choice; F5 does this too
+```
+
+The fakes are `scripts/fake-claude.mjs` and `scripts/fake-github.mjs`; a fake that isn't in `scripts/` isn't used, and the log says so. To start the debug window's profile over (its first-run offers come back), close the debug window and delete `.vscode-test/debug-profile`.
+
+To check once, by hand, that a debug session leaves your own VS Code alone:
+
+1. Close your VS Code windows, then note the checksums of your user files: `User/settings.json` and `User/globalStorage/state.vscdb`, in `~/.vscode-server/data` in a dev container, `%APPDATA%\Code` on Windows and `~/Library/Application Support/Code` on macOS (`sha256sum`, or `certutil -hashfile` on Windows). Also note `ls -R User/globalStorage`.
+2. Press F5, and in the debug window sign in to GitHub, answer the offers and turn the autopilot on. Close the debug window.
+3. Check the same checksums and listing again: they must not have changed. `.vscode-test/debug-profile` now holds what the debug window wrote.
+
 ## Testing across host and container
 
 The extension only loads in a test window started from a window where **this project** is open. Reopening a test window in a container drops the extension, so start one test window on each side:
