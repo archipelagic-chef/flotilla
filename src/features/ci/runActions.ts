@@ -14,7 +14,7 @@ export function explainRunError(action: RunAction, status: number, detail: strin
     case 401:
       return `GitHub doesn't accept the sign-in any more. Sign in to GitHub again and retry the ${name}.`;
     case 403:
-      if (/old|days|expired|deleted|not allowed/i.test(detail)) {
+      if (/\bold(er)?\b|\bdays\b|expired|deleted|not allowed/i.test(detail)) {
         return `GitHub won't ${name} this run: it's too old, or its logs were deleted. Start a new run instead: push a commit, or run the workflow by hand.`;
       }
       return `Flotilla's GitHub sign-in may not ${name} workflow runs in ${repo}. Check that you have write access to the repository and that the sign-in has the repo scope, then retry.`;

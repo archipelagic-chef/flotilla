@@ -90,6 +90,14 @@ describe('GitHubActions', () => {
     ...over,
   });
 
+  it('reads which attempt a run is from its run_attempt (1 when GitHub gives none)', async () => {
+    const { fetch } = fakeFetch({
+      'https://api.github.com/repos/acme/app/actions/runs': { workflow_runs: [run({ id: 1, run_attempt: 2 }), run({ id: 2 })] },
+    });
+    const [again, first] = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('feat/x');
+    expect([again.attempt, first.attempt]).toEqual([2, 1]);
+  });
+
   it('reads a branch\'s latest runs with the token and the API version', async () => {
     const { fetch, calls } = fakeFetch({ 'https://api.github.com/repos/acme/app/actions/runs': { workflow_runs: [run()] } });
     const runs = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('feat/x');

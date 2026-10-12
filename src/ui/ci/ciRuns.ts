@@ -30,14 +30,18 @@ export class CiRuns implements vscode.Disposable {
   private stamps = new Map<string, string>();
   private visible = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private followUp: ReturnType<typeof setTimeout> | undefined;
+  /** One read per worktree, a few seconds after its run was acted on (each action has its own). */
+  private followUps = new Map<string, ReturnType<typeof setTimeout>>();
+  /** The actions on their way (a click on one already sent or asking is ignored). */
+  private acting = new Set<string>();
 
   /** post sends the views of every worktree to the sidebar. */
   constructor(private readonly post: (views: Record<string, CiView>) => void) {}
 
   dispose(): void {
     clearTimeout(this.timer);
-    clearTimeout(this.followUp);
+    for (const timer of this.followUps.values()) clearTimeout(timer);
+    this.followUps.clear();
   }
 
   /** The worktrees changed: the ones whose commit or upstream moved are read again (while shown). */
@@ -46,7 +50,11 @@ export class CiRuns implements vscode.Disposable {
     this.workstreams = workstreams;
     for (const ws of workstreams) this.stamps.set(ws.key, ciStamp(ws));
     const gone = [...this.views.keys()].filter((key) => !workstreams.some((ws) => ws.key === key));
-    for (const key of gone) this.views.delete(key);
+    for (const key of gone) {
+      this.views.delete(key);
+      clearTimeout(this.followUps.get(key));
+      this.followUps.delete(key);
+    }
     if (this.visible && moved.length) void this.load(moved.map((ws) => ws.key));
     else if (gone.length) this.post(this.snapshot());
   }
@@ -70,21 +78,44 @@ export class CiRuns implements vscode.Disposable {
     if (!runActions({ active: isActive(run.status), failed: run.status === 'failure' }).includes(action)) {
       throw new Error(`This run can't be ${action === 'cancel' ? 'cancelled' : 're-run this way'} now. Refresh the view to see its state.`);
     }
-    if (action === 'cancel') {
-      const answer = await vscode.window.showWarningMessage(`Cancel ${run.workflow} #${run.number} on ${view.branch}?`, { modal: true }, 'Cancel run');
-      if (answer !== 'Cancel run') return;
+    const flight = `${key}\n${runId}`;
+    if (this.acting.has(flight)) return;
+    this.acting.add(flight);
+    let asked = false;
+    try {
+      if (action === 'cancel') {
+        const answer = await vscode.window.showWarningMessage(`Cancel ${run.workflow} #${run.number} on ${view.branch}?`, { modal: true }, 'Cancel run');
+        if (answer !== 'Cancel run') return;
+      }
+      // A dismissed sign-in dialog ends it: nothing was asked of GitHub.
+      const session = await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+      if (!session) return;
+      const [owner, repo] = view.repo.split('/');
+      const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
+      asked = true;
+      if (action === 'cancel') await github.cancel(runId);
+      else await github.rerun(runId, action === 'rerunFailed');
+    } finally {
+      this.acting.delete(flight);
+      // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
+      if (asked) {
+        await this.load([key]);
+        this.followUpRead(key);
+      }
     }
-    // A dismissed sign-in dialog ends it: nothing was asked of GitHub.
-    const session = await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
-    if (!session) return;
-    const [owner, repo] = view.repo.split('/');
-    const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
-    if (action === 'cancel') await github.cancel(runId);
-    else await github.rerun(runId, action === 'rerunFailed');
-    await this.load([key]);
-    // GitHub can take a moment to show the new attempt or the cancelled run: read once more shortly after.
-    clearTimeout(this.followUp);
-    this.followUp = setTimeout(() => void this.load([key]), FOLLOW_UP_MS);
+  }
+
+  /** GitHub can take a moment to show the new attempt or the cancelled run: read the worktree once more shortly after. */
+  private followUpRead(key: string): void {
+    clearTimeout(this.followUps.get(key));
+    this.followUps.set(
+      key,
+      setTimeout(() => {
+        this.followUps.delete(key);
+        // Nothing is read while the sidebar is hidden, and a worktree that was removed has no runs to read.
+        if (this.visible && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
+      }, FOLLOW_UP_MS),
+    );
   }
 
   /** Reads every worktree's runs now. */

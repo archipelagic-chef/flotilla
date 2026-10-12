@@ -18,6 +18,11 @@ describe('explainRunError', () => {
     expect(explainRunError('cancel', 401, '', 'acme/app')).toMatch(/Sign in to GitHub again/);
   });
 
+  it('reads "too old" from the words, not from a fragment of another word', () => {
+    expect(explainRunError('rerun', 403, 'Forbidden: this run is older than 30 days', 'acme/app')).toMatch(/too old/);
+    expect(explainRunError('rerun', 403, 'the logs folder is not accessible', 'acme/app')).toMatch(/write access/);
+  });
+
   it('says a failed-jobs re-run has nothing to re-run', () => {
     expect(explainRunError('rerunFailed', 422, '', 'acme/app')).toMatch(/no job in this run failed/);
   });

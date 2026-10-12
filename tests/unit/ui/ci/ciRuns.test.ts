@@ -489,3 +489,79 @@ describe('CiRuns: a run\'s actions', () => {
     ci.dispose();
   });
 });
+
+describe('CiRuns: the reads after an action', () => {
+  /** Worktree a is on branch feat, b on branch other; each has one run. */
+  async function viewed() {
+    const reads = github({ feat: [apiRun({ id: 1 })], other: [apiRun({ id: 2 })] });
+    const controller = setup();
+    controller.ci.update([ws('a', { upstream: 'origin/feat' }), ws('b', { upstream: 'origin/other' })]);
+    controller.ci.setVisible(true);
+    await settle();
+    return { ...controller, reads };
+  }
+
+  /** How many reads (GET) have been made of a branch's runs. */
+  const readsOf = (fetch: ReturnType<typeof github>['fetch'], branch: string) =>
+    (fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(([url, init]) => init?.method !== 'POST' && new URL(url).searchParams.get('branch') === branch).length;
+
+  it('reads a worktree 3 seconds after its action, and a second action in that time still gets its own read', async () => {
+    const { ci, reads } = await viewed();
+    await ci.act('a', 1, 'rerun');
+    const feat = readsOf(reads.fetch, 'feat');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await ci.act('b', 2, 'rerun');
+    const other = readsOf(reads.fetch, 'other');
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat + 1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(readsOf(reads.fetch, 'other')).toBe(other + 1);
+    ci.dispose();
+  });
+
+  it('does not read in the follow-up while the sidebar is hidden', async () => {
+    const { ci, reads } = await viewed();
+    await ci.act('a', 1, 'rerun');
+    const feat = readsOf(reads.fetch, 'feat');
+    ci.setVisible(false);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat);
+    ci.dispose();
+  });
+
+  it('ignores a second click on an action that is already asking or on its way', async () => {
+    const reads = github({ feat: [apiRun({ id: 3, status: 'in_progress', conclusion: null })] });
+    const ci = setup().ci;
+    ci.update([ws('a', { upstream: 'origin/feat' })]);
+    ci.setVisible(true);
+    await settle();
+    let answer!: (value: string | undefined) => void;
+    win.showWarningMessage.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const first = ci.act('a', 3, 'cancel').catch(() => undefined);
+    await ci.act('a', 3, 'cancel');
+    expect(win.showWarningMessage).toHaveBeenCalledTimes(1);
+    answer('Cancel run');
+    await first;
+    const posts = (reads.fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    ci.dispose();
+  });
+
+  it('reads the runs again when GitHub refuses the action, and says why', async () => {
+    const { ci } = await viewed();
+    const body = JSON.stringify({ workflow_runs: [apiRun({ id: 1, status: 'completed', conclusion: 'success' })] });
+    const fetch = vi.fn(async (_url: string, init?: { method?: string }) => {
+      const refused = init?.method === 'POST';
+      return { ok: !refused, status: refused ? 409 : 200, statusText: refused ? 'Conflict' : 'OK', json: async () => ({}), text: async () => (refused ? 'in progress' : body) };
+    });
+    vi.stubGlobal('fetch', fetch);
+    await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/still running/);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method !== 'POST')).toHaveLength(1);
+    ci.dispose();
+  });
+});
