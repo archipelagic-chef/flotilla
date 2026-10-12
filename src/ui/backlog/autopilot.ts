@@ -9,6 +9,7 @@ import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import { memoryShortage } from './agentRunner';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -36,6 +37,8 @@ export interface AutopilotView {
   max: number;
   /** Waiting for Claude's usage limit to reset (ISO 8601). */
   waitingUntil?: string;
+  /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
+  waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
 }
@@ -48,8 +51,8 @@ export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): 
 /**
  * The autopilot: while it's on, agents take the backlog's To Do items in order and work on them without a window, up
  * to flotilla.autopilot.maxAgents at once: a worktree each, In Progress, reports in the ticket; their "Ready for
- * review." goes on to review. On a usage limit no new work starts until it resets (the paused agents go on then). Only
- * the leading window runs it.
+ * review." goes on to review. On a usage limit no new work starts until it resets (the paused agents go on then); nor
+ * while the machine is short of memory (it tries again on the next tick). Only the leading window runs it.
  */
 export class Autopilot implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -59,6 +62,7 @@ export class Autopilot implements vscode.Disposable {
   private readonly failed = new Set<string>();
   private ticking = false;
   private waitingUntil: Date | undefined;
+  private waitingForMemory = false;
 
   constructor(private readonly deps: AutopilotDeps) {
     const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
@@ -125,6 +129,7 @@ export class Autopilot implements vscode.Disposable {
       running: this.deps.reviews.running,
       max: this.max,
       ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now() ? { waitingUntil: this.waitingUntil.toISOString() } : {}),
+      ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
       elsewhere: !this.deps.leader.isLeader,
     };
   }
@@ -133,6 +138,7 @@ export class Autopilot implements vscode.Disposable {
   async tick(): Promise<void> {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
     this.ticking = true;
+    let memoryWait = false;
     try {
       const was = this.waitingUntil?.getTime();
       this.waitingUntil = await this.deps.reviews.pausedUntil();
@@ -141,11 +147,20 @@ export class Autopilot implements vscode.Disposable {
       while (this.enabled && this.deps.reviews.running < this.max) {
         const item = nextForAutopilot(await this.deps.backlog.read(), this.failed);
         if (!item) return;
+        // Too little memory for another agent: this one waits, and the next tick tries again.
+        if (memoryShortage()) {
+          memoryWait = true;
+          return;
+        }
         await this.start(item);
         this.changed.fire();
       }
     } finally {
       this.ticking = false;
+      if (memoryWait !== this.waitingForMemory) {
+        this.waitingForMemory = memoryWait;
+        this.changed.fire();
+      }
     }
   }
 

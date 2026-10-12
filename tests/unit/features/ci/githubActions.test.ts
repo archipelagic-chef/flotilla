@@ -1,58 +1,126 @@
 import { describe, expect, it } from 'vitest';
-import { GitHubActions, cleanLog, failureExcerpt } from '../../../../src/features/ci/githubActions';
+import { GitHubActions, ciStatus, isActive, splitUpstream } from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 
-describe('GitHubActions.runs', () => {
-  it('asks for the branch\'s runs with the token, and maps them to runs', async () => {
-    const requests: Array<{ url: string; headers: Record<string, string> }> = [];
-    const fetch: Fetch = async (url, init) => {
-      requests.push({ url, headers: init?.headers ?? {} });
-      const body = {
-        workflow_runs: [
-          {
-            id: 9,
-            name: 'CI',
-            run_number: 42,
-            display_title: 'Fix the parser',
-            event: 'push',
-            status: 'completed',
-            conclusion: 'failure',
-            html_url: 'https://github.com/acme/app/actions/runs/9',
-            head_sha: 'abc1234',
-            run_attempt: 2,
-            created_at: '2026-10-11T10:00:00Z',
-            updated_at: '2026-10-11T10:05:00Z',
-          },
-        ],
-      };
-      return { ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) };
-    };
-    const client = new GitHubActions('acme', 'app', async () => 'token-1', fetch);
-    const [run] = await client.runs('feat/x', 5);
-    expect(requests[0].url).toBe('https://api.github.com/repos/acme/app/actions/runs?branch=feat%2Fx&per_page=5');
-    expect(requests[0].headers.Authorization).toBe('Bearer token-1');
-    expect(run).toMatchObject({ id: 9, workflow: 'CI', number: 42, title: 'Fix the parser', status: 'failure', attempt: 2, sha: 'abc1234' });
+/** A fake GitHub: answers by URL prefix and records the requests. */
+function fakeFetch(routes: Record<string, unknown>) {
+  const calls: Array<{ url: string; method: string; headers: Record<string, string> }> = [];
+  const fetch: Fetch = async (url, init) => {
+    calls.push({ url, method: init?.method ?? 'GET', headers: init?.headers ?? {} });
+    const match = Object.keys(routes)
+      .filter((r) => url.startsWith(r))
+      .sort((a, b) => b.length - a.length)[0];
+    const found = match !== undefined;
+    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => (found ? JSON.stringify(routes[match]) : '') };
+  };
+  return { fetch, calls };
+}
+
+describe('ciStatus', () => {
+  it('maps a run that is waiting or going on', () => {
+    expect(ciStatus('queued', null)).toBe('queued');
+    expect(ciStatus('waiting', null)).toBe('queued');
+    expect(ciStatus('in_progress', null)).toBe('running');
   });
 
-  it('refuses names that are not GitHub names', () => {
-    expect(() => new GitHubActions('acme/../x', 'app', async () => '', (async () => undefined) as never)).toThrow(/Not a GitHub repository/);
+  it('maps a finished run by its conclusion', () => {
+    expect(ciStatus('completed', 'success')).toBe('success');
+    expect(ciStatus('completed', 'cancelled')).toBe('cancelled');
+    expect(ciStatus('completed', 'skipped')).toBe('skipped');
+    expect(ciStatus('completed', 'neutral')).toBe('neutral');
+    expect(ciStatus('completed', 'failure')).toBe('failure');
+  });
+
+  it('counts every other conclusion as a failure', () => {
+    for (const conclusion of ['timed_out', 'action_required', 'startup_failure', 'stale']) expect(ciStatus('completed', conclusion)).toBe('failure');
+    expect(ciStatus('completed', null)).toBe('failure');
+  });
+
+  it('knows which statuses are still going', () => {
+    expect(isActive('queued')).toBe(true);
+    expect(isActive('running')).toBe(true);
+    expect(isActive('success')).toBe(false);
+    expect(isActive('failure')).toBe(false);
   });
 });
 
-describe('log helpers', () => {
-  it('cleans timestamps, colors and group markers, and keeps the error lines of a long log', () => {
-    const log = [
-      '2026-10-11T10:00:00.1234567Z ##[group]Run tests',
-      '2026-10-11T10:00:01.0000000Z \u001b[31mERROR\u001b[0m: boom',
-      '2026-10-11T10:00:02.0000000Z ##[endgroup]',
-      ...Array.from({ length: 200 }, (_, i) => `2026-10-11T10:01:00.0000000Z line ${i}`),
-    ].join('\n');
-    const cleaned = cleanLog(log);
-    expect(cleaned.split('\n')[0]).toBe('▸ Run tests');
-    const excerpt = failureExcerpt(log, 50).split('\n');
-    expect(excerpt.length).toBeLessThanOrEqual(52);
-    expect(excerpt[0]).toBe('ERROR: boom');
-    expect(excerpt).toContain('…');
-    expect(excerpt.at(-1)).toBe('line 199');
+describe('splitUpstream', () => {
+  it('splits the remote from the branch', () => {
+    expect(splitUpstream('origin/feat/x', ['origin'])).toEqual({ remote: 'origin', branch: 'feat/x' });
+  });
+
+  it('prefers the longest remote that fits, when a remote name has a slash', () => {
+    expect(splitUpstream('team/fork/main', ['team', 'team/fork'])).toEqual({ remote: 'team/fork', branch: 'main' });
+    // "origin/x" is the branch "x" of remote "origin" here, not of a remote called "origin/x".
+    expect(splitUpstream('origin/x', ['origin', 'origin/x'])).toEqual({ remote: 'origin', branch: 'x' });
+  });
+
+  it('is undefined when no remote fits', () => {
+    expect(splitUpstream('upstream/main', ['origin'])).toBeUndefined();
+    expect(splitUpstream('origin', ['origin'])).toBeUndefined();
+  });
+});
+
+describe('GitHubActions', () => {
+  const run = (over: Record<string, unknown> = {}) => ({
+    id: 7,
+    name: 'CI',
+    run_number: 42,
+    display_title: 'Fix the parser',
+    event: 'push',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: 'https://github.com/acme/app/actions/runs/7',
+    head_sha: 'abc123',
+    created_at: '2026-10-11T10:00:00Z',
+    updated_at: '2026-10-11T10:05:00Z',
+    ...over,
+  });
+
+  it('reads a branch\'s latest runs with the token and the API version', async () => {
+    const { fetch, calls } = fakeFetch({ 'https://api.github.com/repos/acme/app/actions/runs': { workflow_runs: [run()] } });
+    const runs = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('feat/x');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://api.github.com/repos/acme/app/actions/runs?branch=feat%2Fx&per_page=10');
+    expect(calls[0].headers).toMatchObject({ Authorization: 'Bearer tok', 'X-GitHub-Api-Version': '2022-11-28' });
+    expect(runs).toEqual([
+      {
+        id: 7,
+        workflow: 'CI',
+        number: 42,
+        title: 'Fix the parser',
+        event: 'push',
+        status: 'failure',
+        url: 'https://github.com/acme/app/actions/runs/7',
+        sha: 'abc123',
+        created: '2026-10-11T10:00:00Z',
+      },
+    ]);
+  });
+
+  it('takes the title from the commit message when there is no display title, and a name for a run without one', async () => {
+    const { fetch } = fakeFetch({
+      'https://api.github.com/': { workflow_runs: [run({ display_title: undefined, head_commit: { message: 'Subject\n\nBody' }, name: null, status: 'in_progress', conclusion: null })] },
+    });
+    const [r] = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('main');
+    expect(r).toMatchObject({ title: 'Subject', workflow: 'Workflow', status: 'running' });
+  });
+
+  it('asks for the number of runs it is given', async () => {
+    const { fetch, calls } = fakeFetch({ 'https://api.github.com/': { workflow_runs: [] } });
+    await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('main', 3);
+    expect(calls[0].url).toContain('per_page=3');
+  });
+
+  it('rejects names that are not GitHub owners or repositories, before any request', () => {
+    const { fetch, calls } = fakeFetch({});
+    expect(() => new GitHubActions('acme/../x', 'app', async () => 'tok', fetch)).toThrow('Not a GitHub repository');
+    expect(() => new GitHubActions('acme', '..', async () => 'tok', fetch)).toThrow('Not a GitHub repository');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('throws the API error when GitHub refuses', async () => {
+    const { fetch } = fakeFetch({});
+    await expect(new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('main')).rejects.toThrow('404 Not Found');
   });
 });

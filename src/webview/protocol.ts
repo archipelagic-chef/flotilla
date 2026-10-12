@@ -5,9 +5,9 @@
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
+import type { CiRun } from '../features/ci/githubActions';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
-import type { CiView } from '../features/ci/ciWatcher';
 
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
@@ -20,6 +20,8 @@ export interface BacklogItemView extends BacklogItem {
   activity: number;
   /** An issue from an integration (Jira, GitHub Issues), not a local item. */
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
+  /** The ticket has a run block (BL-19 finds it): its card gets a Run button and a Run menu item. */
+  runnable?: boolean;
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
 }
@@ -31,7 +33,20 @@ export interface BacklogProblem {
 }
 
 /** The views under Version Control in the tool strip. */
-export type VcView = 'changes' | 'history' | 'compare';
+export type VcView = 'changes' | 'history' | 'compare' | 'ci';
+
+/** A workflow run as the CI/CD view shows it; current: it runs the commit checked out in the worktree. */
+export interface CiRunView extends CiRun {
+  current: boolean;
+}
+
+/** A worktree's CI/CD: its branch's latest runs on GitHub, or why there are none. */
+export type CiView =
+  | { kind: 'signIn' }
+  | { kind: 'unpublished' }
+  | { kind: 'unsupported' }
+  | { kind: 'error'; error: string }
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[] };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
@@ -88,13 +103,13 @@ export interface WorkstreamView {
   path: string;
   /** What the agent last said (a question when it waits for input). */
   agentMessage?: string;
+  /** The first changes of each list (flotilla.changes.limit); totals has how many there are in all. */
   staged: FileChangeView[];
   unstaged: FileChangeView[];
+  totals: { staged: number; unstaged: number };
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
-  /** The branch's CI, when it has been read (or why it can't be). */
-  ci?: CiView;
   /** `;`-separated tokens for context-menu when-clauses, as in `webviewWorkstream =~ /;linked;/`. */
   context: string;
 }
@@ -135,18 +150,21 @@ export interface CommitView {
 }
 
 export type HostMessage =
-  | { type: 'state'; workstreams: WorkstreamView[] }
+  /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
+  | { type: 'state'; workstreams: WorkstreamView[]; keys: string[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
   /** Scroll to a workstream; with path, expand to and highlight that file in the Files tab. */
-  | { type: 'reveal'; key: string; path?: string; tool?: Tool }
+  | { type: 'reveal'; key: string; path?: string; tool?: Tool; vcView?: VcView }
   /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** The active worktree changed outside the webview (shortcut, status bar). */
   | { type: 'active'; key: string }
   /** Worktrees whose tab is closed (still in the Overview). */
   | { type: 'tabs'; closed: string[] }
+  /** Exclusions VS Code's settings still lack for a worktrees folder in the main folder (empty: none to show). */
+  | { type: 'exclusions'; missing: string[] }
   | { type: 'searchResults'; id: number; groups: SearchGroup[]; truncated: boolean; limit: number; error?: string }
   /** The file icon theme (undefined: none, use generic icons). */
   | { type: 'iconTheme'; theme: { css: string; map: IconMap } | undefined }
@@ -166,6 +184,8 @@ export type HostMessage =
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
   | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
+  /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
+  | { type: 'ci'; views: Record<string, CiView> }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
   /** Fold (or unfold) every worktree section of the All tab. */
@@ -176,13 +196,27 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
-/** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit to reset. */
+/** The machine, for the Overview: its free memory, the agents working in every window, and the windows open on worktrees. */
+export interface MachineState {
+  /** Free memory, in MB. */
+  freeMB: number;
+  /** Below this (flotilla.agents.minFreeMemoryMB), no agent starts. */
+  minFreeMB: number;
+  /** Claude Code chats working now (in any window). */
+  agents: number;
+  /** Worktrees with a window open on them. */
+  windows: number;
+}
+
+/** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
 export interface AutopilotState {
   enabled: boolean;
   running: number;
   max: number;
   /** ISO 8601. */
   waitingUntil?: string;
+  /** Too little memory free to start an agent. */
+  waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
 }
@@ -226,6 +260,10 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
+  /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
+  | { type: 'ci'; op: 'signIn' | 'refresh' }
+  /** Opens a link on GitHub (a workflow run). */
+  | { type: 'openUrl'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */
@@ -234,8 +272,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
-  /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude. */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss'; id: string }
+  /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude; run: its run block (BL-20). */
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
   /** Accept every proposed item; plan the backlog with Claude. */
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */

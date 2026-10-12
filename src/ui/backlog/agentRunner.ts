@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -22,6 +24,37 @@ export function claudeBinary(): string {
     if (fs.existsSync(bundled)) return bundled;
   }
   return 'claude';
+}
+
+/** Memory free on this machine, in MB: what Node reports (on Linux, MemAvailable; in WSL, the VM's share of the host's). */
+export function freeMemoryMB(): number {
+  return os.freemem() / (1024 * 1024);
+}
+
+/** The free memory (MB) that agents need before they start: flotilla.agents.minFreeMemoryMB. */
+export function minFreeMemoryMB(): number {
+  return Math.max(0, vscode.workspace.getConfiguration('flotilla').get<number>('agents.minFreeMemoryMB', 2048));
+}
+
+/** Too little memory free to start an agent (how much is free, and how much is asked for); undefined when there's room. */
+export function memoryShortage(): { freeMB: number; minMB: number } | undefined {
+  const minMB = minFreeMemoryMB();
+  const freeMB = freeMemoryMB();
+  return isMemoryShort(freeMB, minMB) ? { freeMB, minMB } : undefined;
+}
+
+/**
+ * For a manual start (the user's own click): when memory is short, says so and offers "Start Anyway". True when the
+ * agent may start.
+ */
+export async function confirmMemory(what: string): Promise<boolean> {
+  const short = memoryShortage();
+  if (!short) return true;
+  const choice = await vscode.window.showWarningMessage(
+    `${what} waits: ${formatMemory(short.freeMB)} of memory is free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. Starting one now may run the machine out of memory.`,
+    'Start Anyway',
+  );
+  return choice === 'Start Anyway';
 }
 
 /**

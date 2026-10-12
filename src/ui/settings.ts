@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { CiNotify } from '../features/ci/ciWatcher';
+import type { CiNotify } from '../features/ci/notify';
 
 export interface Settings {
   copyFiles: string[];

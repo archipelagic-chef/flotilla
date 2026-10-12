@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { currentGitPriority, gitQueue } from './gitQueue';
 
 export class GitError extends Error {
   constructor(
@@ -20,7 +21,12 @@ export interface RunGitOptions {
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** Runs git and returns its text output. Waits its turn behind the other git processes (see gitQueue). */
 export function runGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
+  return gitQueue.run(currentGitPriority(), () => execGit(args, opts));
+}
+
+function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
@@ -47,6 +53,10 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
 
 /** runGit, for output that may not be text (a file's bytes). */
 export function runGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
+  return gitQueue.run(currentGitPriority(), () => execGitBytes(args, opts));
+}
+
+function execGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
