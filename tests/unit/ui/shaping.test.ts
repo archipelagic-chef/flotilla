@@ -115,6 +115,29 @@ describe('shaping a ticket with an agent', () => {
     expect(runs.started[1].prompt).toContain('without a comment yet');
   });
 
+  it('starts one agent for calls made at once, and drops a Discuss without a comment that comes meanwhile', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await Promise.all([s.discuss('BL-1'), s.discuss('BL-1', true)]);
+    await flush();
+    expect(runs.started).toHaveLength(1);
+    runs.started[0].resolve({ code: 0 });
+    await flush();
+    expect(runs.started).toHaveLength(1);
+  });
+
+  it('answers a comment that comes while the agent is being started', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await Promise.all([s.discuss('BL-1'), s.discuss('BL-1')]);
+    await flush();
+    expect(runs.started).toHaveLength(1);
+    runs.started[0].resolve({ code: 0 });
+    await flush();
+    expect(runs.started).toHaveLength(2);
+    expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
+  });
+
   it('leaves a ticket that is being worked on alone', async () => {
     const fake = fakeBacklog({ status: 'doing' });
     await shaping(fake.backlog).discuss('BL-1');
