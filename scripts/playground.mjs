@@ -4,6 +4,11 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { describeDebugProfile, fakesArg, syncDebugProfile } from './debug-profile.mjs';
+
+// Every run, the debug window's own profile is made ready (it doesn't use the user's VS Code profile); --fakes and
+// --no-fakes switch the fake Claude and GitHub on and off.
+console.log(describeDebugProfile(syncDebugProfile({ fakes: fakesArg() })));
 
 const dir = path.resolve('.playground');
 if (fs.existsSync(path.join(dir, '.git'))) {

@@ -3,9 +3,16 @@
   "tasks": [
     { "type": "npm", "script": "build", "label": "npm: build", "problemMatcher": [] },
     { "type": "npm", "script": "playground", "label": "npm: playground", "problemMatcher": [] },
+    { "type": "npm", "script": "debug-profile", "label": "npm: debug profile", "problemMatcher": [] },
     {
       "label": "flotilla: build + playground",
       "dependsOn": ["npm: build", "npm: playground"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "flotilla: build + debug profile",
+      "dependsOn": ["npm: build", "npm: debug profile"],
       "dependsOrder": "sequence",
       "problemMatcher": []
     }
