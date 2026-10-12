@@ -448,7 +448,7 @@ export function App() {
           requestFiles={requestCommitFiles}
         />
       )}
-      {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} />}
+      {tool === 'vc' && vcView === 'ci' && <CiBody wsKey={ws.key} view={ci[ws.key]} />}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );

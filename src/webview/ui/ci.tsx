@@ -1,3 +1,5 @@
+import { isActive } from '../../features/ci/githubActions';
+import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { CiRunView, CiView } from '../protocol';
 import { send } from './api';
 import { ago } from './vc';
@@ -13,11 +15,19 @@ const STATUS: Record<CiRunView['status'], { icon: string; label: string }> = {
   neutral: { icon: 'circle-large-outline', label: 'Neutral' },
 };
 
+/** Each action's icon and name, on the run's row (shown on hover, like the other row actions). */
+const ACTIONS: Record<RunAction, { icon: string; label: string }> = {
+  rerun: { icon: 'debug-rerun', label: 'Re-run' },
+  rerunFailed: { icon: 'run-errors', label: 'Re-run Failed Jobs' },
+  cancel: { icon: 'debug-stop', label: 'Cancel' },
+};
+
 /**
  * Version Control › CI/CD: the latest workflow runs of the worktree's branch on GitHub. Runs are read by the extension
- * (see src/ui/ci/ciRuns.ts); a click on one opens it on GitHub.
+ * (see src/ui/ci/ciRuns.ts); a click on one opens it on GitHub. A run's actions (re-run, cancel) go to the extension,
+ * which checks them and asks before a cancel.
  */
-export function CiBody({ view }: { view: CiView | undefined }) {
+export function CiBody({ wsKey, view }: { wsKey: string; view: CiView | undefined }) {
   const refresh = () => send({ type: 'ci', op: 'refresh' });
   return (
     <div class="group ci">
@@ -64,7 +74,22 @@ export function CiBody({ view }: { view: CiView | undefined }) {
               {run.current && <span class="ref" data-tip="The commit checked out in this worktree">checked out</span>}
               <span class="ref">{run.event}</span>
               <span class="desc">{run.title}</span>
+              {run.attempt > 1 && <span class="ref" data-tip="This run's re-run attempt">attempt {run.attempt}</span>}
               <span class="ci-age">{ago(run.created)}</span>
+              {/* The row's own click and Enter open the run on GitHub: these don't reach it. */}
+              <span class="hover-actions" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                {runActions({ active: isActive(run.status), failed: run.status === 'failure' }).map((action) => (
+                  <button
+                    key={action}
+                    class="icon"
+                    aria-label={ACTIONS[action].label}
+                    data-tip={ACTIONS[action].label}
+                    onClick={() => send({ type: 'ci', op: 'act', key: wsKey, run: run.id, action })}
+                  >
+                    <i class={`codicon codicon-${ACTIONS[action].icon}`} />
+                  </button>
+                ))}
+              </span>
             </div>
           );
         })}

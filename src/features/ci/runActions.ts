@@ -1,5 +1,3 @@
-import { fetchJson, type Fetch } from '../backlog/sources/source';
-
 /** What the CI/CD view can do to a run. */
 export type RunAction = 'rerun' | 'rerunFailed' | 'cancel';
 
@@ -7,15 +5,6 @@ export type RunAction = 'rerun' | 'rerunFailed' | 'cancel';
 export function runActions(run: { active: boolean; failed: boolean }): RunAction[] {
   if (run.active) return ['cancel'];
   return run.failed ? ['rerun', 'rerunFailed'] : ['rerun'];
-}
-
-/** A GitHub owner or repository name (no paths into other API routes); as github.ts's gitHubName. */
-const gitHubName = (n: string) => /^[A-Za-z0-9_.-]+$/.test(n) && n !== '.' && n !== '..';
-
-/** A run's id, as the view sends it: a positive whole number, nothing else in a URL. */
-function runId(n: number): number {
-  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`Not a GitHub Actions run id: ${n}.`);
-  return n;
 }
 
 /** GitHub's answer to a run action that didn't work, as the message the user sees (what to do next). */
@@ -39,40 +28,5 @@ export function explainRunError(action: RunAction, status: number, detail: strin
       return `GitHub can't re-run the failed jobs: no job in this run failed. Use Re-run to run it all again.`;
     default:
       return `GitHub didn't ${name} the run (${status}${detail ? `: ${detail}` : ''}). Try again in a moment.`;
-  }
-}
-
-/** A run's re-run and cancel, through the user's GitHub sign-in in VS Code. */
-export class RunControls {
-  constructor(
-    readonly owner: string,
-    readonly repo: string,
-    private readonly token: () => Promise<string>,
-    private readonly fetch: Fetch,
-  ) {
-    if (!gitHubName(owner) || !gitHubName(repo)) throw new Error(`Not a GitHub repository: ${owner}/${repo}.`);
-  }
-
-  /** Re-runs a run's jobs, or only its failed ones. */
-  async rerun(run: number, failedOnly: boolean): Promise<void> {
-    await this.post(failedOnly ? 'rerunFailed' : 'rerun', `runs/${runId(run)}/${failedOnly ? 'rerun-failed-jobs' : 'rerun'}`);
-  }
-
-  /** Cancels a queued or running run. */
-  async cancel(run: number): Promise<void> {
-    await this.post('cancel', `runs/${runId(run)}/cancel`);
-  }
-
-  private async post(action: RunAction, path: string): Promise<void> {
-    const url = `https://api.github.com/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/${path}`;
-    const headers = { Authorization: `Bearer ${await this.token()}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-    try {
-      await fetchJson(this.fetch, url, { method: 'POST', headers });
-    } catch (error) {
-      // fetchJson reports a status other than 2xx as "<status> <text>: <detail>".
-      const m = /^(\d{3}) [^:]*(?::\s*([\s\S]*))?$/.exec(error instanceof Error ? error.message : '');
-      if (!m) throw error;
-      throw new Error(explainRunError(action, Number(m[1]), (m[2] ?? '').slice(0, 300), `${this.owner}/${this.repo}`));
-    }
   }
 }
