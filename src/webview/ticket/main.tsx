@@ -732,6 +732,9 @@ type FeedRow = TicketView['activity'][number] | { commit: TicketView['commits'][
 
 const feedRound = (f: FeedRow): RoundInfo => ('commit' in f ? { part: 'round' } : entryRound(f));
 
+/** A feed row's key: a commit's hash, or an entry's place in the ticket's activity (which only grows at the end). */
+const rowKey = (f: FeedRow, ticket: TicketView) => ('commit' in f ? `commit-${f.commit.hash}` : `entry-${ticket.activity.indexOf(f)}`);
+
 /** One row of the feed: a commit, or an entry (a comment, an agent's report, a note). */
 function FeedRowView({ f, ticket }: { f: FeedRow; ticket: TicketView }) {
   if ('commit' in f) {
@@ -812,8 +815,8 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
       </button>
       {open && (
         <ol class="fold-items">
-          {fold.items.map((f, i) => (
-            <FeedRowView key={i} f={f} ticket={ticket} />
+          {fold.items.map((f) => (
+            <FeedRowView key={rowKey(f, ticket)} f={f} ticket={ticket} />
           ))}
         </ol>
       )}
@@ -878,9 +881,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
       <ol class="feed">
         {groups.map((g) =>
           'fold' in g ? (
-            <RoundFoldLine key={`feed-${feed.indexOf(g.fold.items[0])}`} fold={g.fold} ticket={ticket} />
+            <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />
           ) : (
-            <FeedRowView key={`feed-${feed.indexOf(g.item)}`} f={g.item} ticket={ticket} />
+            <FeedRowView key={rowKey(g.item, ticket)} f={g.item} ticket={ticket} />
           ),
         )}
       </ol>
