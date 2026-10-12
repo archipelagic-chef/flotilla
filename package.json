@@ -510,6 +510,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.showNeedsYou",
+        "title": "Show Needs You…",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.closeTab",
         "title": "Close Tab",
         "category": "Flotilla",
@@ -1406,10 +1411,20 @@
           "minimum": 1,
           "description": "A 'working' agent report older than this is shown as last reported."
         },
-        "flotilla.notifyOnAttention": {
-          "type": "boolean",
-          "default": true,
-          "description": "Notify when a workstream starts waiting for input or reports an error."
+        "flotilla.notify": {
+          "type": "string",
+          "enum": [
+            "needsYou",
+            "all",
+            "off"
+          ],
+          "enumDescriptions": [
+            "One notification for what needs you (tickets asking a question, ready for review, approved, stopped; worktrees waiting for input or reporting an error), gathered for about a minute. Only the leading window shows it.",
+            "A notification for each of those as it happens.",
+            "No notifications. The Needs you count in the status bar still shows."
+          ],
+          "default": "needsYou",
+          "description": "Which notifications Flotilla shows for what needs you."
         },
         "flotilla.pollSeconds": {
           "type": "number",

@@ -37,7 +37,7 @@ import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { devGitHubApi } from './ui/ci/devGitHub';
 import type { ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
-import { AttentionNotifier } from './ui/notifications';
+import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
@@ -169,7 +169,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
-  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
+  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, isLeader: () => leader.isLeader });
   context.subscriptions.push(reviews);
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
@@ -184,7 +184,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
     ),
   );
-  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
+  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir });
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
@@ -201,14 +201,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tickets,
     integrations,
   };
+  // What needs the user: the status bar counts it, and it notifies (only the leading window does).
+  const needs = new NeedsYouNotifier({
+    backlog,
+    repository,
+    reviews,
+    leader,
+    openTicket: (id) => void tickets.open(id),
+    openWorktree: (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow),
+  });
   context.subscriptions.push(
     sidebar,
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     active,
-    new WorkstreamStatusBar(repository, active),
+    new WorkstreamStatusBar(repository, active, needs),
     decorations,
     vscode.window.registerFileDecorationProvider(decorations),
-    new AttentionNotifier(repository, (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow)),
+    needs,
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
@@ -265,6 +274,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.showJobLog', (arg?: unknown) => showJobLog(arg, jobLogs)),
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
+    vscode.commands.registerCommand('flotilla.showNeedsYou', () => needs.showList()),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
     vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
     vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),

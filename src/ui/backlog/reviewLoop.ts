@@ -18,8 +18,6 @@ import {
   answerPrompt,
   AUTOPILOT_NOTE,
   resumeAfterLimitPrompt,
-  fixesFor,
-  fixLabel,
   readyReport,
   reviewerPrompt,
   revisionPrompt,
@@ -65,7 +63,6 @@ export interface ReviewDeps {
   repository: Repository<Workstream>;
   mainRoot: string;
   output: vscode.OutputChannel;
-  openTicket(id: string): void;
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
@@ -204,16 +201,6 @@ export class ReviewLoop implements vscode.Disposable {
             'review',
             `Agent ${ready.agent}`,
           );
-          if (toUser) {
-            void vscode.window
-              .showInformationMessage(
-                byUser
-                  ? `${ready.agent} made the changes you asked for on ${item.id} "${item.title}". It's ready for your review.`
-                  : `${ready.agent} finished ${item.id} "${item.title}". It's ready for your review.`,
-                'Open',
-              )
-              .then((c) => c && this.deps.openTicket(item.id));
-          }
           continue;
         }
       }
@@ -280,18 +267,10 @@ export class ReviewLoop implements vscode.Disposable {
     await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
   }
 
-  /** Stops the loop, saying why; the ticket (and the notification) offer the fixes for it. */
-  private async stopLoop(id: string, reason: string, o: { kind: ReviewStopKind; task?: RevisionTask; notify?: boolean }): Promise<void> {
+  /** Stops the loop, saying why; the ticket offers the fixes for it (and "Needs you" lists it). */
+  private async stopLoop(id: string, reason: string, o: { kind: ReviewStopKind; task?: RevisionTask }): Promise<void> {
     await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'stopped', reason, stop: { kind: o.kind, ...(o.task ? { task: o.task } : {}) } }));
     await this.note(id, `The review stopped: ${reason}`);
-    if (o.notify === false) return;
-    const fixes = fixesFor(o.kind, !!o.task);
-    const labels = fixes.map((f) => fixLabel(f, o.kind));
-    void vscode.window.showWarningMessage(`Review of ${id} stopped: ${reason}`, ...labels, 'Open').then((c) => {
-      const fix = fixes[labels.indexOf(c ?? '')];
-      if (fix) void this.fix(id, fix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
-      else if (c) this.deps.openTicket(id);
-    });
   }
 
   /** Pauses an agent that hit Claude's usage limit: its chat goes on by itself when the limit resets. */
@@ -506,7 +485,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.runs.delete(id);
     this.deferred.delete(id);
     run?.stop();
-    await this.stopLoop(id, 'stopped by you.', { kind: 'user', notify: false });
+    await this.stopLoop(id, 'stopped by you.', { kind: 'user' });
   }
 
   /** `restart`: a loop that stopped or ended starts over at round 1 (the stored round is left as it is). */
@@ -590,9 +569,6 @@ export class ReviewLoop implements vscode.Disposable {
     const handled = [...(item.review.handled ?? []), this.key(id)(verdict.entry)];
     if (verdict.verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
-      void vscode.window
-        .showInformationMessage(`${item.review.reviewer} approved ${id} "${item.title}". It's ready for you to merge.`, 'Open')
-        .then((c) => c && this.deps.openTicket(id));
       return;
     }
     const task: RevisionTask = {
@@ -771,9 +747,6 @@ export class ReviewLoop implements vscode.Disposable {
       const last = ticket.activity.filter((e) => sameAgent(entryAgent(e.author), item.review!.implementer)).at(-1);
       if (last && saysWaitingForUser(last.body)) {
         await this.setReview(id, (r) => ({ ...r!, state: 'asking', handled: [...(r!.handled ?? []), this.key(id)(last)] }));
-        void vscode.window
-          .showInformationMessage(`${item.review.implementer} has a question about ${id} "${item.title}". Answer it in a comment on the ticket.`, 'Open')
-          .then((c) => c && this.deps.openTicket(id));
         return;
       }
       // Resumed, it's told to go on and report.
