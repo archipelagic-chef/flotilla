@@ -10,13 +10,11 @@ const GITHUB_SCOPES = ['repo'];
 /** The choice that leaves an optional input out, so the workflow's own default applies. */
 const WORKFLOW_DEFAULT = '(workflow default)';
 
-/** Where a worktree's branch is on GitHub: the repository, the branch's name there, and the commit a run would use. */
+/** Where a worktree's branch is on GitHub: the repository and the branch's name there. */
 export interface DispatchTarget {
   owner: string;
   repo: string;
   branch: string;
-  /** The pushed head of the branch (the commit a run uses), short. */
-  commit: string;
 }
 
 /**
@@ -40,8 +38,7 @@ export async function dispatchTarget(worktree: string): Promise<DispatchTarget> 
   if (!split) throw new Error(`${upstream} isn't on a remote of this repository.`);
   const repo = gitHubRepo(await runGit(['remote', 'get-url', split.remote], { cwd: worktree }));
   if (!repo) throw new Error('CI/CD supports GitHub Actions only for now.');
-  const commit = (await runGit(['rev-parse', '--short', '@{u}'], { cwd: worktree })).trim();
-  return { ...repo, branch: split.branch, commit };
+  return { ...repo, branch: split.branch };
 }
 
 /**
@@ -115,6 +112,8 @@ export async function runWorkflowByHand(worktree: string, fetch: Fetch = globalT
   const target = await dispatchTarget(worktree);
   const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { createIfNone: true });
   const client = new GitHubActions(target.owner, target.repo, async () => session.accessToken, fetch);
+  // What GitHub has now, not this clone's copy of the branch (which may be behind): that's the commit a run uses.
+  const head = (await client.branchHead(target.branch)).slice(0, 7);
   const workflows = await runnableWorkflows(client, worktree);
   if (!workflows.length) {
     void vscode.window.showInformationMessage(`No workflow in ${target.owner}/${target.repo} can be started by hand: none has a workflow_dispatch trigger.`);
@@ -133,7 +132,7 @@ export async function runWorkflowByHand(worktree: string, fetch: Fetch = globalT
     {
       modal: true,
       detail: [
-        `${target.owner}/${target.repo}, branch ${target.branch}: it runs commit ${target.commit}, the branch's head on GitHub.`,
+        `${target.owner}/${target.repo}, branch ${target.branch}: it runs commit ${head}, the branch's head on GitHub.`,
         ...(shown.length ? ['', ...shown] : []),
         '',
         "It can't be undone: a deploy that runs can't be taken back.",

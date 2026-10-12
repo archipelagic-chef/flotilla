@@ -93,6 +93,13 @@ export class GitHubActions {
     return data.workflows.filter((w) => w.state === 'active').map((w) => ({ id: w.id, name: w.name, path: w.path }));
   }
 
+  /** The full SHA of a branch's head on GitHub: the commit a run of the branch uses (not this clone's copy of it). */
+  async branchHead(branch: string): Promise<string> {
+    const url = `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/branches/${branch.split('/').map(encodeURIComponent).join('/')}`;
+    const data = await fetchJson<{ commit: { sha: string } }>(this.fetch, url, { headers: await this.headers() });
+    return data.commit.sha;
+  }
+
   /** Starts a workflow that has a workflow_dispatch trigger, on a branch of the repository, with its inputs. */
   async dispatch(workflowId: number, ref: string, inputs: Record<string, string> = {}): Promise<void> {
     if (!Number.isSafeInteger(workflowId) || workflowId <= 0) throw new Error(`Not a GitHub Actions workflow id: ${workflowId}.`);
