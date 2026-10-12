@@ -123,4 +123,63 @@ describe('GitHubActions', () => {
     const { fetch } = fakeFetch({});
     await expect(new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('main')).rejects.toThrow('404 Not Found');
   });
+
+  describe('jobs', () => {
+    const jobsUrl = 'https://api.github.com/repos/acme/app/actions/runs/7/jobs';
+    const job = (id: number) => ({ id, name: `job ${id}`, status: 'completed', conclusion: 'success', html_url: `https://github.com/acme/app/runs/7/job/${id}`, steps: [] });
+
+    /** A fake GitHub with paged jobs: each page links to the next one through the Link header, as GitHub does. */
+    function pagedFetch(pages: Array<{ jobs: unknown[]; link?: string }>) {
+      const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+      const fetch: Fetch = async (url, init) => {
+        calls.push({ url, headers: init?.headers ?? {} });
+        const page = Number(new URL(url).searchParams.get('page') ?? 1);
+        const found = pages[page - 1];
+        if (!found) return { ok: false, status: 404, statusText: 'Not Found', json: async () => ({}), text: async () => '' };
+        const link = found.link;
+        const body = { total_count: pages.reduce((n, p) => n + p.jobs.length, 0), jobs: found.jobs };
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+          headers: { get: (name: string) => (name.toLowerCase() === 'link' ? (link ?? null) : null) },
+        };
+      };
+      return { fetch, calls };
+    }
+
+    it('reads every page of a run with more jobs than one page holds', async () => {
+      const first = Array.from({ length: 100 }, (_, i) => job(i + 1));
+      const second = [job(101), job(102)];
+      const { fetch, calls } = pagedFetch([
+        { jobs: first, link: `<${jobsUrl}?per_page=100&page=2>; rel="next", <${jobsUrl}?per_page=100&page=2>; rel="last"` },
+        { jobs: second },
+      ]);
+      const jobs = await new GitHubActions('acme', 'app', async () => 'tok', fetch).jobs(7);
+      expect(jobs.map((j) => j.id)).toEqual([...first.map((j) => j.id), 101, 102]);
+      expect(calls.map((c) => c.url)).toEqual([`${jobsUrl}?per_page=100`, `${jobsUrl}?per_page=100&page=2`]);
+      expect(calls[1].headers).toMatchObject({ Authorization: 'Bearer tok' });
+    });
+
+    it('reads one page when there is no next link', async () => {
+      const { fetch, calls } = pagedFetch([{ jobs: [job(1)] }]);
+      expect((await new GitHubActions('acme', 'app', async () => 'tok', fetch).jobs(7)).map((j) => j.id)).toEqual([1]);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('says how many jobs it left out when a run has more pages than it reads', async () => {
+      const pages = Array.from({ length: 21 }, (_, i) => ({ jobs: [job(i + 1)], link: `<${jobsUrl}?per_page=100&page=${i + 2}>; rel="next"` }));
+      const { fetch, calls } = pagedFetch(pages);
+      await expect(new GitHubActions('acme', 'app', async () => 'tok', fetch).jobs(7)).rejects.toThrow("Read 20 of 21 jobs; the rest weren't read.");
+      expect(calls).toHaveLength(20);
+    });
+
+    it("doesn't send the token to a next link that isn't on api.github.com", async () => {
+      const { fetch, calls } = pagedFetch([{ jobs: [job(1)], link: '<https://example.com/steal?page=2>; rel="next"' }]);
+      await expect(new GitHubActions('acme', 'app', async () => 'tok', fetch).jobs(7)).rejects.toThrow("isn't on api.github.com");
+      expect(calls).toHaveLength(1);
+    });
+  });
 });
