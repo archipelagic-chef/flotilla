@@ -2,7 +2,8 @@ import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
-import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { answerComment, answerOf, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
+import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import './ticket.css';
@@ -338,7 +339,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
           : r.state === 'revising'
             ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
             : r.state === 'asking'
-              ? ['question', 'waiting', `${who} has a question for you. Answer it in a comment below; it goes on from there.`]
+              ? ['question', 'waiting', `${who} has a question for you. Answer it in its report, or in a comment below; it goes on from there.`]
               : r.state === 'yours'
                 ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
                 : r.state === 'approved'
@@ -675,6 +676,75 @@ function Agents({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/**
+ * What an agent needs from the user: its text, and its questions, each answered by a choice (its recommendation
+ * preselected) or by Other…; one Send posts the answers as the user's comment, and the agent goes on from there.
+ */
+function Needs({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
+  const [answers, setAnswers] = useState<Answer[]>(() => report.questions.map(defaultAnswer));
+  const update = (qi: number, change: (a: Answer) => Answer) => setAnswers((all) => all.map((a, i) => (i === qi ? change(a) : a)));
+  const texts = report.questions.map((q, i) => answerOf(q, answers[i]));
+  const ready = texts.length > 0 && texts.every(Boolean);
+  const submit = () => {
+    if (ready) send({ type: 'comment', text: answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))) });
+  };
+  const answering = live && !report.answered && report.questions.length > 0;
+  return (
+    <div class={`needs${report.answered ? ' answered' : ''}`}>
+      {report.needs && (
+        <div class="needs-line">
+          <i class="codicon codicon-question" /> <strong>Needs from you:</strong> {report.needs}
+        </div>
+      )}
+      {report.answered && <div class="muted">Answered below.</div>}
+      {answering && (
+        <>
+          {report.questions.map((q, qi) => {
+            const a = answers[qi];
+            const other = q.options.length;
+            const type = q.kind === 'several' ? 'checkbox' : 'radio';
+            return (
+              <fieldset class="question" key={qi}>
+                <legend>{q.text}</legend>
+                {q.options.map((o, i) => (
+                  <label class="choice" key={i}>
+                    <input type={type} name={`${name}-${qi}`} checked={a.picked.includes(i)} onChange={() => update(qi, (x) => choose(q, x, i))} />
+                    <span>{o.text}</span>
+                    {o.recommended && <span class="recommended">recommended</span>}
+                  </label>
+                ))}
+                {q.kind !== 'yesno' && (
+                  <label class="choice">
+                    <input type={type} name={`${name}-${qi}`} checked={a.picked.includes(other)} onChange={() => update(qi, (x) => choose(q, x, other))} />
+                    <span>Other…</span>
+                  </label>
+                )}
+                {q.kind !== 'yesno' && a.picked.includes(other) && (
+                  <MarkdownBox
+                    value={a.other}
+                    setValue={(text) => update(qi, (x) => ({ ...x, other: text }))}
+                    placeholder="Your answer (Markdown)"
+                    label={`Your answer to: ${q.text}`}
+                    onSubmit={submit}
+                    images={false}
+                    minRows={2}
+                    autoFocus
+                  />
+                )}
+              </fieldset>
+            );
+          })}
+          <div class="actions-row">
+            <button class="button" disabled={!ready} onClick={submit} title="Posts the answers as your comment: the agent goes on from there">
+              {report.questions.length > 1 ? 'Send Answers' : 'Send'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 type EntryKind = 'comment' | 'agent' | 'history';
 
 /** People's comments (here or in the tracker), agents' reports, and Flotilla's notes (what happened). */
@@ -816,7 +886,20 @@ function Activity({ ticket }: { ticket: TicketView }) {
                   </button>
                 )}
               </div>
-              <Rendered html={e.html} empty="" />
+              {e.report ? (
+                <>
+                  <Rendered html={e.report.summary} empty="" />
+                  {e.report.asks && <Needs report={e.report} name={e.key ?? `entry-${i}`} live={!ticket.remote} />}
+                  {e.report.details && (
+                    <details class="report-details">
+                      <summary>Details</summary>
+                      <Rendered html={e.report.details} empty="" />
+                    </details>
+                  )}
+                </>
+              ) : (
+                <Rendered html={e.html} empty="" />
+              )}
               {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
             </li>
           );

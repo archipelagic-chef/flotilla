@@ -11,12 +11,13 @@ import type { BacklogIntegrations } from './integrations';
 import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
+import { parseReport } from '../../features/backlog/report';
 import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
@@ -277,7 +278,7 @@ export class TicketPanels implements vscode.Disposable {
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
     return Promise.all(
-      entries.map(async (e) => {
+      entries.map(async (e, n) => {
         const key = Store.entryKey(item.id, e);
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
@@ -285,15 +286,32 @@ export class TicketPanels implements vscode.Disposable {
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
         const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
+        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview) : undefined;
         return {
           ...e,
-          html: await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item)),
+          html: report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item)),
           key,
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
+          ...(report ? { report } : {}),
         };
       }),
     );
+  }
+
+  /** An agent's report split for the ticket (its summary, what it needs, its details); undefined for an older report. */
+  private async reportView(item: BacklogItem, body: string, later: TicketEntry[], webview: vscode.Webview): Promise<ReportView | undefined> {
+    const parts = parseReport(body);
+    if (parts.summary === undefined) return undefined;
+    const roots = this.roots(item);
+    return {
+      summary: await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots),
+      details: await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
+      asks: parts.asks,
+      ...(parts.needs !== undefined ? { needs: parts.needs } : {}),
+      questions: parts.questions,
+      answered: later.some((e) => e.author === 'You'),
+    };
   }
 
   /** The chats of agents started for an item (their first message names it), in its worktrees, oldest first. */

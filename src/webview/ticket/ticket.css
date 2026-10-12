@@ -280,6 +280,59 @@ h2 {
   border-style: dashed;
   border-left-style: solid;
 }
+/* An agent's report: its summary, what it needs from you (answered by clicking), and its details, folded. */
+.report-details {
+  margin-top: 6px;
+}
+.report-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.needs {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--waiting);
+  border-radius: 3px;
+}
+.needs.answered {
+  border-left-color: var(--border);
+}
+.needs-line {
+  margin-bottom: 2px;
+}
+.needs-line > .codicon {
+  color: var(--waiting);
+}
+.question {
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+.question > legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.choice .recommended {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.needs .actions-row {
+  margin-top: 8px;
+}
 .entry-head {
   display: flex;
   align-items: center;

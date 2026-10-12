@@ -6,6 +6,7 @@ import type { AgentChoice, AgentEffort, BacklogItem, BacklogPriority, BacklogSta
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
+import type { Question } from '../features/backlog/report';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -32,13 +33,28 @@ export type AgentChatView =
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
 
+/** An agent's report, as the ticket shows it: the summary, what it needs from you (answered by clicking), the details. */
+export interface ReportView {
+  /** Rendered Markdown. */
+  summary: string;
+  /** Rendered Markdown, folded under the summary. */
+  details: string;
+  /** The report asks the user something (its questions, or the Needs line's text). */
+  asks: boolean;
+  /** What the Needs line says it needs from the user. */
+  needs?: string;
+  questions: Question[];
+  /** A comment of yours came after the report: it's answered. */
+  answered: boolean;
+}
+
 export interface TicketView {
   item: BacklogItem;
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
   /** key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. */
-  activity: Array<TicketEntry & { html: string; key?: string; posted?: string; chat?: AgentChatView }>;
+  activity: Array<TicketEntry & { html: string; key?: string; posted?: string; chat?: AgentChatView; report?: ReportView }>;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
   remote?: {
     kind: 'jira' | 'github';
