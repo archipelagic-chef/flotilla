@@ -2,12 +2,15 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
-import { GitHubActions, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
+import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
 import { anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { CiRunView, CiView } from '../../webview/protocol';
 
 const SCOPES = ['repo'];
+/** How long after a re-run or cancel GitHub is read again, for the state it has settled into. */
+const FOLLOW_UP_MS = 3_000;
 
 /** Where a worktree's runs are: its branch on a GitHub repository, or the view that says why there are none. */
 type Where = { kind: 'github'; owner: string; repo: string; branch: string } | { kind: 'view'; view: CiView };
@@ -37,12 +40,18 @@ export class CiRuns implements vscode.Disposable {
   private jobs = new Map<string, Map<number, JobsState>>();
   private visible = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  /** One read per worktree, a few seconds after its run was acted on (each action has its own). */
+  private followUps = new Map<string, ReturnType<typeof setTimeout>>();
+  /** The actions on their way (a click on one already sent or asking is ignored). */
+  private acting = new Set<string>();
 
   /** post sends the views of every worktree to the sidebar. */
   constructor(private readonly post: (views: Record<string, CiView>) => void) {}
 
   dispose(): void {
     clearTimeout(this.timer);
+    for (const timer of this.followUps.values()) clearTimeout(timer);
+    this.followUps.clear();
   }
 
   /** The worktrees changed: the ones whose commit or upstream moved are read again (while shown). */
@@ -55,6 +64,8 @@ export class CiRuns implements vscode.Disposable {
       this.views.delete(key);
       this.expanded.delete(key);
       this.jobs.delete(key);
+      clearTimeout(this.followUps.get(key));
+      this.followUps.delete(key);
     }
     if (this.visible && moved.length) void this.load(moved.map((ws) => ws.key));
     else if (gone.length) this.post(this.snapshot());
@@ -66,6 +77,57 @@ export class CiRuns implements vscode.Disposable {
     this.visible = visible;
     if (visible) void this.load();
     else clearTimeout(this.timer);
+  }
+
+  /**
+   * Re-runs a run (or only its failed jobs), or cancels it, from the view: the run must be one the view shows and be
+   * offered its action. A cancel asks first. Then the worktree's runs are read again.
+   */
+  async act(key: string, runId: number, action: RunAction): Promise<void> {
+    const view = this.views.get(key);
+    const run = view?.kind === 'runs' ? view.runs.find((r) => r.id === runId) : undefined;
+    if (view?.kind !== 'runs' || !run) throw new Error("That run isn't in this worktree's CI/CD view any more. Refresh the view and try again.");
+    if (!runActions({ active: isActive(run.status), failed: run.status === 'failure' }).includes(action)) {
+      throw new Error(`This run can't be ${action === 'cancel' ? 'cancelled' : 're-run this way'} now. Refresh the view to see its state.`);
+    }
+    const flight = `${key}\n${runId}`;
+    if (this.acting.has(flight)) return;
+    this.acting.add(flight);
+    let asked = false;
+    try {
+      if (action === 'cancel') {
+        const answer = await vscode.window.showWarningMessage(`Cancel ${run.workflow} #${run.number} on ${view.branch}?`, { modal: true }, 'Cancel run');
+        if (answer !== 'Cancel run') return;
+      }
+      // A dismissed sign-in dialog ends it: nothing was asked of GitHub.
+      const session = await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+      if (!session) return;
+      const [owner, repo] = view.repo.split('/');
+      const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
+      asked = true;
+      if (action === 'cancel') await github.cancel(runId);
+      else await github.rerun(runId, action === 'rerunFailed');
+    } finally {
+      this.acting.delete(flight);
+      // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
+      if (asked) {
+        await this.load([key]);
+        this.followUpRead(key);
+      }
+    }
+  }
+
+  /** GitHub can take a moment to show the new attempt or the cancelled run: read the worktree once more shortly after. */
+  private followUpRead(key: string): void {
+    clearTimeout(this.followUps.get(key));
+    this.followUps.set(
+      key,
+      setTimeout(() => {
+        this.followUps.delete(key);
+        // Nothing is read while the sidebar is hidden, and a worktree that was removed has no runs to read.
+        if (this.visible && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
+      }, FOLLOW_UP_MS),
+    );
   }
 
   /** Reads every worktree's runs now. */

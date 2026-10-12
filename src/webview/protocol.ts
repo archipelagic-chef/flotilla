@@ -6,6 +6,7 @@ import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { CiJob, CiRun } from '../features/ci/githubActions';
+import type { RunAction } from '../features/ci/runActions';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -272,6 +273,8 @@ export type WebviewMessage =
   | { type: 'ci'; op: 'expand' | 'collapse'; key: string; runId: number }
   /** Shows a job's log (read-only, cleaned, at its first error). */
   | { type: 'ci'; op: 'showLog'; key: string; jobId: number; jobName: string }
+  /** A run's action in the CI/CD view, for a worktree (key): a cancel asks first. */
+  | { type: 'ci'; op: 'act'; key: string; run: number; action: RunAction }
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */

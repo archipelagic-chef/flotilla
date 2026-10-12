@@ -6,8 +6,9 @@ import type { CiView } from '../../../../src/webview/protocol';
 const auth = vi.hoisted(() => ({ getSession: vi.fn() }));
 const git = vi.hoisted(() => ({ runGit: vi.fn() }));
 const commands = vi.hoisted(() => ({ executeCommand: vi.fn() }));
+const win = vi.hoisted(() => ({ showWarningMessage: vi.fn() }));
 
-vi.mock('vscode', () => ({ authentication: auth, commands }));
+vi.mock('vscode', () => ({ authentication: auth, commands, window: win }));
 vi.mock('../../../../src/core/git/gitCli', () => git);
 
 const GITHUB = 'git@github.com:acme/app.git';
@@ -531,6 +532,152 @@ describe('CiRuns: a run’s jobs', () => {
     ci.update([ws('a', { upstream: undefined })]);
     await ci.showLog('a', 9, 'test');
     expect(commands.executeCommand).not.toHaveBeenCalled();
+    ci.dispose();
+  });
+});
+
+describe('CiRuns: a run\'s actions', () => {
+  /** Reads the worktree 'a' once (on feat), with the given runs, and returns the fake GitHub. */
+  async function viewed(runs: ApiRun[]) {
+    const reads = github({ feat: runs });
+    const controller = setup();
+    controller.ci.update([ws('a')]);
+    controller.ci.setVisible(true);
+    await settle();
+    return { ...controller, reads };
+  }
+
+  const posts = (fetch: ReturnType<typeof github>['fetch']) =>
+    (fetch.mock.calls as unknown as Array<[string, { method?: string; headers: Record<string, string> }]>).filter(([, init]) => init?.method === 'POST');
+
+  it('re-runs a finished run, with the token, and reads the runs again', async () => {
+    const { ci, reads } = await viewed([apiRun({ id: 1 })]);
+    await ci.act('a', 1, 'rerun');
+    expect(posts(reads.fetch).map(([url, init]) => [url, init.headers.Authorization])).toEqual([
+      ['https://api.github.com/repos/acme/app/actions/runs/1/rerun', 'Bearer token'],
+    ]);
+    expect(reads.fetch.mock.calls.length).toBeGreaterThan(1);
+    ci.dispose();
+  });
+
+  it('re-runs only the failed jobs when asked', async () => {
+    const { ci, reads } = await viewed([apiRun({ id: 2, conclusion: 'failure' })]);
+    await ci.act('a', 2, 'rerunFailed');
+    expect(posts(reads.fetch).map(([url]) => url)).toEqual(['https://api.github.com/repos/acme/app/actions/runs/2/rerun-failed-jobs']);
+    ci.dispose();
+  });
+
+  it('cancels a running run only after the user confirms', async () => {
+    const { ci, reads } = await viewed([apiRun({ id: 3, status: 'in_progress', conclusion: null })]);
+    win.showWarningMessage.mockResolvedValueOnce(undefined);
+    await ci.act('a', 3, 'cancel');
+    expect(win.showWarningMessage).toHaveBeenCalledWith('Cancel CI #7 on feat?', { modal: true }, 'Cancel run');
+    expect(posts(reads.fetch)).toHaveLength(0);
+
+    win.showWarningMessage.mockResolvedValueOnce('Cancel run');
+    await ci.act('a', 3, 'cancel');
+    expect(posts(reads.fetch).map(([url]) => url)).toEqual(['https://api.github.com/repos/acme/app/actions/runs/3/cancel']);
+    ci.dispose();
+  });
+
+  it('does nothing when the sign-in dialog is dismissed', async () => {
+    const { ci, reads } = await viewed([apiRun({ id: 1 })]);
+    auth.getSession.mockRejectedValueOnce(new Error('Canceled'));
+    await ci.act('a', 1, 'rerun');
+    expect(posts(reads.fetch)).toHaveLength(0);
+    ci.dispose();
+  });
+
+  it('refuses a run the view does not show, or an action the run is not offered', async () => {
+    const { ci, reads } = await viewed([apiRun({ id: 1 })]);
+    await expect(ci.act('a', 99, 'rerun')).rejects.toThrow("isn't in this worktree's CI/CD view any more");
+    await expect(ci.act('b', 1, 'rerun')).rejects.toThrow("isn't in this worktree's CI/CD view any more");
+    await expect(ci.act('a', 1, 'cancel')).rejects.toThrow("can't be cancelled now");
+    await expect(ci.act('a', 1, 'rerunFailed')).rejects.toThrow("can't be re-run this way now");
+    expect(posts(reads.fetch)).toHaveLength(0);
+    ci.dispose();
+  });
+
+  it('shows what GitHub refused, as a message to act on', async () => {
+    const { ci } = await viewed([apiRun({ id: 1 })]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({}), text: async () => 'Resource not accessible by integration' })));
+    await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/write access to the repository/);
+    ci.dispose();
+  });
+});
+
+describe('CiRuns: the reads after an action', () => {
+  /** Worktree a is on branch feat, b on branch other; each has one run. */
+  async function viewed() {
+    const reads = github({ feat: [apiRun({ id: 1 })], other: [apiRun({ id: 2 })] });
+    const controller = setup();
+    controller.ci.update([ws('a', { upstream: 'origin/feat' }), ws('b', { upstream: 'origin/other' })]);
+    controller.ci.setVisible(true);
+    await settle();
+    return { ...controller, reads };
+  }
+
+  /** How many reads (GET) have been made of a branch's runs. */
+  const readsOf = (fetch: ReturnType<typeof github>['fetch'], branch: string) =>
+    (fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(([url, init]) => init?.method !== 'POST' && new URL(url).searchParams.get('branch') === branch).length;
+
+  it('reads a worktree 3 seconds after its action, and a second action in that time still gets its own read', async () => {
+    const { ci, reads } = await viewed();
+    await ci.act('a', 1, 'rerun');
+    const feat = readsOf(reads.fetch, 'feat');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await ci.act('b', 2, 'rerun');
+    const other = readsOf(reads.fetch, 'other');
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat + 1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(readsOf(reads.fetch, 'other')).toBe(other + 1);
+    ci.dispose();
+  });
+
+  it('does not read in the follow-up while the sidebar is hidden', async () => {
+    const { ci, reads } = await viewed();
+    await ci.act('a', 1, 'rerun');
+    const feat = readsOf(reads.fetch, 'feat');
+    ci.setVisible(false);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(readsOf(reads.fetch, 'feat')).toBe(feat);
+    ci.dispose();
+  });
+
+  it('ignores a second click on an action that is already asking or on its way', async () => {
+    const reads = github({ feat: [apiRun({ id: 3, status: 'in_progress', conclusion: null })] });
+    const ci = setup().ci;
+    ci.update([ws('a', { upstream: 'origin/feat' })]);
+    ci.setVisible(true);
+    await settle();
+    let answer!: (value: string | undefined) => void;
+    win.showWarningMessage.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const first = ci.act('a', 3, 'cancel').catch(() => undefined);
+    await ci.act('a', 3, 'cancel');
+    expect(win.showWarningMessage).toHaveBeenCalledTimes(1);
+    answer('Cancel run');
+    await first;
+    const posts = (reads.fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    ci.dispose();
+  });
+
+  it('reads the runs again when GitHub refuses the action, and says why', async () => {
+    const { ci } = await viewed();
+    const body = JSON.stringify({ workflow_runs: [apiRun({ id: 1, status: 'completed', conclusion: 'success' })] });
+    const fetch = vi.fn(async (_url: string, init?: { method?: string }) => {
+      const refused = init?.method === 'POST';
+      return { ok: !refused, status: refused ? 409 : 200, statusText: refused ? 'Conflict' : 'OK', json: async () => ({}), text: async () => (refused ? 'in progress' : body) };
+    });
+    vi.stubGlobal('fetch', fetch);
+    await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/still running/);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method !== 'POST')).toHaveLength(1);
     ci.dispose();
   });
 });

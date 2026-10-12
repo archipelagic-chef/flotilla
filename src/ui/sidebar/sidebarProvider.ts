@@ -441,6 +441,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
         else if (m.op === 'expand' || m.op === 'collapse') await this.ci.expand(m.key, m.runId, m.op === 'expand');
         else if (m.op === 'showLog') await this.ci.showLog(m.key, m.jobId, m.jobName);
+        else if (m.op === 'act') await this.ci.act(m.key, m.run, m.action).catch((e: unknown) => this.report(e));
         else await this.ci.refresh();
         return;
       case 'refs': {

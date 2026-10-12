@@ -1,5 +1,6 @@
 import { gitHubName } from '../backlog/sources/github';
 import { fetchJson, fetchText, TIMEOUT_MS, type Fetch } from '../backlog/sources/source';
+import { explainRunError, type RunAction } from './runActions';
 
 /** Where a run is: waiting to start, running, or how it ended. */
 export type CiStatus = 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped' | 'neutral';
@@ -16,6 +17,8 @@ export interface CiRun {
   status: CiStatus;
   url: string;
   sha: string;
+  /** Which attempt of the run this is: a re-run makes a new one (2, 3…). */
+  attempt: number;
   /** ISO 8601. */
   created: string;
 }
@@ -59,6 +62,7 @@ interface ApiRun {
   conclusion: string | null;
   html_url: string;
   head_sha: string;
+  run_attempt?: number;
   created_at: string;
 }
 
@@ -119,6 +123,7 @@ export class GitHubActions {
       status: ciStatus(r.status, r.conclusion),
       url: r.html_url,
       sha: r.head_sha,
+      attempt: r.run_attempt ?? 1,
       created: r.created_at,
     }));
   }
@@ -196,6 +201,29 @@ export class GitHubActions {
     }
   }
 
+  /** Re-runs a run's jobs, or only its failed ones. */
+  async rerun(run: number, failedOnly: boolean): Promise<void> {
+    await this.act(failedOnly ? 'rerunFailed' : 'rerun', `runs/${runId(run)}/${failedOnly ? 'rerun-failed-jobs' : 'rerun'}`);
+  }
+
+  /** Cancels a queued or running run. */
+  async cancel(run: number): Promise<void> {
+    await this.act('cancel', `runs/${runId(run)}/cancel`);
+  }
+
+  private async act(action: RunAction, path: string): Promise<void> {
+    const url = `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/${path}`;
+    const headers = { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
+    try {
+      await fetchJson(this.fetch, url, { method: 'POST', headers });
+    } catch (error) {
+      // fetchJson reports a status other than 2xx as "<status> <text>: <detail>".
+      const m = /^(\d{3}) [^:]*(?::\s*([\s\S]*))?$/.exec(error instanceof Error ? error.message : '');
+      if (!m) throw error;
+      throw new Error(explainRunError(action, Number(m[1]), (m[2] ?? '').slice(0, 300), `${this.owner}/${this.repo}`));
+    }
+  }
+
   private async headers(): Promise<Record<string, string>> {
     return { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
   }
@@ -219,6 +247,12 @@ export function cleanLog(log: string): string {
     )
     .filter((l, i, all) => l !== '' || all[i - 1] !== '')
     .join('\n');
+}
+
+/** A run's id, as the view sends it: a positive whole number, nothing else in a URL. */
+function runId(n: number): number {
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`Not a GitHub Actions run id: ${n}.`);
+  return n;
 }
 
 /** A remote branch, as git names its upstream ("origin/feat/x"), split by the remotes there are. */
