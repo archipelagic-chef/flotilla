@@ -120,6 +120,19 @@ describe('isDispatchable', () => {
   });
 });
 
+describe('GitHubActions.branchHead', () => {
+  it("reads the branch's head SHA from GitHub, with a slash in the branch name kept as a path", async () => {
+    const urls: string[] = [];
+    const fetch: Fetch = async (url) => {
+      urls.push(url);
+      return { ok: true, status: 200, statusText: 'OK', json: async () => ({ commit: { sha: 'f00dfeed'.repeat(5) } }), text: async () => JSON.stringify({ commit: { sha: 'f00dfeed'.repeat(5) } }) };
+    };
+    const sha = await new GitHubActions('acme', 'shop', async () => 'tok', fetch).branchHead('feat/x y');
+    expect(sha).toBe('f00dfeed'.repeat(5));
+    expect(urls).toEqual(['https://api.github.com/repos/acme/shop/branches/feat/x%20y']);
+  });
+});
+
 describe('GitHubActions.dispatch', () => {
   it('starts the workflow on the ref, with the inputs, and reads the empty 204 answer', async () => {
     const calls: Array<{ url: string; method?: string; body?: string; auth?: string }> = [];
