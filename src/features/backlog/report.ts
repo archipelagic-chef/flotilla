@@ -18,7 +18,8 @@
  * Reports in the older form (no "Needs from you" line, no verdict first) have no summary: they show whole.
  */
 
-export type QuestionKind = 'one' | 'several' | 'yesno';
+/** one or several choices; yes or no; or a free answer in a text box (a question with no choices). */
+export type QuestionKind = 'one' | 'several' | 'yesno' | 'text';
 
 export interface QuestionOption {
   text: string;
@@ -50,12 +51,12 @@ const NEEDS = /^\s*[*_]*needs from you[*_]*\s*:[*_]*\s*(.*?)\s*$/i;
 const VERDICT = /^\s*[*_]*verdict[*_]*\s*:/i;
 const WAITING = /^[*_]*waiting for (you|the user|your answer)[.!]?[*_]*$/i;
 const QUESTION_BLOCK = /^(`{3,}|~{3,})question[ \t]*\n([\s\S]*?)\n\1[ \t]*$/gm;
-const KINDS: Record<string, QuestionKind> = { one: 'one', several: 'several', 'yes/no': 'yesno', 'yes or no': 'yesno', yesno: 'yesno' };
+const KINDS: Record<string, QuestionKind> = { one: 'one', several: 'several', text: 'text', 'yes/no': 'yesno', 'yes or no': 'yesno', yesno: 'yesno' };
 
 /** What agents are told about a report's shape: the summary, the Needs line and the questions. */
 export const REPORT_FORMAT = [
   'Start each report with a summary of at most 3 lines, then a line "Needs from you: nothing", or "Needs from you:" and what you need. The details (how to review, findings) follow it: the ticket folds them under the summary, so keep the summary to what matters most.',
-  'To ask the user, put the questions after that line, each in a block fenced with ```question: its first line is the question, then the choices as "- " lines, with the one you suggest marked "(recommended)". The user clicks an answer: one choice (the default), "choose: several" for checkboxes, or "choose: yes/no" (no choices needed). "Other…" is there for a free answer, except with yes/no. Ask only what you can\'t decide yourself, and stop until you\'re resumed with the answer.',
+  'To ask the user, put the questions after that line, each in a block fenced with ```question: its first line is the question, then the choices as "- " lines, with the one you suggest marked "(recommended)". The user clicks an answer: one choice (the default), or "choose: several" for checkboxes. "Other…" is there for a free answer. With no choices, the question gets a text box; "choose: yes/no" gives Yes and No. Ask only what you can\'t decide yourself, and stop until you\'re resumed with the answer.',
 ].join('\n\n');
 
 /** Parses a report's Markdown (an agent's entry in a ticket's activity). */
@@ -132,12 +133,37 @@ export function parseQuestion(inner: string): Question | undefined {
   }
   const question = text.join(' ').trim();
   if (!question) return undefined;
-  const resolved = kind ?? (options.length ? 'one' : 'yesno');
-  return {
-    text: question,
-    kind: resolved,
-    options: resolved === 'yesno' && !options.length ? [{ text: 'Yes', recommended: false }, { text: 'No', recommended: false }] : options,
-  };
+  // No choices: a free answer (yes or no only when asked for).
+  const resolved: QuestionKind = kind === 'yesno' ? 'yesno' : kind === 'text' || !options.length ? 'text' : (kind ?? 'one');
+  const choices = resolved === 'text' ? [] : resolved === 'yesno' && !options.length ? [{ text: 'Yes', recommended: false }, { text: 'No', recommended: false }] : options;
+  return { text: question, kind: resolved, options: choices };
+}
+
+/** The user's comment after a report that answers it: the first of theirs (undefined: not answered yet). */
+export function reportAnswer(later: ReadonlyArray<{ author: string; body: string }>): string | undefined {
+  return later.find((e) => e.author === 'You')?.body.trim();
+}
+
+/**
+ * Each question's answer, as the comment that answered the report gave it: the whole comment for one question, else
+ * each question's "**question** answer" paragraph.
+ */
+export function answersIn(questions: Question[], comment: string): string[] {
+  if (questions.length === 1) return [comment.trim()];
+  return questions.map((q) => {
+    const head = `**${q.text}** `;
+    const at = comment.indexOf(head);
+    return at < 0 ? '' : comment.slice(at + head.length).split(/\n\n/)[0].trim();
+  });
+}
+
+/** The answer a question was given, read back from its text (a choice's text, or what was written for Other). */
+export function answerFromText(q: Question, text: string): Answer {
+  if (q.kind === 'text') return { picked: [0], other: text };
+  const parts = text.split(', ');
+  const picked = q.options.flatMap((o, i) => (text === o.text || parts.includes(o.text) ? [i] : []));
+  if (!picked.length && text) return { picked: [q.options.length], other: text };
+  return { picked, other: '' };
 }
 
 /**

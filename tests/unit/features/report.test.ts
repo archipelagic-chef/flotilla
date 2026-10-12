@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { answerComment, answerOf, choose, defaultAnswer, parseQuestion, parseReport, type Question } from '../../../src/features/backlog/report';
+import {
+  answerComment,
+  answerFromText,
+  answerOf,
+  answersIn,
+  choose,
+  defaultAnswer,
+  parseQuestion,
+  parseReport,
+  reportAnswer,
+  type Question,
+} from '../../../src/features/backlog/report';
 
 describe('reading a report', () => {
   it('takes the summary before the Needs line, and folds the rest as details', () => {
@@ -114,10 +125,15 @@ describe('reading a report', () => {
 });
 
 describe('reading a question', () => {
-  it('is one choice by default, several with "choose: several", and yes or no without choices', () => {
+  it('is one choice by default, several with "choose: several"', () => {
     expect(parseQuestion('Which?\n- A\n- B')?.kind).toBe('one');
     expect(parseQuestion('Which?\nchoose: several\n- A\n- B')?.kind).toBe('several');
-    expect(parseQuestion('Ship it?')).toEqual({
+  });
+
+  it('is a free answer without choices, and yes or no only when asked for', () => {
+    expect(parseQuestion('Why?')).toEqual({ text: 'Why?', kind: 'text', options: [] });
+    expect(parseQuestion('Why?\n- A')?.kind).toBe('one');
+    expect(parseQuestion('Ship it?\nchoose: yes/no')).toEqual({
       text: 'Ship it?',
       kind: 'yesno',
       options: [
@@ -125,6 +141,25 @@ describe('reading a question', () => {
         { text: 'No', recommended: false },
       ],
     });
+    expect(parseQuestion('Which?\nchoose: one')?.kind).toBe('text');
+  });
+
+  it('reads an answer back from the comment that gave it', () => {
+    const one: Question = { text: 'Which?', kind: 'one', options: [{ text: 'Redis', recommended: true }, { text: 'In memory', recommended: false }] };
+    const several: Question = { text: 'Checks?', kind: 'several', options: [{ text: 'Unit', recommended: false }, { text: 'E2E', recommended: false }] };
+    const text: Question = { text: 'Why?', kind: 'text', options: [] };
+    expect(answerFromText(one, 'Redis')).toEqual({ picked: [0], other: '' });
+    expect(answerFromText(one, 'Postgres')).toEqual({ picked: [2], other: 'Postgres' });
+    expect(answerFromText(several, 'Unit, E2E')).toEqual({ picked: [0, 1], other: '' });
+    expect(answerFromText(text, 'Because.')).toEqual({ picked: [0], other: 'Because.' });
+    expect(answersIn([one], 'Redis')).toEqual(['Redis']);
+    expect(answersIn([one, several], '**Which?** Redis\n\n**Checks?** Unit')).toEqual(['Redis', 'Unit']);
+    expect(answersIn([one, several], 'Something else')).toEqual(['', '']);
+  });
+
+  it('takes the first comment of the user after a report as its answer', () => {
+    expect(reportAnswer([{ author: 'Flotilla', body: 'Note.' }, { author: 'You', body: ' Redis ' }, { author: 'You', body: 'More.' }])).toBe('Redis');
+    expect(reportAnswer([{ author: 'Flotilla', body: 'Note.' }])).toBeUndefined();
   });
 
   it('needs a question', () => {
