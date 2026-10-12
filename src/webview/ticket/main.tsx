@@ -2,6 +2,7 @@ import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
+import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -319,7 +320,9 @@ const FIX_TIP: Record<ReviewFix, string> = {
   resumeNow: "Goes on now, without waiting for the limit's reset (if it hasn't reset, it pauses again)",
 };
 
-/** Where the review loop is: who reviews, the round, the verdict; stop it, or start it again. */
+const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
   const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
@@ -351,7 +354,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         <strong>
           {r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot)
             ? 'Autopilot'
-            : `Review${r.round ? ` · round ${r.round}` : ''}`}
+            : capitalized(reviewOutcome(r.state))}
         </strong>{' '}
         {text}
       </span>
@@ -718,6 +721,100 @@ const EMPTY: Record<string, string> = {
   history: 'Nothing has happened yet.',
 };
 
+/** A row of the feed: an entry, or a commit. */
+type FeedRow = TicketView['activity'][number] | { commit: TicketView['commits'][number] };
+
+const feedRound = (f: FeedRow): RoundInfo => ('commit' in f ? { part: 'round' } : entryRound(f));
+
+/** One row of the feed: a commit, or an entry (a comment, an agent's report, a note). */
+function FeedRowView({ f, ticket }: { f: FeedRow; ticket: TicketView }) {
+  if ('commit' in f) {
+    const c = f.commit;
+    return (
+      <li class="entry kind-commit">
+        <button
+          class="commit-line"
+          onClick={() => send({ type: 'openCommit', hash: c.hash })}
+          title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
+        >
+          <i class="codicon codicon-git-commit" />
+          <span class="hash">{c.short}</span>
+          <span class="subject">{c.subject}</span>
+          {c.branches[0] && <span class="branch-tag">{c.branches[0]}</span>}
+          <span class="muted">
+            {c.author} · {ago(c.date)}
+          </span>
+        </button>
+      </li>
+    );
+  }
+  const e = f;
+  const kind = kindOf(e.author);
+  const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
+  return (
+    <li class={`entry kind-${kind}`}>
+      <div class="entry-head">
+        <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
+        {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
+        <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
+        {kind === 'agent' && <span class="bot-tag">agent</span>}
+        {e.date && <span class="muted">{e.date}</span>}
+        {agentChat && (
+          <button
+            class="chat-chip"
+            onClick={() => send({ type: 'openChat', key: agentChat.key, id: agentChat.id })}
+            title={`Written in the chat "${agentChat.title}". Click to open it in Claude Code.`}
+          >
+            <span class={`dot ${CHAT_STATE[agentChat.state]?.cls ?? 'ended'}`} />
+            <i class="codicon codicon-comment-discussion" />
+            <span class="chat-chip-title">{agentChat.title}</span>
+          </button>
+        )}
+        {e.posted && (
+          <span class="posted" title={`Posted as a comment on ${e.posted}`}>
+            <i class="codicon codicon-check" /> Posted to {e.posted}
+          </span>
+        )}
+        {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
+          <button class="text-button post-entry" onClick={() => send({ type: 'postEntry', key: e.key! })} title="Shows what will be posted and asks first">
+            <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
+          </button>
+        )}
+      </div>
+      <Rendered html={e.html} empty="" />
+      {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
+    </li>
+  );
+}
+
+/** A review's rounds folded into one line ("Reviewed by Flux-3 in 2 rounds → approved"); a click shows them, in order. */
+function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: TicketView }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li class="entry kind-review">
+      <button
+        class="review-fold"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        title={open ? 'Hides the reviews and changes' : 'Shows the reviews and changes, in order'}
+      >
+        <i class={`codicon codicon-${open ? 'chevron-down' : 'chevron-right'}`} />
+        <i class="codicon codicon-eye" />
+        <span>
+          {fold.reviewer ? `Reviewed by ${fold.reviewer}` : 'Reviewed'} in {fold.rounds} round{fold.rounds === 1 ? '' : 's'} → {fold.outcome}
+        </span>
+      </button>
+      {open && (
+        <ol class="fold-items">
+          {fold.items.map((f, i) => (
+            <FeedRowView key={i} f={f} ticket={ticket} />
+          ))}
+        </ol>
+      )}
+    </li>
+  );
+}
+
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
@@ -739,6 +836,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
   // Commits are part of what happened: in All and History, in time order among the entries.
   const commits = !tab || tab === 'history' ? ticket.commits : [];
   const feed = withCommits(shown, commits);
+  // In All, a review's rounds fold into one line, opened to see them (rounds.ts); the other tabs show every entry.
+  const groups: Array<FeedGroup<FeedRow>> = tab
+    ? feed.map((item) => ({ item }))
+    : foldRounds(feed, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer });
   return (
     <section class="block">
       <div class="block-head">
@@ -758,69 +859,13 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       {!feed.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
-        {feed.map((f, i) => {
-          if ('commit' in f) {
-            const c = f.commit;
-            return (
-              <li key={c.hash} class="entry kind-commit">
-                <button
-                  class="commit-line"
-                  onClick={() => send({ type: 'openCommit', hash: c.hash })}
-                  title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
-                >
-                  <i class="codicon codicon-git-commit" />
-                  <span class="hash">{c.short}</span>
-                  <span class="subject">{c.subject}</span>
-                  {c.branches[0] && <span class="branch-tag">{c.branches[0]}</span>}
-                  <span class="muted">
-                    {c.author} · {ago(c.date)}
-                  </span>
-                </button>
-              </li>
-            );
-          }
-          const e = f;
-          const kind = kindOf(e.author);
-          const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
-          return (
-            <li key={`${e.date}${e.author}${i}`} class={`entry kind-${kind}`}>
-              <div class="entry-head">
-                <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
-                {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
-                <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
-                {kind === 'agent' && <span class="bot-tag">agent</span>}
-                {e.date && <span class="muted">{e.date}</span>}
-                {agentChat && (
-                  <button
-                    class="chat-chip"
-                    onClick={() => send({ type: 'openChat', key: agentChat.key, id: agentChat.id })}
-                    title={`Written in the chat "${agentChat.title}". Click to open it in Claude Code.`}
-                  >
-                    <span class={`dot ${CHAT_STATE[agentChat.state]?.cls ?? 'ended'}`} />
-                    <i class="codicon codicon-comment-discussion" />
-                    <span class="chat-chip-title">{agentChat.title}</span>
-                  </button>
-                )}
-                {e.posted && (
-                  <span class="posted" title={`Posted as a comment on ${e.posted}`}>
-                    <i class="codicon codicon-check" /> Posted to {e.posted}
-                  </span>
-                )}
-                {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
-                  <button
-                    class="text-button post-entry"
-                    onClick={() => send({ type: 'postEntry', key: e.key! })}
-                    title="Shows what will be posted and asks first"
-                  >
-                    <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
-                  </button>
-                )}
-              </div>
-              <Rendered html={e.html} empty="" />
-              {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
-            </li>
-          );
-        })}
+        {groups.map((g) =>
+          'fold' in g ? (
+            <RoundFoldLine key={`feed-${feed.indexOf(g.fold.items[0])}`} fold={g.fold} ticket={ticket} />
+          ) : (
+            <FeedRowView key={`feed-${feed.indexOf(g.item)}`} f={g.item} ticket={ticket} />
+          ),
+        )}
       </ol>
       <div class="comment-box">
         <MarkdownBox
