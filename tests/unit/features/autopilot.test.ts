@@ -82,3 +82,42 @@ describe('what reaches the claude command line', () => {
     expect(validSession('--resume')).toBeUndefined();
   });
 });
+
+describe('the autopilot and memory', () => {
+  it('starts no agent while the machine is short of memory, and tries again when there is room', async () => {
+    vi.resetModules();
+    let short: { freeMB: number; minMB: number } | undefined = { freeMB: 512, minMB: 2048 };
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const at = '2026-10-11T00:00:00Z';
+    const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
+    const prepareWorktree = vi.fn(async () => undefined);
+    const pilot = new Autopilot({
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined },
+      reviews: { running: 0, pausedUntil: async () => undefined, startWork: async () => undefined },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree,
+    } as never);
+    // Switched on directly: the signed switch is tested above.
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(prepareWorktree).not.toHaveBeenCalled();
+    expect(pilot.view().waitingForMemory).toBe(true);
+
+    short = undefined;
+    await pilot.tick();
+    expect(prepareWorktree).toHaveBeenCalledTimes(1);
+    expect(pilot.view().waitingForMemory).toBeUndefined();
+    pilot.dispose();
+  });
+});

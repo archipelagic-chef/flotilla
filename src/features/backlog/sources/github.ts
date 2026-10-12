@@ -28,6 +28,9 @@ export function gitHubRepo(remoteUrl: string): { owner: string; repo: string } |
   return m ? { owner: m[1], repo: m[2] } : undefined;
 }
 
+/** A GitHub owner or repository name (no paths into other API routes). */
+export const gitHubName = (n: string) => /^[A-Za-z0-9_.-]+$/.test(n) && n !== '.' && n !== '..';
+
 /** "GH-42" for issue 42 (branch- and tab-friendly, like a Jira key). */
 export const gitHubId = (n: number) => `GH-${n}`;
 
@@ -42,8 +45,7 @@ export class GitHubSource implements IssueSource {
     private readonly fetch: Fetch,
   ) {
     // Names only (the config file is in the backlog's folder, which agents can write): no paths into other API routes.
-    const name = (n: string) => /^[A-Za-z0-9_.-]+$/.test(n) && n !== '.' && n !== '..';
-    if (!name(config.owner) || !name(config.repo)) throw new Error(`Not a GitHub repository: ${config.owner}/${config.repo}.`);
+    if (!gitHubName(config.owner) || !gitHubName(config.repo)) throw new Error(`Not a GitHub repository: ${config.owner}/${config.repo}.`);
     this.label = `GitHub ${config.owner}/${config.repo}`;
   }
 

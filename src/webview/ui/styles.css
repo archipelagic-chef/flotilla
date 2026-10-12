@@ -268,6 +268,11 @@ button {
 .hover-actions + .badge {
   margin-left: 4px;
 }
+/* A Review card's Run button: always shown, at the end of the row like the hover actions. */
+.run-button {
+  margin-left: auto;
+  flex: none;
+}
 .row:hover .dir {
   flex: 0 1 auto;
 }
@@ -799,6 +804,9 @@ textarea:focus {
 }
 
 /* ---- overview ---- */
+.machine {
+  padding: 0 8px 6px 10px;
+}
 .card {
   padding: 5px 6px 6px 8px;
   box-shadow: inset 3px 0 0 var(--ws-color);
@@ -1290,6 +1298,32 @@ ins {
   color: var(--vscode-errorForeground);
   font-style: normal;
   white-space: normal;
+}
+/* CI/CD runs: a log-style row with a status icon; the icon's color says the status. */
+.ci-run .ci-status.queued {
+  color: var(--muted);
+}
+.ci-run .ci-status.running {
+  color: var(--working);
+}
+.ci-run .ci-status.success {
+  color: var(--done);
+}
+.ci-run .ci-status.failure {
+  color: var(--error);
+}
+.ci-run .ci-status.cancelled,
+.ci-run .ci-status.skipped,
+.ci-run .ci-status.neutral {
+  color: var(--muted);
+}
+.ci-run.current .name {
+  font-weight: 600;
+}
+.ci-run .ci-age {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
 }
 .hover-status .codicon {
   font-size: 12px;

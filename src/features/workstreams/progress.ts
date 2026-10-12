@@ -3,6 +3,8 @@ import { sumNumstat } from '../../core/git/porcelain';
 
 export interface Progress {
   base: string | undefined;
+  /** The commit the base named when this was computed. */
+  baseHead: string | undefined;
   ahead: number;
   behind: number;
   added: number;
@@ -10,14 +12,16 @@ export interface Progress {
   lastSubject: string | undefined;
 }
 
-async function isCommit(cwd: string, ref: string): Promise<boolean> {
+/** The commit a ref names, or undefined if it names none. */
+export async function resolveCommit(cwd: string, ref: string): Promise<string | undefined> {
   try {
-    await runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd });
-    return true;
+    return (await runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd })).trim() || undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
+
+const isCommit = async (cwd: string, ref: string): Promise<boolean> => (await resolveCommit(cwd, ref)) !== undefined;
 
 export async function resolveBase(cwd: string, configured: string): Promise<string | undefined> {
   if (configured && (await isCommit(cwd, configured))) return configured;
@@ -33,8 +37,8 @@ export async function resolveBase(cwd: string, configured: string): Promise<stri
   return undefined;
 }
 
-export async function computeProgress(worktreeDir: string, base: string | undefined): Promise<Progress> {
-  const progress: Progress = { base, ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: undefined };
+export async function computeProgress(worktreeDir: string, base: string | undefined, baseHead: string | undefined): Promise<Progress> {
+  const progress: Progress = { base, baseHead, ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: undefined };
   const cwd = worktreeDir;
   try {
     progress.lastSubject = (await runGit(['log', '-1', '--format=%s'], { cwd })).trim() || undefined;

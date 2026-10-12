@@ -40,8 +40,9 @@ import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
+import { formatMemory } from '../../features/workstreams/memory';
 import { readSettings } from '../settings';
-import { agentChoice, describeChoice, isRunningHeadless, runAgentHeadless, validSession, type AgentResult, type AgentRun } from './agentRunner';
+import { agentChoice, confirmMemory, describeChoice, isRunningHeadless, memoryShortage, runAgentHeadless, validSession, type AgentResult, type AgentRun } from './agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
@@ -61,6 +62,9 @@ const settings = () => vscode.workspace.getConfiguration('flotilla');
  * sends the item back to its implementer, or ends the loop. Agents run without a window (claude -p); their chats can be
  * opened from the ticket. Only moves seen while Flotilla runs start a review; Start Review starts one by hand.
  */
+/** The item's state that decides whether a start still applies: its status and review (see mayStart). */
+const stateOf = (item: BacklogItem) => JSON.stringify([item.status, item.review?.state, item.review?.round, item.review?.implementer ?? null]);
+
 export class ReviewLoop implements vscode.Disposable {
   /** Each item's status when last seen: a move into review starts a round. */
   private readonly statuses = new Map<string, BacklogStatus>();
@@ -68,6 +72,11 @@ export class ReviewLoop implements vscode.Disposable {
   private readonly baseline = new Map<string, string[]>();
   /** The agent running for an item (reviewer or implementer). */
   private readonly runs = new Map<string, AgentRun>();
+  /**
+   * Starts that wait for free memory, by item: `since` is the item's state when the start was decided (it must still be
+   * that when the start runs), `again` runs the start with the item as it is now (see mayStart).
+   */
+  private readonly deferred = new Map<string, { since: string; again: (item: BacklogItem) => Promise<void> }>();
   private queue: Promise<void> = Promise.resolve();
   private readonly watcher: vscode.Disposable;
   private readonly changed = new vscode.EventEmitter<void>();
@@ -76,8 +85,34 @@ export class ReviewLoop implements vscode.Disposable {
   constructor(private readonly deps: ReviewDeps) {
     this.watcher = deps.backlog.watch(() => this.schedule());
     this.schedule();
-    // Agents paused on a usage limit go on when it resets (checked each minute too: a sleeping computer skips timers).
-    this.ticker = setInterval(() => void this.resumePaused(), 60_000);
+    // Agents paused on a usage limit go on when it resets, and starts that waited for memory are tried again (each
+    // minute: a sleeping computer skips timers).
+    this.ticker = setInterval(() => this.scheduleRetry(), 60_000);
+  }
+
+  /** Retries run in the same queue as the scans: they read and write backlog.json too. */
+  private scheduleRetry(): void {
+    this.queue = this.queue.then(() => this.retry());
+  }
+
+  /** Once a minute: paused agents whose limit has reset go on, and starts that waited for memory go on when there's room. */
+  private async retry(): Promise<void> {
+    try {
+      await this.resumePaused();
+      for (const [id, waiting] of [...this.deferred]) {
+        if (memoryShortage()) break;
+        this.deferred.delete(id);
+        const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+        // The item moved on, or an agent runs for it already: the start that waited is over.
+        if (!item || item.proposed || this.runs.has(id) || stateOf(item) !== waiting.since) {
+          if (item && !this.runs.has(id)) await this.note(id, 'The start that waited for memory is dropped: the ticket changed meanwhile.');
+          continue;
+        }
+        await waiting.again(item);
+      }
+    } catch (e: unknown) {
+      this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private readonly ticker: NodeJS.Timeout;
@@ -168,6 +203,28 @@ export class ReviewLoop implements vscode.Disposable {
     }
   }
 
+  /**
+   * Whether an agent may start now, with enough memory free (see memoryShortage). When it's short, a manual start asks
+   * first (Start Anyway starts it); otherwise, or when the user doesn't, the start waits: `again` runs it once there's
+   * room, with the item as it is then (retry checks it's still the same).
+   */
+  private async mayStart(item: BacklogItem, manual: boolean, again: (fresh: BacklogItem) => Promise<void>): Promise<boolean> {
+    const short = memoryShortage();
+    if (!short) {
+      this.deferred.delete(item.id);
+      return true;
+    }
+    if (manual && (await confirmMemory(`The agent for ${item.id}`))) {
+      this.deferred.delete(item.id);
+      return true;
+    }
+    if (!this.deferred.has(item.id))
+      await this.note(item.id, `Waiting for memory: ${formatMemory(short.freeMB)} is free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. It starts when there's room.`);
+    this.deferred.set(item.id, { since: stateOf(item), again });
+    this.changed.fire();
+    return false;
+  }
+
   /** Changes an item's review (and status: moved by `by`, noted in its ticket). */
   private async setReview(id: string, change: (r: ReviewState | undefined) => ReviewState, status?: BacklogStatus, by = 'Flotilla'): Promise<void> {
     await this.deps.backlog.change(
@@ -243,6 +300,8 @@ export class ReviewLoop implements vscode.Disposable {
       const p = item.review?.state === 'paused' ? item.review.paused : undefined;
       if (!p || this.runs.has(item.id)) continue;
       if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
+      // Short of memory: it goes on once there's room (the minute's check tries again); a manual resume asks first.
+      if (memoryShortage() && !(force && (await confirmMemory(`${p.agent}'s chat`)))) return;
       const ws = this.worktreeOf(item);
       if (!validSession(p.session)) {
         await this.stopLoop(item.id, `its paused chat isn't a valid session (${p.session.slice(0, 40)}).`, { kind: 'chat-gone' });
@@ -328,16 +387,16 @@ export class ReviewLoop implements vscode.Disposable {
       case 'worktree':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false });
         if (!this.worktreeOf(item)) return;
-        return task ? this.startRevision(await revising(), task) : this.start(id);
+        return task ? this.startRevision(await revising(), task, { manual: true }) : this.start(id, true);
       case 'anotherRound':
-        if (task && r.stop?.kind === 'rounds' && r.state === 'stopped' && r.stop.task) return this.startRevision(await revising(1), task);
+        if (task && r.stop?.kind === 'rounds' && r.state === 'stopped' && r.stop.task) return this.startRevision(await revising(1), task, { manual: true });
         await this.setReview(id, (x) => ({ ...x!, extraRounds: (x!.extraRounds ?? 0) + 1, stop: undefined }));
-        return this.startRound({ ...item, review: { ...r, extraRounds: (r.extraRounds ?? 0) + 1 } });
+        return this.startRound({ ...item, review: { ...r, extraRounds: (r.extraRounds ?? 0) + 1 } }, true);
       case 'retry':
-        return task ? this.startRevision(await revising(), task) : this.start(id);
+        return task ? this.startRevision(await revising(), task, { manual: true }) : this.start(id, true);
       case 'newAgent':
-        if (!task) return this.start(id);
-        return this.startRevision(await revising(), { ...task, resumeOnly: false }, { fresh: true });
+        if (!task) return this.start(id, true);
+        return this.startRevision(await revising(), { ...task, resumeOnly: false }, { fresh: true, manual: true });
       case 'inChat': {
         const chat = this.chatOf(r.implementer) ?? this.chatById(r.implementerSession);
         if (!chat || !task) return;
@@ -382,30 +441,33 @@ export class ReviewLoop implements vscode.Disposable {
     return all.find((w) => w.key === item.review?.worktree) ?? all.find((w) => w.key === this.chatOf(item.review?.implementer)?.ws.key) ?? all[0];
   }
 
-  /** Starts a review round now (Start Review, or a move into review). */
-  async start(id: string): Promise<void> {
-    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+  /** Starts a review round now (Start Review, or a move into review: automatic, unless manual). */
+  async start(id: string, manual = false): Promise<void> {
+    let item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item || this.runs.has(id)) return;
     if (item.status !== 'review') {
       this.statuses.set(id, 'review');
       await this.deps.backlog.change((d) => updateItem(d, id, { status: 'review' }), { by: 'Flotilla' });
+      // The item as stored now (in review), so a start that waits for memory records what retry will read.
+      item = (await this.deps.backlog.read()).items.find((i) => i.id === id) ?? item;
     }
     // A loop that stopped or ended starts over in its rounds count.
-    const fresh = item.review && item.review.state !== 'revising' ? { ...item, review: { ...item.review, round: 0 } } : item;
-    await this.startRound(fresh);
+    await this.startRound(item, manual, item.review !== undefined && item.review.state !== 'revising');
   }
 
   /** Stops the loop: the running agent, if any, and the handoffs. */
   async stop(id: string): Promise<void> {
     const run = this.runs.get(id);
     this.runs.delete(id);
+    this.deferred.delete(id);
     run?.stop();
     await this.stopLoop(id, 'stopped by you.', { kind: 'user', notify: false });
   }
 
-  private async startRound(item: BacklogItem): Promise<void> {
+  /** `restart`: a loop that stopped or ended starts over at round 1 (the stored round is left as it is). */
+  private async startRound(item: BacklogItem, manual = false, restart = false): Promise<void> {
     const max = Math.max(1, settings().get<number>('review.maxRounds', 3)) + (item.review?.extraRounds ?? 0);
-    const round = (item.review?.round ?? 0) + 1;
+    const round = (restart ? 0 : (item.review?.round ?? 0)) + 1;
     if (round > max) {
       await this.stopLoop(item.id, `still not approved after ${max} rounds; it's yours to decide.`, { kind: 'rounds' });
       return;
@@ -415,11 +477,14 @@ export class ReviewLoop implements vscode.Disposable {
       await this.stopLoop(item.id, 'it has no worktree to review.', { kind: 'no-worktree' });
       return;
     }
+    if (!(await this.mayStart(item, manual, (fresh) => this.startRound(fresh, false, restart)))) return;
     const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
     const reviewer = item.review?.reviewer || agentName([...taken, item.review?.implementer ?? '']);
     const base = (await resolveBase(this.deps.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
     const ticket = await this.deps.backlog.ensureDocument(item);
     const prompt = reviewerPrompt({ item, reviewer, implementer: item.review?.implementer, ticket, branch: ws.worktree.branch, base, round });
+    // Checked where the agent starts: the awaits above may have let another start for the item in.
+    if (this.runs.has(item.id)) return;
     const run = runAgentHeadless({
       cwd: ws.worktree.path,
       prompt: round === 1 || !validSession(item.review?.reviewerSession) ? prompt : prompt.split('\n\n').slice(1).join('\n\n'),
@@ -496,12 +561,14 @@ export class ReviewLoop implements vscode.Disposable {
   async userReview(id: string, verdict: Verdict, text: string): Promise<void> {
     const run = this.runs.get(id);
     this.runs.delete(id);
+    // What the user decides now replaces a start that waited for memory.
+    this.deferred.delete(id);
     run?.stop();
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item) return;
     const ticket = await this.deps.backlog.readTicket(item);
     const entry = { date: entryDate(new Date()), author: 'You', body: userReviewBody(verdict, text) };
-    await this.deps.backlog.writeTicket(id, { ...ticket, activity: [...ticket.activity, entry] });
+    await this.deps.backlog.appendActivity(item, entry);
     const handled = [...(item.review?.handled ?? []), this.key(id)(entry)];
     if (verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'approved', byUser: true, reason: undefined, handled }));
@@ -529,6 +596,7 @@ export class ReviewLoop implements vscode.Disposable {
     await this.startRevision(
       { ...item, status: 'doing', review },
       { prompt: userRevisionPrompt({ item, ticket: this.deps.backlog.docPath(id), feedback: text }), why: 'you requested changes' },
+      { manual: true },
     );
   }
 
@@ -543,7 +611,7 @@ export class ReviewLoop implements vscode.Disposable {
   }
 
   /** Hands the requested changes to the implementer: its chat resumed, or a new agent if it has none. */
-  private async startRevision(item: BacklogItem, task: RevisionTask, o: { fresh?: boolean } = {}): Promise<void> {
+  private async startRevision(item: BacklogItem, task: RevisionTask, o: { fresh?: boolean; manual?: boolean } = {}): Promise<void> {
     const review = item.review!;
     const ws = this.worktreeOf(item);
     if (!ws?.worktree.path || !ws.worktree.branch) {
@@ -559,6 +627,9 @@ export class ReviewLoop implements vscode.Disposable {
       await this.stopLoop(item.id, `${review.implementer} is still busy in its chat: give it the request there, or hand it to a new agent.`, { kind: 'busy', task });
       return;
     }
+    if (!(await this.mayStart(item, !!o.manual, (fresh) => this.startRevision(fresh, task, { ...o, manual: false })))) return;
+    // An agent for it may have started meanwhile (nothing awaits between this check and the start below).
+    if (this.runs.has(item.id)) return;
     let run: AgentRun;
     let implementer = review.implementer;
     if (chat) {
