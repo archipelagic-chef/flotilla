@@ -30,9 +30,15 @@ describe('headless agent arguments', () => {
     expect(args).toContain('--model');
   });
 
-  it('puts a tool list last, so that no flag follows it', () => {
-    const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'dontAsk', tools: ['Read', 'Edit(//a/b.md)'] });
-    expect(args.slice(-3)).toEqual(['--allowedTools', 'Read', 'Edit(//a/b.md)']);
+  it('offers only the tools it lists, with their rules last (no flag follows the lists)', () => {
+    const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'dontAsk', tools: ['Read', 'Grep', 'Edit(//a/b.md)'] });
+    expect(args.slice(-6)).toEqual(['--tools', 'Read,Grep,Edit', '--allowedTools', 'Read', 'Grep', 'Edit(//a/b.md)']);
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+  });
+
+  it('offers every built-in tool when it lists none', () => {
+    const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto' });
+    expect(args).not.toContain('--tools');
+    expect(args).not.toContain('--allowedTools');
   });
 });

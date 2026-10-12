@@ -40,8 +40,9 @@ export function discussable(item: Pick<BacklogItem, 'status' | 'proposed'>): boo
 
 /**
  * What a shaping agent may do: read and search the code, and edit its ticket, which is the only file it may change.
- * Anything else is refused (the run asks for no one: see runAgentHeadless). Claude Code's rule for an absolute path
- * is "//" and the path.
+ * Its tool list is these; a rule limits Edit to the ticket, and whatever else is asked is refused, as nobody is there
+ * to ask (see runAgentHeadless). Claude Code's rule for an absolute path is "//" and the path. Checked against the
+ * CLI (2.1.296): Bash is absent, Edit of another file is refused.
  */
 export function shapingTools(ticket: string): string[] {
   return ['Read', 'Grep', 'Glob', `Edit(//${ticket.replace(/^\/+/, '')})`];

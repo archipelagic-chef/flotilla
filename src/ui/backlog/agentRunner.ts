@@ -175,8 +175,9 @@ export function headlessArgs(o: {
     o.name,
     ...choiceArgs(o.choice ?? {}),
     ...(o.resume ? ['--resume', o.resume] : ['--session-id', o.sessionId]),
-    // Last: the tool list is variadic, so no flag may follow it.
-    ...(o.tools?.length ? ['--allowedTools', ...o.tools] : []),
+    // Last: the lists are variadic, so no flag may follow them. --tools takes the tools' names, so Bash and the rest
+    // are not there at all; --allowedTools lets the listed ones run (with a rule's path, when it has one).
+    ...(o.tools?.length ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools] : []),
   ];
 }
 
