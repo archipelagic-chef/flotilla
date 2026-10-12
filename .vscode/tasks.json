@@ -3,9 +3,16 @@
   "tasks": [
     { "type": "npm", "script": "build", "label": "npm: build", "problemMatcher": [] },
     { "type": "npm", "script": "playground", "label": "npm: playground", "problemMatcher": [] },
+    { "type": "shell", "command": "npm run playground -- --reset", "label": "npm: playground --reset", "problemMatcher": [] },
     {
       "label": "flotilla: build + playground",
       "dependsOn": ["npm: build", "npm: playground"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "flotilla: build + fresh playground",
+      "dependsOn": ["npm: build", "npm: playground --reset"],
       "dependsOrder": "sequence",
       "problemMatcher": []
     }
