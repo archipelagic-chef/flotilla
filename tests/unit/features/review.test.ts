@@ -53,6 +53,23 @@ describe('review loop', () => {
     expect(prompt).toMatch(/Verdict: changes requested/);
   });
 
+  it('has the reviewer run the ticket\'s run block when it can headless, and say what it gave', () => {
+    const args = { item: { id: 'BL-1', title: 'SSO' }, reviewer: 'Vega-2', ticket: '/t/BL-1.md', branch: 'feature/BL-1', base: 'main' };
+    for (const round of [1, 2]) {
+      const prompt = reviewerPrompt({ ...args, round });
+      expect(prompt).toMatch(/run block is the last fenced block whose info string is `run`/);
+      expect(prompt).toMatch(/a block whose kind is `launch`, `task` or `open` is skipped/);
+      expect(prompt).toMatch(/run the window-free lines and skip the rest/);
+      expect(prompt).toMatch(/shell lines that need no window/);
+      expect(prompt).toMatch(/`launch`, `task` or `open`/);
+      expect(prompt).toMatch(/Say what you ran, and what it gave/);
+      expect(prompt).toMatch(/git status/);
+    }
+    // Round 2 drops only the first paragraph, so the run instruction stays in it.
+    const later = reviewerPrompt({ ...args, round: 2 }).split('\n\n').slice(1).join('\n\n');
+    expect(later).toMatch(/run block/);
+  });
+
   it("writes the user's review with a verdict the loop reads", () => {
     expect(userReviewBody('changes', 'Use the config file.\n')).toBe('Use the config file.\n\nVerdict: changes requested');
     expect(parseVerdict(userReviewBody('changes', 'Use the config file.'))).toBe('changes');

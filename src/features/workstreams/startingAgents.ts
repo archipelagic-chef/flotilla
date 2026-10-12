@@ -26,7 +26,10 @@ export class StartingAgents {
     this.starts.delete(token);
   }
 
-  /** The memory the starts in their minute take, in MB. */
+  /**
+   * The memory the starts in their minute take, in MB. Also drops the starts that have passed their minute (so it
+   * changes the ledger, not just reads it).
+   */
   memoryMB(): number {
     const cutoff = this.now() - START_WINDOW_MS;
     for (const [token, at] of this.starts) if (at <= cutoff) this.starts.delete(token);
