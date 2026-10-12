@@ -175,12 +175,6 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
-/** A repository on a slow drive: what the Overview says, and how to fix it. */
-export interface SlowStorageView {
-  message: string;
-  fix: string;
-}
-
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit to reset. */
 export interface AutopilotState {
   enabled: boolean;
@@ -190,6 +184,12 @@ export interface AutopilotState {
   waitingUntil?: string;
   /** Another window runs it. */
   elsewhere: boolean;
+}
+
+/** A repository on a slow drive: what the Overview says, and how to fix it. */
+export interface SlowStorageView {
+  message: string;
+  fix: string;
 }
 
 export interface Target {
