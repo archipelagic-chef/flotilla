@@ -193,7 +193,8 @@ export function acceptItem(data: BacklogData, id: string): BacklogData {
     items: data.items.map((i) => {
       if (i.id !== id) return i;
       const { proposed: _p, ...rest } = i;
-      return rest;
+      // The owner accepted it: a discussion of it is settled, so the autopilot may take it (BL-45).
+      return rest.shaping ? { ...rest, shaping: { ...rest.shaping, ready: true } } : rest;
     }),
   };
 }
