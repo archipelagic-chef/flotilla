@@ -38,16 +38,20 @@ export interface TicketStatus {
 const OPTION = /^\s*(\d{1,2})[.)]\s+(.+?)\s*$/;
 const WAITING = /^\W*waiting for you\W*$/i;
 
-/** The question in an agent's report, and the numbered options that end it (two or more, as buttons). */
+/**
+ * The question in an agent's report, and its numbered options (the last run of two or more numbered lines, as
+ * buttons). The question is the rest of the report, without the "Waiting for you." line.
+ */
 export function askOf(body: string): Ask {
-  const lines = body.split(/\r?\n/).map((l) => l.trimEnd());
-  while (lines.length && (!lines[lines.length - 1].trim() || WAITING.test(lines[lines.length - 1].trim()))) lines.pop();
-  // The options are the numbered lines at the end of the report: the last run of them.
+  const lines = body.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => !WAITING.test(l.trim()));
   let end = lines.length;
+  while (end > 0 && !OPTION.test(lines[end - 1])) end--;
   let start = end;
   while (start > 0 && OPTION.test(lines[start - 1])) start--;
-  const options = end - start >= 2 ? lines.slice(start, end).map((l) => OPTION.exec(l)![2]) : [];
-  const question = lines.slice(0, options.length ? start : end).join('\n').trim();
+  const runs = end - start >= 2;
+  const options = runs ? lines.slice(start, end).map((l) => OPTION.exec(l)![2]) : [];
+  const rest = runs ? [...lines.slice(0, start), ...lines.slice(end)] : lines;
+  const question = rest.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   return { question, options };
 }
 

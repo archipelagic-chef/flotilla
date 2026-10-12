@@ -2,9 +2,11 @@ import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
+import { summaryOf } from '../../features/backlog/ticket';
 import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
+import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -174,6 +176,16 @@ function Description({ ticket }: { ticket: TicketView }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const editable = !ticket.remote || !!ticket.remote.edit?.canEditDescription;
   const jira = ticket.remote?.kind === 'jira';
+  // With activity, the description folds to its first lines (the history is what's new).
+  const foldable = ticket.activity.length > 0;
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const text = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // Measured while folded only: unfolded, it always fits.
+    const el = text.current;
+    if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [ticket.descriptionHtml, foldable, expanded]);
   const save = () => {
     if (draft !== undefined && draft !== ticket.description) send({ type: 'description', text: draft });
     setDraft(undefined);
@@ -198,9 +210,20 @@ function Description({ ticket }: { ticket: TicketView }) {
       {ticket.loading ? (
         <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
       ) : draft === undefined ? (
-        <div onDblClick={() => editable && setDraft(ticket.description)}>
-          <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
-        </div>
+        <>
+          <div
+            ref={text}
+            class={foldable && !expanded ? 'description folded' : 'description'}
+            onDblClick={() => editable && setDraft(ticket.description)}
+          >
+            <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
+          </div>
+          {foldable && (overflows || expanded) && (
+            <button class="text-button fold-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+              <i class={`codicon codicon-chevron-${expanded ? 'up' : 'down'}`} /> {expanded ? 'Fold the description' : 'Show the whole description'}
+            </button>
+          )}
+        </>
       ) : (
         <>
           <MarkdownBox
@@ -708,19 +731,79 @@ const TABS: Array<{ kind?: EntryKind; label: string }> = [
   { label: 'All' },
   { kind: 'comment', label: 'Comments' },
   { kind: 'agent', label: 'Agent Reports' },
-  { kind: 'history', label: 'History' },
 ];
 
 const EMPTY: Record<string, string> = {
   all: 'No comments or reports yet. Agents report here as they work.',
   comment: 'No comments yet.',
   agent: 'No agent reports yet. Start an agent: it reports here as it works.',
-  history: 'Nothing has happened yet.',
 };
+
+/** Flotilla's notes and the commits, in time order: what happened, behind "Show activity". */
+function Timeline({ ticket }: { ticket: TicketView }) {
+  const notes = ticket.activity.filter((e) => kindOf(e.author) === 'history');
+  const rows = withCommits(notes, ticket.commits);
+  if (!rows.length) return <div class="empty-text">Nothing has happened yet.</div>;
+  return (
+    <ol class="timeline">
+      {rows.map((f, i) => {
+        if ('commit' in f) {
+          const c = f.commit;
+          return (
+            <li key={c.hash} class="timeline-row">
+              <button
+                class="timeline-item commit"
+                onClick={() => send({ type: 'openCommit', hash: c.hash })}
+                title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
+              >
+                <i class="codicon codicon-git-commit" />
+                <span class="hash">{c.short}</span>
+                <span class="timeline-text">{c.subject}</span>
+                <span class="muted">{ago(c.date)}</span>
+              </button>
+            </li>
+          );
+        }
+        const e = f;
+        const chat = e.chat && !('pending' in e.chat) ? e.chat : undefined;
+        return (
+          <li key={`${e.date}${i}`} class="timeline-row">
+            <span class="timeline-item">
+              <span class="muted">{e.date}</span>
+              <span class="timeline-text">{summaryOf(e.body) ?? ''}</span>
+            </span>
+            {chat && (
+              <button class="chat-chip" onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title={`Open the chat "${chat.title}" in Claude Code`}>
+                <i class="codicon codicon-comment-discussion" />
+                <span class="chat-chip-title">{chat.title}</span>
+              </button>
+            )}
+            {e.chat && 'pending' in e.chat && <ChatCard chat={e.chat} />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
+  const [timeline, setTimeline] = useState(ticket.showActivity);
+  // The entries (by their place in the activity) the user opened: all but the latest report fold to a line.
+  const [opened, setOpened] = useState<Set<number>>(() => new Set());
+  useEffect(() => setTimeline(ticket.showActivity), [ticket.showActivity]);
+  const toggleOpened = (i: number) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const toggleTimeline = () => {
+    setTimeline(!timeline);
+    send({ type: 'showActivity', shown: !timeline });
+  };
   const post = () => {
     if (!comment.trim()) return;
     send({ type: 'comment', text: comment });
@@ -735,10 +818,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const asking = ticket.review?.state === 'asking' ? (ticket.review.implementer ?? 'The agent') : undefined;
   // A local item with work to review: the user can review it here, as in a pull request.
   const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
-  const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
-  // Commits are part of what happened: in All and History, in time order among the entries.
-  const commits = !tab || tab === 'history' ? ticket.commits : [];
-  const feed = withCommits(shown, commits);
+  // Notes and commits are the timeline; comments and reports are the conversation.
+  const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
+  const conversation = ticket.activity
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => kindOf(e.author) !== 'history' && (!tab || kindOf(e.author) === tab));
   return (
     <section class="block">
       <div class="block-head">
@@ -746,8 +830,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
-          const count =
-            ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length + (!t.kind || t.kind === 'history' ? ticket.commits.length : 0);
+          const count = ticket.activity.filter((e) => kindOf(e.author) !== 'history' && (!t.kind || kindOf(e.author) === t.kind)).length;
           return (
             <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
               {t.label}
@@ -756,34 +839,26 @@ function Activity({ ticket }: { ticket: TicketView }) {
           );
         })}
       </div>
-      {!feed.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
+      {!conversation.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
-        {feed.map((f, i) => {
-          if ('commit' in f) {
-            const c = f.commit;
+        {conversation.map(({ e, i }) => {
+          const kind = kindOf(e.author);
+          const isOpen = e === latest || opened.has(i);
+          if (!isOpen) {
             return (
-              <li key={c.hash} class="entry kind-commit">
-                <button
-                  class="commit-line"
-                  onClick={() => send({ type: 'openCommit', hash: c.hash })}
-                  title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
-                >
-                  <i class="codicon codicon-git-commit" />
-                  <span class="hash">{c.short}</span>
-                  <span class="subject">{c.subject}</span>
-                  {c.branches[0] && <span class="branch-tag">{c.branches[0]}</span>}
-                  <span class="muted">
-                    {c.author} · {ago(c.date)}
-                  </span>
+              <li key={i} class={`entry folded kind-${kind}`}>
+                <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
+                  <i class="codicon codicon-chevron-right" />
+                  <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
+                  {e.date && <span class="muted">{e.date}</span>}
+                  <span class="fold-first">{summaryOf(e.body) ?? ''}</span>
                 </button>
               </li>
             );
           }
-          const e = f;
-          const kind = kindOf(e.author);
           const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
           return (
-            <li key={`${e.date}${e.author}${i}`} class={`entry kind-${kind}`}>
+            <li key={i} class={`entry kind-${kind}`}>
               <div class="entry-head">
                 <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
                 {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
@@ -806,7 +881,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     <i class="codicon codicon-check" /> Posted to {e.posted}
                   </span>
                 )}
-                {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
+                {e.key && !e.posted && ticket.postTargets.length > 0 && (
                   <button
                     class="text-button post-entry"
                     onClick={() => send({ type: 'postEntry', key: e.key! })}
@@ -815,13 +890,21 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
                   </button>
                 )}
+                {e !== latest && (
+                  <button class="text-button fold-entry" aria-expanded={true} onClick={() => toggleOpened(i)}>
+                    <i class="codicon codicon-chevron-up" /> Fold
+                  </button>
+                )}
               </div>
               <Rendered html={e.html} empty="" />
-              {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
             </li>
           );
         })}
       </ol>
+      <button class="text-button activity-toggle" aria-expanded={timeline} onClick={toggleTimeline}>
+        <i class={`codicon codicon-chevron-${timeline ? 'down' : 'right'}`} /> {timeline ? 'Hide activity' : 'Show activity'}
+      </button>
+      {timeline && <Timeline ticket={ticket} />}
       <div class="comment-box">
         <MarkdownBox
           value={comment}
@@ -1057,6 +1140,92 @@ function AgentPicker({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/** Focuses the comment box (where answers go), scrolled into view. */
+function focusComment() {
+  const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+  box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  box?.focus();
+}
+
+/** An agent's question, with its numbered options as buttons: an option is the answer, sent as a comment. */
+function AskBlock({ ask, title, agent }: { ask: Ask; title: string; agent?: string }) {
+  return (
+    <div class="review-panel waiting ask">
+      <i class="codicon codicon-question" />
+      <div class="ask-text">
+        <strong>{title}</strong>
+        {ask.question && <div class="ask-question">{ask.question}</div>}
+        {ask.options.length > 0 && (
+          <div class="ask-options">
+            {ask.options.map((option, i) => (
+              <button key={option} class={`button${i ? ' secondary' : ''}`} onClick={() => send({ type: 'comment', text: option })} title="Sends this as the answer">
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
+        <i class="codicon codicon-comment" /> Answer…
+      </button>
+    </div>
+  );
+}
+
+const STATUS_ICON: Record<string, string> = {
+  waiting: 'comment-discussion',
+  working: 'rocket',
+  done: 'pass-filled',
+  idle: 'circle-large-outline',
+};
+
+/**
+ * The top of the ticket: what's happening now, what an agent asks (with its options), and the actions the state allows.
+ * A review, or a clean-up of the history, has its own panel.
+ */
+function StateCard({ ticket }: { ticket: TicketView }) {
+  const status = ticketStatus({
+    status: ticket.item.status,
+    review: ticket.review,
+    agents: ticket.agents,
+    activity: ticket.activity,
+    hasWork: ticket.worktrees.length > 0 || ticket.branches.length > 0,
+  });
+  // The chat an agent works in, or waits in (to open it).
+  const chat = ticket.agents.find((a) => a.state === 'waiting-for-input') ?? ticket.agents.find((a) => a.state === 'working');
+  const notStarted = ticket.item.status === 'todo' && !ticket.worktrees.length && !ticket.branches.length;
+  return (
+    <>
+      {status.ask && <AskBlock ask={status.ask} title={status.title} agent={ticket.review?.implementer ?? chat?.agent} />}
+      {ticket.review ? (
+        <ReviewPanel ticket={ticket} />
+      ) : ticket.rewrite ? (
+        <CleanUpPanel ticket={ticket} />
+      ) : (
+        !status.ask && (
+          <div class={`review-panel ${status.tone}`}>
+            <i class={`codicon codicon-${STATUS_ICON[status.tone]}`} />
+            <span class="review-text">
+              <strong>{status.title}</strong>
+              {status.detail && <span class="muted"> “{status.detail}”</span>}
+            </span>
+            {chat && (
+              <button class="button secondary" onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
+                <i class="codicon codicon-comment-discussion" /> Open Chat
+              </button>
+            )}
+            {notStarted && (
+              <button class="button" onClick={() => send({ type: 'start', agent: true })} title="Creates its worktree and starts an agent there; it reports below">
+                <i class="codicon codicon-play" /> Run
+              </button>
+            )}
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
 const AGENT_STATE_CLASS: Record<string, string | undefined> = {
   'waiting-for-input': 'waiting',
   error: 'error',
@@ -1160,6 +1329,7 @@ function App() {
             </button>
           )}
         </div>
+        <StateCard ticket={ticket} />
         <div class="toolbar">
           {!done && (
             <button
@@ -1208,8 +1378,6 @@ function App() {
             </>
           )}
         </div>
-        {ticket.review && <ReviewPanel ticket={ticket} />}
-        {ticket.rewrite && <CleanUpPanel ticket={ticket} />}
       </header>
       {ticket.error && (
         <div class="error-note">
@@ -1217,10 +1385,10 @@ function App() {
         </div>
       )}
       <Description ticket={ticket} />
+      <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
       {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
       {ticket.agents.length > 0 && <Agents ticket={ticket} />}
-      <Activity ticket={ticket} />
     </main>
   );
 }

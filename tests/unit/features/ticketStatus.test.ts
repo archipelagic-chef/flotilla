@@ -10,6 +10,13 @@ describe('askOf', () => {
     expect(askOf(body)).toEqual({ question: 'Which way should the cache go?', options: ['In memory', 'On disk'] });
   });
 
+  it('takes the question from around the options, when it comes after them', () => {
+    expect(askOf('Two ways:\n\n1. Derive it\n2. Keep it\n\nWhich should I take?\n\nWaiting for you.')).toEqual({
+      question: 'Two ways:\n\nWhich should I take?',
+      options: ['Derive it', 'Keep it'],
+    });
+  });
+
   it('has no options when the report ends without a numbered list', () => {
     expect(askOf('Should I keep the old API?\n\nWaiting for you.')).toEqual({ question: 'Should I keep the old API?', options: [] });
   });
