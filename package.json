@@ -500,6 +500,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.showJobLog",
+        "title": "Show CI Job Log",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.closeTab",
         "title": "Close Tab",
         "category": "Flotilla",
@@ -537,6 +542,10 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "flotilla.showJobLog",
+          "when": "false"
+        },
         {
           "command": "flotilla.refresh",
           "when": "flotilla.state == ready"

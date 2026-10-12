@@ -1,5 +1,5 @@
 import { gitHubName } from '../backlog/sources/github';
-import { fetchJson, type Fetch } from '../backlog/sources/source';
+import { fetchJson, fetchText, TIMEOUT_MS, type Fetch } from '../backlog/sources/source';
 
 /** Where a run is: waiting to start, running, or how it ended. */
 export type CiStatus = 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped' | 'neutral';
@@ -20,6 +20,34 @@ export interface CiRun {
   created: string;
 }
 
+export interface CiStep {
+  number: number;
+  name: string;
+  status: CiStatus;
+}
+
+export interface CiJob {
+  id: number;
+  name: string;
+  status: CiStatus;
+  url: string;
+  /** ISO 8601. */
+  started?: string;
+  completed?: string;
+  steps: CiStep[];
+}
+
+interface ApiJob {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  steps?: Array<{ number: number; name: string; status: string; conclusion: string | null }>;
+}
+
 interface ApiRun {
   id: number;
   name?: string | null;
@@ -35,6 +63,12 @@ interface ApiRun {
 }
 
 const API = 'https://api.github.com';
+
+/** A run's or job's id, as the webview sends it: a positive whole number, nothing else in a URL. */
+function id(n: number): number {
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`Not a GitHub Actions id: ${n}.`);
+  return n;
+}
 
 /** A run that is still going (queued or running). */
 export const isActive = (s: CiStatus) => s === 'queued' || s === 'running';
@@ -85,6 +119,73 @@ export class GitHubActions {
       created: r.created_at,
     }));
   }
+
+  /** A run's jobs (of its latest attempt), with their steps. */
+  async jobs(runId: number): Promise<CiJob[]> {
+    const data = await fetchJson<{ jobs: ApiJob[] }>(this.fetch, `${this.base}/runs/${id(runId)}/jobs?per_page=100`, { headers: await this.headers() });
+    return data.jobs.map((j) => ({
+      id: j.id,
+      name: j.name,
+      status: ciStatus(j.status, j.conclusion),
+      url: j.html_url ?? '',
+      ...(j.started_at ? { started: j.started_at } : {}),
+      ...(j.completed_at ? { completed: j.completed_at } : {}),
+      steps: (j.steps ?? []).map((st) => ({ number: st.number, name: st.name, status: ciStatus(st.status, st.conclusion) })),
+    }));
+  }
+
+  /** A job's log, as GitHub keeps it (a line per output line, each with its time). */
+  async log(jobId: number): Promise<string> {
+    const location = await this.logLocation(`${this.base}/jobs/${id(jobId)}/logs`);
+    // The storage is on another host, and it gets no token.
+    return fetchText(this.fetch, location, { headers: {} });
+  }
+
+  /** Where GitHub keeps a job's log: its redirect, read here (not followed) so that the token stays with GitHub. */
+  private async logLocation(url: string): Promise<string> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    try {
+      const res = await this.fetch(url, { headers: await this.headers(), redirect: 'manual', signal: abort.signal });
+      const location = res.headers?.get('location');
+      if (res.status >= 300 && res.status < 400 && location) {
+        const target = new URL(location, url);
+        if (target.protocol !== 'https:') throw new Error(`The log is kept at ${target.protocol}//${target.host}, not over https.`);
+        return target.href;
+      }
+      if (res.ok) throw new Error("GitHub didn't send the log's location.");
+      throw new Error(`${res.status} ${res.statusText}`.trim());
+    } catch (error) {
+      if (abort.signal.aborted) throw new Error(`api.github.com didn't answer within ${TIMEOUT_MS / 1000} seconds.`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async headers(): Promise<Record<string, string>> {
+    return { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  }
+
+  private get base(): string {
+    return `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions`;
+  }
+}
+
+/** A job's log made readable: without each line's time, colors, or GitHub's ##[group] markers. */
+export function cleanLog(log: string): string {
+  return log
+    .split(/\r?\n/)
+    .map((l) =>
+      l
+        .replace(/^\uFEFF?\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z ?/, '')
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+        .replace(/^##\[(group|endgroup)\]/, (_, g: string) => (g === 'group' ? '▸ ' : ''))
+        .replace(/^##\[(error|warning|notice)\]/, (_, k: string) => `${k.toUpperCase()}: `),
+    )
+    .filter((l, i, all) => l !== '' || all[i - 1] !== '')
+    .join('\n');
 }
 
 /** A remote branch, as git names its upstream ("origin/feat/x"), split by the remotes there are. */
