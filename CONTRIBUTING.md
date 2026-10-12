@@ -15,6 +15,8 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
+The CI/CD view needs GitHub's Actions API, which the test window reads from a fake one when it's offline: run `npm run fake-github` in a terminal (it stays up until Ctrl+C), and the playground's settings point the test window at it (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log. The playground's `origin` is a GitHub address that's never pushed to.
+
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
 
 ## Testing across host and container
