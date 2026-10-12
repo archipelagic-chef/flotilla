@@ -58,7 +58,7 @@ export class Shaping implements vscode.Disposable {
     const agent = item.shaping?.agent ?? agentName(this.takenNames());
     const run = runAgentHeadless({
       cwd: this.deps.mainRoot,
-      prompt: resume ? followUpPrompt({ agent, ticket, opened }) : shapingPrompt({ item, agent, ticket }),
+      prompt: resume ? followUpPrompt({ agent, ticket, opened, now: entryDate(new Date()) }) : shapingPrompt({ item, agent, ticket, now: entryDate(new Date()) }),
       resume,
       name: `${agent} · discussing ${id}`,
       choice: agentChoice(item),

@@ -49,21 +49,24 @@ export function shapingTools(ticket: string): string[] {
 }
 
 /** The rules every shaping prompt gives: where it talks, what it writes, and when it says the ticket is ready. */
-function rules(agent: string, ticket: string): string[] {
+function rules(agent: string, ticket: string, now: string): string[] {
   return [
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and replies. Read it first, with any images it links (paths relative to the ticket's folder).`,
-    `Talk in the ticket: append each reply at the end of its "## Activity" section (add the section if it's missing), as a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat), followed by the reply. Keep replies short: a few lines, and questions as a short numbered list. Ask what you need to know; propose, don't assume.`,
+    `Talk in the ticket: add each reply as the last thing in the file, after the newest entry of its "## Activity" section (even when that entry is the owner's comment you're answering); never above an entry. Add the section if it's missing. Head the reply "### ${now} · Agent ${agent}" (the local time now; sign every entry as Agent ${agent}, which links it to this chat), followed by the reply. Keep replies short: a few lines, and questions as a short numbered list. Ask what you need to know; propose, don't assume.`,
     `When you and the user agree on something, write it into the description (the title too, when it changes): the problem or goal, the context, and the acceptance criteria as a checklist. Edit the ticket with the Edit tool, change only what's agreed and leave the rest of the file as it is; never rewrite the whole file.`,
     `When you think the ticket is ready to start, end your reply with the line "${READY_TO_START}" (only then; never "Ready for review.").`,
   ];
 }
 
-/** The first message of a shaping agent's chat: its role, and how it works in the ticket. */
-export function shapingPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; agent: string; ticket: string }): string {
+/**
+ * The first message of a shaping agent's chat: its role, and how it works in the ticket. now: the local time, as
+ * entries are dated ("YYYY-MM-DD HH:MM"): the agent has no clock of its own.
+ */
+export function shapingPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; agent: string; ticket: string; now: string }): string {
   return [
     agentLead(o.item, o.agent),
     `Nobody works on this ticket yet: its owner wants to shape it with you first, in the ticket itself. Talk it through with them, read this repository's code where it helps you understand the problem, and write what's agreed into the ticket. You change no code: no branch, no worktree, no commands. The ticket is the only file you may change.`,
-    ...rules(o.agent, o.ticket),
+    ...rules(o.agent, o.ticket, o.now),
   ].join('\n\n');
 }
 
@@ -71,11 +74,11 @@ export function shapingPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; agen
  * A message to a shaping agent whose chat goes on: the owner wrote in the ticket, or opened the discussion without a
  * comment yet (opened).
  */
-export function followUpPrompt(o: { agent: string; ticket: string; opened: boolean }): string {
+export function followUpPrompt(o: { agent: string; ticket: string; opened: boolean; now: string }): string {
   return [
     o.opened
       ? `Its owner opened the discussion of the ticket without a comment yet: read it, and start the conversation (what's unclear, what you'd propose).`
       : `Its owner wrote in the ticket since your last reply: read the entries at the end of its "## Activity" section, and reply there as before.`,
-    ...rules(o.agent, o.ticket),
+    ...rules(o.agent, o.ticket, o.now),
   ].join('\n\n');
 }
