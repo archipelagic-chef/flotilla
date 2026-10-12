@@ -1644,6 +1644,7 @@
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "vsce package",
     "playground": "node scripts/playground.mjs",
+    "bench": "node scripts/bench-refresh.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
