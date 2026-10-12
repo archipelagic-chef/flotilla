@@ -1,0 +1,187 @@
+import { describe, expect, it } from 'vitest';
+import { answerComment, answerOf, choose, defaultAnswer, parseQuestion, parseReport, type Question } from '../../../src/features/backlog/report';
+
+describe('reading a report', () => {
+  it('takes the summary before the Needs line, and folds the rest as details', () => {
+    const parts = parseReport(
+      ['Built the cache.', 'Tests pass.', '', 'Needs from you: nothing', '', '#### How to review', '- [src/a.ts:4](src/a.ts#L4)', '', 'Ready for review.'].join('\n'),
+    );
+    expect(parts).toMatchObject({ summary: 'Built the cache.\nTests pass.', needs: 'nothing', asks: false, questions: [], waiting: false });
+    expect(parts.details.startsWith('#### How to review')).toBe(true);
+    expect(parts.details.endsWith('Ready for review.')).toBe(true);
+  });
+
+  it('reads the questions of a report that needs the user, and takes them out of the details', () => {
+    const parts = parseReport(
+      [
+        'Two things to decide.',
+        '',
+        'Needs from you: the cache.',
+        '',
+        '```question',
+        'Which storage should the cache use?',
+        '- Redis (recommended)',
+        '- In memory',
+        '```',
+        '',
+        '```question',
+        'Keep old entries?',
+        'choose: yes/no',
+        '- Yes (recommended)',
+        '- No',
+        '```',
+        '',
+        '#### Details',
+        'Nothing done yet.',
+      ].join('\n'),
+    );
+    expect(parts.summary).toBe('Two things to decide.');
+    expect(parts.needs).toBe('the cache.');
+    expect(parts.asks).toBe(true);
+    expect(parts.waiting).toBe(true);
+    expect(parts.questions).toEqual([
+      {
+        text: 'Which storage should the cache use?',
+        kind: 'one',
+        options: [
+          { text: 'Redis', recommended: true },
+          { text: 'In memory', recommended: false },
+        ],
+      },
+      {
+        text: 'Keep old entries?',
+        kind: 'yesno',
+        options: [
+          { text: 'Yes', recommended: true },
+          { text: 'No', recommended: false },
+        ],
+      },
+    ]);
+    expect(parts.details).toBe('#### Details\nNothing done yet.');
+  });
+
+  it('asks with a text only, when the Needs line has no choices', () => {
+    expect(parseReport('Stuck.\n\nNeeds from you: should old entries be kept?')).toMatchObject({
+      summary: 'Stuck.',
+      needs: 'should old entries be kept?',
+      asks: true,
+      questions: [],
+      waiting: true,
+    });
+    expect(parseReport('Stuck.\n\n**Needs from you:** Nothing.')).toMatchObject({ needs: 'Nothing.', asks: false, waiting: false });
+    expect(parseReport('Stuck.\n\nNeeds from you:')).toMatchObject({ asks: false, waiting: false });
+  });
+
+  it('reads the Needs line in bold, as agents write Markdown', () => {
+    expect(parseReport('Done.\n\n**Needs from you**: nothing')).toMatchObject({ summary: 'Done.', needs: 'nothing', asks: false });
+  });
+
+  it('reads a verdict that starts a review: its first paragraph is the summary', () => {
+    const parts = parseReport(['Verdict: changes requested', '- The cache never expires entries.', '- No test for restarts.', '', '- [ ] expire entries', '- [ ] add the test'].join('\n'));
+    expect(parts.summary).toBe('Verdict: changes requested\n- The cache never expires entries.\n- No test for restarts.');
+    expect(parts.details).toBe('- [ ] expire entries\n- [ ] add the test');
+    expect(parts.asks).toBe(false);
+  });
+
+  it('shows an older report whole: no summary', () => {
+    const body = 'Did X.\n\nReady for review.';
+    expect(parseReport(body)).toEqual({ asks: false, questions: [], details: body, waiting: false });
+    expect(parseReport('Should it be per key?\n\nWaiting for you.')).toMatchObject({ waiting: true });
+    expect(parseReport('Should it be per key?\n\nWaiting for you.').summary).toBeUndefined();
+    expect(parseReport('Waiting for you to decide, but I went ahead.\n\nReady for review.')).toMatchObject({ waiting: false });
+  });
+
+  it('leaves a question block that has no question as it is', () => {
+    const body = 'Done.\n\nNeeds from you: nothing\n\n```question\n- Yes\n```';
+    const parts = parseReport(body);
+    expect(parts.questions).toEqual([]);
+    expect(parts.details).toBe('```question\n- Yes\n```');
+  });
+
+  it('takes tilde fences too, and Windows line endings', () => {
+    const parts = parseReport('Hi.\r\n\r\nNeeds from you: a choice\r\n\r\n~~~question\r\nPick one\r\n- A\r\n- B (recommended)\r\n~~~\r\n');
+    expect(parts.questions).toEqual([
+      {
+        text: 'Pick one',
+        kind: 'one',
+        options: [
+          { text: 'A', recommended: false },
+          { text: 'B', recommended: true },
+        ],
+      },
+    ]);
+  });
+});
+
+describe('reading a question', () => {
+  it('is one choice by default, several with "choose: several", and yes or no without choices', () => {
+    expect(parseQuestion('Which?\n- A\n- B')?.kind).toBe('one');
+    expect(parseQuestion('Which?\nchoose: several\n- A\n- B')?.kind).toBe('several');
+    expect(parseQuestion('Ship it?')).toEqual({
+      text: 'Ship it?',
+      kind: 'yesno',
+      options: [
+        { text: 'Yes', recommended: false },
+        { text: 'No', recommended: false },
+      ],
+    });
+  });
+
+  it('needs a question', () => {
+    expect(parseQuestion('- A\n- B')).toBeUndefined();
+  });
+});
+
+describe('answering a question', () => {
+  const one: Question = {
+    text: 'Which storage?',
+    kind: 'one',
+    options: [
+      { text: 'Redis', recommended: true },
+      { text: 'In memory', recommended: false },
+    ],
+  };
+  const several: Question = {
+    text: 'Which checks?',
+    kind: 'several',
+    options: [
+      { text: 'Unit', recommended: true },
+      { text: 'E2E', recommended: true },
+      { text: 'Load', recommended: false },
+    ],
+  };
+
+  it('starts with the recommended choices preselected', () => {
+    expect(defaultAnswer(one)).toEqual({ picked: [0], other: '' });
+    expect(defaultAnswer(several)).toEqual({ picked: [0, 1], other: '' });
+    expect(answerOf(one, defaultAnswer(one))).toBe('Redis');
+    expect(answerOf(one, defaultAnswer({ ...one, options: [{ text: 'A', recommended: false }] }))).toBe('');
+  });
+
+  it('chooses one (replacing) or toggles several', () => {
+    expect(choose(one, { picked: [0], other: '' }, 1).picked).toEqual([1]);
+    expect(choose(several, { picked: [0, 1], other: '' }, 0).picked).toEqual([1]);
+    expect(choose(several, { picked: [1], other: '' }, 2).picked).toEqual([1, 2]);
+  });
+
+  it('gives the answer as the chosen options, or what was written for Other', () => {
+    expect(answerOf(several, { picked: [0, 2], other: '' })).toBe('Unit, Load');
+    expect(answerOf(one, { picked: [2], other: 'Postgres' })).toBe('Postgres');
+  });
+
+  it('is incomplete while Other is chosen without text, or nothing is chosen', () => {
+    expect(answerOf(one, { picked: [2], other: '  ' })).toBe('');
+    expect(answerOf(one, { picked: [], other: '' })).toBe('');
+    expect(answerOf({ text: 'Why?', kind: 'one', options: [] }, defaultAnswer({ text: 'Why?', kind: 'one', options: [] }))).toBe('');
+  });
+
+  it('posts one answer as it is, and several as each question with its answer', () => {
+    expect(answerComment([{ question: one, answer: 'Redis' }])).toBe('Redis');
+    expect(
+      answerComment([
+        { question: one, answer: 'Redis' },
+        { question: several, answer: 'Unit' },
+      ]),
+    ).toBe('**Which storage?** Redis\n\n**Which checks?** Unit');
+  });
+});
