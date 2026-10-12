@@ -171,6 +171,11 @@ export class Autopilot implements vscode.Disposable {
       const ws = await this.deps.prepareWorktree(item);
       if (!ws) throw new Error('it has no worktree free for an agent (one of its worktrees is in use, or its branch is checked out elsewhere).');
       const fresh = (await this.deps.backlog.read()).items.find((i) => i.id === item.id) ?? item;
+      // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
+      if (fresh.status !== 'doing') {
+        releaseStart(slot);
+        return;
+      }
       await this.deps.reviews.startWork(fresh, ws, slot);
     } catch (error) {
       releaseStart(slot);

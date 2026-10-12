@@ -9,6 +9,8 @@ const memory = vi.hoisted(() => ({
   next: 0,
   /** Holds the next resolveBase (a start awaiting between its check and its spawn). */
   gate: undefined as Promise<void> | undefined,
+  /** Makes the next resolveBase fail (a start that errors after its check). */
+  fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
 
@@ -49,6 +51,7 @@ vi.mock('../../../src/ui/progress', () => ({ trackProgress: () => undefined }));
 vi.mock('../../../src/ui/format', () => ({ workstreamLabel: () => 'feature/BL-1' }));
 vi.mock('../../../src/features/workstreams/progress', () => ({
   resolveBase: async () => {
+    if (memory.fail) throw new Error('no base');
     const gate = memory.gate;
     memory.gate = undefined;
     await gate;
@@ -72,6 +75,7 @@ describe('the review loop and memory', () => {
     memory.free = undefined;
     memory.live = new Set();
     memory.gate = undefined;
+    memory.fail = false;
     data = {
       version: 1,
       next: 3,
@@ -199,6 +203,50 @@ describe('the review loop and memory', () => {
   it('reserves no memory for a start that waits', async () => {
     memory.free = 2048 - 1;
     await loop.start('BL-1');
+    expect(spawn).not.toHaveBeenCalled();
+    expect(memory.live.size).toBe(0);
+    loop.dispose();
+  });
+
+  it('lets two starts checked in one window through only while free memory minus both holds', async () => {
+    // Room for two agents, not three: the first start awaits (its base) with its memory held; a second one is checked
+    // meanwhile and gets through; a third, checked after both, waits.
+    memory.free = 2048 + 2 * 300 - 1;
+    data.items.push({ id: 'BL-3', title: 'Review me three', status: 'review', created: at });
+    let open!: () => void;
+    memory.gate = new Promise<void>((r) => (open = r));
+    const first = loop.start('BL-1');
+    await tick();
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(spawn.mock.calls.map((c) => c[0].name)).toEqual([expect.stringContaining('BL-2')]);
+
+    open();
+    await first;
+    expect(spawn.mock.calls.map((c) => c[0].name)).toEqual([expect.stringContaining('BL-2'), expect.stringContaining('BL-1')]);
+    expect(memory.live.size).toBe(2);
+    loop.dispose();
+  });
+
+  it('gives back the memory of a start that fails after its check', async () => {
+    memory.free = 10_000;
+    memory.fail = true;
+    await expect(loop.start('BL-1')).rejects.toThrow('no base');
+    expect(spawn).not.toHaveBeenCalled();
+    expect(memory.live.size).toBe(0);
+    loop.dispose();
+  });
+
+  it('gives up a start whose item changed after its check, and gives back its memory', async () => {
+    memory.free = 10_000;
+    let open!: () => void;
+    memory.gate = new Promise<void>((r) => (open = r));
+    const first = loop.start('BL-1');
+    await tick();
+    // Moved on while the start awaits its base: it's done now, so no agent is spawned for it.
+    data.items[0].status = 'done';
+    open();
+    await first;
     expect(spawn).not.toHaveBeenCalled();
     expect(memory.live.size).toBe(0);
     loop.dispose();
