@@ -221,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.slowStorageHelp', () => vscode.env.openExternal(vscode.Uri.parse(SLOW_STORAGE_DOCS))),
   );
   sidebar.useStorage(storage);
-  void storage.start().catch(() => output.appendLine('Checking the repository storage failed.'));
+  void storage.start();
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });

@@ -6,6 +6,9 @@ export const LOOSE_OBJECT_LIMIT = 1000;
 /** How often the repository is checked for loose objects. */
 export const PACKING_CHECK_MS = 30 * 60_000;
 
+/** A packing that runs longer than this is stopped (a hung git must not block later packs). */
+export const PACKING_TIMEOUT_MS = 60 * 60_000;
+
 export const MAINTENANCE_ARGS = ['maintenance', 'run', '--task=gc', '--task=pack-refs', '--task=commit-graph'] as const;
 
 /** The loose object count from `git count-objects -v`. */
@@ -27,7 +30,8 @@ export function cleanUpInProgress(items: ReadonlyArray<{ rewrite?: unknown }>): 
 export function packRepository(cwd: string): Promise<number | null> {
   return new Promise((resolve, reject) => {
     const child = spawn('git', [...MAINTENANCE_ARGS], { cwd, stdio: 'ignore', windowsHide: true, env: { ...process.env, LC_ALL: 'C' } });
-    child.on('error', reject);
-    child.on('close', (code) => resolve(code));
+    const timer = setTimeout(() => child.kill(), PACKING_TIMEOUT_MS);
+    child.on('error', (error) => (clearTimeout(timer), reject(error)));
+    child.on('close', (code) => (clearTimeout(timer), resolve(code)));
   });
 }

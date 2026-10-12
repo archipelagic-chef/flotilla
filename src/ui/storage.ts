@@ -13,6 +13,9 @@ export interface StorageDeps {
   backlog: LocalBacklog;
   globalState: vscode.Memento;
   output: vscode.OutputChannel;
+  /** How the storage is found out (the mount table, then reads); injected by tests. */
+  mounts?: () => MountEntry[] | undefined;
+  probe?: (gitDir: string) => number | undefined;
 }
 
 /** The mount table, where there is one (Linux). Undefined elsewhere or when it can't be read. */
@@ -43,10 +46,15 @@ export class StorageMonitor implements vscode.Disposable {
     return this.report?.slow ? slowStorageText(this.report) : undefined;
   }
 
+  /** Starts the checks. Never rejects: packing starts whether or not the storage could be measured. */
   async start(): Promise<void> {
-    await this.measure();
-    void this.pack();
+    try {
+      await this.measure();
+    } catch {
+      this.deps.output.appendLine('Checking the repository storage failed.');
+    }
     this.timer = setInterval(() => void this.pack(), PACKING_CHECK_MS);
+    void this.pack();
   }
 
   private async measure(): Promise<void> {
@@ -57,7 +65,9 @@ export class StorageMonitor implements vscode.Disposable {
         return this.deps.mainRoot;
       }
     })();
-    const report = storageReport({ dir, mounts: readMounts(), probe: () => probeReadMs(this.deps.commonDir) });
+    const mounts = this.deps.mounts ?? readMounts;
+    const probe = this.deps.probe ?? probeReadMs;
+    const report = storageReport({ dir, mounts: mounts(), probe: () => probe(this.deps.commonDir) });
     this.deps.output.appendLine(report.slow ? `Repository storage is slow (${report.fsType ?? 'measured reads'}).` : 'Repository storage is local.');
     if (!report.slow) return;
     this.report = report;
