@@ -100,7 +100,7 @@ describe('writeProfileSettings', () => {
     fs.writeFileSync(path.join(tmp, 'scripts', 'fake-claude.mjs'), '');
     const result = writeProfileSettings(profile(), { root: tmp, fakes: true });
 
-    expect(result).toEqual({ on: true, applied: ['fake Claude'] });
+    expect(result).toEqual({ on: true, applied: ['fake Claude'], unreadable: false });
     expect(settingsOf()).toEqual({ 'flotilla.agents.claudePath': path.join(tmp, 'scripts', 'fake-claude.mjs') });
   });
 
@@ -110,7 +110,7 @@ describe('writeProfileSettings', () => {
       path.join(profile(), 'User', 'settings.json'),
       JSON.stringify({ 'editor.fontSize': 13, 'flotilla.agents.claudePath': '/fake', 'flotilla.dev.githubApi': 'http://x' }),
     );
-    expect(writeProfileSettings(profile(), { root: tmp, fakes: false })).toEqual({ on: false, applied: [] });
+    expect(writeProfileSettings(profile(), { root: tmp, fakes: false })).toEqual({ on: false, applied: [], unreadable: false });
     expect(settingsOf()).toEqual({ 'editor.fontSize': 13 });
   });
 
@@ -125,12 +125,13 @@ describe('writeProfileSettings', () => {
     expect(writeProfileSettings(profile(), { root: tmp, fakes: undefined }).on).toBe(false);
   });
 
-  it('keeps a settings file that is not JSON as .bak, and starts afresh', () => {
+  it('leaves a settings file that is not plain JSON as it is, and says so', () => {
     fs.mkdirSync(path.join(profile(), 'User'), { recursive: true });
-    fs.writeFileSync(path.join(profile(), 'User', 'settings.json'), '{ // a comment\n');
-    writeProfileSettings(profile(), { root: tmp, fakes: false });
-    expect(settingsOf()).toEqual({});
-    expect(fs.readFileSync(path.join(profile(), 'User', 'settings.json.bak'), 'utf8')).toBe('{ // a comment\n');
+    const file = path.join(profile(), 'User', 'settings.json');
+    fs.writeFileSync(file, '{ // a comment\n"editor.fontSize": 13,\n}\n');
+    expect(writeProfileSettings(profile(), { root: tmp, fakes: true })).toEqual({ on: false, applied: [], unreadable: true });
+    expect(fs.readFileSync(file, 'utf8')).toBe('{ // a comment\n"editor.fontSize": 13,\n}\n');
+    expect(fs.existsSync(`${file}.bak`)).toBe(false);
   });
 });
 

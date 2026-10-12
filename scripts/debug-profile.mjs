@@ -69,26 +69,30 @@ export function installClaudeCode(source, extensionsDir) {
   return name;
 }
 
-/** The profile's settings, or {} when there are none. A file that isn't a settings object is kept as .bak. */
+/**
+ * The profile's settings: {} when there are none, undefined when the file isn't plain JSON. VS Code allows comments in
+ * settings, so such a file is left as it is rather than rewritten (which would drop them).
+ */
 function readSettings(file) {
   if (!fs.existsSync(file)) return {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
   } catch {
-    // Fall through: kept below, not lost.
+    // Not plain JSON: reported by the caller.
   }
-  fs.renameSync(file, `${file}.bak`);
-  return {};
+  return undefined;
 }
 
 /**
- * Writes the profile's settings, keeping the ones this doesn't manage. With fakes on, Flotilla's Claude and GitHub
- * point at the fakes (for each fake file that exists); off, they're removed. `fakes` undefined keeps the last choice.
+ * Writes the profile's settings, keeping the ones this doesn't manage. With fakes on, Flotilla's Claude and GitHub point
+ * at the fakes (for each fake file that exists); off, they're removed. `fakes` undefined keeps the last choice. A file
+ * that isn't plain JSON is left alone.
  */
 export function writeProfileSettings(profileDir, { root, fakes }) {
   const file = path.join(profileDir, 'User', 'settings.json');
   const settings = readSettings(file);
+  if (!settings) return { on: false, applied: [], unreadable: true };
   const on = fakes ?? FAKE_KEYS.some((key) => key in settings);
   for (const key of FAKE_KEYS) delete settings[key];
   const applied = [];
@@ -106,7 +110,7 @@ export function writeProfileSettings(profileDir, { root, fakes }) {
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
-  return { on, applied };
+  return { on, applied, unreadable: false };
 }
 
 /** Makes the debug profile ready. `root` is the project folder; the rest is for tests. */
@@ -128,7 +132,9 @@ export function fakesArg(argv = process.argv.slice(2)) {
 /** What the log says about the debug profile, in a few lines. */
 export function describeDebugProfile(result) {
   const claude = result.claudeCode ? `Claude Code (${result.claudeCode}) is in ${result.extensions}` : 'no Claude Code found to copy: chats will not start in the debug window';
-  const fakes = result.on ? `fakes on${result.applied.length ? `: ${result.applied.join(', ')}` : ' (no fake files in scripts/ yet, so the real ones are used)'}` : 'fakes off';
+  let fakes = 'fakes off';
+  if (result.unreadable) fakes = "settings.json isn't plain JSON, so it was left as it is and the fakes weren't changed";
+  else if (result.on) fakes = `fakes on${result.applied.length ? `: ${result.applied.join(', ')}` : ' (no fake files in scripts/ yet, so the real ones are used)'}`;
   return [`Debug profile: ${result.profile} (its own settings, secrets and state)`, `Debug extensions: ${claude}`, `Debug window: ${fakes}`].join('\n');
 }
 
