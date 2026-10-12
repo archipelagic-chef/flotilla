@@ -63,17 +63,20 @@ export class JobLogProvider implements vscode.TextDocumentContentProvider {
 }
 
 /** The GitHub client for a repository, through the user's GitHub sign-in in VS Code. */
-export function signedInActions(fetch: Fetch): (owner: string, repo: string) => GitHubActions {
+export function signedInActions(fetch: Fetch, fakeApi?: string): (owner: string, repo: string) => GitHubActions {
   return (owner, repo) =>
     new GitHubActions(
       owner,
       repo,
       async () => {
+        // The fake GitHub (debug window only) needs no sign-in, and never gets a real token.
+        if (fakeApi) return 'fake-token';
         const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true });
         if (!session) throw new Error('Sign in to GitHub to read the log.');
         return session.accessToken;
       },
       fetch,
+      fakeApi,
     );
 }
 

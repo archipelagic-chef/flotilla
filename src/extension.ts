@@ -34,6 +34,7 @@ import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { devGitHubApi } from './ui/ci/devGitHub';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
@@ -66,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
   // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
-  const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch));
+  const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));
   context.subscriptions.push(jobLogs, vscode.workspace.registerTextDocumentContentProvider(JOB_LOG_SCHEME, jobLogs));
   // The terminal profile VS Code's + button uses once it's the default profile. It's registered first, so that it
   // always answers (a plain terminal) when Flotilla has no worktrees to offer: the setting applies to every window.
@@ -149,6 +150,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     backlog,
     integrations,
+    githubApi: devGitHubApi(context.extensionMode),
   });
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);

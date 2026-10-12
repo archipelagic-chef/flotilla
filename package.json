@@ -1530,6 +1530,11 @@
           ],
           "default": "propose",
           "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how)."
+        },
+        "flotilla.dev.githubApi": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
         }
       }
     },
@@ -1655,6 +1660,7 @@
     "playground": "node scripts/playground.mjs",
     "bench": "node scripts/bench-refresh.mjs",
     "debug-profile": "node scripts/debug-profile.mjs",
+    "fake-github": "node scripts/fake-github.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

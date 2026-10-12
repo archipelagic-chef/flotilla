@@ -69,7 +69,7 @@ function github(
 ) {
   let release!: () => void;
   const gate = options.hold ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
-  const fetch = vi.fn(async (url: string) => {
+  const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     await gate;
     const u = new URL(url);
     // Deployments: a branch's list (deployments.feat), and each deployment's statuses (deployments.statuses-<id>).
@@ -799,6 +799,33 @@ describe('CiRuns: the reads after an action', () => {
     await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/still running/);
     // The branch is read again once: its runs (and, since BL-8, its deployments beside them).
     expect(fetch.mock.calls.filter(([url, init]) => init?.method !== 'POST' && new URL(url).pathname.endsWith('/actions/runs'))).toHaveLength(1);
+    ci.dispose();
+  });
+});
+
+describe('CiRuns with the fake GitHub (the debug window)', () => {
+  it('reads the fake, with no sign-in and no real token', async () => {
+    const { fetch } = github({ feat: [apiRun()] });
+    const { post, last } = setup();
+    const ci = new CiRuns(post, 'http://127.0.0.1:4010');
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+
+    expect(auth.getSession).not.toHaveBeenCalled();
+    expect(fetch.mock.calls[0][0]).toMatch(/^http:\/\/127\.0\.0\.1:4010\/repos\/acme\/app\/actions\/runs\?branch=feat&/);
+    expect(fetch.mock.calls[0][1]).toMatchObject({ headers: { Authorization: 'Bearer fake-token' } });
+    expect(last().a.kind).toBe('runs');
+    ci.dispose();
+  });
+
+  it('does not open the sign-in dialog', async () => {
+    const { post } = setup();
+    const ci = new CiRuns(post, 'http://127.0.0.1:4010');
+    github();
+    await ci.signIn();
+
+    expect(auth.getSession).not.toHaveBeenCalled();
     ci.dispose();
   });
 });

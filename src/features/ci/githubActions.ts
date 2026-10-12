@@ -77,6 +77,22 @@ function id(n: number): number {
   return n;
 }
 
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/**
+ * The origin of the fake GitHub's API (npm run fake-github), if the address is one: plain http on this machine. Anything
+ * else is not a fake, so a token is never sent to it.
+ */
+export function fakeApiOrigin(address: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return undefined;
+  }
+  return url.protocol === 'http:' && LOOPBACK.has(url.hostname) ? url.origin : undefined;
+}
+
 /** A run that is still going (queued or running). */
 export const isActive = (s: CiStatus) => s === 'queued' || s === 'running';
 
@@ -105,13 +121,15 @@ export class GitHubActions {
     readonly repo: string,
     private readonly token: () => Promise<string>,
     private readonly fetch: Fetch,
+    /** The API's address: GitHub's, or the fake one (flotilla.dev.githubApi) in the debug window. */
+    private readonly api = API,
   ) {
     if (!gitHubName(owner) || !gitHubName(repo)) throw new Error(`Not a GitHub repository: ${owner}/${repo}.`);
   }
 
   /** A branch's latest runs, newest first. */
   async runs(branch: string, limit = 10): Promise<CiRun[]> {
-    const url = `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=${limit}`;
+    const url = `${this.api}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=${limit}`;
     const headers = { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
     const data = await fetchJson<{ workflow_runs: ApiRun[] }>(this.fetch, url, { headers });
     return data.workflow_runs.map((r) => ({
@@ -158,7 +176,7 @@ export class GitHubActions {
     return fetchText(this.fetch, location, { headers: {} });
   }
 
-  /** One page of the API, and the address of the next one (from its Link header). The token only goes to api.github.com. */
+  /** One page of the API, and the address of the next one (from its Link header). The token only goes to this API. */
   private async page<T>(url: string): Promise<{ body: T; next?: string }> {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
@@ -169,7 +187,7 @@ export class GitHubActions {
         throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
       }
       const next = /<([^>]+)>\s*;\s*rel="next"/.exec(res.headers?.get('link') ?? '')?.[1];
-      if (next !== undefined && !next.startsWith(`${API}/`)) throw new Error(`GitHub's next page isn't on api.github.com.`);
+      if (next !== undefined && !next.startsWith(`${this.api}/`)) throw new Error(`GitHub's next page isn't on ${new URL(this.api).host}.`);
       return { body: (await res.json()) as T, next };
     } catch (error) {
       if (abort.signal.aborted) throw new Error(`api.github.com didn't answer within ${TIMEOUT_MS / 1000} seconds.`);
@@ -212,7 +230,7 @@ export class GitHubActions {
   }
 
   private async act(action: RunAction, path: string): Promise<void> {
-    const url = `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/${path}`;
+    const url = `${this.api}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/${path}`;
     const headers = { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
     try {
       await fetchJson(this.fetch, url, { method: 'POST', headers });
@@ -229,7 +247,7 @@ export class GitHubActions {
   }
 
   private get base(): string {
-    return `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions`;
+    return `${this.api}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions`;
   }
 }
 

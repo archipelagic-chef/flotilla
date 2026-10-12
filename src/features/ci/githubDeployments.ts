@@ -81,6 +81,8 @@ export class GitHubDeployments {
     readonly repo: string,
     private readonly token: () => Promise<string>,
     private readonly fetch: Fetch,
+    /** The API's address: GitHub's, or the fake one (flotilla.dev.githubApi) in the debug window. */
+    private readonly api = API,
   ) {
     // Names only, as in the Issues client: no paths into other API routes.
     const name = (n: string) => /^[A-Za-z0-9_.-]+$/.test(n) && n !== '.' && n !== '..';
@@ -92,7 +94,7 @@ export class GitHubDeployments {
   }
 
   private get base(): string {
-    return `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}`;
+    return `${this.api}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}`;
   }
 
   /** The latest deployment of each environment a branch is deployed to; none when it isn't deployed anywhere. */

@@ -49,6 +49,8 @@ export interface SidebarDeps {
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string, opts: { amend?: boolean; then?: 'push' | 'sync' }) => Promise<boolean>;
   output: vscode.OutputChannel;
+  /** The fake GitHub's address, in the debug window only (see devGitHubApi). */
+  githubApi?: string;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -69,7 +71,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
-    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }));
+    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }), deps.githubApi);
     this.files = new FileOps({
       reference: deps.reference,
       find: (key) => this.find(key),

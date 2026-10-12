@@ -21,6 +21,10 @@ const PLAYGROUND_VERSION = 1;
 // The playground's files (a small Node app, its tests and launch configurations) live in playground-app/.
 const app = fileURLToPath(new URL('playground-app/', import.meta.url));
 const dir = path.resolve('.playground');
+// A GitHub address for the playground's origin, so the CI/CD view takes it for a GitHub repository. It's never fetched
+// from or pushed to; the debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug
+// profile: npm run debug-profile -- --fakes).
+const REMOTE = 'https://github.com/playground/app.git';
 const reset = process.argv.includes('--reset');
 const exists = fs.existsSync(path.join(dir, '.git'));
 // Set once the old playground has been renamed, so a later failure can say where it is.
@@ -78,6 +82,21 @@ const moveAside = () => {
   console.log(`Its ${linked.length} worktree(s) moved with it and still work there: ${moved.join(', ')}`);
 };
 
+// The playground looks like a GitHub repository to the CI/CD view: origin is REMOTE, and the checked-out branch is
+// "published" there (a remote-tracking ref of its own commit, and its upstream), so its runs can be read.
+const asGitHubRepository = () => {
+  const remotes = git('remote').split('\n');
+  if (!remotes.includes('origin')) git('remote', 'add', 'origin', REMOTE);
+  else if (git('remote', 'get-url', 'origin') !== REMOTE) git('remote', 'set-url', 'origin', REMOTE);
+  const branch = git('symbolic-ref', '--short', 'HEAD');
+  try {
+    git('rev-parse', '--verify', '-q', `refs/remotes/origin/${branch}`);
+  } catch {
+    git('update-ref', `refs/remotes/origin/${branch}`, `refs/heads/${branch}`);
+  }
+  git('branch', `--set-upstream-to=origin/${branch}`, branch);
+};
+
 const create = () => {
   fs.cpSync(app, dir, { recursive: true });
   git('init', '-q');
@@ -95,6 +114,7 @@ const create = () => {
   git('commit', '-q', '-am', 'Drop the comma from the greeting');
   git('checkout', '-q', 'main');
   seedPlayground(dir);
+  asGitHubRepository();
   git('config', 'flotilla.playgroundVersion', String(PLAYGROUND_VERSION));
   console.log(`Created playground: ${dir}`);
 };
@@ -102,6 +122,7 @@ const create = () => {
 try {
   if (exists && !reset) {
     if (seedPlayground(dir)) console.log(`Seeded the playground's backlog and worktrees: ${dir}`);
+    asGitHubRepository();
     const built = recordedVersion();
     if (built === PLAYGROUND_VERSION) {
       console.log(`Playground already exists: ${dir}`);

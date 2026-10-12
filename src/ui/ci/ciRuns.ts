@@ -12,6 +12,8 @@ import type { CiRunView, CiView } from '../../webview/protocol';
 const SCOPES = ['repo'];
 /** How long after a re-run or cancel GitHub is read again, for the state it has settled into. */
 const FOLLOW_UP_MS = 3_000;
+/** What the fake GitHub is sent instead of the sign-in's token: it doesn't check it, and it's never a real one. */
+const FAKE_TOKEN = 'fake-token';
 
 /** Where a worktree's runs are: its branch on a GitHub repository, or the view that says why there are none. */
 type Where = { kind: 'github'; owner: string; repo: string; branch: string } | { kind: 'view'; view: CiView };
@@ -35,10 +37,10 @@ interface BranchRead {
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** A branch's runs and deployments. The runs' error is the view's; a deployments error stays with the deployments. */
-async function readBranch(owner: string, repo: string, branch: string, token: () => Promise<string>): Promise<BranchRead> {
+async function readBranch(owner: string, repo: string, branch: string, token: () => Promise<string>, api?: string): Promise<BranchRead> {
   const fetch = globalThis.fetch as unknown as Fetch;
-  const runs = new GitHubActions(owner, repo, token, fetch).runs(branch);
-  const deployments = new GitHubDeployments(owner, repo, token, fetch).forBranch(branch).then(
+  const runs = new GitHubActions(owner, repo, token, fetch, api).runs(branch);
+  const deployments = new GitHubDeployments(owner, repo, token, fetch, api).forBranch(branch).then(
     (found) => ({ deployments: found }),
     (error: unknown) => ({ deployments: [], deploymentsError: message(error) }),
   );
@@ -65,8 +67,11 @@ export class CiRuns implements vscode.Disposable {
   /** The actions on their way (a click on one already sent or asking is ignored). */
   private acting = new Set<string>();
 
-  /** post sends the views of every worktree to the sidebar. */
-  constructor(private readonly post: (views: Record<string, CiView>) => void) {}
+  /** post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then). */
+  constructor(
+    private readonly post: (views: Record<string, CiView>) => void,
+    private readonly api?: string,
+  ) {}
 
   dispose(): void {
     clearTimeout(this.timer);
@@ -119,11 +124,13 @@ export class CiRuns implements vscode.Disposable {
         const answer = await vscode.window.showWarningMessage(`Cancel ${run.workflow} #${run.number} on ${view.branch}?`, { modal: true }, 'Cancel run');
         if (answer !== 'Cancel run') return;
       }
-      // A dismissed sign-in dialog ends it: nothing was asked of GitHub.
-      const session = await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+      // A dismissed sign-in dialog ends it: nothing was asked of GitHub. The fake GitHub needs no sign-in, and never gets a real token.
+      const session: Session | undefined = this.api
+        ? { accessToken: FAKE_TOKEN }
+        : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
       if (!session) return;
       const [owner, repo] = view.repo.split('/');
-      const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
+      const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
       asked = true;
       if (action === 'cancel') await github.cancel(runId);
       else await github.rerun(runId, action === 'rerunFailed');
@@ -158,7 +165,7 @@ export class CiRuns implements vscode.Disposable {
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
   async signIn(): Promise<void> {
     // A dismissed dialog is not an error: the view stays at "Sign in to GitHub".
-    await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
+    if (!this.api) await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
     await this.load();
   }
 
@@ -206,7 +213,7 @@ export class CiRuns implements vscode.Disposable {
     const expanded = this.expanded.get(key);
     if (!session || !expanded || view?.kind !== 'runs') return;
     const [owner, repo] = view.repo.split('/');
-    const actions = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
+    const actions = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
     const jobs = this.jobs.get(key) ?? new Map<number, JobsState>();
     this.jobs.set(key, jobs);
     await Promise.all(
@@ -228,8 +235,10 @@ export class CiRuns implements vscode.Disposable {
     const targets = this.workstreams.filter((ws) => !keys || keys.includes(ws.key));
     const wheres = await Promise.all(targets.map(async (ws) => ({ ws, where: await this.where(ws) })));
     const github = wheres.some((w) => w.where.kind === 'github');
-    // Without a sign-in (or a provider to ask), the runs say so: they're not read.
-    const session = github ? await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined) : undefined;
+    // Without a sign-in (or a provider to ask), the runs say so: they're not read. The fake GitHub needs no sign-in.
+    let session: Session | undefined;
+    if (github && this.api) session = { accessToken: FAKE_TOKEN };
+    else if (github) session = await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined);
     // Worktrees on the same branch share one read.
     const reads = new Map<string, Promise<BranchRead>>();
     await Promise.all(
@@ -282,7 +291,7 @@ export class CiRuns implements vscode.Disposable {
     try {
       let read = reads.get(id);
       if (!read) {
-        read = readBranch(owner, repo, branch, async () => token);
+        read = readBranch(owner, repo, branch, async () => token, this.api);
         reads.set(id, read);
       }
       const { runs, deployments, deploymentsError } = await read;
