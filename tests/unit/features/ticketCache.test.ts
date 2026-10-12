@@ -15,22 +15,20 @@ function commit(repo: string, file: string, message: string): void {
 }
 
 describe('mention index', () => {
-  it('reports the branches and commits that came in, when a ref moved, and nothing before', async () => {
+  it('reports the branches and commits that came in when a ref moved, and nothing otherwise', async () => {
     const repo = initRepo();
     cleanup.push(repo);
     commit(repo, 'a.txt', 'BL-1 first');
-    const before = await ticketCommits(repo, { branches: [], ids: ['BL-1'], limit: 50 });
-    expect(before.map((c) => c.subject)).toEqual(['BL-1 first']);
+    expect(await movesSince(repo)).toBeDefined();
     expect(await movesSince(repo)).toBeUndefined();
 
     git(repo, 'switch', '-q', '-c', 'side');
     commit(repo, 'b.txt', 'Also BL-1 on a branch');
+    // Another ticket's view rebuilds the mention index first: a move must still be reported, once.
+    await ticketCommits(repo, { branches: [], ids: ['BL-1'], limit: 50 });
     const moves = await movesSince(repo);
     expect(moves?.branches).toEqual(['side']);
     expect(moves?.commits.map((c) => c.subject)).toEqual(['Also BL-1 on a branch']);
-    const after = await ticketCommits(repo, { branches: [], ids: ['BL-1'], limit: 50 });
-    // Both were made within a second: their order is not the point here.
-    expect(after.map((c) => c.subject).sort()).toEqual(['Also BL-1 on a branch', 'BL-1 first']);
     expect(await movesSince(repo)).toBeUndefined();
   });
 

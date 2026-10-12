@@ -27,7 +27,7 @@ describe('ticketsForBacklogChange', () => {
     expect(ticketsForBacklogChange({ items, changed: none, files: files('posted.json') })).toBe('all');
   });
 
-  it('names no ticket for a file that is not a ticket (a Markdown file names one, the panel refreshes only open ones)', () => {
+  it('names the id of a Markdown file, and nothing for any other file', () => {
     expect(ticketsForBacklogChange({ items, changed: none, files: files('AGENTS.md') })).toEqual(new Set(['AGENTS']));
     expect(ticketsForBacklogChange({ items, changed: none, files: files('notes.txt') })).toEqual(new Set());
   });

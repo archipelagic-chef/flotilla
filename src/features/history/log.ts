@@ -151,23 +151,26 @@ async function mentionable(cwd: string): Promise<Array<Omit<CommitView, 'outgoin
   return commits;
 }
 
+/** What movesSince last reported, per repository: its refs and commits. Only movesSince updates it, so a move is reported once, whichever path rebuilt the mention index. */
+const reported = new Map<string, { refs: Map<string, string>; commits: Set<string> }>();
+
 /**
- * What moved since the mention index was read (fresh read of the refs), or undefined when nothing did: the local
- * branches whose tips moved, and the commits that came in (the index is brought up to date).
+ * What moved since movesSince last looked (a fresh read of the refs), or undefined when nothing did: the local branches
+ * whose tips moved, and the commits that came in. The first look reports everything there is.
  */
 export async function movesSince(cwd: string): Promise<RefMoves | undefined> {
   // Read now, not shared: a change a moment ago must not be missed.
   const refs = await refsOf(cwd, true);
-  const index = mentionIndexes.get(cwd);
-  if (index?.key === keyOf(refs)) return undefined;
-  const before = index?.refs ?? new Map<string, string>();
+  const seen = reported.get(cwd);
+  if (seen && keyOf(seen.refs) === keyOf(refs)) return undefined;
+  const before = seen?.refs ?? new Map<string, string>();
   const branches = [...new Set([...refs.keys(), ...before.keys()])]
     .filter((name) => name.startsWith('refs/heads/') && refs.get(name) !== before.get(name))
     .map((name) => name.slice('refs/heads/'.length));
-  if (!index) return { branches, commits: [] };
-  const known = new Set((await index.commits).map((c) => c.hash));
-  const commits = (await mentionable(cwd)).filter((c) => !known.has(c.hash));
-  return { branches, commits };
+  const all = await mentionable(cwd);
+  const known = seen?.commits ?? new Set<string>();
+  reported.set(cwd, { refs, commits: new Set(all.map((c) => c.hash)) });
+  return { branches, commits: all.filter((c) => !known.has(c.hash)) };
 }
 
 /**
