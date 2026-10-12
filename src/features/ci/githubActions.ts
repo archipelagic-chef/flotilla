@@ -64,6 +64,9 @@ interface ApiRun {
 
 const API = 'https://api.github.com';
 
+/** Pages of jobs read at most: 100 each, where a run has a few hundred at the most. Past that, the view says how many were left out. */
+const MAX_JOB_PAGES = 20;
+
 /** A run's or job's id, as the webview sends it: a positive whole number, nothing else in a URL. */
 function id(n: number): number {
   if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`Not a GitHub Actions id: ${n}.`);
@@ -120,10 +123,19 @@ export class GitHubActions {
     }));
   }
 
-  /** A run's jobs (of its latest attempt), with their steps. */
+  /** A run's jobs (of its latest attempt), with their steps: every page of them, not only the first. */
   async jobs(runId: number): Promise<CiJob[]> {
-    const data = await fetchJson<{ jobs: ApiJob[] }>(this.fetch, `${this.base}/runs/${id(runId)}/jobs?per_page=100`, { headers: await this.headers() });
-    return data.jobs.map((j) => ({
+    const found: ApiJob[] = [];
+    let total = 0;
+    let next: string | undefined = `${this.base}/runs/${id(runId)}/jobs?per_page=100`;
+    for (let pages = 0; next !== undefined; pages++) {
+      if (pages === MAX_JOB_PAGES) throw new Error(`Read ${found.length} of ${total} jobs; the rest weren't read.`);
+      const page: { body: { total_count?: number; jobs: ApiJob[] }; next?: string } = await this.page(next);
+      found.push(...page.body.jobs);
+      total = page.body.total_count ?? total;
+      next = page.next;
+    }
+    return found.map((j) => ({
       id: j.id,
       name: j.name,
       status: ciStatus(j.status, j.conclusion),
@@ -139,6 +151,27 @@ export class GitHubActions {
     const location = await this.logLocation(`${this.base}/jobs/${id(jobId)}/logs`);
     // The storage is on another host, and it gets no token.
     return fetchText(this.fetch, location, { headers: {} });
+  }
+
+  /** One page of the API, and the address of the next one (from its Link header). The token only goes to api.github.com. */
+  private async page<T>(url: string): Promise<{ body: T; next?: string }> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    try {
+      const res = await this.fetch(url, { headers: { Accept: 'application/json', ...(await this.headers()) }, signal: abort.signal });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 300);
+        throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
+      }
+      const next = /<([^>]+)>\s*;\s*rel="next"/.exec(res.headers?.get('link') ?? '')?.[1];
+      if (next !== undefined && !next.startsWith(`${API}/`)) throw new Error(`GitHub's next page isn't on api.github.com.`);
+      return { body: (await res.json()) as T, next };
+    } catch (error) {
+      if (abort.signal.aborted) throw new Error(`api.github.com didn't answer within ${TIMEOUT_MS / 1000} seconds.`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Where GitHub keeps a job's log: its redirect, read here (not followed) so that the token stays with GitHub. */
