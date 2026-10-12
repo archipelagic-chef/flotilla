@@ -36,6 +36,22 @@ interface ApiRun {
 
 const API = 'https://api.github.com';
 
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/**
+ * The origin of the fake GitHub's API (npm run fake-github), if the address is one: plain http on this machine. Anything
+ * else is not a fake, so a token is never sent to it.
+ */
+export function fakeApiOrigin(address: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return undefined;
+  }
+  return url.protocol === 'http:' && LOOPBACK.has(url.hostname) ? url.origin : undefined;
+}
+
 /** A run that is still going (queued or running). */
 export const isActive = (s: CiStatus) => s === 'queued' || s === 'running';
 
@@ -64,13 +80,15 @@ export class GitHubActions {
     readonly repo: string,
     private readonly token: () => Promise<string>,
     private readonly fetch: Fetch,
+    /** The API's address: GitHub's, or the fake one (flotilla.dev.githubApi) in the debug window. */
+    private readonly api = API,
   ) {
     if (!gitHubName(owner) || !gitHubName(repo)) throw new Error(`Not a GitHub repository: ${owner}/${repo}.`);
   }
 
   /** A branch's latest runs, newest first. */
   async runs(branch: string, limit = 10): Promise<CiRun[]> {
-    const url = `${API}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=${limit}`;
+    const url = `${this.api}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=${limit}`;
     const headers = { Authorization: `Bearer ${await this.token()}`, 'X-GitHub-Api-Version': '2022-11-28' };
     const data = await fetchJson<{ workflow_runs: ApiRun[] }>(this.fetch, url, { headers });
     return data.workflow_runs.map((r) => ({

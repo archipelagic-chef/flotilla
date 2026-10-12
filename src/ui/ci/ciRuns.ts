@@ -8,6 +8,8 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { CiView } from '../../webview/protocol';
 
 const SCOPES = ['repo'];
+/** What the fake GitHub is sent instead of the sign-in's token: it doesn't check it, and it's never a real one. */
+const FAKE_TOKEN = 'fake-token';
 
 /** Where a worktree's runs are: its branch on a GitHub repository, or the view that says why there are none. */
 type Where = { kind: 'github'; owner: string; repo: string; branch: string } | { kind: 'view'; view: CiView };
@@ -28,8 +30,11 @@ export class CiRuns implements vscode.Disposable {
   private visible = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
-  /** post sends the views of every worktree to the sidebar. */
-  constructor(private readonly post: (views: Record<string, CiView>) => void) {}
+  /** post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then). */
+  constructor(
+    private readonly post: (views: Record<string, CiView>) => void,
+    private readonly api?: string,
+  ) {}
 
   dispose(): void {
     clearTimeout(this.timer);
@@ -62,7 +67,7 @@ export class CiRuns implements vscode.Disposable {
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
   async signIn(): Promise<void> {
     // A dismissed dialog is not an error: the view stays at "Sign in to GitHub".
-    await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
+    if (!this.api) await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
     await this.load();
   }
 
@@ -76,8 +81,10 @@ export class CiRuns implements vscode.Disposable {
     const targets = this.workstreams.filter((ws) => !keys || keys.includes(ws.key));
     const wheres = await Promise.all(targets.map(async (ws) => ({ ws, where: await this.where(ws) })));
     const github = wheres.some((w) => w.where.kind === 'github');
-    // Without a sign-in (or a provider to ask), the runs say so: they're not read.
-    const session = github ? await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined) : undefined;
+    // Without a sign-in (or a provider to ask), the runs say so: they're not read. The fake GitHub needs no sign-in.
+    let session: Session | undefined;
+    if (github && this.api) session = { accessToken: FAKE_TOKEN };
+    else if (github) session = await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined);
     // Worktrees on the same branch share one read.
     const reads = new Map<string, Promise<CiRun[]>>();
     await Promise.all(
@@ -124,7 +131,7 @@ export class CiRuns implements vscode.Disposable {
     try {
       let read = reads.get(id);
       if (!read) {
-        read = new GitHubActions(owner, repo, async () => token, globalThis.fetch as unknown as Fetch).runs(branch);
+        read = new GitHubActions(owner, repo, async () => token, globalThis.fetch as unknown as Fetch, this.api).runs(branch);
         reads.set(id, read);
       }
       const runs = await read;

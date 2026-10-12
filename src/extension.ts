@@ -32,6 +32,7 @@ import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { devGitHubApi } from './ui/ci/devGitHub';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
@@ -144,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     backlog,
     integrations,
+    githubApi: devGitHubApi(context.extensionMode),
   });
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
