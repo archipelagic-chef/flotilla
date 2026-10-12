@@ -47,6 +47,11 @@ export interface BacklogItem {
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
   agent?: AgentChoice;
+  /**
+   * The discussion of a ticket nobody works on yet (BL-45): the shaping agent's name and chat, and whether it thinks
+   * the ticket is ready to start (until the user writes again, or keeps discussing).
+   */
+  shaping?: { agent: string; session: string; ready?: boolean };
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
@@ -165,7 +170,7 @@ export function addItem(data: BacklogData, title: string, prefix: string, now: D
 export function updateItem(
   data: BacklogData,
   id: string,
-  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>> & { priority?: BacklogPriority | null },
+  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches' | 'shaping'>> & { priority?: BacklogPriority | null },
 ): BacklogData {
   return {
     ...data,

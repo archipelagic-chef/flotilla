@@ -154,6 +154,32 @@ export interface AgentRun {
   stop(): void;
 }
 
+/** The claude -p arguments of a run: its prompt, output, permission mode, name, choice and chat (new or resumed). */
+export function headlessArgs(o: {
+  prompt: string;
+  name: string;
+  choice?: AgentChoice;
+  resume?: string;
+  sessionId: string;
+  mode: AgentPermissionMode;
+  tools?: string[];
+}): string[] {
+  return [
+    '-p',
+    o.prompt,
+    '--output-format',
+    'json',
+    '--permission-mode',
+    o.mode,
+    '--name',
+    o.name,
+    ...choiceArgs(o.choice ?? {}),
+    ...(o.resume ? ['--resume', o.resume] : ['--session-id', o.sessionId]),
+    // Last: the tool list is variadic, so no flag may follow it.
+    ...(o.tools?.length ? ['--allowedTools', ...o.tools] : []),
+  ];
+}
+
 /**
  * Runs an agent without a window to type in (claude -p): a new chat with prompt, or a chat resumed with it. Its chat
  * shows up in Flotilla like any other (the hooks record it) and can be opened in Claude Code afterwards.
@@ -167,6 +193,8 @@ export function runAgentHeadless(o: {
   output: vscode.OutputChannel;
   /** The start's reserved slot (see reserveStart); without one, the start counts from now. */
   slot?: number;
+  /** Only these tools, and no other: the run asks no one, so anything else is refused (see headlessArgs). */
+  tools?: string[];
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
   if (o.resume !== undefined && !validSession(o.resume)) {
@@ -175,19 +203,10 @@ export function runAgentHeadless(o: {
   }
   const sessionId = o.resume ?? crypto.randomUUID();
   const configured = vscode.workspace.getConfiguration('flotilla').get<string>('agents.permissionMode', 'auto');
-  const mode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
-  const args = [
-    '-p',
-    o.prompt,
-    '--output-format',
-    'json',
-    '--permission-mode',
-    mode,
-    '--name',
-    o.name,
-    ...choiceArgs(o.choice ?? {}),
-    ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]),
-  ];
+  const configuredMode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
+  // With a tool list, what isn't on it is refused, not asked about: that's the list's whole point.
+  const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
+  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools });
   o.output.appendLine(
     `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}).`,
   );

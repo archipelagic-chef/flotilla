@@ -43,9 +43,12 @@ export interface AutopilotView {
   elsewhere: boolean;
 }
 
-/** The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. */
+/**
+ * The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. A ticket
+ * being discussed with an agent (BL-45) waits for its owner to start it.
+ */
 export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): BacklogItem | undefined {
-  return data.items.find((i) => i.status === 'todo' && !i.proposed && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
+  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
 }
 
 /**
