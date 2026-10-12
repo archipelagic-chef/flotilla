@@ -5,7 +5,7 @@
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
-import type { CiRun } from '../features/ci/githubActions';
+import type { CiJob, CiRun } from '../features/ci/githubActions';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -36,8 +36,14 @@ export interface BacklogProblem {
 export type VcView = 'changes' | 'history' | 'compare' | 'ci';
 
 /** A workflow run as the CI/CD view shows it; current: it runs the commit checked out in the worktree. */
+/** A job of a run, with its steps. */
+export type CiJobView = CiJob;
+
 export interface CiRunView extends CiRun {
   current: boolean;
+  /** The run's jobs, with their steps, once read: only for a run the user expanded. */
+  jobs?: CiJob[];
+  jobsError?: string;
 }
 
 /** A worktree's CI/CD: its branch's latest runs on GitHub, or why there are none. */
@@ -262,6 +268,10 @@ export type WebviewMessage =
   | { type: 'refs' }
   /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
   | { type: 'ci'; op: 'signIn' | 'refresh' }
+  /** A run expanded or collapsed in a worktree's CI/CD view: its jobs are read while it's expanded. */
+  | { type: 'ci'; op: 'expand' | 'collapse'; key: string; runId: number }
+  /** Shows a job's log (read-only, cleaned, at its first error). */
+  | { type: 'ci'; op: 'showLog'; key: string; jobId: number; jobName: string }
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
