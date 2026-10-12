@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { childrenOf, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -178,12 +178,15 @@ export class Autopilot implements vscode.Disposable {
         return;
       }
       await this.deps.reviews.startWork(fresh, ws, slot);
+      if (fresh.startFailed) await this.deps.backlog.change((d) => setStartFailed(d, item.id));
     } catch (error) {
       releaseStart(slot);
       this.failed.add(item.id);
       const message = error instanceof Error ? error.message : String(error);
       this.deps.output.appendLine(`Autopilot couldn't start ${item.id}: ${message}`);
-      await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
+      const now = new Date();
+      await this.deps.backlog.change((d) => setStartFailed(d, item.id, { message, since: now.toISOString() }));
+      await this.deps.backlog.appendActivity(item, { date: entryDate(now), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
     }
   }
 }

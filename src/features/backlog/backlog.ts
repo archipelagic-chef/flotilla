@@ -50,6 +50,8 @@ export interface BacklogItem {
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+  /** The autopilot couldn't start an agent on it (why, and when): it waits for the user to start it (Run). */
+  startFailed?: { message: string; /** ISO 8601. */ since: string };
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
@@ -198,6 +200,18 @@ export function childrenOf(data: BacklogData, id: string): BacklogItem[] {
 
 export function removeItem(data: BacklogData, id: string): BacklogData {
   return { ...data, items: data.items.filter((i) => i.id !== id) };
+}
+
+/** Records that the autopilot couldn't start an item (with why), or clears that record (without a failure). */
+export function setStartFailed(data: BacklogData, id: string, failed?: { message: string; since: string }): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { startFailed: _old, ...rest } = i;
+      return failed ? { ...rest, startFailed: failed } : rest;
+    }),
+  };
 }
 
 /** Moves an item before another one (or to the end), and into a status: drag and drop between and within lanes. */

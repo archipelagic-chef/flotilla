@@ -101,7 +101,7 @@ describe('the autopilot and memory', () => {
     const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
     const prepareWorktree = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined },
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined, change: async () => data },
       reviews: { running: 0, pausedUntil: async () => undefined, startWork: async () => undefined },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },

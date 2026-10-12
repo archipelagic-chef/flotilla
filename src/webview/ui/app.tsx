@@ -403,7 +403,8 @@ export function App() {
     ...(approvals ? [`${approvals} chat${approvals === 1 ? ' needs' : 's need'} your approval`] : []),
     ...(replies ? [`${replies} chat${replies === 1 ? ' waits' : 's wait'} for your reply`] : []),
   ];
-  const proposedCount = (backlog ?? []).filter((i) => i.proposed).length;
+  // The backlog's badge counts what waits on the user ("Needs you") and the agents' proposals.
+  const backlogCount = (backlog ?? []).filter((i) => i.need || i.proposed).length;
   const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
   const busyFor = (id: Tool): string[] => [
@@ -641,7 +642,7 @@ export function App() {
       <div class="body">
         <nav class="tools" role="tablist" aria-orientation="vertical" aria-label="Tools">
           {TOOLS.map((t) => {
-            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? proposedCount : 0;
+            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? backlogCount : 0;
             const busy = busyFor(t.id);
             return (
               <Fragment key={t.id}>

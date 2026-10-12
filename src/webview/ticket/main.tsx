@@ -1109,6 +1109,7 @@ function App() {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
       if (m.type === 'ticket') setTicket(m.ticket);
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
