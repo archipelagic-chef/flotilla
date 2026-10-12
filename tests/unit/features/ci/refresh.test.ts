@@ -45,11 +45,24 @@ describe('anyRunActive', () => {
 });
 
 describe('anyDeploymentActive', () => {
-  const deployment = (state: CiDeployment['state']): CiDeployment => ({ id: 1, environment: 'staging', state, sha: 'abc', created: '2026-10-10T10:00:00Z', url: 'https://github.com/a/b' });
+  const now = Date.parse('2026-10-12T12:00:00Z');
+  const deployment = (state: CiDeployment['state'], created = '2026-10-12T11:00:00Z'): CiDeployment => ({
+    id: 1,
+    environment: 'staging',
+    state,
+    sha: 'abc',
+    created,
+    url: 'https://github.com/a/b',
+  });
 
-  it('is true while a deployment is in progress, and only then', () => {
-    expect(anyDeploymentActive([deployment('success'), deployment('in_progress')])).toBe(true);
-    expect(anyDeploymentActive([deployment('success'), deployment('failure'), deployment('inactive')])).toBe(false);
-    expect(anyDeploymentActive([])).toBe(false);
+  it('is true while a recent deployment is in progress, and only then', () => {
+    expect(anyDeploymentActive([deployment('success'), deployment('in_progress')], now)).toBe(true);
+    expect(anyDeploymentActive([deployment('success'), deployment('failure'), deployment('inactive')], now)).toBe(false);
+    expect(anyDeploymentActive([], now)).toBe(false);
+  });
+
+  it('stops waiting for a deployment in progress that is older than two hours (one stuck, or with no status)', () => {
+    expect(anyDeploymentActive([deployment('in_progress', '2026-10-12T10:01:00Z')], now)).toBe(true);
+    expect(anyDeploymentActive([deployment('in_progress', '2026-10-12T09:59:00Z')], now)).toBe(false);
   });
 });

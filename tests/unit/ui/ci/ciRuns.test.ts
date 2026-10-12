@@ -384,6 +384,52 @@ describe('CiRuns: when it reads', () => {
     ci.dispose();
   });
 
+  it('reads every 10 seconds while a deployment is in progress, then every minute once it has finished', async () => {
+    // A branch with no runs yet, only a deployment going on.
+    const deployments: Record<string, unknown[]> = {
+      feat: [{ id: 11, sha: 'abc1234def', environment: 'staging', created_at: new Date().toISOString() }],
+      'statuses-11': [{ state: 'in_progress' }],
+    };
+    const reads = github({ feat: [] }, { deployments });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    expect(runReads(reads.fetch)).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runReads(reads.fetch)).toBe(2);
+
+    // The deployment finishes: the read 10 seconds on sees it, and the one after waits a minute.
+    deployments['statuses-11'] = [{ state: 'success' }];
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runReads(reads.fetch)).toBe(3);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(runReads(reads.fetch)).toBe(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runReads(reads.fetch)).toBe(4);
+    ci.dispose();
+  });
+
+  it('reads every minute, not every 10 seconds, for a deployment that has been in progress for hours', async () => {
+    const deployments: Record<string, unknown[]> = {
+      feat: [{ id: 11, sha: 'abc1234def', environment: 'staging', created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() }],
+      'statuses-11': [{ state: 'in_progress' }],
+    };
+    const reads = github({ feat: [] }, { deployments });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    expect(runReads(reads.fetch)).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runReads(reads.fetch)).toBe(1);
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(runReads(reads.fetch)).toBe(2);
+    ci.dispose();
+  });
+
   it('reads a worktree again at once when its commit moves (a push)', async () => {
     const { fetch } = github();
     const { ci } = setup();
