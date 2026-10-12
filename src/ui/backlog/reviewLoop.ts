@@ -233,6 +233,11 @@ export class ReviewLoop implements vscode.Disposable {
     const stored = (await this.deps.backlog.read()).items.find((i) => i.id === item.id);
     if (!stored) return undefined;
     const since = stateOf(stored);
+    // Decided on an item the ticket no longer matches (it moved on since the caller read it): the start is given up.
+    if (stateOf(item) !== since) {
+      await this.note(item.id, 'The start is given up: the ticket changed before it could start.');
+      return undefined;
+    }
     const short = memoryShortage();
     if (!short) {
       this.deferred.delete(item.id);

@@ -174,6 +174,7 @@ export class Autopilot implements vscode.Disposable {
       // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
       if (fresh.status !== 'doing') {
         releaseStart(slot);
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
         return;
       }
       await this.deps.reviews.startWork(fresh, ws, slot);

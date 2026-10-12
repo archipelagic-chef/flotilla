@@ -237,6 +237,16 @@ describe('the review loop and memory', () => {
     loop.dispose();
   });
 
+  it('gives up a start decided on an item the ticket no longer matches, and starts no agent for it', async () => {
+    memory.free = 10_000;
+    // The caller read BL-1 as in review; the ticket has it done since.
+    data.items[0].status = 'done';
+    await (loop as unknown as { startRound(item: unknown): Promise<void> }).startRound({ ...data.items[0], status: 'review' });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(memory.live.size).toBe(0);
+    loop.dispose();
+  });
+
   it('gives up a start whose item changed after its check, and gives back its memory', async () => {
     memory.free = 10_000;
     let open!: () => void;
