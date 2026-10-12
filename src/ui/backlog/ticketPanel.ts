@@ -23,6 +23,8 @@ import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import { agentChoice, validModel } from './agentRunner';
+import type { Shaping } from './shaping';
+import { discussable } from '../../features/backlog/shaping';
 import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { openTarget } from '../../features/backlog/runTarget';
 import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
@@ -145,11 +147,18 @@ export class TicketPanels implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
 
   private reviews: ReviewLoop | undefined;
+  private shaping: Shaping | undefined;
 
   /** The review loop, for the tickets' review panel (created after the tickets). */
   useReviews(reviews: ReviewLoop): void {
     this.reviews = reviews;
     this.subscriptions.push(reviews.onDidChange(() => this.refreshAll()));
+  }
+
+  /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
+  useShaping(shaping: Shaping): void {
+    this.shaping = shaping;
+    this.subscriptions.push(shaping.onDidChange(() => this.refreshAll()));
   }
 
   constructor(private readonly deps: TicketDeps) {
@@ -487,6 +496,7 @@ export class TicketPanels implements vscode.Disposable {
           agentDefaults: {},
           children: [],
           canReview: false,
+          canDiscuss: false,
         }),
         error: message,
       });
@@ -534,6 +544,10 @@ export class TicketPanels implements vscode.Disposable {
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
+      canDiscuss: !remote && !!this.shaping && discussable(plain),
+      ...(this.shaping && !remote && discussable(plain) && plain.shaping
+        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready } }
+        : {}),
     };
   }
 
@@ -770,6 +784,8 @@ export class TicketPanels implements vscode.Disposable {
           return;
         } else {
           await this.addActivity(id, 'You', m.text);
+          // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
+          await this.shaping?.discuss(id);
         }
         break;
       case 'openRemote':
@@ -792,9 +808,12 @@ export class TicketPanels implements vscode.Disposable {
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent });
         return;
-      case 'writeWithAI':
-        await vscode.commands.executeCommand('flotilla.writeBacklogItem', id);
-        return;
+      case 'discuss':
+        if (!item.remote) await this.shaping?.discuss(id, true);
+        break;
+      case 'keepDiscussing':
+        await this.shaping?.keepDiscussing(id);
+        break;
       case 'openFile':
         await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
         return;

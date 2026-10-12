@@ -96,6 +96,10 @@ export interface TicketView {
   canCleanUp: boolean;
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
+  /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
+  canDiscuss: boolean;
+  /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
+  shaping?: { agent: string; running: boolean; ready: boolean };
 }
 
 export type TicketHostMessage =
@@ -117,7 +121,9 @@ export type TicketWebviewMessage =
   | { type: 'image'; requestId: number; name: string; data: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
   | { type: 'start'; agent: boolean }
-  | { type: 'writeWithAI' }
+  /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
+  | { type: 'discuss' }
+  | { type: 'keepDiscussing' }
   | { type: 'openFile' }
   | { type: 'openRemote' }
   /** Link the item to an issue (asks which), unlink it, or open a linked one. */

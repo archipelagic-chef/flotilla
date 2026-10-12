@@ -180,8 +180,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'open':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id);
         return;
-      case 'ai':
-        await vscode.commands.executeCommand('flotilla.writeBacklogItem', m.id);
+      case 'discuss':
+        await vscode.commands.executeCommand('flotilla.discussBacklogItem', m.id);
         return;
       case 'link':
         await vscode.commands.executeCommand('flotilla.linkBacklogItem', m.id);

@@ -294,8 +294,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
-  /** start: create its worktree and start an agent there; open: its ticket; ai: write it with Claude; run: its run block (BL-20). */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'ai' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
+  /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20). */
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
   /** Accept every proposed item; plan the backlog with Claude. */
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */

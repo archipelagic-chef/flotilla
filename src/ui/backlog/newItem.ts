@@ -6,8 +6,8 @@ import type { BacklogIntegrations } from './integrations';
 /**
  * Adds a backlog item through VS Code's input box (as Create Branch does). What's typed is its title, optionally
  * after its id ("WEB-12 Fix login") or a prefix for the next number ("WEB- Fix login"); otherwise it gets the next
- * number for the current prefix. A prefix typed here becomes the current one. Enter adds it and opens its ticket; ✨
- * also has Claude write it.
+ * number for the current prefix. A prefix typed here becomes the current one. Enter adds it and opens its ticket; the
+ * button adds it and starts a discussion with an agent in its ticket.
  */
 export async function newBacklogItem(backlog: LocalBacklog, integrations: BacklogIntegrations): Promise<void> {
   const setting = () => vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL');
@@ -17,7 +17,7 @@ export async function newBacklogItem(backlog: LocalBacklog, integrations: Backlo
   const prefix = currentPrefix(data, setting());
   const parse = (text: string) => parseNewItem(text, data, prefix, taken);
 
-  const withClaude: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('sparkle'), tooltip: 'Add It and Write It with Claude' };
+  const withClaude: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('comment-discussion'), tooltip: 'Add It and Discuss It with an Agent' };
   const box = vscode.window.createInputBox();
   box.placeholder = `Title, or an id and a title: ${prefix}-12 Fix the login`;
   box.buttons = [withClaude];
@@ -66,5 +66,5 @@ export async function newBacklogItem(backlog: LocalBacklog, integrations: Backlo
     void vscode.window.showErrorMessage(`Not added: ${problem}`);
     return;
   }
-  if (added) await vscode.commands.executeCommand(result === 'ai' ? 'flotilla.writeBacklogItem' : 'flotilla.openBacklogItem', added);
+  if (added) await vscode.commands.executeCommand(result === 'ai' ? 'flotilla.discussBacklogItem' : 'flotilla.openBacklogItem', added);
 }
