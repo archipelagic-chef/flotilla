@@ -61,6 +61,10 @@ The extension only loads in a test window started from a window where **this pro
 
 Both sides build into the same `dist/`: after a code change, stop both debug sessions and press F5 again.
 
+## Trying agents without usage
+
+`scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
+
 ## File icons
 
 `media/seti/` is a copy of VS Code's Seti icon theme plus a table of the built-in languages' file extensions, used when the user's icon theme isn't available where Flotilla runs (devcontainers). To refresh it from a newer VS Code: `node scripts/update-icons.mjs <path to a VS Code installation>`, e.g. `.vscode-test/vscode-linux-x64-<version>`.
