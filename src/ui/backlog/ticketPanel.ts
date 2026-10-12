@@ -44,6 +44,15 @@ export interface TicketDeps {
 /** The key the "Show activity" choice is kept under in the memento. */
 const SHOW_ACTIVITY_KEY = 'flotilla.ticket.showActivity';
 
+/** Whether the user keeps Flotilla's notes open (for every ticket, in every window). */
+export function showActivityKept(memento: vscode.Memento): boolean {
+  return memento.get<boolean>(SHOW_ACTIVITY_KEY, false);
+}
+
+export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thenable<void> {
+  return memento.update(SHOW_ACTIVITY_KEY, shown);
+}
+
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
@@ -424,7 +433,7 @@ export class TicketPanels implements vscode.Disposable {
       const chats = shown ? this.agentChats(shown, view.activity) : [];
       // Each agent with the reports it signed.
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
-      const showActivity = this.deps.memento.get<boolean>(SHOW_ACTIVITY_KEY, false);
+      const showActivity = showActivityKept(this.deps.memento);
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents, showActivity } };
       void panel.webview.postMessage(message);
     };
@@ -642,7 +651,7 @@ export class TicketPanels implements vscode.Disposable {
         break;
       case 'showActivity':
         // Remembered for the user, and every ticket shows it the same way; no view changes.
-        await this.deps.memento.update(SHOW_ACTIVITY_KEY, m.shown);
+        await keepShowActivity(this.deps.memento, m.shown);
         return;
       case 'comment':
         if (!m.text.trim()) return;

@@ -937,8 +937,6 @@ button.work-row:hover {
 .agent-choice.unset > .priority-button {
   color: var(--vscode-descriptionForeground);
 }
-/* A commit among the activity: one quiet line, without a box. */
-
 /* The state card's ask: the question, and its numbered options as the answers. */
 .review-panel.ask {
   align-items: flex-start;

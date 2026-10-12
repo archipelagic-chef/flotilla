@@ -1147,15 +1147,18 @@ function focusComment() {
   box?.focus();
 }
 
-/** An agent's question, with its numbered options as buttons: an option is the answer, sent as a comment. */
-function AskBlock({ ask, title, agent }: { ask: Ask; title: string; agent?: string }) {
+/**
+ * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
+ * On a remote one a comment goes to the tracker, so the options aren't buttons (Answer… writes it there, as you post).
+ */
+function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string; agent?: string; local: boolean; stop?: () => void }) {
   return (
     <div class="review-panel waiting ask">
       <i class="codicon codicon-question" />
       <div class="ask-text">
         <strong>{title}</strong>
         {ask.question && <div class="ask-question">{ask.question}</div>}
-        {ask.options.length > 0 && (
+        {local && ask.options.length > 0 && (
           <div class="ask-options">
             {ask.options.map((option, i) => (
               <button key={option} class={`button${i ? ' secondary' : ''}`} onClick={() => send({ type: 'comment', text: option })} title="Sends this as the answer">
@@ -1168,6 +1171,11 @@ function AskBlock({ ask, title, agent }: { ask: Ask; title: string; agent?: stri
       <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
         <i class="codicon codicon-comment" /> Answer…
       </button>
+      {stop && (
+        <button class="button secondary" onClick={stop} title="Stops the running agent and the handoffs">
+          <i class="codicon codicon-debug-stop" /> Stop
+        </button>
+      )}
     </div>
   );
 }
@@ -1181,7 +1189,9 @@ const STATUS_ICON: Record<string, string> = {
 
 /**
  * The top of the ticket: what's happening now, what an agent asks (with its options), and the actions the state allows.
- * A review, or a clean-up of the history, has its own panel.
+ * A review, or a clean-up of the history, has its own panel. A review that asks shows its question here instead of its
+ * own panel's sentence, so the question is in one place. Remote tickets show questions too (their local reports are
+ * here), but the options only as text.
  */
 function StateCard({ ticket }: { ticket: TicketView }) {
   const status = ticketStatus({
@@ -1194,10 +1204,19 @@ function StateCard({ ticket }: { ticket: TicketView }) {
   // The chat an agent works in, or waits in (to open it).
   const chat = ticket.agents.find((a) => a.state === 'waiting-for-input') ?? ticket.agents.find((a) => a.state === 'working');
   const notStarted = ticket.item.status === 'todo' && !ticket.worktrees.length && !ticket.branches.length;
+  const asking = !!status.ask && ticket.review?.state === 'asking';
   return (
     <>
-      {status.ask && <AskBlock ask={status.ask} title={status.title} agent={ticket.review?.implementer ?? chat?.agent} />}
-      {ticket.review ? (
+      {status.ask && (
+        <AskBlock
+          ask={status.ask}
+          title={status.title}
+          agent={ticket.review?.implementer ?? chat?.agent}
+          local={!ticket.remote}
+          stop={asking ? () => send({ type: 'stopReview' }) : undefined}
+        />
+      )}
+      {ticket.review && !asking ? (
         <ReviewPanel ticket={ticket} />
       ) : ticket.rewrite ? (
         <CleanUpPanel ticket={ticket} />
