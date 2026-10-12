@@ -106,7 +106,8 @@ function DeploymentsGroup({ deployments, error }: { deployments: CiDeployment[];
             data-tip={`${d.environment}: ${state.label}`}
             onClick={() => send({ type: 'openUrl', url: d.url })}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') send({ type: 'openUrl', url: d.url });
+              // Only the row's own key: Enter on the site button (inside the row) is the button's, not the row's.
+              if (e.key === 'Enter' && e.target === e.currentTarget) send({ type: 'openUrl', url: d.url });
             }}
           >
             <i class={`codicon codicon-${state.icon} ci-status ${state.css}`} aria-label={state.label} />
