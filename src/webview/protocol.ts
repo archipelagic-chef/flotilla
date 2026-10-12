@@ -243,6 +243,8 @@ export type WebviewMessage =
   | { type: 'ci'; op: 'signIn' | 'refresh' }
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
+  /** The CI/CD view: starts a workflow by hand on the worktree's branch (asks first). */
+  | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */

@@ -17,13 +17,16 @@ const STATUS: Record<CiRunView['status'], { icon: string; label: string }> = {
  * Version Control › CI/CD: the latest workflow runs of the worktree's branch on GitHub. Runs are read by the extension
  * (see src/ui/ci/ciRuns.ts); a click on one opens it on GitHub.
  */
-export function CiBody({ view }: { view: CiView | undefined }) {
+export function CiBody({ view, worktree }: { view: CiView | undefined; worktree: string }) {
   const refresh = () => send({ type: 'ci', op: 'refresh' });
   return (
     <div class="group ci">
       <div class="row group-head">
         <span class="name">CI/CD</span>
         <span class="hover-actions">
+          <button class="icon" aria-label="Run Workflow…" data-tip="Run Workflow… on this branch" onClick={() => send({ type: 'runWorkflow', key: worktree })}>
+            <i class="codicon codicon-play" />
+          </button>
           <button class="icon" aria-label="Refresh" onClick={refresh}>
             <i class="codicon codicon-refresh" />
           </button>

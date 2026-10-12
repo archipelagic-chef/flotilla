@@ -26,6 +26,10 @@ import { tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
+import { runWorkflowByHand } from '../ci/runWorkflow';
+
+/** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
+const RUN_LISTED_MS = 5_000;
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -408,6 +412,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
         else await this.ci.refresh();
         return;
+      case 'runWorkflow': {
+        const folder = this.root(m.key);
+        if (!folder) throw new Error("This worktree's folder isn't reachable from this environment.");
+        // A run shows at once, and again a few seconds on, when GitHub lists it.
+        if (await runWorkflowByHand(folder)) {
+          await this.ci.refresh();
+          setTimeout(() => void this.ci.refresh(), RUN_LISTED_MS);
+        }
+        return;
+      }
       case 'refs': {
         const dir = this.compareDir();
         if (!dir) return;
