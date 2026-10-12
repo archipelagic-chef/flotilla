@@ -165,6 +165,8 @@ export type HostMessage =
   | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
+  /** The repository is on a slow drive (undefined: it isn't). */
+  | { type: 'storage'; slow?: SlowStorageView }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** The files a commit changed (against its first parent). */
@@ -173,6 +175,12 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
+/** A repository on a slow drive: what the Overview says, and how to fix it. */
+export interface SlowStorageView {
+  message: string;
+  fix: string;
+}
+
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit to reset. */
 export interface AutopilotState {
   enabled: boolean;

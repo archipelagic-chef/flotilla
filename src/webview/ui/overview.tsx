@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
-import type { WorkstreamView } from '../protocol';
+import type { SlowStorageView, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 
@@ -22,16 +22,29 @@ interface Props {
   colors: ReadonlyMap<string, string>;
   /** Worktrees whose tab is closed. */
   closed: ReadonlySet<string>;
+  /** The repository is on a slow drive: say so, and how to fix it. */
+  slow?: SlowStorageView;
   onSelect(key: string): void;
 }
 
 /** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
-export function Overview({ workstreams, active, colors, closed, onSelect }: Props) {
+export function Overview({ workstreams, active, colors, closed, slow, onSelect }: Props) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
   return (
     <div class="overview">
       <div class="tool-title">All worktrees, most urgent first</div>
+      {slow && (
+        <div class="notice" role="status">
+          <i class="codicon codicon-warning" />
+          <span>
+            {slow.message} {slow.fix}
+          </span>
+          <button class="link" onClick={() => run('flotilla.slowStorageHelp')}>
+            How to Fix
+          </button>
+        </div>
+      )}
       {sorted.map((ws) => {
         const open = ws.chats.filter((c) => c.open);
         const waiting = open.find((c) => c.state === 'waiting-for-input');
