@@ -17,7 +17,8 @@ import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
-import { mentionsStale, ticketCommits, versionCommits } from '../../features/history/log';
+import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
+import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
@@ -217,7 +218,11 @@ export class TicketPanels implements vscode.Disposable {
     this.panels.set(id, panel);
     panel.onDidDispose(() => this.panels.delete(id));
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+      this.onMessage(id, panel, m).catch(async (e: unknown) => {
+        void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+        // What the view showed at once (a status, a priority) didn't stick: the stored one goes back.
+        if (this.panels.get(id) === panel) await this.post(id, panel);
+      }),
     );
   }
 
@@ -464,26 +469,17 @@ export class TicketPanels implements vscode.Disposable {
     for (const [id, sig] of sigs) if (this.itemSigs.get(id) !== sig) changed.add(id);
     for (const id of this.itemSigs.keys()) if (!sigs.has(id)) changed.add(id);
     this.itemSigs = sigs;
-    // posted.json (an entry was posted) isn't known per ticket: all of them are looked at.
-    if (files.has('*') || files.has('posted.json')) return this.refreshAll();
-    for (const id of [...changed]) {
-      const item = data.items.find((i) => i.id === id);
-      if (item?.parent) changed.add(item.parent);
-      for (const c of data.items) if (c.parent === id) changed.add(c.id);
-    }
-    for (const f of files) {
-      const m = /^(.+)\.md$/.exec(f);
-      if (m) changed.add(m[1]);
-    }
-    this.refresh(changed);
+    const ids = ticketsForBacklogChange({ items: data.items, changed, files });
+    if (ids === 'all') return this.refreshAll();
+    this.refresh(ids);
   }
 
   /** Each worktree as last seen (its branch, state, chats), to tell what changed. */
   private workstreamSigs = new Map<string, string>();
 
   /**
-   * The worktrees changed: the tickets whose worktrees or agents changed, and those that a changed chat was started
-   * for. When a ref moved, the tickets' commits may have, so all are refreshed.
+   * The worktrees or the refs changed: the tickets whose worktrees or agents changed, those a changed chat was started
+   * for, and, when a ref moved, those whose branch moved or that a new commit mentions. Other tickets keep their view.
    */
   private async repositoryChanged(): Promise<void> {
     const current = this.deps.repository.current;
@@ -493,23 +489,22 @@ export class TicketPanels implements vscode.Disposable {
     for (const key of this.workstreamSigs.keys()) if (!sigs.has(key)) changed.add(key);
     this.workstreamSigs = sigs;
     if (!this.panels.size) return;
-    if (await mentionsStale(this.deps.mainRoot)) return this.refreshAll();
-    if (!changed.size) return;
+    const moves = await movesSince(this.deps.mainRoot);
+    if (!changed.size && !moves) return;
     const data = await this.deps.backlog.read();
-    const ids = new Set<string>();
-    for (const [id, panel] of this.panels) {
+    const chatStarts = current
+      .filter((w) => changed.has(w.key))
+      .flatMap((w) => w.chats.flatMap((c) => agentChatItem(c.firstPrompt)?.item ?? []));
+    const open: OpenTicket[] = [...this.panels].map(([id, panel]) => {
       const item = data.items.find((i) => i.id === id);
-      const keys = [...(item ? this.worktreesOf(item).map((w) => w.key) : []), ...(this.shown.get(panel) ?? [])];
-      if (keys.some((k) => changed.has(k))) ids.add(id);
-    }
-    for (const w of current) {
-      if (!changed.has(w.key)) continue;
-      for (const c of w.chats) {
-        const started = agentChatItem(c.firstPrompt)?.item;
-        if (started) ids.add(started);
-      }
-    }
-    this.refresh(ids);
+      return {
+        id,
+        ids: [id, ...(item?.links ?? []).map((l) => l.id)],
+        keys: new Set([...(item ? this.worktreesOf(item).map((w) => w.key) : []), ...(this.shown.get(panel) ?? [])]),
+        branches: (branch: string) => !!item && branchMatches(item, branch),
+      };
+    });
+    this.refresh(ticketsForRepositoryChange({ open, changedKeys: changed, chatStarts, moves }));
   }
 
   /** The worktrees and agents' keys a ticket's view showed, per panel: a change to one of them refreshes it. */
