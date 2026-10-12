@@ -76,8 +76,16 @@ describe('folding a review\'s rounds', () => {
     expect(shape(foldRounds(feed, info))).toEqual([
       { reviewer: 'Flux-3', rounds: 1, outcome: 'changes requested', items: 3 },
       'Use the config file.',
-      { reviewer: undefined, rounds: 1, outcome: 'no verdict', items: 2 },
+      // The note of the user's request stays visible (it isn't folded into the next review).
+      'Review round 2: you requested changes; resumed a chat for agent Vega-3 to make them.',
+      { reviewer: undefined, rounds: 1, outcome: 'no verdict', items: 1 },
     ]);
+  });
+
+  it("keeps the note of the user's requested changes visible, whatever round it names", () => {
+    expect(entryRound(entry('2026-10-11 10:01', 'Flotilla', 'Review round 1: you requested changes; resumed a chat for agent Vega-3 to make them.'))).toEqual({
+      part: 'stay',
+    });
   });
 
   it('shows a review that is still going on by where it is, from the ticket\'s state', () => {

@@ -30,6 +30,8 @@ export interface RoundInfo {
 /** A ticket entry's part in a review (a commit is "round": see the feed). */
 export function entryRound(e: { author: string; body: string }): RoundInfo {
   if (e.author === 'Flotilla') {
+    // The user's requested changes ("Review round 1: you requested changes; …"): the user's own review, visible.
+    if (/^Review round \d+: you /.test(e.body)) return { part: 'stay' };
     const round = /^Review round (\d+):/.exec(e.body);
     if (round) {
       const started = /^Review round \d+: (?:opened|resumed) a chat for agent ([A-Za-z0-9-]+)/.exec(e.body);
