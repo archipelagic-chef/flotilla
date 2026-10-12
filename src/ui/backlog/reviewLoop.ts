@@ -24,6 +24,7 @@ import {
   reviewerPrompt,
   revisionPrompt,
   saysWaitingForUser,
+  stampWaiting,
   userAnswer,
   userReviewBody,
   userRevisionPrompt,
@@ -170,10 +171,11 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Changes an item's review (and status: moved by `by`, noted in its ticket). */
   private async setReview(id: string, change: (r: ReviewState | undefined) => ReviewState, status?: BacklogStatus, by = 'Flotilla'): Promise<void> {
+    const now = new Date().toISOString();
     await this.deps.backlog.change(
       (d) => ({
         ...d,
-        items: d.items.map((i) => (i.id === id ? { ...i, review: change(i.review), ...(status ? { status } : {}) } : i)),
+        items: d.items.map((i) => (i.id === id ? { ...i, review: stampWaiting(i.review, change(i.review), now), ...(status ? { status } : {}) } : i)),
       }),
       { by },
     );

@@ -33,6 +33,8 @@ export interface ReviewState {
   reviewer: string;
   /** The user gave the last verdict (approved, or changes requested), not the reviewer agent. */
   byUser?: boolean;
+  /** When the review last came to a state that waits on the user (see WAITING_STATES), ISO 8601. */
+  since?: string;
   reviewerSession?: string;
   implementer?: string;
   implementerSession?: string;
@@ -49,6 +51,14 @@ export interface ReviewState {
 }
 
 export type Verdict = 'approved' | 'changes';
+
+/** The states that wait on the user: an agent's question, work ready for the user's review, approved work, a stopped review. */
+export const WAITING_STATES: readonly ReviewState['state'][] = ['asking', 'yours', 'approved', 'stopped'];
+
+/** The review after a change: when it comes to a state that waits on the user, that's when it began waiting (now). */
+export function stampWaiting(before: ReviewState | undefined, after: ReviewState, now: string): ReviewState {
+  return after.state !== before?.state && WAITING_STATES.includes(after.state) ? { ...after, since: now } : after;
+}
 
 /** The folder a ticket file is in (this module is also used in webviews: no node:path). */
 const folderOf = (file: string) => file.replace(/[\\/][^\\/]*$/, '');
