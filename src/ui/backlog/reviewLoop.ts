@@ -70,7 +70,8 @@ export class ReviewLoop implements vscode.Disposable {
   private readonly runs = new Map<string, AgentRun>();
   private queue: Promise<void> = Promise.resolve();
   private readonly watcher: vscode.Disposable;
-  private readonly changed = new vscode.EventEmitter<void>();
+  /** An item's review changed (by its id). */
+  private readonly changed = new vscode.EventEmitter<string>();
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: ReviewDeps) {
@@ -177,7 +178,7 @@ export class ReviewLoop implements vscode.Disposable {
       }),
       { by },
     );
-    this.changed.fire();
+    this.changed.fire(id);
   }
 
   private async note(id: string, body: string): Promise<void> {

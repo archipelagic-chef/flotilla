@@ -95,6 +95,76 @@ export interface TicketCommit {
   branches: string[];
 }
 
+/** The refs' tips and HEAD, as one string: the mention index is rebuilt when it changes. One git process. */
+async function readRefsKey(cwd: string): Promise<string> {
+  // The same refs as `log --all --exclude=refs/flotilla/*` reads (HEAD included).
+  const tips = await runGit(['show-ref', '--head'], { cwd }).catch(() => '');
+  return tips
+    .split('\n')
+    .filter((l) => l && !/ refs\/flotilla\//.test(l))
+    .join('\n');
+}
+
+/** A key read recently, shared by the tickets of one refresh (each git process costs; a refresh asks for many). */
+const recentKeys = new Map<string, { at: number; key: Promise<string> }>();
+const KEY_SHARE_MS = 1000;
+
+/** The refs' key, as read in the last second when `fresh` isn't asked for. */
+function refsKey(cwd: string, fresh: boolean): Promise<string> {
+  const known = recentKeys.get(cwd);
+  if (!fresh && known && Date.now() - known.at < KEY_SHARE_MS) return known.key;
+  const key = readRefsKey(cwd);
+  recentKeys.set(cwd, { at: Date.now(), key });
+  return key;
+}
+
+/** The commits read for the refs of one key: what the tickets' ids are looked for in. */
+interface MentionIndex {
+  key: string;
+  commits: Promise<Array<Omit<CommitView, 'outgoing'>>>;
+}
+
+/** One index per repository, shared by every ticket: a ticket's commits are looked up in memory, not in git. */
+const mentionIndexes = new Map<string, MentionIndex>();
+
+/** Every commit of the repository's refs (not Flotilla's own), newest first; read again only when a ref moved. */
+async function mentionable(cwd: string): Promise<Array<Omit<CommitView, 'outgoing'>>> {
+  const key = await refsKey(cwd, false);
+  const cached = mentionIndexes.get(cwd);
+  if (cached?.key === key) return cached.commits;
+  const commits = runGit(['-c', 'log.showSignature=false', 'log', '--exclude=refs/flotilla/*', '--all', `--format=${FORMAT}`, '--'], { cwd })
+    .then(parseLog)
+    .catch(() => []);
+  const index: MentionIndex = { key, commits };
+  mentionIndexes.set(cwd, index);
+  // A failed read (it comes back empty) is tried again at the next look.
+  void commits.then((c) => {
+    if (!c.length && mentionIndexes.get(cwd) === index) mentionIndexes.delete(cwd);
+  });
+  return commits;
+}
+
+/** Whether a ref moved since the mention index was read: the tickets' commits may have changed. */
+export async function mentionsStale(cwd: string): Promise<boolean> {
+  // Read now, not shared: a change a moment ago must not be missed.
+  return (await refsKey(cwd, true)) !== mentionIndexes.get(cwd)?.key;
+}
+
+/**
+ * The commits whose message mentions one of the ids, newest first. Whole ids only: "BL-1" doesn't match "BL-12"; the
+ * match is case-insensitive.
+ */
+export async function mentioningCommits(cwd: string, ids: string[], limit: number): Promise<Array<Omit<CommitView, 'outgoing'>>> {
+  if (!ids.length) return [];
+  const whole = ids.map((id) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9])`, 'i'));
+  const found: Array<Omit<CommitView, 'outgoing'>> = [];
+  for (const c of await mentionable(cwd)) {
+    if (whole.some((r) => r.test(`${c.subject}\n${c.body}`))) found.push(c);
+    if (found.length === limit) break;
+  }
+  return found;
+}
+
 /**
  * The commits linked to a ticket, newest first: those on its branches that the base doesn't have, and those anywhere
  * whose message mentions one of ids (the ticket's, its linked issues').
@@ -108,18 +178,16 @@ export async function ticketCommits(cwd: string, opts: { branches: string[]; bas
   const [onBranches, mentions] = await Promise.all([
     Promise.all(opts.branches.map(async (b) => ({ branch: b, commits: await log([`refs/heads/${b}`, ...not, '--']) }))),
     // Histories kept from clean-ups aren't the work anymore: they show as the ticket's versions (versionCommits).
-    opts.ids.length ? log(['--exclude=refs/flotilla/*', '--all', '-i', '--fixed-strings', ...opts.ids.map((id) => `--grep=${id}`), '--']) : Promise.resolve([]),
+    mentioningCommits(cwd, opts.ids, opts.limit),
   ]);
   const byHash = new Map<string, TicketCommit>();
-  const add = (c: Omit<CommitView, 'outgoing'>, branch?: string) => {
+  const add = (c: Pick<TicketCommit, 'hash' | 'short' | 'subject' | 'author' | 'date'>, branch?: string) => {
     const known = byHash.get(c.hash) ?? { hash: c.hash, short: c.short, subject: c.subject, author: c.author, date: c.date, branches: [] };
     if (branch && !known.branches.includes(branch)) known.branches.push(branch);
     byHash.set(c.hash, known);
   };
   for (const { branch, commits } of onBranches) commits.forEach((c) => add(c, branch));
-  // "BL-1" also finds "BL-12": only whole ids count.
-  const whole = opts.ids.map((id) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9])`, 'i'));
-  for (const c of mentions) if (whole.some((r) => r.test(`${c.subject}\n${c.body}`))) add(c);
+  mentions.forEach((c) => add(c));
   return [...byHash.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, opts.limit);
 }
 

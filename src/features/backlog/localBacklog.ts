@@ -137,6 +137,29 @@ export class LocalBacklog {
     const tmp = `${file}.${process.pid}.tmp`;
     await fs.promises.writeFile(tmp, formatTicket(ticket));
     await fs.promises.rename(tmp, file);
+    this.tickets.delete(id);
+  }
+
+  /** Parsed tickets by id, with the file's time and size they were read at (see readTicketCached). */
+  private readonly tickets = new Map<string, { stamp: string; title: string; ticket: Ticket }>();
+
+  /**
+   * An item's ticket, as readTicket reads it, but parsed again only when its file changed (its time and size): for the
+   * views that show every ticket's summary and counts, which run on each change.
+   */
+  async readTicketCached(item: Pick<BacklogItem, 'id' | 'title' | 'notes'>): Promise<Ticket> {
+    let stat: fs.Stats;
+    try {
+      stat = await fs.promises.stat(this.docPath(item.id));
+    } catch {
+      return this.readTicket(item);
+    }
+    const stamp = `${stat.mtimeMs}:${stat.size}`;
+    const known = this.tickets.get(item.id);
+    if (known && known.stamp === stamp && known.title === item.title) return known.ticket;
+    const ticket = await this.readTicket(item);
+    this.tickets.set(item.id, { stamp, title: item.title, ticket });
+    return ticket;
   }
 
   /** Writes an item's ticket file if it has none yet; returns its path. */
@@ -196,7 +219,7 @@ export class LocalBacklog {
     const titles = new Map<string, string>();
     for (const item of data.items) {
       try {
-        const { title } = parseTicket(await fs.promises.readFile(this.docPath(item.id), 'utf8'));
+        const { title } = await this.readTicketCached(item);
         if (title && title !== item.title) titles.set(item.id, title);
       } catch {
         // no ticket file (yet)
@@ -207,38 +230,44 @@ export class LocalBacklog {
     return true;
   }
 
-  /** The backlog folder's files and their change times: a cheap way to notice changes when file events don't come. */
-  private signature(): string {
+  /** The backlog folder's files, each with its change time and size: a cheap way to notice changes when file events don't come. */
+  private signatures(): Map<string, string> {
+    const out = new Map<string, string>();
     try {
-      return fs
-        .readdirSync(this.dir)
-        .filter((n) => n.endsWith('.md') || n.endsWith('.json'))
-        .sort()
-        .map((n) => {
-          const stat = fs.statSync(path.join(this.dir, n), { throwIfNoEntry: false });
-          return `${n}:${stat?.mtimeMs ?? 0}:${stat?.size ?? 0}`;
-        })
-        .join('|');
+      for (const n of fs.readdirSync(this.dir)) {
+        if (!n.endsWith('.md') && !n.endsWith('.json')) continue;
+        const stat = fs.statSync(path.join(this.dir, n), { throwIfNoEntry: false });
+        out.set(n, `${stat?.mtimeMs ?? 0}:${stat?.size ?? 0}`);
+      }
     } catch {
-      return '';
+      // no folder yet
     }
+    return out;
   }
 
   /**
-   * Calls onChange when backlog.json or a ticket changes (in this or another window, or by Claude). File events
-   * don't arrive in every setup (some container and network mounts), so it also compares the folder every 2 s.
+   * Calls onChange with the names of the files that changed (backlog.json, <id>.md…), once they've settled (150 ms). A
+   * change that doesn't say which file (an event without a name) comes as '*'. File events don't arrive in every setup
+   * (some container and network mounts), so it also compares the folder every 2 s.
    */
-  watch(onChange: () => void): { dispose(): void } {
+  watch(onChange: (changed: ReadonlySet<string>) => void): { dispose(): void } {
     let timer: NodeJS.Timeout | undefined;
-    const fire = () => {
+    let pending = new Set<string>();
+    const fire = (names: Iterable<string>) => {
+      for (const n of names) pending.add(n);
       clearTimeout(timer);
-      timer = setTimeout(onChange, 150);
+      timer = setTimeout(() => {
+        const changed = pending;
+        pending = new Set();
+        onChange(changed);
+      }, 150);
     };
     let watcher: fs.FSWatcher | undefined;
     const watchDir = () => {
       try {
         watcher ??= fs.watch(this.dir, (_event, name) => {
-          if (name && !name.endsWith('.tmp')) fire();
+          if (name?.endsWith('.tmp')) return;
+          fire([name ?? '*']);
         });
         void ensureExcludeLine(this.commonDir, EXCLUDE_LINE).catch(() => false);
       } catch {
@@ -246,13 +275,14 @@ export class LocalBacklog {
       }
     };
     watchDir();
-    let last = this.signature();
+    let last = this.signatures();
     const poll = setInterval(() => {
-      const now = this.signature();
-      if (now === last) return;
+      const now = this.signatures();
+      const changed = [...new Set([...now.keys(), ...last.keys()])].filter((n) => now.get(n) !== last.get(n));
       last = now;
+      if (!changed.length) return;
       watchDir();
-      fire();
+      fire(changed);
     }, 2000);
     return {
       dispose: () => {
