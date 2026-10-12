@@ -42,6 +42,7 @@ describe('review loop', () => {
     expect(readyReport(entries, { ...review, handled: [key(entries[0])] }, key)).toBeUndefined();
     expect(verdictReport(entries, review, key)).toMatchObject({ verdict: 'changes' });
     expect(verdictReport(entries, { ...review, handled: [key(entries[1])] }, key)).toBeUndefined();
+    expect(verdictReport([entry('2026-10-11 09:30', 'Agent Vega-2', 'Verdict: approved\n- Good.')], review, key)).toMatchObject({ verdict: 'approved' });
     // The reviewer saying "Ready for review" doesn't make it ready.
     expect(readyReport([entry('2026-10-11 11:00', 'Agent Vega-2', 'Ready for review.')], review, key)).toBeUndefined();
   });
@@ -51,6 +52,7 @@ describe('review loop', () => {
     expect(prompt.startsWith('You are agent Vega-2, working on backlog item BL-1:')).toBe(true);
     expect(prompt).toMatch(/Round 2/);
     expect(prompt).toMatch(/Verdict: changes requested/);
+    expect(prompt).toMatch(/Start the entry with your verdict/);
   });
 
   it("writes the user's review with a verdict the loop reads", () => {
@@ -63,6 +65,11 @@ describe('review loop', () => {
     expect(saysWaitingForUser('Should the limit be per key or per IP?\n\nWaiting for you.')).toBe(true);
     expect(saysWaitingForUser('**Waiting for your answer**')).toBe(true);
     expect(saysWaitingForUser('Waiting for you to decide, but I went ahead.\n\nReady for review.')).toBe(false);
+  });
+
+  it('notices an agent waiting for the user in its Needs line', () => {
+    expect(saysWaitingForUser('Two options.\n\nNeeds from you: which store?\n\n```question\nWhich store?\n- Redis\n- Memory\n```')).toBe(true);
+    expect(saysWaitingForUser('Done.\n\nNeeds from you: nothing\n\nReady for review.')).toBe(false);
   });
 
   it("takes the user's comments since the agent asked, once", () => {
@@ -81,7 +88,7 @@ describe('review loop', () => {
   it("gives the implementer the user's review, lets it ask first, and has it update the description", () => {
     const prompt = userRevisionPrompt({ item: { id: 'BL-1' }, ticket: '/t/BL-1.md', feedback: 'Use the config file.\nAnd test it.' });
     expect(prompt).toMatch(/> Use the config file\.\n> And test it\./);
-    expect(prompt).toMatch(/Waiting for you\./);
+    expect(prompt).toMatch(/"Needs from you:"/);
     expect(prompt).toMatch(/Ready for review\./);
     expect(prompt).toMatch(/description in \/t\/BL-1\.md/);
     expect(userRevisionPrompt({ item: { id: 'BL-1' }, ticket: '/t/BL-1.md', feedback: '' })).toMatch(/without saying more/);

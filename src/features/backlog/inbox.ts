@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
+import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
 import { entryDate, parseTicket } from './ticket';
 import type { LocalBacklog } from './localBacklog';
@@ -183,8 +184,8 @@ explanations that change nothing don't need one.
 2. Claim it before you start: write an inbox file (below) with \`claim: BL-3\` and your branch. Read its ticket.
 3. Start every commit message with its id: \`BL-3: Fix the token refresh\`.
 4. Report in its ticket: append entries at the end of "## Activity", each headed
-   \`### YYYY-MM-DD HH:MM · Agent <your name>\` (local time): your plan when you start, questions when you need a
-   decision, and what you did when you finish.
+   \`### YYYY-MM-DD HH:MM · Agent <your name>\` (local time): your plan when you start, and what you did when you
+   finish. ${REPORT_FORMAT}
 5. Keep its description what's to be done: when the user asks for more or for something else (in the chat, or in
    comments and reviews in the ticket), work it into the description (between "# Title" and "## Activity"), usually as
    acceptance criteria. Edit only the description; leave the activity as it is.

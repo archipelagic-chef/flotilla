@@ -1,5 +1,6 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
+import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 
 /**
@@ -127,14 +128,9 @@ export function saysReadyForReview(body: string): boolean {
   return !!last && /^[*_]*ready for review[.!]?[*_]*$/i.test(last);
 }
 
-/** Whether an implementer's report asks the user something and waits for the answer (its last line says so). */
+/** Whether an implementer's report asks the user something and waits for the answer (its Needs line or its last line says so). */
 export function saysWaitingForUser(body: string): boolean {
-  const last = body
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .at(-1);
-  return !!last && /^[*_]*waiting for (you|the user|your answer)[.!]?[*_]*$/i.test(last);
+  return parseReport(body).waiting;
 }
 
 /** The user's comments since the agent's last report (the answer to its question), once: none that were acted on. */
@@ -217,8 +213,8 @@ export function reviewerPrompt(o: {
     o.round === 1
       ? `${who} did the work, in this git worktree on branch ${o.branch}. Review it: read the ticket ${o.ticket} (the description and its acceptance criteria, then the activity, starting from the "How to review" notes in its last report), the changes (git diff ${o.base}...HEAD, and the commit messages), and run the tests.`
       : `Round ${o.round}: ${who} made changes after your last review (see the ticket ${o.ticket}). Review again: check that what you asked for was done, and look at the new changes (git diff ${o.base}...HEAD).`,
-    `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time) followed by your review in Markdown: what's good, and what must change, as a checklist, specific enough to act on.`,
-    `End the entry with a line saying your verdict, exactly "Verdict: approved" or "Verdict: changes requested". Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
+    `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time). Start the entry with your verdict as a line, exactly "Verdict: approved" or "Verdict: changes requested"; then at most 3 lines: what's good, and what must change; then the details, what must change as a checklist, specific enough to act on.`,
+    `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
     `Never change issue trackers (Jira, GitHub Issues), and don't push.`,
   ].join('\n\n');
 }
@@ -228,7 +224,7 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
   return [
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
     MAY_ASK,
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. End that report with a line "Ready for review." so it's reviewed again.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. Report it in the same shape (a summary, then "Needs from you: nothing"), and end that report with a line "Ready for review." so it's reviewed again.`,
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
     `If you disagree with a request, say why in your report instead of making the change.`,
   ].join('\n\n');
@@ -239,7 +235,7 @@ const UPDATE_DESCRIPTION = (ticket: string) =>
   `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. Edit only the description there, and leave the activity as it is.`;
 
 /** How the implementer may ask the user before (or instead of) making changes, when it needs to. */
-const MAY_ASK = `If you need more context to do it well (what's asked is unclear, or there's a choice only the user can make), ask first: report in the ticket with your questions, end the report with a line "Waiting for you.", and stop without changing anything. You're resumed with the answer. Otherwise start on it directly.`;
+const MAY_ASK = `If you need more context to do it well (what's asked is unclear, or there's a choice only the user can make), ask first: report in the ticket with your questions in its "Needs from you:" line, and stop without changing anything. You're resumed with the answer. Otherwise start on it directly.`;
 
 /** What the implementer is told when the user reviewed the work and requested changes. */
 export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string; feedback: string }): string {
@@ -250,7 +246,7 @@ export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: s
     `Read the ticket ${o.ticket} for the context (the description, and the activity).`,
     MAY_ASK,
     UPDATE_DESCRIPTION(o.ticket),
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, in the same shape (a summary, then "Needs from you: nothing"), saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }
@@ -261,7 +257,7 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
     `The user answered you in the ticket ${o.ticket}:`,
     o.answer.trim().replace(/^/gm, '> '),
     UPDATE_DESCRIPTION(o.ticket),
-    `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket, ending with a line "Ready for review." If you still need to know more, ask again the same way (end the report with "Waiting for you.").`,
+    `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket in the same shape, ending with a line "Ready for review." If you still need to know more, ask again the same way (in its "Needs from you:" line).`,
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }
@@ -270,9 +266,9 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
 export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
   return phase === 'review'
     ? "Claude's usage limit stopped you before you finished; it has reset. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked."
-    : 'Claude\'s usage limit stopped you before you finished; it has reset. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or with "Waiting for you." if you need the user).';
+    : 'Claude\'s usage limit stopped you before you finished; it has reset. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or, if you need the user, with a "Needs from you:" line and the question).';
 }
 
 /** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
 export const AUTOPILOT_NOTE =
-  'Flotilla\'s autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, end that report with a line "Waiting for you.", and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
+  'Flotilla\'s autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
