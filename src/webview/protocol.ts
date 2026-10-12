@@ -4,6 +4,8 @@
  */
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type { Need } from '../features/backlog/needs';
+import type { ReviewFix } from '../features/backlog/review';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
@@ -21,6 +23,8 @@ export interface BacklogItemView extends BacklogItem {
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
+  /** Why it waits on the user (its row in "Needs you"). */
+  need?: Need;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -237,6 +241,9 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
+  | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
+  | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison

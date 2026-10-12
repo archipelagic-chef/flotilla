@@ -97,6 +97,8 @@ export interface TicketView {
 
 export type TicketHostMessage =
   | { type: 'ticket'; ticket: TicketView }
+  /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
+  | { type: 'focus'; target: 'comment' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string };
 

@@ -8,6 +8,7 @@ import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { needOf } from '../../features/backlog/needs';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -98,7 +99,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}) };
+        const need = needOf(item, ticket.activity);
+        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}), ...(need ? { need } : {}) };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.
@@ -150,6 +152,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;
+      case 'comment':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
+        return;
+      case 'approve':
+        await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');
+        break;
+      case 'fix':
+        await vscode.commands.executeCommand('flotilla.fixBacklogReview', m.id, m.fix);
+        break;
       case 'open':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id);
         return;

@@ -401,6 +401,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.fixBacklogReview",
+        "title": "Fix a Stopped Review",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.planBacklog",
         "title": "Plan the Backlog with Claude",
         "category": "Flotilla",
@@ -755,6 +760,10 @@
         },
         {
           "command": "flotilla.openBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.fixBacklogReview",
           "when": "false"
         },
         {

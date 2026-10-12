@@ -29,6 +29,7 @@ import { BacklogIntegrations } from './ui/backlog/integrations';
 import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import type { ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { AttentionNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
@@ -148,6 +149,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(backlog.watch(noteDescriptions));
   noteDescriptions();
   tickets.useReviews(reviews);
+  // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'flotilla.fixBacklogReview',
+      (id: unknown, fix: unknown) =>
+        typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+    ),
+  );
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);

@@ -157,12 +157,16 @@ export class TicketPanels implements vscode.Disposable {
     this.panels.forEach((p) => p.dispose());
   }
 
-  async open(id: string): Promise<void> {
+  /** Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes). */
+  private readonly focusOnPost = new WeakSet<vscode.WebviewPanel>();
+
+  async open(id: string, o: { focus?: 'comment' } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
     id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
     if (existing) {
       existing.reveal();
+      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
       return;
     }
     const item = await this.item(id);
@@ -176,6 +180,7 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
+    if (o.focus) this.focusOnPost.add(panel);
     panel.onDidDispose(() => this.panels.delete(id));
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
       this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
@@ -421,6 +426,7 @@ export class TicketPanels implements vscode.Disposable {
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
       void panel.webview.postMessage(message);
+      if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents'> | undefined;
     try {
