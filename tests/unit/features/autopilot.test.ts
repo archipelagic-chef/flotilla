@@ -22,9 +22,9 @@ describe('the autopilot', () => {
     // Being discussed with an agent: the owner starts it.
     const discussed = { ...data, items: data.items.map((i) => (i.id === 'BL-4' ? { ...i, shaping: { agent: 'Nova-7', session: 's' } } : i)) };
     expect(nextForAutopilot(discussed, new Set())?.id).toBe('BL-5');
-    // Once the agent says it's ready to start, the autopilot takes it like any To Do.
+    // The agent saying it's ready doesn't start work: the owner accepts it or starts it by hand.
     const ready = { ...data, items: data.items.map((i) => (i.id === 'BL-4' ? { ...i, shaping: { agent: 'Nova-7', session: 's', ready: true } } : i)) };
-    expect(nextForAutopilot(ready, new Set())?.id).toBe('BL-4');
+    expect(nextForAutopilot(ready, new Set())?.id).toBe('BL-5');
   });
 });
 

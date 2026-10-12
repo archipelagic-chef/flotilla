@@ -45,12 +45,11 @@ export interface AutopilotView {
 
 /**
  * The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. A ticket
- * whose discussion with an agent is still open (BL-45) waits; once it's ready to start, or accepted, it's taken.
+ * with a discussion with an agent (BL-45) waits: its owner accepts it or starts it by hand, which ends the discussion
+ * (accepting does; a To Do is started with Start), so only then is it taken.
  */
 export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): BacklogItem | undefined {
-  return data.items.find(
-    (i) => i.status === 'todo' && !i.proposed && !(i.shaping && !i.shaping.ready) && !skip.has(i.id) && childrenOf(data, i.id).length === 0,
-  );
+  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
 }
 
 /**

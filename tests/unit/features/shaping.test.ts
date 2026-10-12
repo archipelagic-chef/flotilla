@@ -66,13 +66,15 @@ describe('shaping', () => {
     expect(opened).toContain('"### 2026-10-12 21:50 · Agent Nova-7"');
   });
 
-  it('settles the discussion of an accepted proposal, so the autopilot may take it', () => {
+  it('ends the discussion of an accepted proposal, so the autopilot may take it', () => {
     const at = '2026-10-12T00:00:00Z';
     const data = {
       version: 1 as const,
       next: 2,
       items: [{ id: 'BL-1', title: 'T', status: 'todo' as const, created: at, proposed: { by: 'Ada-2' }, shaping: { agent: 'Nova-7', session: 's' } }],
     };
-    expect(acceptItem(data, 'BL-1').items[0].shaping).toEqual({ agent: 'Nova-7', session: 's', ready: true });
+    const accepted = acceptItem(data, 'BL-1').items[0];
+    expect(accepted.shaping).toBeUndefined();
+    expect(accepted.proposed).toBeUndefined();
   });
 });
