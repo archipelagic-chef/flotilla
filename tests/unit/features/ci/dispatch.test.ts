@@ -97,6 +97,23 @@ describe('isDispatchable', () => {
     expect(isDispatchable('on: [push, workflow_dispatch]\n')).toBe(true);
   });
 
+  it('ignores the word in a step, a name or a comment: only a trigger in the on: block counts', () => {
+    const yaml = [
+      'name: workflow_dispatch demo',
+      'on: push',
+      'jobs:',
+      '  build:',
+      '    steps:',
+      '      - run: echo "workflow_dispatch:"',
+      '        name: workflow_dispatch',
+      '      - uses: some/action',
+      '        with:',
+      '          workflow_dispatch: true',
+    ].join('\n');
+    expect(isDispatchable(yaml)).toBe(false);
+    expect(isDispatchable('on: push # workflow_dispatch\n')).toBe(false);
+  });
+
   it('is false without one, or when it is only in a comment', () => {
     expect(isDispatchable('on: push\n')).toBe(false);
     expect(isDispatchable('on:\n  push:\n  # workflow_dispatch: later\n')).toBe(false);
