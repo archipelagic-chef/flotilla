@@ -15,6 +15,8 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
+The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
+
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
 
 ## Testing across host and container

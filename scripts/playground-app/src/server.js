@@ -1,4 +1,4 @@
-// A small HTTP server on a free port: `node src/server.js` prints its URL.
+// A small HTTP server on port 5173 (or $PORT): `node src/server.js` prints its URL.
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { greet } from './greeting.js';
@@ -13,7 +13,7 @@ export function createServer() {
 // Only when run directly, not when a test imports this file.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createServer();
-  server.listen(0, '127.0.0.1', () => {
+  server.listen(Number(process.env.PORT) || 5173, '127.0.0.1', () => {
     console.log(`http://127.0.0.1:${server.address().port}/`);
   });
 }
