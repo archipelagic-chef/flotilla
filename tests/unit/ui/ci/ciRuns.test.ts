@@ -5,8 +5,9 @@ import type { CiView } from '../../../../src/webview/protocol';
 
 const auth = vi.hoisted(() => ({ getSession: vi.fn() }));
 const git = vi.hoisted(() => ({ runGit: vi.fn() }));
+const commands = vi.hoisted(() => ({ executeCommand: vi.fn() }));
 
-vi.mock('vscode', () => ({ authentication: auth }));
+vi.mock('vscode', () => ({ authentication: auth, commands }));
 vi.mock('../../../../src/core/git/gitCli', () => git);
 
 const GITHUB = 'git@github.com:acme/app.git';
@@ -415,6 +416,121 @@ describe('CiRuns: when it reads', () => {
     expect(reads.fetch).toHaveBeenCalledTimes(3);
     await vi.advanceTimersByTimeAsync(1);
     expect(reads.fetch).toHaveBeenCalledTimes(4);
+    ci.dispose();
+  });
+});
+
+/** A run's job as GitHub answers it. */
+const apiJob = (over: Record<string, unknown> = {}) => ({
+  id: 9,
+  name: 'test',
+  status: 'completed',
+  conclusion: 'success',
+  html_url: 'https://github.com/acme/app/actions/runs/1/job/9',
+  steps: [{ number: 1, name: 'Run tests', status: 'completed', conclusion: 'success' }],
+  ...over,
+});
+
+/**
+ * GitHub answers with each branch's runs, and with the jobs of each run (jobs.<run id>). A run's jobs
+ * are read on their own URL, so these reads are counted apart from the runs' reads.
+ */
+function githubJobs(runs: Record<string, ApiRun[]>, jobs: Record<number, unknown[]>, options: { jobsStatus?: number } = {}) {
+  const fetch = vi.fn(async (url: string) => {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith('/jobs')) {
+      const runId = Number(/runs\/(\d+)\/jobs/.exec(parsed.pathname)![1]);
+      const ok = options.jobsStatus === undefined;
+      const body = JSON.stringify({ jobs: jobs[runId] ?? [] });
+      return { ok, status: options.jobsStatus ?? 200, statusText: ok ? 'OK' : 'Server Error', json: async () => JSON.parse(body), text: async () => (ok ? body : 'boom') };
+    }
+    const body = JSON.stringify({ workflow_runs: runs[parsed.searchParams.get('branch') ?? ''] ?? [] });
+    return { ok: true, status: 200, statusText: 'OK', json: async () => JSON.parse(body), text: async () => body };
+  });
+  vi.stubGlobal('fetch', fetch);
+  return { fetch, jobReads: () => fetch.mock.calls.filter(([url]) => new URL(String(url)).pathname.endsWith('/jobs')).length };
+}
+
+const runsOf = (view: CiView | undefined) => (view?.kind === 'runs' ? view.runs : []);
+
+describe('CiRuns: a run’s jobs', () => {
+  it('reads no jobs until the user expands a run, then shows its jobs with their steps', async () => {
+    const reads = githubJobs({ feat: [apiRun({ id: 1 })] }, { 1: [apiJob({ id: 9, conclusion: 'failure', steps: [{ number: 1, name: 'Run tests', status: 'completed', conclusion: 'failure' }] })] });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    expect(reads.jobReads()).toBe(0);
+    expect(runsOf(last().a)[0].jobs).toBeUndefined();
+
+    await ci.expand('a', 1, true);
+    const [run] = runsOf(last().a);
+    expect(reads.jobReads()).toBe(1);
+    expect(run.jobs).toEqual([
+      { id: 9, name: 'test', status: 'failure', url: 'https://github.com/acme/app/actions/runs/1/job/9', steps: [{ number: 1, name: 'Run tests', status: 'failure' }] },
+    ]);
+    ci.dispose();
+  });
+
+  it('forgets a collapsed run’s jobs', async () => {
+    githubJobs({ feat: [apiRun({ id: 1 })] }, { 1: [apiJob()] });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    await ci.expand('a', 1, true);
+    expect(runsOf(last().a)[0].jobs).toHaveLength(1);
+
+    await ci.expand('a', 1, false);
+    expect(runsOf(last().a)[0].jobs).toBeUndefined();
+    ci.dispose();
+  });
+
+  it('shows why the jobs can’t be read, and keeps the runs', async () => {
+    githubJobs({ feat: [apiRun({ id: 1 })] }, {}, { jobsStatus: 500 });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    await ci.expand('a', 1, true);
+    const [run] = runsOf(last().a);
+    expect(run.jobsError).toBe('500 Server Error: boom');
+    expect(run.jobs).toBeUndefined();
+    expect(runsOf(last().a)).toHaveLength(1);
+    ci.dispose();
+  });
+
+  it('reads an expanded run’s jobs again while it runs, and once more when it has finished', async () => {
+    const reads = githubJobs({ feat: [apiRun({ id: 1, status: 'in_progress', conclusion: null })] }, { 1: [apiJob({ status: 'in_progress', conclusion: null })] });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    await ci.expand('a', 1, true);
+    expect(reads.jobReads()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(reads.jobReads()).toBe(2);
+    expect(runsOf(last().a)[0].jobs?.[0].status).toBe('running');
+    ci.dispose();
+  });
+
+  it('opens a job’s log for the worktree’s repository, through the log command', async () => {
+    githubJobs({ feat: [apiRun({ id: 1 })] }, { 1: [apiJob()] });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    await ci.showLog('a', 9, 'test');
+    expect(commands.executeCommand).toHaveBeenCalledWith('flotilla.showJobLog', { owner: 'acme', repo: 'app', jobId: 9, jobName: 'test' });
+    ci.dispose();
+  });
+
+  it('opens no log for a worktree that has no runs', async () => {
+    const { ci } = setup();
+    ci.update([ws('a', { upstream: undefined })]);
+    await ci.showLog('a', 9, 'test');
+    expect(commands.executeCommand).not.toHaveBeenCalled();
     ci.dispose();
   });
 });

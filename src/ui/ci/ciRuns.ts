@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
-import { GitHubActions, splitUpstream, type CiRun } from '../../features/ci/githubActions';
-import { anyRunActive, ciStamp, refreshDelay } from '../../features/ci/refresh';
+import { GitHubActions, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
+import { anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { CiView } from '../../webview/protocol';
+import type { CiRunView, CiView } from '../../webview/protocol';
 
 const SCOPES = ['repo'];
 
@@ -13,6 +13,13 @@ const SCOPES = ['repo'];
 type Where = { kind: 'github'; owner: string; repo: string; branch: string } | { kind: 'view'; view: CiView };
 
 type Session = Pick<vscode.AuthenticationSession, 'accessToken'>;
+
+/** A run's jobs as last read, and the status of the run then (a run that has moved on is read again). */
+interface JobsState {
+  status: CiStatus;
+  jobs?: CiJob[];
+  error?: string;
+}
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -25,6 +32,9 @@ export class CiRuns implements vscode.Disposable {
   private views = new Map<string, CiView>();
   private workstreams: readonly Workstream[] = [];
   private stamps = new Map<string, string>();
+  /** The runs the user expanded, per worktree: their jobs are read. */
+  private expanded = new Map<string, Set<number>>();
+  private jobs = new Map<string, Map<number, JobsState>>();
   private visible = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -41,7 +51,11 @@ export class CiRuns implements vscode.Disposable {
     this.workstreams = workstreams;
     for (const ws of workstreams) this.stamps.set(ws.key, ciStamp(ws));
     const gone = [...this.views.keys()].filter((key) => !workstreams.some((ws) => ws.key === key));
-    for (const key of gone) this.views.delete(key);
+    for (const key of gone) {
+      this.views.delete(key);
+      this.expanded.delete(key);
+      this.jobs.delete(key);
+    }
     if (this.visible && moved.length) void this.load(moved.map((ws) => ws.key));
     else if (gone.length) this.post(this.snapshot());
   }
@@ -66,9 +80,65 @@ export class CiRuns implements vscode.Disposable {
     await this.load();
   }
 
+  /** A run was expanded or collapsed: its jobs are read now, and while it's expanded. */
+  async expand(key: string, runId: number, expanded: boolean): Promise<void> {
+    const runs = this.expanded.get(key) ?? new Set<number>();
+    if (expanded) runs.add(runId);
+    else {
+      runs.delete(runId);
+      this.jobs.get(key)?.delete(runId);
+    }
+    if (runs.size) this.expanded.set(key, runs);
+    else this.expanded.delete(key);
+    if (expanded) await this.load([key]);
+    else this.post(this.snapshot());
+  }
+
+  /** Shows a job's log in an editor, of the repository the worktree's runs are on (the log's command checks the ids). */
+  async showLog(key: string, jobId: number, jobName: string): Promise<void> {
+    const view = this.views.get(key);
+    if (view?.kind !== 'runs') return;
+    const [owner, repo] = view.repo.split('/');
+    await vscode.commands.executeCommand('flotilla.showJobLog', { owner, repo, jobId, jobName });
+  }
+
   /** The views as last read, of the worktrees there are now (sent to a sidebar that has just loaded). */
   snapshot(): Record<string, CiView> {
-    return Object.fromEntries([...this.views].filter(([key]) => this.workstreams.some((ws) => ws.key === key)));
+    return Object.fromEntries(
+      [...this.views]
+        .filter(([key]) => this.workstreams.some((ws) => ws.key === key))
+        .map(([key, view]): [string, CiView] => [key, view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withJobs(key, run)) } : view]),
+    );
+  }
+
+  /** A run's jobs, for a run the user expanded (until they're read, the run shows it's loading). */
+  private withJobs(key: string, run: CiRunView): CiRunView {
+    const state = this.jobs.get(key)?.get(run.id);
+    if (!this.expanded.get(key)?.has(run.id) || !state) return run;
+    return { ...run, jobs: state.jobs, jobsError: state.error };
+  }
+
+  /** Reads the jobs of a worktree's expanded runs, the ones that are due (see jobsDue). A failed read is kept as the error. */
+  private async readJobs(key: string, session: Session | undefined): Promise<void> {
+    const view = this.views.get(key);
+    const expanded = this.expanded.get(key);
+    if (!session || !expanded || view?.kind !== 'runs') return;
+    const [owner, repo] = view.repo.split('/');
+    const actions = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch);
+    const jobs = this.jobs.get(key) ?? new Map<number, JobsState>();
+    this.jobs.set(key, jobs);
+    await Promise.all(
+      [...expanded].map(async (runId) => {
+        const run = view.runs.find((r) => r.id === runId);
+        const known = jobs.get(runId);
+        if (!run || !jobsDue(run.status, known)) return;
+        try {
+          jobs.set(runId, { status: run.status, jobs: await actions.jobs(runId) });
+        } catch (error) {
+          jobs.set(runId, { status: run.status, error: message(error) });
+        }
+      }),
+    );
   }
 
   private async load(keys?: string[]): Promise<void> {
@@ -87,6 +157,9 @@ export class CiRuns implements vscode.Disposable {
         if (this.workstreams.some((w) => w.key === ws.key)) this.views.set(ws.key, view);
       }),
     );
+    this.post(this.snapshot());
+    // The jobs of the expanded runs come after the runs, so that the runs show at once.
+    await Promise.all(targets.map((ws) => this.readJobs(ws.key, session)));
     this.post(this.snapshot());
     // The last load to finish sets the next one (a load that overlapped another doesn't leave a second timer running).
     // Only the worktrees there are now count: a run on a removed one doesn't keep the timer short.
