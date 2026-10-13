@@ -984,3 +984,33 @@ button.work-row:hover {
 .commit-line:hover .subject {
   text-decoration: underline;
 }
+/* A review's rounds, folded into one line (rounds.ts); opened, its entries and commits show in order. */
+.entry.kind-review {
+  padding: 0 12px;
+  border: none;
+}
+.review-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  text-align: left;
+}
+.review-fold > .codicon {
+  font-size: 14px;
+}
+.review-fold:hover span {
+  text-decoration: underline;
+}
+.fold-items {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
