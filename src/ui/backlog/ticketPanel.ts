@@ -601,8 +601,28 @@ export class TicketPanels implements vscode.Disposable {
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
   private readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
 
+  /** The posts running per panel. A post superseded by a newer one sends nothing: the newer one carries its change. */
+  private readonly running = new WeakMap<vscode.WebviewPanel, Set<Promise<void>>>();
+
+  /** Sends a ticket's view (see postView), and keeps it in `running` until it's done. */
+  private post(id: string, panel: vscode.WebviewPanel): Promise<void> {
+    const run = this.postView(id, panel);
+    const set = this.running.get(panel) ?? new Set<Promise<void>>();
+    this.running.set(panel, set);
+    set.add(run);
+    return run.finally(() => set.delete(run));
+  }
+
+  /**
+   * Waits until no post of the panel is running. Once one has finished, the view with everything written before it has
+   * been sent: the newest post is the one that sends it, and a post that was superseded has its newer one in `running`.
+   */
+  private async settled(panel: vscode.WebviewPanel): Promise<void> {
+    for (let set = this.running.get(panel); set?.size; set = this.running.get(panel)) await Promise.allSettled([...set]);
+  }
+
   /** Sends a ticket's view; never leaves the tab waiting: a failure shows in it. */
-  private async post(id: string, panel: vscode.WebviewPanel): Promise<void> {
+  private async postView(id: string, panel: vscode.WebviewPanel): Promise<void> {
     const seq = (this.posts.get(panel) ?? 0) + 1;
     this.posts.set(panel, seq);
     let shown: BacklogItem | undefined;
@@ -937,6 +957,8 @@ export class TicketPanels implements vscode.Disposable {
       // A tab closed meanwhile has nothing to show.
       if (this.panels.get(id) === panel) {
         await this.post(id, panel);
+        // Done only once the view has the action's change: a post still running (the backlog watcher's) may carry it.
+        await this.settled(panel);
         if (m.type !== 'ready') void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
       }
     }

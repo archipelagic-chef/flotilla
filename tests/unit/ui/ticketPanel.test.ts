@@ -28,7 +28,7 @@ describe('the Show activity choice', () => {
 
 /** A tab as the host sees it: what it's sent is recorded. */
 function tab() {
-  return { webview: { postMessage: vi.fn(async () => true), cspSource: '', asWebviewUri: (u: unknown) => u }, reveal: vi.fn(), dispose: vi.fn(), onDidDispose: () => ({ dispose: vi.fn() }) };
+  return { webview: { postMessage: vi.fn(async (_message: unknown) => true), cspSource: '', asWebviewUri: (u: unknown) => u }, reveal: vi.fn(), dispose: vi.fn(), onDidDispose: () => ({ dispose: vi.fn() }) };
 }
 
 /** Ticket panels over a backlog whose one item's writes fail (or not): only what onMessage needs is there. */
@@ -49,6 +49,7 @@ function panelsWith(change: () => Promise<unknown>) {
   const panels = new TicketPanels(deps as never) as unknown as {
     panels: Map<string, unknown>;
     post: (id: string, panel: unknown) => Promise<void>;
+    postView: (id: string, panel: unknown) => Promise<void>;
     onMessage: (id: string, panel: unknown, m: unknown) => Promise<void>;
   };
   // The view itself isn't under test here: posting it is stubbed.
@@ -76,6 +77,34 @@ describe("the host's done for an action", () => {
     const message = { type: 'priority', priority: 'high' };
     await panels.onMessage('BL-1', t, message);
     expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: false });
+  });
+
+  it('is sent once the posts running for the tab are done: a newer post carries what a superseded one would have', async () => {
+    const panels = panelsWith(async () => undefined);
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    // The real post (postView, which builds the view, is stubbed to take time and to start a newer post meanwhile).
+    panels.post = (id, panel) => (TicketPanels.prototype as unknown as { post: typeof panels.post }).post.call(panels, id, panel);
+    const sent: string[] = [];
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let calls = 0;
+    panels.postView = vi.fn(async () => {
+      if (++calls === 1) {
+        // The action's own post: the watcher's post starts while it runs, and the action's is superseded (sends nothing).
+        void panels.post('BL-1', t);
+        await delay(10);
+        sent.push('own');
+        return;
+      }
+      await delay(40);
+      sent.push('newer');
+    });
+    t.webview.postMessage.mockImplementation(async (m: unknown) => {
+      if ((m as { type: string }).type === 'done') sent.push('done');
+      return true;
+    });
+    await panels.onMessage('BL-1', t, { type: 'priority', priority: 'high' });
+    expect(sent).toEqual(['own', 'newer', 'done']);
   });
 
   it('is not sent for ready, which only asks for the view', async () => {
