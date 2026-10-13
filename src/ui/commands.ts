@@ -118,7 +118,6 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
   register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts));
-  register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, backlogIdOf(id)));
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.planBacklog', () => planBacklog(ctx));
   register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
@@ -689,28 +688,6 @@ async function linkBacklogItem(ctx: CommandContext, id: unknown): Promise<void> 
   if (!link) return;
   await ctx.backlog.change((d) => linkIssue(d, id, link));
   await ctx.tickets.addActivity(id, 'Flotilla', `Linked to [${link.id}](${link.url}): ${link.title}`);
-}
-
-/** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */
-async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
-  if (typeof id !== 'string') return;
-  const remote = ctx.integrations.issues().find((i) => i.id === id);
-  if (remote) {
-    void vscode.window.showInformationMessage(`${id} is written in its tracker.`, 'Open It').then((c) => c && vscode.env.openExternal(vscode.Uri.parse(remote.url)));
-    return;
-  }
-  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
-  if (!item) return;
-  const ticket = await ctx.backlog.ensureDocument(item);
-  // The ticket tab shows Claude's edits as they're saved.
-  await ctx.tickets.open(item.id);
-  await chatUi.askClaude(
-    [
-      `Help me write backlog item ${item.id} as a clear ticket. The ticket is ${ticket}: "# <title>", the description, then an "## Activity" log (leave that alone).`,
-      `Read what's there (my notes so far), ask me what you need to know, and look at this repository's code where it helps. Then rewrite the title and description: the problem or goal, the context, and acceptance criteria as a checklist.`,
-      '',
-    ].join('\n\n'),
-  );
 }
 
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {

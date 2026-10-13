@@ -23,6 +23,8 @@ import { Leader } from './features/backlog/leader';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
+import { Shaping } from './ui/backlog/shaping';
+import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -178,6 +180,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(backlog.watch(noteDescriptions));
   noteDescriptions();
   tickets.useReviews(reviews);
+  // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.
+  const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
+  context.subscriptions.push(shaping);
+  tickets.useShaping(shaping);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
+      if (typeof id !== 'string') return;
+      const item = (await backlog.read()).items.find((i) => i.id === id);
+      if (!item || !discussable(item)) return;
+      await tickets.open(id);
+      await shaping.discuss(id, true).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
+    }),
+  );
   // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
   context.subscriptions.push(
     vscode.commands.registerCommand(

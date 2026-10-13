@@ -437,6 +437,14 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
             <i class="codicon codicon-check" />
           </button>
+          <button
+            class="icon"
+            aria-label="Discuss It with an Agent"
+            title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+            onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
+          >
+            <i class="codicon codicon-comment-discussion" />
+          </button>
           <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>
             <i class="codicon codicon-close" />
           </button>
@@ -472,9 +480,16 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
             </a>
           ) : (
             <>
-              <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
-                <i class="codicon codicon-sparkle" />
-              </button>
+              {item.status === 'todo' && (
+                <button
+                  class="icon"
+                  aria-label="Discuss It with an Agent"
+                  title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+                  onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
+                >
+                  <i class="codicon codicon-comment-discussion" />
+                </button>
+              )}
               <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
                 <i class="codicon codicon-link" />
               </button>

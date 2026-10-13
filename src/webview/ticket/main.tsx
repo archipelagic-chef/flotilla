@@ -220,7 +220,7 @@ function Description({ ticket }: { ticket: TicketView }) {
       ) : draft === undefined ? (
         <>
           <div ref={text} class={foldable && !expanded ? 'description folded' : 'description'} onDblClick={() => editable && setDraft(ticket.description)}>
-            <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
+            <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or discuss it with an agent.'} />
           </div>
           {foldable && (overflows || expanded) && (
             <button class="text-button fold-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
@@ -347,6 +347,36 @@ const FIX_TIP: Record<ReviewFix, string> = {
 };
 
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The ticket's discussion with its agent (BL-45): while the agent replies, and when it says the ticket is ready. */
+function DiscussPanel({ ticket }: { ticket: TicketView }) {
+  const s = ticket.shaping!;
+  if (!s.running && !s.ready) return null;
+  return (
+    <div class={`review-panel ${s.running ? 'working' : 'done'}`}>
+      <i class={`codicon codicon-comment-discussion${s.running ? ' pulse' : ''}`} />
+      <span class="review-text">
+        <strong>Discussion</strong> {s.running ? `${s.agent} is replying; its reply comes here.` : `${s.agent} says the ticket is ready to start.`}
+      </span>
+      {s.ready && !s.running && (
+        <>
+          {ticket.item.proposed ? (
+            <button class="button" onClick={() => send({ type: 'accept' })}>
+              <i class="codicon codicon-check" /> Accept
+            </button>
+          ) : (
+            <button class="button" onClick={() => send({ type: 'start', agent: true })}>
+              <i class="codicon codicon-play" /> Start
+            </button>
+          )}
+          <button class="button secondary" onClick={() => send({ type: 'keepDiscussing' })} title="Dismisses this; the discussion goes on with your next comment">
+            Keep discussing
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
@@ -1451,6 +1481,7 @@ function StateCard({ ticket }: { ticket: TicketView }) {
           stop={asking ? () => send({ type: 'stopReview' }) : undefined}
         />
       )}
+      {ticket.shaping && <DiscussPanel ticket={ticket} />}
       {ticket.review && !asking ? (
         <ReviewPanel ticket={ticket} />
       ) : ticket.rewrite ? (
@@ -1614,9 +1645,15 @@ function App() {
           )}
           {!ticket.remote && (
             <>
-              <button class="button secondary" onClick={() => send({ type: 'writeWithAI' })} title="Opens a Claude Code chat that helps write this ticket">
-                <i class="codicon codicon-sparkle" /> Write with Claude
-              </button>
+              {ticket.canDiscuss && (
+                <button
+                  class="button secondary"
+                  onClick={() => send({ type: 'discuss' })}
+                  title="An agent talks it through with you here, and writes what's agreed into the description"
+                >
+                  <i class="codicon codicon-comment-discussion" /> Discuss
+                </button>
+              )}
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>

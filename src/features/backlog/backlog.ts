@@ -47,6 +47,11 @@ export interface BacklogItem {
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
   agent?: AgentChoice;
+  /**
+   * The discussion of a ticket nobody works on yet (BL-45): the shaping agent's name and chat, and whether it thinks
+   * the ticket is ready to start (until the user writes again, or keeps discussing).
+   */
+  shaping?: { agent: string; session: string; ready?: boolean };
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
@@ -165,7 +170,7 @@ export function addItem(data: BacklogData, title: string, prefix: string, now: D
 export function updateItem(
   data: BacklogData,
   id: string,
-  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>> & { priority?: BacklogPriority | null },
+  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches' | 'shaping'>> & { priority?: BacklogPriority | null },
 ): BacklogData {
   return {
     ...data,
@@ -187,7 +192,8 @@ export function acceptItem(data: BacklogData, id: string): BacklogData {
     ...data,
     items: data.items.map((i) => {
       if (i.id !== id) return i;
-      const { proposed: _p, ...rest } = i;
+      // The owner accepted it: its discussion is over (Discuss starts a new one for a To Do), and the autopilot takes it.
+      const { proposed: _p, shaping: _s, ...rest } = i;
       return rest;
     }),
   };

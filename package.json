@@ -359,10 +359,10 @@
         "category": "Flotilla"
       },
       {
-        "command": "flotilla.writeBacklogItem",
-        "title": "Write Backlog Item with Claude",
+        "command": "flotilla.discussBacklogItem",
+        "title": "Discuss Backlog Item with an Agent",
         "category": "Flotilla",
-        "icon": "$(sparkle)"
+        "icon": "$(comment-discussion)"
       },
       {
         "command": "flotilla.hideWorktrees",
@@ -821,7 +821,7 @@
           "when": "flotilla.state == ready && flotilla.canFold"
         },
         {
-          "command": "flotilla.writeBacklogItem",
+          "command": "flotilla.discussBacklogItem",
           "when": "false"
         },
         {
@@ -996,7 +996,7 @@
           "group": "2_work@1"
         },
         {
-          "command": "flotilla.writeBacklogItem",
+          "command": "flotilla.discussBacklogItem",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
           "group": "2_work@2"
         },
