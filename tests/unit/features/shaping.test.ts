@@ -48,22 +48,24 @@ describe('shaping', () => {
     ]);
   });
 
-  it('tells a new discussion what it is for and how it talks in the ticket', () => {
-    const prompt = shapingPrompt({ item: { id: 'BL-45', title: 'Shape a ticket' }, agent: 'Nova-7', ticket: '/t/BL-45.md', now: '2026-10-12 21:50' });
+  it('tells a new discussion what it is for, that its reply is its final message, and how it writes the ticket', () => {
+    const prompt = shapingPrompt({ item: { id: 'BL-45', title: 'Shape a ticket' }, agent: 'Nova-7', ticket: '/t/BL-45.md' });
     expect(prompt.startsWith('You are agent Nova-7, working on backlog item BL-45: "Shape a ticket".')).toBe(true);
     expect(prompt).toContain('You change no code');
-    expect(prompt).toContain('"### 2026-10-12 21:50 · Agent Nova-7"');
-    expect(prompt).toContain('never above an entry');
+    expect(prompt).toContain('Your reply is your final message');
+    expect(prompt).toContain("Flotilla adds it to the end of the ticket's Activity");
+    expect(prompt).toContain('Don\'t write in the Activity yourself');
     expect(prompt).toContain('"Ready to start."');
     expect(prompt).toContain('Edit the ticket with the Edit tool');
   });
 
   it('tells a resumed discussion what changed, or that it was opened without a comment', () => {
-    const comment = followUpPrompt({ agent: 'Nova-7', ticket: '/t/BL-45.md', opened: false, now: '2026-10-12 21:50' });
+    const comment = followUpPrompt({ ticket: '/t/BL-45.md', opened: false });
     expect(comment).toContain('wrote in the ticket since your last reply');
-    const opened = followUpPrompt({ agent: 'Nova-7', ticket: '/t/BL-45.md', opened: true, now: '2026-10-12 21:50' });
+    expect(comment).toContain('answer them in your final message');
+    const opened = followUpPrompt({ ticket: '/t/BL-45.md', opened: true });
     expect(opened).toContain('without a comment yet');
-    expect(opened).toContain('"### 2026-10-12 21:50 · Agent Nova-7"');
+    expect(opened).toContain('Your reply is your final message');
   });
 
   it('ends the discussion of an accepted proposal, so the autopilot may take it', () => {

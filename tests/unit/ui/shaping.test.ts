@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
+type Finished = { code: number | null; error?: string; reply?: string };
+
 const runs = vi.hoisted(() => ({
-  started: [] as Array<{ prompt: string; resume?: string; tools?: string[]; name: string; resolve: (r: { code: number | null; error?: string }) => void; sessionId: string }>,
+  started: [] as Array<{ prompt: string; resume?: string; tools?: string[]; name: string; resolve: (r: Finished) => void; sessionId: string }>,
 }));
 
 vi.mock('vscode', () => ({
@@ -21,8 +23,8 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   validSession: (s: string | undefined) => (s && /^[0-9a-f-]{36}$/.test(s) ? s : undefined),
   runAgentHeadless: (o: { prompt: string; resume?: string; tools?: string[]; name: string }) => {
     const sessionId = o.resume ?? crypto.randomUUID();
-    let resolve!: (r: { code: number | null; error?: string }) => void;
-    const done = new Promise<{ code: number | null; error?: string }>((r) => (resolve = r));
+    let resolve!: (r: Finished) => void;
+    const done = new Promise<Finished>((r) => (resolve = r));
     runs.started.push({ ...o, sessionId, resolve });
     return { sessionId, done, stop: () => undefined };
   },
@@ -73,12 +75,48 @@ describe('shaping a ticket with an agent', () => {
     expect(fake.activity[0].body).toMatch(/^Opened a chat for agent/);
     expect(s.isRunning('BL-1')).toBe(true);
 
-    const agent = fake.data.items[0].shaping!.agent;
-    fake.activity.push({ date: '', author: `Agent ${agent}`, body: 'Agreed on the scope.\n\nReady to start.' });
-    first.resolve({ code: 0 });
+    first.resolve({ code: 0, reply: 'Agreed on the scope.\n\nReady to start.' });
     await flush();
+    const agent = fake.data.items[0].shaping!.agent;
+    expect(fake.activity.at(-1)).toMatchObject({ author: `Agent ${agent}`, body: 'Agreed on the scope.\n\nReady to start.' });
     expect(s.isRunning('BL-1')).toBe(false);
     expect(fake.data.items[0].shaping?.ready).toBe(true);
+  });
+
+  it('puts the reply at the end of the ticket, after a comment written while the agent ran', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await s.discuss('BL-1');
+    // The owner writes in the ticket while the agent is still working.
+    fake.activity.push({ date: '2026-10-12 21:59', author: 'You', body: 'Also the tags, please.' });
+    runs.started[0].resolve({ code: 0, reply: '  Tags too.\n\nReady to start.\n' });
+    await flush();
+    const agent = fake.data.items[0].shaping!.agent;
+    expect(fake.activity.map((e) => e.author)).toEqual(['Flotilla', 'You', `Agent ${agent}`]);
+    expect(fake.activity.at(-1)?.body).toBe('Tags too.\n\nReady to start.');
+    expect(fake.activity.at(-1)?.date).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(fake.data.items[0].shaping?.ready).toBe(true);
+  });
+
+  it('a reply without the ready line leaves the ticket not ready', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await s.discuss('BL-1');
+    runs.started[0].resolve({ code: 0, reply: 'Shall it match case?' });
+    await flush();
+    expect(fake.activity.at(-1)?.body).toBe('Shall it match case?');
+    expect(fake.data.items[0].shaping?.ready).toBeUndefined();
+  });
+
+  it('says so in the ticket when the agent finishes with an empty reply', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await s.discuss('BL-1');
+    runs.started[0].resolve({ code: 0, reply: '  \n' });
+    await flush();
+    expect(fake.activity.at(-1)?.body).toMatch(/^\S+ stopped without a reply\. /);
+    expect(fake.activity.some((e) => e.author.startsWith('Agent'))).toBe(false);
+    expect(fake.data.items[0].shaping?.ready).toBeUndefined();
   });
 
   it('resumes the same chat on the next comment, and answers a comment that came while it ran', async () => {
@@ -86,7 +124,7 @@ describe('shaping a ticket with an agent', () => {
     const s = shaping(fake.backlog);
     await s.discuss('BL-1');
     const [first] = runs.started;
-    first.resolve({ code: 0 });
+    first.resolve({ code: 0, reply: 'Noted.' });
     await flush();
 
     await s.discuss('BL-1');
@@ -96,11 +134,11 @@ describe('shaping a ticket with an agent', () => {
     // Another comment while it replies: no second agent; it goes on once this one stops.
     await s.discuss('BL-1');
     expect(runs.started).toHaveLength(2);
-    runs.started[1].resolve({ code: 0 });
+    runs.started[1].resolve({ code: 0, reply: 'Noted.' });
     await flush();
     expect(runs.started).toHaveLength(3);
     expect(runs.started[2].resume).toBe(first.sessionId);
-    runs.started[2].resolve({ code: 0 });
+    runs.started[2].resolve({ code: 0, reply: 'Noted.' });
     await flush();
     expect(runs.started).toHaveLength(3);
   });
@@ -109,7 +147,7 @@ describe('shaping a ticket with an agent', () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
     await s.discuss('BL-1');
-    runs.started[0].resolve({ code: 0 });
+    runs.started[0].resolve({ code: 0, reply: 'Noted.' });
     await flush();
     await s.discuss('BL-1', true);
     expect(runs.started[1].prompt).toContain('without a comment yet');
@@ -121,7 +159,7 @@ describe('shaping a ticket with an agent', () => {
     await Promise.all([s.discuss('BL-1'), s.discuss('BL-1', true)]);
     await flush();
     expect(runs.started).toHaveLength(1);
-    runs.started[0].resolve({ code: 0 });
+    runs.started[0].resolve({ code: 0, reply: 'Noted.' });
     await flush();
     expect(runs.started).toHaveLength(1);
   });
@@ -132,7 +170,7 @@ describe('shaping a ticket with an agent', () => {
     await Promise.all([s.discuss('BL-1'), s.discuss('BL-1')]);
     await flush();
     expect(runs.started).toHaveLength(1);
-    runs.started[0].resolve({ code: 0 });
+    runs.started[0].resolve({ code: 0, reply: 'Noted.' });
     await flush();
     expect(runs.started).toHaveLength(2);
     expect(runs.started[1].resume).toBe(runs.started[0].sessionId);

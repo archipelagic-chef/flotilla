@@ -5,7 +5,7 @@ vi.mock('vscode', () => ({
   extensions: { getExtension: () => undefined },
 }));
 
-import { headlessArgs } from '../../../src/ui/backlog/agentRunner';
+import { headlessArgs, resultOf } from '../../../src/ui/backlog/agentRunner';
 
 const SESSION = '3f1c2a4e-5b6d-4e7f-8a9b-0c1d2e3f4a5b';
 
@@ -40,5 +40,17 @@ describe('headless agent arguments', () => {
     const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto' });
     expect(args).not.toContain('--tools');
     expect(args).not.toContain('--allowedTools');
+  });
+});
+
+describe('an agent result', () => {
+  it('is its last message, whole (a reply can be longer than a note)', () => {
+    const reply = 'Line.\n'.repeat(1000);
+    expect(resultOf(JSON.stringify({ type: 'result', is_error: false, result: reply }))).toBe(reply);
+  });
+
+  it('is nothing when the output is not a result', () => {
+    expect(resultOf('not json')).toBeUndefined();
+    expect(resultOf(JSON.stringify({ type: 'result', result: 3 }))).toBeUndefined();
   });
 });
