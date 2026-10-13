@@ -87,7 +87,7 @@ export interface IssueSource {
 }
 
 /** fetch, injectable for tests. */
-export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
+export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: 'manual' | 'follow' }) => Promise<{
   ok: boolean;
   status: number;
   statusText: string;

@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
+import type { FailedJob } from '../../features/ci/failureTask';
+import { cleanLog, type GitHubActions } from '../../features/ci/githubActions';
 import { notifies, type FinishedRun } from '../../features/ci/notify';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { workstreamLabel } from '../format';
@@ -11,6 +13,8 @@ export interface CiNotifierDeps {
   isLeader(): boolean;
   /** Shows the worktree's CI/CD view (the Show button). */
   show(key: string): void;
+  /** The GitHub client of a repository (the job and its log, for Fix with Agent). */
+  actions(owner: string, repo: string): GitHubActions;
 }
 
 /** Tells the user when a run they watched on a worktree's branch finishes (one notice per run, from the leading window). */
@@ -26,10 +30,35 @@ export class CiNotifier {
       const what = `${item.run.workflow} #${item.run.number} on ${ws ? workstreamLabel(ws) : item.branch}`;
       const failed = item.run.status === 'failure';
       const text = failed ? `CI failed: ${what}.` : `CI ${item.run.status === 'success' ? 'passed' : item.run.status}: ${what}.`;
-      const choice = failed ? vscode.window.showWarningMessage(text, 'Show') : vscode.window.showInformationMessage(text, 'Show');
+      const buttons = failed ? ['Show', 'Fix with Agent'] : ['Show'];
+      const choice = failed ? vscode.window.showWarningMessage(text, ...buttons) : vscode.window.showInformationMessage(text, ...buttons);
       void choice.then((picked) => {
         if (picked === 'Show') this.deps.show(item.key);
+        else if (picked === 'Fix with Agent') void this.fix(item);
       });
+    }
+  }
+
+  /** Starts the agent that fixes the run's failed job (BL-7's command), with the job's steps and log. */
+  private async fix(item: FinishedRun): Promise<void> {
+    try {
+      const [owner, repo] = item.repo.split('/');
+      const client = this.deps.actions(owner, repo);
+      const job = (await client.jobs(item.run.id)).find((j) => j.status === 'failure');
+      if (!job) {
+        void vscode.window.showWarningMessage(`No job of ${item.run.workflow} #${item.run.number} failed, so there's nothing for an agent to fix.`);
+        return;
+      }
+      const failure: FailedJob = {
+        branch: item.branch,
+        run: { name: item.run.workflow, url: item.run.url, commit: item.run.sha },
+        job: { name: job.name, ...(job.url ? { url: job.url } : {}) },
+        failedSteps: job.steps.filter((s) => s.status === 'failure').map((s) => s.name),
+        log: cleanLog(await client.log(job.id)),
+      };
+      await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Fix with Agent: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

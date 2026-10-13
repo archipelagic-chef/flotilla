@@ -4,8 +4,12 @@
  */
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type { Need } from '../features/backlog/needs';
+import type { ReviewFix } from '../features/backlog/review';
 import type { ChatState, LinkKind } from '../features/chats/chats';
-import type { CiRun } from '../features/ci/githubActions';
+import type { CiJob, CiRun } from '../features/ci/githubActions';
+import type { RunAction } from '../features/ci/runActions';
+import type { CiDeployment } from '../features/ci/githubDeployments';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
@@ -24,6 +28,8 @@ export interface BacklogItemView extends BacklogItem {
   runnable?: boolean;
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
+  /** Why it waits on the user (its row in "Needs you"). */
+  need?: Need;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -36,17 +42,26 @@ export interface BacklogProblem {
 export type VcView = 'changes' | 'history' | 'compare' | 'ci';
 
 /** A workflow run as the CI/CD view shows it; current: it runs the commit checked out in the worktree. */
+/** A job of a run, with its steps. */
+export type CiJobView = CiJob;
+
 export interface CiRunView extends CiRun {
   current: boolean;
+  /** The run's jobs, with their steps, once read: only for a run the user expanded. */
+  jobs?: CiJob[];
+  jobsError?: string;
 }
 
-/** A worktree's CI/CD: its branch's latest runs on GitHub, or why there are none. */
+/**
+ * A worktree's CI/CD: its branch's latest runs and deployments on GitHub, or why there are none. Deployments are read
+ * apart from the runs: when they can't be read, the runs still show and deploymentsError says why.
+ */
 export type CiView =
   | { kind: 'signIn' }
   | { kind: 'unpublished' }
   | { kind: 'unsupported' }
   | { kind: 'error'; error: string }
-  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[] };
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
@@ -262,8 +277,15 @@ export type WebviewMessage =
   | { type: 'refs' }
   /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
   | { type: 'ci'; op: 'signIn' | 'refresh' }
+  /** A run expanded or collapsed in a worktree's CI/CD view: its jobs are read while it's expanded. */
+  | { type: 'ci'; op: 'expand' | 'collapse'; key: string; runId: number }
+  /** Shows a job's log (read-only, cleaned, at its first error). */
+  | { type: 'ci'; op: 'showLog'; key: string; jobId: number; jobName: string }
+  /** A run's action in the CI/CD view, for a worktree (key): a cancel asks first. */
+  | { type: 'ci'; op: 'act'; key: string; run: number; action: RunAction }
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
+  | { type: 'openSite'; url: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */
@@ -278,6 +300,9 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
+  | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
+  | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison

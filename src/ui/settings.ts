@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import type { CiNotify } from '../features/ci/notify';
 
+/** `needsYou`: one notification for what needs you, gathered for a minute; `all`: one per event; `off`: none. */
+export type NotifyMode = 'needsYou' | 'all' | 'off';
+
 export interface Settings {
   copyFiles: string[];
   setupCommand: string;
@@ -9,7 +12,7 @@ export interface Settings {
   activeWindowMinutes: number;
   staleAfterDays: number;
   agentStatusStaleMinutes: number;
-  notifyOnAttention: boolean;
+  notify: NotifyMode;
   pollSeconds: number;
   ciNotify: CiNotify;
 }
@@ -24,7 +27,7 @@ export function readSettings(): Settings {
     activeWindowMinutes: c.get<number>('activeWindowMinutes', 5),
     staleAfterDays: c.get<number>('staleAfterDays', 7),
     agentStatusStaleMinutes: c.get<number>('agentStatusStaleMinutes', 10),
-    notifyOnAttention: c.get<boolean>('notifyOnAttention', true),
+    notify: c.get<NotifyMode>('notify', 'needsYou'),
     pollSeconds: c.get<number>('pollSeconds', 15),
     ciNotify: c.get<CiNotify>('ci.notify', 'failures'),
   };

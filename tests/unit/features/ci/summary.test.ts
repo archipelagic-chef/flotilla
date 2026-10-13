@@ -11,11 +11,12 @@ const run = (workflow: string, status: CiRunView['status'], id = 1): CiRunView =
   status,
   url: 'https://github.com/acme/app/actions/runs/1',
   sha: 'abc',
+  attempt: 1,
   created: '2026-10-11T10:00:00Z',
   current: false,
 });
 
-const runs = (...rs: CiRunView[]): CiView => ({ kind: 'runs', repo: 'acme/app', branch: 'feat', runs: rs });
+const runs = (...rs: CiRunView[]): CiView => ({ kind: 'runs', repo: 'acme/app', branch: 'feat', runs: rs, deployments: [] });
 
 describe('ciState and failedWorkflows', () => {
   it('takes the worst of each workflow\'s latest run, and names the workflows whose latest run failed', () => {

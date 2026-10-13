@@ -8,6 +8,7 @@ import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { needOf } from '../../features/backlog/needs';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -18,6 +19,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
 import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type VcView, type WebviewMessage } from '../../webview/protocol';
+import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
@@ -30,7 +32,7 @@ import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
-import type { FinishedRun } from '../../features/ci/notify';
+import { webUrl } from '../../features/ci/githubDeployments';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -49,6 +51,8 @@ export interface SidebarDeps {
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string, opts: { amend?: boolean; then?: 'push' | 'sync' }) => Promise<boolean>;
   output: vscode.OutputChannel;
+  /** The fake GitHub's address, in the debug window only (see devGitHubApi). */
+  githubApi?: string;
   /** Runs that finished on a worktree's branch while they were read (for the notices). */
   onCiFinished?: (items: FinishedRun[]) => void;
 }
@@ -73,6 +77,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   constructor(private readonly deps: SidebarDeps) {
     this.ci = new CiRuns(
       (views) => this.post({ type: 'ci', views }),
+      deps.githubApi,
       (items) => this.deps.onCiFinished?.(items),
     );
     this.files = new FileOps({
@@ -123,7 +128,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}) };
+        const need = needOf(item, ticket.activity);
+        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}), ...(need ? { need } : {}) };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.
@@ -169,6 +175,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;
+      case 'comment':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
+        return;
+      case 'approve':
+        await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');
+        break;
+      case 'fix':
+        await vscode.commands.executeCommand('flotilla.fixBacklogReview', m.id, m.fix);
+        break;
       case 'open':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id);
         return;
@@ -453,8 +468,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // Only GitHub pages (a workflow run) open from the sidebar.
         if (/^https:\/\/github\.com\//.test(m.url)) await vscode.env.openExternal(vscode.Uri.parse(m.url));
         return;
+      case 'openSite': {
+        // A deployed site (its URL comes from GitHub's deployment status): http or https only.
+        const url = webUrl(m.url);
+        if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+        return;
+      }
       case 'ci':
         if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
+        else if (m.op === 'expand' || m.op === 'collapse') await this.ci.expand(m.key, m.runId, m.op === 'expand');
+        else if (m.op === 'showLog') await this.ci.showLog(m.key, m.jobId, m.jobName);
+        else if (m.op === 'act') await this.ci.act(m.key, m.run, m.action).catch((e: unknown) => this.report(e));
         else await this.ci.refresh();
         return;
       case 'refs': {

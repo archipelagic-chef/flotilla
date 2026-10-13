@@ -6,7 +6,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -146,9 +146,9 @@ export function registerCommands(ctx: CommandContext): void {
       typeof text === 'string' ? text : undefined,
     ),
   );
-  register('flotilla.openBacklogItem', (id?: unknown) => {
+  register('flotilla.openBacklogItem', (id?: unknown, opts?: unknown) => {
     const itemId = backlogIdOf(id);
-    return itemId && ctx.tickets.open(itemId);
+    return itemId && ctx.tickets.open(itemId, { focus: (opts as { focus?: unknown } | undefined)?.focus === 'comment' ? 'comment' : undefined });
   });
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
@@ -436,7 +436,7 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const branch = ws.worktree.branch;
   await enforceCommitPrefix(ctx, ws, item.id);
   // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
-  if (!remote) await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
+  if (!remote) await ctx.backlog.change((d) => setStartFailed(updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }), id));
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
 }

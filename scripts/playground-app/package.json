@@ -1,0 +1,10 @@
+{
+  "name": "flotilla-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.js",
+    "serve": "node src/server.js",
+    "test": "node --test"
+  }
+}

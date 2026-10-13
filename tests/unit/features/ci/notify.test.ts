@@ -11,6 +11,7 @@ const run = (id: number, status: CiRun['status']): CiRun => ({
   status,
   url: `https://github.com/acme/app/actions/runs/${id}`,
   sha: 'abc',
+  attempt: 1,
   created: '2026-10-11T10:00:00Z',
 });
 

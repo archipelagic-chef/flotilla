@@ -1,0 +1,21 @@
+// Types for scripts/fake-github.mjs, for the tests.
+export const DEFAULT_PORT: number;
+
+export interface FakeGitHubOptions {
+  port?: number;
+  host?: string;
+  /** A git repository whose branches the fake knows (their commits are the runs' commits). */
+  repoDir?: string;
+  /** The clock, in milliseconds since the epoch. */
+  now?: () => number;
+}
+
+export interface FakeGitHub {
+  /** The address to give Flotilla (flotilla.dev.githubApi). */
+  url: string;
+  /** Makes a branch's runs now, as the first read does. */
+  seed(repo: string, branch: string): void;
+  close(): Promise<void>;
+}
+
+export function startFakeGitHub(options?: FakeGitHubOptions): Promise<FakeGitHub>;

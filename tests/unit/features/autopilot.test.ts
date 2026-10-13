@@ -95,13 +95,13 @@ describe('the autopilot and memory', () => {
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
     }));
-    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short, reserveStart: () => 1, releaseStart: () => undefined }));
     const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
     const at = '2026-10-11T00:00:00Z';
     const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
     const prepareWorktree = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined },
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined, change: async () => data },
       reviews: { running: 0, pausedUntil: async () => undefined, startWork: async () => undefined },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
@@ -121,3 +121,48 @@ describe('the autopilot and memory', () => {
     pilot.dispose();
   });
 });
+
+describe('the autopilot gives up a start whose item moved on', () => {
+  it('starts no agent, gives its memory back and says so in the ticket, when the item left To Do while its worktree was prepared', async () => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+    }));
+    // The real ledger (so the memory given back is what's counted); only the free-memory check is passed.
+    vi.doMock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../../../src/ui/backlog/agentRunner')>()),
+      memoryShortage: () => undefined,
+    }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const { startingMemoryMB } = await import('../../../src/ui/backlog/agentRunner');
+    const at = '2026-10-11T00:00:00Z';
+    const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
+    const startWork = vi.fn(async () => undefined);
+    const appendActivity = vi.fn(async () => undefined);
+    const pilot = new Autopilot({
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity },
+      reviews: { running: 0, pausedUntil: async () => undefined, startWork },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      // Preparing the worktree (which moves the item to In Progress) is followed by the user moving it on to done.
+      prepareWorktree: async () => {
+        (data.items[0] as { status: string }).status = 'done';
+        return { worktree: { path: '/wt', branch: 'feature/BL-1-next' } } as never;
+      },
+    } as never);
+    // Switched on directly: the signed switch is tested above.
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(startWork).not.toHaveBeenCalled();
+    expect(startingMemoryMB()).toBe(0);
+    expect(appendActivity).toHaveBeenCalledWith(expect.objectContaining({ id: 'BL-1' }), expect.objectContaining({ body: expect.stringContaining('moved on') }));
+    pilot.dispose();
+  });
+});
+

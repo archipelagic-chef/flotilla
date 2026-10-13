@@ -8,6 +8,9 @@ import { locateRepo } from './core/repoLocator';
 import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
+import type { Fetch } from './features/backlog/sources/source';
+import { JOB_LOG_SCHEME, JobLogProvider, showJobLog, signedInActions } from './features/ci/jobLog';
+import { CiNotifier } from './ui/ci/ciNotifier';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
 import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
@@ -32,9 +35,10 @@ import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { devGitHubApi } from './ui/ci/devGitHub';
+import type { ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
-import { AttentionNotifier } from './ui/notifications';
-import { CiNotifier } from './ui/ci/ciNotifier';
+import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
@@ -64,6 +68,9 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
+  // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
+  const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));
+  context.subscriptions.push(jobLogs, vscode.workspace.registerTextDocumentContentProvider(JOB_LOG_SCHEME, jobLogs));
   // The terminal profile VS Code's + button uses once it's the default profile. It's registered first, so that it
   // always answers (a plain terminal) when Flotilla has no worktrees to offer: the setting applies to every window.
   let terminalOptions: (() => Promise<vscode.TerminalOptions | undefined>) | undefined;
@@ -137,7 +144,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sidebar = new SidebarProvider({
     extensionUri: context.extensionUri,
     repository,
-    onCiFinished: (items) => ciNotifier.notify(items),
     reference: folder.uri,
     mainRoot: location.mainRoot,
     inWorkspace,
@@ -146,6 +152,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     backlog,
     integrations,
+    githubApi: devGitHubApi(context.extensionMode),
+    onCiFinished: (items) => ciNotifier.notify(items),
   });
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
@@ -163,18 +171,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
-  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
+  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, isLeader: () => leader.isLeader });
   context.subscriptions.push(reviews);
-  // The leading window reads the CI/CD runs while the sidebar is hidden too, so it can tell the user about finished runs.
-  const ciNotifier = new CiNotifier({ repository, isLeader: () => leader.isLeader, show: (key) => sidebar.showCi(key) });
-  const updateCiReads = () => sidebar.setKeepReading(leader.isLeader && readSettings().ciNotify !== 'off');
-  updateCiReads();
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(noteDescriptions));
   noteDescriptions();
   tickets.useReviews(reviews);
-  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
+  // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'flotilla.fixBacklogReview',
+      (id: unknown, fix: unknown) =>
+        typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+    ),
+  );
+  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir });
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
@@ -191,14 +203,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tickets,
     integrations,
   };
+  // The CI notices (a run on a worktree's branch finished): the leading window tells the user, and reads the runs while the sidebar is hidden to see them.
+  const ciNotifier = new CiNotifier({
+    repository,
+    isLeader: () => leader.isLeader,
+    show: (key) => sidebar.showCi(key),
+    actions: signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
+  });
+  const updateCiReads = () => sidebar.setKeepReading(leader.isLeader && readSettings().ciNotify !== 'off');
+  // What needs the user: the status bar counts it, and it notifies (only the leading window does).
+  const needs = new NeedsYouNotifier({
+    backlog,
+    repository,
+    reviews,
+    leader,
+    openTicket: (id) => void tickets.open(id),
+    openWorktree: (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow),
+  });
   context.subscriptions.push(
     sidebar,
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     active,
-    new WorkstreamStatusBar(repository, active),
+    new WorkstreamStatusBar(repository, active, needs),
     decorations,
     vscode.window.registerFileDecorationProvider(decorations),
-    new AttentionNotifier(repository, (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow)),
+    needs,
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
@@ -255,7 +284,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.showJobLog', (arg?: unknown) => showJobLog(arg, jobLogs)),
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
+    vscode.commands.registerCommand('flotilla.showNeedsYou', () => needs.showList()),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
     vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
     vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),

@@ -411,6 +411,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.fixBacklogReview",
+        "title": "Fix a Stopped Review",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.planBacklog",
         "title": "Plan the Backlog with Claude",
         "category": "Flotilla",
@@ -500,6 +505,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.showJobLog",
+        "title": "Show CI Job Log",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.showNeedsYou",
+        "title": "Show Needs You…",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.closeTab",
         "title": "Close Tab",
         "category": "Flotilla",
@@ -537,6 +552,10 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "flotilla.showJobLog",
+          "when": "false"
+        },
         {
           "command": "flotilla.refresh",
           "when": "flotilla.state == ready"
@@ -807,6 +826,10 @@
         },
         {
           "command": "flotilla.openBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.fixBacklogReview",
           "when": "false"
         },
         {
@@ -1388,10 +1411,20 @@
           "minimum": 1,
           "description": "A 'working' agent report older than this is shown as last reported."
         },
-        "flotilla.notifyOnAttention": {
-          "type": "boolean",
-          "default": true,
-          "description": "Notify when a workstream starts waiting for input or reports an error."
+        "flotilla.notify": {
+          "type": "string",
+          "enum": [
+            "needsYou",
+            "all",
+            "off"
+          ],
+          "enumDescriptions": [
+            "One notification for what needs you (tickets asking a question, ready for review, approved, stopped; worktrees waiting for input or reporting an error), gathered for about a minute. Only the leading window shows it.",
+            "A notification for each of those as it happens.",
+            "No notifications. The Needs you count in the status bar still shows."
+          ],
+          "default": "needsYou",
+          "description": "Which notifications Flotilla shows for what needs you."
         },
         "flotilla.ci.notify": {
           "type": "string",
@@ -1536,6 +1569,11 @@
           ],
           "default": "propose",
           "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how)."
+        },
+        "flotilla.dev.githubApi": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
         }
       }
     },
@@ -1659,6 +1697,9 @@
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "vsce package",
     "playground": "node scripts/playground.mjs",
+    "bench": "node scripts/bench-refresh.mjs",
+    "debug-profile": "node scripts/debug-profile.mjs",
+    "fake-github": "node scripts/fake-github.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
