@@ -40,6 +40,7 @@ import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import { agentChoice, validModel } from './agentRunner';
+import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
 import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
@@ -274,11 +275,7 @@ export class TicketPanels implements vscode.Disposable {
     if (o.focus) this.focusOnPost.add(panel);
     panel.onDidDispose(() => this.panels.delete(id));
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      this.onMessage(id, panel, m).catch(async (e: unknown) => {
-        void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
-        // What the view showed at once (a status, a priority) didn't stick: the stored one goes back.
-        if (this.panels.get(id) === panel) await this.post(id, panel);
-      }),
+      this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
     );
   }
 
@@ -601,6 +598,9 @@ export class TicketPanels implements vscode.Disposable {
   /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
 
+  /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
+  private readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
+
   /** Sends a ticket's view; never leaves the tab waiting: a failure shows in it. */
   private async post(id: string, panel: vscode.WebviewPanel): Promise<void> {
     const seq = (this.posts.get(panel) ?? 0) + 1;
@@ -613,8 +613,12 @@ export class TicketPanels implements vscode.Disposable {
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       const showActivity = showActivityKept(this.deps.memento);
-      const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents, showActivity } };
-      void panel.webview.postMessage(message);
+      const next: TicketView = { ...view, agents, showActivity };
+      const update = ticketUpdate(this.sentViews.get(panel), next);
+      if (update) {
+        this.sentViews.set(panel, next);
+        void panel.webview.postMessage(update);
+      }
       if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
@@ -918,12 +922,34 @@ export class TicketPanels implements vscode.Disposable {
     return undefined;
   }
 
+  /**
+   * Handles a message of the tab, then posts the view (what it changed shows) and says it's done: the webview's
+   * "working…" for an action ends here, whether it posted, failed or returned early.
+   */
   private async onMessage(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
+    let failed = false;
+    try {
+      await this.handle(id, panel, m);
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      // A tab closed meanwhile has nothing to show.
+      if (this.panels.get(id) === panel) {
+        await this.post(id, panel);
+        if (m.type !== 'ready') void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+      }
+    }
+  }
+
+  private async handle(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
     const backlog = this.deps.backlog;
     switch (m.type) {
       case 'ready':
+        // The webview has nothing yet (or reloaded): the whole view goes again.
+        this.sentViews.delete(panel);
         break;
       case 'title': {
         const title = m.title.trim();
@@ -1143,7 +1169,6 @@ export class TicketPanels implements vscode.Disposable {
         break;
       }
     }
-    await this.post(id, panel);
   }
 
   /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
