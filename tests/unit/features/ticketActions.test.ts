@@ -5,6 +5,7 @@ describe('actionKey', () => {
   it('tells apart the actions of one type that do different things', () => {
     expect(actionKey({ type: 'start', agent: true })).not.toBe(actionKey({ type: 'start', agent: false }));
     expect(actionKey({ type: 'openCommit', hash: 'a1' })).not.toBe(actionKey({ type: 'openCommit', hash: 'b2' }));
+    expect(actionKey({ type: 'run', key: 'r1', index: 0 })).not.toBe(actionKey({ type: 'run', key: 'r1', index: 1 }));
     expect(actionKey({ type: 'userReview', verdict: 'approved', text: '' })).not.toBe(actionKey({ type: 'userReview', verdict: 'changes', text: '' }));
   });
 

@@ -171,6 +171,18 @@ function fakeTab() {
 }
 const noop = () => undefined;
 
+/** Waits (polling) until `check` finds something; gives up after ten seconds. */
+async function until(check, what) {
+  const end = performance.now() + 10_000;
+  let found = check();
+  while (!found) {
+    if (performance.now() > end) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    found = check();
+  }
+  return found;
+}
+
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 const fmt = (n) => n.toFixed(1).padStart(9);
 
@@ -233,7 +245,9 @@ async function main() {
     console.log(`  setup ${(setupMs / 1000).toFixed(1)} s (fixture in ${root})`);
     console.log('');
 
-    // Each measurement: a fresh tab (a whole view), then the action, on the open tab (its part).
+    // Each measurement: a fresh tab (a whole view), then the action, on the open tab (its part). The backlog watcher
+    // posts to the open tabs too: when its post supersedes ours, the view comes from that one, so each wait is for the
+    // message the measurement needs, not for the post that was awaited.
     const results = { open: [], openBytes: 0, status: [], statusBytes: 0, comment: [], commentBytes: 0 };
     for (let r = 0; r < opts.runs; r++) {
       const tab = fakeTab();
@@ -241,26 +255,23 @@ async function main() {
       panels.panels.set(ID, tab);
       const t0 = performance.now();
       await panels.post(ID, tab);
-      const shown = tab.posted.find((p) => p.m.type === 'ticket');
-      if (!shown) throw new Error('The tab got no view');
+      const shown = await until(() => tab.posted.find((p) => p.m.type === 'ticket'), 'the whole view');
       results.open.push(shown.at - t0);
-      results.openBytes = JSON.stringify(shown?.m ?? {}).length;
+      results.openBytes = JSON.stringify(shown.m).length;
 
       const s0 = performance.now();
       const before = tab.posted.length;
       await panels.onMessage(ID, tab, { type: 'status', status: r % 2 ? 'doing' : 'review' });
-      const statusPart = tab.posted.slice(before).find((p) => p.m.type === 'ticketParts' && 'item' in p.m.parts);
-      if (!statusPart) throw new Error('The status change sent no part');
+      const statusPart = await until(() => tab.posted.slice(before).find((p) => p.m.type === 'ticketParts' && 'item' in p.m.parts), 'the status part');
       results.status.push(statusPart.at - s0);
-      results.statusBytes = JSON.stringify(statusPart?.m ?? {}).length;
+      results.statusBytes = JSON.stringify(statusPart.m).length;
 
       const c0 = performance.now();
       const mark = tab.posted.length;
       await panels.onMessage(ID, tab, { type: 'comment', text: `Benchmark comment ${r}` });
-      const commentPart = tab.posted.slice(mark).find((p) => p.m.type === 'ticketParts' && p.m.activity);
-      if (!commentPart) throw new Error('The comment sent no entry part');
+      const commentPart = await until(() => tab.posted.slice(mark).find((p) => p.m.type === 'ticketParts' && p.m.activity), 'the comment entry');
       results.comment.push(commentPart.at - c0);
-      results.commentBytes = JSON.stringify(commentPart?.m ?? {}).length;
+      results.commentBytes = JSON.stringify(commentPart.m).length;
     }
 
     // What the webview does with a change, on the same ticket's view (its code, bundled from the source).

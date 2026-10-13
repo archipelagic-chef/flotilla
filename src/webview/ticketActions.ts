@@ -19,6 +19,8 @@ export function actionKey(m: TicketWebviewMessage): string {
       return `postEntry:${m.key}`;
     case 'checkout':
       return `checkout:${m.branch}`;
+    case 'run':
+      return `run:${m.key}:${m.index}`;
     default:
       return m.type;
   }

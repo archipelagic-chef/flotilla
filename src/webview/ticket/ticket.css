@@ -1177,3 +1177,8 @@ button.timeline-item:hover .timeline-text {
 .sending-body {
   white-space: pre-wrap;
 }
+/* A Run button in a report, while the host runs it: its label says so (set on click, cleared when it's done). */
+.run-button[data-busy]::after {
+  content: "  " attr(data-busy);
+  font-style: italic;
+}

@@ -45,10 +45,48 @@ function useWorking(message: TicketWebviewMessage): string | undefined {
   return working.get(actionKey(message));
 }
 
+/** Comments sent and not yet done with: each shows at once as an entry, marked "Sending…". */
+type SentComment = { text: string; date: string; at: number };
+let sendingComments: SentComment[] = [];
+const sendingListeners = new Set<() => void>();
+/** How many entries the view shows: a comment sent now is confirmed by an entry after these. */
+let shownEntries = 0;
+
+/** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
+function sendComment(text: string) {
+  sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
+  sendingListeners.forEach((f) => f());
+  act({ type: 'comment', text }, 'Sending…');
+}
+
+function useSending(): SentComment[] {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const listener = () => refresh((n) => n + 1);
+    sendingListeners.add(listener);
+    return () => void sendingListeners.delete(listener);
+  }, []);
+  return sendingComments;
+}
+
 /** Called when the host is done with an action: failed if it threw. */
 function finished(message: TicketWebviewMessage, failed: boolean) {
   working.delete(actionKey(message));
   notifyWorking();
+  if (message.type === 'comment') {
+    const i = sendingComments.findIndex((c) => c.text === message.text);
+    if (i >= 0) {
+      sendingComments = sendingComments.filter((_, j) => j !== i);
+      sendingListeners.forEach((f) => f());
+    }
+  }
+  if (message.type === 'run') {
+    // The Run button of a run block (set on click, in Rendered): its working state ends.
+    document.querySelectorAll<HTMLElement>(`[data-run-key="${CSS.escape(message.key)}"][data-run-index="${message.index}"]`).forEach((run) => {
+      run.removeAttribute('data-busy');
+      (run as HTMLButtonElement).disabled = false;
+    });
+  }
   doneListeners.forEach((f) => f(message, failed));
 }
 
@@ -194,7 +232,10 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
     // The Run button of a run block in an agent's report (the host puts it in the html).
     const run = (e.target as HTMLElement).closest<HTMLElement>('[data-run-key]');
     if (run) {
-      send({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) });
+      // The button is in the host's html: its working state is set here, and cleared when the host is done.
+      run.dataset.busy = 'Running…';
+      (run as HTMLButtonElement).disabled = true;
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -431,9 +472,9 @@ function DiscussPanel({ ticket }: { ticket: TicketView }) {
               <i class="codicon codicon-play" /> Start
             </ActionButton>
           )}
-          <button class="button secondary" onClick={() => send({ type: 'keepDiscussing' })} title="Dismisses this; the discussion goes on with your next comment">
+          <ActionButton class="button secondary" message={{ type: 'keepDiscussing' }} working="Continuing…" title="Dismisses this; the discussion goes on with your next comment">
             Keep discussing
-          </button>
+          </ActionButton>
         </>
       )}
     </div>
@@ -814,7 +855,7 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
   const texts = report.questions.map((q, i) => answerOf(q, answers[i]));
   const ready = interactive && texts.every(Boolean);
   const submit = () => {
-    if (ready) send({ type: 'comment', text: answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))) });
+    if (ready) sendComment(answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))));
   };
   return (
     <div class={`needs${answered ? ' answered' : ''}`}>
@@ -1135,17 +1176,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setTimeline(!timeline);
     send({ type: 'showActivity', shown: !timeline });
   };
-  // Comments sent and not yet done with: shown at once, marked as sending (`at`: the activity's length when sent).
-  const [sending, setSending] = useState<Array<{ text: string; date: string; at: number }>>([]);
+  const sending = useSending();
   useEffect(() => {
     const listener = (m: TicketWebviewMessage, failed: boolean) => {
-      if (m.type !== 'comment') return;
-      setSending((list) => {
-        const i = list.findIndex((p) => p.text === m.text);
-        return i < 0 ? list : list.filter((_, j) => j !== i);
-      });
       // It didn't post: what was written goes back into the box, so nothing is lost.
-      if (failed) setComment((draft) => (draft.trim() ? draft : m.text));
+      if (m.type === 'comment' && failed) setComment((draft) => (draft.trim() ? draft : m.text));
     };
     doneListeners.add(listener);
     return () => void doneListeners.delete(listener);
@@ -1156,8 +1191,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
   const post = () => {
     if (!comment.trim()) return;
-    setSending((list) => [...list, { text: comment, date: entryDate(new Date()), at: ticket.activity.length }]);
-    act({ type: 'comment', text: comment }, 'Sending…');
+    sendComment(comment);
     setComment('');
     if (tab && tab !== 'comment') setTab(undefined);
   };
@@ -1321,7 +1355,7 @@ interface MenuItem {
 }
 
 /** A button that opens a menu below it. */
-function Dropdown({ class: cls, button, label, items }: { class: string; button: ComponentChildren; label: string; items: MenuItem[] }) {
+function Dropdown({ class: cls, button, label, items, busy }: { class: string; button: ComponentChildren; label: string; items: MenuItem[]; busy?: string }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -1345,6 +1379,7 @@ function Dropdown({ class: cls, button, label, items }: { class: string; button:
         onClick={() => setOpen(!open)}
       >
         {button}
+        {busy && <WorkingTag label={busy} />}
         {items.length > 0 && <i class="codicon codicon-chevron-down chev-small" />}
       </button>
       {open && (
@@ -1383,9 +1418,11 @@ const LANE_ICON: Record<BacklogStatus, string> = {
 function StatusMenu({ ticket }: { ticket: TicketView }) {
   const remote = ticket.remote!;
   const moves = remote.edit?.transitions ?? [];
+  const moving = useWorking({ type: 'transition', id: '' });
   return (
     <Dropdown
       class="status-menu"
+      busy={moving}
       label={`Status: ${remote.statusName}${moves.length ? '. Change…' : ''}`}
       button={
         <>
@@ -1399,7 +1436,7 @@ function StatusMenu({ ticket }: { ticket: TicketView }) {
         label: t.name.toLowerCase() === t.to.toLowerCase() ? t.to : `${t.name} → ${t.to}`,
         icon: t.needs ? 'warning' : LANE_ICON[t.status],
         detail: t.needs ? `Needs ${t.needs.join(', ')}: done in the tracker` : undefined,
-        onSelect: () => send({ type: 'transition', id: t.id }),
+        onSelect: () => act({ type: 'transition', id: t.id }, 'Moving…'),
       }))}
     />
   );
@@ -1413,9 +1450,11 @@ function RemotePriority({ current, names }: { current?: string; names: string[] 
     return l ? PRIORITY[l].icon : 'circle-small';
   };
   const cur = level(current);
+  const saving = useWorking({ type: 'remotePriority', name: '' });
   return (
     <Dropdown
       class={`priority${cur ? ` p-${cur}` : ' unset'}`}
+      busy={saving}
       label={`Priority: ${current ?? 'none'}. Change…`}
       button={
         <>
@@ -1429,7 +1468,7 @@ function RemotePriority({ current, names }: { current?: string; names: string[] 
         icon: icon(n),
         class: level(n) ? `p-${level(n)}` : undefined,
         checked: n === current,
-        onSelect: () => send({ type: 'remotePriority', name: n }),
+        onSelect: () => act({ type: 'remotePriority', name: n }, 'Saving…'),
       }))}
     />
   );
@@ -1516,7 +1555,7 @@ function focusComment() {
  * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
  * On a remote one a comment goes to the tracker, so the options aren't buttons (Answer… writes it there, as you post).
  */
-function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string; agent?: string; local: boolean; stop?: () => void }) {
+function AskBlock({ ask, title, agent, local, stoppable }: { ask: Ask; title: string; agent?: string; local: boolean; stoppable: boolean }) {
   return (
     <div class="review-panel waiting ask">
       <i class="codicon codicon-question" />
@@ -1529,7 +1568,7 @@ function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string;
               <button
                 key={option}
                 class={`button${i ? ' secondary' : ''}`}
-                onClick={() => send({ type: 'comment', text: option })}
+                onClick={() => sendComment(option)}
                 title="Sends this as the answer"
               >
                 {option}
@@ -1541,10 +1580,10 @@ function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string;
       <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
         <i class="codicon codicon-comment" /> Answer…
       </button>
-      {stop && (
-        <button class="button secondary" onClick={stop} title="Stops the running agent and the handoffs">
+      {stoppable && (
+        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title="Stops the running agent and the handoffs">
           <i class="codicon codicon-debug-stop" /> Stop
-        </button>
+        </ActionButton>
       )}
     </div>
   );
@@ -1583,7 +1622,7 @@ function StateCard({ ticket }: { ticket: TicketView }) {
           title={status.title}
           agent={ticket.review?.implementer ?? chat?.agent}
           local={!ticket.remote}
-          stop={asking ? () => send({ type: 'stopReview' }) : undefined}
+          stoppable={asking}
         />
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
@@ -1665,6 +1704,7 @@ function App() {
     setPicked((p) => ({ ...p, ...change }));
     send(message);
   };
+  shownEntries = ticket.activity.length;
   const worktrees = ticket.worktrees;
   const done = ticket.item.status === 'done';
   return (
@@ -1774,13 +1814,14 @@ function App() {
           {!ticket.remote && (
             <>
               {ticket.canDiscuss && (
-                <button
+                <ActionButton
                   class="button secondary"
-                  onClick={() => send({ type: 'discuss' })}
+                  message={{ type: 'discuss' }}
+                  working="Starting…"
                   title="An agent talks it through with you here, and writes what's agreed into the description"
                 >
                   <i class="codicon codicon-comment-discussion" /> Discuss
-                </button>
+                </ActionButton>
               )}
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
