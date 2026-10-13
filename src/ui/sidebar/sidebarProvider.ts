@@ -10,7 +10,8 @@ import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { needOf } from '../../features/backlog/needs';
 import { summaryOf } from '../../features/backlog/ticket';
-import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
+import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
@@ -129,7 +130,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
         const need = needOf(item, ticket.activity);
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}), ...(need ? { need } : {}) };
+        // The ticket's run: its last run block (the one its Run button runs).
+        const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
+        const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
+        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}), ...(need ? { need } : {}), ...(run ? { run } : {}) };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.

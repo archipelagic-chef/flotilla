@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
+import { runLabel } from '../../features/backlog/runBlocks';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
 import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
@@ -334,7 +335,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.runnable })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -441,10 +442,11 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           </button>
         </span>
       )}
-      {!renaming && item.runnable && item.status === 'review' && (
+      {!renaming && item.run && (
         <button
           class="icon run-button"
           aria-label={`Run ${item.id}`}
+          data-tip={runLabel(item.run)}
           onClick={(e) => {
             e.stopPropagation();
             send({ type: 'backlog', op: 'run', id: item.id });

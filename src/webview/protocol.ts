@@ -5,6 +5,7 @@
 import type { ChangeKind } from '../core/git/porcelain';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { Need } from '../features/backlog/needs';
+import type { RunKind } from '../features/backlog/runBlocks';
 import type { ReviewFix } from '../features/backlog/review';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { CiJob, CiRun } from '../features/ci/githubActions';
@@ -24,8 +25,8 @@ export interface BacklogItemView extends BacklogItem {
   activity: number;
   /** An issue from an integration (Jira, GitHub Issues), not a local item. */
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
-  /** The ticket has a run block (BL-19 finds it): its card gets a Run button and a Run menu item. */
-  runnable?: boolean;
+  /** The ticket's run: its last run block (BL-19 finds it). Its row gets a Run button and a Run menu item. */
+  run?: { kind: RunKind; title?: string; lines: string[] };
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
   /** Why it waits on the user (its row in "Needs you"). */
