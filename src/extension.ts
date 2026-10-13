@@ -177,7 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(reviews);
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
-  context.subscriptions.push(backlog.watch(noteDescriptions));
+  context.subscriptions.push(backlog.watch(() => noteDescriptions()));
   noteDescriptions();
   tickets.useReviews(reviews);
   // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.

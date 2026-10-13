@@ -33,7 +33,8 @@ import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer } from '../../features/backlog/report';
-import { ticketCommits, versionCommits } from '../../features/history/log';
+import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
+import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
@@ -85,14 +86,23 @@ function realPath(p: string): string {
   return fs.existsSync(p) ? fs.realpathSync(p) : p;
 }
 
+/** Rendered Markdown by the text's hash: an entry never changes, so it's rendered once, not at every view. */
+const rendered = new Map<string, string>();
+const RENDERED_MAX = 2000;
+
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
 async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
   if (!text.trim()) return '';
-  let html: string;
-  try {
-    html = await vscode.commands.executeCommand<string>('markdown.api.render', text);
-  } catch {
-    html = `<pre>${text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
+  const key = crypto.createHash('sha1').update(text).digest('hex');
+  let html = rendered.get(key);
+  if (html === undefined) {
+    try {
+      html = await vscode.commands.executeCommand<string>('markdown.api.render', text);
+      rendered.set(key, html);
+      if (rendered.size > RENDERED_MAX) rendered.delete(rendered.keys().next().value!);
+    } catch {
+      html = `<pre>${text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
+    }
   }
   // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
@@ -129,6 +139,11 @@ const IMAGE_TYPES: Record<string, string> = {
   '.avif': 'image/avif',
 };
 
+/** Image files as data: URIs, while each keeps its time and size; the oldest go once they fill IMAGE_CACHE_CHARS. */
+const images = new Map<string, { stamp: string; uri: string }>();
+const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
+let imageChars = 0;
+
 /** An image file as a data: URI (at most MAX_IMAGE_BYTES); undefined if it isn't one, or isn't there. */
 async function imageDataUri(file: string): Promise<string | undefined> {
   const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
@@ -136,7 +151,20 @@ async function imageDataUri(file: string): Promise<string | undefined> {
   try {
     const stat = await fs.promises.stat(file);
     if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return undefined;
-    return `data:${type};base64,${(await fs.promises.readFile(file)).toString('base64')}`;
+    const stamp = `${stat.mtimeMs}:${stat.size}`;
+    const known = images.get(file);
+    if (known?.stamp === stamp) return known.uri;
+    const uri = `data:${type};base64,${(await fs.promises.readFile(file)).toString('base64')}`;
+    if (known) imageChars -= known.uri.length;
+    images.delete(file);
+    images.set(file, { stamp, uri });
+    imageChars += uri.length;
+    for (const [old, v] of images) {
+      if (imageChars <= IMAGE_CACHE_CHARS) break;
+      images.delete(old);
+      imageChars -= v.uri.length;
+    }
+    return uri;
   } catch {
     return undefined;
   }
@@ -171,6 +199,18 @@ interface RemoteRead {
   edit?: RemoteEditOptions;
 }
 
+/** What a ticket's view shows of a worktree: a change to any of it is a change to the view. */
+function workstreamState(w: Workstream) {
+  return {
+    branch: w.worktree.branch,
+    attention: w.attention,
+    message: w.agent?.message,
+    changes: w.changes.length,
+    sync: w.sync,
+    chats: w.chats.map((c) => [c.id, c.state, c.message, c.title, c.firstPrompt, c.agent, c.model, c.effort, c.updatedAt]),
+  };
+}
+
 /** Ticket editor tabs: one per backlog item, kept up to date with the ticket file and the item's worktree. */
 export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
@@ -182,7 +222,7 @@ export class TicketPanels implements vscode.Disposable {
   /** The review loop, for the tickets' review panel (created after the tickets). */
   useReviews(reviews: ReviewLoop): void {
     this.reviews = reviews;
-    this.subscriptions.push(reviews.onDidChange(() => this.refreshAll()));
+    this.subscriptions.push(reviews.onDidChange((id) => this.refresh(new Set([id]))));
   }
 
   /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
@@ -193,8 +233,8 @@ export class TicketPanels implements vscode.Disposable {
 
   constructor(private readonly deps: TicketDeps) {
     this.subscriptions.push(
-      { dispose: deps.repository.onDidChange(() => this.refreshAll()).dispose },
-      deps.backlog.watch(() => this.refreshAll()),
+      { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
+      deps.backlog.watch((changed) => void this.backlogChanged(changed)),
       // Refreshed issues: read their details again too.
       deps.integrations.onDidChange(() => {
         this.details.clear();
@@ -234,7 +274,11 @@ export class TicketPanels implements vscode.Disposable {
     if (o.focus) this.focusOnPost.add(panel);
     panel.onDidDispose(() => this.panels.delete(id));
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+      this.onMessage(id, panel, m).catch(async (e: unknown) => {
+        void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+        // What the view showed at once (a status, a priority) didn't stick: the stored one goes back.
+        if (this.panels.get(id) === panel) await this.post(id, panel);
+      }),
     );
   }
 
@@ -494,6 +538,66 @@ export class TicketPanels implements vscode.Disposable {
     for (const [id, panel] of this.panels) void this.post(id, panel);
   }
 
+  /** Refreshes the open tickets with these ids; the others keep their view. */
+  private refresh(ids: ReadonlySet<string>): void {
+    for (const [id, panel] of this.panels) if (ids.has(id)) void this.post(id, panel);
+  }
+
+  /** Each item as last seen in backlog.json (JSON): what changed in it is found by comparing. */
+  private itemSigs = new Map<string, string>();
+
+  /**
+   * The backlog folder changed: the tickets whose file changed, and whose item in backlog.json did (and its parent and
+   * parts, whose lists show it). Other open tickets keep their view.
+   */
+  private async backlogChanged(files: ReadonlySet<string>): Promise<void> {
+    const data = await this.deps.backlog.read();
+    const sigs = new Map(data.items.map((i) => [i.id, JSON.stringify(i)]));
+    const changed = new Set<string>();
+    for (const [id, sig] of sigs) if (this.itemSigs.get(id) !== sig) changed.add(id);
+    for (const id of this.itemSigs.keys()) if (!sigs.has(id)) changed.add(id);
+    this.itemSigs = sigs;
+    const ids = ticketsForBacklogChange({ items: data.items, changed, files });
+    if (ids === 'all') return this.refreshAll();
+    this.refresh(ids);
+  }
+
+  /** Each worktree as last seen (its branch, state, chats), to tell what changed. */
+  private workstreamSigs = new Map<string, string>();
+
+  /**
+   * The worktrees or the refs changed: the tickets whose worktrees or agents changed, those a changed chat was started
+   * for, and, when a ref moved, those whose branch moved or that a new commit mentions. Other tickets keep their view.
+   */
+  private async repositoryChanged(): Promise<void> {
+    const current = this.deps.repository.current;
+    const sigs = new Map(current.map((w) => [w.key, JSON.stringify(workstreamState(w))]));
+    const changed = new Set<string>();
+    for (const [key, sig] of sigs) if (this.workstreamSigs.get(key) !== sig) changed.add(key);
+    for (const key of this.workstreamSigs.keys()) if (!sigs.has(key)) changed.add(key);
+    this.workstreamSigs = sigs;
+    if (!this.panels.size) return;
+    const moves = await movesSince(this.deps.mainRoot);
+    if (!changed.size && !moves) return;
+    const data = await this.deps.backlog.read();
+    const chatStarts = current
+      .filter((w) => changed.has(w.key))
+      .flatMap((w) => w.chats.flatMap((c) => agentChatItem(c.firstPrompt)?.item ?? []));
+    const open: OpenTicket[] = [...this.panels].map(([id, panel]) => {
+      const item = data.items.find((i) => i.id === id);
+      return {
+        id,
+        ids: [id, ...(item?.links ?? []).map((l) => l.id)],
+        keys: new Set([...(item ? this.worktreesOf(item).map((w) => w.key) : []), ...(this.shown.get(panel) ?? [])]),
+        branches: (branch: string) => !!item && branchMatches(item, branch),
+      };
+    });
+    this.refresh(ticketsForRepositoryChange({ open, changedKeys: changed, chatStarts, moves }));
+  }
+
+  /** The worktrees and agents' keys a ticket's view showed, per panel: a change to one of them refreshes it. */
+  private readonly shown = new WeakMap<vscode.WebviewPanel, Set<string>>();
+
   /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
 
@@ -507,6 +611,7 @@ export class TicketPanels implements vscode.Disposable {
       const chats = shown ? this.agentChats(shown, view.activity) : [];
       // Each agent with the reports it signed.
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
+      this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       const showActivity = showActivityKept(this.deps.memento);
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents, showActivity } };
       void panel.webview.postMessage(message);
@@ -530,7 +635,7 @@ export class TicketPanels implements vscode.Disposable {
         const { edit, priorityName, ...content } = await this.remoteView({ ...plain, remote }, panel.webview);
         send({ ...base, ...content, remote: base.remote && { ...base.remote, edit, priorityName: priorityName ?? base.remote.priorityName } });
       } else {
-        const ticket = await this.deps.backlog.readTicket(item);
+        const ticket = await this.deps.backlog.readTicketCached(item);
         send({
           ...base,
           description: ticket.description,

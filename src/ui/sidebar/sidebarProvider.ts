@@ -124,7 +124,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const issues = this.deps.integrations.issues();
     const items = await Promise.all(
       data.items.map(async (item): Promise<BacklogItemView> => {
-        const ticket = await store.readTicket(item);
+        const ticket = await store.readTicketCached(item);
         const linked = item.links?.map((l) => {
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };

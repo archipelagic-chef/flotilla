@@ -95,7 +95,8 @@ export class ReviewLoop implements vscode.Disposable {
   private readonly deferred = new Map<string, { since: string; again: (item: BacklogItem) => Promise<void> }>();
   private queue: Promise<void> = Promise.resolve();
   private readonly watcher: vscode.Disposable;
-  private readonly changed = new vscode.EventEmitter<void>();
+  /** An item's review changed (by its id). */
+  private readonly changed = new vscode.EventEmitter<string>();
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: ReviewDeps) {
@@ -238,7 +239,7 @@ export class ReviewLoop implements vscode.Disposable {
     if (!this.deferred.has(item.id))
       await this.note(item.id, `Waiting for memory: ${formatMemory(short.freeMB)} is left once the agents starting are counted, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. It starts when there's room.`);
     this.deferred.set(item.id, { since, again });
-    this.changed.fire();
+    this.changed.fire(item.id);
     return undefined;
   }
 
@@ -258,7 +259,7 @@ export class ReviewLoop implements vscode.Disposable {
       }),
       { by },
     );
-    this.changed.fire();
+    this.changed.fire(id);
   }
 
   private async note(id: string, body: string): Promise<void> {
