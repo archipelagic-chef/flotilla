@@ -100,7 +100,22 @@ export function pickRunBlock(blocks: readonly PlacedRunBlock[], ref?: { key: str
   return ref ? blocks.find((b) => b.key === ref.key && b.index === ref.index) : blocks[blocks.length - 1];
 }
 
-/** The ticket's run: the last run block of its reports (the Run button in review runs it), or undefined if none. */
+/** What a run block runs, as its button's tooltip says it: "Run npm run build", "Launch Run Extension", "Open http://…". */
+export function runLabel(run: Pick<RunBlock, 'kind' | 'title' | 'lines'>): string {
+  const first = run.lines[0];
+  switch (run.kind) {
+    case 'shell':
+      return `Run ${run.title ?? first ?? 'its commands'}`;
+    case 'launch':
+      return `Launch ${run.title ?? 'its debug configuration'}`;
+    case 'task':
+      return `Run task ${run.title ?? 'its task'}`;
+    case 'open':
+      return `Open ${first ?? run.title ?? 'its link'}`;
+  }
+}
+
+/** The ticket's run: the last run block of its reports (the Run buttons run it), or undefined if none. */
 export function latestRun(entries: readonly TicketEntry[], key: (entry: TicketEntry) => string): RunBlockRef | undefined {
   const last = pickRunBlock(placedRunBlocks(entries, key));
   if (!last) return undefined;

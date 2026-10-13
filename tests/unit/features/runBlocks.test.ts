@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../../src/features/backlog/runBlocks';
+import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 describe('run blocks', () => {
   it('reads each kind, with its title or name', () => {
@@ -128,5 +128,21 @@ describe('run blocks', () => {
     expect(pickRunBlock(blocks, { key: '2026-10-11 08:00', index: 0 })).toBeUndefined();
     expect(pickRunBlock(blocks, { key: '2026-10-11 10:00', index: 0 })).toBeUndefined();
     expect(pickRunBlock([], undefined)).toBeUndefined();
+  });
+});
+
+describe('the label of a run', () => {
+  it('says what each kind runs', () => {
+    expect(runLabel({ kind: 'shell', title: 'Build and open a test window', lines: ['npm run build'] })).toBe('Run Build and open a test window');
+    expect(runLabel({ kind: 'shell', lines: ['npm run build', 'code --new-window'] })).toBe('Run npm run build');
+    expect(runLabel({ kind: 'launch', title: 'Run Extension', lines: [] })).toBe('Launch Run Extension');
+    expect(runLabel({ kind: 'task', title: 'build', lines: [] })).toBe('Run task build');
+    expect(runLabel({ kind: 'open', lines: ['http://localhost:5173'] })).toBe('Open http://localhost:5173');
+  });
+
+  it('says something when the block has no title or lines', () => {
+    expect(runLabel({ kind: 'shell', lines: [] })).toBe('Run its commands');
+    expect(runLabel({ kind: 'launch', lines: [] })).toBe('Launch its debug configuration');
+    expect(runLabel({ kind: 'open', lines: [] })).toBe('Open its link');
   });
 });
