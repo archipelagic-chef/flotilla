@@ -140,6 +140,17 @@ export function releaseStart(slot: number | undefined): void {
   if (slot !== undefined) starting.end(slot);
 }
 
+/**
+ * What a finished run says, from its exit code and output (stdout is its JSON result). A run that exits 0 but whose
+ * result is an error failed too, and a usage limit it hit is an outcome of its own (it goes on when that resets).
+ */
+export function agentOutcome(o: { code: number | null; stdout: string; stderr: string; now: Date }): AgentResult {
+  const failed = o.code !== 0 || /"is_error"\s*:\s*true/.test(o.stdout);
+  if (!failed) return { code: o.code, reply: resultOf(o.stdout) };
+  const limit = parseUsageLimit(`${o.stdout}\n${o.stderr}`, o.now);
+  return { code: o.code, error: o.stderr.trim() || resultText(o.stdout) || `exit code ${o.code}`, ...(limit ? { limit } : {}) };
+}
+
 export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
@@ -239,15 +250,9 @@ export function runAgentHeadless(o: {
     });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
-      // A run that failed (or whose result is an error) may have hit a limit: it goes on when that resets.
-      const failed = code !== 0 || /"is_error"\s*:\s*true/.test(stdout);
-      const limit = failed ? parseUsageLimit(`${stdout}\n${stderr}`, new Date()) : undefined;
-      if (limit) o.output.appendLine(`${o.name} hit a ${limit.kind} limit; it goes on at ${limit.until.toLocaleString()}.`);
-      resolve(
-        code === 0 && !limit
-          ? { code, reply: resultOf(stdout) }
-          : { code, error: stderr.trim() || resultText(stdout) || `exit code ${code}`, ...(limit ? { limit } : {}) },
-      );
+      const result = agentOutcome({ code, stdout, stderr, now: new Date() });
+      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
+      resolve(result);
     });
   });
   return { sessionId, done, stop: () => child.kill() };
