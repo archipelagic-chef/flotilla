@@ -60,6 +60,20 @@ export interface TicketDeps {
   revealWorktree(key: string): void;
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
+  /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
+  memento: vscode.Memento;
+}
+
+/** The key the "Show activity" choice is kept under in the memento. */
+const SHOW_ACTIVITY_KEY = 'flotilla.ticket.showActivity';
+
+/** Whether the user keeps Flotilla's notes open (for every ticket, in every window). */
+export function showActivityKept(memento: vscode.Memento): boolean {
+  return memento.get<boolean>(SHOW_ACTIVITY_KEY, false);
+}
+
+export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thenable<void> {
+  return memento.update(SHOW_ACTIVITY_KEY, shown);
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -479,16 +493,17 @@ export class TicketPanels implements vscode.Disposable {
     const seq = (this.posts.get(panel) ?? 0) + 1;
     this.posts.set(panel, seq);
     let shown: BacklogItem | undefined;
-    const send = (view: Omit<TicketView, 'agents'>) => {
+    const send = (view: Omit<TicketView, 'agents' | 'showActivity'>) => {
       if (this.posts.get(panel) !== seq) return;
       const chats = shown ? this.agentChats(shown, view.activity) : [];
       // Each agent with the reports it signed.
       const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
-      const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
+      const showActivity = showActivityKept(this.deps.memento);
+      const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents, showActivity } };
       void panel.webview.postMessage(message);
       if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
     };
-    let base: Omit<TicketView, 'agents'> | undefined;
+    let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
     try {
       const item = await this.item(id);
       if (!item) {
@@ -541,7 +556,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** A ticket's view without its description and activity. */
-  private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents'> {
+  private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -814,6 +829,10 @@ export class TicketPanels implements vscode.Disposable {
           if (before.trim() !== m.text.trim()) await backlog.noteDescriptions({ id, before, by: 'You' });
         }
         break;
+      case 'showActivity':
+        // Remembered for the user, and every ticket shows it the same way; no view changes.
+        await keepShowActivity(this.deps.memento, m.shown);
+        return;
       case 'comment':
         if (!m.text.trim()) return;
         if (item.remote) {

@@ -1016,22 +1016,112 @@ button.work-row:hover {
 .agent-choice.unset > .priority-button {
   color: var(--vscode-descriptionForeground);
 }
-/* A commit among the activity: one quiet line, without a box. */
-.entry.kind-commit {
-  padding: 0 12px;
-  border: none;
+/* The state card's ask: the question, and its numbered options as the answers. */
+.review-panel.ask {
+  align-items: flex-start;
 }
-.commit-line {
+.ask-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-question {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* The description folds to its first lines when the ticket has activity. */
+.description.folded {
+  max-height: 9em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 65%, transparent);
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+.fold-toggle {
+  margin-top: 4px;
+}
+
+/* Older entries fold to one line each, opened by a click. */
+.entry.folded {
+  padding: 0;
+}
+.entry-fold {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
   min-width: 0;
+  padding: 6px 12px;
   font-size: 12px;
   color: var(--vscode-foreground);
   text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
-.commit-line .subject {
+.entry-fold strong {
+  font-weight: 600;
+}
+.entry-fold .fold-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.fold-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+.activity-toggle {
+  margin: 4px 0 8px;
+}
+
+/* Flotilla's notes and the commits: a compact, grey timeline. */
+.timeline {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0 0 0 10px;
+  border-left: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.timeline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+}
+button.timeline-item {
+  cursor: pointer;
+}
+button.timeline-item:hover .timeline-text {
+  text-decoration: underline;
+}
+.timeline-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;

@@ -4,9 +4,11 @@ import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from 
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
+import { summaryOf } from '../../features/backlog/ticket';
 import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
+import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -182,6 +184,16 @@ function Description({ ticket }: { ticket: TicketView }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const editable = !ticket.remote || !!ticket.remote.edit?.canEditDescription;
   const jira = ticket.remote?.kind === 'jira';
+  // With activity, the description folds to its first lines (the history is what's new).
+  const foldable = ticket.activity.length > 0;
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const text = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // Measured while folded only: unfolded, it always fits.
+    const el = text.current;
+    if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [ticket.descriptionHtml, foldable, expanded]);
   const save = () => {
     if (draft !== undefined && draft !== ticket.description) send({ type: 'description', text: draft });
     setDraft(undefined);
@@ -206,9 +218,16 @@ function Description({ ticket }: { ticket: TicketView }) {
       {ticket.loading ? (
         <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
       ) : draft === undefined ? (
-        <div onDblClick={() => editable && setDraft(ticket.description)}>
-          <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
-        </div>
+        <>
+          <div ref={text} class={foldable && !expanded ? 'description folded' : 'description'} onDblClick={() => editable && setDraft(ticket.description)}>
+            <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or have Claude write it.'} />
+          </div>
+          {foldable && (overflows || expanded) && (
+            <button class="text-button fold-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+              <i class={`codicon codicon-chevron-${expanded ? 'up' : 'down'}`} /> {expanded ? 'Fold the description' : 'Show the whole description'}
+            </button>
+          )}
+        </>
       ) : (
         <>
           <MarkdownBox
@@ -821,18 +840,12 @@ function withCommits<E extends { date: string }>(entries: E[], commits: TicketVi
   return out;
 }
 
-const TABS: Array<{ kind?: EntryKind; label: string }> = [
-  { label: 'All' },
-  { kind: 'comment', label: 'Comments' },
-  { kind: 'agent', label: 'Agent Reports' },
-  { kind: 'history', label: 'History' },
-];
+const TABS: Array<{ kind?: EntryKind; label: string }> = [{ label: 'All' }, { kind: 'comment', label: 'Comments' }, { kind: 'agent', label: 'Agent Reports' }];
 
 const EMPTY: Record<string, string> = {
   all: 'No comments or reports yet. Agents report here as they work.',
   comment: 'No comments yet.',
   agent: 'No agent reports yet. Start an agent: it reports here as it works.',
-  history: 'Nothing has happened yet.',
 };
 
 /** A row of the feed: an entry, or a commit. */
@@ -844,7 +857,7 @@ const feedRound = (f: FeedRow): RoundInfo => ('commit' in f ? { part: 'round' } 
 const rowKey = (f: FeedRow, ticket: TicketView) => ('commit' in f ? `commit-${f.commit.hash}` : `entry-${ticket.activity.indexOf(f)}`);
 
 /** One row of the feed: a commit, or an entry (a comment, an agent's report, a note). */
-function FeedRowView({ f, ticket }: { f: FeedRow; ticket: TicketView }) {
+function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; onFold?: () => void }) {
   if ('commit' in f) {
     const c = f.commit;
     return (
@@ -895,6 +908,11 @@ function FeedRowView({ f, ticket }: { f: FeedRow; ticket: TicketView }) {
         {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
           <button class="text-button post-entry" onClick={() => send({ type: 'postEntry', key: e.key! })} title="Shows what will be posted and asks first">
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
+          </button>
+        )}
+        {onFold && (
+          <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
+            <i class="codicon codicon-chevron-up" /> Fold
           </button>
         )}
       </div>
@@ -949,9 +967,75 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
 const ASK_FOR_RUN =
   'Please end your report with a run block: a fenced block with the info string `run`, and the commands that try the work (or a `launch`, `task` or `open` block), so it can be run from here.';
 
+/** Flotilla's notes and the commits, in time order: what happened, behind "Show activity". */
+function Timeline({ ticket }: { ticket: TicketView }) {
+  const notes = ticket.activity.filter((e) => kindOf(e.author) === 'history');
+  const rows = withCommits(notes, ticket.commits);
+  if (!rows.length) return <div class="empty-text">Nothing has happened yet.</div>;
+  return (
+    <ol class="timeline">
+      {rows.map((f, i) => {
+        if ('commit' in f) {
+          const c = f.commit;
+          return (
+            <li key={c.hash} class="timeline-row">
+              <button
+                class="timeline-item commit"
+                onClick={() => send({ type: 'openCommit', hash: c.hash })}
+                title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
+              >
+                <i class="codicon codicon-git-commit" />
+                <span class="hash">{c.short}</span>
+                <span class="timeline-text">{c.subject}</span>
+                <span class="muted">{ago(c.date)}</span>
+              </button>
+            </li>
+          );
+        }
+        const e = f;
+        const chat = e.chat && !('pending' in e.chat) ? e.chat : undefined;
+        return (
+          <li key={`${e.date}${i}`} class="timeline-row">
+            <span class="timeline-item">
+              <span class="muted">{e.date}</span>
+              <span class="timeline-text">{summaryOf(e.body) ?? ''}</span>
+            </span>
+            {chat && (
+              <button
+                class="chat-chip"
+                onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })}
+                title={`Open the chat "${chat.title}" in Claude Code`}
+              >
+                <i class="codicon codicon-comment-discussion" />
+                <span class="chat-chip-title">{chat.title}</span>
+              </button>
+            )}
+            {e.chat && 'pending' in e.chat && <ChatCard chat={e.chat} />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
+  const [timeline, setTimeline] = useState(ticket.showActivity);
+  // The entries (by their place in the activity) the user opened: all but the latest report fold to a line.
+  const [opened, setOpened] = useState<Set<number>>(() => new Set());
+  useEffect(() => setTimeline(ticket.showActivity), [ticket.showActivity]);
+  const toggleOpened = (i: number) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const toggleTimeline = () => {
+    setTimeline(!timeline);
+    send({ type: 'showActivity', shown: !timeline });
+  };
   const post = () => {
     if (!comment.trim()) return;
     send({ type: 'comment', text: comment });
@@ -973,14 +1057,17 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
-  const shown = ticket.activity.filter((e) => !tab || kindOf(e.author) === tab);
-  // Commits are part of what happened: in All and History, in time order among the entries.
-  const commits = !tab || tab === 'history' ? ticket.commits : [];
-  const feed = withCommits(shown, commits);
-  // In All, a review's rounds fold into one line, opened to see them (rounds.ts); the other tabs show every entry.
+  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's entry is open,
+  // older ones are folded to a line each (opened by a click).
+  const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
+  const inConversation = (e: TicketView['activity'][number]) => kindOf(e.author) !== 'history' && (!tab || kindOf(e.author) === tab);
+  // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
+  // which then stay in the timeline: a fold shows the reviews and revisions.
   const groups: Array<FeedGroup<FeedRow>> = tab
-    ? feed.map((item) => ({ item }))
-    : foldRounds(feed, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer });
+    ? ticket.activity.filter(inConversation).map((item) => ({ item }))
+    : foldRounds<FeedRow>(ticket.activity, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer })
+        .map((g) => ('fold' in g ? { fold: { ...g.fold, items: g.fold.items.filter((f) => !('commit' in f) && inConversation(f)) } } : g))
+        .filter((g) => ('fold' in g ? g.fold.items.length > 0 : !('commit' in g.item) && inConversation(g.item)));
   return (
     <section class="block">
       <div class="block-head">
@@ -988,8 +1075,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
-          const count =
-            ticket.activity.filter((e) => !t.kind || kindOf(e.author) === t.kind).length + (!t.kind || t.kind === 'history' ? ticket.commits.length : 0);
+          const count = ticket.activity.filter((e) => kindOf(e.author) !== 'history' && (!t.kind || kindOf(e.author) === t.kind)).length;
           return (
             <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
               {t.label}
@@ -998,16 +1084,31 @@ function Activity({ ticket }: { ticket: TicketView }) {
           );
         })}
       </div>
-      {!feed.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
+      {!groups.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
-        {groups.map((g) =>
-          'fold' in g ? (
-            <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />
-          ) : (
-            <FeedRowView key={rowKey(g.item, ticket)} f={g.item} ticket={ticket} />
-          ),
-        )}
+        {groups.map((g) => {
+          if ('fold' in g) return <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />;
+          const e = g.item as TicketView['activity'][number];
+          const i = ticket.activity.indexOf(e);
+          if (e !== latest && !opened.has(i)) {
+            return (
+              <li key={i} class={`entry folded kind-${kindOf(e.author)}`}>
+                <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
+                  <i class="codicon codicon-chevron-right" />
+                  <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
+                  {e.date && <span class="muted">{e.date}</span>}
+                  <span class="fold-first">{summaryOf(e.body) ?? ''}</span>
+                </button>
+              </li>
+            );
+          }
+          return <FeedRowView key={i} f={e} ticket={ticket} onFold={e !== latest ? () => toggleOpened(i) : undefined} />;
+        })}
       </ol>
+      <button class="text-button activity-toggle" aria-expanded={timeline} onClick={toggleTimeline}>
+        <i class={`codicon codicon-chevron-${timeline ? 'down' : 'right'}`} /> {timeline ? 'Hide activity' : 'Show activity'}
+      </button>
+      {timeline && <Timeline ticket={ticket} />}
       <div class="comment-box">
         <MarkdownBox
           value={comment}
@@ -1269,6 +1370,120 @@ function AgentPicker({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/** Focuses the comment box (where answers go), scrolled into view. */
+function focusComment() {
+  const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+  box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  box?.focus();
+}
+
+/**
+ * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
+ * On a remote one a comment goes to the tracker, so the options aren't buttons (Answer… writes it there, as you post).
+ */
+function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string; agent?: string; local: boolean; stop?: () => void }) {
+  return (
+    <div class="review-panel waiting ask">
+      <i class="codicon codicon-question" />
+      <div class="ask-text">
+        <strong>{title}</strong>
+        {ask.question && <div class="ask-question">{ask.question}</div>}
+        {local && ask.options.length > 0 && (
+          <div class="ask-options">
+            {ask.options.map((option, i) => (
+              <button
+                key={option}
+                class={`button${i ? ' secondary' : ''}`}
+                onClick={() => send({ type: 'comment', text: option })}
+                title="Sends this as the answer"
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
+        <i class="codicon codicon-comment" /> Answer…
+      </button>
+      {stop && (
+        <button class="button secondary" onClick={stop} title="Stops the running agent and the handoffs">
+          <i class="codicon codicon-debug-stop" /> Stop
+        </button>
+      )}
+    </div>
+  );
+}
+
+const STATUS_ICON: Record<string, string> = {
+  waiting: 'comment-discussion',
+  working: 'rocket',
+  done: 'pass-filled',
+  idle: 'circle-large-outline',
+};
+
+/**
+ * The top of the ticket: what's happening now, what an agent asks (with its options), and the actions the state allows.
+ * A review, or a clean-up of the history, has its own panel. A review that asks shows its question here instead of its
+ * own panel's sentence, so the question is in one place. Remote tickets show questions too (their local reports are
+ * here), but the options only as text.
+ */
+function StateCard({ ticket }: { ticket: TicketView }) {
+  const status = ticketStatus({
+    status: ticket.item.status,
+    review: ticket.review,
+    agents: ticket.agents,
+    activity: ticket.activity,
+    hasWork: ticket.worktrees.length > 0 || ticket.branches.length > 0,
+  });
+  // The chat an agent works in, or waits in (to open it).
+  const chat = ticket.agents.find((a) => a.state === 'waiting-for-input') ?? ticket.agents.find((a) => a.state === 'working');
+  const notStarted = ticket.item.status === 'todo' && !ticket.worktrees.length && !ticket.branches.length;
+  const asking = !!status.ask && ticket.review?.state === 'asking';
+  return (
+    <>
+      {status.ask && (
+        <AskBlock
+          ask={status.ask}
+          title={status.title}
+          agent={ticket.review?.implementer ?? chat?.agent}
+          local={!ticket.remote}
+          stop={asking ? () => send({ type: 'stopReview' }) : undefined}
+        />
+      )}
+      {ticket.review && !asking ? (
+        <ReviewPanel ticket={ticket} />
+      ) : ticket.rewrite ? (
+        <CleanUpPanel ticket={ticket} />
+      ) : (
+        !status.ask && (
+          <div class={`review-panel ${status.tone}`}>
+            <i class={`codicon codicon-${STATUS_ICON[status.tone]}`} />
+            <span class="review-text">
+              <strong>{status.title}</strong>
+              {status.detail && <span class="muted"> “{status.detail}”</span>}
+            </span>
+            {chat && (
+              <button class="button secondary" onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
+                <i class="codicon codicon-comment-discussion" /> Open Chat
+              </button>
+            )}
+            {notStarted && (
+              <button
+                class="button"
+                onClick={() => send({ type: 'start', agent: true })}
+                title="Creates its worktree and starts an agent there; it reports below"
+              >
+                <i class="codicon codicon-play" /> Run
+              </button>
+            )}
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
 const AGENT_STATE_CLASS: Record<string, string | undefined> = {
   'waiting-for-input': 'waiting',
   error: 'error',
@@ -1373,6 +1588,7 @@ function App() {
             </button>
           )}
         </div>
+        <StateCard ticket={ticket} />
         <div class="toolbar">
           {!done && (
             <button
@@ -1421,8 +1637,6 @@ function App() {
             </>
           )}
         </div>
-        {ticket.review && <ReviewPanel ticket={ticket} />}
-        {ticket.rewrite && <CleanUpPanel ticket={ticket} />}
       </header>
       {ticket.error && (
         <div class="error-note">
@@ -1430,10 +1644,10 @@ function App() {
         </div>
       )}
       <Description ticket={ticket} />
+      <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
       {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
       {ticket.agents.length > 0 && <Agents ticket={ticket} />}
-      <Activity ticket={ticket} />
     </main>
   );
 }
