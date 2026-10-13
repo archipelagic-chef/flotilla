@@ -204,6 +204,8 @@ export type HostMessage =
   | { type: 'ci'; views: Record<string, CiView> }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
+  /** The repository is on a slow drive (undefined: it isn't). */
+  | { type: 'storage'; slow?: SlowStorageView }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** The files a commit changed (against its first parent). */
@@ -235,6 +237,12 @@ export interface AutopilotState {
   waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
+}
+
+/** A repository on a slow drive: what the Overview says, and how to fix it. */
+export interface SlowStorageView {
+  message: string;
+  fix: string;
 }
 
 export interface Target {

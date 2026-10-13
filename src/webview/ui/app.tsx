@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type SlowStorageView } from '../protocol';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { CiBody } from './ci';
@@ -123,6 +123,7 @@ export function App() {
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
+  const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
@@ -232,6 +233,9 @@ export function App() {
           return;
         case 'active':
           setActiveState(m.key);
+          return;
+        case 'storage':
+          setSlow(m.slow);
           return;
         case 'tabs':
           setClosed(new Set(m.closed));
@@ -503,6 +507,7 @@ export function App() {
         closed={closed}
         ci={ci}
         missing={missingExclusions}
+        slow={slow}
         onSelect={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);

@@ -44,6 +44,8 @@ import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
+import { StorageMonitor } from './ui/storage';
+import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
 const BACKGROUND_POLL_SECONDS = 60;
@@ -284,6 +286,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   sidebar.useAutopilot(autopilot);
+  // A repository on a slow drive is said so once, and packed in the background when it has too many loose objects.
+  const storage = new StorageMonitor({ mainRoot: location.mainRoot, commonDir: location.commonDir, backlog, globalState: context.globalState, output });
+  context.subscriptions.push(
+    storage,
+    vscode.commands.registerCommand('flotilla.slowStorageHelp', () => vscode.env.openExternal(vscode.Uri.parse(SLOW_STORAGE_DOCS))),
+  );
+  sidebar.useStorage(storage);
+  void storage.start();
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });

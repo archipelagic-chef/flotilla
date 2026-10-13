@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Autopilot } from '../backlog/autopilot';
+import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
 import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
@@ -109,6 +110,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private autopilot: Autopilot | undefined;
+  private storage: StorageMonitor | undefined;
+
+  /** Whether the repository is on a slow drive, shown in the Overview (created after the sidebar). */
+  useStorage(storage: StorageMonitor): void {
+    this.storage = storage;
+    this.subscriptions.push(storage.onDidChange(() => this.postStorage()));
+    this.postStorage();
+  }
+
+  private postStorage(): void {
+    this.post({ type: 'storage', ...(this.storage?.slow ? { slow: this.storage.slow } : {}) });
+  }
 
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
@@ -383,6 +396,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         void this.postBacklog();
         this.post({ type: 'progress', tools: progressByTool() });
         this.post({ type: 'ci', views: this.ci.snapshot() });
+        this.postStorage();
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;

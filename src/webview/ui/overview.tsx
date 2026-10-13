@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
 import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
 import { ciSummary } from '../../features/ci/summary';
-import type { CiView, MachineState, WorkstreamView } from '../protocol';
+import type { CiView, MachineState, SlowStorageView, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 
@@ -29,11 +29,13 @@ interface Props {
   ci: Readonly<Record<string, CiView>>;
   /** What VS Code's settings still let see the worktrees in the main folder (empty: nothing to show). */
   missing: readonly string[];
+  /** The repository is on a slow drive: say so, and how to fix it. */
+  slow?: SlowStorageView;
   onSelect(key: string): void;
 }
 
 /** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
-export function Overview({ workstreams, machine, active, colors, closed, ci, missing, onSelect }: Props) {
+export function Overview({ workstreams, machine, active, colors, closed, ci, missing, slow, onSelect }: Props) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
   const low = machine !== undefined && isMemoryShort(machine.freeMB, machine.minFreeMB);
@@ -63,6 +65,17 @@ export function Overview({ workstreams, machine, active, colors, closed, ci, mis
           <span>Worktrees here aren't excluded from: {missing.join(', ')}. That slows every window and can exhaust the file watchers.</span>
           <button class="link" onClick={() => run('flotilla.hideWorktrees')}>
             Hide Worktrees
+          </button>
+        </div>
+      )}
+      {slow && (
+        <div class="notice" role="status">
+          <i class="codicon codicon-warning" />
+          <span>
+            {slow.message} {slow.fix}
+          </span>
+          <button class="link" onClick={() => run('flotilla.slowStorageHelp')}>
+            How to Fix
           </button>
         </div>
       )}
