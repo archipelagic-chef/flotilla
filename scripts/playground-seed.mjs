@@ -4,44 +4,12 @@
 // Done. The unit test (tests/unit/features/playgroundSeed.test.ts) seeds a temporary repo with this and checks what it
 // reads as, so change the two together.
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+// The app's own code (src/features/backlog/seedKit.ts, built by npm run build), so the seed writes what the app reads.
+import { actionable, descriptionHash, entryDate, entryKey, formatTicket } from '../dist/playground-seed-kit.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-const sha1 = (text, length) => createHash('sha1').update(text).digest('hex').slice(0, length);
-
-/** The key the review loop gives an activity entry (LocalBacklog.entryKey). */
-const entryKey = (id, e) => sha1(`${id}\n${e.date}\n${e.author}\n${e.body.trim()}`, 16);
-
-/** A description's fingerprint (changes.ts descriptionHash). */
-const descriptionHash = (text) => sha1(text.trim(), 12);
-
-/** "YYYY-MM-DD HH:MM" in local time, as entries are dated (entryDate in ticket.ts). */
-function entryDate(d) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** The Markdown of a ticket file (formatTicket in ticket.ts). */
-function formatTicket({ title, description, activity }) {
-  const parts = [`# ${title}`, ''];
-  if (description.trim()) parts.push(description.trim(), '');
-  if (activity.length) {
-    parts.push('## Activity', '');
-    for (const e of activity) {
-      parts.push(`### ${e.date} · ${e.author}`);
-      parts.push(e.body.trim(), '');
-    }
-  }
-  return `${parts.join('\n').trimEnd()}\n`;
-}
-
-/** Whether an entry is one the review loop acts on: a report that hands work over, or a verdict. */
-function actionable(e) {
-  const last = e.body.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
-  return /^[*_]*ready for review[.!]?[*_]*$/i.test(last) || /^\s*\**\s*verdict\s*\**\s*:/im.test(e.body);
-}
 
 const UUID = '6f1d2c3a-0b7e-4d5a-9c8e-1a2b3c4d5e6f';
 /** A paused agent goes on by itself when its limit resets: far ahead, so the playground's stays paused. */
