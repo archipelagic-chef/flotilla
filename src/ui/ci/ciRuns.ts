@@ -5,6 +5,7 @@ import type { Fetch } from '../../features/backlog/sources/source';
 import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
 import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
 import { anyDeploymentActive, anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { finished, type FinishedRun } from '../../features/ci/notify';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { CiRunView, CiView } from '../../webview/protocol';
@@ -61,16 +62,24 @@ export class CiRuns implements vscode.Disposable {
   private expanded = new Map<string, Set<number>>();
   private jobs = new Map<string, Map<number, JobsState>>();
   private visible = false;
+  /** Whether it reads while the sidebar is hidden (this window leads and tells the user about finished runs). */
+  private keepReading = false;
+  /** The runs as last read, by worktree: a run that has finished since (and was going) is news. */
+  private lastRuns = new Map<string, CiRunView[]>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** One read per worktree, a few seconds after its run was acted on (each action has its own). */
   private followUps = new Map<string, ReturnType<typeof setTimeout>>();
   /** The actions on their way (a click on one already sent or asking is ignored). */
   private acting = new Set<string>();
 
-  /** post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then). */
+  /**
+   * post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then).
+   * onFinished gets the runs that finished since they were last read (while they were going).
+   */
   constructor(
     private readonly post: (views: Record<string, CiView>) => void,
     private readonly api?: string,
+    private readonly onFinished?: (items: FinishedRun[]) => void,
   ) {}
 
   dispose(): void {
@@ -91,8 +100,9 @@ export class CiRuns implements vscode.Disposable {
       this.jobs.delete(key);
       clearTimeout(this.followUps.get(key));
       this.followUps.delete(key);
+      this.lastRuns.delete(key);
     }
-    if (this.visible && moved.length) void this.load(moved.map((ws) => ws.key));
+    if (this.reading && moved.length) void this.load(moved.map((ws) => ws.key));
     else if (gone.length) this.post(this.snapshot());
   }
 
@@ -101,7 +111,20 @@ export class CiRuns implements vscode.Disposable {
     if (visible === this.visible) return;
     this.visible = visible;
     if (visible) void this.load();
-    else clearTimeout(this.timer);
+    else if (!this.keepReading) clearTimeout(this.timer);
+  }
+
+  /** Whether it keeps reading while the sidebar is hidden (for the notices of the leading window). */
+  setKeepReading(on: boolean): void {
+    if (on === this.keepReading) return;
+    this.keepReading = on;
+    if (on && !this.visible) void this.load();
+    else if (!on && !this.visible) clearTimeout(this.timer);
+  }
+
+  /** Runs are read while the sidebar is shown, or while this window keeps reading for notices. */
+  private get reading(): boolean {
+    return this.visible || this.keepReading;
   }
 
   /**
@@ -230,6 +253,18 @@ export class CiRuns implements vscode.Disposable {
     );
   }
 
+  /** The runs that finished since the last read, of the worktrees there are now. */
+  private reportFinished(): void {
+    const items: FinishedRun[] = [];
+    for (const ws of this.workstreams) {
+      const view = this.views.get(ws.key);
+      if (view?.kind !== 'runs') continue;
+      for (const run of finished(this.lastRuns.get(ws.key) ?? [], view.runs)) items.push({ key: ws.key, repo: view.repo, branch: view.branch, run });
+      this.lastRuns.set(ws.key, view.runs);
+    }
+    if (items.length) this.onFinished?.(items);
+  }
+
   private async load(keys?: string[]): Promise<void> {
     clearTimeout(this.timer);
     const targets = this.workstreams.filter((ws) => !keys || keys.includes(ws.key));
@@ -248,6 +283,7 @@ export class CiRuns implements vscode.Disposable {
         if (this.workstreams.some((w) => w.key === ws.key)) this.views.set(ws.key, view);
       }),
     );
+    this.reportFinished();
     this.post(this.snapshot());
     // The jobs of the expanded runs come after the runs, so that the runs show at once.
     await Promise.all(targets.map((ws) => this.readJobs(ws.key, session)));
@@ -258,7 +294,7 @@ export class CiRuns implements vscode.Disposable {
     const anyActive =
       anyRunActive(views.flatMap((v) => (v.kind === 'runs' ? v.runs : []))) ||
       anyDeploymentActive(views.flatMap((v) => (v.kind === 'runs' ? v.deployments : [])));
-    const delay = refreshDelay(this.visible, anyActive);
+    const delay = refreshDelay(this.reading, anyActive);
     clearTimeout(this.timer);
     this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
   }

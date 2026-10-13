@@ -829,3 +829,50 @@ describe('CiRuns with the fake GitHub (the debug window)', () => {
     ci.dispose();
   });
 });
+
+describe('CiRuns: finished runs and reading while hidden (for the notices)', () => {
+  const started = (id: number) => apiRun({ id, status: 'in_progress', conclusion: null });
+
+  it('reports a run that finished after being seen going, not one that was done at start-up', async () => {
+    const runs = github({ feat: [apiRun({ id: 1, conclusion: 'success' })] });
+    const onFinished = vi.fn();
+    const ci = new CiRuns(vi.fn(), undefined, onFinished);
+    ci.update([ws('a')]);
+    ci.setKeepReading(true);
+    await settle();
+    expect(onFinished).not.toHaveBeenCalled();
+
+    runs.runs.feat = [started(2)];
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(onFinished).not.toHaveBeenCalled();
+
+    runs.runs.feat = [apiRun({ id: 2, conclusion: 'failure' })];
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onFinished).toHaveBeenCalledTimes(1);
+    const [items] = onFinished.mock.calls[0];
+    expect(items.map((i: { key: string; repo: string; branch: string; run: { id: number; status: string } }) => [i.key, i.repo, i.branch, i.run.id, i.run.status])).toEqual([
+      ['a', 'acme/app', 'feat', 2, 'failure'],
+    ]);
+    ci.dispose();
+  });
+
+  it('reads nothing while hidden, unless it keeps reading for the notices, and stops when it doesn\'t', async () => {
+    const { fetch } = github();
+    const ci = new CiRuns(vi.fn(), undefined, vi.fn());
+    ci.update([ws('a')]);
+    await settle();
+    expect(fetch).not.toHaveBeenCalled();
+
+    // A read asks GitHub for the runs and for the deployments: two requests.
+    ci.setKeepReading(true);
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetch).toHaveBeenCalledTimes(4);
+
+    ci.setKeepReading(false);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    ci.dispose();
+  });
+});

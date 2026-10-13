@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { CiNotify } from '../features/ci/notify';
 
 /** `needsYou`: one notification for what needs you, gathered for a minute; `all`: one per event; `off`: none. */
 export type NotifyMode = 'needsYou' | 'all' | 'off';
@@ -13,6 +14,7 @@ export interface Settings {
   agentStatusStaleMinutes: number;
   notify: NotifyMode;
   pollSeconds: number;
+  ciNotify: CiNotify;
 }
 
 export function readSettings(): Settings {
@@ -27,5 +29,6 @@ export function readSettings(): Settings {
     agentStatusStaleMinutes: c.get<number>('agentStatusStaleMinutes', 10),
     notify: c.get<NotifyMode>('notify', 'needsYou'),
     pollSeconds: c.get<number>('pollSeconds', 15),
+    ciNotify: c.get<CiNotify>('ci.notify', 'failures'),
   };
 }

@@ -18,7 +18,8 @@ import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type VcView, type WebviewMessage } from '../../webview/protocol';
+import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
@@ -52,6 +53,8 @@ export interface SidebarDeps {
   output: vscode.OutputChannel;
   /** The fake GitHub's address, in the debug window only (see devGitHubApi). */
   githubApi?: string;
+  /** Runs that finished on a worktree's branch while they were read (for the notices). */
+  onCiFinished?: (items: FinishedRun[]) => void;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -72,7 +75,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
-    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }), deps.githubApi);
+    this.ci = new CiRuns(
+      (views) => this.post({ type: 'ci', views }),
+      deps.githubApi,
+      (items) => this.deps.onCiFinished?.(items),
+    );
     this.files = new FileOps({
       reference: deps.reference,
       find: (key) => this.find(key),
@@ -297,8 +304,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
-  reveal(key: string, relPath?: string, tool?: Tool): void {
-    this.act({ type: 'reveal', key, path: relPath, tool });
+  reveal(key: string, relPath?: string, tool?: Tool, vcView?: VcView): void {
+    this.act({ type: 'reveal', key, path: relPath, tool, vcView });
+  }
+
+  /** Shows a worktree's CI/CD view (Version Control › CI/CD). */
+  showCi(key: string): void {
+    this.reveal(key, undefined, 'vc', 'ci');
+  }
+
+  /** Whether the CI/CD view keeps reading while the sidebar is hidden (for the notices of the leading window). */
+  setKeepReading(on: boolean): void {
+    this.ci.setKeepReading(on);
   }
 
   /**

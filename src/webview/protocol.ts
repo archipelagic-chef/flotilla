@@ -171,7 +171,7 @@ export type HostMessage =
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
   /** Scroll to a workstream; with path, expand to and highlight that file in the Files tab. */
-  | { type: 'reveal'; key: string; path?: string; tool?: Tool }
+  | { type: 'reveal'; key: string; path?: string; tool?: Tool; vcView?: VcView }
   /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** The active worktree changed outside the webview (shortcut, status bar). */

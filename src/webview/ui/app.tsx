@@ -7,6 +7,7 @@ import { CiBody } from './ci';
 import { FilesBody, type Editing } from './files';
 import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
+import { scopeState, scopeSummary } from '../../features/ci/summary';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
@@ -330,7 +331,7 @@ export function App() {
           if (m.path === undefined) {
             // A worktree to show (e.g. one just created): make it active.
             setActive(m.key);
-            if (m.tool) update((prev) => ({ ...prev, tool: m.tool! }));
+            if (m.tool) update((prev) => ({ ...prev, tool: m.tool!, ...(m.vcView ? { vcView: m.vcView } : {}) }));
             return;
           }
           // The active editor's file, like the Explorer's auto-reveal: only in the Files tool, and only if its worktree is shown.
@@ -411,6 +412,10 @@ export function App() {
     ...(progress[id] ?? []),
     ...(id === 'search' && searching ? ['Searching…'] : []),
   ];
+  /** CI of the scope (the active worktree, or all of them on the All tab): its state on the Version Control tool, and what failed. */
+  const ciViews = active === ALL ? workstreams.map((w) => ci[w.key]) : [ci[active]];
+  const ciState = scopeState(ciViews);
+  const ciTip = scopeSummary(ciViews);
   const files: FilesApi = {
     dirs,
     requestDir,
@@ -496,6 +501,7 @@ export function App() {
         active={active}
         colors={colors}
         closed={closed}
+        ci={ci}
         missing={missingExclusions}
         onSelect={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
@@ -652,13 +658,14 @@ export function App() {
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
                   data-tip={(() => {
-                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : [])];
+                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : []), ...(t.id === 'vc' && ciTip ? [ciTip] : [])];
                     return lines.length ? [t.label, ...lines].join('\n') : undefined;
                   })()}
                   data-tip-pos="right"
                   onClick={() => update((p) => ({ ...p, tool: t.id }))}
                 >
                   <i class={`codicon codicon-${t.icon}`} />
+                  {t.id === 'vc' && ciState && <span class={`ci-dot ${ciState}`} />}
                   {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
                   {busy.length > 0 && (
                     <span class={`b busy${badge > 0 ? ' top' : ''}`}>
@@ -680,6 +687,7 @@ export function App() {
                         onClick={() => update((p) => ({ ...p, vcView: v.id }))}
                       >
                         <i class={`codicon codicon-${v.icon}`} />
+                        {v.id === 'ci' && ciState && <span class={`ci-dot ${ciState}`} />}
                       </button>
                     ))}
                     {addable.length > 0 && <AddViewMenu views={addable} />}
@@ -701,7 +709,7 @@ export function App() {
       <Hover
         render={(el) => {
           const ws = el.dataset.tipWs ? workstreams.find((w) => w.key === el.dataset.tipWs) : undefined;
-          return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
+          return ws && <WorktreeCard ws={ws} ci={ci[ws.key]} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
         }}
       />
     </div>

@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
 import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
-import type { MachineState, WorkstreamView } from '../protocol';
+import { ciSummary } from '../../features/ci/summary';
+import type { CiView, MachineState, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 
@@ -24,13 +25,15 @@ interface Props {
   colors: ReadonlyMap<string, string>;
   /** Worktrees whose tab is closed. */
   closed: ReadonlySet<string>;
+  /** Each worktree's CI, by key. */
+  ci: Readonly<Record<string, CiView>>;
   /** What VS Code's settings still let see the worktrees in the main folder (empty: nothing to show). */
   missing: readonly string[];
   onSelect(key: string): void;
 }
 
 /** Every worktree at once, sorted by what needs you. Double-click one to open its tab. */
-export function Overview({ workstreams, machine, active, colors, closed, missing, onSelect }: Props) {
+export function Overview({ workstreams, machine, active, colors, closed, ci, missing, onSelect }: Props) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   const sorted = [...workstreams].sort((a, b) => RANK[a.attention] - RANK[b.attention]);
   const low = machine !== undefined && isMemoryShort(machine.freeMB, machine.minFreeMB);
@@ -70,6 +73,7 @@ export function Overview({ workstreams, machine, active, colors, closed, missing
         const facts = [
           changes ? `${changes} changed` : 'no changes',
           ws.sync.text,
+          ciSummary(ci[ws.key]),
           open.length ? `${open.length} open chat${open.length === 1 ? '' : 's'}` : '',
         ].filter(Boolean);
         return (

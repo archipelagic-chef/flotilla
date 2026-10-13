@@ -10,6 +10,7 @@ import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
 import { JOB_LOG_SCHEME, JobLogProvider, showJobLog, signedInActions } from './features/ci/jobLog';
+import { CiNotifier } from './ui/ci/ciNotifier';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
 import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
@@ -152,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     integrations,
     githubApi: devGitHubApi(context.extensionMode),
+    onCiFinished: (items) => ciNotifier.notify(items),
   });
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
@@ -201,6 +203,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tickets,
     integrations,
   };
+  // The CI notices (a run on a worktree's branch finished): the leading window tells the user, and reads the runs while the sidebar is hidden to see them.
+  const ciNotifier = new CiNotifier({
+    repository,
+    isLeader: () => leader.isLeader,
+    show: (key) => sidebar.showCi(key),
+    actions: signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
+  });
+  const updateCiReads = () => sidebar.setKeepReading(leader.isLeader && readSettings().ciNotify !== 'off');
   // What needs the user: the status bar counts it, and it notifies (only the leading window does).
   const needs = new NeedsYouNotifier({
     backlog,
@@ -243,6 +253,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
+      updateCiReads();
       void autopilot.tick();
       void reviews.resumePaused();
     }),
@@ -264,6 +275,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('flotilla.ci.notify')) updateCiReads();
       if (e.affectsConfiguration('flotilla.backlog.agentTickets')) void inbox.writeGuide();
       if (!e.affectsConfiguration('flotilla.backlog.commitPrefix')) return;
       if (fs.existsSync(path.join(location.commonDir, 'flotilla', 'commit-prefix'))) {
