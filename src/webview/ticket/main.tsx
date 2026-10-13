@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
-import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
+import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import './ticket.css';
@@ -347,7 +348,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
           : r.state === 'revising'
             ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
             : r.state === 'asking'
-              ? ['question', 'waiting', `${who} has a question for you. Answer it in a comment below; it goes on from there.`]
+              ? ['question', 'waiting', `${who} has a question for you. Answer it in its report, or in a comment below; it goes on from there.`]
               : r.state === 'yours'
                 ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
                 : r.state === 'approved'
@@ -358,9 +359,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
       <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
       <span class="review-text">
         <strong>
-          {r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot)
-            ? 'Autopilot'
-            : capitalized(reviewOutcome(r.state))}
+          {r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot) ? 'Autopilot' : capitalized(reviewOutcome(r.state))}
         </strong>{' '}
         {text}
       </span>
@@ -684,6 +683,115 @@ function Agents({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/**
+ * What an agent needs from the user: its text, and its questions. Unanswered questions (local items) are answered by
+ * clicking: a choice (its recommendation preselected) or Other…; one Send posts the answers as the user's comment, and
+ * the agent goes on from there. Answered ones, and those of tracker-linked items, show what was chosen, read-only.
+ */
+function Needs({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
+  const answered = report.answer !== undefined;
+  const interactive = live && !answered && report.questions.length > 0;
+  const [answers, setAnswers] = useState<Answer[]>(() => report.questions.map(defaultAnswer));
+  const given = answered ? answersIn(report.questions, report.answer!) : [];
+  const shown = interactive ? answers : report.questions.map((q, i) => (answered ? answerFromText(q, given[i] ?? '') : { picked: [], other: '' }));
+  const update = (qi: number, change: (a: Answer) => Answer) => setAnswers((all) => all.map((a, i) => (i === qi ? change(a) : a)));
+  const texts = report.questions.map((q, i) => answerOf(q, answers[i]));
+  const ready = interactive && texts.every(Boolean);
+  const submit = () => {
+    if (ready) send({ type: 'comment', text: answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))) });
+  };
+  return (
+    <div class={`needs${answered ? ' answered' : ''}`}>
+      {report.needs && (
+        <>
+          <div class="needs-line">
+            <i class="codicon codicon-question" /> <strong>Needs from you:</strong>
+          </div>
+          <Rendered html={report.needs} empty="" />
+        </>
+      )}
+      {answered && <div class="muted">Answered.</div>}
+      {report.questions.map((q, qi) => {
+        const a = shown[qi];
+        const other = q.options.length;
+        const type = q.kind === 'several' ? 'checkbox' : 'radio';
+        return (
+          <fieldset class="question" key={qi}>
+            <legend>{q.text}</legend>
+            {q.kind === 'text' ? (
+              interactive ? (
+                <MarkdownBox
+                  value={a.other}
+                  setValue={(text) => update(qi, (x) => ({ ...x, other: text }))}
+                  placeholder="Your answer (Markdown)"
+                  label={`Your answer to: ${q.text}`}
+                  onSubmit={submit}
+                  images={false}
+                  minRows={2}
+                  autoFocus={qi === 0}
+                />
+              ) : (
+                <div class="answer-text">{a.other}</div>
+              )
+            ) : (
+              <>
+                {q.options.map((o, i) => (
+                  <label class="choice" key={i}>
+                    <input
+                      type={type}
+                      name={`${name}-${qi}`}
+                      checked={a.picked.includes(i)}
+                      disabled={!interactive}
+                      onChange={() => update(qi, (x) => choose(q, x, i))}
+                    />
+                    <span>{o.text}</span>
+                    {o.recommended && <span class="recommended">recommended</span>}
+                  </label>
+                ))}
+                {q.kind !== 'yesno' && (
+                  <label class="choice">
+                    <input
+                      type={type}
+                      name={`${name}-${qi}`}
+                      checked={a.picked.includes(other)}
+                      disabled={!interactive}
+                      onChange={() => update(qi, (x) => choose(q, x, other))}
+                    />
+                    <span>Other…</span>
+                  </label>
+                )}
+                {q.kind !== 'yesno' &&
+                  a.picked.includes(other) &&
+                  (interactive ? (
+                    <MarkdownBox
+                      value={a.other}
+                      setValue={(text) => update(qi, (x) => ({ ...x, other: text }))}
+                      placeholder="Your answer (Markdown)"
+                      label={`Your answer to: ${q.text}`}
+                      onSubmit={submit}
+                      images={false}
+                      minRows={2}
+                      autoFocus
+                    />
+                  ) : (
+                    <div class="answer-text">{a.other}</div>
+                  ))}
+              </>
+            )}
+          </fieldset>
+        );
+      })}
+      {interactive && (
+        <div class="actions-row">
+          <button class="button" disabled={!ready} onClick={submit} title="Posts the answers as your comment: the agent goes on from there">
+            {report.questions.length > 1 ? 'Send Answers' : 'Send'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type EntryKind = 'comment' | 'agent' | 'history';
 
 /** People's comments (here or in the tracker), agents' reports, and Flotilla's notes (what happened). */
@@ -790,7 +898,20 @@ function FeedRowView({ f, ticket }: { f: FeedRow; ticket: TicketView }) {
           </button>
         )}
       </div>
-      <Rendered html={e.html} empty="" />
+      {e.report ? (
+        <>
+          <Rendered html={e.report.summary} empty="" />
+          {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
+          {e.report.details && (
+            <details class="report-details">
+              <summary>Details</summary>
+              <Rendered html={e.report.details} empty="" />
+            </details>
+          )}
+        </>
+      ) : (
+        <Rendered html={e.html} empty="" />
+      )}
       {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
     </li>
   );
@@ -933,7 +1054,11 @@ function Activity({ ticket }: { ticket: TicketView }) {
                 </button>
                 <span class="muted">The agent didn't give a run block.</span>
                 {reviewable && (
-                  <button class="text-button" onClick={askForRun} title="Puts a request for one in the comment box. Request Changes sends it to the agent; Comment would only leave a note.">
+                  <button
+                    class="text-button"
+                    onClick={askForRun}
+                    title="Puts a request for one in the comment box. Request Changes sends it to the agent; Comment would only leave a note."
+                  >
                     Ask it for one
                   </button>
                 )}

@@ -3,7 +3,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { acceptItem, agentChatItem, branchMatches, childrenOf, itemBranches, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  acceptItem,
+  agentChatItem,
+  branchMatches,
+  childrenOf,
+  itemBranches,
+  removeItem,
+  entryAgent,
+  sameAgent,
+  linkIssue,
+  linkedItem,
+  unlinkIssue,
+  updateItem,
+  type AgentChoice,
+  type BacklogItem,
+} from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -11,12 +26,13 @@ import type { BacklogIntegrations } from './integrations';
 import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
+import { parseReport, reportAnswer } from '../../features/backlog/report';
 import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
@@ -209,7 +225,9 @@ export class TicketPanels implements vscode.Disposable {
     if (!id) {
       const order = (i: BacklogItem) => (i.status === 'review' ? 0 : 1);
       const picked = await vscode.window.showQuickPick(
-        [...items].sort((a, b) => order(a) - order(b)).map((i) => ({ label: i.id, description: i.title, detail: i.status === 'review' ? 'In review' : undefined })),
+        [...items]
+          .sort((a, b) => order(a) - order(b))
+          .map((i) => ({ label: i.id, description: i.title, detail: i.status === 'review' ? 'In review' : undefined })),
         { title: 'Review a Ticket', placeHolder: 'The ticket whose work to review' },
       );
       if (!picked) return;
@@ -223,7 +241,11 @@ export class TicketPanels implements vscode.Disposable {
       const picked = await vscode.window.showQuickPick(
         [
           { label: '$(check) Approve', verdict: 'approved' as const },
-          { label: '$(request-changes) Request Changes', verdict: 'changes' as const, detail: 'An agent picks them up, and asks you first if it needs more context' },
+          {
+            label: '$(request-changes) Request Changes',
+            verdict: 'changes' as const,
+            detail: 'An agent picks them up, and asks you first if it needs more context',
+          },
         ],
         { title: `Review ${id}` },
       );
@@ -294,24 +316,49 @@ export class TicketPanels implements vscode.Disposable {
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
     return Promise.all(
-      entries.map(async (e) => {
+      entries.map(async (e, n) => {
         const key = Store.entryKey(item.id, e);
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
-        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
-        const html = await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
+        const chat: AgentChatView | undefined =
+          found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
+        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key) : undefined;
+        const html = report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
         return {
           ...e,
-          html: isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
+          html: !report && isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
           key,
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
+          ...(report ? { report } : {}),
         };
       }),
     );
+  }
+
+  /** An agent's report split for the ticket (its summary, what it needs, its details); undefined for an older report. */
+  private async reportView(item: BacklogItem, body: string, later: TicketEntry[], webview: vscode.Webview, key: string): Promise<ReportView | undefined> {
+    const parts = parseReport(body);
+    if (parts.summary === undefined) return undefined;
+    const roots = this.roots(item);
+    const answer = reportAnswer(later);
+    return {
+      // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
+      summary: withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key),
+      details: withRunButtons(
+        await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
+        parseRunBlocks(parts.details),
+        key,
+        parseRunBlocks(parts.summary).length,
+      ),
+      asks: parts.asks,
+      ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
+      questions: parts.questions,
+      ...(answer !== undefined ? { answer } : {}),
+    };
   }
 
   /** The chats of agents started for an item (their first message names it), in its worktrees, oldest first. */
@@ -365,7 +412,6 @@ export class TicketPanels implements vscode.Disposable {
       .sort((a, b) => a.started.localeCompare(b.started));
   }
 
-
   /** Where a ticket's images and links are looked for: its worktrees, then the main one. */
   private roots(item: BacklogItem): string[] {
     return [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot];
@@ -410,7 +456,8 @@ export class TicketPanels implements vscode.Disposable {
       );
       return {
         description: d.descriptionText,
-        descriptionHtml: d.format === 'html' ? await this.trackerImages(item.id, d.description) : await renderMarkdown(d.description, webview, dir, this.roots(item)),
+        descriptionHtml:
+          d.format === 'html' ? await this.trackerImages(item.id, d.description) : await renderMarkdown(d.description, webview, dir, this.roots(item)),
         activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
         edit,
         priorityName: d.issue.priorityName,
@@ -512,7 +559,8 @@ export class TicketPanels implements vscode.Disposable {
           statusName: now?.statusName,
         };
       }),
-      remote: remote && source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName, priorityName: remote.priorityName },
+      remote: remote &&
+        source && { kind: source.config.kind, label: source.label, url: remote.url, statusName: remote.statusName, priorityName: remote.priorityName },
       postTargets: remote ? [remote.id] : (plain.links ?? []).map((l) => l.id),
       canCreateIssue: !remote && this.deps.integrations.current.length > 0,
       worktrees: this.worktreesOf(plain).map((ws) => ({
@@ -564,16 +612,16 @@ export class TicketPanels implements vscode.Disposable {
         Promise.all([...(item.history ?? [])].reverse().map(async (v) => ({ ...v, log: await versionCommits(cwd, v.base, v.ref, 100) }))),
         item.rewrite &&
           compareRewrite(cwd, item.rewrite).then(
-            (c) => ({ ...item.rewrite!, ...c, changes: this.deps.repository.current.find((w) => w.worktree.branch === item.rewrite!.clean)?.changes.length ?? 0 }),
+            (c) => ({
+              ...item.rewrite!,
+              ...c,
+              changes: this.deps.repository.current.find((w) => w.worktree.branch === item.rewrite!.clean)?.changes.length ?? 0,
+            }),
             () => ({ ...item.rewrite!, differs: ['(a branch is missing)'], commits: 0, cleanCommits: 0, changes: 0 }),
           ),
       ]);
       // A local item's branch with commits of its own (not a clean-up's) can have its history cleaned up.
-      const canCleanUp =
-        !item.remote &&
-        !item.rewrite &&
-        !!base &&
-        commits.some((c) => c.branches.some((b) => b !== base && !/-clean(-\d+)?$/.test(b)));
+      const canCleanUp = !item.remote && !item.rewrite && !!base && commits.some((c) => c.branches.some((b) => b !== base && !/-clean(-\d+)?$/.test(b)));
       return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits, history, canCleanUp, ...(rewrite ? { rewrite } : {}) };
     } catch {
       return { branches: [], commits: [], history: [], canCleanUp: false };
@@ -592,11 +640,7 @@ export class TicketPanels implements vscode.Disposable {
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return;
     const link = parseFileLink(/^file:/i.test(href) ? vscode.Uri.parse(href).fsPath + (href.includes('#') ? href.slice(href.indexOf('#')) : '') : href);
-    const roots = [
-      ...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])),
-      this.deps.mainRoot,
-      this.deps.backlog.dir,
-    ];
+    const roots = [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot, this.deps.backlog.dir];
     const candidates = path.isAbsolute(link.path) ? [link.path] : roots.map((r) => path.join(r, link.path));
     const found = candidates.find((f) => fs.existsSync(f));
     if (!found) {
@@ -635,10 +679,15 @@ export class TicketPanels implements vscode.Disposable {
     const item = await this.item(id);
     if (!item || item.remote) return;
     const ticket = await this.deps.backlog.readTicket(item);
-    const picked = pickRunBlock(placedRunBlocks(ticket.activity, (e) => Store.entryKey(id, e)), ref);
+    const picked = pickRunBlock(
+      placedRunBlocks(ticket.activity, (e) => Store.entryKey(id, e)),
+      ref,
+    );
     if (!picked) {
       void vscode.window.showWarningMessage(
-        ref ? `That run block of ${id} isn't in the ticket any more: its report changed. Use the ticket's Run button.` : `${id} has no run block: its agent didn't give one. Ask it for one, in a comment.`,
+        ref
+          ? `That run block of ${id} isn't in the ticket any more: its report changed. Use the ticket's Run button.`
+          : `${id} has no run block: its agent didn't give one. Ask it for one, in a comment.`,
       );
       return;
     }
@@ -720,7 +769,9 @@ export class TicketPanels implements vscode.Disposable {
       return picked?.place;
     }
     if (found.unreachable.length) {
-      void vscode.window.showWarningMessage(`${id}'s worktree (${found.unreachable.join(', ')}) isn't reachable from this window: it's in another environment, so run the block there.`);
+      void vscode.window.showWarningMessage(
+        `${id}'s worktree (${found.unreachable.join(', ')}) isn't reachable from this window: it's in another environment, so run the block there.`,
+      );
       return undefined;
     }
     const branch = found.missing[0];
@@ -817,7 +868,10 @@ export class TicketPanels implements vscode.Disposable {
         if (!move || !item.remote) return;
         if (move.needs?.length) {
           // The workflow asks for more on this move (a resolution, a reviewer): that's done in the tracker.
-          const open = await vscode.window.showWarningMessage(`"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`, 'Do It in the Tracker');
+          const open = await vscode.window.showWarningMessage(
+            `"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`,
+            'Do It in the Tracker',
+          );
           if (open) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
           return;
         }
@@ -852,7 +906,12 @@ export class TicketPanels implements vscode.Disposable {
             () => false,
           );
           if (has) {
-            await this.deps.showCommits(ws.key, id, commits.map((c) => c.hash), m.hash);
+            await this.deps.showCommits(
+              ws.key,
+              id,
+              commits.map((c) => c.hash),
+              m.hash,
+            );
             return;
           }
         }
@@ -902,7 +961,8 @@ export class TicketPanels implements vscode.Disposable {
         await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index });
         return;
       case 'checkout':
-        if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
+        if ((await this.work(item)).branches.includes(m.branch))
+          await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;
       case 'startReview':
         await this.reviews?.start(id, true);

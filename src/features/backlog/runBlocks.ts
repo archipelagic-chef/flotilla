@@ -125,10 +125,10 @@ export function latestRun(entries: readonly TicketEntry[], key: (entry: TicketEn
 
 /**
  * An entry's rendered Markdown, with a Run button on each of its run blocks (`key`: the entry's key, which the button
- * sends back with the block's index). The buttons only go in when the rendered code blocks are as many as the blocks
+ * sends back with the block's index; `first`: the index of the first block, for a part of an entry). The buttons only go in when the rendered code blocks are as many as the blocks
  * parsed, so that a button is never on the wrong block; otherwise the html is as it was.
  */
-export function withRunButtons(html: string, blocks: readonly RunBlock[], key: string): string {
+export function withRunButtons(html: string, blocks: readonly RunBlock[], key: string, first = 0): string {
   if (!blocks.length || [...html.matchAll(RENDERED_RUN)].length !== blocks.length) return html;
   let index = 0;
   return html.replace(RENDERED_RUN, (_m, code: string) => {
@@ -139,7 +139,7 @@ export function withRunButtons(html: string, blocks: readonly RunBlock[], key: s
     return (
       `<div class="run-block">` +
       `<div class="run-head"><span class="run-label">${escapeHtml(label)}</span>` +
-      `<button class="button secondary run-button" data-run-key="${escapeHtml(key)}" data-run-index="${at}" ` +
+      `<button class="button secondary run-button" data-run-key="${escapeHtml(key)}" data-run-index="${first + at}" ` +
       `title="Runs this block in the ticket's worktree, after asking">Run</button></div>` +
       `${commands}</div>`
     );
