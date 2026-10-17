@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
+import { lightNote, moveUpTarget, reviewModel, workModel, type Levels } from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
 import { LEAN_TOOLS, leanFlags, writeLeanSettings } from '../../features/backlog/leanStart';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
@@ -83,10 +84,25 @@ export async function confirmMemory(what: string): Promise<boolean> {
 export function agentChoice(item: { agent?: AgentChoice } | undefined, role: 'work' | 'review' = 'work'): AgentChoice {
   const config = vscode.workspace.getConfiguration('flotilla');
   const effort = (v: string | undefined) => (AGENT_EFFORTS.includes(v as AgentEffort) ? (v as AgentEffort) : undefined);
-  const model = (role === 'review' ? config.get<string>('review.model', '').trim() : '') || item?.agent?.model || config.get<string>('agents.model', '').trim();
+  const levels = modelLevels();
+  const model = role === 'review' ? reviewModel(item?.agent, { ...levels, review: config.get<string>('review.model', '').trim() }) : workModel(item?.agent, levels);
   const level =
     (role === 'review' ? effort(config.get<string>('review.effort', '')) : undefined) ?? item?.agent?.effort ?? effort(config.get<string>('agents.effort', ''));
   return { ...(model ? { model } : {}), ...(level ? { effort: level } : {}) };
+}
+
+/** The strong model (flotilla.agents.model) and the light one (flotilla.agents.lightModel; empty: no ticket is light). */
+export function modelLevels(): Levels {
+  const config = vscode.workspace.getConfiguration('flotilla');
+  const strong = validModel(config.get<string>('agents.model', '').trim());
+  const light = validModel(config.get<string>('agents.lightModel', '').trim());
+  return { ...(strong ? { strong } : {}), ...(light ? { light } : {}) };
+}
+
+/** What an agent on a ticket's work is told about its model: on a lighter one, how to ask for the strong one. */
+export function levelNote(item: { agent?: AgentChoice } | undefined): string | undefined {
+  const move = moveUpTarget(item?.agent, modelLevels());
+  return move && lightNote(move.from, move.to);
 }
 
 /** A choice, for notes: " (opus, high effort)", or nothing for Claude Code's defaults. */

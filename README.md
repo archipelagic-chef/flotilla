@@ -88,6 +88,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.review.automatic` | `true` | A reviewer agent reviews work that goes to review |
 | `flotilla.review.maxRounds` | `3` | Review rounds before the decision is left to you |
 | `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
+| `flotilla.agents.lightModel` | `""` | Model for tickets marked Light (small, mechanical work). Reviewed by `flotilla.agents.model`, and moved up to it when the work turns out hard. Empty: no ticket is Light |
 | `flotilla.agents.lean` | `true` | Start agents without your skills, plugins and MCP servers, with the coding tools only: a quarter less context re-read every turn |
 | `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
 | `flotilla.agents.maxRunning` | `2` | How many agents run at once, in all (the autopilot's, reviews, resumes); the rest wait in a queue |

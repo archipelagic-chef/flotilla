@@ -436,6 +436,18 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           conflicts with {item.base ?? 'main'}
         </span>
       )}
+      {!renaming && item.agent?.light && !item.agent.model && (
+        <span class="drift-badge" data-tip="Light: small, mechanical work, on the light model (flotilla.agents.lightModel). Reviewed by the default model; moves up to it when it turns out hard">
+          <i class="codicon codicon-feather" />
+          Light
+        </span>
+      )}
+      {!renaming && item.agent?.movedUp && item.agent.model === item.agent.movedUp.to && (
+        <span class="drift-badge" data-tip={`Moved up from ${item.agent.movedUp.from} to ${item.agent.movedUp.to}: ${item.agent.movedUp.reason}`}>
+          <i class="codicon codicon-arrow-up" />
+          {item.agent.movedUp.to}
+        </span>
+      )}
       {!renaming && item.waitsFor && (
         <span class="drift-badge" data-tip={`Depends on ${item.waitsFor.join(', ')}: waits for ${item.waitsFor.length === 1 ? 'it' : 'them'} to be merged`}>
           <i class="codicon codicon-debug-pause" />

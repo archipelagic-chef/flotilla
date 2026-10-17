@@ -71,6 +71,10 @@ export interface AgentChoice {
   /** An alias ("opus", "sonnet") or a model's full name. */
   model?: string;
   effort?: AgentEffort;
+  /** A ticket's: small and mechanical, its work runs on flotilla.agents.lightModel (see modelLevel.ts). */
+  light?: boolean;
+  /** A ticket's: it moved up to the strong model (from what, to what, why, when: ISO 8601). */
+  movedUp?: { from: string; to: string; reason: string; at: string };
 }
 
 /** A local item's link to an issue in a tracker. */

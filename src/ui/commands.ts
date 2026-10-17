@@ -23,7 +23,7 @@ import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
 import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
-import { agentChoice, confirmMemory, describeChoice } from './backlog/agentRunner';
+import { agentChoice, confirmMemory, describeChoice, levelNote } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
@@ -603,8 +603,9 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
 export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged.`;
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string, agent: string, guide: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
+  const level = levelNote(item);
   return [
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder).`,
@@ -612,6 +613,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, t
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
+    ...(level ? [level] : []),
     MERGE_NOTES,
     reviewNotes({ id: item.id, backlogDir: path.dirname(guide) }),
     `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
