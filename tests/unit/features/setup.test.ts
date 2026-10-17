@@ -43,15 +43,49 @@ describe('linkFolders', () => {
     const { main, wt } = pair();
     writeFile(main, 'node_modules/a/index.js', 'a');
     writeFile(main, 'node_modules/a/lib/deep.js', 'deep');
-    writeFile(main, 'node_modules/.package-lock.json', '{}');
+    writeFile(main, 'node_modules/@scope/b/index.js', 'b');
 
-    expect(await linkFolders(main, wt, ['node_modules'])).toEqual([{ folder: 'node_modules', files: 3 }]);
+    expect(await linkFolders(main, wt, ['node_modules'])).toEqual([{ folder: 'node_modules', files: 3, copied: 0 }]);
 
     const src = fs.statSync(path.join(main, 'node_modules/a/lib/deep.js'));
     const dest = fs.statSync(path.join(wt, 'node_modules/a/lib/deep.js'));
     expect(dest.ino).toBe(src.ino);
     expect(dest.nlink).toBe(2);
-    expect(fs.readFileSync(path.join(wt, 'node_modules/.package-lock.json'), 'utf8')).toBe('{}');
+  });
+
+  it('copies what installs and tools write in place, so writing it leaves the main worktree’s as it is', async () => {
+    const { main, wt } = pair();
+    writeFile(main, 'node_modules/.package-lock.json', '{}');
+    writeFile(main, 'node_modules/.vite/vitest/results.json', '{}');
+    writeFile(main, 'node_modules/esbuild/package.json', '{"scripts":{"postinstall":"node install.js"}}');
+    writeFile(main, 'node_modules/esbuild/bin/esbuild', 'windows');
+    writeFile(main, 'node_modules/@vscode/vsce-sign/package.json', '{"scripts":{"postinstall":"node ./src/postinstall.js"}}');
+    writeFile(main, 'node_modules/@vscode/vsce-sign/bin/vsce-sign', 'windows');
+    writeFile(main, 'node_modules/native/package.json', '{}');
+    writeFile(main, 'node_modules/native/binding.gyp', '{}');
+    writeFile(main, 'node_modules/plain/package.json', '{"scripts":{"test":"x"}}');
+    writeFile(main, 'node_modules/@esbuild/win32-x64/esbuild.exe', 'binary');
+
+    expect(await linkFolders(main, wt, ['node_modules'])).toEqual([{ folder: 'node_modules', files: 2, copied: 8 }]);
+
+    const linked = (rel: string) => fs.statSync(path.join(wt, rel)).ino === fs.statSync(path.join(main, rel)).ino;
+    expect(linked('node_modules/plain/package.json')).toBe(true);
+    expect(linked('node_modules/@esbuild/win32-x64/esbuild.exe')).toBe(true);
+    for (const rel of ['node_modules/.package-lock.json', 'node_modules/.vite/vitest/results.json', 'node_modules/esbuild/bin/esbuild', 'node_modules/@vscode/vsce-sign/bin/vsce-sign', 'node_modules/native/binding.gyp']) {
+      expect(linked(rel), rel).toBe(false);
+    }
+    // What an install in the devcontainer does: writes in place.
+    fs.writeFileSync(path.join(wt, 'node_modules/@vscode/vsce-sign/bin/vsce-sign'), 'linux');
+    fs.writeFileSync(path.join(wt, 'node_modules/.package-lock.json'), '{"linux":true}');
+    expect(fs.readFileSync(path.join(main, 'node_modules/@vscode/vsce-sign/bin/vsce-sign'), 'utf8')).toBe('windows');
+    expect(fs.readFileSync(path.join(main, 'node_modules/.package-lock.json'), 'utf8')).toBe('{}');
+  });
+
+  it('applies the node_modules rules only to node_modules folders', async () => {
+    const { main, wt } = pair();
+    writeFile(main, 'vendor/.cache/a', 'a');
+    writeFile(main, 'vendor/pkg/package.json', '{"scripts":{"postinstall":"x"}}');
+    expect(await linkFolders(main, wt, ['vendor'])).toEqual([{ folder: 'vendor', files: 2, copied: 0 }]);
   });
 
   it('makes links inside the folder again, pointing into the new copy', async () => {
@@ -73,7 +107,7 @@ describe('linkFolders', () => {
       throw Object.assign(new Error('cross-device link'), { code: 'EXDEV' });
     };
 
-    expect(await linkFolders(main, wt, ['node_modules'], exdev)).toEqual([{ folder: 'node_modules', files: 0, skipped: 'it is on another drive' }]);
+    expect(await linkFolders(main, wt, ['node_modules'], exdev)).toEqual([{ folder: 'node_modules', files: 0, copied: 0, skipped: 'it is on another drive' }]);
     expect(fs.existsSync(path.join(wt, 'node_modules'))).toBe(false);
   });
 
@@ -106,7 +140,7 @@ describe('shareLinkedFolder', () => {
 
     const result = await shareLinkedFolder(main, wt, 'node_modules');
 
-    expect(result).toEqual({ folder: 'node_modules', files: 1, bytes: 4, skipped: 0 });
+    expect(result).toEqual({ folder: 'node_modules', files: 1, bytes: 4, skipped: 0, unshared: 0 });
     expect(fs.statSync(path.join(wt, 'node_modules/a/index.js')).ino).toBe(fs.statSync(path.join(main, 'node_modules/a/index.js')).ino);
     expect(fs.readFileSync(path.join(wt, 'node_modules/b/index.js'), 'utf8')).toBe('version 2');
     expect(fs.readFileSync(path.join(wt, 'node_modules/only-here/index.js'), 'utf8')).toBe('mine');
@@ -120,7 +154,29 @@ describe('shareLinkedFolder', () => {
     writeFile(main, 'node_modules/a/index.js', 'same');
     writeFile(wt, 'node_modules/a/index.js', 'same');
     await shareLinkedFolder(main, wt, 'node_modules');
-    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0 });
+    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0, unshared: 0 });
+  });
+
+  it('never shares what installs and tools write in place, and makes such links copies again', async () => {
+    const main = makeTempDir();
+    const wt = makeTempDir();
+    cleanup.push(main, wt);
+    writeFile(main, 'node_modules/.package-lock.json', '{}');
+    writeFile(wt, 'node_modules/.package-lock.json', '{}');
+    writeFile(main, 'node_modules/esbuild/package.json', '{"scripts":{"postinstall":"node install.js"}}');
+    fs.mkdirSync(path.join(wt, 'node_modules/esbuild/bin'), { recursive: true });
+    fs.copyFileSync(path.join(main, 'node_modules/esbuild/package.json'), path.join(wt, 'node_modules/esbuild/package.json'));
+    writeFile(main, 'node_modules/esbuild/bin/esbuild', 'windows');
+    // Linked before this rule: the same file in both worktrees.
+    fs.linkSync(path.join(main, 'node_modules/esbuild/bin/esbuild'), path.join(wt, 'node_modules/esbuild/bin/esbuild'));
+
+    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0, unshared: 1 });
+
+    const bin = path.join(wt, 'node_modules/esbuild/bin/esbuild');
+    expect(fs.statSync(bin).ino).not.toBe(fs.statSync(path.join(main, 'node_modules/esbuild/bin/esbuild')).ino);
+    expect(fs.readFileSync(bin, 'utf8')).toBe('windows');
+    expect(fs.statSync(path.join(wt, 'node_modules/.package-lock.json')).nlink).toBe(1);
+    expect(fs.readdirSync(path.join(wt, 'node_modules/esbuild/bin'))).toEqual(['esbuild']);
   });
 
   it('leaves the folder alone when the worktree has none', async () => {
@@ -128,7 +184,7 @@ describe('shareLinkedFolder', () => {
     const wt = makeTempDir();
     cleanup.push(main, wt);
     writeFile(main, 'node_modules/a/index.js', 'same');
-    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0 });
+    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0, unshared: 0 });
     expect(fs.existsSync(path.join(wt, 'node_modules'))).toBe(false);
   });
 });
