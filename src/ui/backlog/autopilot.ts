@@ -161,7 +161,8 @@ export class Autopilot implements vscode.Disposable {
    */
   private async clashing(data: BacklogData): Promise<Map<string, Clash>> {
     const found = new Map<string, Clash>();
-    const main = this.deps.repository.current.find((w) => w.worktree.isMain)?.worktree.path;
+    // Without the repository's worktrees (yet), there's nothing to compare.
+    const main = this.deps.repository?.current.find((w) => w.worktree.isMain)?.worktree.path;
     if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', true)) return found;
     const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping);
     const active = data.items.filter((i) => i.status === 'doing' || i.status === 'review');
