@@ -72,7 +72,7 @@ export class Shaping implements vscode.Disposable {
     const agent = item.shaping?.agent ?? agentName(this.takenNames());
     const run = runAgentHeadless({
       cwd: this.deps.mainRoot,
-      prompt: resume ? followUpPrompt({ agent, ticket, opened, now: entryDate(new Date()) }) : shapingPrompt({ item, agent, ticket, now: entryDate(new Date()) }),
+      prompt: resume ? followUpPrompt({ ticket, opened }) : shapingPrompt({ item, agent, ticket }),
       resume,
       name: `${agent} · discussing ${id}`,
       choice: agentChoice(item),
@@ -104,17 +104,24 @@ export class Shaping implements vscode.Disposable {
     this.changed.fire();
   }
 
-  /** The agent's run is over: its reply says whether the ticket is ready; a comment that came meanwhile goes on. */
+  /**
+   * The agent's run is over: its reply goes to the end of the ticket (after any comment written meanwhile), and says
+   * whether the ticket is ready; a comment that came meanwhile goes on.
+   */
   private async finished(id: string, agent: string, result: AgentResult): Promise<void> {
     this.runs.delete(id);
     try {
       const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
       if (!item) return;
+      const reply = result.reply?.trim();
       if (result.limit) {
         await this.say(item, `${agent} stopped on a limit (${result.limit.kind}). Write a comment, or press Discuss, to go on.`);
       } else if (result.error) {
         await this.say(item, `${agent} stopped without a reply (${result.error.slice(0, 200)}). Write a comment, or press Discuss, to go on.`);
+      } else if (!reply) {
+        await this.say(item, `${agent} stopped without a reply. Write a comment, or press Discuss, to go on.`);
       } else {
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: `Agent ${agent}`, body: reply });
         const ready = readyToStart((await this.deps.backlog.readTicket(item)).activity, agent);
         await this.deps.backlog.change((d) => {
           const shaping = d.items.find((i) => i.id === id)?.shaping;

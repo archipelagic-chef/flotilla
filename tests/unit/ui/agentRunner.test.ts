@@ -5,7 +5,7 @@ vi.mock('vscode', () => ({
   extensions: { getExtension: () => undefined },
 }));
 
-import { headlessArgs } from '../../../src/ui/backlog/agentRunner';
+import { agentOutcome, headlessArgs, resultOf } from '../../../src/ui/backlog/agentRunner';
 
 const SESSION = '3f1c2a4e-5b6d-4e7f-8a9b-0c1d2e3f4a5b';
 
@@ -40,5 +40,45 @@ describe('headless agent arguments', () => {
     const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto' });
     expect(args).not.toContain('--tools');
     expect(args).not.toContain('--allowedTools');
+  });
+});
+
+describe('an agent result', () => {
+  it('is its last message, whole (a reply can be longer than a note)', () => {
+    const reply = 'Line.\n'.repeat(1000);
+    expect(resultOf(JSON.stringify({ type: 'result', is_error: false, result: reply }))).toBe(reply);
+  });
+
+  it('is nothing when the output is not a result', () => {
+    expect(resultOf('not json')).toBeUndefined();
+    expect(resultOf(JSON.stringify({ type: 'result', result: 3 }))).toBeUndefined();
+  });
+});
+
+describe('an agent outcome', () => {
+  const now = new Date('2026-10-13T07:00:00');
+  const result = (text: string) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text });
+
+  it('is its reply when it exits 0 with a result', () => {
+    expect(agentOutcome({ code: 0, stdout: result('Tags too.'), stderr: '', now })).toEqual({ code: 0, reply: 'Tags too.' });
+  });
+
+  it('is an error when it exits 0 but its result is an error (no reply)', () => {
+    const stdout = JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'API Error: 500' });
+    const outcome = agentOutcome({ code: 0, stdout, stderr: '', now });
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.error).toBe('API Error: 500');
+    expect(outcome.limit).toBeUndefined();
+  });
+
+  it('is an error with the stderr when it exits non-zero', () => {
+    expect(agentOutcome({ code: 1, stdout: '', stderr: 'boom', now })).toEqual({ code: 1, error: 'boom' });
+  });
+
+  it('is a usage limit when it hit one, with no reply', () => {
+    const stdout = JSON.stringify({ type: 'result', is_error: true, result: 'Claude AI usage limit reached|1760000000' });
+    const outcome = agentOutcome({ code: 0, stdout, stderr: '', now });
+    expect(outcome.reply).toBeUndefined();
+    expect(outcome.limit).toMatchObject({ known: true, kind: 'usage' });
   });
 });

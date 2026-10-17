@@ -100,14 +100,19 @@ export function choiceArgs(c: AgentChoice): string[] {
   return [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
 }
 
-/** The text of a run's JSON result (what it said last), if it printed one. */
-function resultText(stdout: string): string | undefined {
+/** The text of a run's JSON result (what it said last, in full), if it printed one. */
+export function resultOf(stdout: string): string | undefined {
   try {
     const r = JSON.parse(stdout.trim()) as { result?: unknown };
-    return typeof r.result === 'string' ? r.result.slice(0, 300) : undefined;
+    return typeof r.result === 'string' ? r.result : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** The start of a run's result, for a note about a failed run. */
+function resultText(stdout: string): string | undefined {
+  return resultOf(stdout)?.slice(0, 300);
 }
 
 /** The sessions of agents running without a window now (in this window's extension host). */
@@ -135,6 +140,17 @@ export function releaseStart(slot: number | undefined): void {
   if (slot !== undefined) starting.end(slot);
 }
 
+/**
+ * What a finished run says, from its exit code and output (stdout is its JSON result). A run that exits 0 but whose
+ * result is an error failed too, and a usage limit it hit is an outcome of its own (it goes on when that resets).
+ */
+export function agentOutcome(o: { code: number | null; stdout: string; stderr: string; now: Date }): AgentResult {
+  const failed = o.code !== 0 || /"is_error"\s*:\s*true/.test(o.stdout);
+  if (!failed) return { code: o.code, reply: resultOf(o.stdout) };
+  const limit = parseUsageLimit(`${o.stdout}\n${o.stderr}`, o.now);
+  return { code: o.code, error: o.stderr.trim() || resultText(o.stdout) || `exit code ${o.code}`, ...(limit ? { limit } : {}) };
+}
+
 export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
@@ -144,12 +160,14 @@ export interface AgentResult {
   error?: string;
   /** It stopped on Claude's usage (or rate) limit: when to go on. */
   limit?: UsageLimit;
+  /** What the agent wrote last, when it finished without an error (its final message). */
+  reply?: string;
 }
 
 export interface AgentRun {
   /** The chat's session: new (chosen here, so it's known at once) or resumed. */
   sessionId: string;
-  /** Resolves when the agent stops: its exit code, what it wrote last when it failed, and a usage limit it hit. */
+  /** Resolves when the agent stops: its exit code, its last message if it finished, what it wrote last when it failed, and a usage limit it hit. */
   done: Promise<AgentResult>;
   stop(): void;
 }
@@ -218,7 +236,8 @@ export function runAgentHeadless(o: {
   let stderr = '';
   let stdout = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
-  child.stdout.on('data', (d: Buffer) => (stdout = (stdout + d.toString()).slice(-8000)));
+  // The whole JSON result is kept (a reply is read from it), up to a cap that a result this long won't reach.
+  child.stdout.on('data', (d: Buffer) => (stdout = (stdout + d.toString()).slice(-1_000_000)));
   const done = new Promise<AgentResult>((resolve) => {
     child.on('exit', () => {
       running.delete(sessionId);
@@ -231,11 +250,9 @@ export function runAgentHeadless(o: {
     });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
-      // A run that failed (or whose result is an error) may have hit a limit: it goes on when that resets.
-      const failed = code !== 0 || /"is_error"\s*:\s*true/.test(stdout);
-      const limit = failed ? parseUsageLimit(`${stdout}\n${stderr}`, new Date()) : undefined;
-      if (limit) o.output.appendLine(`${o.name} hit a ${limit.kind} limit; it goes on at ${limit.until.toLocaleString()}.`);
-      resolve(code === 0 && !limit ? { code } : { code, error: stderr.trim() || resultText(stdout) || `exit code ${code}`, ...(limit ? { limit } : {}) });
+      const result = agentOutcome({ code, stdout, stderr, now: new Date() });
+      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
+      resolve(result);
     });
   });
   return { sessionId, done, stop: () => child.kill() };
