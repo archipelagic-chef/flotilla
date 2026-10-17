@@ -1,6 +1,9 @@
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { rawFs } from '../../core/rawFs';
 import type { BacklogStatus } from '../backlog/backlog';
+
+// Not Electron's fs: worktrees can hold .asar files (see rawFs).
+const fs = rawFs().promises;
 
 /** `auto`: a finished ticket's worktree is removed when that's safe; `ask`: every removal is a question; `off`: never. */
 export type RemoveFinishedMode = 'auto' | 'ask' | 'off';

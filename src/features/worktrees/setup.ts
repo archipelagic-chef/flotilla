@@ -1,8 +1,11 @@
 import { constants, type Dirent } from 'node:fs';
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { glob } from 'tinyglobby';
+import { rawFs } from '../../core/rawFs';
 import { WORKTREES_DIR } from './layout';
+
+// Not Electron's fs: linked folders can hold .asar files (see rawFs).
+const fs = rawFs().promises;
 
 export async function copySetupFiles(mainRoot: string, worktreeDir: string, patterns: readonly string[]): Promise<string[]> {
   if (patterns.length === 0) return [];

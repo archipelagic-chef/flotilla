@@ -12,7 +12,7 @@ const host = await esbuild.context({
   target: 'node20',
   format: 'cjs',
   outfile: 'dist/extension.js',
-  external: ['vscode'],
+  external: ['vscode', 'original-fs'],
   sourcemap: true,
   banner: { js: "const __importMetaUrl = require('url').pathToFileURL(__filename).href;" },
   define: { 'import.meta.url': '__importMetaUrl' },

@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { parseStatusV2 } from '../../core/git/porcelain';
 import { samePath } from '../../core/paths';
+import { rawFs } from '../../core/rawFs';
 import { removeTopLevelLinks } from '../storage/finished';
 import { ensureExcluded, existingNames, sanitizeName, uniqueName, worktreesRoot } from './layout';
 import { lock, makePortable, readGitFile, readLock, resolveGitdir, retargetBackPointer, unlock } from './portability';
@@ -174,7 +175,8 @@ export class WorktreeService {
   async deleteLeftover(dir: string): Promise<void> {
     if (!(await this.leftovers()).some((d) => samePath(d, dir))) throw new Error(`${dir} is not a leftover worktree folder.`);
     await removeTopLevelLinks(dir);
-    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 });
+    // Not Electron's fs: it would open a VS Code download's .asar as a folder and keep it open (see rawFs).
+    await rawFs().promises.rm(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 
   /** Deletes git's record of a worktree that is unreachable here. Never touches worktree files. */
