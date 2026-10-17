@@ -272,7 +272,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     removeAnyway: (ws) => removeWorkstream(ctx, ws),
   });
-  context.subscriptions.push(finished);
+  context.subscriptions.push(finished, vscode.commands.registerCommand('flotilla.keptWorktrees', () => finished.showKept()));
   // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
   const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
   context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));

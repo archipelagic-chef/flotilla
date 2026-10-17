@@ -97,6 +97,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.keptWorktrees",
+        "title": "Kept Worktrees and Folders…",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.remove",
         "title": "Remove Worktree…",
         "category": "Flotilla",
@@ -564,6 +569,10 @@
       "commandPalette": [
         {
           "command": "flotilla.shareLinkedFolders",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.keptWorktrees",
           "when": "flotilla.state == ready"
         },
         {

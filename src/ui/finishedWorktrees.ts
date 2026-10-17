@@ -20,6 +20,14 @@ const KEPT_LEFTOVERS_KEY = 'flotilla.finishedWorktrees.keptLeftovers';
 const INTRODUCED_KEY = 'flotilla.finishedWorktrees.introduced';
 /** The first question measures what removing would free for at most this long, all worktrees together. */
 const INTRO_MEASURE_MS = 10_000;
+/** Where a Keep is taken back. */
+const KEPT_COMMAND = "'Flotilla: Kept Worktrees and Folders…'";
+
+/** What the user chose to keep: done tickets (their worktrees) and leftover folders in .worktrees/ (their names). */
+export interface KeptChoices {
+  tickets: string[];
+  leftovers: string[];
+}
 
 export interface FinishedWorktreesDeps {
   backlog: Pick<LocalBacklog, 'read' | 'watch' | 'appendActivity'>;
@@ -156,6 +164,7 @@ export class FinishedWorktrees implements vscode.Disposable {
     if (choice === 'Keep') {
       const kept = new Set(this.deps.workspaceState.get<string[]>(KEPT_LEFTOVERS_KEY) ?? []);
       await this.deps.workspaceState.update(KEPT_LEFTOVERS_KEY, [...kept.add(name)]);
+      this.deps.output.appendLine(`Keeping the leftover folder '${name}' in .worktrees; ${KEPT_COMMAND} takes that back.`);
     } else if (choice === 'Delete') {
       await this.enqueue(async () => {
         await this.deps.service.deleteLeftover(dir);
@@ -220,10 +229,76 @@ export class FinishedWorktrees implements vscode.Disposable {
     if (choice === 'Keep') {
       const kept = new Set(this.deps.workspaceState.get<string[]>(KEPT_KEY) ?? []);
       await this.deps.workspaceState.update(KEPT_KEY, [...kept.add(c.item.id)]);
+      this.deps.output.appendLine(`Keeping the worktree of ${c.item.id}; ${KEPT_COMMAND} takes that back.`);
     } else if (choice === 'Remove Anyway') {
       await this.deps.removeAnyway(c.ws);
     } else if (choice === 'Remove') {
       await this.enqueue(() => this.remove(c));
+    }
+  }
+
+  /** What the user chose Keep for, in this workspace. */
+  kept(): KeptChoices {
+    return {
+      tickets: this.deps.workspaceState.get<string[]>(KEPT_KEY) ?? [],
+      leftovers: this.deps.workspaceState.get<string[]>(KEPT_LEFTOVERS_KEY) ?? [],
+    };
+  }
+
+  /** Takes Keep back for these: they're asked about again, in a sweep that starts now. */
+  async forget(choices: Partial<KeptChoices>): Promise<void> {
+    const tickets = new Set(choices.tickets ?? []);
+    const leftovers = new Set(choices.leftovers ?? []);
+    const { tickets: keptTickets, leftovers: keptLeftovers } = this.kept();
+    await this.deps.workspaceState.update(KEPT_KEY, keptTickets.filter((id) => !tickets.has(id)));
+    await this.deps.workspaceState.update(KEPT_LEFTOVERS_KEY, keptLeftovers.filter((name) => !leftovers.has(name)));
+    for (const id of tickets) this.asked.delete(id);
+    for (const name of leftovers) this.asked.delete(`leftover:${name}`);
+    for (const id of tickets) this.deps.output.appendLine(`No longer keeping the worktree of ${id}: Flotilla asks about it again.`);
+    for (const name of leftovers) this.deps.output.appendLine(`No longer keeping the leftover folder '${name}': Flotilla asks about it again.`);
+    await this.sweep();
+  }
+
+  /** The Kept Worktrees and Folders command: lists what was kept, and takes back the ones picked. */
+  async showKept(): Promise<void> {
+    const { tickets, leftovers } = this.kept();
+    if (!tickets.length && !leftovers.length) {
+      void vscode.window.showInformationMessage('You haven’t kept any finished worktree or leftover folder: Flotilla asks about all of them.');
+      return;
+    }
+    const items = (await this.deps.backlog.read()).items;
+    const present = new Set((await this.deps.service.leftovers()).map((dir) => path.basename(dir)));
+    type Pick = vscode.QuickPickItem & { ticket?: string; leftover?: string };
+    const picks: Pick[] = [
+      ...tickets.map((id): Pick => {
+        const item = items.find((i) => i.id === id);
+        const ws = item && this.deps.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
+        return {
+          label: id,
+          description: item?.title ?? 'no longer in the backlog',
+          detail: ws ? `Worktree '${workstreamLabel(ws)}'` : 'Its worktree is gone',
+          ticket: id,
+        };
+      }),
+      ...leftovers.map((name): Pick => ({
+        label: name,
+        description: 'Leftover folder in .worktrees',
+        detail: present.has(name) ? undefined : 'No longer there',
+        leftover: name,
+      })),
+    ];
+    const chosen = await vscode.window.showQuickPick(picks, {
+      canPickMany: true,
+      title: 'Kept Worktrees and Folders',
+      placeHolder: 'Pick the ones Flotilla should ask about again',
+    });
+    if (!chosen?.length) return;
+    await this.forget({
+      tickets: chosen.flatMap((p) => (p.ticket ? [p.ticket] : [])),
+      leftovers: chosen.flatMap((p) => (p.leftover ? [p.leftover] : [])),
+    });
+    if (readSettings().removeFinishedWorktrees === 'off') {
+      void vscode.window.showInformationMessage('Taken back. Flotilla asks again once flotilla.removeFinishedWorktrees is no longer off.');
     }
   }
 

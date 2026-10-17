@@ -1,15 +1,18 @@
+import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const showInformationMessage = vi.fn(async (..._args: unknown[]) => undefined as string | undefined);
+const showQuickPick = vi.fn(async (..._args: unknown[]) => undefined as unknown);
 const settings: Record<string, unknown> = {};
 const update = vi.fn(async () => undefined);
 
 vi.mock('vscode', () => ({
   window: {
     showInformationMessage,
+    showQuickPick,
     withProgress: async (_o: unknown, task: (p: { report(): void }) => Promise<void>) => task({ report() {} }),
   },
   workspace: {
@@ -25,6 +28,7 @@ const disposables: Array<{ dispose(): void }> = [];
 
 beforeEach(() => {
   showInformationMessage.mockReset();
+  showQuickPick.mockReset();
   update.mockClear();
   for (const k of Object.keys(settings)) delete settings[k];
 });
@@ -59,13 +63,23 @@ function memento(initial: Record<string, unknown> = {}) {
   return { data, get: <T>(k: string) => data[k] as T, update: async (k: string, v: unknown) => void (data[k] = v), keys: () => Object.keys(data) };
 }
 
-async function setup(o: { items: BacklogItem[]; worktrees: Workstream[]; introduced?: boolean; leader?: boolean; leftovers?: string[]; kept?: string[] }) {
+async function setup(o: {
+  items: BacklogItem[];
+  worktrees: Workstream[];
+  introduced?: boolean;
+  leader?: boolean;
+  leftovers?: string[];
+  kept?: string[];
+  keptLeftovers?: string[];
+}) {
   const { FinishedWorktrees } = await import('../../../src/ui/finishedWorktrees');
   const removed: string[] = [];
   const deleted: string[] = [];
   const output: string[] = [];
   const activity: Array<[string, string]> = [];
-  const state = memento({ ...(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {}), ...(o.kept ? { 'flotilla.finishedWorktrees.kept': o.kept } : {}) });
+  const state = memento({ ...(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {}), ...(o.kept ? { 'flotilla.finishedWorktrees.kept': o.kept } : {}),
+    ...(o.keptLeftovers ? { 'flotilla.finishedWorktrees.keptLeftovers': o.keptLeftovers } : {}),
+  });
   const removeAnyway = vi.fn(async () => undefined);
   const cleaner = new FinishedWorktrees({
     backlog: {
@@ -200,6 +214,67 @@ describe('FinishedWorktrees', () => {
     expect(String(showInformationMessage.mock.calls[0][0])).toContain('2.0 KB');
     expect(deleted).toEqual([left]);
     expect(output.at(-1)).toContain('Deleted the leftover folder');
+  });
+
+  it('lists what was kept, and asks again about what is taken back', async () => {
+    const left = makeTempDir();
+    cleanup.push(left);
+    const leftName = path.basename(left);
+    const dirty = worktree('BL-1', { changes: [{}] as never });
+    const { cleaner, state } = await setup({
+      items: [item('BL-1', 'done')],
+      worktrees: [dirty],
+      introduced: true,
+      kept: ['BL-1', 'BL-9'],
+      keptLeftovers: [leftName, 'gone-folder'],
+      leftovers: [left],
+    });
+    await cleaner.sweep();
+    expect(showInformationMessage).not.toHaveBeenCalled();
+    showQuickPick.mockImplementationOnce(async (picks) => (picks as Array<{ label: string }>).filter((p) => p.label === 'BL-1' || p.label === leftName));
+
+    await cleaner.showKept();
+    await new Promise((r) => setTimeout(r, 20));
+
+    const picks = showQuickPick.mock.calls[0][0] as Array<{ label: string; detail?: string }>;
+    expect(picks.map((p) => [p.label, p.detail])).toEqual([
+      ['BL-1', expect.stringMatching(/^Worktree '/)],
+      ['BL-9', 'Its worktree is gone'],
+      [leftName, undefined],
+      ['gone-folder', 'No longer there'],
+    ]);
+    expect(state.data['flotilla.finishedWorktrees.kept']).toEqual(['BL-9']);
+    expect(state.data['flotilla.finishedWorktrees.keptLeftovers']).toEqual(['gone-folder']);
+    // The sweep that follows asks about both again.
+    const asked = showInformationMessage.mock.calls.map((c) => String(c[0]));
+    expect(asked).toContainEqual(expect.stringContaining("BL-1 is done, but its worktree wasn't removed"));
+    expect(asked).toContainEqual(expect.stringContaining(`'${leftName}' in .worktrees was left behind`));
+  });
+
+  it('takes back a Keep chosen in this session too', async () => {
+    const dirty = worktree('BL-1', { changes: [{}] as never });
+    const { cleaner } = await setup({ items: [item('BL-1', 'done')], worktrees: [dirty], introduced: true });
+    showInformationMessage.mockResolvedValueOnce('Keep');
+    await cleaner.sweep();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cleaner.kept().tickets).toEqual(['BL-1']);
+
+    await cleaner.forget({ tickets: ['BL-1'] });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(showInformationMessage).toHaveBeenCalledTimes(2);
+    expect(cleaner.kept().tickets).toEqual([]);
+  });
+
+  it('says so when nothing was kept, and changes nothing when the picker is closed', async () => {
+    const a = await setup({ items: [], worktrees: [], introduced: true });
+    await a.cleaner.showKept();
+    expect(showQuickPick).not.toHaveBeenCalled();
+    expect(String(showInformationMessage.mock.calls[0][0])).toContain('haven’t kept any');
+
+    const b = await setup({ items: [], worktrees: [], introduced: true, kept: ['BL-1'] });
+    await b.cleaner.showKept();
+    expect(b.state.data['flotilla.finishedWorktrees.kept']).toEqual(['BL-1']);
   });
 
   it('does nothing when the setting is off', async () => {
