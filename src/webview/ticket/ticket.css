@@ -1161,3 +1161,24 @@ button.timeline-item:hover .timeline-text {
   flex-direction: column;
   gap: 10px;
 }
+
+/* An action in progress: "working…" beside its button, or its comment sent and not yet confirmed. */
+.action-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-left: 0.5em;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}
+.entry.sending {
+  opacity: 0.7;
+}
+.sending-body {
+  white-space: pre-wrap;
+}
+/* A Run button in a report, while the host runs it: its label says so (set on click, cleared when it's done). */
+.run-button[data-busy]::after {
+  content: "  " attr(data-busy);
+  font-style: italic;
+}

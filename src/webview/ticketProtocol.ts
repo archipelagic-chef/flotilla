@@ -120,12 +120,29 @@ export interface TicketView {
   shaping?: { agent: string; running: boolean; ready: boolean };
 }
 
+/** The top-level parts of a view that a change sends on their own (the activity has its own: see TicketPartsMessage). */
+export type TicketPart = Exclude<keyof TicketView, 'activity'>;
+
 export type TicketHostMessage =
   | { type: 'ticket'; ticket: TicketView }
+  /**
+   * What changed since the view sent before (see ticketUpdate): the parts that differ, and those that are gone. The
+   * activity keeps its first `keep` entries and gets `entries` after them.
+   */
+  | {
+      type: 'ticketParts';
+      parts: Partial<Pick<TicketView, TicketPart>>;
+      removed: TicketPart[];
+      activity?: { keep: number; entries: TicketView['activity'] };
+    }
+  /** An action (the webview's message, as it was sent) is finished, its view posted: failed if it threw. */
+  | { type: 'done'; message: TicketWebviewMessage; failed?: boolean }
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
   | { type: 'focus'; target: 'comment' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string };
+
+export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
 export type TicketWebviewMessage =
   | { type: 'ready' }

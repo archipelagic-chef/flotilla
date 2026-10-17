@@ -1,11 +1,13 @@
-import { Component, render, type ComponentChildren } from 'preact';
+import { Component, render, type ComponentChildren, type JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
-import { summaryOf } from '../../features/backlog/ticket';
+import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { applyTicketParts } from '../ticketParts';
+import { actionKey } from '../ticketActions';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
@@ -14,6 +16,104 @@ import './ticket.css';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
 const send = (message: TicketWebviewMessage) => vscode.postMessage(message);
+
+/**
+ * The actions the host hasn't finished, by actionKey: "working…" shows from the click until the host says it's done
+ * (it does so for every action, whether it posted, failed or did nothing).
+ */
+const working = new Map<string, string>();
+const workingListeners = new Set<() => void>();
+const doneListeners = new Set<(message: TicketWebviewMessage, failed: boolean) => void>();
+
+const notifyWorking = () => workingListeners.forEach((f) => f());
+
+/** Sends an action, and shows it as working (its label) until the host is done with it. */
+function act(message: TicketWebviewMessage, label = 'Working…') {
+  working.set(actionKey(message), label);
+  notifyWorking();
+  send(message);
+}
+
+/** The label of an action in progress (undefined when it isn't), re-rendered as it starts and ends. */
+function useWorking(message: TicketWebviewMessage): string | undefined {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const listener = () => refresh((n) => n + 1);
+    workingListeners.add(listener);
+    return () => void workingListeners.delete(listener);
+  }, []);
+  return working.get(actionKey(message));
+}
+
+/** Comments sent and not yet done with: each shows at once as an entry, marked "Sending…". */
+type SentComment = { text: string; date: string; at: number };
+let sendingComments: SentComment[] = [];
+const sendingListeners = new Set<() => void>();
+/** How many entries the view shows: a comment sent now is confirmed by an entry after these. */
+let shownEntries = 0;
+
+/** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
+function sendComment(text: string) {
+  sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
+  sendingListeners.forEach((f) => f());
+  act({ type: 'comment', text }, 'Sending…');
+}
+
+function useSending(): SentComment[] {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const listener = () => refresh((n) => n + 1);
+    sendingListeners.add(listener);
+    return () => void sendingListeners.delete(listener);
+  }, []);
+  return sendingComments;
+}
+
+/** Called when the host is done with an action: failed if it threw. */
+function finished(message: TicketWebviewMessage, failed: boolean) {
+  working.delete(actionKey(message));
+  notifyWorking();
+  if (message.type === 'comment') {
+    const i = sendingComments.findIndex((c) => c.text === message.text);
+    if (i >= 0) {
+      sendingComments = sendingComments.filter((_, j) => j !== i);
+      sendingListeners.forEach((f) => f());
+    }
+  }
+  if (message.type === 'run') {
+    // The Run button of a run block (set on click, in Rendered): its working state ends.
+    document.querySelectorAll<HTMLElement>(`[data-run-key="${CSS.escape(message.key)}"][data-run-index="${message.index}"]`).forEach((run) => {
+      run.removeAttribute('data-busy');
+      (run as HTMLButtonElement).disabled = false;
+    });
+  }
+  doneListeners.forEach((f) => f(message, failed));
+}
+
+/** A button for an action: it says "working…" (after its label) from the click until the host is done with it. */
+function ActionButton({
+  message,
+  working: label,
+  children,
+  ...props
+}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string }) {
+  const busy = useWorking(message);
+  return (
+    <button {...props} disabled={props.disabled || !!busy} aria-busy={!!busy} onClick={() => act(message, label)}>
+      {children}
+      {busy && <WorkingTag label={busy} />}
+    </button>
+  );
+}
+
+/** "working…" beside an action that's in progress. */
+function WorkingTag({ label }: { label: string }) {
+  return (
+    <span class="action-busy" role="status">
+      <i class="codicon codicon-loading codicon-modifier-spin" /> {label}
+    </span>
+  );
+}
 
 const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = [
   { status: 'todo', label: 'To Do', icon: 'circle-large-outline' },
@@ -132,7 +232,10 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
     // The Run button of a run block in an agent's report (the host puts it in the html).
     const run = (e.target as HTMLElement).closest<HTMLElement>('[data-run-key]');
     if (run) {
-      send({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) });
+      // The button is in the host's html: its working state is set here, and cleared when the host is done.
+      run.dataset.busy = 'Running…';
+      (run as HTMLButtonElement).disabled = true;
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -365,13 +468,13 @@ function DiscussPanel({ ticket }: { ticket: TicketView }) {
               <i class="codicon codicon-check" /> Accept
             </button>
           ) : (
-            <button class="button" onClick={() => send({ type: 'start', agent: true })}>
+            <ActionButton class="button" message={{ type: 'start', agent: true }} working="Starting…">
               <i class="codicon codicon-play" /> Start
-            </button>
+            </ActionButton>
           )}
-          <button class="button secondary" onClick={() => send({ type: 'keepDiscussing' })} title="Dismisses this; the discussion goes on with your next comment">
+          <ActionButton class="button secondary" message={{ type: 'keepDiscussing' }} working="Continuing…" title="Dismisses this; the discussion goes on with your next comment">
             Keep discussing
-          </button>
+          </ActionButton>
         </>
       )}
     </div>
@@ -413,9 +516,9 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         {text}
       </span>
       {r.state === 'paused' && (
-        <button class="button secondary" onClick={() => send({ type: 'reviewFix', fix: 'resumeNow' })} title={FIX_TIP.resumeNow}>
+        <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
           <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
-        </button>
+        </ActionButton>
       )}
       {r.state === 'yours' ? (
         <>
@@ -431,26 +534,26 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
           >
             <i class="codicon codicon-request-changes" /> Request Changes…
           </button>
-          <button class="button" onClick={() => send({ type: 'userReview', verdict: 'approved', text: '' })}>
+          <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
             <i class="codicon codicon-check" /> Approve
-          </button>
+          </ActionButton>
         </>
       ) : active ? (
-        <button class="button secondary" onClick={() => send({ type: 'stopReview' })} title="Stops the running agent and the handoffs">
+        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title="Stops the running agent and the handoffs">
           <i class="codicon codicon-debug-stop" /> Stop
-        </button>
+        </ActionButton>
       ) : r.state === 'stopped' ? (
         // Fixes for why it stopped, the first one first.
         fixesFor(r.stop?.kind, !!r.stop?.task).map((fix, i) => (
-          <button key={fix} class={`button${i ? ' secondary' : ''}`} onClick={() => send({ type: 'reviewFix', fix })} title={FIX_TIP[fix]}>
+          <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
             <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
-          </button>
+          </ActionButton>
         ))
       ) : (
         ticket.canReview && (
-          <button class="button secondary" onClick={() => send({ type: 'startReview' })}>
+          <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
             <i class="codicon codicon-eye" /> Review Again
-          </button>
+          </ActionButton>
         )
       )}
     </div>
@@ -509,10 +612,11 @@ function HistoryVersionRow({ version: v }: { version: TicketView['history'][numb
       </button>
       {open &&
         v.log.map((c) => (
-          <button
+          <ActionButton
             key={c.hash}
             class="work-row commit nested"
-            onClick={() => send({ type: 'openCommit', hash: c.hash })}
+            message={{ type: 'openCommit', hash: c.hash }}
+            working="Opening…"
             title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show what it changed`}
           >
             <span class="hash">{c.short}</span>
@@ -520,7 +624,7 @@ function HistoryVersionRow({ version: v }: { version: TicketView['history'][numb
             <span class="muted work-when">
               {c.author} · {ago(c.date)}
             </span>
-          </button>
+          </ActionButton>
         ))}
     </>
   );
@@ -546,21 +650,23 @@ function CleanUpPanel({ ticket }: { ticket: TicketView }) {
         <strong>Cleaning up the history</strong> {who} rewriting the {r.commits} commit{r.commits === 1 ? '' : 's'} of {r.branch} in {r.clean}. {state}
       </span>
       {!same && r.cleanCommits > 0 && (
-        <button class="button secondary" onClick={() => send({ type: 'compareCleanUp' })} title="What still differs between the clean history and the branch">
+        <ActionButton class="button secondary" message={{ type: 'compareCleanUp' }} working="Comparing…" title="What still differs between the clean history and the branch">
           <i class="codicon codicon-diff" /> Compare
-        </button>
+        </ActionButton>
       )}
-      <button
+      <ActionButton
         class="button secondary"
-        onClick={() => send({ type: 'cancelCleanUp' })}
+        message={{ type: 'cancelCleanUp' }}
+        working="Cancelling…"
         title="Removes the clean-up's worktree and branch; the branch stays as it is"
       >
         Cancel
-      </button>
-      <button
+      </ActionButton>
+      <ActionButton
         class={`button${ready ? '' : ' secondary'}`}
         disabled={!ready}
-        onClick={() => send({ type: 'finishCleanUp' })}
+        message={{ type: 'finishCleanUp' }}
+        working="Finishing…"
         title={
           ready
             ? 'Keeps the old history, and moves the branch to the clean commits (asks first)'
@@ -568,7 +674,7 @@ function CleanUpPanel({ ticket }: { ticket: TicketView }) {
         }
       >
         <i class="codicon codicon-check" /> Finish Clean-Up
-      </button>
+      </ActionButton>
     </div>
   );
 }
@@ -617,29 +723,31 @@ function Work({ ticket }: { ticket: TicketView }) {
           <div key={b} class="work-row dim">
             <span class="work-main">{b}</span>
             <span class="muted">branch, no worktree</span>
-            <button class="text-button work-action" onClick={() => send({ type: 'checkout', branch: b })} title="Create a worktree for this branch">
+            <ActionButton class="text-button work-action" message={{ type: 'checkout', branch: b }} working="Creating the worktree…" title="Create a worktree for this branch">
               <i class="codicon codicon-add" /> Worktree
-            </button>
+            </ActionButton>
           </div>
         ))}
         <div class="work-head">
           <i class="codicon codicon-git-commit" /> Commits <span class="count">{ticket.commits.length}</span>
           {ticket.canCleanUp && (
-            <button
+            <ActionButton
               class="text-button work-head-action"
-              onClick={() => send({ type: 'cleanUp' })}
+              message={{ type: 'cleanUp' }}
+              working="Starting…"
               title="Rewrite the branch's commits into a clean history (an agent with you, or yourself). The old history is kept, and shown here."
             >
               <i class="codicon codicon-wand" /> Clean Up History…
-            </button>
+            </ActionButton>
           )}
         </div>
         {!ticket.commits.length && <div class="work-empty muted">None yet. Commits on its branches, or that mention {ticket.item.id}, show here.</div>}
         {commits.map((c) => (
-          <button
+          <ActionButton
             key={c.hash}
             class="work-row commit"
-            onClick={() => send({ type: 'openCommit', hash: c.hash })}
+            message={{ type: 'openCommit', hash: c.hash }}
+            working="Opening…"
             title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
           >
             <span class="hash">{c.short}</span>
@@ -658,7 +766,7 @@ function Work({ ticket }: { ticket: TicketView }) {
             <span class="muted work-when">
               {c.author} · {ago(c.date)}
             </span>
-          </button>
+          </ActionButton>
         ))}
         {ticket.commits.length > COMMITS_SHOWN && (
           <button class="text-button work-more" onClick={() => setAllCommits(!allCommits)}>
@@ -747,7 +855,7 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
   const texts = report.questions.map((q, i) => answerOf(q, answers[i]));
   const ready = interactive && texts.every(Boolean);
   const submit = () => {
-    if (ready) send({ type: 'comment', text: answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))) });
+    if (ready) sendComment(answerComment(report.questions.map((question, i) => ({ question, answer: texts[i] }))));
   };
   return (
     <div class={`needs${answered ? ' answered' : ''}`}>
@@ -892,9 +1000,10 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
     const c = f.commit;
     return (
       <li class="entry kind-commit">
-        <button
+        <ActionButton
           class="commit-line"
-          onClick={() => send({ type: 'openCommit', hash: c.hash })}
+          message={{ type: 'openCommit', hash: c.hash }}
+          working="Opening…"
           title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
         >
           <i class="codicon codicon-git-commit" />
@@ -904,7 +1013,7 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
           <span class="muted">
             {c.author} · {ago(c.date)}
           </span>
-        </button>
+        </ActionButton>
       </li>
     );
   }
@@ -936,9 +1045,9 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
           </span>
         )}
         {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
-          <button class="text-button post-entry" onClick={() => send({ type: 'postEntry', key: e.key! })} title="Shows what will be posted and asks first">
+          <ActionButton class="text-button post-entry" message={{ type: 'postEntry', key: e.key! }} working="Posting…" title="Shows what will be posted and asks first">
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
-          </button>
+          </ActionButton>
         )}
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
@@ -1009,16 +1118,17 @@ function Timeline({ ticket }: { ticket: TicketView }) {
           const c = f.commit;
           return (
             <li key={c.hash} class="timeline-row">
-              <button
+              <ActionButton
                 class="timeline-item commit"
-                onClick={() => send({ type: 'openCommit', hash: c.hash })}
+                message={{ type: 'openCommit', hash: c.hash }}
+                working="Opening…"
                 title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}\nClick to show it in its worktree’s history`}
               >
                 <i class="codicon codicon-git-commit" />
                 <span class="hash">{c.short}</span>
                 <span class="timeline-text">{c.subject}</span>
                 <span class="muted">{ago(c.date)}</span>
-              </button>
+              </ActionButton>
             </li>
           );
         }
@@ -1066,14 +1176,27 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setTimeline(!timeline);
     send({ type: 'showActivity', shown: !timeline });
   };
+  const sending = useSending();
+  useEffect(() => {
+    const listener = (m: TicketWebviewMessage, failed: boolean) => {
+      // It didn't post: what was written goes back into the box, so nothing is lost.
+      if (m.type === 'comment' && failed) setComment((draft) => (draft.trim() ? draft : m.text));
+    };
+    doneListeners.add(listener);
+    return () => void doneListeners.delete(listener);
+  }, []);
+  // Once the host has the comment (an entry after `at`, by the same author), it's no longer sent: it's the entry.
+  const unconfirmed = sending.filter((p) => !ticket.activity.slice(p.at).some((e) => e.author === 'You' && e.body.trim() === p.text.trim()));
+  const changesBusy = useWorking({ type: 'userReview', verdict: 'changes', text: '' });
+  const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
   const post = () => {
     if (!comment.trim()) return;
-    send({ type: 'comment', text: comment });
+    sendComment(comment);
     setComment('');
     if (tab && tab !== 'comment') setTab(undefined);
   };
   const review = (verdict: 'approved' | 'changes') => {
-    send({ type: 'userReview', verdict, text: comment });
+    act({ type: 'userReview', verdict, text: comment }, 'Sending…');
     setComment('');
     if (tab && tab !== 'comment') setTab(undefined);
   };
@@ -1114,7 +1237,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
           );
         })}
       </div>
-      {!groups.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
+      {!groups.length && !unconfirmed.length && !ticket.loading && <div class="empty-text">{EMPTY[tab ?? 'all']}</div>}
       <ol class="feed">
         {groups.map((g) => {
           if ('fold' in g) return <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />;
@@ -1134,6 +1257,18 @@ function Activity({ ticket }: { ticket: TicketView }) {
           }
           return <FeedRowView key={i} f={e} ticket={ticket} onFold={e !== latest ? () => toggleOpened(i) : undefined} />;
         })}
+        {(!tab || tab === 'comment') &&
+          unconfirmed.map((p, i) => (
+            <li key={`sending-${i}`} class="entry kind-comment sending">
+              <div class="entry-head">
+                <i class="codicon codicon-account" />
+                <strong>You</strong>
+                <span class="muted">{p.date}</span>
+                <WorkingTag label="Sending…" />
+              </div>
+              <div class="sending-body">{p.text}</div>
+            </li>
+          ))}
       </ol>
       <button class="text-button activity-toggle" aria-expanded={timeline} onClick={toggleTimeline}>
         <i class={`codicon codicon-chevron-${timeline ? 'down' : 'right'}`} /> {timeline ? 'Hide activity' : 'Show activity'}
@@ -1159,25 +1294,29 @@ function Activity({ ticket }: { ticket: TicketView }) {
             <>
               <button
                 class="button secondary"
+                disabled={!!changesBusy || !!approveBusy}
                 onClick={() => review('changes')}
                 title="Sends the work back with your comment: an agent picks it up (its implementer's chat, resumed), and asks you first if it needs more context"
               >
                 <i class="codicon codicon-request-changes" /> Request Changes
+                {changesBusy && <WorkingTag label={changesBusy} />}
               </button>
-              <button class="button secondary" onClick={() => review('approved')} title="Approves the work, with your comment if you wrote one">
+              <button class="button secondary" disabled={!!changesBusy || !!approveBusy} onClick={() => review('approved')} title="Approves the work, with your comment if you wrote one">
                 <i class="codicon codicon-check" /> Approve
+                {approveBusy && <WorkingTag label={approveBusy} />}
               </button>
             </>
           )}
           {showRun &&
             (ticket.run ? (
-              <button
+              <ActionButton
                 class="button secondary"
-                onClick={() => send({ type: 'run', key: ticket.run!.key, index: ticket.run!.index })}
+                message={{ type: 'run', key: ticket.run!.key, index: ticket.run!.index }}
+                working="Running…"
                 title={`Runs ${ticket.run.title ? `"${ticket.run.title}"` : 'the latest run block'} in the ticket's worktree, after asking`}
               >
                 <i class="codicon codicon-play" /> Run
-              </button>
+              </ActionButton>
             ) : (
               <>
                 <button class="button secondary" disabled title="The agent didn't give a run block: there's nothing to run">
@@ -1216,7 +1355,7 @@ interface MenuItem {
 }
 
 /** A button that opens a menu below it. */
-function Dropdown({ class: cls, button, label, items }: { class: string; button: ComponentChildren; label: string; items: MenuItem[] }) {
+function Dropdown({ class: cls, button, label, items, busy }: { class: string; button: ComponentChildren; label: string; items: MenuItem[]; busy?: string }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -1240,6 +1379,7 @@ function Dropdown({ class: cls, button, label, items }: { class: string; button:
         onClick={() => setOpen(!open)}
       >
         {button}
+        {busy && <WorkingTag label={busy} />}
         {items.length > 0 && <i class="codicon codicon-chevron-down chev-small" />}
       </button>
       {open && (
@@ -1278,9 +1418,11 @@ const LANE_ICON: Record<BacklogStatus, string> = {
 function StatusMenu({ ticket }: { ticket: TicketView }) {
   const remote = ticket.remote!;
   const moves = remote.edit?.transitions ?? [];
+  const moving = useWorking({ type: 'transition', id: '' });
   return (
     <Dropdown
       class="status-menu"
+      busy={moving}
       label={`Status: ${remote.statusName}${moves.length ? '. Change…' : ''}`}
       button={
         <>
@@ -1294,7 +1436,7 @@ function StatusMenu({ ticket }: { ticket: TicketView }) {
         label: t.name.toLowerCase() === t.to.toLowerCase() ? t.to : `${t.name} → ${t.to}`,
         icon: t.needs ? 'warning' : LANE_ICON[t.status],
         detail: t.needs ? `Needs ${t.needs.join(', ')}: done in the tracker` : undefined,
-        onSelect: () => send({ type: 'transition', id: t.id }),
+        onSelect: () => act({ type: 'transition', id: t.id }, 'Moving…'),
       }))}
     />
   );
@@ -1308,9 +1450,11 @@ function RemotePriority({ current, names }: { current?: string; names: string[] 
     return l ? PRIORITY[l].icon : 'circle-small';
   };
   const cur = level(current);
+  const saving = useWorking({ type: 'remotePriority', name: '' });
   return (
     <Dropdown
       class={`priority${cur ? ` p-${cur}` : ' unset'}`}
+      busy={saving}
       label={`Priority: ${current ?? 'none'}. Change…`}
       button={
         <>
@@ -1324,7 +1468,7 @@ function RemotePriority({ current, names }: { current?: string; names: string[] 
         icon: icon(n),
         class: level(n) ? `p-${level(n)}` : undefined,
         checked: n === current,
-        onSelect: () => send({ type: 'remotePriority', name: n }),
+        onSelect: () => act({ type: 'remotePriority', name: n }, 'Saving…'),
       }))}
     />
   );
@@ -1411,7 +1555,7 @@ function focusComment() {
  * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
  * On a remote one a comment goes to the tracker, so the options aren't buttons (Answer… writes it there, as you post).
  */
-function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string; agent?: string; local: boolean; stop?: () => void }) {
+function AskBlock({ ask, title, agent, local, stoppable }: { ask: Ask; title: string; agent?: string; local: boolean; stoppable: boolean }) {
   return (
     <div class="review-panel waiting ask">
       <i class="codicon codicon-question" />
@@ -1424,7 +1568,7 @@ function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string;
               <button
                 key={option}
                 class={`button${i ? ' secondary' : ''}`}
-                onClick={() => send({ type: 'comment', text: option })}
+                onClick={() => sendComment(option)}
                 title="Sends this as the answer"
               >
                 {option}
@@ -1436,10 +1580,10 @@ function AskBlock({ ask, title, agent, local, stop }: { ask: Ask; title: string;
       <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
         <i class="codicon codicon-comment" /> Answer…
       </button>
-      {stop && (
-        <button class="button secondary" onClick={stop} title="Stops the running agent and the handoffs">
+      {stoppable && (
+        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title="Stops the running agent and the handoffs">
           <i class="codicon codicon-debug-stop" /> Stop
-        </button>
+        </ActionButton>
       )}
     </div>
   );
@@ -1478,7 +1622,7 @@ function StateCard({ ticket }: { ticket: TicketView }) {
           title={status.title}
           agent={ticket.review?.implementer ?? chat?.agent}
           local={!ticket.remote}
-          stop={asking ? () => send({ type: 'stopReview' }) : undefined}
+          stoppable={asking}
         />
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
@@ -1500,13 +1644,14 @@ function StateCard({ ticket }: { ticket: TicketView }) {
               </button>
             )}
             {notStarted && (
-              <button
+              <ActionButton
                 class="button"
-                onClick={() => send({ type: 'start', agent: true })}
+                message={{ type: 'start', agent: true }}
+                working="Starting…"
                 title="Creates its worktree and starts an agent there; it reports below"
               >
                 <i class="codicon codicon-play" /> Run
-              </button>
+              </ActionButton>
             )}
           </div>
         )
@@ -1532,6 +1677,14 @@ function App() {
       if (m.type === 'ticket') {
         setTicket(m.ticket);
         setPicked({});
+      } else if (m.type === 'ticketParts') {
+        // Only the parts that changed came: they go into the view shown. A picked status or priority is the host's
+        // once its item comes.
+        setTicket((view) => view && applyTicketParts(view, m));
+        if (m.parts.item) setPicked({});
+      } else if (m.type === 'done') {
+        finished(m.message, !!m.failed);
+        if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
       } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
@@ -1551,6 +1704,7 @@ function App() {
     setPicked((p) => ({ ...p, ...change }));
     send(message);
   };
+  shownEntries = ticket.activity.length;
   const worktrees = ticket.worktrees;
   const done = ticket.item.status === 'done';
   return (
@@ -1634,9 +1788,10 @@ function App() {
         <StateCard ticket={ticket} />
         <div class="toolbar">
           {!done && (
-            <button
+            <ActionButton
               class="button"
-              onClick={() => send({ type: 'start', agent: true })}
+              message={{ type: 'start', agent: true }}
+              working="Starting…"
               title={
                 ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
                   ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
@@ -1644,44 +1799,47 @@ function App() {
               }
             >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
-            </button>
+            </ActionButton>
           )}
           {!done && (
-            <button
+            <ActionButton
               class="button secondary"
-              onClick={() => send({ type: 'start', agent: false })}
+              message={{ type: 'start', agent: false }}
+              working="Starting…"
               title="Creates a worktree and branch for it, without an agent (an epic can have several)"
             >
               <i class="codicon codicon-git-branch" /> {worktrees.length ? 'Add a Worktree' : 'Create Worktree'}
-            </button>
+            </ActionButton>
           )}
           {!ticket.remote && (
             <>
               {ticket.canDiscuss && (
-                <button
+                <ActionButton
                   class="button secondary"
-                  onClick={() => send({ type: 'discuss' })}
+                  message={{ type: 'discuss' }}
+                  working="Starting…"
                   title="An agent talks it through with you here, and writes what's agreed into the description"
                 >
                   <i class="codicon codicon-comment-discussion" /> Discuss
-                </button>
+                </ActionButton>
               )}
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>
               {ticket.canReview && !ticket.review && (
-                <button class="button secondary" onClick={() => send({ type: 'startReview' })} title="Another agent reviews the work and gives a verdict here">
+                <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…" title="Another agent reviews the work and gives a verdict here">
                   <i class="codicon codicon-eye" /> Start Review
-                </button>
+                </ActionButton>
               )}
               {ticket.canCreateIssue && !ticket.links.length && (
-                <button
+                <ActionButton
                   class="button secondary"
-                  onClick={() => send({ type: 'createIssue' })}
+                  message={{ type: 'createIssue' }}
+                  working="Creating the issue…"
                   title="Creates an issue from this ticket in Jira or GitHub (asks first) and links it"
                 >
                   <i class="codicon codicon-cloud-upload" /> Create Issue…
-                </button>
+                </ActionButton>
               )}
             </>
           )}
