@@ -17,7 +17,7 @@ import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
-import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { installCommitHook } from './features/backlog/commitHook';
@@ -45,6 +45,7 @@ import { readSettings } from './ui/settings';
 import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { StorageMonitor } from './ui/storage';
+import { FinishedWorktrees } from './ui/finishedWorktrees';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
@@ -248,6 +249,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  // A done ticket's worktree is removed (its branch kept), so finished work doesn't fill the drive.
+  const finished = new FinishedWorktrees({
+    backlog,
+    repository,
+    service: ctx.service,
+    leader,
+    workspaceState: context.workspaceState,
+    output,
+    removeAnyway: (ws) => removeWorkstream(ctx, ws),
+  });
+  context.subscriptions.push(finished);
   let autopilotKey: Promise<string> | undefined;
   const autopilot = new Autopilot({
     backlog,
@@ -273,6 +285,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       updateCiReads();
       void autopilot.tick();
       void reviews.resumePaused();
+      void finished.sweep();
     }),
     vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {

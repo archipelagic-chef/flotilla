@@ -70,6 +70,8 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 |---|---|---|
 | `flotilla.copyFiles` | `[]` | Globs copied from the main worktree on create |
 | `flotilla.setupCommand` | `""` | Run in a terminal in the new worktree |
+| `flotilla.linkFolders` | `[]` | Folders (e.g. `node_modules`) a new worktree gets as hard links to the main worktree's: no extra space |
+| `flotilla.removeFinishedWorktrees` | `auto` | Remove a done ticket's worktree when nothing in it can be lost (`ask`, `off`); its branch is kept |
 | `flotilla.autoAdopt` | `true` | Make in-repo worktrees portable automatically |
 | `flotilla.defaultBase` | `""` | Base branch for progress and compare |
 | `flotilla.activeWindowMinutes` | `5` | Activity → active threshold |

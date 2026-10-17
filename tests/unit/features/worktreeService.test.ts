@@ -134,6 +134,21 @@ describe('WorktreeService.list (adoption)', () => {
 });
 
 describe('WorktreeService.remove', () => {
+  it('removes an untracked link to a folder outside as a link, and keeps tracked links', async () => {
+    const repo = initRepo();
+    const outside = makeTempDir();
+    cleanup.push(repo, outside);
+    writeFile(outside, 'node_modules/pkg/index.js', 'keep me');
+    const s = service(repo);
+    const wt = await s.create({ kind: 'new', branch: 'feat' });
+    fs.symlinkSync(path.join(outside, 'node_modules'), path.join(wt.path!, 'node_modules.bl6'), 'junction');
+
+    await s.remove(wt, { force: true });
+
+    expect(fs.existsSync(wt.path!)).toBe(false);
+    expect(fs.readFileSync(path.join(outside, 'node_modules', 'pkg', 'index.js'), 'utf8')).toBe('keep me');
+  });
+
   it('reports risks and refuses to remove a dirty worktree without force', async () => {
     const repo = initRepo();
     cleanup.push(repo);

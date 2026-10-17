@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { parseStatusV2 } from '../../core/git/porcelain';
 import { samePath } from '../../core/paths';
+import { removeTopLevelLinks } from '../storage/finished';
 import { ensureExcluded, existingNames, sanitizeName, uniqueName, worktreesRoot } from './layout';
 import { lock, makePortable, readGitFile, readLock, resolveGitdir, retargetBackPointer, unlock } from './portability';
 import { resolveWorktrees, type RepoRoots, type ResolvedWorktree } from './resolver';
@@ -113,6 +114,10 @@ export class WorktreeService {
     if (wt.isMain) throw new Error('The main worktree cannot be removed.');
     if (!wt.path) throw new Error('This worktree is not reachable from this environment.');
     await retargetBackPointer(wt.path, wt.adminDir);
+    // Untracked links to folders outside (a junction to the main node_modules) go first, as links: git is never
+    // handed a worktree it could delete outside files through.
+    const tracked = await runGit(['ls-files', '-z', '--', ':(top,glob)*'], { cwd: wt.path }).catch(() => '');
+    await removeTopLevelLinks(wt.path, new Set(tracked.split('\0').filter(Boolean)));
     const previousLock = await readLock(wt.adminDir);
     await unlock(wt.adminDir);
     try {
