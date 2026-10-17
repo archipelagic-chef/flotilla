@@ -111,7 +111,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
                 : autopilot.waitingForMemory
                   ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                  : `· ${autopilot.running} of ${autopilot.max} agents working. It takes To Do tickets from the top.`}
+                  : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
           </span>
         </button>
       )}
@@ -216,13 +216,14 @@ function waited(since: string | undefined): string | undefined {
   return `${Math.floor(minutes / (24 * 60))}d`;
 }
 
-const NEED_ICON: Record<NeedKind, string> = { asking: 'comment-discussion', yours: 'eye', approved: 'pass-filled', stopped: 'debug-pause', failed: 'error' };
+const NEED_ICON: Record<NeedKind, string> = { asking: 'comment-discussion', yours: 'eye', approved: 'pass-filled', stopped: 'debug-pause', failed: 'error', queued: 'clock' };
 const NEED_TITLE: Record<NeedKind, string> = {
   asking: 'Has a question for you',
   yours: 'Ready for your review',
   approved: 'Approved, not merged yet',
   stopped: 'Its review stopped',
   failed: "The autopilot couldn't start it",
+  queued: 'Your reply waits for a free agent',
 };
 
 /**
@@ -293,6 +294,11 @@ function NeedRow({ item }: { item: BacklogItem }) {
         {need.kind === 'stopped' && fix && (
           <button class="button" onClick={() => send({ type: 'backlog', op: 'fix', id: item.id, fix })}>
             {fixLabel(fix, r?.stop?.kind)}
+          </button>
+        )}
+        {need.kind === 'queued' && (
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'prioritize', id: item.id })} title="Starts it now, above the limit, or pauses a running agent to make room">
+            <i class="codicon codicon-arrow-up" /> Prioritize
           </button>
         )}
         {need.kind === 'failed' && (

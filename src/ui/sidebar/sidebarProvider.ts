@@ -9,7 +9,8 @@ import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
-import { needOf } from '../../features/backlog/needs';
+import { needOf, queuedNeed } from '../../features/backlog/needs';
+import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -127,6 +128,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.post({ type: 'storage', ...(this.storage?.slow ? { slow: this.storage.slow } : {}) });
   }
 
+  private queue: ReviewLoop | undefined;
+
+  /** The agents' queue: a user's reply waiting for one is a "Needs you" row, with Prioritize. */
+  useQueue(queue: ReviewLoop): void {
+    this.queue = queue;
+    this.subscriptions.push(queue.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
     this.autopilot = autopilot;
@@ -146,7 +156,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
-        const need = needOf(item, ticket.activity);
+        const queued = this.queue?.queuedFor(item.id);
+        const need = needOf(item, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
         // The ticket's run: its last run block (the one its Run button runs).
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
@@ -216,6 +227,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         break;
       case 'fix':
         await vscode.commands.executeCommand('flotilla.fixBacklogReview', m.id, m.fix);
+        break;
+      case 'prioritize':
+        await vscode.commands.executeCommand('flotilla.prioritizeBacklogItem', m.id);
         break;
       case 'open':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id);

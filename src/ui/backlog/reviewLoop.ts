@@ -14,10 +14,12 @@ import {
 } from '../../features/backlog/backlog';
 import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
+import { mayStartNow, ordinal, pauseOrder, prioritizeAction, StartQueue, type StartKind, type WaitingStart } from '../../features/backlog/agentQueue';
 import {
   answerPrompt,
   AUTOPILOT_NOTE,
   resumeAfterLimitPrompt,
+  resumeAfterPausePrompt,
   readyReport,
   reviewerPrompt,
   revisionPrompt,
@@ -34,6 +36,8 @@ import {
   type Verdict,
 } from '../../features/backlog/review';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
+import { transcriptBusy } from '../../features/backlog/busy';
+import { transcriptPath } from '../../features/chats/chats';
 import type { UsageLimit } from '../../features/backlog/limits';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -54,6 +58,7 @@ import {
   type AgentResult,
   type AgentRun,
 } from './agentRunner';
+import type { QueuedView } from '../../webview/ticketProtocol';
 import { trackProgress } from '../progress';
 
 export interface ReviewDeps {
@@ -67,14 +72,40 @@ export interface ReviewDeps {
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
 
-/** The item's state that decides whether a start still applies: its status and review (see mayStart). */
+/** The item's state that decides whether a start still applies: its status and review (see admitStart). */
 const stateOf = (item: BacklogItem) => JSON.stringify([item.status, item.review?.state, item.review?.round, item.review?.implementer ?? null]);
 
-/** A start that passed the memory check: its reserved slot, and the item's state then (see stateOf). */
-interface Checked {
+/** A start that was admitted (see admitStart): its reserved slot (see reserveStart), and the item's state then (see stateOf). */
+interface Admitted {
   slot: number;
   since: string;
 }
+
+/**
+ * How a start is asked for: `manual` (the user asked: it runs at once, see admitStart), `dispatched` (it's at the head of
+ * the queue: nothing is ahead of it), `reply` (the user's reply, an answer or requested changes: queued like any start,
+ * but ahead of the other kinds).
+ */
+interface StartOptions {
+  manual?: boolean;
+  dispatched?: boolean;
+  reply?: boolean;
+}
+
+/** A run of an agent this window started without a window: for the pick Prioritize pauses. */
+interface Running {
+  run: AgentRun;
+  phase: 'review' | 'work';
+  agent: string;
+  /** Where it runs: its transcript is found from it (see transcriptPath). */
+  cwd: string;
+  since: number;
+}
+
+/** The start that waits: runs with the item as it is then. */
+type StartFn = (item: BacklogItem) => Promise<void>;
+
+const minutes = (ms: number) => `${Math.max(1, Math.round(ms / 60_000))} min`;
 
 /**
  * Runs the review loop (see review.ts) for local items: an item entering In Review gets a reviewer agent; its verdict
@@ -87,23 +118,33 @@ export class ReviewLoop implements vscode.Disposable {
   /** Reports already there when Flotilla first saw an item: old news, not acted on. */
   private readonly baseline = new Map<string, string[]>();
   /** The agent running for an item (reviewer or implementer). */
-  private readonly runs = new Map<string, AgentRun>();
+  private readonly runs = new Map<string, Running>();
   /**
-   * Starts that wait for free memory, by item: `since` is the item's state when the start was decided (it must still be
-   * that when the start runs), `again` runs the start with the item as it is now (see mayStart).
+   * The starts admitted but not spawned yet (see admitStart): their reserved slots, and the items they're for. Each holds
+   * its agent slot (see running) and its memory (see reserveStart) until its agent spawns, or it's given up (see release).
    */
-  private readonly deferred = new Map<string, { since: string; again: (item: BacklogItem) => Promise<void> }>();
+  private readonly starting = new Map<number, string>();
+  /**
+   * The starts waiting for a free agent slot or for memory (see agentQueue.ts). Each runs with the item as it is then;
+   * its `since` (the item's state when it was decided) must still hold, or the start is dropped.
+   */
+  private readonly waiting = new StartQueue<StartFn>();
+  /** The item whose queued start Prioritize is running now: it may start above the limit (see roomFor). */
+  private priority: string | undefined;
   private queue: Promise<void> = Promise.resolve();
   private readonly watcher: vscode.Disposable;
-  /** An item's review changed (by its id). */
+  private readonly repoWatcher: vscode.Disposable;
+  /** An item's review changed, or its place in the queue (by its id). */
   private readonly changed = new vscode.EventEmitter<string>();
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: ReviewDeps) {
     this.watcher = deps.backlog.watch(() => this.schedule());
+    // A chat that ends (a window's agent) frees a slot too: the queue looks again.
+    this.repoWatcher = deps.repository.onDidChange(() => this.scheduleDispatch());
     this.schedule();
-    // Agents paused on a usage limit go on when it resets, and starts that waited for memory are tried again (each
-    // minute: a sleeping computer skips timers).
+    // Agents paused on a usage limit go on when it resets, and waiting starts go on when there's room (each minute: a
+    // sleeping computer skips timers).
     this.ticker = setInterval(() => this.scheduleRetry(), 60_000);
   }
 
@@ -112,21 +153,11 @@ export class ReviewLoop implements vscode.Disposable {
     this.queue = this.queue.then(() => this.retry());
   }
 
-  /** Once a minute: paused agents whose limit has reset go on, and starts that waited for memory go on when there's room. */
+  /** Once a minute: paused agents whose limit has reset go on, and waiting starts go on when there's room. */
   private async retry(): Promise<void> {
     try {
       await this.resumePaused();
-      for (const [id, waiting] of [...this.deferred]) {
-        if (memoryShortage()) break;
-        this.deferred.delete(id);
-        const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
-        // The item moved on, or an agent runs for it already: the start that waited is over.
-        if (!item || item.proposed || this.runs.has(id) || stateOf(item) !== waiting.since) {
-          if (item && !this.runs.has(id)) await this.note(id, 'The start that waited for memory is dropped: the ticket changed meanwhile.');
-          continue;
-        }
-        await waiting.again(item);
-      }
+      await this.dispatch();
     } catch (e: unknown) {
       this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -137,9 +168,10 @@ export class ReviewLoop implements vscode.Disposable {
 
   dispose(): void {
     this.watcher.dispose();
+    this.repoWatcher.dispose();
     clearInterval(this.ticker);
     clearTimeout(this.resumeTimer);
-    this.runs.forEach((r) => r.stop());
+    this.runs.forEach((r) => r.run.stop());
     this.changed.dispose();
   }
 
@@ -211,14 +243,15 @@ export class ReviewLoop implements vscode.Disposable {
   }
 
   /**
-   * Whether an agent may start now, with enough memory free (see memoryShortage). When it's short, a manual start asks
-   * first (Start Anyway starts it); otherwise, or when the user doesn't, the start waits: `again` runs it once there's
-   * room, with the item as it is then (retry checks it's still the same). A start that may go on reserves its memory
-   * here, before any await, and returns the reservation with the item's state as it was then (`since`, see unchanged):
-   * the caller hands the slot to runAgentHeadless, or gives it back (releaseStart) if the start is given up. Undefined
-   * when the start waits, or the item is gone.
+   * Admits a start: the one way an agent starts. Called before the start's work (its awaits): the caller's copy of the
+   * item must match the stored one (a start decided on a stale copy is given up), and a manual start asks about memory
+   * when it's short (Start Anyway starts it). Then, with no await in between, there must be room (see roomFor), and the
+   * start's slot and memory are reserved (see take): from here it counts as running and against the free memory, so a
+   * start checked meanwhile sees it. The caller hands the slot to runAgentHeadless, or gives it back (release) when the
+   * start is given up. A start that may not run yet waits in the queue: `start` runs it later, with the item as it is
+   * then. Undefined when it waits, is given up, or the item is gone.
    */
-  private async mayStart(item: BacklogItem, manual: boolean, again: (fresh: BacklogItem) => Promise<void>): Promise<Checked | undefined> {
+  private async admitStart(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): Promise<Admitted | undefined> {
     const stored = (await this.deps.backlog.read()).items.find((i) => i.id === item.id);
     if (!stored) return undefined;
     const since = stateOf(stored);
@@ -227,23 +260,188 @@ export class ReviewLoop implements vscode.Disposable {
       await this.note(item.id, 'The start is given up: the ticket changed before it could start.');
       return undefined;
     }
-    const short = memoryShortage();
-    if (!short) {
-      this.deferred.delete(item.id);
-      return { slot: reserveStart(), since };
+    // A queued start the user stopped or answered meanwhile (that takes it out of the queue) isn't run.
+    if (o.dispatched && !this.waiting.has(item.id)) return undefined;
+    if (o.manual && memoryShortage()) {
+      // Asked when the user starts it; a start of theirs that waited for memory waits on while it's short.
+      if (o.dispatched || !(await confirmMemory(`The agent for ${item.id}`))) {
+        await this.wait(item, kind, o, start);
+        return undefined;
+      }
     }
-    if (manual && (await confirmMemory(`The agent for ${item.id}`))) {
-      this.deferred.delete(item.id);
-      return { slot: reserveStart(), since };
-    }
-    if (!this.deferred.has(item.id))
-      await this.note(item.id, `Waiting for memory: ${formatMemory(short.freeMB)} is left once the agents starting are counted, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. It starts when there's room.`);
-    this.deferred.set(item.id, { since, again });
-    this.changed.fire(item.id);
-    return undefined;
+    // An agent runs for it already: this start isn't needed. (Two starts on their way for one item can't both spawn: each
+    // checks for a run, and for the item's state, right before its agent starts.)
+    if (this.runs.has(item.id)) return undefined;
+    if (!this.roomFor(item, kind, o, start)) return undefined;
+    return { slot: this.take(item.id), since };
   }
 
-  /** Whether the item is still in the state it had when its start passed the check (`since`, see mayStart). */
+  /**
+   * Whether a start may run now (see mayStartNow): a manual one runs (its memory was asked about, see admitStart); others
+   * need a free slot, enough memory (the admitted starts count, see take) and nothing ahead of them in the queue. A
+   * prioritized start may go above the limit and ahead of the queue, but not when memory is short. A start that may not
+   * run waits in the queue.
+   */
+  private roomFor(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): boolean {
+    const prioritized = this.priority === item.id;
+    const may = mayStartNow({
+      manual: !!o.manual,
+      running: this.running,
+      limit: prioritized ? Number.POSITIVE_INFINITY : this.limit,
+      ahead: o.dispatched || prioritized ? 0 : this.waiting.size,
+      memoryShort: !!memoryShortage(),
+    });
+    if (!may) void this.wait(item, kind, o, start).catch((e: unknown) => this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`));
+    return may;
+  }
+
+  /**
+   * Reserves an admitted start's slot and memory (see reserveStart), and takes it out of the queue: it counts as running
+   * until its agent spawns (see launched) or it's given up (see release).
+   */
+  private take(id: string): number {
+    const slot = reserveStart();
+    this.starting.set(slot, id);
+    if (this.waiting.has(id)) {
+      this.waiting.remove(id);
+      this.fireQueue(id);
+    }
+    return slot;
+  }
+
+  /** An admitted start's agent has spawned (runAgentHeadless took its reserved memory over): it runs now. */
+  private launched(id: string, slot: number, live: Running): void {
+    this.starting.delete(slot);
+    this.runs.set(id, live);
+  }
+
+  /** Gives back the slot and memory of an admitted start that was given up before its agent spawned. */
+  private release(slot: number): void {
+    releaseStart(slot);
+    if (!this.starting.delete(slot)) return;
+    this.scheduleDispatch();
+  }
+
+  /** Puts a start in the queue: it runs when there's room (a slot and memory), with the item as it is then. */
+  private async wait(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): Promise<void> {
+    const before = this.waiting.get(item.id);
+    const short = memoryShortage();
+    // An agent paused to make room keeps its head of the queue, however often it waits again (see pauseFor).
+    this.waiting.add({
+      id: item.id,
+      kind,
+      manual: !!o.manual,
+      reason: short ? 'memory' : 'slot',
+      since: stateOf(item),
+      at: before?.at ?? Date.now(),
+      front: !!item.review?.paused?.for,
+      start,
+    });
+    this.fireQueue(item.id);
+    if (before) return;
+    const place = ordinal(this.waiting.place(item.id) ?? 1);
+    await this.note(item.id, short ? `Queued: an agent takes this up when there's free memory (${place} in line).` : `Queued: an agent takes this up when one is free (${place} in line).`);
+  }
+
+  /**
+   * Starts the waiting starts, in order, while there's room for each: a manual one runs whatever the limit, an automatic
+   * one needs a free slot. Nothing starts while memory is short (the admitted starts count, see take).
+   */
+  private async dispatch(): Promise<void> {
+    for (const w of this.waiting.ordered()) {
+      if (memoryShortage()) break;
+      if (!w.manual && this.running >= this.limit) continue;
+      await this.runWaiting(w);
+    }
+    this.fireQueue();
+  }
+
+  /** Runs a waiting start: admitted, it leaves the queue (see take); if it may not run yet, it waits on (see roomFor). */
+  private async runWaiting(w: WaitingStart<StartFn>): Promise<void> {
+    // Read while the entry is still queued: if the read fails, the start stays queued for the next try.
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === w.id);
+    // The read may have waited while the user stopped the item or answered it (that takes the entry out): then it's
+    // not this start any more, and it's not run. A replaced entry (the item waited again) is run by its own dispatch.
+    if (this.waiting.get(w.id) !== w) return;
+    // The item moved on, or an agent runs for it already: the start that waited is over.
+    const over = !item || item.proposed || this.runs.has(w.id);
+    if (over || stateOf(item) !== w.since) {
+      this.waiting.remove(w.id);
+      this.fireQueue(w.id);
+      if (!over) await this.note(w.id, 'The start that waited is dropped: the ticket changed meanwhile.');
+      return;
+    }
+    try {
+      await w.start(item);
+    } catch (e: unknown) {
+      this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      // A start that neither ran nor waited again (it stopped the loop, say) leaves the queue.
+      if (this.waiting.get(w.id) === w) {
+        this.waiting.remove(w.id);
+        this.fireQueue(w.id);
+      }
+    }
+    if (this.runs.has(w.id)) await this.note(w.id, 'An agent is on it.');
+  }
+
+  /** Starts the queue (after the scan or the run that ended, in the scans' order: they read and write backlog.json). */
+  private scheduleDispatch(): void {
+    if (this.waiting.size)
+      this.queue = this.queue.then(() => this.dispatch()).catch((e: unknown) => this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`));
+  }
+
+  /** The queue changed: the tickets waiting in it (and those given) show their place anew. */
+  private fireQueue(...ids: string[]): void {
+    for (const id of new Set([...ids, ...this.waiting.ordered().map((w) => w.id)])) this.changed.fire(id);
+  }
+
+  /** How many agents may run above the limit, by Prioritize (flotilla.agents.maxPrioritized). */
+  get maxPrioritized(): number {
+    return Math.max(0, settings().get<number>('agents.maxPrioritized', 2));
+  }
+
+  /** The most agents running at once: flotilla.agents.maxRunning, or flotilla.autopilot.maxAgents when the user set that (its older name). */
+  get limit(): number {
+    const older = settings().inspect<number>('autopilot.maxAgents');
+    const set = older?.workspaceFolderValue ?? older?.workspaceValue ?? older?.globalValue;
+    return Math.max(1, set ?? settings().get<number>('agents.maxRunning', 2));
+  }
+
+  /** Whether an automatic start may begin now: a slot is free, and nothing waits ahead of it. */
+  canStartNew(): boolean {
+    return this.running < this.limit && this.waiting.size === 0;
+  }
+
+  /**
+   * Admits a new ticket's start for the autopilot, which prepares its worktree before startWork: a slot free, nothing
+   * waiting, and memory enough. Its slot and memory are reserved from now (see take); the autopilot hands the slot to
+   * startWork, or gives it back (giveBack). Undefined when there's no room.
+   */
+  admitNew(id: string): number | undefined {
+    if (!this.canStartNew() || memoryShortage() || this.runs.has(id)) return undefined;
+    return this.take(id);
+  }
+
+  /** Gives back a slot from admitNew: the start was given up before its agent spawned. */
+  giveBack(slot: number): void {
+    this.release(slot);
+  }
+
+  /** The starts waiting (for the autopilot's line). */
+  get waitingCount(): number {
+    return this.waiting.size;
+  }
+
+  /** Where an item's start waits, for its ticket: why, its place in the queue, and the agents running now and the limit. */
+  queuedFor(id: string): QueuedView | undefined {
+    const w = this.waiting.get(id);
+    const place = this.waiting.place(id);
+    if (!w || place === undefined) return undefined;
+    return { reason: w.reason, place, running: this.running, limit: this.limit, kind: w.kind, ...(w.at ? { since: new Date(w.at).toISOString() } : {}) };
+  }
+
+  /** Whether the item is still in the state it had when its start was admitted (`since`, see admitStart). */
   private async unchanged(id: string, since: string): Promise<boolean> {
     const stored = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     return stored !== undefined && stateOf(stored) === since;
@@ -294,7 +492,11 @@ export class ReviewLoop implements vscode.Disposable {
   /** The next resume, timed to the earliest paused agent. */
   private scheduleResume(): void {
     void this.deps.backlog.read().then((d) => {
-      const next = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused ? [Date.parse(i.review.paused.until)] : [])).sort((a, b) => a - b)[0];
+      // Past times are left to the minute's retry: a resume that waits for a slot would be tried every second otherwise.
+      const next = d.items
+        .flatMap((i) => (i.review?.state === 'paused' && i.review.paused ? [Date.parse(i.review.paused.until)] : []))
+        .filter((t) => t > Date.now())
+        .sort((a, b) => a - b)[0];
       clearTimeout(this.resumeTimer);
       if (next === undefined) return;
       this.resumeTimer = setTimeout(() => void this.resumePaused(), Math.min(Math.max(1000, next - Date.now()), 2 ** 31 - 1));
@@ -309,86 +511,256 @@ export class ReviewLoop implements vscode.Disposable {
     return next === undefined ? undefined : new Date(next);
   }
 
-  /** Paused agents whose limit has reset go on (in the leading window only; now, for force). */
+  /**
+   * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
+   * force) goes on at once.
+   */
   async resumePaused(force?: string): Promise<void> {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();
     for (const item of d.items) {
       const p = item.review?.state === 'paused' ? item.review.paused : undefined;
-      if (!p || this.runs.has(item.id)) continue;
+      if (!p || this.runs.has(item.id) || (!force && this.waiting.has(item.id))) continue;
       if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
-      // Short of memory: it goes on once there's room (the minute's check tries again); a manual resume asks first.
-      if (memoryShortage() && !(force && (await confirmMemory(`${p.agent}'s chat`)))) return;
-      const ws = this.worktreeOf(item);
-      if (!validSession(p.session)) {
-        await this.stopLoop(item.id, `its paused chat isn't a valid session (${p.session.slice(0, 40)}).`, { kind: 'chat-gone' });
-        continue;
-      }
-      const run = runAgentHeadless({
-        cwd: ws?.worktree.path ?? this.deps.mainRoot,
-        resume: p.session,
-        prompt: resumeAfterLimitPrompt(p.phase),
-        name: `${p.agent} · ${p.phase === 'review' ? `review ${item.id}` : item.id}`,
-        choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'),
-        output: this.deps.output,
-      });
-      this.runs.set(item.id, run);
-      void trackProgress('backlog', `${p.agent} goes on with ${item.id}`, () => run.done);
-      await this.setReview(item.id, (r) => ({ ...r!, state: p.resume, paused: undefined }));
-      // "chat for agent <name>": the ticket links the note to the chat.
-      await this.note(item.id, `The limit reset: resumed the chat for agent ${p.agent} to go on.`);
-      void run.done.then((result) => (p.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
+      await this.resumeOne(item, { manual: !!force });
     }
     this.scheduleResume();
   }
 
-  /** The number of agents running for items now, in this window (the autopilot keeps to its maximum). */
-  get running(): number {
-    return this.runs.size;
+  /** Goes on with a paused agent's chat, once it's admitted (see admitStart). */
+  private async resumeOne(item: BacklogItem, o: StartOptions): Promise<void> {
+    const p = item.review?.paused;
+    if (!p) return;
+    if (!validSession(p.session)) {
+      await this.stopLoop(item.id, `its paused chat isn't a valid session (${p.session.slice(0, 40)}).`, { kind: 'chat-gone' });
+      return;
+    }
+    const admitted = await this.admitStart(item, 'resume', o, (fresh) => this.resumeOne(fresh, { ...o, dispatched: true }));
+    if (!admitted) return;
+    let spawned = false;
+    try {
+      const cwd = this.worktreeOf(item)?.worktree.path ?? this.deps.mainRoot;
+      const run = runAgentHeadless({
+        cwd,
+        resume: p.session,
+        prompt: p.for ? resumeAfterPausePrompt(p.phase) : resumeAfterLimitPrompt(p.phase),
+        name: `${p.agent} · ${p.phase === 'review' ? `review ${item.id}` : item.id}`,
+        choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'),
+        output: this.deps.output,
+        slot: admitted.slot,
+      });
+      spawned = true;
+      this.launched(item.id, admitted.slot, { run, phase: p.phase, agent: p.agent, cwd, since: Date.now() });
+      void trackProgress('backlog', `${p.agent} goes on with ${item.id}`, () => run.done);
+      await this.setReview(item.id, (r) => ({ ...r!, state: p.resume, paused: undefined }));
+      // "chat for agent <name>": the ticket links the note to the chat.
+      await this.note(item.id, p.for ? `A slot freed: resumed the chat for agent ${p.agent} to go on.` : `The limit reset: resumed the chat for agent ${p.agent} to go on.`);
+      void run.done.then((result) => (p.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
+    } finally {
+      if (!spawned) this.release(admitted.slot);
+    }
   }
 
   /**
-   * Starts an agent on an item's work, without a window (for the autopilot): it reports in the ticket, asks there when
-   * it must ("Waiting for you."), and its "Ready for review." goes on to review.
+   * The agents running now: this window's, the starts it admitted that haven't spawned yet (see take), and the agent
+   * chats (for tickets) that work in any window, each session once. The limit counts them all: a start from a ticket
+   * (its chat in Claude Code) takes its slot too.
    */
-  async startWork(item: BacklogItem, ws: Workstream, slot?: number): Promise<void> {
+  get running(): number {
+    const sessions = new Set([...this.runs.values()].map((r) => r.run.sessionId));
+    for (const ws of this.deps.repository.current)
+      for (const chat of ws.chats) if (chat.state === 'working' && agentChatItem(chat.firstPrompt) && !this.ended.has(chat.id)) sessions.add(chat.id);
+    return sessions.size + this.starting.size;
+  }
+
+  /**
+   * The sessions of runs this window ended: a stopped process doesn't record "done" in its chat (until the record goes
+   * stale), so its chat still says "working". A session that runs again is counted through its run. Known gap: a chat
+   * this window ended, which the user then resumes in Claude Code (not through Flotilla), isn't counted while it works,
+   * until its record goes stale.
+   */
+  private readonly ended = new Set<string>();
+
+  /**
+   * Starts an agent on an item's work, without a window (for the autopilot): it reports in the ticket, asks there when
+   * it must ("Waiting for you."), and its "Ready for review." goes on to review. `slot` is the start the autopilot was
+   * admitted with (see admitNew); without one, the start is admitted here, and may wait in the queue.
+   */
+  async startWork(item: BacklogItem, ws: Workstream, slot?: number, dispatched = false): Promise<void> {
     if (!ws.worktree.path || !ws.worktree.branch || this.runs.has(item.id)) {
-      releaseStart(slot);
+      if (slot !== undefined) this.release(slot);
       return;
     }
-    const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
-    const agent = agentName(taken);
-    const ticket = await this.deps.backlog.ensureDocument(item);
-    if (this.runs.has(item.id)) {
-      releaseStart(slot);
+    const admitted =
+      slot !== undefined ? { slot, since: stateOf(item) } : await this.admitStart(item, 'new', { dispatched }, (fresh) => this.startWork(fresh, ws, undefined, true));
+    if (!admitted) return;
+    let spawned = false;
+    try {
+      const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
+      const agent = agentName(taken);
+      const ticket = await this.deps.backlog.ensureDocument(item);
+      // Checked where the agent starts: the awaits above may have let another start for the item in, or changed the item.
+      if (this.runs.has(item.id)) return;
+      if (!(await this.unchanged(item.id, admitted.since))) {
+        await this.note(item.id, 'The start is given up: the ticket changed while it was starting.');
+        return;
+      }
+      const guide = path.join(this.deps.backlog.dir, GUIDE);
+      const choice = agentChoice(item);
+      const task: RevisionTask = { prompt: AUTOPILOT_NOTE, why: 'the autopilot started it' };
+      const run = runAgentHeadless({
+        cwd: ws.worktree.path,
+        prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide), AUTOPILOT_NOTE].join('\n\n'),
+        name: `${agent} · ${item.id}`,
+        choice,
+        output: this.deps.output,
+        slot: admitted.slot,
+      });
+      spawned = true;
+      this.launched(item.id, admitted.slot, { run, phase: 'work', agent, cwd: ws.worktree.path, since: Date.now() });
+      this.tasks.set(item.id, task);
+      void trackProgress('backlog', `${agent} is working on ${item.id} (autopilot)`, () => run.done);
+      await this.setReview(item.id, (r) => ({
+        ...(r ?? { round: 0, reviewer: '' }),
+        state: 'working',
+        autopilot: true,
+        implementer: agent,
+        implementerSession: run.sessionId,
+        worktree: ws.key,
+        reason: undefined,
+        stop: undefined,
+      }));
+      await this.note(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
+      void run.done.then((result) => this.afterRevision(item.id, run, result));
+    } finally {
+      if (!spawned) this.release(admitted.slot);
+    }
+  }
+
+  /**
+   * Prioritize: starts a queued start now, above the limit while fewer than flotilla.agents.maxPrioritized agents run
+   * above it. At that ceiling, the running agent the user picks is paused to make room (it goes to the head of the
+   * queue). Nothing starts while memory is short. The pick is asked outside the queue, so scans and runs go on.
+   */
+  async prioritize(id: string): Promise<void> {
+    const w = this.waiting.get(id);
+    if (!w) return;
+    const short = memoryShortage();
+    const action = prioritizeAction({ running: this.running, limit: this.limit, maxExtra: this.maxPrioritized, memoryShort: !!short });
+    if (action === 'memory' && short) {
+      await this.note(id, `Not started: ${formatMemory(short.freeMB)} of memory is free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. It starts when there's room.`);
       return;
     }
-    const guide = path.join(this.deps.backlog.dir, GUIDE);
-    const choice = agentChoice(item);
-    const task: RevisionTask = { prompt: AUTOPILOT_NOTE, why: 'the autopilot started it' };
-    const run = runAgentHeadless({
-      cwd: ws.worktree.path,
-      prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide), AUTOPILOT_NOTE].join('\n\n'),
-      name: `${agent} · ${item.id}`,
-      choice,
-      output: this.deps.output,
-      slot,
+    const victim = action === 'pause' ? await this.pickPause(id) : undefined;
+    if (action === 'pause' && !victim) return;
+    const done = this.queue.then(() => this.prioritizeNow(id, victim)).catch((e: unknown) => this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`));
+    this.queue = done;
+    await done;
+  }
+
+  /**
+   * Runs a queued start as prioritized (see prioritize), in the queue. The pick was asked before, so the rule is decided
+   * again here, with the ticket and the counts as they are now: nothing is paused for a start that won't run.
+   */
+  private async prioritizeNow(id: string, victim: string | undefined): Promise<void> {
+    const w = this.waiting.get(id);
+    if (!w) return;
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    // The item moved on while the pick was open: the start is dropped (runWaiting says so), and nothing is paused.
+    if (!item || item.proposed || this.runs.has(id) || stateOf(item) !== w.since) {
+      await this.runWaiting(w);
+      return;
+    }
+    const short = memoryShortage();
+    const action = prioritizeAction({ running: this.running, limit: this.limit, maxExtra: this.maxPrioritized, memoryShort: !!short });
+    if (action === 'memory' && short) {
+      await this.note(id, `Not started: ${formatMemory(short.freeMB)} of memory is free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)} before an agent starts. It starts when there's room.`);
+      return;
+    }
+    let paused: { agent: string } | undefined;
+    if (action === 'pause') {
+      // The picked agent may have finished while the pick was open: then there's nothing to pause, and the user picks again.
+      if (!victim || !this.runs.has(victim)) {
+        await this.note(id, 'Not started: the agent picked to make room has finished. Prioritize again to pick another.');
+        return;
+      }
+      paused = await this.pauseFor(victim, id);
+    }
+    this.priority = id;
+    try {
+      await this.note(id, paused ? `You prioritized it: ${paused.agent} (${victim}) was paused to make room.` : 'You prioritized it: an agent takes it up now.');
+      await this.runWaiting(w);
+    } finally {
+      this.priority = undefined;
+    }
+    this.fireQueue(id);
+  }
+
+  /**
+   * Asks which running agent to pause for a prioritized start: the cheapest to interrupt first (reviewers, agents that
+   * just started, those not running a build or tests). Undefined if the user picks none.
+   */
+  private async pickPause(forId: string): Promise<string | undefined> {
+    const runs = await Promise.all([...this.runs].map(async ([id, live]) => ({ id, live, busy: await this.busy(live) })));
+    if (!runs.length) {
+      void vscode.window.showInformationMessage(`No agent Flotilla runs here can be paused for ${forId}: the running ones are in chats.`);
+      return undefined;
+    }
+    const ranked = pauseOrder(runs.map((r) => ({ ...r, reviewer: r.live.phase === 'review', ranForMs: Date.now() - r.live.since })));
+    const pick = await vscode.window.showQuickPick(
+      ranked.map((r) => ({
+        label: `${r.live.agent}: ${r.live.phase === 'review' ? `reviewing ${r.id}` : `working on ${r.id}`}`,
+        description: `running for ${minutes(r.ranForMs)}`,
+        detail: r.busy ? 'Running a build or tests now: interrupting it loses that run.' : 'Not running a build or tests.',
+        id: r.id,
+      })),
+      { title: `Pause an agent for ${forId}`, placeHolder: 'The cheapest to interrupt is first. It goes back to the head of the queue and resumes from its chat when a slot frees.' },
+    );
+    return pick?.id;
+  }
+
+  /** Whether a run is running a build or tests now (from its transcript; false if it can't be read). */
+  private async busy(live: Running): Promise<boolean> {
+    try {
+      return await transcriptBusy(transcriptPath(live.cwd, live.run.sessionId));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Stops a running agent to make room for a prioritized start: its chat is kept, its worktree too. It goes back to the
+   * head of the queue as a resume, and its ticket says what it was paused for. Undefined if it isn't running any more.
+   */
+  private async pauseFor(victim: string, forId: string): Promise<{ agent: string } | undefined> {
+    const live = this.runs.get(victim);
+    if (!live) return undefined;
+    this.runs.delete(victim);
+    this.ended.add(live.run.sessionId);
+    live.run.stop();
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === victim);
+    if (!item?.review) return undefined;
+    const state = item.review.state;
+    const resume = state === 'working' || state === 'revising' || state === 'reviewing' ? state : live.phase === 'review' ? 'reviewing' : 'revising';
+    const review: ReviewState = {
+      ...item.review,
+      state: 'paused',
+      paused: { until: new Date().toISOString(), known: true, phase: live.phase, session: live.run.sessionId, agent: live.agent, resume, for: forId },
+    };
+    await this.setReview(victim, () => review);
+    this.waiting.add({
+      id: victim,
+      kind: 'resume',
+      manual: false,
+      reason: 'slot',
+      since: stateOf({ ...item, review }),
+      at: Date.now(),
+      front: true,
+      start: (fresh) => this.resumeOne(fresh, { dispatched: true }),
     });
-    this.runs.set(item.id, run);
-    this.tasks.set(item.id, task);
-    void trackProgress('backlog', `${agent} is working on ${item.id} (autopilot)`, () => run.done);
-    await this.setReview(item.id, (r) => ({
-      ...(r ?? { round: 0, reviewer: '' }),
-      state: 'working',
-      autopilot: true,
-      implementer: agent,
-      implementerSession: run.sessionId,
-      worktree: ws.key,
-      reason: undefined,
-      stop: undefined,
-    }));
-    await this.note(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
-    void run.done.then((result) => this.afterRevision(item.id, run, result));
+    this.fireQueue(victim);
+    await this.note(victim, `${live.agent} is paused for ${forId}: its slot went to a prioritized start. It goes back to the head of the queue and resumes from its chat when a slot frees. Its uncommitted changes stay in its worktree.`);
+    return { agent: live.agent };
   }
 
   /** Fixes a stopped review (a button on the ticket or the notification). */
@@ -482,15 +854,18 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Stops the loop: the running agent, if any, and the handoffs. */
   async stop(id: string): Promise<void> {
-    const run = this.runs.get(id);
+    const live = this.runs.get(id);
     this.runs.delete(id);
-    this.deferred.delete(id);
-    run?.stop();
+    this.waiting.remove(id);
+    this.fireQueue(id);
+    if (live) this.ended.add(live.run.sessionId);
+    live?.run.stop();
     await this.stopLoop(id, 'stopped by you.', { kind: 'user' });
+    this.scheduleDispatch();
   }
 
   /** `restart`: a loop that stopped or ended starts over at round 1 (the stored round is left as it is). */
-  private async startRound(item: BacklogItem, manual = false, restart = false): Promise<void> {
+  private async startRound(item: BacklogItem, manual = false, restart = false, dispatched = false): Promise<void> {
     const max = Math.max(1, settings().get<number>('review.maxRounds', 3)) + (item.review?.extraRounds ?? 0);
     const round = (restart ? 0 : (item.review?.round ?? 0)) + 1;
     if (round > max) {
@@ -502,8 +877,8 @@ export class ReviewLoop implements vscode.Disposable {
       await this.stopLoop(item.id, 'it has no worktree to review.', { kind: 'no-worktree' });
       return;
     }
-    const checked = await this.mayStart(item, manual, (fresh) => this.startRound(fresh, false, restart));
-    if (!checked) return;
+    const admitted = await this.admitStart(item, 'review', { manual, dispatched }, (fresh) => this.startRound(fresh, manual, restart, true));
+    if (!admitted) return;
     let spawned = false;
     try {
       const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
@@ -513,7 +888,7 @@ export class ReviewLoop implements vscode.Disposable {
       const prompt = reviewerPrompt({ item, reviewer, implementer: item.review?.implementer, ticket, branch: ws.worktree.branch, base, round });
       // Checked where the agent starts: the awaits above may have let another start for the item in, or changed the item.
       if (this.runs.has(item.id)) return;
-      if (!(await this.unchanged(item.id, checked.since))) {
+      if (!(await this.unchanged(item.id, admitted.since))) {
         await this.note(item.id, 'The start is given up: the ticket changed while it was starting.');
         return;
       }
@@ -524,10 +899,10 @@ export class ReviewLoop implements vscode.Disposable {
         name: `${reviewer} · review ${item.id}`,
         choice: agentChoice(item, 'review'),
         output: this.deps.output,
-        slot: checked.slot,
+        slot: admitted.slot,
       });
       spawned = true;
-      this.runs.set(item.id, run);
+      this.launched(item.id, admitted.slot, { run, phase: 'review', agent: reviewer, cwd: ws.worktree.path, since: Date.now() });
       void trackProgress('backlog', `${reviewer} is reviewing ${item.id}`, () => run.done);
       await this.setReview(item.id, (r) => ({
         ...(r ?? { reviewer }),
@@ -546,13 +921,15 @@ export class ReviewLoop implements vscode.Disposable {
       );
       void run.done.then((result) => this.afterReview(item.id, run, result));
     } finally {
-      if (!spawned) releaseStart(checked.slot);
+      if (!spawned) this.release(admitted.slot);
     }
   }
 
   private async afterReview(id: string, run: AgentRun, result: AgentResult): Promise<void> {
-    if (this.runs.get(id) !== run) return; // stopped
+    if (this.runs.get(id)?.run !== run) return; // stopped
     this.runs.delete(id);
+    this.ended.add(run.sessionId);
+    this.scheduleDispatch();
     const error = result.error;
     if (result.limit) {
       const reviewer = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review?.reviewer ?? 'The reviewer';
@@ -593,11 +970,14 @@ export class ReviewLoop implements vscode.Disposable {
    * resumed, or a new agent), which may ask for more context first. Either stops an agent running for it.
    */
   async userReview(id: string, verdict: Verdict, text: string): Promise<void> {
-    const run = this.runs.get(id);
+    const live = this.runs.get(id);
     this.runs.delete(id);
-    // What the user decides now replaces a start that waited for memory.
-    this.deferred.delete(id);
-    run?.stop();
+    // What the user decides now replaces a start that waited.
+    this.waiting.remove(id);
+    this.fireQueue(id);
+    if (live) this.ended.add(live.run.sessionId);
+    live?.run.stop();
+    this.scheduleDispatch();
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item) return;
     const ticket = await this.deps.backlog.readTicket(item);
@@ -630,7 +1010,7 @@ export class ReviewLoop implements vscode.Disposable {
     await this.startRevision(
       { ...item, status: 'doing', review },
       { prompt: userRevisionPrompt({ item, ticket: this.deps.backlog.docPath(id), feedback: text }), why: 'you requested changes' },
-      { manual: true },
+      { reply: true },
     );
   }
 
@@ -669,11 +1049,12 @@ export class ReviewLoop implements vscode.Disposable {
     await this.startRevision(
       { ...item, review },
       { prompt: answerPrompt({ item, ticket: this.deps.backlog.docPath(item.id), answer }), why: 'you answered', resumeOnly: true },
+      { reply: true },
     );
   }
 
   /** Hands the requested changes to the implementer: its chat resumed, or a new agent if it has none. */
-  private async startRevision(item: BacklogItem, task: RevisionTask, o: { fresh?: boolean; manual?: boolean } = {}): Promise<void> {
+  private async startRevision(item: BacklogItem, task: RevisionTask, o: { fresh?: boolean } & StartOptions = {}): Promise<void> {
     const review = item.review!;
     const ws = this.worktreeOf(item);
     if (!ws?.worktree.path || !ws.worktree.branch) {
@@ -693,12 +1074,13 @@ export class ReviewLoop implements vscode.Disposable {
       await this.stopLoop(item.id, busy, { kind: 'busy', task });
       return;
     }
-    const checked = await this.mayStart(item, !!o.manual, (fresh) => this.startRevision(fresh, task, { ...o, manual: false }));
-    if (!checked) return;
+    const kind: StartKind = o.reply ? 'reply' : 'review';
+    const admitted = await this.admitStart(item, kind, o, (fresh) => this.startRevision(fresh, task, { ...o, dispatched: true }));
+    if (!admitted) return;
     let spawned = false;
     try {
       // The awaits since the check (a manual start waits on the user's answer) may have changed the item or its chat.
-      if (!(await this.unchanged(item.id, checked.since))) {
+      if (!(await this.unchanged(item.id, admitted.since))) {
         await this.note(item.id, 'The start is given up: the ticket changed while it was starting.');
         return;
       }
@@ -720,7 +1102,7 @@ export class ReviewLoop implements vscode.Disposable {
           name: `${implementer} · ${item.id}`,
           choice: agentChoice(item),
           output: this.deps.output,
-          slot: checked.slot,
+          slot: admitted.slot,
         });
       } else if (task.resumeOnly) {
         await this.stopLoop(item.id, `${review.implementer ?? 'the agent'}'s chat is gone: hand it to a new agent.`, { kind: 'chat-gone', task });
@@ -735,11 +1117,11 @@ export class ReviewLoop implements vscode.Disposable {
           name: `${implementer} · ${item.id}`,
           choice: agentChoice(item),
           output: this.deps.output,
-          slot: checked.slot,
+          slot: admitted.slot,
         });
       }
       spawned = true;
-      this.runs.set(item.id, run);
+      this.launched(item.id, admitted.slot, { run, phase: 'work', agent: implementer ?? 'The agent', cwd: chat?.cwd ?? ws.worktree.path, since: Date.now() });
       void trackProgress('backlog', `${implementer} is working on ${item.id}: ${task.why}`, () => run.done);
       await this.setReview(item.id, (r) => ({ ...r!, implementer, implementerSession: run.sessionId, stop: undefined, reason: undefined }));
       this.tasks.set(item.id, task);
@@ -755,13 +1137,15 @@ export class ReviewLoop implements vscode.Disposable {
       );
       void run.done.then((result) => this.afterRevision(item.id, run, result));
     } finally {
-      if (!spawned) releaseStart(checked.slot);
+      if (!spawned) this.release(admitted.slot);
     }
   }
 
   private async afterRevision(id: string, run: AgentRun, result: AgentResult): Promise<void> {
-    if (this.runs.get(id) !== run) return;
+    if (this.runs.get(id)?.run !== run) return;
     this.runs.delete(id);
+    this.ended.add(run.sessionId);
+    this.scheduleDispatch();
     const error = result.error;
     if (result.limit) {
       const r = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review;

@@ -17,7 +17,7 @@ export interface ReviewState {
    * review; approved; stopped: no verdict, too many rounds, or stopped by the user.
    */
   state: 'working' | 'reviewing' | 'revising' | 'asking' | 'yours' | 'approved' | 'stopped' | 'paused';
-  /** Paused on Claude's usage limit: the agent's chat goes on at until, by itself, then back in resume's state. */
+  /** Paused on Claude's usage limit (or for a prioritized start, see `for`): the agent's chat goes on at until, then back in resume's state. */
   paused?: {
     /** ISO 8601. */
     until: string;
@@ -27,6 +27,8 @@ export interface ReviewState {
     session: string;
     agent: string;
     resume: 'working' | 'reviewing' | 'revising';
+    /** Paused to make room for a prioritized start on this item (not for a limit): it goes on when a slot frees. */
+    for?: string;
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;
@@ -273,6 +275,13 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
     `Go on with the changes for ${o.item.id}. Commit them (messages start with "${o.item.id}: "), then report in the ticket in the same shape, ending with a line "Ready for review." If you still need to know more, ask again the same way (in its "Needs from you:" line).`,
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
+}
+
+/** What a paused agent is told when it goes on after Flotilla paused it to make room for another ticket. */
+export function resumeAfterPausePrompt(phase: 'review' | 'work'): string {
+  return phase === 'review'
+    ? 'Flotilla paused you to make room for another ticket; a slot is free now. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked.'
+    : 'Flotilla paused you to make room for another ticket; a slot is free now. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or with "Waiting for you." if you need the user).';
 }
 
 /** What an agent paused on a usage limit is told when it goes on (its chat resumed). */

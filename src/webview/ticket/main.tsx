@@ -6,7 +6,8 @@ import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, 
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
-import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { queuedNeed } from '../../features/backlog/needs';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
@@ -482,6 +483,22 @@ function DiscussPanel({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/** A start that waits for a free agent slot or for free memory, with Prioritize (it starts now, above the limit). */
+function QueuedPanel({ queued }: { queued: QueuedView }) {
+  return (
+    <div class="review-panel waiting">
+      <i class="codicon codicon-clock" />
+      <span class="review-text">
+        {queuedNeed(queued).line}
+        {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
+      </span>
+      <button class="button secondary" onClick={() => send({ type: 'prioritize' })} title="Starts it now, above the limit, or pauses a running agent to make room">
+        <i class="codicon codicon-arrow-up" /> Prioritize
+      </button>
+    </div>
+  );
+}
+
 /** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
@@ -490,12 +507,14 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const [icon, cls, text] =
     r.state === 'working'
       ? ['rocket', 'working', `${who} is working on it (the autopilot started it); it reports below`]
-      : r.state === 'paused' && r.paused
-        ? [
-            'debug-pause',
-            'waiting',
-            `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
-          ]
+      : r.state === 'paused' && r.paused?.for
+        ? ['debug-pause', 'waiting', `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`]
+        : r.state === 'paused' && r.paused
+          ? [
+              'debug-pause',
+              'waiting',
+              `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
+            ]
         : r.state === 'reviewing'
           ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
           : r.state === 'revising'
@@ -1681,6 +1700,7 @@ function StateCard({ ticket }: { ticket: TicketView }) {
         />
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
+      {ticket.queued && <QueuedPanel queued={ticket.queued} />}
       {ticket.review && !asking ? (
         <ReviewPanel ticket={ticket} />
       ) : ticket.rewrite ? (

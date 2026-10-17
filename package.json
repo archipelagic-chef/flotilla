@@ -421,6 +421,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.prioritizeBacklogItem",
+        "title": "Prioritize a Queued Ticket",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.planBacklog",
         "title": "Plan the Backlog with Claude",
         "category": "Flotilla",
@@ -1561,6 +1566,20 @@
           "default": "",
           "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
         },
+        "flotilla.agents.maxRunning": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "How many agents Flotilla runs at once, in all: the autopilot's tickets, reviews, revisions after a review, and agents going on after a usage limit. Starts Flotilla makes on its own wait in a queue when it's reached: your replies (answers, requested changes) first, then reviews and revisions, then resumes, then new tickets. Starts you make with a ticket's Start or Start Review run at once, and count toward it. Prioritize starts a queued one now, above the limit (see `#flotilla.agents.maxPrioritized#`)."
+        },
+        "flotilla.agents.maxPrioritized": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "markdownDescription": "How many agents Prioritize may run above `#flotilla.agents.maxRunning#` at once: a queued start (a reply, a review, new work) that you prioritize starts now. At this ceiling, Prioritize asks which running agent to pause to make room; it goes back to the head of the queue. Prioritize starts nothing while free memory is short (`#flotilla.agents.minFreeMemoryMB#`). 0: Prioritize takes a free slot, and asks for a pause whenever there's none."
+        },
         "flotilla.agents.minFreeMemoryMB": {
           "type": "number",
           "default": 2048,
@@ -1581,10 +1600,9 @@
         },
         "flotilla.autopilot.maxAgents": {
           "type": "number",
-          "default": 2,
           "minimum": 1,
           "maximum": 10,
-          "markdownDescription": "With the autopilot on (the rocket in the backlog's title), how many agents work on tickets at once. Each takes the next To Do ticket from the top of the backlog, in a worktree of its own. They run without a window, allowed what `#flotilla.agents.permissionMode#` allows."
+          "markdownDescription": "The older name of `#flotilla.agents.maxRunning#`: when set, it's the limit on agents running at once. Empty: `#flotilla.agents.maxRunning#` applies."
         },
         "flotilla.agents.claudePath": {
           "type": "string",

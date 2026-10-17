@@ -718,6 +718,7 @@ export class TicketPanels implements vscode.Disposable {
 
   /** A ticket's view without its description and activity. */
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
+    const queued = this.reviews?.queuedFor(plain.id);
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -757,6 +758,7 @@ export class TicketPanels implements vscode.Disposable {
       agentDefaults: agentChoice(undefined),
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
+      ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       dependsOn: [],
@@ -1189,6 +1191,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'updateFromMain':
         await this.mainSync?.update(id);
+        return;
+      case 'prioritize':
+        await this.reviews?.prioritize(id);
         return;
       case 'stopReview':
         await this.reviews?.stop(id);
