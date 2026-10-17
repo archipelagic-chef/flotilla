@@ -174,6 +174,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(need ? { need } : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor } : {}),
+          ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
         };

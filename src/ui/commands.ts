@@ -20,6 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
+import { mapFor, mapNote, type CodeMap } from '../features/backlog/codeMap';
 import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
@@ -603,13 +604,14 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
 export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged.`;
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   const level = levelNote(item);
   return [
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
-    `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder).`,
+    `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder). If its description has a "Where to start" section, begin there: it's what was found in the code when the ticket was shaped.`,
     CONTEXT_NOTES,
+    ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
@@ -653,7 +655,8 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const agent = newAgentName(ctx);
   const ticket = await ctx.backlog.ensureDocument(item);
   const choice = agentChoice(item);
-  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE))].join('\n\n');
+  const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
+  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
   const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
   const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
   await ctx.tickets.addActivity(
@@ -680,7 +683,8 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
   const agent = newAgentName(ctx);
   const choice = agentChoice(item);
-  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent), {
+  const map = remote ? undefined : await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
+  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map), agentLead(item, agent), {
     choice,
     name: `${agent} · ${item.id}`,
   });
