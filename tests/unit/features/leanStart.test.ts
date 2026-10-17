@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { enabledPlugins, leanFlags, writeLeanSettings } from '../../../src/features/backlog/leanStart';
+import { agentSettingsText, enabledPlugins, leanFlags, writeAgentSettings } from '../../../src/features/backlog/leanStart';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -22,7 +22,7 @@ describe('leanFlags', () => {
   });
 });
 
-describe('writeLeanSettings', () => {
+describe('writeAgentSettings', () => {
   it('writes a settings file that switches off every enabled plugin, once', () => {
     const config = makeTempDir();
     const cwd = makeTempDir();
@@ -31,9 +31,9 @@ describe('writeLeanSettings', () => {
     writeFile(config, 'settings.json', JSON.stringify({ enabledPlugins: { 'superpowers@official': true } }));
     writeFile(cwd, '.claude/settings.local.json', JSON.stringify({ enabledPlugins: { 'local@x': true } }));
 
-    const file = writeLeanSettings({ cwd, configDir: config, outDir: out })!;
+    const file = writeAgentSettings({ cwd, configDir: config, outDir: out, lean: true })!;
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ enabledPlugins: { 'local@x': false, 'superpowers@official': false } });
-    expect(writeLeanSettings({ cwd, configDir: config, outDir: out })).toBe(file);
+    expect(writeAgentSettings({ cwd, configDir: config, outDir: out, lean: true })).toBe(file);
     expect(fs.readdirSync(out)).toEqual([path.basename(file)]);
   });
 
@@ -41,7 +41,19 @@ describe('writeLeanSettings', () => {
     const config = makeTempDir();
     const out = makeTempDir();
     cleanup.push(config, out);
-    expect(writeLeanSettings({ cwd: config, configDir: config, outDir: out })).toBeUndefined();
+    expect(writeAgentSettings({ cwd: config, configDir: config, outDir: out, lean: true })).toBeUndefined();
     expect(fs.readdirSync(out)).toEqual([]);
+  });
+});
+
+describe('agentSettingsText', () => {
+  it('sets the compaction window, the subagent model and the guard hook, with or without a lean start', () => {
+    expect(JSON.parse(agentSettingsText(['p@x'], { autoCompactWindow: 200000, subagentModel: 'sonnet', guardCommand: 'node "/tmp/g.js"' })!)).toEqual({
+      autoCompactWindow: 200000,
+      env: { CLAUDE_CODE_SUBAGENT_MODEL: 'sonnet' },
+      hooks: { PreToolUse: [{ matcher: 'Read|Bash', hooks: [{ type: 'command', command: 'node "/tmp/g.js"', timeout: 15 }] }] },
+    });
+    expect(JSON.parse(agentSettingsText(['p@x'], { lean: true })!)).toEqual({ enabledPlugins: { 'p@x': false } });
+    expect(agentSettingsText([], { lean: true })).toBeUndefined();
   });
 });

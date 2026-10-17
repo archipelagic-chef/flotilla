@@ -1582,6 +1582,23 @@
           "default": "",
           "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
         },
+        "flotilla.agents.autoCompactWindow": {
+          "type": "number",
+          "default": 200000,
+          "minimum": 0,
+          "maximum": 1000000,
+          "markdownDescription": "The context size, in tokens, that agents Flotilla starts compact against (Claude Code's `autoCompactWindow`, 100000 or more): they summarize their context sooner, so each turn re-reads less. 0: Claude Code's own (the model's whole context window)."
+        },
+        "flotilla.agents.subagentModel": {
+          "type": "string",
+          "default": "sonnet",
+          "markdownDescription": "The model of the subagents Flotilla's agents start (they search and report back; the agent judges what they find). Never a stronger one than the agent's own. Empty: the agent's own model."
+        },
+        "flotilla.agents.guardOutput": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep large outputs out of Flotilla's agents' context: a whole read of a file over 400 lines, a plain `cat` of one, or a whole `git diff`/`git show` over 600 changed lines is refused with how to look instead (grep, a line range, `--stat`), and how to get it whole anyway."
+        },
         "flotilla.agents.effort": {
           "type": "string",
           "enum": ["", "low", "medium", "high", "xhigh", "max"],
