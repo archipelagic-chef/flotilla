@@ -3,6 +3,7 @@ import { branchMatches } from '../../features/backlog/backlog';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
+import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
 import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
@@ -42,6 +43,8 @@ interface Props {
  */
 export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // The Review lane shows only the tickets whose turn is the user's.
+  const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
   // Agents' proposals wait above the lanes until they're accepted.
@@ -163,7 +166,8 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
       {items &&
         items.length > 0 &&
         LANES.map((lane) => {
-          const laneItems = items.filter((i) => i.status === lane.status && !i.proposed);
+          const filtered = lane.status === 'review' && mineOnly;
+          const laneItems = items.filter((i) => i.status === lane.status && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
           const open = lane.status !== 'done' || doneOpen;
           return (
             <div key={lane.status} class={`group lane${dropAt?.status === lane.status && !dropAt.before ? ' drop-end' : ''}`}>
@@ -176,6 +180,16 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 <span class="name">{lane.title}</span>
                 {lane.status === 'done' && (
                   <i class={`codicon codicon-chevron-${doneOpen ? 'down' : 'right'} lane-chev`} aria-label={doneOpen ? 'Hide done items' : 'Show done items'} />
+                )}
+                {lane.status === 'review' && (
+                  <button
+                    class={`icon lane-filter${mineOnly ? ' on' : ''}`}
+                    aria-pressed={mineOnly}
+                    aria-label={mineOnly ? 'Waiting for me: click to show every ticket in review' : 'Show only what waits for me'}
+                    onClick={() => setMineOnly(!mineOnly)}
+                  >
+                    <i class={`codicon codicon-${mineOnly ? 'filter-filled' : 'filter'}`} />
+                  </button>
                 )}
                 <span class="badge">{laneItems.length}</span>
               </div>
@@ -196,7 +210,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{EMPTY_LANE[lane.status]}</div>}
+                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.status]}</div>}
                 </div>
               )}
             </div>
@@ -330,6 +344,8 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
   const remote = item.source;
   const worktree = worktrees[0];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
+  // Whose turn its review is (local items only: an issue's review is in its tracker).
+  const turn = remote || item.proposed ? undefined : turnOf(item);
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
@@ -388,6 +404,12 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           <span class="name">{item.title}</span>
           {item.summary && <span class="desc">{item.summary}</span>}
         </>
+      )}
+      {!renaming && turn && (
+        <span class={`turn-chip turn-${turn.kind}${turn.mine ? ' mine' : ''}`} data-tip={`${TURN_LABEL[turn.kind]}: ${turn.who}`}>
+          <i class={`codicon codicon-${TURN_ICON[turn.kind]}`} />
+          {turn.who}
+        </span>
       )}
       {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>

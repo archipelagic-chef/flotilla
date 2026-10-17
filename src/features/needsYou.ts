@@ -1,4 +1,5 @@
 import type { BacklogItem } from './backlog/backlog';
+import { turnOf } from './backlog/turn';
 import type { AttentionState } from './workstreams/attention';
 
 /**
@@ -46,18 +47,19 @@ export function isWarning(kind: NeedsYouKind): boolean {
 function ticketKind(item: BacklogItem): NeedsYouKind | undefined {
   if (item.status === 'done') return undefined;
   if (item.proposed) return 'proposed';
-  switch (item.review?.state) {
+  // A ticket in review needs the user when its turn is theirs (as in the "Needs you" list); what they did themselves
+  // (stopped a review, moved an item to review) is no news to tell them.
+  const r = item.review;
+  if (!turnOf(item)?.mine || !r || r.stop?.kind === 'user') return undefined;
+  switch (r.state) {
     case 'asking':
       return 'asks';
-    case 'yours':
-      return 'review';
     case 'approved':
       return 'approved';
-    // A review the user stopped themselves needs nothing from them.
     case 'stopped':
-      return item.review.stop?.kind === 'user' ? undefined : 'stopped';
+      return 'stopped';
     default:
-      return undefined;
+      return 'review';
   }
 }
 

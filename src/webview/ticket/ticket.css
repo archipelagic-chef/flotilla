@@ -1161,3 +1161,9 @@ button.timeline-item:hover .timeline-text {
   flex-direction: column;
   gap: 10px;
 }
+.review-panel.stopped {
+  border-left-color: var(--error);
+}
+.review-panel.stopped > .codicon {
+  color: var(--error);
+}

@@ -1,6 +1,7 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
 import type { TicketEntry } from './ticket';
+import { turnOf } from './turn';
 
 /**
  * What waits on the user, for the backlog's "Needs you" list: an agent's question, work ready for the user's review,
@@ -27,19 +28,23 @@ function firstLine(text: string): string {
 }
 
 /**
- * The row an item has in "Needs you", or none. Done items and proposals don't wait on the user; a review the user
- * stopped themselves doesn't either.
+ * The row an item has in "Needs you", or none: a ticket in review is in it exactly when its turn is the user's (see
+ * turnOf), and a start that failed. Done items and proposals don't wait on the user.
  */
 export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undefined {
   if (item.status === 'done' || item.proposed) return undefined;
   const r = item.review;
-  if (r?.state === 'asking') {
-    const report = activity.filter((e) => sameAgent(entryAgent(e.author), r.implementer)).at(-1);
-    return { kind: 'asking', since: r.since, line: firstLine(report?.body ?? '') || `${r.implementer ?? 'The agent'} has a question` };
+  const turn = turnOf(item);
+  if (turn?.mine) {
+    if (r?.state === 'asking') {
+      const report = activity.filter((e) => sameAgent(entryAgent(e.author), r.implementer)).at(-1);
+      return { kind: 'asking', since: r.since, line: firstLine(report?.body ?? '') || `${r.implementer ?? 'The agent'} has a question` };
+    }
+    if (r?.state === 'approved') return { kind: 'approved', since: r.since, line: `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.` };
+    if (r?.state === 'stopped')
+      return { kind: 'stopped', since: r.since, line: r.stop?.kind === 'user' ? 'You stopped the review' : `Stopped: ${r.reason ?? 'no verdict.'}` };
+    return { kind: 'yours', since: r?.since, line: 'Ready for your review' };
   }
-  if (r?.state === 'yours') return { kind: 'yours', since: r.since, line: 'Ready for your review' };
-  if (r?.state === 'approved') return { kind: 'approved', since: r.since, line: `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.` };
-  if (r?.state === 'stopped' && r.stop?.kind !== 'user') return { kind: 'stopped', since: r.since, line: `Stopped: ${r.reason ?? 'no verdict.'}` };
   if (item.startFailed && item.status === 'todo') return { kind: 'failed', since: item.startFailed.since, line: `Couldn't start: ${item.startFailed.message}` };
   return undefined;
 }
