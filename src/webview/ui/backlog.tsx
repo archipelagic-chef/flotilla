@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
+import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
@@ -393,6 +394,24 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
           {item.activity}
+        </span>
+      )}
+      {!renaming && conflictsOf(item).length > 0 && (
+        <span
+          class="drift-badge conflict"
+          data-tip={conflictsOf(item)
+            .map((b) => `${b.branch} conflicts with ${item.base ?? 'main'} in:\n${b.conflicts.join('\n')}`)
+            .join('\n\n')}
+          data-tip-hint={`Update from ${item.base ?? 'main'} in the ticket hands the merge to its agent`}
+        >
+          <i class="codicon codicon-git-merge" />
+          conflicts with {item.base ?? 'main'}
+        </span>
+      )}
+      {!renaming && item.waitsFor && (
+        <span class="drift-badge" data-tip={`Depends on ${item.waitsFor.join(', ')}: waits for ${item.waitsFor.length === 1 ? 'it' : 'them'} to be merged`}>
+          <i class="codicon codicon-debug-pause" />
+          {item.waitsFor.join(', ')}
         </span>
       )}
       {!renaming && item.linked && (

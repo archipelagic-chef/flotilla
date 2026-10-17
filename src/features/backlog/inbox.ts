@@ -216,6 +216,10 @@ explanations that change nothing don't need one.
    acceptance criteria. Edit only the description; leave the activity as it is.
 6. When the work is done, end your final report with a line \`Ready for review.\` It's then reviewed: by another
    agent, or by the user. ${reviewNotes({ id: '<id>', backlogDir })}
+7. Keep your branch current with main: before you report \`Ready for review.\`, merge main (the branch work merges
+   into) into your branch, resolve any conflicts, and run the project's checks (build, tests). Merge only main, never
+   another ticket's branch. If you need another ticket's work, add a line \`Depends on: BL-12\` (its id) to your
+   ticket's description and say so in your report: your ticket then shows that it waits for that one to be merged.
 
 ## Adding tickets
 

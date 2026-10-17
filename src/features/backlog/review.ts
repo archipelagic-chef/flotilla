@@ -75,6 +75,8 @@ export interface RevisionTask {
   prompt: string;
   why: string;
   resumeOnly?: boolean;
+  /** Not part of a review round (merging main into the branch, BL-55): noted as itself. */
+  aside?: boolean;
 }
 
 /** How a stopped review is fixed from the ticket. */

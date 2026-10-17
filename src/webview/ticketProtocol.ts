@@ -116,6 +116,10 @@ export interface TicketView {
   showActivity: boolean;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
+  /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
+  dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
+  /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
+  updateFromMain?: { base: string };
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
   shaping?: { agent: string; running: boolean; ready: boolean };
 }
@@ -179,6 +183,8 @@ export type TicketWebviewMessage =
   /** The user's own review: approve, or request changes (an agent picks them up). */
   | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
+  /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
+  | { type: 'updateFromMain' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }
   | { type: 'accept' }

@@ -4,6 +4,8 @@
 
 - **Worktrees take less space**: a done ticket's worktree is removed when nothing in it can be lost and nobody is using it, keeping its branch (`flotilla.removeFinishedWorktrees`); a new worktree can get big folders such as `node_modules` as hard links to the main worktree's (`flotilla.linkFolders`).
 
+- **Tickets stay current with main**: open tickets' branches are checked against main when it moves (a merge in memory); a conflict shows on the card and in the ticket, *Update from Main* merges main in (or hands the conflicts to the ticket's agent), and a ticket can depend on another ("Depends on: BL-12").
+
 ## 0.2.0 (preview)
 
 - **Backlog**: tickets with status, priority, sub-tickets, worktrees, commits and an activity feed (comments, agents' reports, every change), in editor tabs. Images and file links in tickets.

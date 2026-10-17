@@ -634,6 +634,34 @@ export class ReviewLoop implements vscode.Disposable {
     );
   }
 
+  /**
+   * Gives the ticket's agent a task outside the review rounds (merging main into its branch, BL-55): its chat resumed,
+   * or a new agent if it has none. Like changes requested, its "Ready for review." sends the work to review again.
+   */
+  async handToImplementer(id: string, task: RevisionTask): Promise<void> {
+    if (this.runs.has(id)) return;
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (!item) return;
+    const ticket = await this.deps.backlog.readTicket(item);
+    const reviewer = item.review?.reviewer;
+    const implementer =
+      item.review?.implementer ??
+      ticket.activity
+        .map((e) => entryAgent(e.author))
+        .filter((a): a is string => !!a && !sameAgent(a, reviewer))
+        .at(-1);
+    const review: ReviewState = {
+      ...(item.review ?? { reviewer: '', round: 0 }),
+      state: 'revising',
+      reason: undefined,
+      stop: undefined,
+      ...(implementer ? { implementer } : {}),
+    };
+    this.statuses.set(id, 'doing');
+    await this.setReview(id, () => review, 'doing', 'You');
+    await this.startRevision({ ...item, status: 'doing', review }, task, { manual: true });
+  }
+
   /** The user answered the implementer's question: it's resumed with the answer. */
   private async answer(item: BacklogItem, answer: string, keys: string[]): Promise<void> {
     const review: ReviewState = { ...item.review!, state: 'revising', handled: [...(item.review!.handled ?? []), ...keys] };
@@ -721,7 +749,9 @@ export class ReviewLoop implements vscode.Disposable {
         item.id,
         task.resumeOnly
           ? `You answered ${implementer}'s question; resumed ${where} to go on.`
-          : `Review round ${review.round}: ${task.why}; ${chat ? 'resumed' : 'opened'} ${where} to make them.`,
+          : task.aside
+            ? `${task.why.charAt(0).toUpperCase()}${task.why.slice(1)}: ${chat ? 'resumed' : 'opened'} ${where} to take care of it.`
+            : `Review round ${review.round}: ${task.why}; ${chat ? 'resumed' : 'opened'} ${where} to make them.`,
       );
       void run.done.then((result) => this.afterRevision(item.id, run, result));
     } finally {

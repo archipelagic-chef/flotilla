@@ -1881,6 +1881,26 @@ ins {
 .backlog-item .link-badge .codicon {
   font-size: 13px;
 }
+/* How its branches stand against main (BL-55): a conflict, or tickets it waits for. */
+.backlog-item .drift-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.backlog-item .drift-badge.conflict {
+  color: var(--vscode-editorWarning-foreground, var(--waiting));
+  border: 1px solid currentColor;
+}
+.backlog-item .drift-badge .codicon {
+  font-size: 12px;
+}
 .backlog-title .title-actions {
   display: flex;
   gap: 2px;
