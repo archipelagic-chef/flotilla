@@ -7,8 +7,11 @@ import { shareLinkedFolder, type ShareResult } from '../features/worktrees/setup
 import { workstreamLabel } from './format';
 import { readSettings } from './settings';
 
-/** When each worktree's linked folders were last shared (worktree key → ms; workspace state). */
-const SHARED_AT_KEY = 'flotilla.sharedFolders.sharedAt';
+/**
+ * When each worktree's linked folders were last shared (worktree key → ms; workspace state). v2: every worktree is swept
+ * again at once, so files written in place that were shared before become copies again.
+ */
+const SHARED_AT_KEY = 'flotilla.sharedFolders.sharedAt.v2';
 /** A worktree's linked folders are shared again after this long: installs in it may have copied files meanwhile. */
 const SHARE_EVERY_MS = 24 * 60 * 60_000;
 
@@ -60,8 +63,10 @@ export class SharedFolders implements vscode.Disposable {
     );
     const files = results.reduce((n, r) => n + r.files, 0);
     const bytes = results.reduce((n, r) => n + r.bytes, 0);
+    const unshared = results.reduce((n, r) => n + r.unshared, 0);
+    const copied = unshared ? ` Copied ${unshared} files that installs or tools write in place.` : '';
     void vscode.window.showInformationMessage(
-      files ? `Shared ${files} files with the main worktree: ${formatBytes(bytes)} freed.` : 'Nothing to share: the worktrees already share every file they can.',
+      (files ? `Shared ${files} files with the main worktree: ${formatBytes(bytes)} freed.` : 'Nothing to share: the worktrees already share every file they can.') + copied,
     );
   }
 
@@ -83,6 +88,9 @@ export class SharedFolders implements vscode.Disposable {
       for (const folder of folders) {
         const r = await shareLinkedFolder(this.deps.mainRoot, ws.worktree.path, folder);
         results.push(r);
+        if (r.unshared) {
+          this.deps.output.appendLine(`Copied ${r.unshared} files of ${folder} in '${workstreamLabel(ws)}' that were linked to the main worktree's: installs or tools write them in place.`);
+        }
         if (r.files || r.skipped) {
           const skipped = r.skipped ? ` (${r.skipped} in use, left as they were)` : '';
           this.deps.output.appendLine(`Shared ${r.files} files of ${folder} in '${workstreamLabel(ws)}' with the main worktree: ${formatBytes(r.bytes)} freed${skipped}.`);

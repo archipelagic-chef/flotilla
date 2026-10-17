@@ -1412,7 +1412,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Folders (relative to the main worktree) that a new worktree gets as hard links to the main worktree's, before `#flotilla.setupCommand#` runs, e.g. `[\"node_modules\"]`. Linked files take no extra space, and the setup command installs only what the worktree's branch changes. A hard-linked file is the same file in both worktrees: package managers replace files rather than edit them, but a tool that edits one in place changes it in the main worktree too. Folders on another drive are skipped."
+          "markdownDescription": "Folders (relative to the main worktree) that a new worktree gets as hard links to the main worktree's, before `#flotilla.setupCommand#` runs, e.g. `[\"node_modules\"]`. Linked files take no extra space, and the setup command installs only what the worktree's branch changes. A hard-linked file is the same file in both worktrees: package managers replace files rather than edit them, so the files that installs and tools do write in place are copied instead (in `node_modules`: `.package-lock.json`, `.bin`, caches such as `.vite`, and packages with install scripts, such as esbuild's). A worktree can then be installed again on another platform (a devcontainer) without touching the main worktree's files. Folders on another drive are skipped."
         },
         "flotilla.removeFinishedWorktrees": {
           "type": "string",

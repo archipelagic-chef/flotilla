@@ -715,7 +715,8 @@ async function linkSetupFolders(ctx: CommandContext, dir: string, folders: reado
     () => linkFolders(ctx.service.roots.mainRoot, dir, folders),
   );
   for (const r of results) {
-    ctx.output.appendLine(r.skipped ? `Didn't link ${r.folder} into ${dir}: ${r.skipped}.` : `Linked ${r.folder} into ${dir}: ${r.files} files.`);
+    const copied = r.copied ? `, and copied ${r.copied} that installs or tools write in place` : '';
+    ctx.output.appendLine(r.skipped ? `Didn't link ${r.folder} into ${dir}: ${r.skipped}.` : `Linked ${r.folder} into ${dir}: ${r.files} files${copied}.`);
   }
 }
 
