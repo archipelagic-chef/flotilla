@@ -1757,6 +1757,7 @@
     "package": "vsce package",
     "playground": "node scripts/playground.mjs",
     "bench": "node scripts/bench-refresh.mjs",
+    "bench:tokens": "node scripts/bench-tokens.mjs",
     "bench:ticket": "node scripts/bench-ticket.mjs",
     "debug-profile": "node scripts/debug-profile.mjs",
     "fake-github": "node scripts/fake-github.mjs",
