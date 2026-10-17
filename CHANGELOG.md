@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Worktrees take less space**: a done ticket's worktree is removed when nothing in it can be lost and nobody is using it, keeping its branch (`flotilla.removeFinishedWorktrees`); a new worktree can get big folders such as `node_modules` as hard links to the main worktree's (`flotilla.linkFolders`).
+- **Worktrees take less space**: a done ticket's worktree is removed when nothing in it can be lost and nobody is using it, keeping its branch (`flotilla.removeFinishedWorktrees`), and **Flotilla: Kept Worktrees and Folders…** takes back a Keep; a new worktree can get big folders such as `node_modules` as hard links to the main worktree's (`flotilla.linkFolders`).
 
 ## 0.2.0 (preview)
 
