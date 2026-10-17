@@ -169,6 +169,11 @@ export type HostMessage =
   /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
   | { type: 'state'; workstreams: WorkstreamView[]; keys: string[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
+  /**
+   * The change marks (by path) of the entries in the folders the Files tab has listed, from all of the worktree's
+   * changes, not only those in its view; sent after a listing and when they change.
+   */
+  | { type: 'marks'; key: string; marks: Record<string, ChangeKind> }
   /** Directories that changed on disk; the webview re-lists the ones it shows. */
   | { type: 'dirsChanged'; key: string; paths: string[] }
   /** Scroll to a workstream; with path, expand to and highlight that file in the Files tab. */

@@ -1,6 +1,7 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type SlowStorageView } from '../protocol';
+import type { ChangeKind } from '../../core/git/porcelain';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { CiBody } from './ci';
@@ -51,6 +52,8 @@ export interface Selection {
 
 export interface FilesApi {
   dirs: ReadonlyMap<string, DirEntry[]>;
+  /** Each worktree's change marks (by path) of the entries in the folders listed, from all of its changes. */
+  marks: ReadonlyMap<string, Record<string, ChangeKind>>;
   requestDir(key: string, path: string): void;
   selection: Selection | undefined;
   isSelected(key: string, path: string): boolean;
@@ -114,6 +117,7 @@ export function App() {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
+  const [marks, setMarks] = useState<ReadonlyMap<string, Record<string, ChangeKind>>>(new Map());
   const [selection, setSelection] = useState<Selection | undefined>(undefined);
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
@@ -245,6 +249,9 @@ export function App() {
           return;
         case 'dir':
           setDirs((prev) => new Map(prev).set(dirKey(m.key, m.path), m.entries));
+          return;
+        case 'marks':
+          setMarks((prev) => new Map(prev).set(m.key, m.marks));
           return;
         case 'dirsChanged':
           for (const path of m.paths) {
@@ -422,6 +429,7 @@ export function App() {
   const ciTip = scopeSummary(ciViews);
   const files: FilesApi = {
     dirs,
+    marks,
     requestDir,
     selection,
     isSelected: (key, path) => selection?.key === key && selection.paths.includes(path),

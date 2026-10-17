@@ -22,21 +22,7 @@ export type Editing =
   | { key: string; kind: 'rename'; path: string; error?: string };
 
 const DRAG_TYPE = 'application/x-flotilla-files';
-
-/** Path → change kind; unstaged wins over staged (it is what's on disk). Untracked folders come as "dir/". */
-function changeMap(ws: WorkstreamView): Map<string, ChangeKind> {
-  const map = new Map<string, ChangeKind>();
-  for (const c of [...ws.staged, ...ws.unstaged]) map.set(c.path.replace(/\/$/, ''), c.kind);
-  return map;
-}
-
-function folderKind(changes: Map<string, ChangeKind>, dir: string): ChangeKind | undefined {
-  const own = changes.get(dir);
-  if (own) return own;
-  const prefix = `${dir}/`;
-  for (const [p, kind] of changes) if (p.startsWith(prefix)) return kind === 'untracked' || kind === 'added' ? 'modified' : kind;
-  return undefined;
-}
+const NO_MARKS: Record<string, ChangeKind> = {};
 
 const parentOf = (rel: string) => (rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '');
 
@@ -116,7 +102,8 @@ interface Props {
 }
 
 export function FilesBody({ ws, files, expanded, update }: Props) {
-  const changes = changeMap(ws);
+  // The host's marks cover every change, not only the first ones the view has (flotilla.changes.limit).
+  const changes = files.marks.get(ws.key) ?? NO_MARKS;
   const open = new Set(expanded);
   const tree = useRef<HTMLDivElement>(null);
   const editing = files.editing?.key === ws.key ? files.editing : undefined;
@@ -299,7 +286,7 @@ function EntryRow({
   ws: WorkstreamView;
   row: Extract<TreeRow, { kind: 'entry' }>;
   files: FilesApi;
-  changes: Map<string, ChangeKind>;
+  changes: Record<string, ChangeKind>;
   open: ReadonlySet<string>;
   toggle(dir: string): void;
   targetFor(path: string, isDir: boolean): Target;
@@ -332,7 +319,7 @@ function EntryRow({
   };
   if (entry.dir) {
     const isOpen = open.has(rel);
-    const kind = folderKind(changes, rel);
+    const kind = changes[rel];
     return (
       <div role="none" {...dropTarget(ws.key, rel)}>
         <button class={`row${selected ? ' selected' : ''}${ignored ? ' ignored' : ''}`} role="treeitem" aria-expanded={isOpen} style={{ paddingLeft: `${indent}px` }} {...common} onClick={(e) => click(e, () => toggle(rel))}>
@@ -344,7 +331,7 @@ function EntryRow({
       </div>
     );
   }
-  const kind = changes.get(rel);
+  const kind = changes[rel];
   return (
     <div role="none" {...dropTarget(ws.key, parentOf(rel))}>
       <button
