@@ -4,7 +4,7 @@ import { mergeConflicts } from '../../core/git/mergeCheck';
 import type { Repository } from '../../core/repository';
 import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { baseLabel, branchesToCheck, conflictsOf, driftNotes, isOpen, mergeBasePrompt, reusable, type BranchCheck, type MainCheck } from '../../features/backlog/mainDrift';
+import { baseLabel, branchesToCheck, capitalize, conflictsOf, driftNotes, isOpen, mergeBasePrompt, reusable, type BranchCheck, type MainCheck } from '../../features/backlog/mainDrift';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase, resolveCommit } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -78,7 +78,12 @@ export class MainSync implements vscode.Disposable {
     const base = await this.base();
     const baseHead = base && (await resolveCommit(cwd, base));
     if (!base || !baseHead) return;
-    const open = (await this.deps.backlog.read()).items.filter(isOpen);
+    const data = await this.deps.backlog.read();
+    // A ticket that's no longer open (done, back in To Do) drops its last check: it isn't checked any more.
+    if (data.items.some((i) => i.mainCheck && !isOpen(i))) {
+      await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.mainCheck && !isOpen(i) ? withoutCheck(i) : i)) }));
+    }
+    const open = data.items.filter(isOpen);
     if (!open.length) return;
     const heads = await branchHeads(cwd);
     const checks = new Map<string, MainCheck>();
@@ -194,6 +199,7 @@ async function conflictedFiles(cwd: string): Promise<string[]> {
   return out.split('\0').filter(Boolean);
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function withoutCheck(item: BacklogItem): BacklogItem {
+  const { mainCheck: _dropped, ...rest } = item;
+  return rest;
 }

@@ -22,7 +22,7 @@ export interface MainCheck {
 }
 
 /** Tickets whose branches are checked: worked on or in review, and accepted. */
-export function isOpen(item: BacklogItem): boolean {
+export function isOpen(item: Pick<BacklogItem, 'status' | 'proposed'>): boolean {
   return (item.status === 'doing' || item.status === 'review') && !item.proposed;
 }
 
@@ -40,8 +40,9 @@ export function reusable(prev: MainCheck | undefined, baseHead: string, branch: 
   return prev.branches.find((b) => b.branch === branch && b.head === head);
 }
 
-/** The branches that conflict with the base, with their files. */
-export function conflictsOf(item: Pick<BacklogItem, 'mainCheck'>): BranchCheck[] {
+/** The branches that conflict with the base, with their files: none once the ticket isn't open (its check is stale). */
+export function conflictsOf(item: Pick<BacklogItem, 'mainCheck' | 'status' | 'proposed'>): BranchCheck[] {
+  if (!isOpen(item)) return [];
   return (item.mainCheck?.branches ?? []).filter((b) => b.conflicts.length > 0);
 }
 
@@ -105,6 +106,6 @@ export function waitingFor(data: BacklogData, deps: readonly string[]): Array<Pi
   });
 }
 
-function capitalize(s: string): string {
+export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

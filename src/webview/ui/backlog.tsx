@@ -396,7 +396,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {item.activity}
         </span>
       )}
-      {!renaming && !done && conflictsOf(item).length > 0 && (
+      {!renaming && conflictsOf(item).length > 0 && (
         <span
           class="drift-badge conflict"
           data-tip={conflictsOf(item)

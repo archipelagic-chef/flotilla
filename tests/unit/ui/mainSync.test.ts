@@ -77,6 +77,17 @@ describe('keeping open tickets current with main', () => {
     expect((await activity()).at(-1)).toBe('Branch `feature/BL-1-x` merges cleanly with main again.');
   });
 
+  it('drops the last check of a ticket that is done, so it no longer shows a conflict', async () => {
+    commitIn(wt, 'one\nTWO\nthree\n');
+    commitIn(repo, 'one\n2\nthree\n');
+    await sync.check();
+    expect((await item()).mainCheck?.branches[0].conflicts).toEqual(['a.txt']);
+
+    await store.change((d) => updateItem(d, 'BL-1', { status: 'done' }));
+    await sync.check();
+    expect((await item()).mainCheck).toBeUndefined();
+  });
+
   it('Update from Main merges main into the branch when it merges cleanly', async () => {
     commitIn(wt, 'one\ntwo\nTHREE\n');
     commitIn(repo, 'ONE\ntwo\nthree\n');

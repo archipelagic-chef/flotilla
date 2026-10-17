@@ -5,7 +5,7 @@ import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/revie
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
-import { conflictsOf } from '../../features/backlog/mainDrift';
+import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -617,10 +617,6 @@ function MainState({ ticket }: { ticket: TicketView }) {
       )}
     </>
   );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** Where the work on the ticket is: its worktrees (and branches without one), and its commits. */

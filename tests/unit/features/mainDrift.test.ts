@@ -45,8 +45,15 @@ describe('which branches are checked against main', () => {
   });
 
   it('lists the branches that conflict', () => {
-    expect(conflictsOf({ mainCheck: check([['x', []], ['y', ['a.ts']]]) }).map((b) => b.branch)).toEqual(['y']);
-    expect(conflictsOf({})).toEqual([]);
+    expect(conflictsOf(item({ mainCheck: check([['x', []], ['y', ['a.ts']]]) })).map((b) => b.branch)).toEqual(['y']);
+    expect(conflictsOf(item({}))).toEqual([]);
+  });
+
+  it("shows no conflicts for a ticket that isn't open any more (its check is stale)", () => {
+    const mainCheck = check([['y', ['a.ts']]]);
+    expect(conflictsOf(item({ status: 'done', mainCheck }))).toEqual([]);
+    expect(conflictsOf(item({ status: 'todo', mainCheck }))).toEqual([]);
+    expect(conflictsOf(item({ status: 'review', mainCheck }))).toHaveLength(1);
   });
 });
 
