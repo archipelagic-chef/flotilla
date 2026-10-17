@@ -511,8 +511,13 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         </button>
       )}
       {!renaming && !item.proposed && (
-        <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-          {!done && (
+        <span class={`hover-actions${item.creating ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+          {!done && item.creating && (
+            <span class="icon" role="status" aria-label="Creating its worktree…" title="Creating its worktree…">
+              <i class="codicon codicon-loading codicon-modifier-spin" />
+            </span>
+          )}
+          {!done && !item.creating && (
             <button
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}

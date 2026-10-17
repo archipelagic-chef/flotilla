@@ -109,6 +109,65 @@ function ActionButton({
   );
 }
 
+/**
+ * Create Worktree ▾: a click creates a new worktree at once, its branch named without asking (numbered when the name is
+ * taken); the menu's item asks for the branch name first. While one is being created, it says so and waits.
+ */
+function CreateWorktreeButton({ creating, another }: { creating: boolean; another: boolean }) {
+  const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menu]);
+  if (creating) {
+    return (
+      <button class="button secondary" disabled aria-busy="true">
+        <i class="codicon codicon-loading codicon-modifier-spin" /> Creating worktree…
+      </button>
+    );
+  }
+  return (
+    <span class="split-button">
+      <ActionButton
+        class="button secondary"
+        message={{ type: 'start', agent: false, newWorktree: 'auto' }}
+        working="Creating…"
+        title="Creates a new worktree and branch for it at once, without an agent (an epic can have several)"
+      >
+        <i class="codicon codicon-git-branch" /> {another ? 'Add a Worktree' : 'Create Worktree'}
+      </ActionButton>
+      <button
+        class="button secondary more"
+        aria-label="More Ways to Create a Worktree…"
+        aria-haspopup="menu"
+        aria-expanded={menu}
+        onClick={(e) => {
+          e.stopPropagation();
+          setMenu(!menu);
+        }}
+      >
+        <i class="codicon codicon-chevron-down" />
+      </button>
+      {menu && (
+        <span class="menu priority-menu" role="menu">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setMenu(false);
+              act({ type: 'start', agent: false, newWorktree: 'named' }, 'Creating…');
+            }}
+          >
+            <i class="codicon codicon-edit" />
+            <span>Create Worktree with Branch Name…</span>
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** "working…" beside an action that's in progress. */
 function WorkingTag({ label }: { label: string }) {
   return (
@@ -1868,6 +1927,7 @@ function App() {
               class="button"
               message={{ type: 'start', agent: true }}
               working="Starting…"
+              disabled={ticket.creating}
               title={
                 ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
                   ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
@@ -1877,16 +1937,7 @@ function App() {
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
             </ActionButton>
           )}
-          {!done && (
-            <ActionButton
-              class="button secondary"
-              message={{ type: 'start', agent: false }}
-              working="Starting…"
-              title="Creates a worktree and branch for it, without an agent (an epic can have several)"
-            >
-              <i class="codicon codicon-git-branch" /> {worktrees.length ? 'Add a Worktree' : 'Create Worktree'}
-            </ActionButton>
-          )}
+          {!done && <CreateWorktreeButton creating={!!ticket.creating} another={worktrees.length > 0} />}
           {!ticket.remote && (
             <>
               {ticket.canDiscuss && (

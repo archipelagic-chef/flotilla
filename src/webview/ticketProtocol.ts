@@ -109,6 +109,8 @@ export interface TicketView {
   review?: ReviewState & { running: boolean };
   /** Its agent waits for a free slot (or for memory) before it starts. */
   queued?: QueuedView;
+  /** A worktree is being created for it in this window: its Start and Create buttons wait. */
+  creating?: boolean;
   /** Review can be started (a local item with a worktree). */
   canReview: boolean;
   /** The item it's a part of, and its own parts (sub-tickets). */
@@ -173,7 +175,7 @@ export type TicketWebviewMessage =
   /** A pasted or dropped image, base64. */
   | { type: 'image'; requestId: number; name: string; data: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
-  | { type: 'start'; agent: boolean }
+  | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
   /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
   | { type: 'discuss' }
   | { type: 'keepDiscussing' }

@@ -19,6 +19,7 @@ import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
+import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
 import { reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
@@ -369,10 +370,10 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
 }
 
 /** Creates a worktree, copies the setup files, runs the setup command and shows it; returns its key. */
-async function createWorkstream(ctx: CommandContext, request: CreateRequest, opts: { quiet?: boolean } = {}): Promise<string> {
+async function createWorkstream(ctx: CommandContext, request: CreateRequest, opts: { quiet?: boolean; label?: string } = {}): Promise<string> {
   // Quiet (the autopilot's): progress in the status bar, and the sidebar stays where it is.
   const created = await vscode.window.withProgress(
-    { location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: 'Creating worktree…' },
+    { location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: opts.label ? `Creating ${opts.label}'s worktree…` : 'Creating worktree…' },
     () => ctx.service.create(request),
   );
   const dir = created.path!;
@@ -395,43 +396,51 @@ async function createWorkstream(ctx: CommandContext, request: CreateRequest, opt
 /**
  * Starts work on a backlog item: shows the worktree whose branch carries it, or creates one (branch named by
  * flotilla.backlog.branchPattern, from the default branch), and marks the item in progress. With agent, a Claude Code
- * agent then works on it in that worktree, reporting in the item's ticket.
+ * agent then works on it in that worktree, reporting in the item's ticket. With newWorktree (the ticket's Create Worktree
+ * button), a new worktree is created at once, its branch named without asking ('auto') or in an input box ('named').
  */
 async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown): Promise<void> {
   if (typeof id !== 'string') return;
   const agent = typeof opts === 'object' && opts !== null && (opts as { agent?: unknown }).agent === true;
+  const newWorktree = typeof opts === 'object' && opts !== null ? (opts as { newWorktree?: unknown }).newWorktree : undefined;
   const found = await findBacklogItem(ctx, id);
   if (!found) return;
   const { item, remote } = found;
+  // A start while its worktree is being created (a second click, the card and the ticket) would make another one.
+  if (creatingWorktrees.has(item.id)) {
+    void vscode.window.showInformationMessage(`${item.id}'s worktree is still being created.`);
+    return;
+  }
   // An agent needs memory to start: when there's little, the user decides (before a worktree is made for it).
   if (agent && !(await confirmMemory(`The agent for ${item.id}`))) return;
   // A branch of the item that has no worktree (anymore): a worktree for it.
   const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
   if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {
-    const key = await createWorkstream(ctx, { kind: 'existing', branch: branchOpt });
-    const created = ctx.repository.current.find((w) => w.key === key);
+    const made = await creatingWorktrees.run(item.id, () => createWorkstream(ctx, { kind: 'existing', branch: branchOpt }, { label: item.id }));
+    if (made.busy) return;
+    const created = ctx.repository.current.find((w) => w.key === made.value);
     if (created) await enforceCommitPrefix(ctx, created, item.id);
-    if (key) ctx.sidebar.reveal(key);
+    if (made.value) ctx.sidebar.reveal(made.value);
     return;
   }
   const linked = linkedWorktrees(item, ctx.repository.current);
   let ws: Workstream | undefined;
-  if (!linked.length) {
-    ws = await newItemWorktree(ctx, item, false);
+  if (!linked.length || (!agent && (newWorktree === 'auto' || newWorktree === 'named'))) {
+    ws = await newItemWorktree(ctx, item, newWorktree === 'named');
   } else {
     // An epic has several worktrees: start in one of them, or in a new one.
     type Pick = vscode.QuickPickItem & { ws?: Workstream };
     const now = new Date();
     const picks: Pick[] = [
       ...linked.map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, detail: describeWorkstream(w, now), ws: w })),
-      { label: `$(add) New Worktree for ${item.id}…`, detail: 'Another branch for this item, e.g. one part of an epic' },
+      { label: `$(add) New Worktree for ${item.id}`, detail: 'Another branch for this item, e.g. one part of an epic' },
     ];
     const picked = await vscode.window.showQuickPick(picks, {
       title: agent ? `Start an agent on ${item.id}` : `Work on ${item.id}`,
       placeHolder: 'In which worktree?',
     });
     if (!picked) return;
-    ws = picked.ws ?? (await newItemWorktree(ctx, item, true));
+    ws = picked.ws ?? (await newItemWorktree(ctx, item, false));
   }
   if (!ws?.worktree.branch) return;
   const branch = ws.worktree.branch;
@@ -527,10 +536,13 @@ async function findBacklogItem(ctx: CommandContext, id: string): Promise<{ item:
 }
 
 /**
- * Creates a worktree for an item on a branch named by flotilla.backlog.branchPattern, from the default branch. For
- * another worktree of the same item (askName), the name is suggested with a number and can be changed.
+ * Creates a worktree for an item on a branch named by flotilla.backlog.branchPattern, from the default branch. A name
+ * that's taken gets the next free number, without asking; askName shows that suggestion in an input box to change.
+ * One creation per item at a time (creatingWorktrees): a start meanwhile creates nothing, the autopilot's (quiet) waits
+ * for it and takes its worktree.
  */
 async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: boolean, quiet = false): Promise<Workstream | undefined> {
+  if (creatingWorktrees.has(item.id)) return whileCreating(ctx, item, quiet);
   const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
   const branches = await ctx.service.listBranches();
   const checkedOut = new Set(ctx.repository.current.map((w) => w.worktree.branch));
@@ -539,8 +551,7 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   if (askName || checkedOut.has(branch)) {
     let suggestion = branchFor(item, pattern);
     for (let n = 2; branches.local.includes(suggestion) || checkedOut.has(suggestion); n++) suggestion = `${branchFor(item, pattern)}-${n}`;
-    // Quiet: the suggestion, without asking.
-    const name = quiet ? suggestion : await vscode.window.showInputBox({
+    const name = !askName ? suggestion : await vscode.window.showInputBox({
       title: `New worktree for ${item.id}`,
       prompt: 'Branch name (it should keep the item id, which links it to the item)',
       value: suggestion,
@@ -557,8 +568,19 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   }
   const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
   const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
-  const key = await createWorkstream(ctx, request, { quiet });
-  return ctx.repository.current.find((w) => w.key === key);
+  const made = await creatingWorktrees.run(item.id, () => createWorkstream(ctx, request, { quiet, label: item.id }));
+  if (made.busy) return whileCreating(ctx, item, quiet);
+  return ctx.repository.current.find((w) => w.key === made.value);
+}
+
+/** A start of an item while its worktree is being created: said (a user's), or waited for (the autopilot's). */
+async function whileCreating(ctx: CommandContext, item: BacklogItem, quiet: boolean): Promise<Workstream | undefined> {
+  if (!quiet) {
+    void vscode.window.showInformationMessage(`${item.id}'s worktree is still being created.`);
+    return undefined;
+  }
+  await creatingWorktrees.settled(item.id);
+  return linkedWorktrees(item, ctx.repository.current)[0];
 }
 
 /**
@@ -566,6 +588,7 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
  * in, else a new one. Its commits get the item's id; the item goes In Progress, on that branch.
  */
 export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem): Promise<Workstream | undefined> {
+  await creatingWorktrees.settled(item.id);
   const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
   const busy = (w: Workstream) => w.chats.some((c) => c.open && (c.state === 'working' || c.state === 'waiting-for-input'));
   const ws = linked.find((w) => !busy(w)) ?? (linked.length ? undefined : await newItemWorktree(ctx, item, false, true));

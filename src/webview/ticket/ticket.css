@@ -499,6 +499,25 @@ h2 {
   position: relative;
   display: inline-flex;
 }
+/* Create Worktree ▾: the main action and a menu of the other way, as Commit ▾ in Version Control. */
+.split-button {
+  position: relative;
+  display: inline-flex;
+  gap: 1px;
+}
+.split-button > .button:first-child {
+  border-radius: 2px 0 0 2px;
+}
+.split-button > .button.more {
+  padding: 2px 4px;
+  border-radius: 0 2px 2px 0;
+  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
+}
+.split-button > .priority-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+}
 .remote-meta {
   display: flex;
   align-items: center;
