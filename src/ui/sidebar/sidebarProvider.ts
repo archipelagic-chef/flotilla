@@ -38,6 +38,7 @@ import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
 import { webUrl } from '../../features/ci/githubDeployments';
+import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
@@ -102,6 +103,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
+      creatingWorktrees.onDidChange(() => void this.postBacklog()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
       this.ci,
@@ -173,6 +175,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor } : {}),
           ...(base ? { base } : {}),
+          ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
         };
       }),
     );

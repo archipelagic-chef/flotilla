@@ -29,6 +29,8 @@ export interface BacklogItemView extends BacklogItem {
   run?: { kind: RunKind; title?: string; lines: string[] };
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
+  /** A worktree is being created for it in this window: its row shows it, and its Start button waits. */
+  creating?: boolean;
   /** Why it waits on the user (its row in "Needs you"). */
   need?: Need;
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */

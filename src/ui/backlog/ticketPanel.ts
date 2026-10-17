@@ -49,6 +49,7 @@ import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, wit
 import { openTarget } from '../../features/backlog/runTarget';
 import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
+import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -243,6 +244,7 @@ export class TicketPanels implements vscode.Disposable {
 
   constructor(private readonly deps: TicketDeps) {
     this.subscriptions.push(
+      creatingWorktrees.onDidChange(() => this.refreshAll()),
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
       deps.backlog.watch((changed) => void this.backlogChanged(changed)),
       // Refreshed issues: read their details again too.
@@ -760,6 +762,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
+      ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
@@ -1054,7 +1057,7 @@ export class TicketPanels implements vscode.Disposable {
         return;
       }
       case 'start':
-        await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent });
+        await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
         return;
       case 'discuss':
         if (!item.remote) await this.shaping?.discuss(id, true);
