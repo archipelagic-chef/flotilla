@@ -46,6 +46,7 @@ The **Backlog** keeps the repository's work as tickets, in `.flotilla/backlog/` 
 - **Agents on tickets**: *Start an Agent* opens a Claude Code chat in the ticket's worktree (created if needed). Agents report in the ticket, start commit messages with its id (a commit-msg hook checks it), keep its description up to date, ask when they need you, and end with "Ready for review." Pick each ticket's model and effort; with one chosen, the agent runs as a Claude Code session in a terminal.
 - **Any chat works through the backlog**: chats learn about it from `AGENTS.md` next to it, claim or add tickets through its inbox, and can split work into sub-tickets (as proposals you accept, or straight in: `flotilla.backlog.agentTickets`).
 - **Reviews**: a reviewer agent reviews work in review and gives a verdict; requested changes go back to the implementer. Review it yourself with *Approve* and *Request Changes*; the agent picks your changes up, asking first if it needs to. A stopped review offers the fixes for why it stopped.
+- **Merge to main**: an approved ticket merges from its ticket (or its card's right-click menu, which also has *Merge All Ready Tickets*, dependencies first). Flotilla merges in a temporary worktree (`git merge --no-ff`, "Merge BL-12: <title>"), so none of your worktrees is left mid-merge; it refuses a branch carrying unfinished tickets' commits and says when a ticket looks superseded. It runs the checks (`flotilla.merge.checkCommand`) in a terminal, and only when they pass moves the base branch to the merge and the ticket to Done. Conflicts: an agent resolves them, keeping both sides' intent, for you to approve; or cancel. Nothing is pushed until you click *Push*.
 - **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.autopilot.maxAgents` at once. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
 - **History clean-up**: rewrite a ticket's branch into a few clean commits (an agent with you, or yourself); the old history is kept under `refs/flotilla/history/`.
 - **Jira and GitHub Issues**: list their issues in the backlog, link local tickets to them, and post comments, change status and priority, or create issues from a ticket. Every write asks you first; agents are told never to change trackers.
@@ -83,6 +84,8 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.backlog.agentTickets` | `propose` | Whether tickets agents add wait for you to accept them, or join the backlog at once |
 | `flotilla.review.automatic` | `true` | A reviewer agent reviews work that goes to review |
 | `flotilla.review.maxRounds` | `3` | Review rounds before the decision is left to you |
+| `flotilla.merge.checkCommand` | `""` | Checks run on a merge before the base branch moves (default: the `typecheck` and `test` scripts) |
+| `flotilla.merge.onApprove` | `ask` | When a ticket is approved: offer to merge it (`ask`), merge it (`auto`), or nothing (`off`) |
 | `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
 | `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
 | `flotilla.autopilot.maxAgents` | `2` | How many agents the autopilot runs at once |

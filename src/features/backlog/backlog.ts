@@ -183,6 +183,11 @@ export function updateItem(
   };
 }
 
+/** Whether an item is ready to merge: in review, approved, and not being merged already. */
+export function readyToMerge(item: Pick<BacklogItem, 'status' | 'review' | 'proposed' | 'merge'>): boolean {
+  return item.status === 'review' && item.review?.state === 'approved' && !item.proposed && !item.merge;
+}
+
 /** Accepts an agent's proposed item: it becomes an ordinary one. */
 export function acceptItem(data: BacklogData, id: string): BacklogData {
   return {

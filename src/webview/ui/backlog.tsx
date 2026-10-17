@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { branchMatches } from '../../features/backlog/backlog';
+import { branchMatches, readyToMerge } from '../../features/backlog/backlog';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
-import { send } from './api';
+import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
@@ -227,6 +227,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
+      data-vscode-context={remote ? undefined : menuContext('backlogItem', { itemId: item.id, flotillaItem: readyToMerge(item) ? ';readyToMerge;' : ';' })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);

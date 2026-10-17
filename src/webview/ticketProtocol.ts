@@ -91,6 +91,14 @@ export interface TicketView {
   history: Array<HistoryVersion & { log: TicketCommit[] }>;
   /** It has a branch whose history can be cleaned up. */
   canCleanUp: boolean;
+  /** It can be merged into the base branch (a local item, approved in review, not being merged). */
+  canMerge: boolean;
+  /** The branch it merges into. */
+  mergeInto?: string;
+  /** A merge of it waiting for a decision, and whether its agent is at it now. */
+  merge?: NonNullable<BacklogItem['merge']> & { running: boolean };
+  /** Once merged: what the base branch has that its upstream doesn't (to push). */
+  unpushed?: { base: string; remote: string; count: number };
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
 }
@@ -152,5 +160,11 @@ export type TicketWebviewMessage =
   | { type: 'finishCleanUp' }
   | { type: 'cancelCleanUp' }
   | { type: 'compareCleanUp' }
+  /** Merge it into the base branch; a merge's decisions; push the base branch after. */
+  | { type: 'merge' }
+  | { type: 'mergeResolve' }
+  | { type: 'mergeApprove' }
+  | { type: 'mergeCancel' }
+  | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string };

@@ -18,6 +18,7 @@ import { Leader } from './features/backlog/leader';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
+import { Merger, readyToMerge } from './ui/backlog/merge';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -141,13 +142,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(tickets);
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
-  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
-  context.subscriptions.push(reviews);
+  const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
+  const reviews = new ReviewLoop({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    openTicket: (id) => void tickets.open(id),
+    isLeader: () => leader.isLeader,
+    onApproved: (id, by) => merger.approved(id, by),
+  });
+  context.subscriptions.push(reviews, merger);
+  // A ticket's id from a command's argument: the id, or a backlog card's menu context.
+  const itemArg = (arg: unknown) =>
+    typeof arg === 'string' ? arg : typeof arg === 'object' && arg !== null && typeof (arg as { itemId?: unknown }).itemId === 'string' ? (arg as { itemId: string }).itemId : undefined;
+  const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {
+      let id = itemArg(arg);
+      if (!id) {
+        const ready = (await backlog.read()).items.filter(readyToMerge);
+        id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;
+      }
+      if (id) await merger.merge(id).catch(reportError);
+    }),
+    vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
+  );
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(noteDescriptions));
   noteDescriptions();
   tickets.useReviews(reviews);
+  tickets.useMerger(merger);
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);

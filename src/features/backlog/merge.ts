@@ -49,10 +49,10 @@ export function idsIn(text: string, ids: readonly string[]): string[] {
 
 /**
  * The other tickets a branch carries commits of that aren't done (their ids in its commit messages): merging it would
- * merge their unfinished work too. The item itself, its linked issues and its parts don't count.
+ * merge their unfinished work too. The item itself, its linked issues, its parent (an epic) and its parts don't count.
  */
-export function blockingItems(item: Pick<BacklogItem, 'id' | 'links'>, messages: readonly string[], items: readonly BacklogItem[]): BacklogItem[] {
-  const own = new Set([item.id, ...(item.links ?? []).map((l) => l.id)].map((i) => i.toLowerCase()));
+export function blockingItems(item: Pick<BacklogItem, 'id' | 'links' | 'parent'>, messages: readonly string[], items: readonly BacklogItem[]): BacklogItem[] {
+  const own = new Set([item.id, ...(item.parent ? [item.parent] : []), ...(item.links ?? []).map((l) => l.id)].map((i) => i.toLowerCase()));
   const others = items.filter((i) => !own.has(i.id.toLowerCase()) && i.parent !== item.id && i.status !== 'done');
   const text = messages.join('\n');
   const found = new Set(idsIn(text, others.map((i) => i.id)).map((i) => i.toLowerCase()));
@@ -282,16 +282,23 @@ export function resolvePrompt(o: {
   theirs: readonly string[];
   others: ReadonlyArray<{ id: string; title: string; description: string }>;
   checks?: string;
+  /** Why the merge stopped after its conflicts were resolved (the checks failed): what to fix. */
+  problem?: string;
 }): string {
   const quote = (s: string) => (s.trim() ? s.trim().replace(/^/gm, '> ') : '> (no description)');
   const list = (lines: readonly string[]) => (lines.length ? lines.map((l) => `- ${l}`).join('\n') : '- (none touching these files)');
   const short = o.start.slice(0, 12);
+  const fixing = !o.files.length;
   return [
-    `Your task: resolve the conflicts of merging ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached at ${o.base}, in the middle of that merge (\`git merge --no-ff ${o.branch}\`). The conflicted files: ${o.files.map((f) => `\`${f}\``).join(', ')}.`,
+    fixing
+      ? `Your task: finish merging ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached at ${o.base}, with the merge committed (its conflicts were resolved), but it stopped: ${o.problem ?? 'it needs fixing'}. Fix that in the merge (\`git commit --amend --no-edit\` keeps it one merge commit).`
+      : `Your task: resolve the conflicts of merging ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached at ${o.base}, in the middle of that merge (\`git merge --no-ff ${o.branch}\`). The conflicted files: ${o.files.map((f) => `\`${f}\``).join(', ')}.`,
     `${o.item.id} "${o.item.title}" (the branch being merged), as its ticket ${o.ticket} describes it:\n\n${quote(o.description)}\n\nIts commits touching those files (\`git log ${short}..${o.branch} -- <file>\`):\n${list(o.theirs)}`,
     `What ${o.base} changed in them since ${o.branch} started (\`git log ${short}..HEAD -- <file>\`):\n${list(o.ours)}`,
     ...(o.others.length ? [`Those changes on ${o.base} are from:\n\n${o.others.map((t) => `${t.id} "${t.title}":\n\n${quote(t.description)}`).join('\n\n')}`] : []),
-    `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop either to make the conflict go away. Resolve every conflict, \`git add\` the files${o.checks ? `, run the checks (\`${o.checks}\`) and fix what they find` : ''}, then commit the merge with \`git commit --no-edit\` (keep its message). Don't change any other branch or worktree, don't rebase or reset, and don't push.`,
-    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time) followed by how you resolved each conflict and why${o.checks ? ', and whether the checks pass' : ''}. The user reads it and approves the resolution from the ticket; Flotilla then runs the checks and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
+    fixing
+      ? `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do.${o.checks ? ` Run the checks (\`${o.checks}\`) until they pass.` : ''} Amend the merge commit with your fixes. Don't change any other branch or worktree, don't rebase or reset, and don't push.`
+      : `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop either to make the conflict go away. Resolve every conflict, \`git add\` the files${o.checks ? `, run the checks (\`${o.checks}\`) and fix what they find` : ''}, then commit the merge with \`git commit --no-edit\` (keep its message). Don't change any other branch or worktree, don't rebase or reset, and don't push.`,
+    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time) followed by how you resolved ${fixing ? 'it' : 'each conflict'} and why${o.checks ? ', and whether the checks pass' : ''}. The user reads it and approves the resolution from the ticket; Flotilla then runs the checks and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
   ].join('\n\n');
 }

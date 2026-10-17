@@ -52,6 +52,8 @@ export interface ReviewDeps {
   mainRoot: string;
   output: vscode.OutputChannel;
   openTicket(id: string): void;
+  /** An item was approved: by the reviewer agent (its name), or by the user (undefined). */
+  onApproved?(id: string, by: string | undefined): void;
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
@@ -468,9 +470,11 @@ export class ReviewLoop implements vscode.Disposable {
     const handled = [...(item.review.handled ?? []), this.key(id)(verdict.entry)];
     if (verdict.verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
-      void vscode.window
-        .showInformationMessage(`${item.review.reviewer} approved ${id} "${item.title}". It's ready for you to merge.`, 'Open')
-        .then((c) => c && this.deps.openTicket(id));
+      if (this.deps.onApproved) this.deps.onApproved(id, item.review.reviewer);
+      else
+        void vscode.window
+          .showInformationMessage(`${item.review.reviewer} approved ${id} "${item.title}". It's ready for you to merge.`, 'Open')
+          .then((c) => c && this.deps.openTicket(id));
       return;
     }
     const task: RevisionTask = {
@@ -505,6 +509,7 @@ export class ReviewLoop implements vscode.Disposable {
     const handled = [...(item.review?.handled ?? []), this.key(id)(entry)];
     if (verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'approved', byUser: true, reason: undefined, handled }));
+      this.deps.onApproved?.(id, undefined);
       return;
     }
     // The implementer: the review's, else the last agent that reported (not a reviewer).

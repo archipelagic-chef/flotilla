@@ -64,6 +64,8 @@ describe('merge messages and ids', () => {
     const items = [item('BL-1'), item('BL-2'), item('BL-3', 'done'), item('BL-4', 'doing', { parent: 'BL-1' }), item('BL-5', 'review')];
     const messages = ['BL-1: start', 'BL-2: borrowed', 'BL-3: finished', 'BL-4: part', 'BL-5: in review'];
     expect(blockingItems(items[0], messages, items).map((i) => i.id)).toEqual(['BL-2', 'BL-5']);
+    // A part's branch may mention its epic.
+    expect(blockingItems(items[3], ['BL-4: part of BL-1'], items).map((i) => i.id)).toEqual([]);
   });
 
   it('notes a merge in the activity', () => {
