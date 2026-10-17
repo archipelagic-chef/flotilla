@@ -5,9 +5,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
-import { lightNote, moveUpTarget, reviewModel, workModel, type Levels } from '../../features/backlog/modelLevel';
+import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
-import { LEAN_TOOLS, leanFlags, writeLeanSettings } from '../../features/backlog/leanStart';
+import { LEAN_TOOLS, leanFlags, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
+import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
 
@@ -29,21 +30,52 @@ export function claudeBinary(): string {
   return 'claude';
 }
 
+/** Where Flotilla writes its agents' settings files and guard script. */
+const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
+
 /**
- * flotilla.agents.lean (default on): the flags that start an agent in cwd without skills, plugins and MCP servers, and
- * the coding tools it then gets (LEAN_TOOLS); undefined when it's off. Each of those is context the agent re-reads on
- * every turn (a quarter of a new agent's context, measured in BL-68).
+ * How an agent on model (in cwd) starts, to keep what it re-reads on every turn small; undefined when nothing applies.
+ * - flotilla.agents.lean (default on): no skills, plugins and MCP servers, and only the coding tools (LEAN_TOOLS): a
+ *   quarter of a new agent's context (BL-68).
+ * - flotilla.agents.autoCompactWindow: it compacts its context sooner (BL-72).
+ * - flotilla.agents.subagentModel: its subagents, which search and report back, run on a cheaper model, never a
+ *   stronger one than its own (BL-77).
+ * - flotilla.agents.guardOutput: large file reads and diffs are refused, with how to look instead (BL-75).
+ * The last three go in a settings file (--settings), with the plugins the lean start switches off.
  */
-export function leanStart(cwd: string): { flags: string[]; tools: string[] } | undefined {
-  if (!vscode.workspace.getConfiguration('flotilla').get<boolean>('agents.lean', true)) return undefined;
+export function agentStart(cwd: string, model?: string): { flags: string[]; tools?: string[] } | undefined {
+  const config = vscode.workspace.getConfiguration('flotilla');
+  const lean = config.get<boolean>('agents.lean', true);
+  const window = config.get<number>('agents.autoCompactWindow', 200000);
+  const sub = validModel(config.get<string>('agents.subagentModel', 'sonnet').trim());
+  const guardOn = config.get<boolean>('agents.guardOutput', true);
   let settings: string | undefined;
   try {
-    settings = writeLeanSettings({ cwd, configDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), outDir: path.join(os.tmpdir(), 'flotilla') });
+    settings = writeAgentSettings({
+      cwd,
+      configDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'),
+      outDir: AGENT_FILES,
+      lean,
+      ...(window > 0 ? { autoCompactWindow: Math.min(1_000_000, Math.max(100_000, window)) } : {}),
+      ...(sub && !weaker(model, sub) ? { subagentModel: sub } : {}),
+      ...(guardOn ? { guardCommand: guardCommand() } : {}),
+    });
   } catch {
-    // Plugins stay on: the rest of the lean start still applies.
+    // Started without them: the rest still applies.
   }
-  return { flags: leanFlags(settings), tools: [...LEAN_TOOLS] };
+  const flags = lean ? leanFlags(settings) : settings ? ['--settings', settings] : [];
+  return flags.length || lean ? { flags, ...(lean ? { tools: [...LEAN_TOOLS] } : {}) } : undefined;
 }
+
+/** The guard hook's command: node runs its script (written once per version of it). */
+function guardCommand(): string {
+  const script = writeOnce(AGENT_FILES, 'flotilla-guard', 'js', guardScript(GUARD_LINES, GUARD_DIFF_LINES));
+  return `node "${script.replace(/\\/g, '/')}"`;
+}
+
+/** The guard's limits: files over this many lines are read in parts, diffs over this many changed lines by file first. */
+const GUARD_LINES = 400;
+const GUARD_DIFF_LINES = 600;
 
 /** Memory free on this machine, in MB: what Node reports (on Linux, MemAvailable; in WSL, the VM's share of the host's). */
 export function freeMemoryMB(): number {
@@ -214,8 +246,8 @@ export function headlessArgs(o: {
   sessionId: string;
   mode: AgentPermissionMode;
   tools?: string[];
-  /** A lean start (leanStart): its flags, and the tools offered when there's no tools list. */
-  lean?: { flags: string[]; tools: string[] };
+  /** How it starts (agentStart): its flags, and the tools offered when there's no tools list. */
+  lean?: { flags: string[]; tools?: string[] };
 }): string[] {
   return [
     '-p',
@@ -233,7 +265,7 @@ export function headlessArgs(o: {
     // are not there at all; --allowedTools lets the listed ones run (with a rule's path, when it has one).
     ...(o.tools?.length
       ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools]
-      : o.lean
+      : o.lean?.tools
         ? ['--tools', o.lean.tools.join(',')]
         : []),
   ];
@@ -265,10 +297,10 @@ export function runAgentHeadless(o: {
   const configuredMode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
   // With a tool list, what isn't on it is refused, not asked about: that's the list's whole point.
   const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
-  const lean = leanStart(o.cwd);
+  const lean = agentStart(o.cwd, o.choice?.model);
   const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, lean });
   o.output.appendLine(
-    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean ? ', lean start' : ''}).`,
+    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}).`,
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
