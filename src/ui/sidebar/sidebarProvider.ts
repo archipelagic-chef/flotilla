@@ -223,6 +223,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;
+      case 'createWorktree':
+        await vscode.commands.executeCommand(m.named ? 'flotilla.createBacklogWorktreeNamed' : 'flotilla.createBacklogWorktree', m.id);
+        return;
       case 'comment':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
         return;
