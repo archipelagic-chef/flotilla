@@ -215,7 +215,7 @@ export function reviewNotes(o: { id: string; backlogDir: string }): string {
  * How an agent keeps its context small (BL-68): what it reads stays in its context and is read again on every turn,
  * which is where most of its tokens go (files and diffs above all, measured with npm run bench:tokens).
  */
-export const CONTEXT_NOTES = `Keep your context small: whatever you read stays in it and is read again on every turn. To find your way around the code, ask a subagent (the Agent tool) a specific question, and read yourself only the lines you change or must check. Look at changes with \`git diff --stat\` first, then diff only the files you need. Keep command output short: while you work, run only the tests of the code you change, and the whole suite once at the end.`;
+export const CONTEXT_NOTES = `Keep your context small: whatever you read stays in it and is read again on every turn. Find code with grep and read only the lines you change or must check, not whole files. Ask a subagent (the Agent tool) only for broad exploration across many files: it starts with a context of its own, so it costs more than it saves for a lookup. Look at changes with \`git diff --stat\` first, then diff only the files you need. Keep command output short: while you work, run only the tests of the code you change, and the whole suite once at the end.`;
 
 /** What the reviewer is told. Its first line names it and the item (that's how the ticket finds its chat). */
 export function reviewerPrompt(o: {
