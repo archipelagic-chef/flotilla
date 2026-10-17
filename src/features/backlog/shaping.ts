@@ -57,7 +57,7 @@ function rules(ticket: string): string[] {
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and replies. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Your reply is your final message, and nothing else: Flotilla adds it to the end of the ticket's Activity, dated and signed with your name, after the owner's newest entry. Write it as the reply only, with no heading and no signature. Keep it short: a few lines, and questions as a short numbered list. Ask what you need to know; propose, don't assume. Don't write in the Activity yourself.`,
     `When you and the user agree on something, write it into the description (the title too, when it changes): the problem or goal, the context, and the acceptance criteria as a checklist. Edit the ticket with the Edit tool, change only what's agreed and leave the rest of the file as it is; never rewrite the whole file.`,
-    `When you think the ticket is ready to start, end your reply with the line "${READY_TO_START}" (only then; never "Ready for review.").`,
+    `When you think the ticket is ready to start, first add a short "### Where to start" section at the end of the description, for the agent who'll do the work: the files and functions it touches (as links with lines, like [src/a.ts:42](src/a.ts#L42)) and the approach you agreed, so it needn't search for what you found. Then end your reply with the line "${READY_TO_START}" (only then; never "Ready for review.").`,
   ];
 }
 

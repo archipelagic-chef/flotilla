@@ -3,7 +3,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { branchMatches, childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { changedFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
+import { resolveBase } from '../../features/workstreams/progress';
+import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -139,6 +142,76 @@ export class Autopilot implements vscode.Disposable {
     };
   }
 
+  /** The To Do tickets held back because they'd change files a ticket in progress changes (BL-71), as of the last tick. */
+  private clashes = new Map<string, Clash>();
+  /** Maps of To Do tickets, by id: kept while the backlog and the ticket stay as they were (at most 10 minutes). */
+  private readonly maps = new Map<string, { key: string; at: number; map: CodeMap }>();
+  /** The holds noted in their tickets ("BL-7>BL-3"): each once. */
+  private readonly noted = new Set<string>();
+
+  /** Why a To Do ticket waits for another one in progress (BL-71), if it does. */
+  clashOf(id: string): Clash | undefined {
+    return this.clashes.get(id);
+  }
+
+  /**
+   * The To Do tickets whose map is firm about files a ticket in progress changes (BL-71): they wait for it, so their
+   * work isn't built on code about to change under it (and done again after the merge). Off with
+   * flotilla.autopilot.avoidClashes.
+   */
+  private async clashing(data: BacklogData): Promise<Map<string, Clash>> {
+    const found = new Map<string, Clash>();
+    // Without the repository's worktrees (yet), there's nothing to compare.
+    const main = this.deps.repository?.current.find((w) => w.worktree.isMain)?.worktree.path;
+    if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', true)) return found;
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping);
+    const active = data.items.filter((i) => i.status === 'doing' || i.status === 'review');
+    if (!todo.length || !active.length) return found;
+    const base = (await resolveBase(main, readSettings().defaultBase)) ?? 'HEAD';
+    const busy = new Map<string, Set<string>>();
+    for (const item of active) {
+      const files = new Set<string>();
+      for (const w of this.deps.repository.current) {
+        if (w.worktree.isMain || !w.worktree.path || !w.worktree.branch || !branchMatches(item, w.worktree.branch)) continue;
+        for (const f of await changedFiles(w.worktree.path, base)) files.add(f);
+      }
+      if (files.size) busy.set(item.id, files);
+    }
+    for (const item of todo) {
+      const map = await this.mapOf(item, data, main);
+      const clash = map && findClash(map.firm, busy, item.id);
+      if (clash) found.set(item.id, clash);
+    }
+    return found;
+  }
+
+  private async mapOf(item: BacklogItem, data: BacklogData, main: string): Promise<CodeMap | undefined> {
+    const ticket = await this.deps.backlog.readTicketCached(item);
+    const key = JSON.stringify([ticket.description, item.parent, data.items.map((i) => [i.id, i.status, i.parent])]);
+    const known = this.maps.get(item.id);
+    if (known && known.key === key && Date.now() - known.at < 10 * 60_000) return known.map;
+    const map = await codeMap(main, item, ticket.description, data.items).catch(() => undefined);
+    if (map) this.maps.set(item.id, { key, at: Date.now(), map });
+    return map;
+  }
+
+  /** Notes a new hold in its ticket, once. */
+  private async noteClashes(data: BacklogData): Promise<void> {
+    for (const [id, clash] of this.clashes) {
+      if (this.noted.has(`${id}>${clash.with}`)) continue;
+      this.noted.add(`${id}>${clash.with}`);
+      const item = data.items.find((i) => i.id === id);
+      if (!item) continue;
+      const shown = clash.files.slice(0, 3).map((f) => `\`${f}\``).join(', ');
+      const files = clash.files.length > 3 ? `${shown} and ${clash.files.length - 3} more` : shown;
+      await this.deps.backlog.appendActivity(item, {
+        date: entryDate(new Date()),
+        author: 'Flotilla',
+        body: `The autopilot holds it back: it would change ${files}, which ${clash.with} (in progress) changes too. It starts once ${clash.with} is merged, so its work builds on that; start it yourself to go ahead anyway.`,
+      });
+    }
+  }
+
   /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55). */
   private async waiting(data: BacklogData): Promise<string[]> {
     const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed);
@@ -160,7 +233,12 @@ export class Autopilot implements vscode.Disposable {
       if (this.waitingUntil) return;
       while (this.enabled && this.deps.reviews.canStartNew()) {
         const data = await this.deps.backlog.read();
-        const item = nextForAutopilot(data, new Set([...this.failed, ...(await this.waiting(data))]));
+        const clashes = await this.clashing(data);
+        const changed = JSON.stringify([...clashes]) !== JSON.stringify([...this.clashes]);
+        this.clashes = clashes;
+        if (changed) this.changed.fire();
+        await this.noteClashes(data);
+        const item = nextForAutopilot(data, new Set([...this.failed, ...(await this.waiting(data)), ...clashes.keys()]));
         if (!item) return;
         // Too little memory for another agent: this one waits, and the next tick tries again.
         if (memoryShortage()) {

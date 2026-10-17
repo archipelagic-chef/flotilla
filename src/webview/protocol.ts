@@ -35,6 +35,8 @@ export interface BacklogItemView extends BacklogItem {
   need?: Need;
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
+  /** The autopilot holds it back: it would change files this ticket in progress changes (BL-71). */
+  clash?: { with: string; files: string[] };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
 }

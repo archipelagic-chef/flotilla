@@ -1655,6 +1655,11 @@
           "default": "",
           "markdownDescription": "How hard reviewer agents think. Empty: the ticket's choice, else `#flotilla.agents.effort#`."
         },
+        "flotilla.autopilot.avoidClashes": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "The autopilot holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
+        },
         "flotilla.autopilot.maxAgents": {
           "type": "number",
           "minimum": 1,

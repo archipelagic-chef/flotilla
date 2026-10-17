@@ -436,6 +436,15 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           conflicts with {item.base ?? 'main'}
         </span>
       )}
+      {!renaming && item.clash && (
+        <span
+          class="drift-badge"
+          data-tip={`The autopilot holds it back until ${item.clash.with} is merged: both change ${item.clash.files.join(', ')}. Start it yourself to go ahead anyway`}
+        >
+          <i class="codicon codicon-debug-pause" />
+          after {item.clash.with}
+        </span>
+      )}
       {!renaming && item.agent?.light && !item.agent.model && (
         <span class="drift-badge" data-tip="Light: small, mechanical work, on the light model (flotilla.agents.lightModel). Reviewed by the default model; moves up to it when it turns out hard">
           <i class="codicon codicon-feather" />

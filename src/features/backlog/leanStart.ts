@@ -62,8 +62,7 @@ export function agentSettingsText(plugins: readonly string[], s: AgentSettings):
     ...(s.subagentModel ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: s.subagentModel } } : {}),
     ...(s.guardCommand ? { hooks: { PreToolUse: [{ matcher: 'Read|Bash', hooks: [{ type: 'command', command: s.guardCommand, timeout: 15 }] }] } } : {}),
   };
-  return Object.keys(settings).length ? `${JSON.stringify(settings, null, 1)}
-` : undefined;
+  return Object.keys(settings).length ? `${JSON.stringify(settings, null, 1)}\n` : undefined;
 }
 
 /**

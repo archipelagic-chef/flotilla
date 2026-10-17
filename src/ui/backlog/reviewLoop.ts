@@ -38,6 +38,7 @@ import {
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import { movedUp, moveUpTarget, ROUNDS_BEFORE_MOVING_UP, strongerRequest } from '../../features/backlog/modelLevel';
 import { NO_USAGE, runawayPrompt, runawayReason } from '../../features/backlog/runaway';
+import { mapFor } from '../../features/backlog/codeMap';
 import { readTranscript, type ChatUsage } from '../../features/chats/chats';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
@@ -677,7 +678,7 @@ export class ReviewLoop implements vscode.Disposable {
       const task: RevisionTask = { prompt: AUTOPILOT_NOTE, why: 'the autopilot started it' };
       const run = runAgentHeadless({
         cwd: ws.worktree.path,
-        prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide), AUTOPILOT_NOTE].join('\n\n'),
+        prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), AUTOPILOT_NOTE].join('\n\n'),
         name: `${agent} · ${item.id}`,
         choice,
         output: this.deps.output,
@@ -1183,7 +1184,7 @@ export class ReviewLoop implements vscode.Disposable {
         const guide = path.join(this.deps.backlog.dir, GUIDE);
         run = runAgentHeadless({
           cwd: ws.worktree.path,
-          prompt: [agentLead(item, implementer), agentPrompt(item, ticket, ws.worktree.branch, implementer, guide), task.prompt].join('\n\n'),
+          prompt: [agentLead(item, implementer), agentPrompt(item, ticket, ws.worktree.branch, implementer, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), task.prompt].join('\n\n'),
           name: `${implementer} · ${item.id}`,
           choice: agentChoice(item),
           output: this.deps.output,

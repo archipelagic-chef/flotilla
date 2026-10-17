@@ -96,6 +96,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.chats.bigContext` | `200000` | Context size at which a chat is marked big, and you're told once what it costs. 0: never |
 | `flotilla.agents.lean` | `true` | Start agents without your skills, plugins and MCP servers, with the coding tools only: a quarter less context re-read every turn |
 | `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
+| `flotilla.autopilot.avoidClashes` | `true` | The autopilot holds back a ticket that would change files a ticket in progress changes, until that one is merged |
 | `flotilla.agents.maxRunning` | `2` | How many agents run at once, in all (the autopilot's, reviews, resumes); the rest wait in a queue |
 | `flotilla.agents.maxPrioritized` | `2` | How many agents Prioritize may run above `maxRunning` at once; at this ceiling it asks which running agent to pause |
 | `flotilla.agents.permissionMode` | `auto` | What agents without a window may do (user settings only) |
