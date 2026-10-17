@@ -6,6 +6,8 @@ export class GitError extends Error {
     readonly args: readonly string[],
     readonly exitCode: number | null,
     readonly stderr: string,
+    /** What it printed before failing (some commands report through their exit code, e.g. merge-tree's conflicts). */
+    readonly stdout = '',
   ) {
     super(`git ${args.join(' ')} failed${exitCode === null ? '' : ` (exit ${exitCode})`}: ${stderr.trim() || 'no output'}`);
     this.name = 'GitError';
@@ -44,7 +46,7 @@ function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> 
       (error, stdout, stderr) => {
         if (error) {
           const code = (error as { code?: unknown }).code;
-          reject(new GitError(args, typeof code === 'number' ? code : null, stderr || error.message));
+          reject(new GitError(args, typeof code === 'number' ? code : null, stderr || error.message, stdout));
         } else {
           resolve(stdout);
         }
