@@ -1,0 +1,182 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BacklogItem } from '../../../src/features/backlog/backlog';
+import type { Workstream } from '../../../src/features/workstreams/workstream';
+import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+
+const showInformationMessage = vi.fn(async (..._args: unknown[]) => undefined as string | undefined);
+const settings: Record<string, unknown> = {};
+const update = vi.fn(async () => undefined);
+
+vi.mock('vscode', () => ({
+  window: {
+    showInformationMessage,
+    withProgress: async (_o: unknown, task: (p: { report(): void }) => Promise<void>) => task({ report() {} }),
+  },
+  workspace: {
+    workspaceFolders: undefined,
+    getConfiguration: () => ({ get: (key: string, fallback: unknown) => settings[key] ?? fallback, update }),
+  },
+  ProgressLocation: { Notification: 15, Window: 10 },
+  ConfigurationTarget: { Workspace: 2 },
+}));
+
+const cleanup: string[] = [];
+const disposables: Array<{ dispose(): void }> = [];
+
+beforeEach(() => {
+  showInformationMessage.mockReset();
+  update.mockClear();
+  for (const k of Object.keys(settings)) delete settings[k];
+});
+afterEach(() => {
+  disposables.splice(0).forEach((d) => d.dispose());
+  cleanup.splice(0).forEach(removeDir);
+});
+
+function item(id: string, status: BacklogItem['status']): BacklogItem {
+  return { id, title: id, status, priority: 'medium', created: '', branch: `feature/${id}` } as BacklogItem;
+}
+
+function worktree(id: string, extra: Partial<Workstream> = {}): Workstream {
+  const dir = makeTempDir();
+  cleanup.push(dir);
+  writeFile(dir, 'file.txt', 'x'.repeat(100));
+  return {
+    key: `admin/${id}`,
+    worktree: { isMain: false, path: dir, branch: `feature/${id}`, adminDir: `admin/${id}` },
+    changes: [],
+    agent: undefined,
+    agentStale: false,
+    windowOpen: false,
+    isCurrent: false,
+    activity: 'idle',
+    ...extra,
+  } as unknown as Workstream;
+}
+
+function memento(initial: Record<string, unknown> = {}) {
+  const data = { ...initial };
+  return { data, get: <T>(k: string) => data[k] as T, update: async (k: string, v: unknown) => void (data[k] = v), keys: () => Object.keys(data) };
+}
+
+async function setup(o: { items: BacklogItem[]; worktrees: Workstream[]; introduced?: boolean; leader?: boolean }) {
+  const { FinishedWorktrees } = await import('../../../src/ui/finishedWorktrees');
+  const removed: string[] = [];
+  const activity: Array<[string, string]> = [];
+  const state = memento(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {});
+  const removeAnyway = vi.fn(async () => undefined);
+  const cleaner = new FinishedWorktrees({
+    backlog: {
+      read: async () => ({ items: o.items }) as never,
+      watch: () => ({ dispose() {} }),
+      appendActivity: async (i, e) => void activity.push([i.id, e.body]),
+    },
+    repository: { current: o.worktrees, refresh: async () => undefined, onDidChange: () => ({ dispose() {} }) } as never,
+    service: {
+      removalRisks: async (wt) => ({ changedFiles: o.worktrees.find((w) => w.worktree === wt)!.changes.length, unmergedCommits: 0 }),
+      remove: async (wt) => void removed.push(wt.branch!),
+    },
+    leader: { isLeader: o.leader ?? true },
+    workspaceState: state as never,
+    output: { appendLine() {} } as never,
+    removeAnyway,
+  });
+  disposables.push(cleaner);
+  return { cleaner, removed, activity, state, removeAnyway };
+}
+
+describe('FinishedWorktrees', () => {
+  it('removes a done ticket’s unused worktree on its own, keeps the branch, and says so in the ticket', async () => {
+    const { cleaner, removed, activity } = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')], introduced: true });
+
+    await cleaner.sweep();
+
+    expect(removed).toEqual(['feature/BL-1']);
+    expect(showInformationMessage).not.toHaveBeenCalled();
+    expect(activity).toEqual([['BL-1', 'Removed the worktree of `feature/BL-1` now that the ticket is done; the branch stays: 100 bytes freed.']]);
+  });
+
+  it('leaves tickets that aren’t done alone, and does nothing in a window that isn’t leading', async () => {
+    const a = await setup({ items: [item('BL-1', 'review'), item('BL-2', 'doing')], worktrees: [worktree('BL-1'), worktree('BL-2')], introduced: true });
+    await a.cleaner.sweep();
+    expect(a.removed).toEqual([]);
+
+    const b = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')], introduced: true, leader: false });
+    await b.cleaner.sweep();
+    expect(b.removed).toEqual([]);
+  });
+
+  it('leaves a ticket alone while its history is being cleaned up', async () => {
+    const rewriting = { ...item('BL-1', 'done'), rewrite: { branch: 'feature/BL-1' } } as BacklogItem;
+    const { cleaner, removed } = await setup({ items: [rewriting], worktrees: [worktree('BL-1')], introduced: true });
+    await cleaner.sweep();
+    expect(removed).toEqual([]);
+    expect(showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('asks once, with the reason, when something is at stake; Keep is remembered', async () => {
+    const dirty = worktree('BL-1', { changes: [{}, {}] as never });
+    const { cleaner, removed, state } = await setup({ items: [item('BL-1', 'done')], worktrees: [dirty], introduced: true });
+    showInformationMessage.mockResolvedValueOnce('Keep');
+
+    await cleaner.sweep();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(showInformationMessage).toHaveBeenCalledWith("BL-1 is done, but its worktree wasn't removed: it has 2 uncommitted or untracked files.", 'Remove Anyway', 'Keep');
+    expect(state.data['flotilla.finishedWorktrees.kept']).toEqual(['BL-1']);
+    await cleaner.sweep();
+    expect(showInformationMessage).toHaveBeenCalledTimes(1);
+    expect(removed).toEqual([]);
+  });
+
+  it('hands Remove Anyway to the Remove command, which confirms what would be lost', async () => {
+    const busy = worktree('BL-1', { agent: { state: 'working' } as never });
+    const { cleaner, removed, removeAnyway } = await setup({ items: [item('BL-1', 'done')], worktrees: [busy], introduced: true });
+    showInformationMessage.mockResolvedValueOnce('Remove Anyway');
+
+    await cleaner.sweep();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(removeAnyway).toHaveBeenCalledWith(busy);
+    expect(removed).toEqual([]);
+  });
+
+  it('asks first about the worktrees that were already finished, then removes them', async () => {
+    const { cleaner, removed, state } = await setup({
+      items: [item('BL-1', 'done'), item('BL-2', 'done'), item('BL-3', 'review')],
+      worktrees: [worktree('BL-1'), worktree('BL-2'), worktree('BL-3')],
+    });
+    showInformationMessage.mockResolvedValueOnce('Remove');
+
+    await cleaner.sweep();
+
+    expect(showInformationMessage.mock.calls[0][0]).toBe(
+      '2 worktrees belong to tickets that are done and take 200 bytes. Remove them? Branches are kept, and Flotilla removes finished worktrees from now on.',
+    );
+    expect(removed).toEqual(['feature/BL-1', 'feature/BL-2']);
+    expect(state.data['flotilla.finishedWorktrees.introduced']).toBe(true);
+  });
+
+  it('removes nothing when the first question is put off, and turns itself off on Never', async () => {
+    const a = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')] });
+    showInformationMessage.mockResolvedValueOnce('Not Now');
+    await a.cleaner.sweep();
+    await a.cleaner.sweep();
+    expect(a.removed).toEqual([]);
+    expect(showInformationMessage).toHaveBeenCalledTimes(1);
+
+    const b = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')] });
+    showInformationMessage.mockResolvedValueOnce('Never');
+    await b.cleaner.sweep();
+    expect(b.removed).toEqual([]);
+    expect(update).toHaveBeenCalledWith('removeFinishedWorktrees', 'off', 2);
+  });
+
+  it('does nothing when the setting is off', async () => {
+    settings.removeFinishedWorktrees = 'off';
+    const { cleaner, removed } = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')], introduced: true });
+    await cleaner.sweep();
+    expect(removed).toEqual([]);
+    expect(showInformationMessage).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { CiNotify } from '../features/ci/notify';
+import type { RemoveFinishedMode } from '../features/storage/finished';
 
 /** `needsYou`: one notification for what needs you, gathered for a minute; `all`: one per event; `off`: none. */
 export type NotifyMode = 'needsYou' | 'all' | 'off';
@@ -7,6 +8,8 @@ export type NotifyMode = 'needsYou' | 'all' | 'off';
 export interface Settings {
   copyFiles: string[];
   setupCommand: string;
+  linkFolders: string[];
+  removeFinishedWorktrees: RemoveFinishedMode;
   autoAdopt: boolean;
   defaultBase: string;
   activeWindowMinutes: number;
@@ -22,6 +25,8 @@ export function readSettings(): Settings {
   return {
     copyFiles: c.get<string[]>('copyFiles', []),
     setupCommand: c.get<string>('setupCommand', ''),
+    linkFolders: c.get<string[]>('linkFolders', []),
+    removeFinishedWorktrees: c.get<RemoveFinishedMode>('removeFinishedWorktrees', 'auto'),
     autoAdopt: c.get<boolean>('autoAdopt', true),
     defaultBase: c.get<string>('defaultBase', ''),
     activeWindowMinutes: c.get<number>('activeWindowMinutes', 5),

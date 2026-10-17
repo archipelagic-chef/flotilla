@@ -26,7 +26,7 @@ import { agentChoice, confirmMemory, describeChoice } from './backlog/agentRunne
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
-import { copySetupFiles } from '../features/worktrees/setup';
+import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
 import type { ChangeGroup, Target } from '../webview/protocol';
 import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
@@ -379,6 +379,7 @@ async function createWorkstream(ctx: CommandContext, request: CreateRequest, opt
   const settings = readSettings();
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   if (copied.length) ctx.output.appendLine(`Copied into ${dir}: ${copied.join(', ')}`);
+  await linkSetupFolders(ctx, dir, settings.linkFolders, opts.quiet);
   startSetupTerminal(dir, settings.setupCommand);
   await ctx.repository.refresh();
   if (!opts.quiet) ctx.sidebar.reveal(created.adminDir);
@@ -694,11 +695,24 @@ async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {
   const settings = readSettings();
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   ctx.output.appendLine(copied.length ? `Copied into ${dir}: ${copied.join(', ')}` : `No setup files to copy into ${dir}.`);
+  await linkSetupFolders(ctx, dir, settings.linkFolders, false);
   if (!settings.setupCommand.trim()) {
     if (!copied.length) void vscode.window.showInformationMessage('Nothing to do: set flotilla.copyFiles or flotilla.setupCommand.');
     return;
   }
   startSetupTerminal(dir, settings.setupCommand);
+}
+
+/** Gives a worktree the main worktree's `flotilla.linkFolders` as hard links, and says in the output what it did. */
+async function linkSetupFolders(ctx: CommandContext, dir: string, folders: readonly string[], quiet: boolean | undefined): Promise<void> {
+  if (!folders.length) return;
+  const results = await vscode.window.withProgress(
+    { location: quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: `Linking ${folders.join(', ')}…` },
+    () => linkFolders(ctx.service.roots.mainRoot, dir, folders),
+  );
+  for (const r of results) {
+    ctx.output.appendLine(r.skipped ? `Didn't link ${r.folder} into ${dir}: ${r.skipped}.` : `Linked ${r.folder} into ${dir}: ${r.files} files.`);
+  }
 }
 
 function startSetupTerminal(dir: string, command: string): void {
@@ -807,7 +821,7 @@ async function revealInExplorer(ctx: CommandContext, arg: Arg): Promise<void> {
   await vscode.commands.executeCommand('revealInExplorer', toWorkspaceUri(ctx.reference, target));
 }
 
-async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<void> {
+export async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<void> {
   const wt = ws.worktree;
   if (wt.isMain) {
     void vscode.window.showWarningMessage('The main worktree cannot be removed.');

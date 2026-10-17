@@ -1381,7 +1381,30 @@
         "flotilla.setupCommand": {
           "type": "string",
           "default": "",
-          "description": "Command to run in a terminal in a new worktree, e.g. \"npm ci\"."
+          "description": "Command to run in a terminal in a new worktree, e.g. \"npm install\". With flotilla.linkFolders, use a command that keeps what's there (npm install, not npm ci, which deletes node_modules first)."
+        },
+        "flotilla.linkFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Folders (relative to the main worktree) that a new worktree gets as hard links to the main worktree's, before `#flotilla.setupCommand#` runs, e.g. `[\"node_modules\"]`. Linked files take no extra space, and the setup command installs only what the worktree's branch changes. A hard-linked file is the same file in both worktrees: package managers replace files rather than edit them, but a tool that edits one in place changes it in the main worktree too. Folders on another drive are skipped."
+        },
+        "flotilla.removeFinishedWorktrees": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ask",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Remove a done ticket's worktree when nothing in it can be lost and nobody is using it; ask otherwise.",
+            "Ask before removing any done ticket's worktree.",
+            "Never remove worktrees on your behalf."
+          ],
+          "default": "auto",
+          "description": "What happens to a ticket's worktree once the ticket is Done. Its branch is always kept."
         },
         "flotilla.autoAdopt": {
           "type": "boolean",
