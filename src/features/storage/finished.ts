@@ -1,6 +1,9 @@
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { rawFs } from '../../core/rawFs';
 import type { BacklogStatus } from '../backlog/backlog';
+
+// Not Electron's fs: worktrees can hold .asar files (see rawFs).
+const fs = rawFs().promises;
 
 /** `auto`: a finished ticket's worktree is removed when that's safe; `ask`: every removal is a question; `off`: never. */
 export type RemoveFinishedMode = 'auto' | 'ask' | 'off';
@@ -31,14 +34,18 @@ export interface RemovalInput {
   recentlyActive: boolean;
 }
 
-export type RemovalDecision = { action: 'remove' } | { action: 'ask'; reason: string } | { action: 'skip' };
+/** A skip has a reason when the ticket is done (the output says why its worktree stays). */
+export type RemovalDecision = { action: 'remove' } | { action: 'ask'; reason: string } | { action: 'skip'; reason?: string };
 
 /**
  * Whether a done ticket's worktree goes: removed when nothing in it can be lost and nobody is using it, a question when
  * something is (with the reason), left alone otherwise. The branch is never part of it: removal always keeps it.
  */
 export function removalDecision(i: RemovalInput): RemovalDecision {
-  if (i.status !== 'done' || i.proposed || i.isMain || !i.reachable || i.openTicketOnBranch || i.kept) return { action: 'skip' };
+  if (i.status !== 'done' || i.proposed || i.isMain) return { action: 'skip' };
+  if (!i.reachable) return { action: 'skip', reason: "it isn't reachable from this environment" };
+  if (i.openTicketOnBranch) return { action: 'skip', reason: "another ticket that isn't done works on its branch" };
+  if (i.kept) return { action: 'skip', reason: 'you chose to keep it' };
   if (i.changedFiles > 0) return { action: 'ask', reason: `it has ${i.changedFiles} uncommitted or untracked file${i.changedFiles === 1 ? '' : 's'}` };
   if (i.agentRunning) return { action: 'ask', reason: 'an agent is still running in it' };
   if (i.windowOpen) return { action: 'ask', reason: "it's open in a window" };

@@ -92,6 +92,11 @@
         "icon": "$(arrow-swap)"
       },
       {
+        "command": "flotilla.shareLinkedFolders",
+        "title": "Share Linked Folders in All Worktrees",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.remove",
         "title": "Remove Worktree…",
         "category": "Flotilla",
@@ -552,6 +557,10 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "flotilla.shareLinkedFolders",
+          "when": "flotilla.state == ready"
+        },
         {
           "command": "flotilla.showJobLog",
           "when": "false"

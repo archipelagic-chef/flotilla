@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { movesSince, ticketCommits } from '../../../src/features/history/log';
+import { mentioningCommits, movesSince, ticketCommits } from '../../../src/features/history/log';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
@@ -30,6 +30,44 @@ describe('mention index', () => {
     expect(moves?.branches).toEqual(['side']);
     expect(moves?.commits.map((c) => c.subject)).toEqual(['Also BL-1 on a branch']);
     expect(await movesSince(repo)).toBeUndefined();
+  });
+
+  it('gives what a full read gives when refs move: a new commit, a rewritten branch, deleted branches', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const indexed = async () => {
+      await movesSince(repo); // reads the refs afresh, and updates the index
+      return (await mentioningCommits(repo, ['BL-1'], 1000)).map((c) => c.hash).sort();
+    };
+    const all = () => git(repo, 'log', '--all', '--grep=BL-1', '--format=%H').split('\n').filter(Boolean).sort();
+    commit(repo, 'a.txt', 'BL-1 first');
+    expect(await indexed()).toEqual(all());
+
+    commit(repo, 'b.txt', 'BL-1 second');
+    expect(await indexed()).toEqual(all());
+
+    git(repo, 'switch', '-q', '-c', 'side');
+    commit(repo, 'c.txt', 'BL-1 on a branch');
+    expect(await indexed()).toEqual(all());
+
+    // Rewritten: the old commit is on no ref any more.
+    git(repo, 'commit', '-q', '--amend', '-m', 'BL-1 on a branch, amended');
+    expect(await indexed()).toEqual(all());
+
+    // Deleted with a commit nothing else has.
+    git(repo, 'switch', '-q', 'main');
+    git(repo, 'branch', '-q', '-D', 'side');
+    expect(await indexed()).toEqual(all());
+
+    // Deleted after being merged: its commits stay.
+    git(repo, 'switch', '-q', '-c', 'merged');
+    commit(repo, 'd.txt', 'BL-1 merged later');
+    git(repo, 'switch', '-q', 'main');
+    git(repo, 'merge', '-q', '--no-ff', '-m', 'BL-1 merge', 'merged');
+    expect(await indexed()).toEqual(all());
+    git(repo, 'branch', '-q', '-d', 'merged');
+    expect(await indexed()).toEqual(all());
+    expect(all()).toHaveLength(4);
   });
 
   it('matches whole ids, case-insensitively, and only up to the limit', async () => {

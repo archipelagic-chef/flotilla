@@ -17,6 +17,8 @@ export interface RunGitOptions {
   timeoutMs?: number;
   /** Extra environment variables, merged over the defaults. */
   env?: Record<string, string>;
+  /** Written to git's standard input (for --stdin). */
+  input?: string;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -28,7 +30,7 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
 
 function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'git',
       [...args],
       {
@@ -48,6 +50,7 @@ function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> 
         }
       },
     );
+    if (opts.input !== undefined) child.stdin?.end(opts.input);
   });
 }
 

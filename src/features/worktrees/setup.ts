@@ -1,8 +1,11 @@
 import { constants, type Dirent } from 'node:fs';
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { glob } from 'tinyglobby';
+import { rawFs } from '../../core/rawFs';
 import { WORKTREES_DIR } from './layout';
+
+// Not Electron's fs: linked folders can hold .asar files (see rawFs).
+const fs = rawFs().promises;
 
 export async function copySetupFiles(mainRoot: string, worktreeDir: string, patterns: readonly string[]): Promise<string[]> {
   if (patterns.length === 0) return [];
@@ -124,4 +127,69 @@ async function copySymlink(src: string, dest: string, fromRoot: string, toRoot: 
     return;
   }
   await fs.symlink(target, dest);
+}
+
+/** Files larger than this are left as they are by shareLinkedFolder (comparing them costs more than they're worth). */
+const SHARE_MAX_FILE_BYTES = 64 * 1024 * 1024;
+
+export interface ShareResult {
+  folder: string;
+  /** Files that now are hard links to the main worktree's. */
+  files: number;
+  /** The space that frees. */
+  bytes: number;
+  /** Identical files that couldn't be replaced (in use). */
+  skipped: number;
+}
+
+/**
+ * Makes a worktree's copy of a linked folder share the main worktree's files: each file that is identical (same path,
+ * same content) and not linked yet becomes a hard link to the main worktree's, replaced atomically (a link made next to
+ * it, renamed over it). Files that differ, a branch's own packages, stay as they are; so do files in use (Windows
+ * refuses the rename), which are counted as skipped. Links aren't followed.
+ */
+export async function shareLinkedFolder(mainRoot: string, worktreeDir: string, folder: string): Promise<ShareResult> {
+  const result: ShareResult = { folder, files: 0, bytes: 0, skipped: 0 };
+  const from = path.resolve(mainRoot, folder);
+  const to = path.resolve(worktreeDir, folder);
+  if (!isInside(mainRoot, from) || !isInside(worktreeDir, to)) return result;
+  const files: string[] = [];
+  const pending = [''];
+  while (pending.length) {
+    const rel = pending.pop()!;
+    const entries: Dirent[] = await fs.readdir(path.join(to, rel), { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      const child = path.join(rel, e.name);
+      if (e.isDirectory()) pending.push(child);
+      else if (e.isFile()) files.push(child);
+    }
+  }
+  let next = 0;
+  // Another drive: no file can be linked, so none is compared.
+  let otherDrive = false;
+  const worker = async () => {
+    while (next < files.length && !otherDrive) {
+      const rel = files[next++];
+      const mine = path.join(to, rel);
+      const theirs = path.join(from, rel);
+      const [a, b] = await Promise.all([fs.lstat(mine).catch(() => undefined), fs.lstat(theirs).catch(() => undefined)]);
+      if (!a || !b || !b.isFile() || a.nlink > 1 || a.size !== b.size || a.size > SHARE_MAX_FILE_BYTES) continue;
+      if (a.dev === b.dev && a.ino === b.ino) continue;
+      const [x, y] = await Promise.all([fs.readFile(mine), fs.readFile(theirs)]).catch(() => [undefined, undefined]);
+      if (!x || !y || !x.equals(y)) continue;
+      const tmp = `${mine}.${process.pid}.flotilla-link`;
+      try {
+        await fs.link(theirs, tmp);
+        await fs.rename(tmp, mine);
+        result.files++;
+        result.bytes += a.size;
+      } catch (error) {
+        await fs.rm(tmp, { force: true }).catch(() => undefined);
+        if ((error as NodeJS.ErrnoException).code === 'EXDEV') otherDrive = true;
+        else result.skipped++;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(LINK_CONCURRENCY, files.length) }, worker));
+  return result;
 }
