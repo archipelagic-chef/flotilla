@@ -36,6 +36,20 @@ describe('headless agent arguments', () => {
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
   });
 
+  it('starts lean: no skills, plugins or MCP servers, and the coding tools last', () => {
+    const lean = { flags: ['--disable-slash-commands', '--strict-mcp-config', '--settings', '/tmp/lean.json'], tools: ['Bash', 'Read', 'Agent'] };
+    const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto', lean });
+    for (const flag of lean.flags) expect(args).toContain(flag);
+    expect(args.slice(-2)).toEqual(['--tools', 'Bash,Read,Agent']);
+  });
+
+  it('keeps a run’s own tool list over the lean start’s', () => {
+    const lean = { flags: ['--disable-slash-commands'], tools: ['Bash', 'Read'] };
+    const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'dontAsk', tools: ['Read', 'Grep'], lean });
+    expect(args).toContain('--disable-slash-commands');
+    expect(args.slice(-5)).toEqual(['--tools', 'Read,Grep', '--allowedTools', 'Read', 'Grep']);
+  });
+
   it('offers every built-in tool when it lists none', () => {
     const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto' });
     expect(args).not.toContain('--tools');
