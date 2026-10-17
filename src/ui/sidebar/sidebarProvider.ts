@@ -31,6 +31,7 @@ import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
 import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
+import { changeMarks, ListedFolders } from './changeMarks';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
@@ -70,6 +71,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private readonly subscriptions: vscode.Disposable[] = [];
   /** The view of each worktree as the webview last got it (JSON, by key): only changed ones are sent. */
   private readonly sent = new Map<string, string>();
+  /** The folders the Files tab has listed, so that their entries' change marks can be sent. */
+  private readonly listed = new ListedFolders();
   readonly files: FileOps;
   /** The folders the Files tab lists, watched directly: VS Code's watcher skips the worktrees (files.watcherExclude). */
   private readonly shown = new ShownFolders((key, rel) => this.dirsChanged(key, [rel]));
@@ -310,6 +313,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     };
     this.post({ type: 'state', workstreams: changed, keys, machine });
     this.shown.retain(new Set(all.map((ws) => ws.key)));
+    this.listed.retain(new Set(all.map((ws) => ws.key)));
+    for (const ws of all) this.postMarks(ws);
     this.postExclusions();
     this.ci.update(all);
   }
@@ -361,6 +366,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'tool', tool });
   }
 
+  /** The Files tab's change marks of a worktree, when they differ from the ones it has. */
+  private postMarks(ws: Workstream): void {
+    const marks = changeMarks(ws.staged, ws.unstaged, this.listed.of(ws.key));
+    if (this.listed.changed(ws.key, marks)) this.post({ type: 'marks', key: ws.key, marks });
+  }
+
   dirsChanged(key: string, paths: string[]): void {
     this.post({ type: 'dirsChanged', key, paths });
   }
@@ -390,6 +401,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         void this.postIconTheme();
         // A page that has just loaded has none of the views: send them all.
         this.sent.clear();
+        this.listed.clear();
         this.postState();
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
@@ -403,6 +415,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'listDir': {
         const ws = this.find(m.key);
         if (!ws?.worktree.path) return;
+        this.listed.add(m.key, m.path);
         const exclude = vscode.workspace.getConfiguration('files', this.deps.reference).get<Record<string, unknown>>('exclude') ?? {};
         let entries: Awaited<ReturnType<typeof listDirectory>> = [];
         try {
@@ -413,6 +426,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         this.shown.watch(m.key, ws.worktree.path, m.path);
         this.post({ type: 'dir', key: m.key, path: m.path, entries });
+        const current = this.find(m.key);
+        if (current) this.postMarks(current);
         return;
       }
       case 'openFile': {
