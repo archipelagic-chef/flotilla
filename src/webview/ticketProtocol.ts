@@ -30,6 +30,8 @@ export type AgentChatView =
       /** The model and effort it ran with (its last reply's; before that, what it was started with). */
       model?: string;
       effort?: string;
+      /** Its token use (BL-76): its context now ("84k"), and the totals for the tooltip. */
+      tokens?: { label: string; tip: string; reRead: number };
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };

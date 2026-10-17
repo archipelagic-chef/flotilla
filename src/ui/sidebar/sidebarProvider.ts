@@ -333,7 +333,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const config = vscode.workspace.getConfiguration('flotilla');
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
-    const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit));
+    const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()));
     const { changed, keys } = changedViews(views, this.sent);
     const machine: MachineState = {
       freeMB: freeMemoryMB(),
@@ -701,4 +701,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 </body>
 </html>`;
   }
+}
+
+/** Past this context a chat is marked as big (flotilla.chats.bigContext; 0: never). */
+function bigContext(): number {
+  return vscode.workspace.getConfiguration('flotilla').get<number>('chats.bigContext', 200_000);
 }

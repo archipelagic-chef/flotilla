@@ -35,6 +35,25 @@ export interface TranscriptInfo {
   /** The model and effort of its last reply (the user can switch them during a chat). */
   model?: string;
   effort?: string;
+  /** Its token use so far (its own replies; subagents' aren't counted). */
+  usage?: ChatUsage;
+}
+
+/**
+ * A chat's token use, from its transcript (BL-70). Every reply re-reads the whole context, so `context` (the last
+ * reply's) is what each further turn costs, and `reRead` adds up to most of a long chat's cost.
+ */
+export interface ChatUsage {
+  turns: number;
+  /** The context of its last reply: input, read from the cache and written to it. */
+  context: number;
+  /** Read from the cache, in all. */
+  reRead: number;
+  /** Written to the cache, in all. */
+  written: number;
+  output: number;
+  /** The same command failed this many times in a row, with no edit in between (an agent going round in circles). */
+  failStreak: number;
 }
 
 export interface Chat {
@@ -57,6 +76,7 @@ export interface Chat {
   /** The model and effort of its last reply, from its transcript. */
   model?: string;
   effort?: string;
+  usage?: ChatUsage;
 }
 
 const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1, done: 2, ended: 3 };
@@ -254,6 +274,12 @@ interface TranscriptScan {
   startedAt?: Date;
   model?: string;
   effort?: string;
+  usage?: ChatUsage;
+  /** The reply last counted (one reply can be written over several lines). */
+  lastReply?: string;
+  /** The Bash command whose result comes next, and the one failing in a row (see ChatUsage.failStreak). */
+  pending?: { id: string; command: string };
+  failing?: string;
 }
 
 /** A transcript as far as it has been read: the bytes before `offset` are in `scan`, and `head` identifies the file. */
@@ -288,7 +314,8 @@ function scanLine(scan: TranscriptScan, line: string): void {
   const isTitle = line.includes('"ai-title"') || line.includes('"custom-title"');
   const isUser = !scan.firstPrompt && line.includes('"type":"user"');
   const isReply = line.includes('"type":"assistant"');
-  if (!isTitle && !isUser && !isReply && scan.startedAt) return;
+  const isResult = !!scan.pending && line.includes('"tool_result"');
+  if (!isTitle && !isUser && !isReply && !isResult && scan.startedAt) return;
   let entry: {
     type?: unknown;
     timestamp?: unknown;
@@ -297,7 +324,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
     aiTitle?: unknown;
     customTitle?: unknown;
     effort?: unknown;
-    message?: { model?: unknown; content?: unknown };
+    message?: { id?: unknown; model?: unknown; content?: unknown; usage?: Record<string, unknown> };
   };
   try {
     entry = JSON.parse(line) as typeof entry;
@@ -307,8 +334,9 @@ function scanLine(scan: TranscriptScan, line: string): void {
   scan.startedAt ??= toDate(entry.timestamp);
   if (entry.type === 'ai-title') scan.aiTitle = text(entry.aiTitle) ?? scan.aiTitle;
   else if (entry.type === 'custom-title') scan.customTitle = text(entry.customTitle) ?? scan.customTitle;
-  else if (entry.type === 'user' && !scan.firstPrompt && !entry.isSidechain && !entry.isMeta) {
-    scan.firstPrompt = promptText(entry.message?.content)?.slice(0, 200);
+  else if (entry.type === 'user' && !entry.isSidechain) {
+    if (!scan.firstPrompt && !entry.isMeta) scan.firstPrompt = promptText(entry.message?.content)?.slice(0, 200);
+    if (scan.pending) watchResult(scan, entry.message?.content);
   } else if (entry.type === 'assistant' && !entry.isSidechain) {
     // The model and effort are the last reply's (not a subagent's). An effort belongs to the reply it came with.
     if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') {
@@ -316,7 +344,64 @@ function scanLine(scan: TranscriptScan, line: string): void {
       scan.effort = undefined;
     }
     if (typeof entry.effort === 'string') scan.effort = entry.effort;
+    countUsage(scan, entry.message);
+    watchTools(scan, entry.message?.content);
   }
+}
+
+const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+/** Adds a reply's tokens (once per reply: its lines carry the same usage). */
+function countUsage(scan: TranscriptScan, message: { id?: unknown; usage?: Record<string, unknown> } | undefined): void {
+  const u = message?.usage;
+  if (!u) return;
+  const id = typeof message.id === 'string' ? message.id : undefined;
+  if (id && id === scan.lastReply) return;
+  scan.lastReply = id;
+  const before = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+  const read = num(u.cache_read_input_tokens);
+  const written = num(u.cache_creation_input_tokens);
+  scan.usage = {
+    ...before,
+    turns: before.turns + 1,
+    context: num(u.input_tokens) + read + written,
+    reRead: before.reRead + read,
+    written: before.written + written,
+    output: before.output + num(u.output_tokens),
+  };
+}
+
+/** Notes a Bash call (its result comes next), and an edit (which ends a run of failures: the agent changed something). */
+function watchTools(scan: TranscriptScan, content: unknown): void {
+  if (!Array.isArray(content)) return;
+  for (const part of content as Array<{ type?: unknown; id?: unknown; name?: unknown; input?: { command?: unknown } }>) {
+    if (part?.type !== 'tool_use') continue;
+    if (part.name === 'Bash' && typeof part.id === 'string' && typeof part.input?.command === 'string') {
+      scan.pending = { id: part.id, command: part.input.command.trim() };
+    } else if (part.name === 'Edit' || part.name === 'Write' || part.name === 'MultiEdit' || part.name === 'NotebookEdit') {
+      scan.failing = undefined;
+      if (scan.usage) scan.usage = { ...scan.usage, failStreak: 0 };
+    }
+  }
+}
+
+/** Counts a failed result of the same command again: its success ends the run, another command failing starts a new one. */
+function watchResult(scan: TranscriptScan, content: unknown): void {
+  if (!Array.isArray(content) || !scan.pending) return;
+  const result = (content as Array<{ type?: unknown; tool_use_id?: unknown; is_error?: unknown }>).find(
+    (p) => p?.type === 'tool_result' && p.tool_use_id === scan.pending!.id,
+  );
+  if (!result) return;
+  const { command } = scan.pending;
+  scan.pending = undefined;
+  const usage = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+  if (result.is_error !== true) {
+    if (scan.failing === command) scan.failing = undefined;
+    scan.usage = { ...usage, failStreak: scan.failing ? usage.failStreak : 0 };
+    return;
+  }
+  scan.usage = { ...usage, failStreak: scan.failing === command ? usage.failStreak + 1 : 1 };
+  scan.failing = command;
 }
 
 function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): TranscriptInfo {
@@ -331,6 +416,7 @@ function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): Trans
     ...optional('startedAt', scan.startedAt),
     ...optional('model', scan.model),
     ...optional('effort', scan.effort),
+    ...optional('usage', scan.usage),
   };
 }
 
@@ -456,6 +542,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('startedAt', r.startedAt ?? t?.startedAt),
       ...optional('model', t?.model),
       ...optional('effort', t?.effort),
+      ...optional('usage', t?.usage),
     });
   }
   for (const t of transcripts) {
@@ -472,6 +559,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('startedAt', t.startedAt),
       ...optional('model', t.model),
       ...optional('effort', t.effort),
+      ...optional('usage', t.usage),
     });
   }
   return [...byId.values()].sort(

@@ -1,4 +1,5 @@
 import { Component, render, type ComponentChildren, type JSX } from 'preact';
+import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
@@ -932,10 +933,17 @@ function modelName(model: string): string {
 
 /** Every agent that worked on the ticket: its chat, its state, how much it reported. */
 function Agents({ ticket }: { ticket: TicketView }) {
+  // What its agents re-read in all (BL-76): most of what a ticket costs.
+  const reRead = ticket.agents.reduce((n, a) => n + (a.tokens?.reRead ?? 0), 0);
   return (
     <section class="block">
       <div class="block-head">
         <h2>Agents</h2>
+        {reRead > 0 && (
+          <span class="muted" title="The tokens its agents re-read from their context, in all: most of what a ticket costs (each turn re-reads the whole chat)">
+            {formatTokens(reRead)} tokens re-read
+          </span>
+        )}
       </div>
       <div class="agents">
         {ticket.agents.map((a) => {
@@ -960,6 +968,11 @@ function Agents({ ticket }: { ticket: TicketView }) {
               {(a.model || a.effort) && (
                 <span class="muted agent-meta" title={[a.model && `Model: ${a.model}`, a.effort && `Effort: ${a.effort}`].filter(Boolean).join('\n')}>
                   <i class="codicon codicon-chip" /> {[a.model && modelName(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {a.tokens && (
+                <span class="muted agent-meta" title={a.tokens.tip}>
+                  <i class="codicon codicon-pulse" /> {a.tokens.label} re-read
                 </span>
               )}
               <span class="muted agent-meta">

@@ -25,6 +25,8 @@ import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { levelReport } from './features/backlog/modelLevel';
+import { BigChats } from './ui/bigChats';
+import { agentChatItem } from './features/backlog/backlog';
 import { modelLevels } from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { discussable } from './features/backlog/shaping';
@@ -278,10 +280,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
   const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
   context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));
+  // One of the user's chats grew big: once, a word on what that costs (BL-70).
+  context.subscriptions.push(new BigChats({ repository, leader, globalState: context.globalState }));
   // How finished tickets fared per model level: review rounds, and which moved up (BL-69).
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.modelLevelReport', async () => {
-      output.appendLine(levelReport((await backlog.read()).items, modelLevels()).join('\n'));
+      // What each ticket's agents re-read, from their chats still around.
+      const reRead = new Map<string, number>();
+      for (const c of repository.current.flatMap((w) => w.chats)) {
+        const item = agentChatItem(c.firstPrompt)?.item;
+        if (item && c.usage) reRead.set(item, (reRead.get(item) ?? 0) + c.usage.reRead);
+      }
+      output.appendLine(levelReport((await backlog.read()).items, modelLevels(), reRead).join('\n'));
       output.show(true);
     }),
   );

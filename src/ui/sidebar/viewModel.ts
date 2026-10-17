@@ -3,6 +3,7 @@ import { samePath } from '../../core/paths';
 import { awaiting, type Chat } from '../../features/chats/chats';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { FileChange } from '../../core/git/porcelain';
+import { BIG_CHAT_HINT, formatTokens, usageTip } from '../../features/chats/usage';
 import type { ChatView, FileChangeView, WorkstreamView } from '../../webview/protocol';
 import { tabLabel } from './tabLabel';
 import { ATTENTION_LABEL, describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../format';
@@ -26,7 +27,9 @@ function chatVia(chat: Chat, all: readonly Workstream[]): string | undefined {
   return ws ? workstreamLabel(ws) : path.basename(chat.cwd);
 }
 
-export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): ChatView {
+export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000): ChatView {
+  const u = chat.usage;
+  const big = !!u && bigContext > 0 && u.context >= bigContext;
   return {
     id: chat.id,
     title: chat.title,
@@ -37,6 +40,7 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): C
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),
     age: chatAge(chat, now),
+    ...(u?.context ? { size: { label: formatTokens(u.context), tip: big ? `${usageTip(u)} ${BIG_CHAT_HINT}` : usageTip(u), big } } : {}),
   };
 }
 
@@ -62,7 +66,7 @@ export function changedViews(views: readonly WorkstreamView[], sent: Map<string,
   return { changed, keys: views.map((v) => v.key) };
 }
 
-export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number): WorkstreamView {
+export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number, bigContext = 200_000): WorkstreamView {
   // The limit is per worktree, across both lists: staged changes first (they're what a commit takes).
   const staged = capChanges(ws.staged, changesLimit);
   const unstaged = capChanges(ws.unstaged, changesLimit - staged.items.length);
@@ -89,7 +93,7 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     unstaged: unstaged.items,
     totals: { staged: staged.total, unstaged: unstaged.total },
     sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind, head: ws.sync.head },
-    chats: ws.chats.map((c) => toChatView(c, all, now)),
+    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),
   };

@@ -489,6 +489,14 @@ textarea:focus {
 .chat .sub.st-waiting {
   color: var(--waiting);
 }
+.chat .chat-size.big {
+  color: var(--vscode-editorWarning-foreground);
+}
+.chat .chat-size .codicon {
+  font-size: 11px;
+  vertical-align: -1px;
+  margin-right: 2px;
+}
 .chat.past .title {
   color: var(--muted);
 }

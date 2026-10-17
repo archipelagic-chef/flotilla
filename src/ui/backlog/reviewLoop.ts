@@ -37,6 +37,8 @@ import {
 } from '../../features/backlog/review';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import { movedUp, moveUpTarget, ROUNDS_BEFORE_MOVING_UP, strongerRequest } from '../../features/backlog/modelLevel';
+import { NO_USAGE, runawayPrompt, runawayReason } from '../../features/backlog/runaway';
+import { readTranscript, type ChatUsage } from '../../features/chats/chats';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
 import type { UsageLimit } from '../../features/backlog/limits';
@@ -102,6 +104,8 @@ interface Running {
   /** Where it runs: its transcript is found from it (see transcriptPath). */
   cwd: string;
   since: number;
+  /** Its chat's token use when it started (a resumed chat's earlier turns don't count against it, see watchRunaways). */
+  base?: ChatUsage;
 }
 
 /** The start that waits: runs with the item as it is then. */
@@ -159,6 +163,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async retry(): Promise<void> {
     try {
       await this.resumePaused();
+      await this.watchRunaways();
       await this.dispatch();
     } catch (e: unknown) {
       this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
@@ -331,6 +336,29 @@ export class ReviewLoop implements vscode.Disposable {
   private launched(id: string, slot: number, live: Running): void {
     this.starting.delete(slot);
     this.runs.set(id, live);
+    void readTranscript(live.cwd, live.run.sessionId)
+      .catch(() => undefined)
+      .then((t) => (live.base = t?.usage ?? NO_USAGE));
+  }
+
+  /**
+   * Once a minute: an agent going round in circles (the same command failing again and again, nothing changed in
+   * between) or past flotilla.agents.tokenBudget since it started is stopped, and its ticket asks the user (BL-76).
+   */
+  private async watchRunaways(): Promise<void> {
+    const budget = Math.max(0, settings().get<number>('agents.tokenBudget', 25)) * 1_000_000;
+    for (const [id, live] of [...this.runs]) {
+      if (!live.base) continue;
+      const usage = (await readTranscript(live.cwd, live.run.sessionId).catch(() => undefined))?.usage;
+      const why = usage && runawayReason(usage, live.base, budget);
+      if (!why || this.runs.get(id) !== live) continue;
+      this.runs.delete(id);
+      this.ended.add(live.run.sessionId);
+      live.run.stop();
+      this.scheduleDispatch();
+      const task: RevisionTask | undefined = live.phase === 'work' ? { prompt: runawayPrompt(why), why: `${live.agent} was stopped`, aside: true } : undefined;
+      await this.stopLoop(id, `${live.agent} was stopped: ${why}. Resume it to go on (it's asked to step back first), or hand it to a new agent.`, { kind: 'runaway', task });
+    }
   }
 
   /** Gives back the slot and memory of an admitted start that was given up before its agent spawned. */
