@@ -46,6 +46,7 @@ import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { StorageMonitor } from './ui/storage';
 import { FinishedWorktrees } from './ui/finishedWorktrees';
+import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
@@ -260,6 +261,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     removeAnyway: (ws) => removeWorkstream(ctx, ws),
   });
   context.subscriptions.push(finished);
+  // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
+  const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
+  context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));
   let autopilotKey: Promise<string> | undefined;
   const autopilot = new Autopilot({
     backlog,
@@ -286,6 +290,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void autopilot.tick();
       void reviews.resumePaused();
       void finished.sweep();
+      void shared.sweep();
     }),
     vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {

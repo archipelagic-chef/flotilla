@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { copySetupFiles, linkFolders } from '../../../src/features/worktrees/setup';
+import { copySetupFiles, linkFolders, shareLinkedFolder } from '../../../src/features/worktrees/setup';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -90,5 +90,45 @@ describe('linkFolders', () => {
       ['../elsewhere', 'it is outside the worktree'],
     ]);
     expect(fs.existsSync(path.join(wt, 'dist/x.js'))).toBe(false);
+  });
+});
+
+describe('shareLinkedFolder', () => {
+  it('turns identical files into links to the main worktree’s, and leaves different ones', async () => {
+    const main = makeTempDir();
+    const wt = makeTempDir();
+    cleanup.push(main, wt);
+    writeFile(main, 'node_modules/a/index.js', 'same');
+    writeFile(wt, 'node_modules/a/index.js', 'same');
+    writeFile(main, 'node_modules/b/index.js', 'version 1');
+    writeFile(wt, 'node_modules/b/index.js', 'version 2');
+    writeFile(wt, 'node_modules/only-here/index.js', 'mine');
+
+    const result = await shareLinkedFolder(main, wt, 'node_modules');
+
+    expect(result).toEqual({ folder: 'node_modules', files: 1, bytes: 4, skipped: 0 });
+    expect(fs.statSync(path.join(wt, 'node_modules/a/index.js')).ino).toBe(fs.statSync(path.join(main, 'node_modules/a/index.js')).ino);
+    expect(fs.readFileSync(path.join(wt, 'node_modules/b/index.js'), 'utf8')).toBe('version 2');
+    expect(fs.readFileSync(path.join(wt, 'node_modules/only-here/index.js'), 'utf8')).toBe('mine');
+    expect(fs.readdirSync(path.join(wt, 'node_modules/a'))).toEqual(['index.js']);
+  });
+
+  it('does nothing the second time', async () => {
+    const main = makeTempDir();
+    const wt = makeTempDir();
+    cleanup.push(main, wt);
+    writeFile(main, 'node_modules/a/index.js', 'same');
+    writeFile(wt, 'node_modules/a/index.js', 'same');
+    await shareLinkedFolder(main, wt, 'node_modules');
+    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0 });
+  });
+
+  it('leaves the folder alone when the worktree has none', async () => {
+    const main = makeTempDir();
+    const wt = makeTempDir();
+    cleanup.push(main, wt);
+    writeFile(main, 'node_modules/a/index.js', 'same');
+    expect(await shareLinkedFolder(main, wt, 'node_modules')).toEqual({ folder: 'node_modules', files: 0, bytes: 0, skipped: 0 });
+    expect(fs.existsSync(path.join(wt, 'node_modules'))).toBe(false);
   });
 });
