@@ -13,11 +13,39 @@ const EXCLUDE_LINE = '/.flotilla/';
 const LOCK_FILE = 'backlog.lock';
 const LOCK_STALE_MS = 30_000;
 
-/** Writes a file as a whole: a temporary file next to it, renamed over it, so a reader never sees half of it. */
-export async function writeAtomic(file: string, text: string): Promise<void> {
+/** How long a rename over a file another program holds open is retried before the file is written in place. */
+const RENAME_RETRY_MS = 1000;
+
+/** Errors Windows gives while another program (Explorer's preview, an indexer, a virus scanner) holds the file open. */
+const HELD_OPEN = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * Writes a file as a whole: a temporary file next to it, renamed over it, so a reader never sees half of it. On Windows
+ * the rename fails while another program holds the file open (COM Surrogate previewing it, for one): it's retried for a
+ * moment, then the file is written in place, so the write isn't lost. The temporary file never stays behind.
+ */
+export async function writeAtomic(file: string, text: string, opts: { retryMs?: number; rename?: (from: string, to: string) => Promise<void> } = {}): Promise<void> {
+  const rename = opts.rename ?? fs.promises.rename;
   const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fs.promises.writeFile(tmp, text);
-  await fs.promises.rename(tmp, file);
+  const deadline = Date.now() + (opts.retryMs ?? RENAME_RETRY_MS);
+  let wait = 20;
+  try {
+    for (;;) {
+      try {
+        await rename(tmp, file);
+        return;
+      } catch (error) {
+        if (!HELD_OPEN.has((error as NodeJS.ErrnoException).code ?? '') || !fs.existsSync(file)) throw error;
+        if (Date.now() + wait > deadline) break;
+        await new Promise((r) => setTimeout(r, wait));
+        wait = Math.min(wait * 2, 200);
+      }
+    }
+    await fs.promises.writeFile(file, text);
+  } finally {
+    await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
+  }
 }
 
 /**
@@ -49,11 +77,21 @@ export class LocalBacklog {
   }
 
   async read(): Promise<BacklogData> {
-    try {
-      const data: unknown = JSON.parse(await fs.promises.readFile(this.file, 'utf8'));
-      return isBacklogData(data) ? data : EMPTY_BACKLOG;
-    } catch {
-      return EMPTY_BACKLOG;
+    // Once more after a moment when it doesn't parse: a write in place (see writeAtomic) can be read half done.
+    for (let attempt = 0; ; attempt++) {
+      let text: string;
+      try {
+        text = await fs.promises.readFile(this.file, 'utf8');
+      } catch {
+        return EMPTY_BACKLOG;
+      }
+      try {
+        const data: unknown = JSON.parse(text);
+        return isBacklogData(data) ? data : EMPTY_BACKLOG;
+      } catch {
+        if (attempt > 0) return EMPTY_BACKLOG;
+        await new Promise((r) => setTimeout(r, 50));
+      }
     }
   }
 
@@ -77,7 +115,9 @@ export class LocalBacklog {
         await fs.promises.writeFile(lock, `${process.pid}\n`, { flag: 'wx' });
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        // Windows says EPERM while a lock just released is still being deleted: it's taken, like EEXIST.
+        const code = (error as NodeJS.ErrnoException).code ?? '';
+        if (code !== 'EEXIST' && !HELD_OPEN.has(code)) throw error;
         const stat = await fs.promises.stat(lock).catch(() => undefined);
         if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) await fs.promises.rm(lock, { force: true });
         else await new Promise((resolve) => setTimeout(resolve, 10 + Math.random() * 30));
