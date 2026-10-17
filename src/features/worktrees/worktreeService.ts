@@ -27,6 +27,16 @@ export interface RemovalRisks {
 
 const ADD_TIMEOUT_MS = 120_000;
 
+/** A folder in .worktrees/ without a .git counts as left over only once it hasn't changed for this long. */
+const LEFTOVER_MIN_AGE_MS = 10 * 60_000;
+
+/** Whether rel (as git status names it) is a symbolic link or junction directly in dir. */
+async function isTopLevelLink(dir: string, rel: string): Promise<boolean> {
+  const name = rel.replace(/\/$/, '');
+  if (name.includes('/')) return false;
+  return (await fs.lstat(path.join(dir, name)).catch(() => undefined))?.isSymbolicLink() ?? false;
+}
+
 export interface WorktreeServiceOptions {
   autoAdopt: boolean;
   /** Called when auto-adoption of a worktree fails; that worktree is listed as not portable. */
@@ -99,7 +109,11 @@ export class WorktreeService {
   async removalRisks(wt: ResolvedWorktree): Promise<RemovalRisks> {
     let changedFiles = 0;
     if (wt.path) {
-      changedFiles = parseStatusV2(await runGit(['status', '--porcelain=v2', '-z'], { cwd: wt.path })).changes.length;
+      for (const change of parseStatusV2(await runGit(['status', '--porcelain=v2', '-z'], { cwd: wt.path })).changes) {
+        // An untracked link at the top is deleted as a link by remove(): nothing in it is lost.
+        if (change.kind === 'untracked' && (await isTopLevelLink(wt.path, change.path))) continue;
+        changedFiles++;
+      }
     }
     let unmergedCommits = 0;
     if (wt.branch) {
@@ -121,7 +135,9 @@ export class WorktreeService {
     const previousLock = await readLock(wt.adminDir);
     await unlock(wt.adminDir);
     try {
-      await runGit(['worktree', 'remove', ...(opts.force ? ['--force'] : []), wt.path], { cwd: this.roots.mainRoot, timeoutMs: ADD_TIMEOUT_MS });
+      // Long paths (a VS Code download under .vscode-test goes past 260 characters): without them git stops halfway on
+      // Windows, after it has already deleted the worktree's .git.
+      await runGit(['-c', 'core.longpaths=true', 'worktree', 'remove', ...(opts.force ? ['--force'] : []), wt.path], { cwd: this.roots.mainRoot, timeoutMs: ADD_TIMEOUT_MS });
     } catch (error) {
       if (previousLock !== undefined) {
         try {
@@ -132,6 +148,33 @@ export class WorktreeService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Folders in .worktrees/ that are no worktree any more: no .git in them and git doesn't list them, left by a removal
+   * that stopped halfway. One changed in the last LEFTOVER_MIN_AGE_MS is skipped (a worktree still being added).
+   */
+  async leftovers(now: number = Date.now()): Promise<string[]> {
+    const root = worktreesRoot(this.roots.mainRoot);
+    const known = (await resolveWorktrees(this.roots)).flatMap((w) => (w.path ? [w.path] : []));
+    const result: string[] = [];
+    for (const e of await fs.readdir(root, { withFileTypes: true }).catch(() => [])) {
+      if (!e.isDirectory()) continue;
+      const dir = path.join(root, e.name);
+      if (known.some((k) => samePath(k, dir))) continue;
+      if (await fs.lstat(path.join(dir, '.git')).catch(() => undefined)) continue;
+      const stat = await fs.stat(dir).catch(() => undefined);
+      if (!stat || now - stat.mtimeMs < LEFTOVER_MIN_AGE_MS) continue;
+      result.push(dir);
+    }
+    return result;
+  }
+
+  /** Deletes a folder leftovers() lists (checked again), links in it as links. */
+  async deleteLeftover(dir: string): Promise<void> {
+    if (!(await this.leftovers()).some((d) => samePath(d, dir))) throw new Error(`${dir} is not a leftover worktree folder.`);
+    await removeTopLevelLinks(dir);
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 
   /** Deletes git's record of a worktree that is unreachable here. Never touches worktree files. */

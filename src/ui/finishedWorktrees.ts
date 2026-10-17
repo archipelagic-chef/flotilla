@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
 import { branchMatches, type BacklogItem } from '../features/backlog/backlog';
@@ -13,6 +14,8 @@ import { extraWorkspaceFolder } from './workspaceFolders';
 
 /** Tickets whose worktree the user chose to keep (workspace state). */
 const KEPT_KEY = 'flotilla.finishedWorktrees.kept';
+/** Leftover folders in .worktrees/ the user chose to keep (their names; workspace state). */
+const KEPT_LEFTOVERS_KEY = 'flotilla.finishedWorktrees.keptLeftovers';
 /** Set once the user answered the first question about the worktrees that were already finished. */
 const INTRODUCED_KEY = 'flotilla.finishedWorktrees.introduced';
 /** The first question measures what removing would free for at most this long, all worktrees together. */
@@ -21,7 +24,7 @@ const INTRO_MEASURE_MS = 10_000;
 export interface FinishedWorktreesDeps {
   backlog: Pick<LocalBacklog, 'read' | 'watch' | 'appendActivity'>;
   repository: Pick<Repository<Workstream>, 'current' | 'refresh' | 'onDidChange'>;
-  service: Pick<WorktreeService, 'removalRisks' | 'remove'>;
+  service: Pick<WorktreeService, 'removalRisks' | 'remove' | 'leftovers' | 'deleteLeftover'>;
   leader: Pick<Leader, 'isLeader'>;
   workspaceState: vscode.Memento;
   output: vscode.OutputChannel;
@@ -48,6 +51,8 @@ export class FinishedWorktrees implements vscode.Disposable {
   private readonly asked = new Set<string>();
   /** The first question was answered "Not now" in this session. */
   private introPostponed = false;
+  /** Why each done ticket's worktree stays, as last said in the output (said again only when it changes). */
+  private readonly said = new Map<string, string>();
 
   constructor(private readonly deps: FinishedWorktreesDeps) {
     this.subscriptions.push(deps.backlog.watch((changed) => changed.has('backlog.json') && void this.sweep()));
@@ -75,7 +80,9 @@ export class FinishedWorktrees implements vscode.Disposable {
   private async run(): Promise<void> {
     const mode = readSettings().removeFinishedWorktrees;
     if (mode === 'off' || !this.deps.leader.isLeader) return;
+    await this.askAboutLeftovers();
     const candidates = await this.candidates();
+    for (const c of candidates) if (c.decision.action === 'ask') this.explain(c.item.id, c.ws, c.decision.reason);
     if (!candidates.length) return;
     if (!this.deps.workspaceState.get<boolean>(INTRODUCED_KEY)) return this.introduce(candidates);
     for (const c of candidates) {
@@ -94,8 +101,12 @@ export class FinishedWorktrees implements vscode.Disposable {
       if (ws.worktree.isMain || !branch) continue;
       const tickets = items.filter((i) => branchMatches(i, branch));
       const item = tickets.find((i) => i.status === 'done' && !i.proposed);
+      if (!item) continue;
       // A history clean-up in progress works in its own worktree, and compares and finishes there.
-      if (!item || tickets.some((i) => i.rewrite)) continue;
+      if (tickets.some((i) => i.rewrite)) {
+        this.explain(item.id, ws, 'a history clean-up is in progress');
+        continue;
+      }
       const input = {
         status: item.status,
         proposed: !!item.proposed,
@@ -109,11 +120,48 @@ export class FinishedWorktrees implements vscode.Disposable {
         recentlyActive: ws.activity === 'active',
       };
       let decision = removalDecision(input);
-      // The list can be a little old: git is asked again before anything is removed.
-      if (decision.action === 'remove') decision = removalDecision({ ...input, changedFiles: (await this.deps.service.removalRisks(ws.worktree)).changedFiles });
+      // The list can be a little old, and counts what removal doesn't lose (an untracked link): git is asked again.
+      if (decision.action !== 'skip') decision = removalDecision({ ...input, changedFiles: (await this.deps.service.removalRisks(ws.worktree)).changedFiles });
       if (decision.action !== 'skip') result.push({ ws, item, decision });
+      else if (decision.reason) this.explain(item.id, ws, decision.reason);
     }
     return result;
+  }
+
+  /** Says in the output why a done ticket's worktree stays, when that's news. */
+  private explain(id: string, ws: Workstream, reason: string): void {
+    if (this.said.get(ws.key) === reason) return;
+    this.said.set(ws.key, reason);
+    this.deps.output.appendLine(`${id} is done, but its worktree '${workstreamLabel(ws)}' stays: ${reason}.`);
+  }
+
+  /** Asks once about each folder in .worktrees/ that a removal left behind halfway (git no longer knows it). */
+  private async askAboutLeftovers(): Promise<void> {
+    const kept = new Set(this.deps.workspaceState.get<string[]>(KEPT_LEFTOVERS_KEY) ?? []);
+    for (const dir of await this.deps.service.leftovers()) {
+      const name = path.basename(dir);
+      if (kept.has(name) || this.asked.has(`leftover:${name}`)) continue;
+      this.asked.add(`leftover:${name}`);
+      void this.askAboutLeftover(dir, name);
+    }
+  }
+
+  private async askAboutLeftover(dir: string, name: string): Promise<void> {
+    const size = await freedBytes(dir);
+    const choice = await vscode.window.showInformationMessage(
+      `'${name}' in .worktrees was left behind by a worktree removal that stopped halfway: git no longer knows it${size ? `, and it takes ${formatBytes(size)}` : ''}. Delete it?`,
+      'Delete',
+      'Keep',
+    );
+    if (choice === 'Keep') {
+      const kept = new Set(this.deps.workspaceState.get<string[]>(KEPT_LEFTOVERS_KEY) ?? []);
+      await this.deps.workspaceState.update(KEPT_LEFTOVERS_KEY, [...kept.add(name)]);
+    } else if (choice === 'Delete') {
+      await this.enqueue(async () => {
+        await this.deps.service.deleteLeftover(dir);
+        this.deps.output.appendLine(`Deleted the leftover folder ${dir}${size ? `: ${formatBytes(size)} freed` : ''}.`);
+      });
+    }
   }
 
   /** The first time: one question for all the worktrees that were already finished, before anything is removed. */

@@ -59,11 +59,13 @@ function memento(initial: Record<string, unknown> = {}) {
   return { data, get: <T>(k: string) => data[k] as T, update: async (k: string, v: unknown) => void (data[k] = v), keys: () => Object.keys(data) };
 }
 
-async function setup(o: { items: BacklogItem[]; worktrees: Workstream[]; introduced?: boolean; leader?: boolean }) {
+async function setup(o: { items: BacklogItem[]; worktrees: Workstream[]; introduced?: boolean; leader?: boolean; leftovers?: string[]; kept?: string[] }) {
   const { FinishedWorktrees } = await import('../../../src/ui/finishedWorktrees');
   const removed: string[] = [];
+  const deleted: string[] = [];
+  const output: string[] = [];
   const activity: Array<[string, string]> = [];
-  const state = memento(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {});
+  const state = memento({ ...(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {}), ...(o.kept ? { 'flotilla.finishedWorktrees.kept': o.kept } : {}) });
   const removeAnyway = vi.fn(async () => undefined);
   const cleaner = new FinishedWorktrees({
     backlog: {
@@ -75,14 +77,16 @@ async function setup(o: { items: BacklogItem[]; worktrees: Workstream[]; introdu
     service: {
       removalRisks: async (wt) => ({ changedFiles: o.worktrees.find((w) => w.worktree === wt)!.changes.length, unmergedCommits: 0 }),
       remove: async (wt) => void removed.push(wt.branch!),
+      leftovers: async () => o.leftovers ?? [],
+      deleteLeftover: async (dir) => void deleted.push(dir),
     },
     leader: { isLeader: o.leader ?? true },
     workspaceState: state as never,
-    output: { appendLine() {} } as never,
+    output: { appendLine: (line: string) => void output.push(line) } as never,
     removeAnyway,
   });
   disposables.push(cleaner);
-  return { cleaner, removed, activity, state, removeAnyway };
+  return { cleaner, removed, deleted, output, activity, state, removeAnyway };
 }
 
 describe('FinishedWorktrees', () => {
@@ -170,6 +174,32 @@ describe('FinishedWorktrees', () => {
     await b.cleaner.sweep();
     expect(b.removed).toEqual([]);
     expect(update).toHaveBeenCalledWith('removeFinishedWorktrees', 'off', 2);
+  });
+
+  it('says once in the output why a done ticket’s worktree stays', async () => {
+    const { cleaner, output, removed } = await setup({ items: [item('BL-1', 'done')], worktrees: [worktree('BL-1')], introduced: true, kept: ['BL-1'] });
+    await cleaner.sweep();
+    await cleaner.sweep();
+    expect(removed).toEqual([]);
+    expect(output.filter((l) => l.startsWith('BL-1 is done'))).toEqual([expect.stringMatching(/stays: you chose to keep it\.$/)]);
+  });
+
+  it('asks once about a folder a removal left behind, and deletes it on Delete', async () => {
+    const left = makeTempDir();
+    cleanup.push(left);
+    writeFile(left, 'big.bin', 'x'.repeat(2048));
+    const { cleaner, deleted, output } = await setup({ items: [], worktrees: [], introduced: true, leftovers: [left] });
+    showInformationMessage.mockResolvedValueOnce('Delete');
+
+    await cleaner.sweep();
+    await new Promise((r) => setTimeout(r, 20));
+    await cleaner.sweep();
+
+    expect(showInformationMessage).toHaveBeenCalledTimes(1);
+    expect(String(showInformationMessage.mock.calls[0][0])).toContain('was left behind by a worktree removal that stopped halfway');
+    expect(String(showInformationMessage.mock.calls[0][0])).toContain('2.0 KB');
+    expect(deleted).toEqual([left]);
+    expect(output.at(-1)).toContain('Deleted the leftover folder');
   });
 
   it('does nothing when the setting is off', async () => {

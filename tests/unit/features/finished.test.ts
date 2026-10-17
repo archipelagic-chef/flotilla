@@ -31,11 +31,16 @@ describe('removalDecision', () => {
     ['review', { status: 'review' as const }],
     ['a proposal', { proposed: true }],
     ['the main worktree', { isMain: true }],
-    ['an unreachable worktree', { reachable: false }],
-    ['a branch another open ticket works on', { openTicketOnBranch: true }],
-    ['a ticket the user chose to keep', { kept: true }],
   ])('leaves %s alone', (_, change) => {
     expect(removalDecision({ ...safe, ...change })).toEqual({ action: 'skip' });
+  });
+
+  it.each([
+    [{ reachable: false }, "it isn't reachable from this environment"],
+    [{ openTicketOnBranch: true }, "another ticket that isn't done works on its branch"],
+    [{ kept: true }, 'you chose to keep it'],
+  ])('leaves a done ticket’s worktree alone when %o, and says why', (change, reason) => {
+    expect(removalDecision({ ...safe, ...change })).toEqual({ action: 'skip', reason });
   });
 
   it.each([
