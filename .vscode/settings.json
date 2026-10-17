@@ -1,3 +1,6 @@
 {
-  "flotilla.linkFolders": ["node_modules"]
+  "flotilla.linkFolders": ["node_modules"],
+  // Agents and reviews on Sonnet: most tickets here don't need Opus (a ticket can still choose it).
+  "flotilla.agents.model": "sonnet",
+  "flotilla.review.model": "sonnet"
 }

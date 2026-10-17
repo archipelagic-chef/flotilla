@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import { LEAN_TOOLS, leanFlags, writeLeanSettings } from '../../features/backlog/leanStart';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
 
@@ -25,6 +26,22 @@ export function claudeBinary(): string {
     if (fs.existsSync(bundled)) return bundled;
   }
   return 'claude';
+}
+
+/**
+ * flotilla.agents.lean (default on): the flags that start an agent in cwd without skills, plugins and MCP servers, and
+ * the coding tools it then gets (LEAN_TOOLS); undefined when it's off. Each of those is context the agent re-reads on
+ * every turn (a quarter of a new agent's context, measured in BL-68).
+ */
+export function leanStart(cwd: string): { flags: string[]; tools: string[] } | undefined {
+  if (!vscode.workspace.getConfiguration('flotilla').get<boolean>('agents.lean', true)) return undefined;
+  let settings: string | undefined;
+  try {
+    settings = writeLeanSettings({ cwd, configDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), outDir: path.join(os.tmpdir(), 'flotilla') });
+  } catch {
+    // Plugins stay on: the rest of the lean start still applies.
+  }
+  return { flags: leanFlags(settings), tools: [...LEAN_TOOLS] };
 }
 
 /** Memory free on this machine, in MB: what Node reports (on Linux, MemAvailable; in WSL, the VM's share of the host's). */
@@ -181,6 +198,8 @@ export function headlessArgs(o: {
   sessionId: string;
   mode: AgentPermissionMode;
   tools?: string[];
+  /** A lean start (leanStart): its flags, and the tools offered when there's no tools list. */
+  lean?: { flags: string[]; tools: string[] };
 }): string[] {
   return [
     '-p',
@@ -192,10 +211,15 @@ export function headlessArgs(o: {
     '--name',
     o.name,
     ...choiceArgs(o.choice ?? {}),
+    ...(o.lean?.flags ?? []),
     ...(o.resume ? ['--resume', o.resume] : ['--session-id', o.sessionId]),
     // Last: the lists are variadic, so no flag may follow them. --tools takes the tools' names, so Bash and the rest
     // are not there at all; --allowedTools lets the listed ones run (with a rule's path, when it has one).
-    ...(o.tools?.length ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools] : []),
+    ...(o.tools?.length
+      ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools]
+      : o.lean
+        ? ['--tools', o.lean.tools.join(',')]
+        : []),
   ];
 }
 
@@ -225,9 +249,10 @@ export function runAgentHeadless(o: {
   const configuredMode: AgentPermissionMode = PERMISSION_MODES.includes(configured as AgentPermissionMode) ? (configured as AgentPermissionMode) : 'auto';
   // With a tool list, what isn't on it is refused, not asked about: that's the list's whole point.
   const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
-  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools });
+  const lean = leanStart(o.cwd);
+  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, lean });
   o.output.appendLine(
-    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}).`,
+    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean ? ', lean start' : ''}).`,
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);

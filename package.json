@@ -1575,6 +1575,11 @@
           "default": "",
           "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
         },
+        "flotilla.agents.lean": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Start agents lean: without your skills, plugins and MCP servers, with the coding tools only (Bash, Read, Edit, Write, Grep, Glob, subagents, the web). Everything an agent starts with is context it re-reads on every turn; this makes it about a quarter smaller. Your own Claude Code sessions keep everything. Agents opened in Claude Code's panel (no model or effort chosen) start as usual."
+        },
         "flotilla.agents.maxRunning": {
           "type": "number",
           "default": 2,
