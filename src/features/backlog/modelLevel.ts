@@ -1,5 +1,6 @@
 import { entryAgent, type AgentChoice, type BacklogItem } from './backlog';
 import type { TicketEntry } from './ticket';
+import { formatTokens } from '../chats/usage';
 
 /**
  * Model levels (BL-69): agents run on the strong model (flotilla.agents.model) unless a ticket is Light (small and
@@ -78,8 +79,11 @@ export function levelOf(item: Pick<BacklogItem, 'agent'>, levels: Levels): strin
   return workModel(item.agent, levels) ?? "Claude Code's default";
 }
 
-/** Per level: the finished tickets, their review rounds (average) and how many moved up. As lines, for the output. */
-export function levelReport(items: readonly BacklogItem[], levels: Levels): string[] {
+/**
+ * Per level: the finished tickets, their review rounds (average), what their agents re-read (average, of those whose
+ * chats are still around: reRead, by ticket) and how many moved up. As lines, for the output.
+ */
+export function levelReport(items: readonly BacklogItem[], levels: Levels, reRead: ReadonlyMap<string, number> = new Map()): string[] {
   const done = items.filter((i) => i.status === 'done');
   const groups = new Map<string, BacklogItem[]>();
   for (const i of done) groups.set(levelOf(i, levels), [...(groups.get(levelOf(i, levels)) ?? []), i]);
@@ -87,7 +91,9 @@ export function levelReport(items: readonly BacklogItem[], levels: Levels): stri
   for (const [level, its] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
     const reviewed = its.filter((i) => i.review?.round);
     const rounds = reviewed.length ? (reviewed.reduce((n, i) => n + i.review!.round, 0) / reviewed.length).toFixed(1) : '–';
-    lines.push(`  ${level}: ${its.length} ${its.length === 1 ? 'ticket' : 'tickets'}, ${rounds} review rounds on average (${its.map((i) => i.id).join(', ')})`);
+    const counted = its.filter((i) => reRead.has(i.id));
+    const tokens = counted.length ? `, ${formatTokens(counted.reduce((n, i) => n + reRead.get(i.id)!, 0) / counted.length)} tokens re-read on average` : '';
+    lines.push(`  ${level}: ${its.length} ${its.length === 1 ? 'ticket' : 'tickets'}, ${rounds} review rounds on average${tokens} (${its.map((i) => i.id).join(', ')})`);
   }
   const moved = done.filter((i) => i.agent?.movedUp);
   for (const i of moved) lines.push(`  ${i.id} moved up: ${i.agent!.movedUp!.reason}`);

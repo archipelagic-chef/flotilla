@@ -70,7 +70,7 @@ const folderOf = (file: string) => file.replace(/[\\/][^\\/]*$/, '');
  * Why a review stopped: the implementer is busy in its chat, stopped without reporting "Ready for review", or its chat
  * is gone; the reviewer gave no verdict; too many rounds; no worktree; or the user stopped it.
  */
-export type ReviewStopKind = 'busy' | 'no-report' | 'chat-gone' | 'no-verdict' | 'rounds' | 'no-worktree' | 'user';
+export type ReviewStopKind = 'busy' | 'no-report' | 'chat-gone' | 'no-verdict' | 'rounds' | 'no-worktree' | 'user' | 'runaway';
 
 /** What the implementer is asked to do: the prompt, why (for notes), and whether only its own chat may do it. */
 export interface RevisionTask {
@@ -88,7 +88,7 @@ export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'work
 export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
   switch (fix) {
     case 'retry':
-      return kind === 'no-report' ? 'Resume It' : kind === 'busy' ? 'Try Again' : kind === 'no-verdict' || kind === 'user' || !kind ? 'Review Again' : 'Try Again';
+      return kind === 'no-report' || kind === 'runaway' ? 'Resume It' : kind === 'busy' ? 'Try Again' : kind === 'no-verdict' || kind === 'user' || !kind ? 'Review Again' : 'Try Again';
     case 'newAgent':
       return 'New Agent';
     case 'inChat':
@@ -108,6 +108,7 @@ export function fixesFor(kind: ReviewStopKind | undefined, hasTask: boolean): Re
     case 'busy':
       return ['inChat', 'newAgent', 'retry'];
     case 'no-report':
+    case 'runaway':
       return ['retry', 'newAgent'];
     case 'chat-gone':
       return ['newAgent'];

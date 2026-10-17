@@ -42,6 +42,7 @@ import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import { agentChoice, modelLevels, validModel } from './agentRunner';
+import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
@@ -485,6 +486,7 @@ export class TicketPanels implements vscode.Disposable {
               updated: c.updatedAt.toISOString(),
               ...((c.model ?? startedWith.get(agent.toLowerCase())?.model) ? { model: c.model ?? startedWith.get(agent.toLowerCase())?.model } : {}),
               ...((c.effort ?? startedWith.get(agent.toLowerCase())?.effort) ? { effort: c.effort ?? startedWith.get(agent.toLowerCase())?.effort } : {}),
+              ...(c.usage?.turns ? { tokens: { label: formatTokens(c.usage.reRead), tip: usageTip(c.usage), reRead: c.usage.reRead } } : {}),
             },
           ];
         }),

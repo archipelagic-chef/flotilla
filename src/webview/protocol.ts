@@ -104,6 +104,8 @@ export interface ChatView {
   via?: string;
   /** "2m", "3h", "yesterday"-style age. */
   age: string;
+  /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
+  size?: { label: string; tip: string; big: boolean };
 }
 
 export interface WorkstreamView {

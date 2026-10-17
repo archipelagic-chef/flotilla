@@ -1599,6 +1599,18 @@
           "default": true,
           "markdownDescription": "Keep large outputs out of Flotilla's agents' context: a whole read of a file over 400 lines, a plain `cat` of one, or a whole `git diff`/`git show` over 600 changed lines is refused with how to look instead (grep, a line range, `--stat`), and how to get it whole anyway."
         },
+        "flotilla.agents.tokenBudget": {
+          "type": "number",
+          "default": 25,
+          "minimum": 0,
+          "markdownDescription": "Millions of tokens an agent Flotilla runs may re-read from its context before it's stopped and its ticket asks you whether it goes on (the biggest tickets so far took about 12). An agent that runs the same failing command 4 times in a row with no edit in between is stopped too. 0: no budget."
+        },
+        "flotilla.chats.bigContext": {
+          "type": "number",
+          "default": 200000,
+          "minimum": 0,
+          "markdownDescription": "Past this context, in tokens, a chat is marked in the sidebar, and once per chat of yours Flotilla says what it costs: every turn re-reads the whole chat. 0: never."
+        },
         "flotilla.agents.effort": {
           "type": "string",
           "enum": ["", "low", "medium", "high", "xhigh", "max"],
