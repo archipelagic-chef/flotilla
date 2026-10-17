@@ -31,6 +31,10 @@ export interface BacklogItemView extends BacklogItem {
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
   /** Why it waits on the user (its row in "Needs you"). */
   need?: Need;
+  /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
+  waitsFor?: string[];
+  /** Main's name, as its branches' conflicts with it are told ("main"). */
+  base?: string;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */

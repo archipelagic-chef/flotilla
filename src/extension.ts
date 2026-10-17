@@ -20,6 +20,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
+import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
@@ -184,6 +185,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(backlog.watch(() => noteDescriptions()));
   noteDescriptions();
   tickets.useReviews(reviews);
+  // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
+  const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
+  context.subscriptions.push(mainSync);
+  tickets.useMainSync(mainSync);
   // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.
   const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
   context.subscriptions.push(shaping);
@@ -291,6 +296,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void reviews.resumePaused();
       void finished.sweep();
       void shared.sweep();
+      void mainSync.check();
     }),
     vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {

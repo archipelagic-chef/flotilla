@@ -5,6 +5,7 @@ import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/revie
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
+import { conflictsOf } from '../../features/backlog/mainDrift';
 import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -573,6 +574,55 @@ function CleanUpPanel({ ticket }: { ticket: TicketView }) {
   );
 }
 
+/**
+ * How the work stands against main (BL-55): its branches that conflict with main, and the tickets it waits for
+ * ("Depends on: BL-12" in its description). Update from Main merges main into its branch (its agent resolves conflicts).
+ */
+function MainState({ ticket }: { ticket: TicketView }) {
+  const conflicts = conflictsOf(ticket.item);
+  const waiting = ticket.dependsOn.filter((d) => d.status !== 'done');
+  const update = ticket.updateFromMain;
+  if (!conflicts.length && !waiting.length) return null;
+  const label = (s: BacklogStatus) => STATUSES.find((x) => x.status === s)?.label ?? s;
+  return (
+    <>
+      {conflicts.map((b) => (
+        <div key={b.branch} class="error-note main-note">
+          <i class="codicon codicon-git-merge" /> <code>{b.branch}</code> conflicts with {update?.base ?? 'main'} ({b.conflicts.join(', ')}).
+          {update && (
+            <button
+              class="text-button main-note-action"
+              onClick={() => send({ type: 'updateFromMain' })}
+              title={`Hands merging ${update.base} into the branch to its agent, which resolves the conflicts and runs the checks`}
+            >
+              <i class="codicon codicon-sync" /> Update from {capitalize(update.base)}
+            </button>
+          )}
+        </div>
+      ))}
+      {waiting.length > 0 && (
+        <div class="error-note main-note">
+          <i class="codicon codicon-debug-pause" /> Waits for{' '}
+          {waiting.map((d, i) => (
+            <span key={d.id}>
+              {i > 0 && ', '}
+              <button class="text-button" onClick={() => send({ type: 'openTicket', id: d.id })} title={d.title}>
+                {d.id}
+              </button>{' '}
+              ({label(d.status)})
+            </span>
+          ))}{' '}
+          to be merged: it depends on {waiting.length === 1 ? 'its' : 'their'} work.
+        </div>
+      )}
+    </>
+  );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Where the work on the ticket is: its worktrees (and branches without one), and its commits. */
 function Work({ ticket }: { ticket: TicketView }) {
   const [allCommits, setAllCommits] = useState(false);
@@ -585,6 +635,15 @@ function Work({ ticket }: { ticket: TicketView }) {
       <div class="work">
         <div class="work-head">
           <i class="codicon codicon-git-branch" /> Worktrees <span class="count">{ticket.worktrees.length}</span>
+          {ticket.updateFromMain && (
+            <button
+              class="text-button work-head-action"
+              onClick={() => send({ type: 'updateFromMain' })}
+              title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
+            >
+              <i class="codicon codicon-sync" /> Update from {capitalize(ticket.updateFromMain.base)}
+            </button>
+          )}
         </div>
         {!ticket.worktrees.length && <div class="work-empty muted">None yet. Create one above to work on it.</div>}
         {ticket.worktrees.map((ws) => (
@@ -1692,6 +1751,7 @@ function App() {
           <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}
         </div>
       )}
+      <MainState ticket={ticket} />
       <Description ticket={ticket} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}

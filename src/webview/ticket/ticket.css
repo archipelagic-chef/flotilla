@@ -420,6 +420,15 @@ h2 {
   background: var(--vscode-inputValidation-warningBackground, transparent);
   border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
 }
+.main-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.main-note .main-note-action {
+  margin-left: auto;
+}
 .properties {
   display: flex;
   align-items: center;

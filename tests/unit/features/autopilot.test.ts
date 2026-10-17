@@ -107,7 +107,7 @@ describe('the autopilot and memory', () => {
     const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
     const prepareWorktree = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity: async () => undefined, change: async () => data },
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity: async () => undefined, change: async () => data },
       reviews: { running: 0, pausedUntil: async () => undefined, startWork: async () => undefined },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
@@ -151,7 +151,7 @@ describe('the autopilot gives up a start whose item moved on', () => {
     const startWork = vi.fn(async () => undefined);
     const appendActivity = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, appendActivity },
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity },
       reviews: { running: 0, pausedUntil: async () => undefined, startWork },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
@@ -172,3 +172,51 @@ describe('the autopilot gives up a start whose item moved on', () => {
   });
 });
 
+
+describe('the autopilot and tickets that depend on others', () => {
+  it('passes over a To Do ticket that waits for another to be merged (BL-55)', async () => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined, reserveStart: () => 1, releaseStart: () => undefined }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const at = '2026-10-11T00:00:00Z';
+    const data = {
+      version: 1 as const,
+      next: 4,
+      items: [
+        { id: 'BL-1', title: 'Waits', status: 'todo' as const, created: at },
+        { id: 'BL-2', title: 'Needed', status: 'doing' as const, created: at },
+        { id: 'BL-3', title: 'Free', status: 'todo' as const, created: at },
+      ],
+    };
+    const descriptions: Record<string, string> = { 'BL-1': 'Do it.\n\nDepends on: BL-2' };
+    const prepareWorktree = vi.fn(async () => undefined);
+    const pilot = new Autopilot({
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async (i: { id: string }) => ({ description: descriptions[i.id] ?? '', activity: [] }),
+        appendActivity: async () => undefined,
+        change: async () => data,
+      },
+      reviews: { running: 0, pausedUntil: async () => undefined, startWork: async () => undefined },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree,
+    } as never);
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(prepareWorktree.mock.calls.map((c) => (c as unknown as [{ id: string }])[0].id)).toEqual(['BL-3']);
+    pilot.dispose();
+  });
+});

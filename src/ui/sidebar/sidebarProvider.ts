@@ -20,6 +20,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
+import { baseLabel, dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type VcView, type WebviewMessage } from '../../webview/protocol';
 import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
@@ -146,7 +147,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // The ticket's run: its last run block (the one its Run button runs).
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}), ...(need ? { need } : {}), ...(run ? { run } : {}) };
+        // What it waits for, and how its branches merge with main (BL-55).
+        const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
+        const base = item.mainCheck && baseLabel(item.mainCheck.base);
+        return {
+          ...item,
+          summary: summaryOf(ticket.description),
+          activity: ticket.activity.length,
+          ...(linked?.length ? { linked } : {}),
+          ...(need ? { need } : {}),
+          ...(run ? { run } : {}),
+          ...(waitsFor.length ? { waitsFor } : {}),
+          ...(base ? { base } : {}),
+        };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.

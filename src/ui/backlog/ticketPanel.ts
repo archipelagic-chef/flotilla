@@ -36,6 +36,8 @@ import { parseReport, reportAnswer } from '../../features/backlog/report';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
+import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
+import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
@@ -223,6 +225,13 @@ export class TicketPanels implements vscode.Disposable {
   useReviews(reviews: ReviewLoop): void {
     this.reviews = reviews;
     this.subscriptions.push(reviews.onDidChange((id) => this.refresh(new Set([id]))));
+  }
+
+  private mainSync: MainSync | undefined;
+
+  /** Update from Main (BL-55), for the tickets being worked on. */
+  useMainSync(mainSync: MainSync): void {
+    this.mainSync = mainSync;
   }
 
   /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
@@ -642,6 +651,7 @@ export class TicketPanels implements vscode.Disposable {
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
           activity: await this.localEntries(item, ticket.activity, panel.webview),
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
+          ...(await this.mainView(plain, ticket.description)),
         });
       }
     } catch (error) {
@@ -664,10 +674,22 @@ export class TicketPanels implements vscode.Disposable {
           children: [],
           canReview: false,
           canDiscuss: false,
+          dependsOn: [],
         }),
         error: message,
       });
     }
+  }
+
+  /** What it depends on (BL-55), and whether main can be merged into its branch from here. */
+  private async mainView(item: BacklogItem, description: string): Promise<Pick<TicketView, 'dependsOn' | 'updateFromMain'>> {
+    const data = await this.deps.backlog.read();
+    const dependsOn = dependsOnIds(description, item.id).flatMap((id) => {
+      const dep = data.items.find((i) => i.id.toUpperCase() === id);
+      return dep ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
+    });
+    const base = this.mainSync && isOpen(item) && this.worktreesOf(item).length ? await this.mainSync.base() : undefined;
+    return { dependsOn, ...(base ? { updateFromMain: { base: baseLabel(base) } } : {}) };
   }
 
   /** A ticket's view without its description and activity. */
@@ -713,6 +735,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canDiscuss: !remote && !!this.shaping && discussable(plain),
+      dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
         ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready } }
         : {}),
@@ -1115,6 +1138,9 @@ export class TicketPanels implements vscode.Disposable {
         break;
       case 'reviewFix':
         await this.reviews?.fix(id, m.fix);
+        return;
+      case 'updateFromMain':
+        await this.mainSync?.update(id);
         return;
       case 'stopReview':
         await this.reviews?.stop(id);

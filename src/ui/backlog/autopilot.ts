@@ -7,6 +7,7 @@ import { childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import { memoryShortage, releaseStart, reserveStart } from './agentRunner';
@@ -138,6 +139,15 @@ export class Autopilot implements vscode.Disposable {
     };
   }
 
+  /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55). */
+  private async waiting(data: BacklogData): Promise<string[]> {
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed);
+    const waits = await Promise.all(
+      todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).length > 0),
+    );
+    return todo.filter((_, n) => waits[n]).map((i) => i.id);
+  }
+
   /** Starts work on the next item, while there's room for another agent. */
   async tick(): Promise<void> {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
@@ -149,7 +159,8 @@ export class Autopilot implements vscode.Disposable {
       if (this.waitingUntil?.getTime() !== was) this.changed.fire();
       if (this.waitingUntil) return;
       while (this.enabled && this.deps.reviews.running < this.max) {
-        const item = nextForAutopilot(await this.deps.backlog.read(), this.failed);
+        const data = await this.deps.backlog.read();
+        const item = nextForAutopilot(data, new Set([...this.failed, ...(await this.waiting(data))]));
         if (!item) return;
         // Too little memory for another agent: this one waits, and the next tick tries again.
         if (memoryShortage()) {
