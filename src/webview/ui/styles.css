@@ -1930,6 +1930,33 @@ ins {
 .backlog-item a.icon {
   color: inherit;
 }
+/* Whose turn a review is: the user's in the waiting color, an agent's muted, a stopped one as an error. */
+.backlog-item .turn-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 9em;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item .turn-chip .codicon {
+  font-size: 12px;
+}
+.backlog-item .turn-chip.mine {
+  color: var(--waiting);
+}
+.backlog-item .turn-chip.turn-stopped {
+  color: var(--error);
+}
+.lane .lane-filter {
+  margin-left: auto;
+}
+.lane .lane-filter.on {
+  color: var(--waiting);
+}
 .backlog-item .parent-chip {
   flex: none;
   display: inline-flex;

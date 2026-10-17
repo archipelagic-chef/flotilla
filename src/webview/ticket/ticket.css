@@ -1170,6 +1170,12 @@ button.timeline-item:hover .timeline-text {
   flex-direction: column;
   gap: 10px;
 }
+.review-panel.stopped {
+  border-left-color: var(--error);
+}
+.review-panel.stopped > .codicon {
+  color: var(--error);
+}
 
 /* An action in progress: "working…" beside its button, or its comment sent and not yet confirmed. */
 .action-busy {

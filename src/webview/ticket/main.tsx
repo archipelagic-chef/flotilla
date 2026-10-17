@@ -6,6 +6,7 @@ import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, 
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
+import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { applyTicketParts } from '../ticketParts';
@@ -503,44 +504,44 @@ function QueuedPanel({ queued }: { queued: QueuedView }) {
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
   const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
-  const who = r.implementer ?? 'the implementer';
-  const [icon, cls, text] =
-    r.state === 'working'
-      ? ['rocket', 'working', `${who} is working on it (the autopilot started it); it reports below`]
-      : r.state === 'paused' && r.paused?.for
-        ? ['debug-pause', 'waiting', `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`]
-        : r.state === 'paused' && r.paused
-          ? [
-              'debug-pause',
-              'waiting',
-              `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`,
-            ]
-        : r.state === 'reviewing'
-          ? ['eye', 'working', `${r.reviewer} is reviewing${r.implementer ? ` ${r.implementer}'s work` : ''}`]
-          : r.state === 'revising'
-            ? ['tools', 'waiting', `${r.byUser ? 'You' : r.reviewer} requested changes; ${who} is ${r.running ? 'making them' : 'on it'}`]
-            : r.state === 'asking'
-              ? ['question', 'waiting', `${who} has a question for you. Answer it in its report, or in a comment below; it goes on from there.`]
-              : r.state === 'yours'
-                ? ['eye', 'waiting', `${who} made the changes you asked for. It's ready for your review.`]
-                : r.state === 'approved'
-                  ? ['pass-filled', 'done', `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.`]
-                  : ['debug-pause', 'stopped', `Review stopped: ${r.reason ?? 'no verdict.'}`];
+  // Whose turn it is, said in words with the reviewer and the implementer named, and what the user can do now.
+  const turn = turnOf({ status: ticket.item.status, review: r });
+  const said = turn && turnSentence(turn, r);
+  const pause =
+    r.state === 'paused' && r.paused?.for
+      ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
+      : r.state === 'paused' && r.paused
+      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}.`
+      : undefined;
+  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot && !turn);
+  const [icon, cls, label, text, todo] = autopilot
+    ? ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
+    : turn && said
+      ? [
+          r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
+          turn.kind === 'stopped' ? 'stopped' : r.state === 'approved' && r.byUser ? 'done' : turn.mine ? 'waiting' : 'working',
+          TURN_LABEL[turn.kind],
+          pause ? `${said.text} ${pause}` : said.text,
+          said.todo,
+        ]
+      : r.state === 'approved'
+        ? ['pass-filled', 'done', 'Approved', `by ${r.byUser ? 'you' : r.reviewer}.`, undefined]
+        : ['circle-large-outline', 'idle', capitalized(reviewOutcome(r.state)), pause ?? '', undefined];
+  // A reviewer agent's approval waits for the user's: they approve it too, or ask for changes.
+  const yours = r.state === 'yours' || (r.state === 'approved' && !r.byUser);
   return (
     <div class={`review-panel ${cls}`}>
       <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
       <span class="review-text">
-        <strong>
-          {r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot) ? 'Autopilot' : capitalized(reviewOutcome(r.state))}
-        </strong>{' '}
-        {text}
+        <strong>{label}</strong> {text}
+        {todo && <span class="muted review-todo"> {todo}</span>}
       </span>
       {r.state === 'paused' && (
         <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
           <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
         </ActionButton>
       )}
-      {r.state === 'yours' ? (
+      {yours ? (
         <>
           <button
             class="button secondary"

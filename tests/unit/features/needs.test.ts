@@ -37,10 +37,10 @@ describe('needOf', () => {
     expect(needOf(item({ status: 'done', review: review({ state: 'approved' }) }), [])).toBeUndefined();
   });
 
-  it('gives a stopped review its reason, but not one the user stopped themselves', () => {
+  it('gives a stopped review its reason; one the user stopped is still theirs to decide', () => {
     const stopped = review({ state: 'stopped', reason: 'still not approved after 3 rounds; it’s yours to decide.', stop: { kind: 'rounds' } });
     expect(needOf(item({ review: stopped }), [])?.line).toBe('Stopped: still not approved after 3 rounds; it’s yours to decide.');
-    expect(needOf(item({ review: review({ state: 'stopped', reason: 'stopped by you.', stop: { kind: 'user' } }) }), [])).toBeUndefined();
+    expect(needOf(item({ review: review({ state: 'stopped', reason: 'stopped by you.', stop: { kind: 'user' } }) }), [])?.line).toBe('You stopped the review');
   });
 
   it('shows a start the autopilot couldn’t make, while the item is still To Do', () => {
@@ -54,6 +54,11 @@ describe('needOf', () => {
     expect(needOf(item({ review: review({ state: 'reviewing' }) }), [])).toBeUndefined();
     expect(needOf(item({ proposed: { by: 'Ada-1' }, review: review({ state: 'yours' }) }), [])).toBeUndefined();
     expect(needOf(item(), [])).toBeUndefined();
+  });
+
+  it('lists an item in review that no reviewer agent is at as the user’s review', () => {
+    expect(needOf(item({ status: 'review' }), [])).toEqual({ kind: 'yours', line: 'Ready for your review' });
+    expect(needOf(item({ status: 'review', review: review({ state: 'revising' }) }), [])).toBeUndefined();
   });
 });
 
