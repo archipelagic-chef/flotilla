@@ -133,15 +133,46 @@ interface MentionIndex {
 /** One index per repository, shared by every ticket: a ticket's commits are looked up in memory, not in git. */
 const mentionIndexes = new Map<string, MentionIndex>();
 
-/** Every commit of the repository's refs (not Flotilla's own), newest first; read again only when a ref moved. */
+const LOG_ALL = ['-c', 'log.showSignature=false', 'log', '--exclude=refs/flotilla/*', '--all', `--format=${FORMAT}`];
+
+/** Every commit of the repository's refs (not Flotilla's own), newest first. */
+async function readAllCommits(cwd: string): Promise<Array<Omit<CommitView, 'outgoing'>>> {
+  return parseLog(await runGit([...LOG_ALL, '--'], { cwd }));
+}
+
+/**
+ * The index for new refs, from the one for the refs before: only the commits that came in are read (git log --all, not
+ * the old tips). When a commit the old index has is no longer on any ref (a branch rewritten or deleted that nothing
+ * else has), or the old tips can't be read any more, it's read in full instead: the answer is a full read's.
+ */
+async function updateCommits(cwd: string, old: MentionIndex, refs: ReadonlyMap<string, string>): Promise<Array<Omit<CommitView, 'outgoing'>>> {
+  const before = await old.commits;
+  if (!before.length) return readAllCommits(cwd);
+  try {
+    const oldTips = [...new Set(old.refs.values())];
+    const newTips = new Set(refs.values());
+    const gone = oldTips.filter((sha) => !newTips.has(sha));
+    if (gone.length) {
+      const input = [...gone, ...[...newTips].map((sha) => `^${sha}`)].join('\n') + '\n';
+      const lost = Number((await runGit(['rev-list', '--count', '--stdin'], { cwd, input })).trim());
+      if (lost !== 0) return readAllCommits(cwd);
+    }
+    const input = oldTips.map((sha) => `^${sha}`).join('\n') + '\n';
+    const fresh = parseLog(await runGit([...LOG_ALL, '--stdin', '--'], { cwd, input }));
+    const known = new Set(before.map((c) => c.hash));
+    return [...fresh.filter((c) => !known.has(c.hash)), ...before];
+  } catch {
+    return readAllCommits(cwd);
+  }
+}
+
+/** Every commit of the repository's refs (not Flotilla's own), newest first; when a ref moved, the new ones are read. */
 async function mentionable(cwd: string): Promise<Array<Omit<CommitView, 'outgoing'>>> {
   const refs = await refsOf(cwd, false);
   const key = keyOf(refs);
   const cached = mentionIndexes.get(cwd);
   if (cached?.key === key) return cached.commits;
-  const commits = runGit(['-c', 'log.showSignature=false', 'log', '--exclude=refs/flotilla/*', '--all', `--format=${FORMAT}`, '--'], { cwd })
-    .then(parseLog)
-    .catch(() => []);
+  const commits = (cached ? updateCommits(cwd, cached, refs) : readAllCommits(cwd)).catch(() => []);
   const index: MentionIndex = { key, refs, commits };
   mentionIndexes.set(cwd, index);
   // A failed read (it comes back empty) is tried again at the next look.
