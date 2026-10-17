@@ -13,6 +13,7 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+const levels = vi.hoisted(() => ({ now: {} as { strong?: string; light?: string } }));
 const quick = vi.hoisted(() => ({ choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>) }));
 
 vi.mock('vscode', () => ({
@@ -35,6 +36,7 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   confirmMemory: async () => false,
   describeChoice: () => '',
   isRunningHeadless: () => false,
+  modelLevels: () => levels.now,
   memoryShortage: () => {
     if (memory.free === undefined) return memory.short;
     const left = memory.free - memory.live.size * 300;
@@ -114,6 +116,23 @@ describe('the review loop and memory', () => {
     loop = created;
     retry = () => (created as unknown as { retry(): Promise<void> }).retry();
     await tick();
+  });
+
+  it('moves a Light ticket up to the strong model when changes are requested a second time, not the first (BL-69)', async () => {
+    levels.now = { strong: 'opus', light: 'sonnet' };
+    try {
+      const review = { reviewer: 'Rex', implementer: 'Nova', state: 'yours' };
+      data.items[0] = { ...data.items[0], agent: { light: true }, review: { ...review, round: 0 } };
+      data.items[1] = { ...data.items[1], agent: { light: true }, review: { ...review, round: 1 } };
+      const user = loop as unknown as { userReview(id: string, v: string, text: string): Promise<void> };
+      await user.userReview('BL-1', 'changes', 'Rename it.');
+      await user.userReview('BL-2', 'changes', 'Still wrong.');
+      expect(data.items[0].agent).toEqual({ light: true });
+      expect(data.items[1].agent).toMatchObject({ model: 'opus', movedUp: { from: 'sonnet', to: 'opus', reason: 'you requested changes in review round 2' } });
+      expect(data.items[1].agent).not.toHaveProperty('light');
+    } finally {
+      levels.now = {};
+    }
   });
 
   it('starts nothing while memory is short, and a manual start after that starts the agent once', async () => {

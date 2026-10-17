@@ -24,6 +24,8 @@ import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
+import { levelReport } from './features/backlog/modelLevel';
+import { modelLevels } from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
@@ -276,6 +278,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
   const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
   context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));
+  // How finished tickets fared per model level: review rounds, and which moved up (BL-69).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.modelLevelReport', async () => {
+      output.appendLine(levelReport((await backlog.read()).items, modelLevels()).join('\n'));
+      output.show(true);
+    }),
+  );
   let autopilotKey: Promise<string> | undefined;
   const autopilot = new Autopilot({
     backlog,

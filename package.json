@@ -97,6 +97,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.modelLevelReport",
+        "title": "Show How Tickets Fared per Model",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.keptWorktrees",
         "title": "Kept Worktrees and Folders…",
         "category": "Flotilla"
@@ -569,6 +574,10 @@
       "commandPalette": [
         {
           "command": "flotilla.shareLinkedFolders",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.modelLevelReport",
           "when": "flotilla.state == ready"
         },
         {
@@ -1567,6 +1576,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "The model agents Flotilla starts on tickets use, unless a ticket chooses its own: an alias (`opus`, `sonnet`, `haiku`, `fable`) or a model's full name. Empty: Claude Code's default."
+        },
+        "flotilla.agents.lightModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
         },
         "flotilla.agents.effort": {
           "type": "string",

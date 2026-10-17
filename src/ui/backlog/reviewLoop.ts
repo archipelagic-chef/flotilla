@@ -36,6 +36,7 @@ import {
   type Verdict,
 } from '../../features/backlog/review';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
+import { movedUp, moveUpTarget, ROUNDS_BEFORE_MOVING_UP, strongerRequest } from '../../features/backlog/modelLevel';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
 import type { UsageLimit } from '../../features/backlog/limits';
@@ -51,6 +52,7 @@ import {
   describeChoice,
   isRunningHeadless,
   memoryShortage,
+  modelLevels,
   releaseStart,
   reserveStart,
   runAgentHeadless,
@@ -206,6 +208,22 @@ export class ReviewLoop implements vscode.Disposable {
         const answer = userAnswer(ticket.activity, item.review, this.key(item.id));
         if (answer.length) await this.answer(item, answer.map((e) => e.body).join('\n\n'), answer.map(this.key(item.id)));
         continue;
+      }
+      // Its agent says the work needs a stronger model: it moves up, and a loop's agent goes on in its chat (BL-69).
+      if ((item.status === 'doing' || item.status === 'todo') && moveUpTarget(item.agent, modelLevels())) {
+        const ticket = await this.deps.backlog.readTicket(item);
+        const asks = strongerRequest(ticket.activity, [...(item.review?.handled ?? []), ...(this.baseline.get(item.id) ?? [])], this.key(item.id));
+        if (asks) {
+          const inLoop = item.review?.state === 'revising' || item.review?.state === 'working';
+          const moved = await this.moveUp(item.id, `${asks.agent} said the work needs a stronger model`, inLoop ? undefined : ' Start an agent again to go on with it.');
+          if (moved && inLoop)
+            await this.startRevision(moved, {
+              prompt: `You now run on ${moved.agent!.model}, a stronger model. Go on where you left off, then report in the ticket as asked.`,
+              why: 'it needs a stronger model',
+              aside: true,
+            });
+          continue;
+        }
       }
       // Changes the user asked for come back to the user, whether reviewer agents run or not.
       const byUser = !!item.review?.byUser && item.review.state === 'revising';
@@ -458,6 +476,27 @@ export class ReviewLoop implements vscode.Disposable {
       { by },
     );
     this.changed.fire(id);
+  }
+
+  /**
+   * Moves a ticket that runs on a weaker model up to the strong one (BL-69), noted with why (and what's next, after).
+   * The item as it is then; undefined when it doesn't run on a weaker model (nothing moves down, or on a guess).
+   */
+  private async moveUp(id: string, reason: string, after = ''): Promise<BacklogItem | undefined> {
+    let moved: BacklogItem | undefined;
+    await this.deps.backlog.change((d) => ({
+      ...d,
+      items: d.items.map((i) => {
+        const move = i.id === id ? moveUpTarget(i.agent, modelLevels()) : undefined;
+        if (!move) return i;
+        moved = { ...i, agent: movedUp(i.agent, move, reason, new Date()) };
+        return moved;
+      }),
+    }));
+    const m = moved?.agent?.movedUp;
+    if (!moved || !m) return undefined;
+    await this.note(id, `Moved up from ${m.from} to ${m.to}: ${reason}. Its agents run on ${m.to} from now on.${after}`);
+    return moved;
   }
 
   private async note(id: string, body: string): Promise<void> {
@@ -949,6 +988,8 @@ export class ReviewLoop implements vscode.Disposable {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
       return;
     }
+    // Changes requested again: a ticket on a lighter model moves up to the strong one (BL-69).
+    const strong = item.review.round > ROUNDS_BEFORE_MOVING_UP ? await this.moveUp(id, `${item.review.reviewer} requested changes in review round ${item.review.round}`) : undefined;
     const task: RevisionTask = {
       prompt: revisionPrompt({ item, reviewer: item.review.reviewer, ticket: this.deps.backlog.docPath(id), round: item.review.round }),
       why: `${item.review.reviewer} requested changes`,
@@ -961,7 +1002,7 @@ export class ReviewLoop implements vscode.Disposable {
     }
     this.statuses.set(id, 'doing');
     await this.setReview(id, (r) => ({ ...r!, state: 'revising', handled }), 'doing', `Agent ${item.review.reviewer}`);
-    const revising: BacklogItem = { ...item, status: 'doing', review: { ...item.review, state: 'revising', handled } };
+    const revising: BacklogItem = { ...(strong ?? item), status: 'doing', review: { ...item.review, state: 'revising', handled } };
     await this.startRevision(revising, task);
   }
 
@@ -1007,8 +1048,9 @@ export class ReviewLoop implements vscode.Disposable {
     };
     this.statuses.set(id, 'doing');
     await this.setReview(id, () => review, 'doing', 'You');
+    const strong = review.round > ROUNDS_BEFORE_MOVING_UP ? await this.moveUp(id, `you requested changes in review round ${review.round}`) : undefined;
     await this.startRevision(
-      { ...item, status: 'doing', review },
+      { ...(strong ?? item), status: 'doing', review },
       { prompt: userRevisionPrompt({ item, ticket: this.deps.backlog.docPath(id), feedback: text }), why: 'you requested changes' },
       { reply: true },
     );
@@ -1155,6 +1197,8 @@ export class ReviewLoop implements vscode.Disposable {
     // A "Ready for review" report sends it to review (the scan sees it), and the next round starts.
     this.schedule();
     await this.queue;
+    // The scan started it again meanwhile (it moved up to a stronger model): that run goes on.
+    if (this.runs.has(id)) return;
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if ((item?.review?.state === 'revising' || item?.review?.state === 'working') && item.status !== 'review') {
       // It asked the user something: it waits for their answer (a comment).

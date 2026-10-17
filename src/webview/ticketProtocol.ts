@@ -128,6 +128,8 @@ export interface TicketView {
   canCleanUp: boolean;
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
+  /** The model Light tickets' work runs on (flotilla.agents.lightModel); unset: no ticket can be Light. */
+  lightModel?: string;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */

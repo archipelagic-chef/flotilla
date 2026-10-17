@@ -1624,7 +1624,9 @@ const modelLabel = (model: string) => MODELS.find((m) => m.model === model.toLow
 function AgentPicker({ ticket }: { ticket: TicketView }) {
   const chosen = ticket.item.agent ?? {};
   const defaults = ticket.agentDefaults;
-  const model = chosen.model ?? defaults.model;
+  // Light (BL-69): its work runs on the light model; reviews stay on the default.
+  const light = !chosen.model && chosen.light && ticket.lightModel ? ticket.lightModel : undefined;
+  const model = chosen.model ?? light ?? defaults.model;
   const effort = chosen.effort ?? defaults.effort;
   const defaultModel = defaults.model ? `Default (${modelLabel(defaults.model)})` : "Default (Claude Code's)";
   const defaultEffort = defaults.effort ? `Default (${defaults.effort})` : "Default (Claude Code's)";
@@ -1632,16 +1634,28 @@ function AgentPicker({ ticket }: { ticket: TicketView }) {
   return (
     <>
       <Dropdown
-        class={`priority agent-choice${chosen.model ? '' : ' unset'}`}
-        label={`Agents' model: ${model ? modelLabel(model) : 'default'}. Change…`}
+        class={`priority agent-choice${chosen.model || light ? '' : ' unset'}`}
+        label={`Agents' model: ${model ? modelLabel(model) : 'default'}${light ? ' (Light)' : ''}. Change…`}
         button={
           <>
             <i class="codicon codicon-hubot" />
-            <span>{model ? modelLabel(model) : 'Model'}</span>
+            <span>{model ? `${light ? 'Light: ' : ''}${modelLabel(model)}` : 'Model'}</span>
           </>
         }
         items={[
-          { key: '', label: defaultModel, icon: 'circle-small', checked: !chosen.model, onSelect: () => send({ type: 'agentModel', model: null }) },
+          { key: '', label: defaultModel, icon: 'circle-small', checked: !chosen.model && !light, onSelect: () => send({ type: 'agentModel', model: null }) },
+          ...(ticket.lightModel
+            ? [
+                {
+                  key: 'light',
+                  label: `Light (${modelLabel(ticket.lightModel)})`,
+                  detail: 'Small, mechanical work. Reviewed by the default model; moves up to it when it turns out hard',
+                  icon: 'feather',
+                  checked: !!light,
+                  onSelect: () => send({ type: 'agentModel', model: 'light' }),
+                },
+              ]
+            : []),
           ...MODELS.map((m) => ({
             key: m.model,
             label: m.label,

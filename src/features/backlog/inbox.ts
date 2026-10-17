@@ -31,6 +31,8 @@ export interface Proposal {
   branch?: string;
   /** The agent that wrote it ("a3f9"), when it signed. */
   agent?: string;
+  /** Small and mechanical: its work runs on the light model (level: light, BL-69). */
+  light?: boolean;
 }
 
 /** Reads a proposal: "---" front matter (key: value lines), then a ticket ("# Title", description). */
@@ -54,6 +56,7 @@ export function parseProposal(text: string): Proposal | { error: string } {
     ...(fields.get('priority') ? { priority: fields.get('priority') } : {}),
     start: !!claim || /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
     ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
+    ...(/^light$/i.test(fields.get('level') ?? '') ? { light: true } : {}),
     ...(agent && entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
   };
 }
@@ -85,6 +88,7 @@ export function addProposal(
     status: p.start ? 'doing' : 'todo',
     ...(priority ? { priority } : {}),
     ...(parent ? { parent } : {}),
+    ...(p.light ? { agent: { light: true } } : {}),
     ...(opts.mode === 'propose' ? { proposed: p.agent ? { by: p.agent } : {} } : {}),
   };
   let next: BacklogData = { ...added.data, items: added.data.items.map((i) => (i.id === item.id ? item : i)) };
@@ -239,6 +243,7 @@ priority: high      # optional: urgent, high, medium or low
 start: true         # optional: you start on it now...
 branch: feature/x   # ...on this branch (your current one: git branch --show-current)
 agent: Nova-7       # your agent name
+level: light        # optional: only for small, mechanical work (a rename, a setting, a text): a lighter model does it
 ---
 # A short title
 

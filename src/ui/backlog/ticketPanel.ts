@@ -41,7 +41,7 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { agentChoice, validModel } from './agentRunner';
+import { agentChoice, modelLevels, validModel } from './agentRunner';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
@@ -185,11 +185,16 @@ export async function replaceImages(html: string, src: (current: string) => Prom
   });
 }
 
-/** An item with its agent choice (none, when both are the defaults). */
+/** An item with its agent choice (none, when all are the defaults). A model chosen replaces Light, and Light a model. */
 function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
   const { agent: _old, ...rest } = item;
-  const clean: AgentChoice = { ...(agent.model ? { model: agent.model } : {}), ...(agent.effort ? { effort: agent.effort } : {}) };
-  return clean.model || clean.effort ? { ...rest, agent: clean } : rest;
+  const clean: AgentChoice = {
+    ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.effort ? { effort: agent.effort } : {}),
+    ...(agent.light && !agent.model ? { light: true } : {}),
+    ...(agent.movedUp ? { movedUp: agent.movedUp } : {}),
+  };
+  return Object.keys(clean).length ? { ...rest, agent: clean } : rest;
 }
 
 /** Markdown (as comments and reports are written here) in a tracker's markup. */
@@ -758,6 +763,7 @@ export class TicketPanels implements vscode.Disposable {
       history: [],
       canCleanUp: false,
       agentDefaults: agentChoice(undefined),
+      ...(modelLevels().light ? { lightModel: modelLevels().light } : {}),
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       ...(queued ? { queued } : {}),
@@ -1153,11 +1159,15 @@ export class TicketPanels implements vscode.Disposable {
           )?.trim();
           if (model === undefined) return;
         }
+        if (model === 'light') {
+          await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: undefined, light: true }) : i)) }));
+          break;
+        }
         if (model && !validModel(model)) {
           void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
           return;
         }
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined }) : i)) }));
+        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
         break;
       }
       case 'agentEffort':
