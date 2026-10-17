@@ -11,6 +11,7 @@ import { acceptItem, moveItem, removeItem, updateItem } from '../../features/bac
 import { summaryOf } from '../../features/backlog/ticket';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
+import type { Merges } from '../backlog/merges';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -86,6 +87,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
+  private merges: Merges | undefined;
+
+  /** Whether the items' work is merged (shown on the cards; they move to Done by themselves when it is). */
+  useMerges(merges: Merges): void {
+    this.merges = merges;
+    this.subscriptions.push(merges.watch(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   private async postBacklog(): Promise<void> {
     const store = this.deps.backlog;
     const data = await store.read();
@@ -98,7 +108,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}) };
+        const merge = this.merges?.get(item.id);
+        return {
+          ...item,
+          summary: summaryOf(ticket.description),
+          activity: ticket.activity.length,
+          ...(linked?.length ? { linked } : {}),
+          ...(merge ? { merge } : {}),
+        };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.

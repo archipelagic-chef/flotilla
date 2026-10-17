@@ -3,6 +3,7 @@
  * so it must not import vscode, node or DOM APIs.
  */
 import type { ChangeKind } from '../core/git/porcelain';
+import type { MergeInfo } from '../features/backlog/merged';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
@@ -12,6 +13,7 @@ import type { AttentionState } from '../features/workstreams/attention';
 export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
 
 export type { BacklogItem, BacklogPriority, BacklogStatus };
+export type { MergeInfo };
 
 /** A backlog item as the sidebar lists it: with the first line of its description and its activity count. */
 export interface BacklogItemView extends BacklogItem {
@@ -21,6 +23,8 @@ export interface BacklogItemView extends BacklogItem {
   source?: { kind: 'jira' | 'github'; label: string; url: string; statusName: string };
   /** A local item's linked issues, with their current status where they're listed. */
   linked?: Array<{ id: string; kind: 'jira' | 'github'; title: string; url: string; statusName?: string }>;
+  /** Whether its work is merged into the base (read from git; undefined: no branch to tell about). */
+  merge?: MergeInfo;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */

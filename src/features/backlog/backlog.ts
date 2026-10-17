@@ -43,6 +43,8 @@ export interface BacklogItem {
   proposed?: { by?: string };
   /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
   review?: ReviewState;
+  /** Done with work left unmerged, dismissed as superseded by this item (its id). */
+  supersededBy?: string;
   /** Its description's fingerprint when last seen: a change to it (in the ticket file) is noted in its activity. */
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
@@ -89,6 +91,18 @@ export interface BacklogData {
 export const EMPTY_BACKLOG: BacklogData = { version: 1, next: 1, items: [] };
 
 export const BACKLOG_STATUSES: readonly BacklogStatus[] = ['todo', 'doing', 'review', 'done'];
+
+/**
+ * The lanes of the backlog: the statuses, with In Review split. An item in review whose review is approved waits to be
+ * merged (Ready to Merge); nothing about that is stored.
+ */
+export type BacklogLane = BacklogStatus | 'ready';
+
+export const BACKLOG_LANES: readonly BacklogLane[] = ['todo', 'doing', 'review', 'ready', 'done'];
+
+export function laneOf(item: Pick<BacklogItem, 'status' | 'review'>): BacklogLane {
+  return item.status === 'review' && item.review?.state === 'approved' ? 'ready' : item.status;
+}
 
 export function isBacklogData(value: unknown): value is BacklogData {
   const v = value as BacklogData;

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { acceptItem, agentChatItem, branchMatches, childrenOf, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
+import { acceptItem, addItem, agentChatItem, branchMatches, childrenOf, currentPrefix, removeItem, entryAgent, sameAgent, linkIssue, linkedItem, unlinkIssue, updateItem, type AgentChoice, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
@@ -19,6 +19,8 @@ import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
 import { ticketCommits, versionCommits } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
+import { baseName, type MergeInfo } from '../../features/backlog/merged';
+import type { Merges } from './merges';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
@@ -33,6 +35,8 @@ export interface TicketDeps {
   backlog: LocalBacklog;
   integrations: BacklogIntegrations;
   repository: Repository<Workstream>;
+  /** Whether the items' work is merged (read from git). */
+  merges: Merges;
   /** Shows a worktree's tab in the sidebar. */
   revealWorktree(key: string): void;
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
@@ -144,6 +148,7 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.refreshAll()).dispose },
       deps.backlog.watch(() => this.refreshAll()),
+      deps.merges.watch(() => this.refreshAll()),
       // Refreshed issues: read their details again too.
       deps.integrations.onDidChange(() => {
         this.details.clear();
@@ -531,7 +536,7 @@ export class TicketPanels implements vscode.Disposable {
    * An item's branches without a worktree, its commits, and its history clean-ups: the one in progress, and the
    * histories kept (read from git: quick, and local).
    */
-  private async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp'>> {
+  private async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp' | 'merge'>> {
     const cwd = this.deps.mainRoot;
     try {
       const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
@@ -554,7 +559,8 @@ export class TicketPanels implements vscode.Disposable {
         !item.rewrite &&
         !!base &&
         commits.some((c) => c.branches.some((b) => b !== base && !/-clean(-\d+)?$/.test(b)));
-      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits, history, canCleanUp, ...(rewrite ? { rewrite } : {}) };
+      const merge = this.deps.merges.get(item.id);
+      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits, history, canCleanUp, ...(rewrite ? { rewrite } : {}), ...(merge ? { merge } : {}) };
     } catch {
       return { branches: [], commits: [], history: [], canCleanUp: false };
     }
@@ -595,6 +601,62 @@ export class TicketPanels implements vscode.Disposable {
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
   private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
     await this.deps.backlog.writeTicket(item.id, change(await this.deps.backlog.readTicket(item)));
+  }
+
+  /**
+   * A Done item's work that isn't merged: a sibling ticket (same parent) to merge the branch, asking which branch when
+   * there are several. The new ticket opens.
+   */
+  private async mergeSibling(item: BacklogItem, branch?: string): Promise<void> {
+    const merge = this.deps.merges.get(item.id);
+    const unmerged = merge?.branches.filter((b) => b.state === 'unmerged') ?? [];
+    let pick: string | undefined = branch ?? unmerged[0]?.branch;
+    if (!branch && unmerged.length > 1) {
+      pick = (
+        await vscode.window.showQuickPick(
+          unmerged.map((b) => ({ label: b.branch, description: `${b.commits} ${b.commits === 1 ? 'commit' : 'commits'}`, branch: b.branch })),
+          { title: `Merge which branch of ${item.id}?` },
+        )
+      )?.branch;
+    }
+    if (!pick) return;
+    const into = merge ? baseName(merge.base) : 'the base branch';
+    const commits = unmerged.find((b) => b.branch === pick)?.commits ?? 0;
+    const title = `Merge ${pick} into ${into}`;
+    const description = `Merge the work of ${item.id} (“${item.title}”): branch \`${pick}\` has ${commits} ${commits === 1 ? 'commit' : 'commits'} that ${into} doesn't have yet.\n\n- [ ] \`${pick}\` is in ${into}, or its work is dropped (and ${item.id} says so).`;
+    let added: string | undefined;
+    await this.deps.backlog.change((d) => {
+      const r = addItem(d, title, currentPrefix(d, vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL')), new Date());
+      added = r.item.id;
+      return { ...r.data, items: r.data.items.map((i) => (i.id === added && item.parent ? { ...i, parent: item.parent } : i)) };
+    });
+    if (!added) return;
+    await this.deps.backlog.writeTicket(added, { title, description, activity: [] });
+    await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'You', body: `Asked for ${added} to merge \`${pick}\`.` });
+    await this.open(added);
+  }
+
+  /** Done with unmerged work, and it's superseded: which ticket has the work instead. The warning goes. */
+  private async dismissUnmerged(item: BacklogItem): Promise<void> {
+    const data = await this.deps.backlog.read();
+    const by = (
+      await vscode.window.showInputBox({
+        title: `Dismiss the unmerged work of ${item.id}`,
+        prompt: 'Which ticket has this work instead (it supersedes it)?',
+        placeHolder: 'BL-12',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          const t = value.trim().toLowerCase();
+          if (!t) return 'Give the id of the ticket that supersedes it.';
+          if (t === item.id.toLowerCase()) return "A ticket can't supersede itself.";
+          return data.items.some((i) => i.id.toLowerCase() === t) ? undefined : `There's no ticket ${value.trim()} in the backlog.`;
+        },
+      })
+    )?.trim();
+    if (!by) return;
+    const superseding = data.items.find((i) => i.id.toLowerCase() === by.toLowerCase())!.id;
+    await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, supersededBy: superseding } : i)) }));
+    await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'You', body: `Dismissed its unmerged work: ${superseding} supersedes it.` });
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
@@ -771,6 +833,12 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch)) await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
+        return;
+      case 'mergeSibling':
+        await this.mergeSibling(item, m.branch);
+        return;
+      case 'dismissUnmerged':
+        await this.dismissUnmerged(item);
         return;
       case 'startReview':
         await this.reviews?.start(id);
