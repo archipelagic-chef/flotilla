@@ -197,6 +197,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await shaping.discuss(id, true).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
     }),
   );
+  // Prioritize: a queued start runs now, above the limit, or pauses a running agent to make room (see reviewLoop).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'flotilla.prioritizeBacklogItem',
+      (id: unknown) => typeof id === 'string' && reviews.prioritize(id).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+    ),
+  );
   // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -312,6 +319,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   sidebar.useStorage(storage);
   void storage.start();
+  sidebar.useQueue(reviews);
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });

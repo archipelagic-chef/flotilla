@@ -1,13 +1,14 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
+import { ordinal } from './agentQueue';
 import type { TicketEntry } from './ticket';
 
 /**
  * What waits on the user, for the backlog's "Needs you" list: an agent's question, work ready for the user's review,
- * approved work not merged yet, a stopped review, a start that failed. Shared by the host and the webview (no node
- * or vscode APIs).
+ * approved work not merged yet, a stopped review, a start that failed, a reply queued for an agent. Shared by the host
+ * and the webview (no node or vscode APIs).
  */
-export type NeedKind = 'asking' | 'yours' | 'approved' | 'stopped' | 'failed';
+export type NeedKind = 'asking' | 'yours' | 'approved' | 'stopped' | 'failed' | 'queued';
 
 export interface Need {
   kind: NeedKind;
@@ -42,6 +43,15 @@ export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undef
   if (r?.state === 'stopped' && r.stop?.kind !== 'user') return { kind: 'stopped', since: r.since, line: `Stopped: ${r.reason ?? 'no verdict.'}` };
   if (item.startFailed && item.status === 'todo') return { kind: 'failed', since: item.startFailed.since, line: `Couldn't start: ${item.startFailed.message}` };
   return undefined;
+}
+
+/** A user's reply waiting for an agent (see agentQueue.ts): Prioritize starts it now. */
+export function queuedNeed(q: { reason: 'slot' | 'memory'; place: number; since?: string }): Need {
+  return {
+    kind: 'queued',
+    ...(q.since ? { since: q.since } : {}),
+    line: `Queued: an agent takes this up when ${q.reason === 'memory' ? "there's free memory" : 'one is free'} (${ordinal(q.place)} in line)`,
+  };
 }
 
 /** Oldest waiting first; those whose start isn't known go last. */

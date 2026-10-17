@@ -231,6 +231,8 @@ export interface AutopilotState {
   enabled: boolean;
   running: number;
   max: number;
+  /** Starts waiting for a free slot (in the queue: reviews and resumes go first). */
+  waiting: number;
   /** ISO 8601. */
   waitingUntil?: string;
   /** Too little memory free to start an agent. */
@@ -312,6 +314,8 @@ export type WebviewMessage =
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
   | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
+  /** Needs you (queued reply): start it now, above the limit, or pause a running agent for it. */
+  | { type: 'backlog'; op: 'prioritize'; id: string }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
   | { type: 'compare'; id: number } & RefComparison

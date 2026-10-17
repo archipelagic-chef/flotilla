@@ -34,6 +34,18 @@ export type AgentChatView =
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
 
+/** A start that waits: why, its place in the queue, and the agents running now out of the limit. */
+export interface QueuedView {
+  reason: 'slot' | 'memory';
+  place: number;
+  running: number;
+  limit: number;
+  /** What the start is for: a user's reply goes first in the queue. */
+  kind: 'reply' | 'review' | 'resume' | 'new';
+  /** When it began to wait, ISO 8601. */
+  since?: string;
+}
+
 /** An agent's report, as the ticket shows it: the summary, what it needs from you (answered by clicking), the details. */
 export interface ReportView {
   /** Rendered Markdown. */
@@ -95,6 +107,8 @@ export interface TicketView {
   run?: RunBlockRef;
   /** Its review loop, and whether an agent of it is running now. */
   review?: ReviewState & { running: boolean };
+  /** Its agent waits for a free slot (or for memory) before it starts. */
+  queued?: QueuedView;
   /** Review can be started (a local item with a worktree). */
   canReview: boolean;
   /** The item it's a part of, and its own parts (sub-tickets). */
@@ -164,6 +178,8 @@ export type TicketWebviewMessage =
   | { type: 'stopReview' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }
+  /** The queued start of this ticket: start it now (see ReviewLoop.prioritize). */
+  | { type: 'prioritize' }
   | { type: 'accept' }
   | { type: 'dismiss' }
   | { type: 'openTicket'; id: string }

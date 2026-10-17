@@ -13,6 +13,7 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+const quick = vi.hoisted(() => ({ choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>) }));
 
 vi.mock('vscode', () => ({
   EventEmitter: class {
@@ -20,8 +21,12 @@ vi.mock('vscode', () => ({
     fire() {}
     dispose() {}
   },
-  workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
-  window: { showWarningMessage: async () => undefined, showInformationMessage: async () => undefined },
+  workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d, inspect: () => undefined }) },
+  window: {
+    showWarningMessage: async () => undefined,
+    showInformationMessage: async () => undefined,
+    showQuickPick: async (items: Array<{ id: string }>) => quick.choose?.(items),
+  },
   commands: { executeCommand: async () => undefined },
   env: { clipboard: { writeText: async () => undefined } },
 }));
@@ -99,6 +104,7 @@ describe('the review loop and memory', () => {
       appendActivity: async () => undefined,
     };
     const repository = {
+      onDidChange: () => ({ dispose() {} }),
       current: [
         { key: 'wt', worktree: { isMain: false, path: '/wt', branch: 'feature/BL-1-review', adminDir: '/wt/.git' }, chats: [] },
         { key: 'wt2', worktree: { isMain: false, path: '/wt2', branch: 'feature/BL-2-review', adminDir: '/wt2/.git' }, chats: [] },
@@ -259,6 +265,463 @@ describe('the review loop and memory', () => {
     await first;
     expect(spawn).not.toHaveBeenCalled();
     expect(memory.live.size).toBe(0);
+    loop.dispose();
+  });
+});
+
+describe('the agent limit', () => {
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let notes: string[];
+  let finish: Array<(result: { code: number }) => void>;
+  let loop: {
+    start(id: string, manual?: boolean): Promise<void>;
+    startWork(item: unknown, ws: unknown): Promise<void>;
+    stop(id: string): Promise<void>;
+    resumePaused(): Promise<void>;
+    dispose(): void;
+  };
+  /** While set, every backlog read waits for it: a read that's still pending when the user acts. */
+  let holdReads: Promise<void>;
+  let worktrees: Array<{ key: string; worktree: { isMain: boolean; path: string; branch: string; adminDir: string }; chats: unknown[] }>;
+
+  /** Lets the queue and the runs' callbacks finish. */
+  const settle = async () => {
+    for (let i = 0; i < 30; i++) await tick();
+  };
+  const started = () => spawn.mock.calls.map((c) => (c[0] as { name: string }).name);
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    finish = [];
+    let runs = 0;
+    spawn.mockImplementation(() => {
+      runs++;
+      return { sessionId: `session-${runs}`, done: new Promise((resolve) => finish.push(resolve)), stop() {} };
+    });
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    memory.gate = undefined;
+    memory.fail = false;
+    holdReads = Promise.resolve();
+    data = {
+      version: 1,
+      next: 6,
+      items: [1, 2, 3, 4, 5].map((n) => ({ id: `BL-${n}`, title: `Item ${n}`, status: 'review', created: at, branch: `feature/BL-${n}-review` })),
+    };
+    notes = [];
+    worktrees = [1, 2, 3, 4, 5].map((n) => ({ key: `wt-${n}`, worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` }, chats: [] }));
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      // The content is taken when the read starts (as a file read does): a write during the hold isn't in it.
+      read: async () => {
+        const snapshot = structuredClone(data);
+        await holdReads;
+        return snapshot;
+      },
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Item', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/ticket.md',
+      docPath: () => '/unused/ticket.md',
+      appendActivity: async (item: { id: string }, entry: { body: string }) => void notes.push(`${item.id}: ${entry.body}`),
+    };
+    const repository = { onDidChange: () => ({ dispose() {} }), current: worktrees };
+    loop = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never) as never;
+    await settle();
+  });
+
+  it('queues an agent past the limit, and starts it when a slot frees', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(2);
+    expect(notes).toContain('BL-3: Queued: an agent takes this up when one is free (1st in line).');
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('runs a start the user asks for at once, past the limit, and counts it toward the limit', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4', true);
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-4');
+
+    // BL-2 and BL-4 still run after BL-1 ends: BL-3 keeps waiting for the room.
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    finish[1]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(4);
+    expect(started()[3]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('a stopped run gives its slot back at once, though its chat still says working', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    // The stopped process never records "done": its chat stays "working" in the repository.
+    worktrees[0].chats = [{ id: 'session-1', state: 'working', firstPrompt: 'You are agent Ada-1, working on backlog item BL-1: "Item 1"' }];
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(2);
+
+    await loop.stop('BL-1');
+    await settle();
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('a resume that waits for a slot after a usage limit starts once one frees', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    data.items[2].review = {
+      round: 1,
+      state: 'paused',
+      reviewer: '',
+      paused: { until: '2026-10-11T00:00:00Z', known: true, phase: 'work', session: 'session-3', agent: 'Ada-3', resume: 'revising' },
+    };
+    await loop.resumePaused();
+    expect(started()).toHaveLength(2);
+    expect(notes).toContain('BL-3: Queued: an agent takes this up when one is free (1st in line).');
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    expect(spawn.mock.calls[2][0]).toMatchObject({ resume: 'session-3' });
+    loop.dispose();
+  });
+
+  it('a start that waited is not run when the user stops its item while the queue reads the backlog', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(2);
+
+    // A slot frees, and the queue reads the backlog; the read is still pending when the user stops BL-3.
+    let release!: () => void;
+    holdReads = new Promise<void>((resolve) => (release = resolve));
+    finish[0]({ code: 0 });
+    await tick();
+    void loop.stop('BL-3');
+    await tick();
+    release();
+    holdReads = Promise.resolve();
+    await settle();
+    expect(started().some((name) => name.includes('BL-3'))).toBe(false);
+    loop.dispose();
+  });
+
+  it('starts reviews and revisions before new tickets, whatever came first', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    // The autopilot's start is for an item In Progress: the ticket says so too (a start on a stale copy is given up).
+    data.items[4].status = 'doing';
+    await loop.startWork({ id: 'BL-5', title: 'Item 5', status: 'doing', created: at, branch: 'feature/BL-5-review' }, worktrees[4]);
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(2);
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-3');
+    expect(started().some((name) => name.includes('BL-5'))).toBe(false);
+    expect(notes).toContain('BL-5: Queued: an agent takes this up when one is free (1st in line).');
+    loop.dispose();
+  });
+  it('holds the slot of an admitted start while it awaits, so a start checked meanwhile waits for it', async () => {
+    await loop.start('BL-1');
+    // BL-2 is admitted (a slot free) and awaits its base: it holds its slot and its memory until its agent spawns.
+    let open!: () => void;
+    memory.gate = new Promise<void>((r) => (open = r));
+    const second = loop.start('BL-2');
+    await tick();
+    expect(memory.live.size).toBe(2);
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(1);
+    expect(notes).toContain('BL-3: Queued: an agent takes this up when one is free (1st in line).');
+
+    open();
+    await second;
+    await settle();
+    expect(started()).toHaveLength(2);
+    expect(started()[1]).toContain('BL-2');
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('gives back the slot and memory of an admitted start that is given up, and the queue goes on', async () => {
+    await loop.start('BL-1');
+    let open!: () => void;
+    memory.gate = new Promise<void>((r) => (open = r));
+    const second = loop.start('BL-2');
+    await tick();
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(1);
+
+    // BL-2 moves on while its start awaits: it's given up, its slot and memory go back, and BL-3 takes the slot.
+    data.items[1].status = 'done';
+    open();
+    await second;
+    await settle();
+    expect(started().some((name) => name.includes('BL-2'))).toBe(false);
+    expect(started()).toHaveLength(2);
+    expect(started()[1]).toContain('BL-3');
+    // The two agents that spawned hold theirs (until their processes exit); BL-2's is back.
+    expect(memory.live.size).toBe(2);
+    loop.dispose();
+  });
+});
+
+describe('replies and Prioritize', () => {
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let notes: string[];
+  let finish: Array<(result: { code: number }) => void>;
+  let loop: {
+    start(id: string, manual?: boolean): Promise<void>;
+    startWork(item: unknown, ws: unknown): Promise<void>;
+    userReview(id: string, verdict: 'approved' | 'changes', text: string): Promise<void>;
+    prioritize(id: string): Promise<void>;
+    queuedFor(id: string): { kind: string; place: number } | undefined;
+    dispose(): void;
+  };
+  let worktrees: Array<{ key: string; worktree: { isMain: boolean; path: string; branch: string; adminDir: string }; chats: unknown[] }>;
+
+  /** Lets the queue and the runs' callbacks finish. */
+  const settle = async () => {
+    for (let i = 0; i < 30; i++) await tick();
+  };
+  const started = () => spawn.mock.calls.map((c) => (c[0] as { name: string }).name);
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    finish = [];
+    let runs = 0;
+    spawn.mockImplementation(() => {
+      runs++;
+      return { sessionId: `session-${runs}`, done: new Promise((resolve) => finish.push(resolve)), stop() {} };
+    });
+    quick.choose = undefined;
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    memory.gate = undefined;
+    memory.fail = false;
+    data = {
+      version: 1,
+      next: 8,
+      items: [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `BL-${n}`, title: `Item ${n}`, status: 'review', created: at, branch: `feature/BL-${n}-review` })),
+    };
+    notes = [];
+    worktrees = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ key: `wt-${n}`, worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` }, chats: [] }));
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Item', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/ticket.md',
+      docPath: () => '/unused/ticket.md',
+      appendActivity: async (item: { id: string }, entry: { body: string }) => void notes.push(`${item.id}: ${entry.body}`),
+    };
+    const repository = { onDidChange: () => ({ dispose() {} }), current: worktrees };
+    loop = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never) as never;
+    await settle();
+  });
+
+  it('queues a reply past the limit, ahead of reviews and new work that waited before it', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    // The autopilot's start is for an item In Progress: the ticket says so too (a start on a stale copy is given up).
+    data.items[4].status = 'doing';
+    await loop.startWork({ id: 'BL-5', title: 'Item 5', status: 'doing', created: at, branch: 'feature/BL-5-review' }, worktrees[4]);
+    await loop.start('BL-3');
+    await loop.userReview('BL-4', 'changes', 'Use the other helper.');
+    expect(started()).toHaveLength(2);
+    expect(loop.queuedFor('BL-4')).toMatchObject({ kind: 'reply', place: 1 });
+    expect(notes).toContain('BL-4: Queued: an agent takes this up when one is free (1st in line).');
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()[2]).toContain('BL-4');
+    expect(notes).toContain('BL-4: An agent is on it.');
+    expect(started().some((name) => name.includes('BL-3') || name.includes('BL-5'))).toBe(false);
+    loop.dispose();
+  });
+
+  it('starts a queued start at once when Prioritize finds a free slot', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(started()).toHaveLength(2);
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    loop.dispose();
+  });
+
+  it('starts a queued start above the limit with Prioritize, up to flotilla.agents.maxPrioritized (2)', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4');
+    await loop.start('BL-5');
+    expect(started()).toHaveLength(2);
+
+    await loop.prioritize('BL-4');
+    expect(started()).toHaveLength(3);
+    expect(started()[2]).toContain('BL-4');
+    expect(notes).toContain('BL-4: You prioritized it: an agent takes it up now.');
+
+    await loop.prioritize('BL-5');
+    expect(started()).toHaveLength(4);
+    expect(started()[3]).toContain('BL-5');
+    loop.dispose();
+  });
+
+  it('at the ceiling, pauses the agent picked to make room; it goes to the head of the queue and resumes from its chat', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4');
+    await loop.prioritize('BL-3');
+    await loop.prioritize('BL-4');
+    await loop.start('BL-5');
+    expect(started()).toHaveLength(4);
+    const shown: string[][] = [];
+    quick.choose = (items) => {
+      shown.push(items.map((i) => i.id));
+      return items.find((i) => i.id === 'BL-1');
+    };
+
+    await loop.prioritize('BL-5');
+    // Every running agent is offered, the one that has run the least first (see pauseOrder).
+    expect(shown).toHaveLength(1);
+    expect([...shown[0]].sort()).toEqual(['BL-1', 'BL-2', 'BL-3', 'BL-4']);
+    // BL-1 is paused for BL-5; BL-5 starts in its slot, above the limit.
+    expect(started()).toHaveLength(5);
+    expect(started()[4]).toContain('BL-5');
+    const paused = data.items.find((i) => i.id === 'BL-1')?.review as { state: string; paused?: { for?: string; session: string } };
+    expect(paused.state).toBe('paused');
+    expect(paused.paused?.for).toBe('BL-5');
+    // Its place is at the head, ahead of a reply that queues after it.
+    await loop.userReview('BL-6', 'changes', 'More context, please.');
+    expect(loop.queuedFor('BL-1')).toMatchObject({ kind: 'resume', place: 1 });
+    expect(loop.queuedFor('BL-6')).toMatchObject({ kind: 'reply', place: 2 });
+    expect(notes.some((n) => n.startsWith('BL-1: ') && n.includes('is paused for BL-5'))).toBe(true);
+
+    // Three agents end (the limit is 2): when only one runs, BL-1 goes on from its own chat, before anything else waits.
+    for (const i of [1, 2]) {
+      finish[i]({ code: 0 });
+      await settle();
+      expect(started()).toHaveLength(5);
+    }
+    finish[3]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(6);
+    expect(spawn.mock.calls[5][0]).toMatchObject({ resume: 'session-1' });
+    expect(started()[5]).toContain('BL-1');
+    loop.dispose();
+  });
+
+  it('refuses to prioritize while memory is short, and starts nothing above the limit', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    memory.short = { freeMB: 512, minMB: 2048 };
+    await loop.prioritize('BL-3');
+    expect(started()).toHaveLength(2);
+    expect(notes.some((n) => n.startsWith('BL-3: Not started: 512 MB of memory is free'))).toBe(true);
+    expect(loop.queuedFor('BL-3')).toMatchObject({ place: 1 });
+    loop.dispose();
+  });
+
+  it('does nothing when Prioritize is asked for an item that does not wait', async () => {
+    await loop.start('BL-1');
+    await loop.prioritize('BL-1');
+    expect(started()).toHaveLength(1);
+    expect(notes.filter((n) => n.startsWith('BL-1: You prioritized'))).toHaveLength(0);
+    loop.dispose();
+  });
+
+  it('pauses nothing when the picked agent finishes while the pick is open, and starts above the limit only while the ceiling allows', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4');
+    await loop.prioritize('BL-3');
+    await loop.prioritize('BL-4');
+    await loop.start('BL-5');
+    expect(started()).toHaveLength(4);
+    quick.choose = async (items) => {
+      // BL-1 ends while the pick is open: now one agent under the ceiling is free to spare, so BL-5 starts without a pause.
+      finish[0]({ code: 0 });
+      await settle();
+      return items.find((i) => i.id === 'BL-1');
+    };
+
+    await loop.prioritize('BL-5');
+    expect(started()).toHaveLength(5);
+    expect(started()[4]).toContain('BL-5');
+    expect(data.items.find((i) => i.id === 'BL-2')?.review).toMatchObject({ state: 'reviewing' });
+    expect(notes).toContain('BL-5: You prioritized it: an agent takes it up now.');
+    loop.dispose();
+  });
+
+  it('drops a prioritized start that changed while the pick was open, and pauses nothing for it', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4');
+    await loop.prioritize('BL-3');
+    await loop.prioritize('BL-4');
+    await loop.start('BL-5');
+    quick.choose = async (items) => {
+      // The ticket moves on while the user picks: the start for it is over.
+      data.items[4].status = 'done';
+      return items.find((i) => i.id === 'BL-1');
+    };
+
+    await loop.prioritize('BL-5');
+    expect(started()).toHaveLength(4);
+    expect(data.items.find((i) => i.id === 'BL-1')?.review).toMatchObject({ state: 'reviewing' });
+    expect(notes).toContain('BL-5: The start that waited is dropped: the ticket changed meanwhile.');
+    loop.dispose();
+  });
+
+  it('pauses nothing when the user picks no agent', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    await loop.start('BL-4');
+    await loop.prioritize('BL-3');
+    await loop.prioritize('BL-4');
+    await loop.start('BL-5');
+    quick.choose = () => undefined;
+    await loop.prioritize('BL-5');
+    expect(started()).toHaveLength(4);
+    expect(data.items.find((i) => i.id === 'BL-1')?.review).toMatchObject({ state: 'reviewing' });
     loop.dispose();
   });
 });
