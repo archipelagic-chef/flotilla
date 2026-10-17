@@ -1,4 +1,5 @@
 import type { HistoryRewrite, HistoryVersion } from './history';
+import type { MergedInfo, MergeState } from './merge';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -50,6 +51,9 @@ export interface BacklogItem {
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+  /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
+  merge?: MergeState;
+  merged?: MergedInfo;
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
