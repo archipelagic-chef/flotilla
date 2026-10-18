@@ -79,7 +79,11 @@ const moveAside = () => {
   if (linked.length === 0) return;
 
   // Worktrees inside the playground moved with it; any elsewhere stayed where they were.
-  const moved = linked.map(({ path: worktree }) => (worktree === dir || worktree.startsWith(dir + path.sep) || worktree.startsWith(`${dir}/`) ? target + worktree.slice(dir.length) : worktree));
+  // git lists them with / (C:/… on Windows); path.resolve gives them dir's separators to compare with.
+  const moved = linked.map(({ path: listed }) => {
+    const worktree = path.resolve(listed);
+    return worktree === dir || worktree.startsWith(dir + path.sep) ? target + worktree.slice(dir.length) : worktree;
+  });
   try {
     gitIn(target, 'worktree', 'repair', ...moved);
   } catch (err) {
