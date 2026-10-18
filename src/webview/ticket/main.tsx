@@ -875,11 +875,81 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
           </ActionButton>
         ))
       ) : (
-        ticket.canReview && (
-          <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
-            <i class="codicon codicon-eye" /> Review Again
-          </ActionButton>
-        )
+        <>
+          {ticket.canReview && (
+            <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
+              <i class="codicon codicon-eye" /> Review Again
+            </ActionButton>
+          )}
+          {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MergeButton({ into }: { into: string }) {
+  return (
+    <button
+      class="button"
+      onClick={() => send({ type: 'merge' })}
+      title="Merges its branch in a temporary worktree (git merge --no-ff), runs the checks there, then moves the base branch to the merge. Nothing is pushed."
+    >
+      <i class="codicon codicon-git-merge" /> Merge to {into}
+    </button>
+  );
+}
+
+/** A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve. */
+function MergingPanel({ ticket }: { ticket: TicketView }) {
+  const m = ticket.merging!;
+  const agent = m.agent ?? 'An agent';
+  const resolving = m.state === 'resolving' && m.running;
+  const [icon, cls, text] = resolving
+    ? ['git-merge', 'working', `${agent} is resolving the conflicts, in a temporary worktree; it reports below.`]
+    : m.state === 'resolved'
+      ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      : m.state === 'resolving'
+        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the conflicts aren't resolved.`]
+        : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
+  return (
+    <div class={`review-panel ${cls}`}>
+      <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
+      <span class="review-text">
+        <strong>Merging into {m.base}</strong> {text}
+      </span>
+      <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
+        <i class="codicon codicon-close" /> Cancel
+      </button>
+      {!resolving && m.state !== 'resolved' && (
+        <button class="button" onClick={() => send({ type: 'mergeResolve' })} title="An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve">
+          <i class="codicon codicon-hubot" /> Resolve with Agent
+        </button>
+      )}
+      {m.state !== 'resolving' && (
+        <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the resolved merge, then moves the base branch to it">
+          <i class="codicon codicon-check" /> Approve Resolution
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A merged ticket: where it went, and pushing the base branch (asks first). */
+function MergedPanel({ ticket }: { ticket: TicketView }) {
+  const m = ticket.item.merged!;
+  const u = ticket.unpushed;
+  return (
+    <div class="review-panel done">
+      <i class="codicon codicon-git-merge" />
+      <span class="review-text">
+        <strong>Merged into {m.into}</strong> {m.commit.slice(0, 7)} · {new Date(m.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+        {u ? ` · ${u.count} commit${u.count === 1 ? '' : 's'} not on ${u.remote} yet` : ''}
+      </span>
+      {u && (
+        <button class="button secondary" onClick={() => send({ type: 'push' })} title={`Pushes ${u.base} to ${u.remote} (asks first)`}>
+          <i class="codicon codicon-cloud-upload" /> Push…
+        </button>
       )}
     </div>
   );
@@ -2095,7 +2165,11 @@ function StateCard({ ticket }: { ticket: TicketView }) {
       {outsideAgents(ticket).map((a) => (
         <AgentStatus key={a.id} agent={a} />
       ))}
-      {ticket.review && !asking ? (
+      {ticket.merging ? (
+        <MergingPanel ticket={ticket} />
+      ) : ticket.item.merged ? (
+        <MergedPanel ticket={ticket} />
+      ) : ticket.review && !asking ? (
         <ReviewPanel ticket={ticket} />
       ) : ticket.rewrite ? (
         <CleanUpPanel ticket={ticket} />

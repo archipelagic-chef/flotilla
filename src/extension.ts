@@ -24,6 +24,7 @@ import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
+import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
@@ -168,8 +169,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     githubApi: devGitHubApi(context.extensionMode),
     onCiFinished: (items) => ciNotifier.notify(items),
   });
+  // Merge to main (BL-54): it moves its ticket to Done itself, saying what it merged, so the merge watcher leaves those to it.
+  const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
-  const merges = new Merges({ backlog, mainRoot: location.mainRoot });
+  const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });
   sidebar.useMerges(merges);
   context.subscriptions.push(
     repository.onDidChange(() => void merges.refresh()),
@@ -192,8 +195,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
-  const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, isLeader: () => leader.isLeader });
-  context.subscriptions.push(reviews, trackTerminals());
+  const reviews = new ReviewLoop({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    isLeader: () => leader.isLeader,
+    onApproved: (id, by) => merger.approved(id, by),
+  });
+  context.subscriptions.push(reviews, merger, trackTerminals());
+  const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {
+      let id = backlogIdOf(arg);
+      if (!id) {
+        const ready = (await backlog.read()).items.filter(readyToMerge);
+        id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;
+      }
+      if (id) await merger.merge(id).catch(reportError);
+    }),
+    vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
+  );
   // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
   const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (card?: unknown) => {
     let id = backlogIdOf(card);
@@ -216,6 +239,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(backlog.watch(() => noteDescriptions()));
   noteDescriptions();
   tickets.useReviews(reviews);
+  tickets.useMerger(merger);
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);
