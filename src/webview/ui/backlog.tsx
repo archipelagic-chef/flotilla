@@ -547,6 +547,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
               <i class="codicon codicon-play" />
             </button>
           )}
+          {!done && !item.creating && <CreateWorktreeIcons id={item.id} another={worktrees.length > 0} />}
           {remote ? (
             <a class="icon" href={remote.url} aria-label={`Open in ${remote.label}`}>
               <i class="codicon codicon-link-external" />
@@ -577,6 +578,50 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * A card's Create Worktree, as the ticket's (a split button): a click creates a new worktree at once, its branch named
+ * without asking; the arrow's menu names the branch first.
+ */
+function CreateWorktreeIcons({ id, another }: { id: string; another: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => (e instanceof KeyboardEvent ? e.key === 'Escape' : !box.current?.contains(e.target as Node)) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  const label = another ? 'Add a Worktree' : 'Create Worktree';
+  return (
+    <span class="split-icons" ref={box}>
+      <button class="icon" aria-label={label} data-tip={`${label}: a new worktree and branch for it at once, without an agent`} onClick={() => send({ type: 'backlog', op: 'createWorktree', id })}>
+        <i class="codicon codicon-git-branch" />
+      </button>
+      <button class="icon more" aria-label="More Ways to Create a Worktree…" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <i class="codicon codicon-chevron-down" />
+      </button>
+      {open && (
+        <span class="menu priority-menu split-menu" role="menu">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              send({ type: 'backlog', op: 'createWorktree', id, named: true });
+            }}
+          >
+            <i class="codicon codicon-edit" />
+            {another ? 'Add a Worktree with Branch Name…' : 'Create Worktree with Branch Name…'}
+          </button>
+        </span>
+      )}
+    </span>
   );
 }
 

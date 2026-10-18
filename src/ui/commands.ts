@@ -127,6 +127,9 @@ export function registerCommands(ctx: CommandContext): void {
   register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
   // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
   register('flotilla.startBacklogItemFromCard', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }));
+  // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
+  register('flotilla.createBacklogWorktree', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }));
+  register('flotilla.createBacklogWorktreeNamed', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }));
   register('flotilla.renameBacklogItem', (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)));
   register('flotilla.deleteBacklogItem', (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)));
   register('flotilla.selectBacklogWorktree', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false));

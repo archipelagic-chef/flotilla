@@ -266,6 +266,23 @@ button {
 .chat:focus-within .hover-actions {
   display: flex;
 }
+/* A card's Create Worktree: the icon and its arrow, close together, the arrow's menu under them (BL-66). */
+.split-icons {
+  position: relative;
+  display: inline-flex;
+}
+.split-icons .icon.more {
+  width: 14px;
+  min-width: 14px;
+}
+.split-icons .icon.more .codicon {
+  font-size: 12px;
+}
+.split-icons .split-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+}
 .hover-actions + .letter,
 .hover-actions + .badge {
   margin-left: 4px;
