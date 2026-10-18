@@ -20,7 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
-import { mapFor, mapNote, type CodeMap } from '../features/backlog/codeMap';
+import { clashFiles, mapFor, mapNote, type Clash, type CodeMap } from '../features/backlog/codeMap';
 import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
@@ -64,6 +64,8 @@ export interface CommandContext {
   backlog: LocalBacklog;
   tickets: TicketPanels;
   integrations: BacklogIntegrations;
+  /** Why the autopilot holds a To Do ticket back (BL-71), if it does: a start by hand says so. Set once it's made. */
+  clashOf?(id: string): Clash | undefined;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -448,6 +450,13 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   await enforceCommitPrefix(ctx, ws, item.id);
   // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
   if (!remote) await ctx.backlog.change((d) => setStartFailed(updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }), id));
+  // Held back by the autopilot for a clash (BL-71): started anyway, which the ticket and a notice say.
+  const clash = !remote && item.status === 'todo' ? ctx.clashOf?.(item.id) : undefined;
+  if (clash) {
+    const body = `Started by hand despite the clash with ${clash.with} (in progress): both change ${clashFiles(clash)}. Its work may need redoing once ${clash.with} is merged.`;
+    await ctx.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
+    void vscode.window.showInformationMessage(`${item.id} started despite the clash with ${clash.with}: both change ${clash.files.slice(0, 3).join(', ')}${clash.files.length > 3 ? ', …' : ''}.`);
+  }
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
 }

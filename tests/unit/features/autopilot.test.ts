@@ -252,3 +252,106 @@ describe('the autopilot and tickets that depend on others', () => {
     pilot.dispose();
   });
 });
+
+describe('the autopilot and tickets whose files clash with work in progress', () => {
+  it('passes over a To Do ticket whose named file a ticket in progress changes, notes it once, and not when turned off (BL-71)', async () => {
+    vi.resetModules();
+    let avoidClashes = true;
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (k: string, d: unknown) => (k === 'autopilot.avoidClashes' ? avoidClashes : d) }) },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
+    const path = await import('node:path');
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const { git, initRepo, makeTempDir, removeDir, writeFile } = await import('../../helpers/gitRepo');
+    // The repository: src/a.ts on main; BL-2's worktree (in progress) commits a change to it.
+    const main = initRepo();
+    const wt = path.join(makeTempDir(), 'bl-2');
+    try {
+      writeFile(main, 'src/a.ts', '1');
+      writeFile(main, 'src/b.ts', '1');
+      git(main, 'add', '.');
+      git(main, 'commit', '-qm', 'files');
+      git(main, 'worktree', 'add', '-q', '-b', 'feature/BL-2-busy', wt);
+      writeFile(wt, 'src/a.ts', '2');
+      git(wt, 'commit', '-qam', 'BL-2: change a');
+      const at = '2026-10-11T00:00:00Z';
+      const data = {
+        version: 1 as const,
+        next: 5,
+        items: [
+          { id: 'BL-1', title: 'Clashes', status: 'todo' as const, created: at },
+          { id: 'BL-2', title: 'Busy', status: 'doing' as const, created: at },
+          { id: 'BL-3', title: 'Free', status: 'todo' as const, created: at },
+        ],
+      };
+      const descriptions: Record<string, string> = { 'BL-1': 'Change `src/a.ts`.', 'BL-3': 'Change `src/b.ts`.' };
+      const activity: Record<string, Array<{ date: string; author: string; body: string }>> = {};
+      const appendActivity = vi.fn(async (i: { id: string }, e: { date: string; author: string; body: string }) => void (activity[i.id] ??= []).push(e));
+      const prepareWorktree = vi.fn(async () => undefined);
+      const make = () =>
+        new Autopilot({
+          backlog: {
+            dir: '/unused',
+            watch: () => ({ dispose() {} }),
+            ensureDir: async () => undefined,
+            read: async () => data,
+            readTicketCached: async (i: { id: string }) => ({ description: descriptions[i.id] ?? '', activity: activity[i.id] ?? [] }),
+            appendActivity,
+            change: async () => data,
+          },
+          repository: {
+            current: [
+              { worktree: { isMain: true, path: main, branch: 'main' } },
+              { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } },
+            ],
+          },
+          reviews: { running: 0, limit: 2, waitingCount: 0, canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+          leader: { isLeader: true, check: () => true },
+          output: { appendLine() {} },
+          key: async () => 'key',
+          prepareWorktree,
+        } as never);
+      // Switched on once the constructor's read of the (missing) switch is done, which would turn it off again.
+      const switchOn = async (p: InstanceType<typeof Autopilot>) => {
+        await (p as unknown as { refresh(): Promise<void> }).refresh();
+        (p as unknown as { on: boolean }).on = true;
+      };
+      const started = () => prepareWorktree.mock.calls.map((c) => (c as unknown as [{ id: string }])[0].id);
+
+      const pilot = make();
+      await switchOn(pilot);
+      await pilot.tick();
+      expect(started()).toEqual(['BL-3']);
+      expect(pilot.clashOf('BL-1')).toEqual({ with: 'BL-2', files: ['src/a.ts'] });
+      expect(pilot.clashOf('BL-3')).toBeUndefined();
+      expect(activity['BL-1']).toHaveLength(1);
+      expect(activity['BL-1'][0].body).toMatch(/^The autopilot holds it back: it would change `src\/a\.ts`, which BL-2 \(in progress\) changes too\./);
+      // Another pass, and another window after a reload (its own memory): the ticket already says so.
+      await pilot.tick();
+      pilot.dispose();
+      const reloaded = make();
+      await switchOn(reloaded);
+      await reloaded.tick();
+      expect(activity['BL-1']).toHaveLength(1);
+      // BL-3's start failed (no worktree here), so the first window doesn't try it again; the reloaded one does. BL-1 never.
+      expect(started()).toEqual(['BL-3', 'BL-3']);
+
+      // Turned off: nothing is held.
+      avoidClashes = false;
+      await reloaded.tick();
+      expect(reloaded.clashOf('BL-1')).toBeUndefined();
+      expect(started().at(-1)).toBe('BL-1');
+      reloaded.dispose();
+    } finally {
+      git(main, 'worktree', 'remove', '--force', wt);
+      removeDir(path.dirname(wt));
+      removeDir(main);
+    }
+  });
+});
