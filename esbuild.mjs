@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as esbuild from 'esbuild';
+import { seedKitOptions } from './scripts/seed-kit.mjs';
 
 const watch = process.argv.includes('--watch');
 
@@ -11,7 +12,7 @@ const host = await esbuild.context({
   target: 'node20',
   format: 'cjs',
   outfile: 'dist/extension.js',
-  external: ['vscode'],
+  external: ['vscode', 'original-fs'],
   sourcemap: true,
   banner: { js: "const __importMetaUrl = require('url').pathToFileURL(__filename).href;" },
   define: { 'import.meta.url': '__importMetaUrl' },
@@ -32,13 +33,16 @@ const webview = await esbuild.context({
   logLevel: 'info',
 });
 
+// The app's code the playground's seed uses (scripts/playground-seed.mjs), not part of the extension.
+const seedKit = await esbuild.context({ ...seedKitOptions, logLevel: 'info' });
+
 // Codicons for the webview (font + stylesheet), served from dist/ like the rest.
 fs.mkdirSync('dist/codicons', { recursive: true });
 for (const file of ['codicon.css', 'codicon.ttf']) fs.copyFileSync(`node_modules/@vscode/codicons/dist/${file}`, `dist/codicons/${file}`);
 
 if (watch) {
-  await Promise.all([host.watch(), webview.watch()]);
+  await Promise.all([host.watch(), webview.watch(), seedKit.watch()]);
 } else {
-  await Promise.all([host.rebuild(), webview.rebuild()]);
-  await Promise.all([host.dispose(), webview.dispose()]);
+  await Promise.all([host.rebuild(), webview.rebuild(), seedKit.rebuild()]);
+  await Promise.all([host.dispose(), webview.dispose(), seedKit.dispose()]);
 }

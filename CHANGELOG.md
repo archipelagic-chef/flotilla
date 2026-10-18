@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Worktrees take less space**: a done ticket's worktree is removed when nothing in it can be lost and nobody is using it, keeping its branch (`flotilla.removeFinishedWorktrees`), and **Flotilla: Kept Worktrees and Folders…** takes back a Keep; a new worktree can get big folders such as `node_modules` as hard links to the main worktree's (`flotilla.linkFolders`).
+
+- **Tickets stay current with main**: open tickets' branches are checked against main when it moves (a merge in memory); a conflict shows on the card and in the ticket, *Update from Main* merges main in (or hands the conflicts to the ticket's agent), and a ticket can depend on another ("Depends on: BL-12").
+
 - **Pause, Resume and Stop any agent on a ticket**: implementers, reviewers and the autopilot's agents, without a window or in a terminal, from the ticket (its Agents rows and status card) or the backlog card's menu. Paused tickets show a *Paused* badge.
 
 ## 0.2.0 (preview)

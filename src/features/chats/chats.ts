@@ -35,6 +35,25 @@ export interface TranscriptInfo {
   /** The model and effort of its last reply (the user can switch them during a chat). */
   model?: string;
   effort?: string;
+  /** Its token use so far (its own replies; subagents' aren't counted). */
+  usage?: ChatUsage;
+}
+
+/**
+ * A chat's token use, from its transcript (BL-70). Every reply re-reads the whole context, so `context` (the last
+ * reply's) is what each further turn costs, and `reRead` adds up to most of a long chat's cost.
+ */
+export interface ChatUsage {
+  turns: number;
+  /** The context of its last reply: input, read from the cache and written to it. */
+  context: number;
+  /** Read from the cache, in all. */
+  reRead: number;
+  /** Written to the cache, in all. */
+  written: number;
+  output: number;
+  /** The same command failed this many times in a row, with no edit in between (an agent going round in circles). */
+  failStreak: number;
 }
 
 export interface Chat {
@@ -57,6 +76,7 @@ export interface Chat {
   /** The model and effort of its last reply, from its transcript. */
   model?: string;
   effort?: string;
+  usage?: ChatUsage;
 }
 
 const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1, done: 2, ended: 3 };
@@ -246,7 +266,38 @@ export function encodeProjectDir(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
-const transcriptCache = new Map<string, { mtimeMs: number; size: number; info: TranscriptInfo }>();
+/** What a transcript's lines say so far. Transcripts only grow, so this is kept and new lines are added to it. */
+interface TranscriptScan {
+  aiTitle?: string;
+  customTitle?: string;
+  firstPrompt?: string;
+  startedAt?: Date;
+  model?: string;
+  effort?: string;
+  usage?: ChatUsage;
+  /** The reply last counted (one reply can be written over several lines). */
+  lastReply?: string;
+  /** The Bash command whose result comes next, and the one failing in a row (see ChatUsage.failStreak). */
+  pending?: { id: string; command: string };
+  failing?: string;
+}
+
+/** A transcript as far as it has been read: the bytes before `offset` are in `scan`, and `head` identifies the file. */
+interface TranscriptCache {
+  ino: number;
+  mtimeMs: number;
+  size: number;
+  head: Buffer;
+  offset: number;
+  scan: TranscriptScan;
+  info: TranscriptInfo;
+}
+
+const transcriptCache = new Map<string, TranscriptCache>();
+/** Bytes from the start of a file that identify it: a file whose start changed was rewritten. */
+const HEAD_BYTES = 256;
+/** Transcripts are read in chunks this big, and the event loop gets a turn between chunks. */
+const CHUNK_BYTES = 256 * 1024;
 
 function promptText(content: unknown): string | undefined {
   if (typeof content === 'string') return text(content);
@@ -257,59 +308,178 @@ function promptText(content: unknown): string | undefined {
   return undefined;
 }
 
-/** Reads a transcript's title (the latest `ai-title`), first prompt and start time. */
-export function parseTranscript(sessionId: string, raw: string, updatedAt: Date): TranscriptInfo {
-  const info: TranscriptInfo = { sessionId, updatedAt };
-  let custom: string | undefined;
-  for (const line of raw.split('\n')) {
-    if (!line) continue;
-    const isTitle = line.includes('"ai-title"') || line.includes('"custom-title"');
-    const isUser = !info.firstPrompt && line.includes('"type":"user"');
-    if (!isTitle && !isUser && info.startedAt) continue;
-    let entry: Record<string, unknown>;
-    try {
-      entry = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
+/** Adds one line of a transcript (a JSON object, or nothing) to what has been read. */
+function scanLine(scan: TranscriptScan, line: string): void {
+  if (!line) return;
+  const isTitle = line.includes('"ai-title"') || line.includes('"custom-title"');
+  const isUser = !scan.firstPrompt && line.includes('"type":"user"');
+  const isReply = line.includes('"type":"assistant"');
+  const isResult = !!scan.pending && line.includes('"tool_result"');
+  if (!isTitle && !isUser && !isReply && !isResult && scan.startedAt) return;
+  let entry: {
+    type?: unknown;
+    timestamp?: unknown;
+    isSidechain?: unknown;
+    isMeta?: unknown;
+    aiTitle?: unknown;
+    customTitle?: unknown;
+    effort?: unknown;
+    message?: { id?: unknown; model?: unknown; content?: unknown; usage?: Record<string, unknown> };
+  };
+  try {
+    entry = JSON.parse(line) as typeof entry;
+  } catch {
+    return;
+  }
+  scan.startedAt ??= toDate(entry.timestamp);
+  if (entry.type === 'ai-title') scan.aiTitle = text(entry.aiTitle) ?? scan.aiTitle;
+  else if (entry.type === 'custom-title') scan.customTitle = text(entry.customTitle) ?? scan.customTitle;
+  else if (entry.type === 'user' && !entry.isSidechain) {
+    if (!scan.firstPrompt && !entry.isMeta) scan.firstPrompt = promptText(entry.message?.content)?.slice(0, 200);
+    if (scan.pending) watchResult(scan, entry.message?.content);
+  } else if (entry.type === 'assistant' && !entry.isSidechain) {
+    // The model and effort are the last reply's (not a subagent's). An effort belongs to the reply it came with.
+    if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') {
+      scan.model = entry.message.model;
+      scan.effort = undefined;
     }
-    info.startedAt ??= toDate(entry.timestamp);
-    if (entry.type === 'ai-title') info.title = text(entry.aiTitle) ?? info.title;
-    else if (entry.type === 'custom-title') custom = text(entry.customTitle) ?? custom;
-    else if (entry.type === 'user' && !info.firstPrompt && !entry.isSidechain && !entry.isMeta) {
-      info.firstPrompt = promptText((entry.message as { content?: unknown } | undefined)?.content)?.slice(0, 200);
+    if (typeof entry.effort === 'string') scan.effort = entry.effort;
+    countUsage(scan, entry.message);
+    watchTools(scan, entry.message?.content);
+  }
+}
+
+const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+/** Adds a reply's tokens (once per reply: its lines carry the same usage). */
+function countUsage(scan: TranscriptScan, message: { id?: unknown; usage?: Record<string, unknown> } | undefined): void {
+  const u = message?.usage;
+  if (!u) return;
+  const id = typeof message.id === 'string' ? message.id : undefined;
+  if (id && id === scan.lastReply) return;
+  scan.lastReply = id;
+  const before = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+  const read = num(u.cache_read_input_tokens);
+  const written = num(u.cache_creation_input_tokens);
+  scan.usage = {
+    ...before,
+    turns: before.turns + 1,
+    context: num(u.input_tokens) + read + written,
+    reRead: before.reRead + read,
+    written: before.written + written,
+    output: before.output + num(u.output_tokens),
+  };
+}
+
+/** Notes a Bash call (its result comes next), and an edit (which ends a run of failures: the agent changed something). */
+function watchTools(scan: TranscriptScan, content: unknown): void {
+  if (!Array.isArray(content)) return;
+  for (const part of content as Array<{ type?: unknown; id?: unknown; name?: unknown; input?: { command?: unknown } }>) {
+    if (part?.type !== 'tool_use') continue;
+    if (part.name === 'Bash' && typeof part.id === 'string' && typeof part.input?.command === 'string') {
+      scan.pending = { id: part.id, command: part.input.command.trim() };
+    } else if (part.name === 'Edit' || part.name === 'Write' || part.name === 'MultiEdit' || part.name === 'NotebookEdit') {
+      scan.failing = undefined;
+      if (scan.usage) scan.usage = { ...scan.usage, failStreak: 0 };
     }
   }
-  // The model and effort: its last reply's (not a subagent's).
-  const lines = raw.split('\n');
-  for (let n = lines.length - 1; n >= 0; n--) {
-    const line = lines[n];
-    if (!line.includes('"type":"assistant"')) continue;
-    let entry: { type?: unknown; isSidechain?: unknown; effort?: unknown; message?: { model?: unknown } };
-    try {
-      entry = JSON.parse(line) as typeof entry;
-    } catch {
-      continue;
-    }
-    if (entry.type !== 'assistant' || entry.isSidechain) continue;
-    if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') info.model = entry.message.model;
-    if (typeof entry.effort === 'string') info.effort = entry.effort;
-    if (info.model) break;
+}
+
+/** Counts a failed result of the same command again: its success ends the run, another command failing starts a new one. */
+function watchResult(scan: TranscriptScan, content: unknown): void {
+  if (!Array.isArray(content) || !scan.pending) return;
+  const result = (content as Array<{ type?: unknown; tool_use_id?: unknown; is_error?: unknown }>).find(
+    (p) => p?.type === 'tool_result' && p.tool_use_id === scan.pending!.id,
+  );
+  if (!result) return;
+  const { command } = scan.pending;
+  scan.pending = undefined;
+  const usage = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+  if (result.is_error !== true) {
+    if (scan.failing === command) scan.failing = undefined;
+    scan.usage = { ...usage, failStreak: scan.failing ? usage.failStreak : 0 };
+    return;
   }
+  scan.usage = { ...usage, failStreak: scan.failing === command ? usage.failStreak + 1 : 1 };
+  scan.failing = command;
+}
+
+function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): TranscriptInfo {
   // A title the user set wins; Flotilla's own "<worktree>: <AI title>" tag is shown without the worktree.
-  if (custom && !(info.title && custom.endsWith(`: ${info.title}`))) info.title = custom;
-  return info;
+  const custom = scan.customTitle;
+  const title = custom && !(scan.aiTitle && custom.endsWith(`: ${scan.aiTitle}`)) ? custom : scan.aiTitle;
+  return {
+    sessionId,
+    updatedAt,
+    ...optional('title', title),
+    ...optional('firstPrompt', scan.firstPrompt),
+    ...optional('startedAt', scan.startedAt),
+    ...optional('model', scan.model),
+    ...optional('effort', scan.effort),
+    ...optional('usage', scan.usage),
+  };
+}
+
+/** Reads a transcript's title (the latest `ai-title`), first prompt, start time, and model and effort. */
+export function parseTranscript(sessionId: string, raw: string, updatedAt: Date): TranscriptInfo {
+  const scan: TranscriptScan = {};
+  for (const line of raw.split('\n')) scanLine(scan, line);
+  return infoOf(sessionId, scan, updatedAt);
+}
+
+/**
+ * Feeds the complete lines of a file from `from` up to `to` into `onLine`, in chunks. A last line without its newline
+ * waits for the next read. Returns the offset after the last line fed.
+ */
+async function readLines(handle: fs.FileHandle, from: number, to: number, onLine: (line: string) => void): Promise<number> {
+  const buf = Buffer.alloc(Math.min(CHUNK_BYTES, Math.max(0, to - from)));
+  let consumed = from;
+  let pending: Buffer[] = [];
+  for (let pos = from; pos < to; ) {
+    const { bytesRead } = await handle.read(buf, 0, Math.min(buf.length, to - pos), pos);
+    if (bytesRead === 0) break;
+    const data = buf.subarray(0, bytesRead);
+    let start = 0;
+    for (let nl = data.indexOf(0x0a); nl !== -1; nl = data.indexOf(0x0a, start)) {
+      const tail = data.subarray(start, nl);
+      onLine((pending.length ? Buffer.concat([...pending, tail]) : tail).toString('utf8'));
+      pending = [];
+      start = nl + 1;
+      consumed = pos + start;
+    }
+    if (start < bytesRead) pending.push(Buffer.from(data.subarray(start)));
+    pos += bytesRead;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  return consumed;
 }
 
 async function readTranscriptFile(file: string, sessionId: string): Promise<TranscriptInfo | undefined> {
+  let handle: fs.FileHandle | undefined;
   try {
     const stat = await fs.stat(file);
     const cached = transcriptCache.get(file);
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.info;
-    const info = parseTranscript(sessionId, await fs.readFile(file, 'utf8'), stat.mtime);
-    transcriptCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, info });
+    if (cached && cached.ino === stat.ino && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.info;
+    handle = await fs.open(file, 'r');
+    const head = Buffer.alloc(Math.min(HEAD_BYTES, stat.size));
+    await handle.read(head, 0, head.length, 0);
+    // Only lines after the last read are read again, if the file is the same one and only grew. Otherwise, from the start.
+    const grew =
+      cached !== undefined &&
+      cached.ino === stat.ino &&
+      stat.size >= cached.offset &&
+      head.length >= cached.head.length &&
+      head.subarray(0, cached.head.length).equals(cached.head);
+    const scan: TranscriptScan = grew ? { ...cached.scan } : {};
+    const offset = await readLines(handle, grew ? cached.offset : 0, stat.size, (line) => scanLine(scan, line));
+    const info = infoOf(sessionId, scan, stat.mtime);
+    // Offset, scan and info are stored together, so a read that overlapped another one never leaves them inconsistent.
+    transcriptCache.set(file, { ino: stat.ino, mtimeMs: stat.mtimeMs, size: stat.size, head, offset, scan, info });
     return info;
   } catch {
     return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 
@@ -372,6 +542,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('startedAt', r.startedAt ?? t?.startedAt),
       ...optional('model', t?.model),
       ...optional('effort', t?.effort),
+      ...optional('usage', t?.usage),
     });
   }
   for (const t of transcripts) {
@@ -388,6 +559,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('startedAt', t.startedAt),
       ...optional('model', t.model),
       ...optional('effort', t.effort),
+      ...optional('usage', t.usage),
     });
   }
   return [...byId.values()].sort(

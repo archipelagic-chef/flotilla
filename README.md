@@ -46,8 +46,8 @@ The **Backlog** keeps the repository's work as tickets, in `.flotilla/backlog/` 
 - **Agents on tickets**: *Start an Agent* opens a Claude Code chat in the ticket's worktree (created if needed). Agents report in the ticket, start commit messages with its id (a commit-msg hook checks it), keep its description up to date, ask when they need you, and end with "Ready for review." Pick each ticket's model and effort; with one chosen, the agent runs as a Claude Code session in a terminal.
 - **Any chat works through the backlog**: chats learn about it from `AGENTS.md` next to it, claim or add tickets through its inbox, and can split work into sub-tickets (as proposals you accept, or straight in: `flotilla.backlog.agentTickets`).
 - **Reviews**: a reviewer agent reviews work in review and gives a verdict; requested changes go back to the implementer. Review it yourself with *Approve* and *Request Changes*; the agent picks your changes up, asking first if it needs to. A stopped review offers the fixes for why it stopped.
-- **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.autopilot.maxAgents` at once. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
-- **Pause, Resume and Stop** any agent on a ticket, from its *Agents* row, the ticket's status card, or the backlog card's right-click menu. Pause ends it now and keeps its chat and its (uncommitted) work; *Resume* goes on in the same chat, which checks `git status` first. A paused agent doesn't count towards `flotilla.autopilot.maxAgents`, and the autopilot leaves its ticket alone. A stopped agent offers *Resume* or *New Agent*. Agents in a terminal are ended through their terminal's process; an agent in Claude Code's panel can only be stopped there (the ticket offers to open its chat).
+- **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.agents.maxRunning` agents at once, shared with the reviews. Starts Flotilla makes on its own wait in a queue when that's reached: your replies to an agent first, then reviews and revisions, then resumes, then new tickets. **Prioritize** (in a ticket's queued note, or in Needs you) starts a queued start now, above the limit, up to `flotilla.agents.maxPrioritized` extra agents; at that ceiling it asks which running agent to pause for it. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
+- **Current with main**: when main moves, each open ticket's branch is merged with it in memory (no worktree touched); one that would conflict says "conflicts with main" on its card and in its ticket, while its agent is still around. *Update from Main* in the ticket merges main into the branch, or has the ticket's agent do it when that conflicts. Agents merge main and run the checks before "Ready for review.", never merge other tickets' branches, and write "Depends on: BL-12" in the description when they need another ticket's work: the ticket then waits for it (the autopilot doesn't start it).
 - **History clean-up**: rewrite a ticket's branch into a few clean commits (an agent with you, or yourself); the old history is kept under `refs/flotilla/history/`.
 - **Jira and GitHub Issues**: list their issues in the backlog, link local tickets to them, and post comments, change status and priority, or create issues from a ticket. Every write asks you first; agents are told never to change trackers.
 
@@ -71,13 +71,16 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 |---|---|---|
 | `flotilla.copyFiles` | `[]` | Globs copied from the main worktree on create |
 | `flotilla.setupCommand` | `""` | Run in a terminal in the new worktree |
+| `flotilla.linkFolders` | `[]` | Folders (e.g. `node_modules`) a new worktree gets as hard links to the main worktree's: no extra space |
+| `flotilla.removeFinishedWorktrees` | `auto` | Remove a done ticket's worktree when nothing in it can be lost (`ask`, `off`); its branch is kept |
 | `flotilla.autoAdopt` | `true` | Make in-repo worktrees portable automatically |
 | `flotilla.defaultBase` | `""` | Base branch for progress and compare |
 | `flotilla.activeWindowMinutes` | `5` | Activity → active threshold |
 | `flotilla.staleAfterDays` | `7` | Activity → stale threshold |
 | `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
-| `flotilla.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
-| `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
+| `flotilla.notify` | `needsYou` | Notifications for what needs you: `needsYou` (one a minute, gathered), `all` (each as it happens), or `off` |
+| `flotilla.ci.notify` | `failures` | Notify when a CI run on a worktree's branch finishes: `failures`, `all` or `off` |
+| `flotilla.pollSeconds` | `15` | Refresh interval for worktrees in use while the view is visible; other worktrees every few minutes |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |
 | `flotilla.backlog.commitPrefix` | `agents` | Whose commits in a ticket's worktree must start with its id: `agents`, `everyone` or `off` |
@@ -85,8 +88,17 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.review.automatic` | `true` | A reviewer agent reviews work that goes to review |
 | `flotilla.review.maxRounds` | `3` | Review rounds before the decision is left to you |
 | `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
+| `flotilla.agents.lightModel` | `""` | Model for tickets marked Light (small, mechanical work). Reviewed by `flotilla.agents.model`, and moved up to it when the work turns out hard. Empty: no ticket is Light |
+| `flotilla.agents.autoCompactWindow` | `200000` | Context size agents compact against, so each turn re-reads less. 0: Claude Code's own |
+| `flotilla.agents.subagentModel` | `"sonnet"` | Model of agents' search subagents (never stronger than the agent's own). Empty: the agent's own |
+| `flotilla.agents.guardOutput` | `true` | Refuse whole reads of big files and whole large diffs, with how to look instead |
+| `flotilla.agents.tokenBudget` | `25` | Millions of tokens an agent may re-read before it's stopped and its ticket asks you; agents repeating a failing command are stopped too. 0: no budget |
+| `flotilla.chats.bigContext` | `200000` | Context size at which a chat is marked big, and you're told once what it costs. 0: never |
+| `flotilla.agents.lean` | `true` | Start agents without your skills, plugins and MCP servers, with the coding tools only: a quarter less context re-read every turn |
 | `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
-| `flotilla.autopilot.maxAgents` | `2` | How many agents the autopilot runs at once |
+| `flotilla.autopilot.avoidClashes` | `true` | The autopilot holds back a ticket that would change files a ticket in progress changes, until that one is merged |
+| `flotilla.agents.maxRunning` | `2` | How many agents run at once, in all (the autopilot's, reviews, resumes); the rest wait in a queue |
+| `flotilla.agents.maxPrioritized` | `2` | How many agents Prioritize may run above `maxRunning` at once; at this ceiling it asks which running agent to pause |
 | `flotilla.agents.permissionMode` | `auto` | What agents without a window may do (user settings only) |
 | `flotilla.agents.claudePath` | `""` | The Claude Code CLI agents run with (user settings only) |
 

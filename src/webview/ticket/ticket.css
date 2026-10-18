@@ -230,6 +230,24 @@ h2 {
   padding: 0;
   background: none;
 }
+/* A run block in an agent's report: its kind and title, and the Run button, above its commands. */
+.run-block {
+  margin: 8px 0;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+}
+.run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--muted);
+}
+.run-block pre {
+  margin: 0;
+  border-radius: 0 0 4px 4px;
+}
 .rendered blockquote {
   margin: 0;
   padding-left: 10px;
@@ -279,6 +297,63 @@ h2 {
 .entry.kind-history {
   border-style: dashed;
   border-left-style: solid;
+}
+/* An agent's report: its summary, what it needs from you (answered by clicking), and its details, folded. */
+.report-details {
+  margin-top: 6px;
+}
+.report-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.needs {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--waiting);
+  border-radius: 3px;
+}
+.needs.answered {
+  border-left-color: var(--border);
+}
+.needs-line {
+  margin-bottom: 2px;
+}
+.needs-line > .codicon {
+  color: var(--waiting);
+}
+.question {
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+.question > legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.answer-text {
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.choice .recommended {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.needs .actions-row {
+  margin-top: 8px;
 }
 .entry-head {
   display: flex;
@@ -344,6 +419,15 @@ h2 {
   color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
   background: var(--vscode-inputValidation-warningBackground, transparent);
   border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
+}
+.main-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.main-note .main-note-action {
+  margin-left: auto;
 }
 .properties {
   display: flex;
@@ -414,6 +498,25 @@ h2 {
 .dropdown {
   position: relative;
   display: inline-flex;
+}
+/* Create Worktree ▾: the main action and a menu of the other way, as Commit ▾ in Version Control. */
+.split-button {
+  position: relative;
+  display: inline-flex;
+  gap: 1px;
+}
+.split-button > .button:first-child {
+  border-radius: 2px 0 0 2px;
+}
+.split-button > .button.more {
+  padding: 2px 4px;
+  border-radius: 0 2px 2px 0;
+  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
+}
+.split-button > .priority-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
 }
 .remote-meta {
   display: flex;
@@ -941,22 +1044,112 @@ button.work-row:hover {
 .agent-choice.unset > .priority-button {
   color: var(--vscode-descriptionForeground);
 }
-/* A commit among the activity: one quiet line, without a box. */
-.entry.kind-commit {
-  padding: 0 12px;
-  border: none;
+/* The state card's ask: the question, and its numbered options as the answers. */
+.review-panel.ask {
+  align-items: flex-start;
 }
-.commit-line {
+.ask-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-question {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* The description folds to its first lines when the ticket has activity. */
+.description.folded {
+  max-height: 9em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 65%, transparent);
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+.fold-toggle {
+  margin-top: 4px;
+}
+
+/* Older entries fold to one line each, opened by a click. */
+.entry.folded {
+  padding: 0;
+}
+.entry-fold {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
   min-width: 0;
+  padding: 6px 12px;
   font-size: 12px;
   color: var(--vscode-foreground);
   text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
-.commit-line .subject {
+.entry-fold strong {
+  font-weight: 600;
+}
+.entry-fold .fold-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.fold-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+.activity-toggle {
+  margin: 4px 0 8px;
+}
+
+/* Flotilla's notes and the commits: a compact, grey timeline. */
+.timeline {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0 0 0 10px;
+  border-left: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.timeline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+}
+button.timeline-item {
+  cursor: pointer;
+}
+button.timeline-item:hover .timeline-text {
+  text-decoration: underline;
+}
+.timeline-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -966,33 +1159,60 @@ button.work-row:hover {
 .commit-line:hover .subject {
   text-decoration: underline;
 }
-.agent-row {
-  padding: 0 8px 0 0;
+/* A review's rounds, folded into one line (rounds.ts); opened, its entries and commits show in order. */
+.entry.kind-review {
+  padding: 0 12px;
+  border: none;
 }
-.agent-row .agent-open {
-  flex: 1;
-  min-width: 0;
+.review-fold {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--vscode-foreground);
   text-align: left;
 }
-.agent-actions {
-  flex: none;
-  display: flex;
-  gap: 2px;
+.review-fold > .codicon {
+  font-size: 14px;
 }
-.icon-button {
+.review-fold:hover span {
+  text-decoration: underline;
+}
+.fold-items {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.review-panel.stopped {
+  border-left-color: var(--error);
+}
+.review-panel.stopped > .codicon {
+  color: var(--error);
+}
+
+/* An action in progress: "working…" beside its button, or its comment sent and not yet confirmed. */
+.action-busy {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  color: var(--muted);
+  gap: 0.3em;
+  margin-left: 0.5em;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
 }
-.icon-button:hover {
-  color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
+.entry.sending {
+  opacity: 0.7;
+}
+.sending-body {
+  white-space: pre-wrap;
+}
+/* A Run button in a report, while the host runs it: its label says so (set on click, cleared when it's done). */
+.run-button[data-busy]::after {
+  content: "  " attr(data-busy);
+  font-style: italic;
 }

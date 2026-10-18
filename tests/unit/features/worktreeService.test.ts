@@ -133,7 +133,75 @@ describe('WorktreeService.list (adoption)', () => {
   });
 });
 
+describe('WorktreeService leftovers', () => {
+  it('removes a worktree whose ignored files have paths past 260 characters', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    writeFile(repo, '.gitignore', '.vscode-test/\n');
+    git(repo, 'add', '.gitignore');
+    git(repo, 'commit', '-q', '-m', 'ignore');
+    const s = service(repo);
+    const wt = await s.create({ kind: 'new', branch: 'feature/a-rather-long-branch-name-like-the-ones-tickets-get' });
+    const deep = path.join(wt.path!, '.vscode-test', ...Array.from({ length: 12 }, (_, i) => `folder-number-${i}-of-a-deep-tree`));
+    fs.mkdirSync(deep, { recursive: true });
+    fs.writeFileSync(path.join(deep, 'file.txt'), 'x');
+    expect(path.join(deep, 'file.txt').length).toBeGreaterThan(260);
+
+    await s.remove(wt, { force: false });
+
+    expect(fs.existsSync(wt.path!)).toBe(false);
+    expect(await s.leftovers()).toEqual([]);
+  });
+
+  it('finds folders in .worktrees that are no worktree any more, and deletes them without following links', async () => {
+    const repo = initRepo();
+    const outside = makeTempDir();
+    cleanup.push(repo, outside);
+    writeFile(outside, 'node_modules/pkg/index.js', 'keep me');
+    const s = service(repo);
+    const live = await s.create({ kind: 'new', branch: 'live' });
+    const left = path.join(repo, '.worktrees', 'half-removed');
+    writeFile(left, '.vscode-test/big.bin', 'x');
+    fs.mkdirSync(path.join(left, 'deep'), { recursive: true });
+    fs.symlinkSync(path.join(outside, 'node_modules'), path.join(left, 'deep', 'linked'), 'junction');
+    const fresh = path.join(repo, '.worktrees', 'being-added');
+    fs.mkdirSync(fresh);
+    const later = Date.now() + 60 * 60_000;
+    fs.utimesSync(fresh, new Date(later), new Date(later));
+
+    const found = await s.leftovers(Date.now() + 11 * 60_000);
+    expect(found.map((d) => path.basename(d))).toEqual(['half-removed']);
+    expect(found.some((d) => path.basename(d) === path.basename(live.path!))).toBe(false);
+
+    await expect(s.deleteLeftover(live.path!)).rejects.toThrow('not a leftover');
+    fs.utimesSync(left, new Date(0), new Date(0));
+    await s.deleteLeftover(left);
+
+    expect(fs.existsSync(left)).toBe(false);
+    expect(fs.readFileSync(path.join(outside, 'node_modules', 'pkg', 'index.js'), 'utf8')).toBe('keep me');
+  });
+});
+
 describe('WorktreeService.remove', () => {
+  it('removes an untracked link to a folder outside as a link, and keeps tracked links', async () => {
+    const repo = initRepo();
+    const outside = makeTempDir();
+    cleanup.push(repo, outside);
+    writeFile(outside, 'node_modules/pkg/index.js', 'keep me');
+    const s = service(repo);
+    const wt = await s.create({ kind: 'new', branch: 'feat' });
+    fs.symlinkSync(path.join(outside, 'node_modules'), path.join(wt.path!, 'node_modules.bl6'), 'junction');
+
+    expect((await s.removalRisks(wt)).changedFiles).toBe(0);
+    writeFile(wt.path!, 'notes.txt', 'mine');
+    expect((await s.removalRisks(wt)).changedFiles).toBe(1);
+
+    await s.remove(wt, { force: true });
+
+    expect(fs.existsSync(wt.path!)).toBe(false);
+    expect(fs.readFileSync(path.join(outside, 'node_modules', 'pkg', 'index.js'), 'utf8')).toBe('keep me');
+  });
+
   it('reports risks and refuses to remove a dirty worktree without force', async () => {
     const repo = initRepo();
     cleanup.push(repo);

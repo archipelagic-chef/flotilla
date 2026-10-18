@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildWorkstreams, findWorkstreamFor, type BuildOptions, type Workstream } from '../../../src/features/workstreams/workstream';
+import { buildWorkstreams, canReuseProgress, findWorkstreamFor, type BuildOptions, type Workstream } from '../../../src/features/workstreams/workstream';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
 import { git, initRepo, makeStatDirty, removeDir, writeFile } from '../../helpers/gitRepo';
 
@@ -111,5 +111,96 @@ describe('findWorkstreamFor', () => {
     expect(findWorkstreamFor(items, '/r/src/x.ts')).toBe(items[0]);
     expect(findWorkstreamFor(items, '/elsewhere/b/y')).toBe(items[3]);
     expect(findWorkstreamFor(items, '/other')).toBeUndefined();
+  });
+});
+
+describe('refreshing a snapshot', () => {
+  const refreshOpts = (repo: string, previous: readonly Workstream[], scope: Set<string>, now: Date): BuildOptions => ({
+    ...options(repo),
+    now,
+    refresh: { scope, previous, pollMs: 15_000 },
+  });
+
+  it('rebuilds the named worktrees and keeps the others as they were', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const service = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({ autoAdopt: true }));
+    const a = await service.create({ kind: 'new', branch: 'a' });
+    const b = await service.create({ kind: 'new', branch: 'b' });
+    const first = await buildWorkstreams(service, options(repo));
+    writeFile(a.path!, 'a.txt', 'x\n');
+    writeFile(b.path!, 'b.txt', 'y\n');
+
+    const soon = new Date(Date.now() + 1000);
+    const next = await buildWorkstreams(service, refreshOpts(repo, first, new Set([a.adminDir]), soon));
+    expect(next.find((i) => i.key === a.adminDir)!.changes).toEqual([{ path: 'a.txt', kind: 'untracked' }]);
+    expect(next.find((i) => i.key === b.adminDir)!.changes).toEqual([]);
+    expect(next.find((i) => i.key === b.adminDir)!.refreshedAt).toBe(first.find((i) => i.key === b.adminDir)!.refreshedAt);
+  });
+
+  it('rebuilds a worktree once its schedule says it is due', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const service = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({ autoAdopt: true }));
+    const a = await service.create({ kind: 'new', branch: 'a' });
+    const first = await buildWorkstreams(service, options(repo));
+    writeFile(a.path!, 'a.txt', 'x\n');
+
+    const later = new Date(Date.now() + 60_000);
+    const next = await buildWorkstreams(service, refreshOpts(repo, first, new Set(), later));
+    expect(next.find((i) => i.key === a.adminDir)!.changes).toEqual([{ path: 'a.txt', kind: 'untracked' }]);
+  });
+
+  it('reuses progress until HEAD, the base or the changes move', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const service = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({ autoAdopt: true }));
+    const a = await service.create({ kind: 'new', branch: 'a' });
+    const first = await buildWorkstreams(service, options(repo));
+    const prevA = first.find((i) => i.key === a.adminDir)!;
+
+    const same = (await buildWorkstreams(service, refreshOpts(repo, first, new Set([a.adminDir]), new Date(Date.now() + 1000)))).find(
+      (i) => i.key === a.adminDir,
+    )!;
+    expect(same.progress).toBe(prevA.progress);
+
+    writeFile(a.path!, 'a.txt', 'x\n');
+    git(a.path!, 'add', 'a.txt');
+    git(a.path!, 'commit', '-q', '-m', 'add a');
+    const moved = (await buildWorkstreams(service, refreshOpts(repo, first, new Set([a.adminDir]), new Date(Date.now() + 1000)))).find(
+      (i) => i.key === a.adminDir,
+    )!;
+    expect(moved.progress).not.toBe(prevA.progress);
+    expect(moved.progress).toMatchObject({ ahead: 1, lastSubject: 'add a' });
+  });
+});
+
+describe('canReuseProgress', () => {
+  const entry = (overrides: Partial<Workstream>): Workstream =>
+    ({
+      sync: { head: 'h1' },
+      changes: [{ path: 'a.txt', kind: 'modified' }],
+      lastActivity: new Date(1000),
+      progress: { base: 'main', baseHead: 'b1', ahead: 0, behind: 0, added: 0, deleted: 0, lastSubject: 's' },
+      ...overrides,
+    }) as unknown as Workstream;
+  const next = { head: 'h1', base: 'main', baseHead: 'b1', changes: [{ path: 'a.txt', kind: 'modified' as const }], last: new Date(1000) };
+
+  it('reuses progress when nothing it depends on moved', () => {
+    expect(canReuseProgress(entry({}), next)).toBe(true);
+  });
+
+  it('recomputes when HEAD, the base commit, the base name, the changes or their mtimes moved', () => {
+    const prev = entry({});
+    expect(canReuseProgress(prev, { ...next, head: 'h2' })).toBe(false);
+    expect(canReuseProgress(prev, { ...next, baseHead: 'b2' })).toBe(false);
+    expect(canReuseProgress(prev, { ...next, base: 'develop' })).toBe(false);
+    expect(canReuseProgress(prev, { ...next, changes: [] })).toBe(false);
+    expect(canReuseProgress(prev, { ...next, last: new Date(2000) })).toBe(false);
+  });
+
+  it('recomputes when the changes are more than the mtimes checked can cover', () => {
+    const many = Array.from({ length: 201 }, (_, i) => ({ path: `f${i}`, kind: 'modified' as const }));
+    expect(canReuseProgress(entry({ changes: many }), { ...next, changes: many })).toBe(false);
   });
 });

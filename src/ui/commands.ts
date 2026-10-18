@@ -6,7 +6,7 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -19,14 +19,19 @@ import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
-import { reviewNotes } from '../features/backlog/review';
-import { agentChoice, describeChoice } from './backlog/agentRunner';
+import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
+import { mapFor, mapNote, type CodeMap } from '../features/backlog/codeMap';
+import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
+import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
+import { REPORT_FORMAT } from '../features/backlog/report';
+import { agentChoice, confirmMemory, describeChoice, levelNote } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import { branchNameProblem } from '../features/worktrees/layout';
-import { copySetupFiles } from '../features/worktrees/setup';
+import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
 import type { ChangeGroup, Target } from '../webview/protocol';
+import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
 import { claudeHookConfig } from './claudeHooks';
@@ -114,11 +119,21 @@ export function registerCommands(ctx: CommandContext): void {
 
   register('flotilla.refresh', () => ctx.repository.refresh());
   register('flotilla.newWorkstream', () => newWorkstream(ctx));
-  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, id, opts));
-  register('flotilla.writeBacklogItem', (id?: unknown) => writeBacklogItem(ctx, id));
+  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts));
   register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
   register('flotilla.planBacklog', () => planBacklog(ctx));
-  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, id));
+  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
+  // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
+  register('flotilla.startBacklogItemFromCard', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }));
+  // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
+  register('flotilla.createBacklogWorktree', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }));
+  register('flotilla.createBacklogWorktreeNamed', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }));
+  register('flotilla.renameBacklogItem', (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)));
+  register('flotilla.deleteBacklogItem', (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)));
+  register('flotilla.selectBacklogWorktree', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false));
+  register('flotilla.openBacklogWorktreeInNewWindow', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true));
+  // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
+  register('flotilla.ci.fixWithAgent', (failure?: unknown) => fixWithAgent(ctx, failure));
   const cleanUp: CleanUpDeps = {
     ctx,
     chats,
@@ -136,7 +151,10 @@ export function registerCommands(ctx: CommandContext): void {
       typeof text === 'string' ? text : undefined,
     ),
   );
-  register('flotilla.openBacklogItem', (id?: unknown) => typeof id === 'string' && ctx.tickets.open(id));
+  register('flotilla.openBacklogItem', (id?: unknown, opts?: unknown) => {
+    const itemId = backlogIdOf(id);
+    return itemId && ctx.tickets.open(itemId, { focus: (opts as { focus?: unknown } | undefined)?.focus === 'comment' ? 'comment' : undefined });
+  });
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
   register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
@@ -356,16 +374,17 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
 }
 
 /** Creates a worktree, copies the setup files, runs the setup command and shows it; returns its key. */
-async function createWorkstream(ctx: CommandContext, request: CreateRequest, opts: { quiet?: boolean } = {}): Promise<string> {
+async function createWorkstream(ctx: CommandContext, request: CreateRequest, opts: { quiet?: boolean; label?: string } = {}): Promise<string> {
   // Quiet (the autopilot's): progress in the status bar, and the sidebar stays where it is.
   const created = await vscode.window.withProgress(
-    { location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: 'Creating worktree…' },
+    { location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: opts.label ? `Creating ${opts.label}'s worktree…` : 'Creating worktree…' },
     () => ctx.service.create(request),
   );
   const dir = created.path!;
   const settings = readSettings();
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   if (copied.length) ctx.output.appendLine(`Copied into ${dir}: ${copied.join(', ')}`);
+  await linkSetupFolders(ctx, dir, settings.linkFolders, opts.quiet);
   startSetupTerminal(dir, settings.setupCommand);
   await ctx.repository.refresh();
   if (!opts.quiet) ctx.sidebar.reveal(created.adminDir);
@@ -381,49 +400,108 @@ async function createWorkstream(ctx: CommandContext, request: CreateRequest, opt
 /**
  * Starts work on a backlog item: shows the worktree whose branch carries it, or creates one (branch named by
  * flotilla.backlog.branchPattern, from the default branch), and marks the item in progress. With agent, a Claude Code
- * agent then works on it in that worktree, reporting in the item's ticket.
+ * agent then works on it in that worktree, reporting in the item's ticket. With newWorktree (the ticket's Create Worktree
+ * button), a new worktree is created at once, its branch named without asking ('auto') or in an input box ('named').
  */
 async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown): Promise<void> {
   if (typeof id !== 'string') return;
   const agent = typeof opts === 'object' && opts !== null && (opts as { agent?: unknown }).agent === true;
+  const newWorktree = typeof opts === 'object' && opts !== null ? (opts as { newWorktree?: unknown }).newWorktree : undefined;
   const found = await findBacklogItem(ctx, id);
   if (!found) return;
   const { item, remote } = found;
+  // A start while its worktree is being created (a second click, the card and the ticket) would make another one.
+  if (creatingWorktrees.has(item.id)) {
+    void vscode.window.showInformationMessage(`${item.id}'s worktree is still being created.`);
+    return;
+  }
+  // An agent needs memory to start: when there's little, the user decides (before a worktree is made for it).
+  if (agent && !(await confirmMemory(`The agent for ${item.id}`))) return;
   // A branch of the item that has no worktree (anymore): a worktree for it.
   const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
   if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {
-    const key = await createWorkstream(ctx, { kind: 'existing', branch: branchOpt });
-    const created = ctx.repository.current.find((w) => w.key === key);
+    const made = await creatingWorktrees.run(item.id, () => createWorkstream(ctx, { kind: 'existing', branch: branchOpt }, { label: item.id }));
+    if (made.busy) return;
+    const created = ctx.repository.current.find((w) => w.key === made.value);
     if (created) await enforceCommitPrefix(ctx, created, item.id);
-    if (key) ctx.sidebar.reveal(key);
+    if (made.value) ctx.sidebar.reveal(made.value);
     return;
   }
-  const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  const linked = linkedWorktrees(item, ctx.repository.current);
   let ws: Workstream | undefined;
-  if (!linked.length) {
-    ws = await newItemWorktree(ctx, item, false);
+  if (!linked.length || (!agent && (newWorktree === 'auto' || newWorktree === 'named'))) {
+    ws = await newItemWorktree(ctx, item, newWorktree === 'named');
   } else {
     // An epic has several worktrees: start in one of them, or in a new one.
     type Pick = vscode.QuickPickItem & { ws?: Workstream };
     const now = new Date();
     const picks: Pick[] = [
       ...linked.map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, detail: describeWorkstream(w, now), ws: w })),
-      { label: `$(add) New Worktree for ${item.id}…`, detail: 'Another branch for this item, e.g. one part of an epic' },
+      { label: `$(add) New Worktree for ${item.id}`, detail: 'Another branch for this item, e.g. one part of an epic' },
     ];
     const picked = await vscode.window.showQuickPick(picks, {
       title: agent ? `Start an agent on ${item.id}` : `Work on ${item.id}`,
       placeHolder: 'In which worktree?',
     });
     if (!picked) return;
-    ws = picked.ws ?? (await newItemWorktree(ctx, item, true));
+    ws = picked.ws ?? (await newItemWorktree(ctx, item, false));
   }
   if (!ws?.worktree.branch) return;
   const branch = ws.worktree.branch;
   await enforceCommitPrefix(ctx, ws, item.id);
   // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
-  if (!remote) await ctx.backlog.change((d) => updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }));
+  if (!remote) await ctx.backlog.change((d) => setStartFailed(updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }), id));
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
+}
+
+/**
+ * Makes an item's worktree the sidebar's active tab, or opens it in a new window (BL-21, the card's menu). With
+ * several worktrees (an epic), the user picks one.
+ */
+async function selectBacklogWorktree(ctx: CommandContext, id: string | undefined, newWindow: boolean): Promise<void> {
+  if (!id) return;
+  const found = await findBacklogItem(ctx, id);
+  if (!found) return;
+  const linked = linkedWorktrees(found.item, ctx.repository.current);
+  let ws: Workstream | undefined = linked[0];
+  if (linked.length > 1) {
+    type Pick = vscode.QuickPickItem & { ws: Workstream };
+    const now = new Date();
+    const picked = await vscode.window.showQuickPick<Pick>(
+      linked.map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, detail: describeWorkstream(w, now), ws: w })),
+      { title: `Worktrees of ${id}`, placeHolder: newWindow ? 'Open which worktree in a new window?' : 'Show which worktree?' },
+    );
+    ws = picked?.ws;
+  }
+  if (!ws?.worktree.path) return;
+  if (newWindow) await openWorktree(ctx, ws.worktree.path, true);
+  else ctx.sidebar.reveal(ws.key);
+}
+
+/** Renames a local item in an input box (the card's menu); the title is the one thing it changes. */
+async function renameBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  const title = await vscode.window.showInputBox({
+    title: `Rename ${id}`,
+    value: item.title,
+    validateInput: (value) => (value.trim() ? undefined : 'A title is needed'),
+  });
+  if (!title?.trim() || title.trim() === item.title) return;
+  await ctx.backlog.change((d) => updateItem(d, id, { title: title.trim() }));
+}
+
+/** Deletes a local item and its ticket, after a confirmation (the card's menu and the sidebar's trash button). */
+async function deleteBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item) return;
+  const choice = await vscode.window.showWarningMessage(`Delete ${item.id} '${item.title}' from the backlog?`, { modal: true }, 'Delete');
+  if (choice !== 'Delete') return;
+  await ctx.backlog.change((d) => removeItem(d, id));
+  await ctx.backlog.deleteDocument(id);
 }
 
 /** Readers of flotilla.backlog.commitPrefix. */
@@ -462,10 +540,13 @@ async function findBacklogItem(ctx: CommandContext, id: string): Promise<{ item:
 }
 
 /**
- * Creates a worktree for an item on a branch named by flotilla.backlog.branchPattern, from the default branch. For
- * another worktree of the same item (askName), the name is suggested with a number and can be changed.
+ * Creates a worktree for an item on a branch named by flotilla.backlog.branchPattern, from the default branch. A name
+ * that's taken gets the next free number, without asking; askName shows that suggestion in an input box to change.
+ * One creation per item at a time (creatingWorktrees): a start meanwhile creates nothing, the autopilot's (quiet) waits
+ * for it and takes its worktree.
  */
 async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: boolean, quiet = false): Promise<Workstream | undefined> {
+  if (creatingWorktrees.has(item.id)) return whileCreating(ctx, item, quiet);
   const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('backlog.branchPattern', 'feature/{id}-{slug}');
   const branches = await ctx.service.listBranches();
   const checkedOut = new Set(ctx.repository.current.map((w) => w.worktree.branch));
@@ -474,8 +555,7 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   if (askName || checkedOut.has(branch)) {
     let suggestion = branchFor(item, pattern);
     for (let n = 2; branches.local.includes(suggestion) || checkedOut.has(suggestion); n++) suggestion = `${branchFor(item, pattern)}-${n}`;
-    // Quiet: the suggestion, without asking.
-    const name = quiet ? suggestion : await vscode.window.showInputBox({
+    const name = !askName ? suggestion : await vscode.window.showInputBox({
       title: `New worktree for ${item.id}`,
       prompt: 'Branch name (it should keep the item id, which links it to the item)',
       value: suggestion,
@@ -492,8 +572,19 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   }
   const base = (await resolveBase(ctx.service.roots.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
   const request: CreateRequest = branches.local.includes(branch) ? { kind: 'existing', branch } : { kind: 'new', branch, startPoint: base };
-  const key = await createWorkstream(ctx, request, { quiet });
-  return ctx.repository.current.find((w) => w.key === key);
+  const made = await creatingWorktrees.run(item.id, () => createWorkstream(ctx, request, { quiet, label: item.id }));
+  if (made.busy) return whileCreating(ctx, item, quiet);
+  return ctx.repository.current.find((w) => w.key === made.value);
+}
+
+/** A start of an item while its worktree is being created: said (a user's), or waited for (the autopilot's). */
+async function whileCreating(ctx: CommandContext, item: BacklogItem, quiet: boolean): Promise<Workstream | undefined> {
+  if (!quiet) {
+    void vscode.window.showInformationMessage(`${item.id}'s worktree is still being created.`);
+    return undefined;
+  }
+  await creatingWorktrees.settled(item.id);
+  return linkedWorktrees(item, ctx.repository.current)[0];
 }
 
 /**
@@ -501,6 +592,7 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
  * in, else a new one. Its commits get the item's id; the item goes In Progress, on that branch.
  */
 export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem): Promise<Workstream | undefined> {
+  await creatingWorktrees.settled(item.id);
   const linked = ctx.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
   const busy = (w: Workstream) => w.chats.some((c) => c.open && (c.state === 'working' || c.state === 'waiting-for-input'));
   const ws = linked.find((w) => !busy(w)) ?? (linked.length ? undefined : await newItemWorktree(ctx, item, false, true));
@@ -511,19 +603,70 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
   return ws;
 }
 
+/** How agents keep their branch current with main, and what they do when they need another ticket's work (BL-55). */
+export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged.`;
+
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links'>, ticket: string, branch: string, agent: string, guide: string): string {
+export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
+  const level = levelNote(item);
   return [
     ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
-    `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
+    `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder). If its description has a "Where to start" section, begin there: it's what was found in the code when the ticket was shaped.`,
+    CONTEXT_NOTES,
+    ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
-    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. Report your plan when you start, ask there when you need a decision (and wait), and when you finish say what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
+    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
+    ...(level ? [level] : []),
+    MERGE_NOTES,
     reviewNotes({ id: item.id, backlogDir: path.dirname(guide) }),
     `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
   ].join('\n\n');
+}
+
+/** A short name for a new agent, not used by another agent's chat: its chat's first line and its reports carry it. */
+function newAgentName(ctx: CommandContext): string {
+  return agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
+}
+
+/**
+ * Starts an agent to fix a failed CI job, in the worktree on the run's branch. When the branch carries a backlog item's
+ * id, the agent works through that item's ticket, and the ticket's activity notes the failure; otherwise the task alone.
+ */
+async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void> {
+  const job = parseFailedJob(failure);
+  if (!job) {
+    void vscode.window.showWarningMessage('Fix with Agent needs a failed CI job.');
+    return;
+  }
+  const ws = ctx.repository.current.find((w) => w.worktree.path && w.worktree.branch === job.branch);
+  const refusal = fixRefusal(job, ws?.worktree);
+  if (!ws?.worktree.path || refusal) {
+    void vscode.window.showWarningMessage(refusal ?? `No worktree has branch ${job.branch}.`);
+    return;
+  }
+  const task = failureTask(job);
+  const item = (await ctx.backlog.read()).items.find((i) => branchMatches(i, job.branch));
+  if (!item) {
+    const choice = agentChoice(undefined);
+    await chatUi.startAgent(chatContext(ctx), ws, task, '', { choice, name: `Fix CI · ${job.branch}` });
+    return;
+  }
+  await enforceCommitPrefix(ctx, ws, item.id);
+  const agent = newAgentName(ctx);
+  const ticket = await ctx.backlog.ensureDocument(item);
+  const choice = agentChoice(item);
+  const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
+  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
+  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
+  const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
+  await ctx.tickets.addActivity(
+    item.id,
+    'Flotilla',
+    `The CI run [${job.run.name}](${job.run.url}) failed: job ${job.job.name}${steps}, on commit ${job.run.commit}. Opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`${where === 'terminal' ? ', in a terminal' : ''}, to fix it. It reports here.`,
+  );
 }
 
 /** Opens a Claude Code chat for an agent on an item, working in its worktree. */
@@ -533,19 +676,18 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
     // The issue lives in its tracker; the agent gets a local copy of it to read and to report in.
     const source = await ctx.integrations.sourceOf(item.id);
     const details = source && (await source.details(item.id));
-    const local = await ctx.backlog.readTicket(item);
     const description = [details?.descriptionText.trim(), `(The issue in ${source?.label ?? 'its tracker'}: ${remote.url})`].filter(Boolean).join('\n\n');
-    await ctx.backlog.writeTicket(item.id, { title: item.title, description, activity: local.activity });
+    await ctx.backlog.editTicket(item, (local) => ({ title: item.title, description, activity: local.activity }));
     ticket = ctx.backlog.docPath(item.id);
   } else {
     ticket = await ctx.backlog.ensureDocument(item);
   }
   // In Claude Code's chat, linked to the worktree. Claude Code fills in the message; sending it starts the agent.
   // The chat's first line names the item: that's how its ticket finds the chat (agentChatItem).
-  // A short name for the agent: its chat's first line and its reports carry it, which links them.
-  const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
+  const agent = newAgentName(ctx);
   const choice = agentChoice(item);
-  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE)), agentLead(item, agent), {
+  const map = remote ? undefined : await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
+  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map), agentLead(item, agent), {
     choice,
     name: `${agent} · ${item.id}`,
   });
@@ -586,42 +728,29 @@ async function linkBacklogItem(ctx: CommandContext, id: unknown): Promise<void> 
   await ctx.tickets.addActivity(id, 'Flotilla', `Linked to [${link.id}](${link.url}): ${link.title}`);
 }
 
-/** Opens a Claude Code chat that helps write an item's ticket (title, description, acceptance criteria). */
-async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void> {
-  if (typeof id !== 'string') return;
-  const remote = ctx.integrations.issues().find((i) => i.id === id);
-  if (remote) {
-    void vscode.window.showInformationMessage(`${id} is written in its tracker.`, 'Open It').then((c) => c && vscode.env.openExternal(vscode.Uri.parse(remote.url)));
-    return;
-  }
-  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
-  if (!item) return;
-  const ticket = await ctx.backlog.ensureDocument(item);
-  // The ticket tab shows Claude's edits as they're saved.
-  await ctx.tickets.open(item.id);
-  // Named like any agent on the item (its chat's first line): the ticket lists it, and says it's in Claude Code's panel.
-  const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
-  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in Claude Code's panel, to help you write this ticket.`);
-  await chatUi.askClaude(
-    [
-      agentLead(item, agent),
-      `You don't implement it: you help me write it as a clear ticket. Sign anything you add to its activity as Agent ${agent}.`,
-      `Help me write backlog item ${item.id} as a clear ticket. The ticket is ${ticket}: "# <title>", the description, then an "## Activity" log (leave that alone).`,
-      `Read what's there (my notes so far), ask me what you need to know, and look at this repository's code where it helps. Then rewrite the title and description: the problem or goal, the context, and acceptance criteria as a checklist.`,
-      '',
-    ].join('\n\n'),
-  );
-}
-
 async function runSetupNow(ctx: CommandContext, dir: string): Promise<void> {
   const settings = readSettings();
   const copied = await copySetupFiles(ctx.service.roots.mainRoot, dir, settings.copyFiles);
   ctx.output.appendLine(copied.length ? `Copied into ${dir}: ${copied.join(', ')}` : `No setup files to copy into ${dir}.`);
+  await linkSetupFolders(ctx, dir, settings.linkFolders, false);
   if (!settings.setupCommand.trim()) {
     if (!copied.length) void vscode.window.showInformationMessage('Nothing to do: set flotilla.copyFiles or flotilla.setupCommand.');
     return;
   }
   startSetupTerminal(dir, settings.setupCommand);
+}
+
+/** Gives a worktree the main worktree's `flotilla.linkFolders` as hard links, and says in the output what it did. */
+async function linkSetupFolders(ctx: CommandContext, dir: string, folders: readonly string[], quiet: boolean | undefined): Promise<void> {
+  if (!folders.length) return;
+  const results = await vscode.window.withProgress(
+    { location: quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: `Linking ${folders.join(', ')}…` },
+    () => linkFolders(ctx.service.roots.mainRoot, dir, folders),
+  );
+  for (const r of results) {
+    const copied = r.copied ? `, and copied ${r.copied} that installs or tools write in place` : '';
+    ctx.output.appendLine(r.skipped ? `Didn't link ${r.folder} into ${dir}: ${r.skipped}.` : `Linked ${r.folder} into ${dir}: ${r.files} files${copied}.`);
+  }
 }
 
 function startSetupTerminal(dir: string, command: string): void {
@@ -730,7 +859,7 @@ async function revealInExplorer(ctx: CommandContext, arg: Arg): Promise<void> {
   await vscode.commands.executeCommand('revealInExplorer', toWorkspaceUri(ctx.reference, target));
 }
 
-async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<void> {
+export async function removeWorkstream(ctx: CommandContext, ws: Workstream): Promise<void> {
   const wt = ws.worktree;
   if (wt.isMain) {
     void vscode.window.showWarningMessage('The main worktree cannot be removed.');
