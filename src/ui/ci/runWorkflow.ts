@@ -7,6 +7,7 @@ import type { Fetch } from '../../features/backlog/sources/source';
 import { GitHubActions, dispatchInputs, isDispatchable, splitUpstream, type CiWorkflow, type DispatchInput } from '../../features/ci/githubActions';
 
 const GITHUB_SCOPES = ['repo'];
+const FAKE_TOKEN = 'fake-token';
 /** The choice that leaves an optional input out, so the workflow's own default applies. */
 const WORKFLOW_DEFAULT = '(workflow default)';
 
@@ -108,10 +109,11 @@ export async function runnableWorkflows(client: GitHubActions, worktree: string)
  * Run Workflow…: picks a workflow that can be started by hand, asks for its inputs, confirms (a deploy can't be undone)
  * and starts it on the worktree's branch. Resolves true when GitHub took the run, false when the user stopped before.
  */
-export async function runWorkflowByHand(worktree: string, fetch: Fetch = globalThis.fetch as unknown as Fetch): Promise<boolean> {
+export async function runWorkflowByHand(worktree: string, api?: string, fetch: Fetch = globalThis.fetch as unknown as Fetch): Promise<boolean> {
   const target = await dispatchTarget(worktree);
-  const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { createIfNone: true });
-  const client = new GitHubActions(target.owner, target.repo, async () => session.accessToken, fetch);
+  // The fake GitHub (debug window only) takes any token: no sign-in, and nothing real is started.
+  const token = api ? FAKE_TOKEN : (await vscode.authentication.getSession('github', GITHUB_SCOPES, { createIfNone: true })).accessToken;
+  const client = new GitHubActions(target.owner, target.repo, async () => token, fetch, api);
   // What GitHub has now, not this clone's copy of the branch (which may be behind): that's the commit a run uses.
   const head = (await client.branchHead(target.branch)).slice(0, 7);
   const workflows = await runnableWorkflows(client, worktree);

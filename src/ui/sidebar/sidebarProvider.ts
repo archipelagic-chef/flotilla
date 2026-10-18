@@ -568,7 +568,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const folder = this.root(m.key);
         if (!folder) throw new Error("This worktree's folder isn't reachable from this environment.");
         // A run shows at once, and again a few seconds on, when GitHub lists it.
-        if (await runWorkflowByHand(folder)) {
+        if (await runWorkflowByHand(folder, this.deps.githubApi)) {
           await this.ci.refresh();
           setTimeout(() => void this.ci.refresh(), RUN_LISTED_MS);
         }
