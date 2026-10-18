@@ -1631,7 +1631,7 @@
           "type": "number",
           "default": 25,
           "minimum": 0,
-          "markdownDescription": "Millions of tokens an agent Flotilla runs may re-read from its context before it's stopped and its ticket asks you whether it goes on (the biggest tickets so far took about 12). An agent that runs the same failing command 4 times in a row with no edit in between is stopped too. 0: no budget."
+          "markdownDescription": "Millions of tokens an agent Flotilla runs may re-read from its context before it's stopped and its ticket asks you whether it goes on (the biggest tickets so far took about 12). An agent that runs the same failing command 5 times in a row with no edit in between is stopped too. 0: no budget."
         },
         "flotilla.chats.bigContext": {
           "type": "number",

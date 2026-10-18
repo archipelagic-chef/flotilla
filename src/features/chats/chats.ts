@@ -54,6 +54,8 @@ export interface ChatUsage {
   output: number;
   /** The same command failed this many times in a row, with no edit in between (an agent going round in circles). */
   failStreak: number;
+  /** Runs of failures so far: a new one starts when a command fails after a success, an edit or another command. */
+  failRuns: number;
 }
 
 export interface Chat {
@@ -277,8 +279,8 @@ interface TranscriptScan {
   usage?: ChatUsage;
   /** The reply last counted (one reply can be written over several lines). */
   lastReply?: string;
-  /** The Bash command whose result comes next, and the one failing in a row (see ChatUsage.failStreak). */
-  pending?: { id: string; command: string };
+  /** The shell commands whose results come next (by tool call), and the one failing in a row (see ChatUsage.failStreak). */
+  pending?: Map<string, string>;
   failing?: string;
 }
 
@@ -314,7 +316,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
   const isTitle = line.includes('"ai-title"') || line.includes('"custom-title"');
   const isUser = !scan.firstPrompt && line.includes('"type":"user"');
   const isReply = line.includes('"type":"assistant"');
-  const isResult = !!scan.pending && line.includes('"tool_result"');
+  const isResult = !!scan.pending?.size && line.includes('"tool_result"');
   if (!isTitle && !isUser && !isReply && !isResult && scan.startedAt) return;
   let entry: {
     type?: unknown;
@@ -336,7 +338,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
   else if (entry.type === 'custom-title') scan.customTitle = text(entry.customTitle) ?? scan.customTitle;
   else if (entry.type === 'user' && !entry.isSidechain) {
     if (!scan.firstPrompt && !entry.isMeta) scan.firstPrompt = promptText(entry.message?.content)?.slice(0, 200);
-    if (scan.pending) watchResult(scan, entry.message?.content);
+    if (scan.pending?.size) watchResult(scan, entry.message?.content);
   } else if (entry.type === 'assistant' && !entry.isSidechain) {
     // The model and effort are the last reply's (not a subagent's). An effort belongs to the reply it came with.
     if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') {
@@ -349,6 +351,10 @@ function scanLine(scan: TranscriptScan, line: string): void {
   }
 }
 
+const EMPTY_USAGE: ChatUsage = { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0, failRuns: 0 };
+/** The tools agents run commands with: Bash, and PowerShell on Windows. */
+const SHELLS = new Set(['Bash', 'PowerShell']);
+
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 /** Adds a reply's tokens (once per reply: its lines carry the same usage). */
@@ -358,7 +364,7 @@ function countUsage(scan: TranscriptScan, message: { id?: unknown; usage?: Recor
   const id = typeof message.id === 'string' ? message.id : undefined;
   if (id && id === scan.lastReply) return;
   scan.lastReply = id;
-  const before = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+  const before = scan.usage ?? EMPTY_USAGE;
   const read = num(u.cache_read_input_tokens);
   const written = num(u.cache_creation_input_tokens);
   scan.usage = {
@@ -371,13 +377,13 @@ function countUsage(scan: TranscriptScan, message: { id?: unknown; usage?: Recor
   };
 }
 
-/** Notes a Bash call (its result comes next), and an edit (which ends a run of failures: the agent changed something). */
+/** Notes shell calls (their results come next), and an edit (which ends a run of failures: the agent changed something). */
 function watchTools(scan: TranscriptScan, content: unknown): void {
   if (!Array.isArray(content)) return;
   for (const part of content as Array<{ type?: unknown; id?: unknown; name?: unknown; input?: { command?: unknown } }>) {
     if (part?.type !== 'tool_use') continue;
-    if (part.name === 'Bash' && typeof part.id === 'string' && typeof part.input?.command === 'string') {
-      scan.pending = { id: part.id, command: part.input.command.trim() };
+    if (typeof part.name === 'string' && SHELLS.has(part.name) && typeof part.id === 'string' && typeof part.input?.command === 'string') {
+      (scan.pending ??= new Map()).set(part.id, part.input.command.trim());
     } else if (part.name === 'Edit' || part.name === 'Write' || part.name === 'MultiEdit' || part.name === 'NotebookEdit') {
       scan.failing = undefined;
       if (scan.usage) scan.usage = { ...scan.usage, failStreak: 0 };
@@ -388,20 +394,22 @@ function watchTools(scan: TranscriptScan, content: unknown): void {
 /** Counts a failed result of the same command again: its success ends the run, another command failing starts a new one. */
 function watchResult(scan: TranscriptScan, content: unknown): void {
   if (!Array.isArray(content) || !scan.pending) return;
-  const result = (content as Array<{ type?: unknown; tool_use_id?: unknown; is_error?: unknown }>).find(
-    (p) => p?.type === 'tool_result' && p.tool_use_id === scan.pending!.id,
-  );
-  if (!result) return;
-  const { command } = scan.pending;
-  scan.pending = undefined;
-  const usage = scan.usage ?? { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
-  if (result.is_error !== true) {
-    if (scan.failing === command) scan.failing = undefined;
-    scan.usage = { ...usage, failStreak: scan.failing ? usage.failStreak : 0 };
-    return;
+  for (const result of content as Array<{ type?: unknown; tool_use_id?: unknown; is_error?: unknown }>) {
+    if (result?.type !== 'tool_result' || typeof result.tool_use_id !== 'string') continue;
+    const command = scan.pending.get(result.tool_use_id);
+    if (command === undefined) continue;
+    scan.pending.delete(result.tool_use_id);
+    const usage = scan.usage ?? EMPTY_USAGE;
+    if (result.is_error !== true) {
+      if (scan.failing === command) scan.failing = undefined;
+      scan.usage = { ...usage, failStreak: scan.failing ? usage.failStreak : 0 };
+    } else if (scan.failing === command && usage.failStreak > 0) {
+      scan.usage = { ...usage, failStreak: usage.failStreak + 1 };
+    } else {
+      scan.usage = { ...usage, failStreak: 1, failRuns: usage.failRuns + 1 };
+      scan.failing = command;
+    }
   }
-  scan.usage = { ...usage, failStreak: scan.failing === command ? usage.failStreak + 1 : 1 };
-  scan.failing = command;
 }
 
 function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): TranscriptInfo {

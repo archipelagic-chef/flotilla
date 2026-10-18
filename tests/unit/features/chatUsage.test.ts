@@ -22,7 +22,7 @@ describe('a chat\'s token use', () => {
       reply('m2', 25_000, 1_000),
       JSON.stringify({ type: 'assistant', isSidechain: true, message: { id: 'x', usage: { cache_read_input_tokens: 999_999 } } }),
     ]);
-    expect(u).toEqual({ turns: 2, context: 26_002, reRead: 45_000, written: 6_000, output: 20, failStreak: 0 });
+    expect(u).toEqual({ turns: 2, context: 26_002, reRead: 45_000, written: 6_000, output: 20, failStreak: 0, failRuns: 0 });
   });
 
   it('counts the same command failing in a row; an edit, or its success, ends the run', () => {
@@ -40,6 +40,20 @@ describe('a chat\'s token use', () => {
     expect(usageOf([...lines, reply('e', 1, 1, [{ type: 'tool_use', id: 'e1', name: 'Edit', input: {} }])])?.failStreak).toBe(0);
     expect(usageOf([...lines, reply('e', 1, 1, [bash('t5', 'npm test')]), result('t5', false)])?.failStreak).toBe(0);
     expect(usageOf([...lines, reply('e', 1, 1, [bash('t5', 'npm run build')]), result('t5', true)])?.failStreak).toBe(1);
+    // Runs of failures: npm test's, then a new one after its success, or another command's.
+    expect(usageOf(lines)?.failRuns).toBe(1);
+    const again = [reply('e', 1, 1, [bash('t5', 'npm test')]), result('t5', false), reply('f', 1, 1, [bash('t6', 'npm test')]), result('t6', true)];
+    expect(usageOf([...lines, ...again])?.failRuns).toBe(2);
+    expect(usageOf([...lines, reply('e', 1, 1, [bash('t5', 'npm run build')]), result('t5', true)])?.failRuns).toBe(2);
+  });
+
+  it('counts PowerShell commands as well, and each of several run at once', () => {
+    const ps = (id: string, command: string) => ({ type: 'tool_use', id, name: 'PowerShell', input: { command } });
+    const both = (a: string, b: string) =>
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: a, is_error: true }, { type: 'tool_result', tool_use_id: b, is_error: true }] } });
+    expect(usageOf([reply('a', 1, 1, [ps('p1', 'npm test')]), result('p1', true), reply('b', 1, 1, [ps('p2', 'npm test')]), result('p2', true)])?.failStreak).toBe(2);
+    // Two calls of one reply, both failing: both count.
+    expect(usageOf([reply('a', 1, 1, [ps('p1', 'npm test'), bash('b1', 'npm test')]), both('p1', 'b1')])?.failStreak).toBe(2);
   });
 
   it('adds up several chats, and formats tokens short', () => {
@@ -51,10 +65,14 @@ describe('a chat\'s token use', () => {
 
 describe('runaway agents', () => {
   it('stops one repeating a failing command, counted from when it started', () => {
-    expect(runawayReason({ ...NO_USAGE, failStreak: 4 }, NO_USAGE, 0)).toMatch(/failed 4 times in a row/);
-    expect(runawayReason({ ...NO_USAGE, failStreak: 3 }, NO_USAGE, 0)).toBeUndefined();
-    // Resumed after being stopped for it: 4 more.
-    expect(runawayReason({ ...NO_USAGE, failStreak: 5 }, { ...NO_USAGE, failStreak: 4 }, 0)).toBeUndefined();
+    expect(runawayReason({ ...NO_USAGE, failStreak: 5, failRuns: 1 }, NO_USAGE, 0)).toMatch(/failed 5 times in a row/);
+    expect(runawayReason({ ...NO_USAGE, failStreak: 4, failRuns: 1 }, NO_USAGE, 0)).toBeUndefined();
+    // Resumed after being stopped for it: 5 more of the same run.
+    const stopped = { ...NO_USAGE, failStreak: 5, failRuns: 1 };
+    expect(runawayReason({ ...NO_USAGE, failStreak: 9, failRuns: 1 }, stopped, 0)).toBeUndefined();
+    expect(runawayReason({ ...NO_USAGE, failStreak: 10, failRuns: 1 }, stopped, 0)).toMatch(/failed 10 times/);
+    // A success since the resume, then a new run: it counts whole (5, not 5 + 5).
+    expect(runawayReason({ ...NO_USAGE, failStreak: 5, failRuns: 2 }, stopped, 0)).toMatch(/failed 5 times/);
   });
 
   it('stops one past its budget of re-read tokens since it started; 0 is no budget', () => {

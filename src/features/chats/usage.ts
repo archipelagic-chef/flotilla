@@ -26,5 +26,6 @@ export function addUsage(all: ReadonlyArray<ChatUsage | undefined>): ChatUsage |
     written: a.written + b.written,
     output: a.output + b.output,
     failStreak: Math.max(a.failStreak, b.failStreak),
+    failRuns: a.failRuns + b.failRuns,
   }));
 }

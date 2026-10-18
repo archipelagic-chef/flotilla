@@ -13,6 +13,8 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+/** The token use agents' transcripts show (see watchRunaways); none: no transcript. */
+const transcript = vi.hoisted(() => ({ usage: undefined as Record<string, number> | undefined }));
 const levels = vi.hoisted(() => ({ now: {} as { strong?: string; light?: string } }));
 const quick = vi.hoisted(() => ({ choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>) }));
 
@@ -64,6 +66,11 @@ vi.mock('../../../src/features/workstreams/progress', () => ({
     await gate;
     return 'main';
   },
+}));
+
+vi.mock('../../../src/features/chats/chats', async (actual) => ({
+  ...(await actual<typeof import('../../../src/features/chats/chats')>()),
+  readTranscript: async () => (transcript.usage ? { usage: { ...transcript.usage } } : undefined),
 }));
 
 const at = '2026-10-11T00:00:00Z';
@@ -741,6 +748,110 @@ describe('replies and Prioritize', () => {
     await loop.prioritize('BL-5');
     expect(started()).toHaveLength(4);
     expect(data.items.find((i) => i.id === 'BL-1')?.review).toMatchObject({ state: 'reviewing' });
+    loop.dispose();
+  });
+});
+
+describe('runaway agents (BL-76)', () => {
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let loop: { fix(id: string, fix: string): Promise<void>; dispose(): void };
+  let retry: () => Promise<void>;
+  const stop = vi.fn();
+  const usage = (failStreak: number, failRuns: number, reRead = 0) => ({ turns: 1, context: 0, reRead, written: 0, output: 0, failStreak, failRuns });
+  const settle = async () => {
+    for (let i = 0; i < 30; i++) await tick();
+  };
+  const review = () => data.items[0].review as { state: string; stop?: { kind: string; task?: { prompt: string } } };
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    stop.mockReset();
+    spawn.mockImplementation(() => ({ sessionId: 's', done: new Promise(() => undefined), stop }));
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    memory.gate = undefined;
+    memory.fail = false;
+    transcript.usage = undefined;
+    data = {
+      version: 1,
+      next: 2,
+      items: [
+        {
+          id: 'BL-1',
+          title: 'Fix me',
+          status: 'doing',
+          created: at,
+          review: { round: 1, reviewer: 'Rex', implementer: 'Nova', state: 'stopped', stop: { kind: 'no-report', task: { prompt: 'Make the changes.', why: 'Rex requested changes' } } },
+        },
+      ],
+    };
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Fix me', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/BL-1.md',
+      docPath: () => '/unused/BL-1.md',
+      appendActivity: async () => undefined,
+    };
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      current: [{ key: 'wt', worktree: { isMain: false, path: '/wt', branch: 'feature/BL-1-fix', adminDir: '/wt/.git' }, chats: [] }],
+    };
+    const created = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never);
+    loop = created as never;
+    retry = () => (created as unknown as { retry(): Promise<void> }).retry();
+    await tick();
+  });
+
+  it('stops an agent repeating a failing command, and Resume It tells it to step back; a new run after the resume counts whole', async () => {
+    await loop.fix('BL-1', 'retry');
+    await settle();
+    expect(spawn).toHaveBeenCalledTimes(1);
+
+    // Its transcript when it started is the base (none: nothing yet); 4 failures in a row don't stop it, 5 do.
+    transcript.usage = usage(4, 1);
+    await retry();
+    expect(stop).not.toHaveBeenCalled();
+    transcript.usage = usage(5, 1);
+    await retry();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'runaway' } });
+
+    // Resume It: it goes on, told to step back; the 5 it was stopped for are its base now.
+    await loop.fix('BL-1', 'retry');
+    await settle();
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect((spawn.mock.calls[1][0] as { prompt: string }).prompt).toMatch(/Flotilla stopped you: the same command failed 5 times in a row.*step back/);
+    transcript.usage = usage(9, 1);
+    await retry();
+    expect(stop).toHaveBeenCalledTimes(1);
+    // A success, then a new run of 5 failures: stopped at 5, not at 5 + 5.
+    transcript.usage = usage(5, 2);
+    await retry();
+    expect(stop).toHaveBeenCalledTimes(2);
+    expect(review().stop?.kind).toBe('runaway');
+    loop.dispose();
+  });
+
+  it('stops an agent past its budget of re-read tokens since it started', async () => {
+    transcript.usage = usage(0, 0, 40_000_000);
+    await loop.fix('BL-1', 'retry');
+    await settle();
+    transcript.usage = usage(0, 0, 60_000_000);
+    await retry();
+    expect(stop).not.toHaveBeenCalled();
+    transcript.usage = usage(0, 0, 66_000_000);
+    await retry();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(review().stop?.task?.prompt).toMatch(/re-read 26\.0M tokens since it started/);
     loop.dispose();
   });
 });

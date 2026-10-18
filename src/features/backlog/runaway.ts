@@ -7,11 +7,13 @@ import { formatTokens } from '../chats/usage';
  */
 
 /** Failures of the same command in a row, with no edit in between, that stop an agent. */
-export const STUCK_FAILS = 4;
+export const STUCK_FAILS = 5;
 
 /** Why an agent should stop now (its token use now, and when it started), or undefined. budget: re-read tokens; 0: none. */
 export function runawayReason(now: ChatUsage, base: ChatUsage, budget: number): string | undefined {
-  if (now.failStreak >= base.failStreak + STUCK_FAILS) return `the same command failed ${now.failStreak} times in a row, with no change in between`;
+  // The run of failures it started with (a resumed agent's) counts only from then on; a run begun since counts whole.
+  const before = now.failRuns === base.failRuns ? base.failStreak : 0;
+  if (now.failStreak >= before + STUCK_FAILS) return `the same command failed ${now.failStreak} times in a row, with no change in between`;
   const used = now.reRead - base.reRead;
   if (budget > 0 && used > budget) return `it re-read ${formatTokens(used)} tokens since it started, past flotilla.agents.tokenBudget (${formatTokens(budget)})`;
   return undefined;
@@ -22,4 +24,4 @@ export function runawayPrompt(why: string): string {
   return `Flotilla stopped you: ${why}. Before you go on, step back: write in the ticket what you tried and what's in the way, then take another approach, or ask (as your instructions say) if you need a decision.`;
 }
 
-export const NO_USAGE: ChatUsage = { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0 };
+export const NO_USAGE: ChatUsage = { turns: 0, context: 0, reRead: 0, written: 0, output: 0, failStreak: 0, failRuns: 0 };
