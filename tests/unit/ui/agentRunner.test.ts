@@ -5,7 +5,7 @@ vi.mock('vscode', () => ({
   extensions: { getExtension: () => undefined },
 }));
 
-import { agentOutcome, headlessArgs, resultOf } from '../../../src/ui/backlog/agentRunner';
+import { agentOutcome, agentStart, headlessArgs, resultOf, setAgentDirs } from '../../../src/ui/backlog/agentRunner';
 
 const SESSION = '3f1c2a4e-5b6d-4e7f-8a9b-0c1d2e3f4a5b';
 
@@ -48,6 +48,23 @@ describe('headless agent arguments', () => {
     const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'dontAsk', tools: ['Read', 'Grep'], lean });
     expect(args).toContain('--disable-slash-commands');
     expect(args.slice(-5)).toEqual(['--tools', 'Read,Grep', '--allowedTools', 'Read', 'Grep']);
+  });
+
+  it('lets every agent reach the backlog folder (its ticket), whatever lists follow (BL-89)', () => {
+    setAgentDirs(['/repo/.flotilla/backlog']);
+    try {
+      const start = agentStart('/repo/.worktrees/feature-x');
+      expect(start?.flags.slice(-2)).toEqual(['--add-dir', '/repo/.flotilla/backlog']);
+      // A lean start's tools come last; with a run's own tools, so do they: --add-dir's folders end at the next flag.
+      for (const tools of [undefined, ['Read']]) {
+        const args = headlessArgs({ prompt: 'Hi', name: 'n', sessionId: SESSION, mode: 'auto', lean: start, tools });
+        const at = args.indexOf('--add-dir');
+        expect(args[at + 1]).toBe('/repo/.flotilla/backlog');
+        expect(args[at + 2]).toMatch(/^--/);
+      }
+    } finally {
+      setAgentDirs([]);
+    }
   });
 
   it('offers every built-in tool when it lists none', () => {
