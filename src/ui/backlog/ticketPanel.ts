@@ -41,7 +41,8 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { agentChoice, modelLevels, validModel } from './agentRunner';
+import { agentChoice, isRunningHeadless, isRunningInTerminal, modelLevels, validModel } from './agentRunner';
+import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
@@ -341,6 +342,19 @@ export class TicketPanels implements vscode.Disposable {
       if (text === undefined) return;
     }
     await this.reviews.userReview(id, verdict, text);
+  }
+
+  /**
+   * Pauses, stops or resumes an agent on a ticket (session: that chat's; else the one working on it): its discussion's
+   * agent (see Shaping), or one of the review loop's or started by hand (see ReviewLoop.control).
+   */
+  async controlAgent(id: string, action: 'pause' | 'stop' | 'resume', session?: string): Promise<void> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    const shaping = item?.shaping;
+    const discussing =
+      !!shaping && !!this.shaping && (session ? session === shaping.session : action === 'resume' ? !!shaping.held && !heldBy(item.review) : this.shaping.isRunning(id));
+    if (discussing) return this.shaping!.control(id, action);
+    await this.reviews?.control(id, action, session);
   }
 
   /** The worktrees working on an item: those started for it, or whose branch carries its id. */
@@ -647,8 +661,34 @@ export class TicketPanels implements vscode.Disposable {
     const send = (view: Omit<TicketView, 'agents' | 'showActivity'>) => {
       if (this.posts.get(panel) !== seq) return;
       const chats = shown ? this.agentChats(shown, view.activity) : [];
-      // Each agent with the reports it signed.
-      const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
+      // Each agent with the reports it signed, where it runs if it's busy, and whether the user paused or stopped it.
+      const r = shown?.review;
+      const held = heldBy(r);
+      const own = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
+      const agents = chats.map((c) => {
+        const halted =
+          held?.session === c.id
+            ? r?.state === 'paused'
+              ? ('paused' as const)
+              : ('stopped' as const)
+            : shown?.shaping?.held && shown.shaping.session === c.id
+              ? shown.shaping.held.kind
+              : undefined;
+        const busy = !halted && (isRunningInTerminal(c.id) || ((c.state === 'working' || c.state === 'waiting-for-input') && !this.reviews?.hasEnded(c.id)));
+        const runs = !busy
+          ? undefined
+          : isRunningInTerminal(c.id) || startedInTerminal(view.activity, c.agent)
+            ? ('terminal' as const)
+            : isRunningHeadless(c.id) || own === c.id
+              ? ('headless' as const)
+              : ('panel' as const);
+        return {
+          ...c,
+          reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length,
+          ...(runs ? { runs } : {}),
+          ...(halted ? { held: halted } : {}),
+        };
+      });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       const showActivity = showActivityKept(this.deps.memento);
       const next: TicketView = { ...view, agents, showActivity };
@@ -774,7 +814,7 @@ export class TicketPanels implements vscode.Disposable {
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
-        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready } }
+        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}) } }
         : {}),
     };
   }
@@ -1212,6 +1252,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'stopReview':
         await this.reviews?.stop(id);
+        return;
+      case 'agent':
+        await this.controlAgent(id, m.action, m.session);
         return;
       case 'accept':
         await backlog.change((d) => acceptItem(d, id));

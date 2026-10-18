@@ -38,6 +38,9 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   confirmMemory: async () => false,
   describeChoice: () => '',
   isRunningHeadless: () => false,
+  isRunningInTerminal: () => false,
+  runAgentInTerminal: () => ({ sessionId: 'terminal-session' }),
+  stopTerminalAgent: async () => false,
   modelLevels: () => levels.now,
   probeLimit: probe,
   memoryShortage: () => {
@@ -803,6 +806,109 @@ describe('replies and Prioritize', () => {
     await loop.prioritize('BL-5');
     expect(started()).toHaveLength(4);
     expect(data.items.find((i) => i.id === 'BL-1')?.review).toMatchObject({ state: 'reviewing' });
+    loop.dispose();
+  });
+});
+
+describe('pausing, stopping and resuming agents (BL-81)', () => {
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let notes: string[];
+  type Loop = {
+    start(id: string, manual?: boolean): Promise<void>;
+    control(id: string, action: 'pause' | 'stop' | 'resume', session?: string): Promise<void>;
+    fix(id: string, fix: string): Promise<void>;
+    resumePaused(): Promise<void>;
+    readonly running: number;
+    dispose(): void;
+  };
+  let loop: Loop;
+  let stops: number;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    stops = 0;
+    spawn.mockImplementation((o: { resume?: string }) => ({ sessionId: o.resume ?? 'a1b2c3d4-0000-4000-8000-000000000001', done: new Promise(() => undefined), stop: () => void stops++ }));
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    notes = [];
+    data = { version: 1, next: 2, items: [{ id: 'BL-1', title: 'Review me', status: 'review', created: at }] };
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Review me', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/BL-1.md',
+      docPath: () => '/unused/BL-1.md',
+      appendActivity: async (_i: unknown, e: { body: string }) => void notes.push(e.body),
+    };
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      current: [{ key: 'wt', worktree: { isMain: false, path: '/wt', branch: 'feature/BL-1-review', adminDir: '/wt/.git' }, chats: [] }],
+    };
+    loop = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never) as unknown as Loop;
+    await tick();
+    await loop.start('BL-1', true);
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  const review = () => data.items[0].review as Record<string, unknown> & { paused?: Record<string, unknown>; stop?: Record<string, unknown> };
+
+  it('pauses the running agent: it ends, frees its slot, keeps its chat, and only the user resumes it', async () => {
+    expect(loop.running).toBe(1);
+    await loop.control('BL-1', 'pause');
+    expect(stops).toBe(1);
+    expect(loop.running).toBe(0);
+    expect(review().state).toBe('paused');
+    expect(review().paused).toMatchObject({ phase: 'review', resume: 'reviewing', session: 'a1b2c3d4-0000-4000-8000-000000000001' });
+    expect(review().paused?.byUser).toEqual(expect.any(String));
+    expect(notes.at(-1)).toMatch(/^You paused .*Resume goes on in the same chat/);
+
+    // The usage-limit timer leaves it alone.
+    await loop.resumePaused();
+    expect(spawn).toHaveBeenCalledTimes(1);
+
+    await loop.control('BL-1', 'resume');
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(spawn.mock.calls[1][0]).toMatchObject({ resume: 'a1b2c3d4-0000-4000-8000-000000000001', prompt: expect.stringContaining('The user paused you') });
+    expect(review().state).toBe('reviewing');
+    expect(review().paused).toBeUndefined();
+    loop.dispose();
+  });
+
+  it('stops the running agent and offers to resume it in its chat', async () => {
+    await loop.control('BL-1', 'stop');
+    expect(stops).toBe(1);
+    expect(review().state).toBe('stopped');
+    expect(review().stop).toMatchObject({ kind: 'user', agent: { phase: 'review', session: 'a1b2c3d4-0000-4000-8000-000000000001' }, at: expect.any(String) });
+    await loop.fix('BL-1', 'resume');
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(spawn.mock.calls[1][0]).toMatchObject({ resume: 'a1b2c3d4-0000-4000-8000-000000000001' });
+    expect(review().state).toBe('reviewing');
+    loop.dispose();
+  });
+
+  it('stops a paused agent as it is', async () => {
+    await loop.control('BL-1', 'pause');
+    await loop.control('BL-1', 'stop');
+    expect(review().state).toBe('stopped');
+    expect(review().stop).toMatchObject({ kind: 'user', agent: { phase: 'review' } });
+    expect(spawn).toHaveBeenCalledTimes(1);
+    loop.dispose();
+  });
+
+  it('ends its own run when another window paused it (the review state says so)', async () => {
+    const r = review();
+    data.items[0].review = { ...r, state: 'paused', paused: { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing', byUser: at } };
+    await (loop as unknown as { scan(): Promise<void> }).scan();
+    expect(stops).toBe(1);
+    expect(loop.running).toBe(0);
     loop.dispose();
   });
 });

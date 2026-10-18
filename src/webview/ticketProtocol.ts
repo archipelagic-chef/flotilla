@@ -79,8 +79,12 @@ export interface TicketView {
     priorityName?: string;
     edit?: RemoteEditOptions;
   };
-  /** The agents that worked on it (their chats), oldest first, with how many reports each wrote. */
-  agents: Array<Exclude<AgentChatView, { pending: true }> & { reports: number }>;
+  /**
+   * The agents that worked on it (their chats), oldest first, with how many reports each wrote; where one that's busy
+   * runs (without a window or in a terminal: it can be paused and stopped here; in Claude Code's panel: only there);
+   * and whether the user paused or stopped it (it can be resumed).
+   */
+  agents: Array<Exclude<AgentChatView, { pending: true }> & { reports: number; runs?: 'headless' | 'terminal' | 'panel'; held?: 'paused' | 'stopped' }>;
   /** The issues local entries can be posted to: the issue itself, or a local item's linked issues. */
   postTargets: string[];
   /** A local item can get an issue created for it (a tracker is connected). */
@@ -141,7 +145,7 @@ export interface TicketView {
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
-  shaping?: { agent: string; running: boolean; ready: boolean };
+  shaping?: { agent: string; running: boolean; ready: boolean; /** The user paused or stopped it: Resume goes on in its chat. */ held?: 'paused' | 'stopped' };
 }
 
 /** The top-level parts of a view that a change sends on their own (the activity has its own: see TicketPartsMessage). */
@@ -203,6 +207,8 @@ export type TicketWebviewMessage =
   /** The user's own review: approve, or request changes (an agent picks them up). */
   | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
+  /** Pause, stop or resume an agent: the one with that chat, else the one working on it. */
+  | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
   | { type: 'updateFromMain' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */

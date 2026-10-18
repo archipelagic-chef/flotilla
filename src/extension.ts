@@ -27,7 +27,8 @@ import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
-import { modelLevels } from './ui/backlog/agentRunner';
+import { modelLevels, trackTerminals } from './ui/backlog/agentRunner';
+import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
 import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
@@ -43,7 +44,7 @@ import { TicketPanels } from './ui/backlog/ticketPanel';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { devGitHubApi } from './ui/ci/devGitHub';
-import type { ReviewFix } from './features/backlog/review';
+import { heldBy, type ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
@@ -183,7 +184,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, isLeader: () => leader.isLeader });
-  context.subscriptions.push(reviews);
+  context.subscriptions.push(reviews, trackTerminals());
+  // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
+  const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (card?: unknown) => {
+    let id = backlogIdOf(card);
+    if (!id) {
+      const items = (await backlog.read()).items.filter((i) =>
+        action === 'resume' ? heldBy(i.review) || i.review?.state === 'paused' : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
+      );
+      const title = { pause: 'Pause the agent on…', resume: 'Resume the agent on…', stop: 'Stop the agent on…' }[action];
+      id = (await vscode.window.showQuickPick(items.map((i) => ({ label: i.id, description: i.title })), { title }))?.label;
+    }
+    if (id) await tickets.controlAgent(id, action);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.pauseAgent', controlAgent('pause')),
+    vscode.commands.registerCommand('flotilla.resumeAgent', controlAgent('resume')),
+    vscode.commands.registerCommand('flotilla.stopAgent', controlAgent('stop')),
+  );
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(() => noteDescriptions()));

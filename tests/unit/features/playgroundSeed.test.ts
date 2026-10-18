@@ -116,7 +116,7 @@ describe('playground seed', () => {
     expect(fixesFor(stopped.stop?.kind, !!stopped.stop?.task)).toEqual(['retry', 'newAgent']);
     const paused = data.items.find((i) => i.id === 'BL-12')!.review!;
     expect(paused.paused).toMatchObject({ known: true, phase: 'review', resume: 'reviewing' });
-    expect(Date.parse(paused.paused!.until)).toBeGreaterThan(Date.now());
+    expect(Date.parse(paused.paused!.until!)).toBeGreaterThan(Date.now());
   });
 
   it('has a worktree for each ticket with a branch, ahead, behind or with changes as its ticket needs', async () => {

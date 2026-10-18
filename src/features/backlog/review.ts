@@ -17,16 +17,15 @@ export interface ReviewState {
    * review; approved; stopped: no verdict, too many rounds, or stopped by the user.
    */
   state: 'working' | 'reviewing' | 'revising' | 'asking' | 'yours' | 'approved' | 'stopped' | 'paused';
-  /** Paused on Claude's usage limit (or for a prioritized start, see `for`): the agent's chat goes on at until, then back in resume's state. */
-  paused?: {
-    /** ISO 8601. */
-    until: string;
+  /**
+   * Paused on Claude's usage limit (or for a prioritized start, see `for`): the agent's chat goes on at until, then back
+   * in resume's state. Paused by the user (byUser): it goes on when they resume it.
+   */
+  paused?: HeldAgent & {
+    /** ISO 8601; none for a pause by the user. */
+    until?: string;
     /** The reset was said (not a guess). */
-    known: boolean;
-    phase: 'review' | 'work';
-    session: string;
-    agent: string;
-    resume: 'working' | 'reviewing' | 'revising';
+    known?: boolean;
     /** Paused to make room for a prioritized start on this item (not for a limit): it goes on when a slot frees. */
     for?: string;
     /** What was hit, when the reset wasn't said: the tries back off by it. */
@@ -34,6 +33,8 @@ export interface ReviewState {
     /** Tries that failed on the limit again since it first stopped (ISO 8601), when the reset wasn't said. */
     tries?: number;
     since?: string;
+    /** The user paused it (when, ISO 8601): it waits for them, whatever the limit or the queue. */
+    byUser?: string;
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;
@@ -50,12 +51,45 @@ export interface ReviewState {
   worktree?: string;
   /** Why it stopped, for the user. */
   reason?: string;
-  /** Why it stopped, for fixing it from the ticket; and the implementer's task that didn't get done, if any. */
-  stop?: { kind: ReviewStopKind; task?: RevisionTask };
+  /**
+   * Why it stopped, for fixing it from the ticket; and the implementer's task that didn't get done, if any. Stopped by
+   * the user: the agent they stopped (to resume its chat), and when (ISO 8601).
+   */
+  stop?: { kind: ReviewStopKind; task?: RevisionTask; agent?: HeldAgent; at?: string };
   /** Rounds allowed beyond flotilla.review.maxRounds (Another Round). */
   extraRounds?: number;
   /** Reports already acted on ("Ready for review", verdicts), by entry key. */
   handled?: string[];
+}
+
+/** An agent paused or stopped on an item: enough to go on in its chat. */
+export interface HeldAgent {
+  phase: 'review' | 'work';
+  session: string;
+  agent: string;
+  /** The review's state while it runs again. */
+  resume: 'working' | 'reviewing' | 'revising';
+  /** Where it ran: without a window (the default), or in a terminal (where it goes on again). */
+  where?: 'headless' | 'terminal';
+  /**
+   * It was started by hand, not by the loop: the review's state before it was held ('none': it had none), which it
+   * gets back once the agent goes on.
+   */
+  before?: ReviewState['state'] | 'none';
+}
+
+/** The agent the user paused or stopped on an item (to go on in its chat), if any. */
+export function heldBy(review: ReviewState | undefined): HeldAgent | undefined {
+  if (review?.state === 'paused' && review.paused?.byUser) return review.paused;
+  if (review?.state === 'stopped' && review.stop?.kind === 'user') return review.stop.agent;
+  return undefined;
+}
+
+/** Whether Flotilla's latest note about an agent says it was started (or resumed) in a terminal. */
+export function startedInTerminal(entries: TicketEntry[], agent: string): boolean {
+  const name = agent.replace(/[^A-Za-z0-9-]/g, '');
+  const note = entries.filter((e) => e.author === 'Flotilla' && new RegExp(`chat for agent ${name}(?![A-Za-z0-9-])`).test(e.body)).at(-1);
+  return !!note && /, in a terminal\b/.test(note.body);
 }
 
 export type Verdict = 'approved' | 'changes';
@@ -87,7 +121,7 @@ export interface RevisionTask {
 }
 
 /** How a stopped review is fixed from the ticket. */
-export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'worktree' | 'resumeNow';
+export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'worktree' | 'resumeNow' | 'resume';
 
 /** A fix's button, as fits why it stopped. */
 export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
@@ -104,11 +138,14 @@ export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): stri
       return 'Create Worktree';
     case 'resumeNow':
       return 'Go On Now';
+    case 'resume':
+      return 'Resume';
   }
 }
 
-/** The fixes for a stop, the first the one to offer first. */
-export function fixesFor(kind: ReviewStopKind | undefined, hasTask: boolean): ReviewFix[] {
+/** The fixes for a stop, the first the one to offer first (held: the agent the user stopped, which can go on). */
+export function fixesFor(kind: ReviewStopKind | undefined, hasTask: boolean, held?: HeldAgent): ReviewFix[] {
+  if (kind === 'user' && held) return held.phase === 'review' ? ['resume', 'retry'] : ['resume', 'newAgent'];
   switch (kind) {
     case 'busy':
       return ['inChat', 'newAgent', 'retry'];
@@ -295,6 +332,18 @@ export function resumeAfterPausePrompt(phase: 'review' | 'work'): string {
   return phase === 'review'
     ? 'Flotilla paused you to make room for another ticket; a slot is free now. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked.'
     : 'Flotilla paused you to make room for another ticket; a slot is free now. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or with "Waiting for you." if you need the user).';
+}
+
+/** What an agent the user paused or stopped is told when they resume it (its chat resumed). */
+export function resumeAfterUserPausePrompt(phase: 'review' | 'work'): string {
+  return phase === 'review'
+    ? 'The user paused you before you finished, and now resumes you. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked.'
+    : 'The user paused you before you finished, maybe in the middle of an edit, and now resumes you. First run `git status` (and `git diff`) to see what you had changed and not committed yet, then go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or with "Waiting for you." if you need the user).';
+}
+
+/** What a new agent is told when it takes over from one the user stopped. */
+export function takeOverPrompt(o: { stopped: string; ticket: string }): string {
+  return `The user stopped ${o.stopped}, another agent, before it finished this; you take over. Its reports are in the ticket ${o.ticket}, and its work is in this worktree: its commits, and maybe changes it hadn't committed yet (run \`git status\` first). Go on from there.`;
 }
 
 /** What an agent paused on a usage limit is told when it goes on (its chat resumed). */

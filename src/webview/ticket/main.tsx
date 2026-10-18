@@ -2,7 +2,7 @@ import { Component, render, type ComponentChildren, type JSX } from 'preact';
 import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
-import { fixesFor, fixLabel, type ReviewFix } from '../../features/backlog/review';
+import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
@@ -501,6 +501,7 @@ const FIX_ICON: Record<ReviewFix, string> = {
   anotherRound: 'refresh',
   worktree: 'git-branch',
   resumeNow: 'debug-continue',
+  resume: 'debug-continue',
 };
 
 const FIX_TIP: Record<ReviewFix, string> = {
@@ -510,13 +511,33 @@ const FIX_TIP: Record<ReviewFix, string> = {
   anotherRound: 'Allow one more round of review and changes',
   worktree: 'Creates a worktree for it, then goes on',
   resumeNow: "Goes on now, without waiting for the limit's reset (if it hasn't reset, it pauses again)",
+  resume: 'Goes on in its chat, where it left off (it checks git status first)',
 };
+
+/** A time as the status card says it: "Sun 14:02". */
+const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+const PAUSE_TIP = 'Stops it now and keeps its chat; its work stays in the worktree as it is. Resume goes on in the same chat';
+const STOP_TIP = 'Ends it (its chat is kept): resume it later, or hand the work to a new agent';
 
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** The ticket's discussion with its agent (BL-45): while the agent replies, and when it says the ticket is ready. */
 function DiscussPanel({ ticket }: { ticket: TicketView }) {
   const s = ticket.shaping!;
+  if (s.held && !s.running) {
+    return (
+      <div class="review-panel waiting">
+        <i class="codicon codicon-debug-pause" />
+        <span class="review-text">
+          <strong>Discussion</strong> You {s.held} {s.agent}. Its chat is kept: Resume, or write a comment, and it goes on there.
+        </span>
+        <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
+          <i class="codicon codicon-debug-continue" /> Resume
+        </ActionButton>
+      </div>
+    );
+  }
   if (!s.running && !s.ready) return null;
   return (
     <div class={`review-panel ${s.running ? 'working' : 'done'}`}>
@@ -524,6 +545,16 @@ function DiscussPanel({ ticket }: { ticket: TicketView }) {
       <span class="review-text">
         <strong>Discussion</strong> {s.running ? `${s.agent} is replying; its reply comes here.` : `${s.agent} says the ticket is ready to start.`}
       </span>
+      {s.running && (
+        <>
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'stop' }} working="Stopping…" title={STOP_TIP}>
+            <i class="codicon codicon-debug-stop" /> Stop
+          </ActionButton>
+        </>
+      )}
       {s.ready && !s.running && (
         <>
           {ticket.item.proposed ? (
@@ -560,6 +591,46 @@ function QueuedPanel({ queued }: { queued: QueuedView }) {
   );
 }
 
+/** The busy agents the review panel doesn't show (started by hand, not by the loop). */
+function outsideAgents(ticket: TicketView): TicketView['agents'] {
+  const r = ticket.review;
+  const own = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
+  // The discussion's agent shows in its own panel.
+  return ticket.agents.filter((a) => a.runs && a.id !== own && !(ticket.shaping?.running && a.agent === ticket.shaping.agent));
+}
+
+/**
+ * An agent working on the ticket outside the review loop (started by hand): one in a terminal can be paused and
+ * stopped here; one in Claude Code's panel only there (its chat opens).
+ */
+function AgentStatus({ agent: a }: { agent: TicketView['agents'][number] }) {
+  return (
+    <div class="review-panel working">
+      <i class="codicon codicon-hubot pulse" />
+      <span class="review-text">
+        <strong>Agent</strong>{' '}
+        {a.runs === 'panel'
+          ? `${a.agent} is working in Claude Code's panel. It can't be paused or stopped from here: stop it in its chat (Esc, or its stop button).`
+          : `${a.agent} is working${a.runs === 'terminal' ? ' in a terminal' : ' without a window'}; it reports below.`}
+      </span>
+      {a.runs === 'panel' ? (
+        <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" title="Open its chat in Claude Code">
+          <i class="codicon codicon-comment-discussion" /> Open Chat
+        </ActionButton>
+      ) : (
+        <>
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause', session: a.id }} working="Pausing…" title={PAUSE_TIP}>
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'stop', session: a.id }} working="Stopping…" title={STOP_TIP}>
+            <i class="codicon codicon-debug-stop" /> Stop
+          </ActionButton>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
 function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const r = ticket.review!;
@@ -568,11 +639,18 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   const turn = turnOf({ status: ticket.item.status, review: r });
   const said = turn && turnSentence(turn, r);
   const pause =
-    r.state === 'paused' && r.paused?.for
+    r.state === 'paused' && r.paused?.byUser
+      ? `(${when(r.paused.byUser)}) Its chat is kept, and its work in the worktree as it was.`
+      : r.state === 'paused' && r.paused?.for
       ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
       : r.state === 'paused' && r.paused
-      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${new Date(r.paused.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}.`
+      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
+      : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
+      ? `(${when(r.stop.at)})`
       : undefined;
+  // The agent the user paused or stopped: it can be resumed in its chat.
+  const held = heldBy(r);
+  const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
   const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot && !turn);
   const [icon, cls, label, text, todo] = autopilot
     ? ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
@@ -596,9 +674,19 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         <strong>{label}</strong> {text}
         {todo && <span class="muted review-todo"> {todo}</span>}
       </span>
-      {r.state === 'paused' && (
-        <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
-          <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+      {r.state === 'paused' &&
+        (r.paused?.byUser ? (
+          <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
+            <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
+          </ActionButton>
+        ) : (
+          <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
+            <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+          </ActionButton>
+        ))}
+      {running && !yours && (
+        <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
+          <i class="codicon codicon-debug-pause" /> Pause
         </ActionButton>
       )}
       {yours ? (
@@ -620,12 +708,12 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
           </ActionButton>
         </>
       ) : active ? (
-        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title="Stops the running agent and the handoffs">
+        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
           <i class="codicon codicon-debug-stop" /> Stop
         </ActionButton>
       ) : r.state === 'stopped' ? (
         // Fixes for why it stopped, the first one first.
-        fixesFor(r.stop?.kind, !!r.stop?.task).map((fix, i) => (
+        fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
           <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
             <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
           </ActionButton>
@@ -947,39 +1035,59 @@ function Agents({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="agents">
         {ticket.agents.map((a) => {
-          const state = CHAT_STATE[a.state] ?? CHAT_STATE.ended;
+          const state = a.held ? { label: a.held === 'paused' ? 'Paused' : 'Stopped', cls: 'waiting' } : (CHAT_STATE[a.state] ?? CHAT_STATE.ended);
           return (
-            <button
-              key={a.id}
-              class={`agent-row ${state.cls}`}
-              onClick={() => send({ type: 'openChat', key: a.key, id: a.id })}
-              title="Open this chat in Claude Code"
-            >
-              <span class="chat-icon small">
-                <i class="codicon codicon-hubot" />
-                <span class={`dot ${state.cls}`} />
-              </span>
-              <span class="agent-name">{a.agent}</span>
-              <span class="chat-title">{a.title}</span>
-              <span class={`state ${state.cls}`}>{state.label}</span>
-              <span class="muted agent-meta">
-                <i class="codicon codicon-git-branch" /> {a.branch}
-              </span>
-              {(a.model || a.effort) && (
-                <span class="muted agent-meta" title={[a.model && `Model: ${a.model}`, a.effort && `Effort: ${a.effort}`].filter(Boolean).join('\n')}>
-                  <i class="codicon codicon-chip" /> {[a.model && modelName(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(' · ')}
+            <div key={a.id} class={`agent-row ${state.cls}`}>
+              <button class="agent-open" onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open this chat in Claude Code">
+                <span class="chat-icon small">
+                  <i class="codicon codicon-hubot" />
+                  <span class={`dot ${state.cls}`} />
+                </span>
+                <span class="agent-name">{a.agent}</span>
+                <span class="chat-title">{a.title}</span>
+                <span class={`state ${state.cls}`}>{state.label}</span>
+                <span class="muted agent-meta">
+                  <i class="codicon codicon-git-branch" /> {a.branch}
+                </span>
+                {(a.model || a.effort) && (
+                  <span class="muted agent-meta" title={[a.model && `Model: ${a.model}`, a.effort && `Effort: ${a.effort}`].filter(Boolean).join('\n')}>
+                    <i class="codicon codicon-chip" /> {[a.model && modelName(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+                {a.tokens && (
+                  <span class="muted agent-meta" title={a.tokens.tip}>
+                    <i class="codicon codicon-pulse" /> {a.tokens.label} re-read
+                  </span>
+                )}
+                <span class="muted agent-meta">
+                  {a.reports} report{a.reports === 1 ? '' : 's'} · {ago(a.updated)}
+                </span>
+                {a.runs === 'panel' && (
+                  <span class="muted agent-meta" title="Claude Code's panel can't be paused or stopped from outside: stop it in its chat (Esc, or its stop button)">
+                    in Claude Code's panel
+                  </span>
+                )}
+                <i class="codicon codicon-arrow-right open-arrow" />
+              </button>
+              {(a.held || (a.runs && a.runs !== 'panel')) && (
+                <span class="agent-actions">
+                  {a.held ? (
+                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'resume', session: a.id }} working="Resuming…" aria-label={`Resume ${a.agent}`} title={FIX_TIP.resume}>
+                      <i class="codicon codicon-debug-continue" />
+                    </ActionButton>
+                  ) : (
+                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'pause', session: a.id }} working="Pausing…" aria-label={`Pause ${a.agent}`} title={PAUSE_TIP}>
+                      <i class="codicon codicon-debug-pause" />
+                    </ActionButton>
+                  )}
+                  {a.held !== 'stopped' && (
+                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'stop', session: a.id }} working="Stopping…" aria-label={`Stop ${a.agent}`} title={STOP_TIP}>
+                      <i class="codicon codicon-debug-stop" />
+                    </ActionButton>
+                  )}
                 </span>
               )}
-              {a.tokens && (
-                <span class="muted agent-meta" title={a.tokens.tip}>
-                  <i class="codicon codicon-pulse" /> {a.tokens.label} re-read
-                </span>
-              )}
-              <span class="muted agent-meta">
-                {a.reports} report{a.reports === 1 ? '' : 's'} · {ago(a.updated)}
-              </span>
-              <i class="codicon codicon-arrow-right open-arrow" />
-            </button>
+            </div>
           );
         })}
       </div>
@@ -1788,6 +1896,9 @@ function StateCard({ ticket }: { ticket: TicketView }) {
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
       {ticket.queued && <QueuedPanel queued={ticket.queued} />}
+      {outsideAgents(ticket).map((a) => (
+        <AgentStatus key={a.id} agent={a} />
+      ))}
       {ticket.review && !asking ? (
         <ReviewPanel ticket={ticket} />
       ) : ticket.rewrite ? (

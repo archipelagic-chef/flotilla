@@ -31,11 +31,58 @@ export class Shaping implements vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
-  constructor(private readonly deps: ShapingDeps) {}
+  private readonly watcher: vscode.Disposable;
+
+  constructor(private readonly deps: ShapingDeps) {
+    // A discussion the user paused or stopped in another window ends here, if it runs here.
+    this.watcher = deps.backlog.watch(() => void this.endHeld().catch(() => undefined));
+  }
 
   dispose(): void {
+    this.watcher.dispose();
     this.runs.forEach((r) => r.stop());
     this.changed.dispose();
+  }
+
+  /** The session of the ticket's shaping agent if it runs in this window. */
+  runningSession(id: string): string | undefined {
+    return this.runs.get(id)?.sessionId;
+  }
+
+  /** Ends the runs here of discussions the user paused or stopped. */
+  private async endHeld(): Promise<void> {
+    if (!this.runs.size) return;
+    for (const item of (await this.deps.backlog.read()).items) {
+      const run = this.runs.get(item.id);
+      if (!run || !item.shaping?.held || item.shaping.session !== run.sessionId) continue;
+      this.runs.delete(item.id);
+      this.again.delete(item.id);
+      run.stop();
+      this.changed.fire();
+    }
+  }
+
+  /**
+   * Pauses, stops or resumes a ticket's discussion: its agent's run ends now (here, or in the window running it), its
+   * chat kept; Resume (or a comment) goes on in it.
+   */
+  async control(id: string, action: 'pause' | 'stop' | 'resume'): Promise<void> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    const shaping = item?.shaping;
+    if (!item || !shaping) return;
+    if (action === 'resume') {
+      if (shaping.held) await this.discuss(id, true);
+      return;
+    }
+    await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { ...shaping, held: { kind: action === 'pause' ? 'paused' : 'stopped', at: new Date().toISOString() } } }));
+    await this.endHeld();
+    await this.say(
+      item,
+      action === 'pause'
+        ? `You paused ${shaping.agent}. Its chat is kept: Resume, or write a comment, and it goes on there.`
+        : `You stopped ${shaping.agent}. Resume, or write a comment, and it goes on in its chat.`,
+    );
+    this.changed.fire();
   }
 
   /** Whether an agent is discussing the ticket now (in this window). */
@@ -80,7 +127,8 @@ export class Shaping implements vscode.Disposable {
       tools: shapingTools(ticket),
     });
     try {
-      // Saved before the run is tracked: a run that ends meanwhile can't be followed by a stale state.
+      // Saved before the run is tracked: a run that ends meanwhile can't be followed by a stale state. (No longer held:
+      // the user resumed it, or wrote again.)
       await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { agent, session: run.sessionId } }));
       if (!item.shaping) {
         await this.say(item, `Opened a chat for agent ${agent} to discuss this ticket with you. It replies here, and writes what's agreed into the description.`);
@@ -92,7 +140,7 @@ export class Shaping implements vscode.Disposable {
     this.runs.set(id, run);
     void trackProgress('backlog', `${agent} is discussing ${id}`, () => run.done);
     this.changed.fire();
-    void run.done.then((result) => this.finished(id, agent, result));
+    void run.done.then((result) => this.finished(id, agent, result, run));
   }
 
   /** Dismisses "ready to start" (Keep discussing): the ticket goes on being discussed. */
@@ -108,7 +156,9 @@ export class Shaping implements vscode.Disposable {
    * The agent's run is over: its reply goes to the end of the ticket (after any comment written meanwhile), and says
    * whether the ticket is ready; a comment that came meanwhile goes on.
    */
-  private async finished(id: string, agent: string, result: AgentResult): Promise<void> {
+  private async finished(id: string, agent: string, result: AgentResult, run: AgentRun): Promise<void> {
+    // Ended by the user (paused or stopped): there's no reply to give.
+    if (this.runs.get(id) !== run) return;
     this.runs.delete(id);
     try {
       const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);

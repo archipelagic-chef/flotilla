@@ -36,6 +36,7 @@ import { Shaping } from '../../../src/ui/backlog/shaping';
 function fakeBacklog(item: Partial<BacklogItem>) {
   let data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'A ticket', status: 'todo' as const, created: '', ...item }] };
   const activity: TicketEntry[] = [];
+  const watchers: Array<() => void> = [];
   return {
     get data() {
       return data;
@@ -44,7 +45,14 @@ function fakeBacklog(item: Partial<BacklogItem>) {
     backlog: {
       dir: '/t',
       read: async () => structuredClone(data),
-      change: async (fn: (d: typeof data) => typeof data) => (data = await fn(structuredClone(data))),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = await fn(structuredClone(data));
+        watchers.forEach((w) => w());
+      },
+      watch: (w: () => void) => {
+        watchers.push(w);
+        return { dispose: () => undefined };
+      },
       ensureDocument: async () => '/t/BL-1.md',
       appendActivity: async (_item: unknown, e: TicketEntry) => void activity.push(e),
       readTicket: async () => ({ title: 'A ticket', description: '', activity: structuredClone(activity) }),

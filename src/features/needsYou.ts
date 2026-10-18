@@ -50,7 +50,7 @@ function ticketKind(item: BacklogItem): NeedsYouKind | undefined {
   // A ticket in review needs the user when its turn is theirs (as in the "Needs you" list); what they did themselves
   // (stopped a review, moved an item to review) is no news to tell them.
   const r = item.review;
-  if (!turnOf(item)?.mine || !r || r.stop?.kind === 'user') return undefined;
+  if (!turnOf(item)?.mine || !r || r.stop?.kind === 'user' || r.paused?.byUser) return undefined;
   switch (r.state) {
     case 'asking':
       return 'asks';

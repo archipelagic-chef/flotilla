@@ -7,7 +7,7 @@ import type { ReviewState } from './review';
  * to decide how a stopped review goes on. The cards, the ticket's header and "Needs you" all read it, so they agree.
  * Shared by the host and the webviews (no node or vscode APIs).
  */
-export type TurnKind = 'yours' | 'agent-review' | 'agent-revising' | 'asking' | 'stopped';
+export type TurnKind = 'yours' | 'agent-review' | 'agent-revising' | 'asking' | 'stopped' | 'paused';
 
 export interface Turn {
   kind: TurnKind;
@@ -24,6 +24,7 @@ export const TURN_LABEL: Record<TurnKind, string> = {
   'agent-revising': 'Agent revising',
   asking: 'Waiting for you',
   stopped: 'Stopped',
+  paused: 'Paused',
 };
 
 /** The codicon for each turn. */
@@ -33,6 +34,7 @@ export const TURN_ICON: Record<TurnKind, string> = {
   'agent-revising': 'tools',
   asking: 'question',
   stopped: 'debug-pause',
+  paused: 'debug-pause',
 };
 
 const you = (kind: TurnKind): Turn => ({ kind, who: 'You', mine: true });
@@ -61,6 +63,8 @@ export function turnOf(item: Pick<BacklogItem, 'status' | 'proposed' | 'review'>
       if (inReview) return agent('agent-review', r.reviewer);
       return r.round > 0 ? agent('agent-revising', r.implementer) : undefined;
     case 'paused':
+      // Paused by the user, it waits for them to resume it.
+      if (r.paused?.byUser) return you('paused');
       // On Claude's usage limit, the agent goes on by itself: still its turn.
       if (r.paused?.phase === 'review') return agent('agent-review', r.paused.agent || r.reviewer);
       return r.round > 0 || inReview ? agent('agent-revising', r.paused?.agent ?? r.implementer) : undefined;
@@ -91,7 +95,10 @@ export function turnSentence(turn: Turn, r: ReviewState | undefined): { text: st
         text: `${r?.implementer ?? 'The agent'} asks you something about ${r?.implementer ? 'its work' : 'the work'}${round}.`,
         todo: 'Answer it in its report or in a comment below; it goes on from there.',
       };
+    case 'paused':
+      return { text: `You paused ${r?.paused?.agent ?? 'its agent'}${round}.`, todo: 'Resume it: it goes on in the same chat, where it left off.' };
     case 'stopped':
+      if (r?.stop?.kind === 'user' && r.stop.agent) return { text: `You stopped ${r.stop.agent.agent}${round}.`, todo: 'Resume it in its chat, or hand the work to a new agent.' };
       return r?.stop?.kind === 'user'
         ? { text: `You stopped the review of ${work}${round}.`, todo: 'Review it yourself, or start the review again.' }
         : { text: `The review of ${work} stopped${round}: ${r?.reason ?? 'no verdict.'}`, todo: 'Choose how it goes on.' };
