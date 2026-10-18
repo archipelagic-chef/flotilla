@@ -46,7 +46,7 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
-import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { demoCommand, demoPath, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { openTarget } from '../../features/backlog/runTarget';
 import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
@@ -114,7 +114,7 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
   // Others, in the repository (from its root: the ticket's worktrees, then the main one) or anywhere on disk, are
   // embedded.
-  return replaceImages(html, async (src) => {
+  const embedded = await replaceImages(html, async (src) => {
     if (/^(https?|data):/i.test(src) || src.startsWith('//')) return undefined;
     let rel = src;
     try {
@@ -130,6 +130,18 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
       if (uri) return uri;
     }
     return undefined;
+  });
+  return withVideos(embedded);
+}
+
+/**
+ * Videos linked as images (![What it shows](BL-3/demo.mp4): an agent's longer demo, BL-78) as players; the shorter
+ * demos are GIFs, which show as images.
+ */
+export function withVideos(html: string): string {
+  return html.replace(/<img\b([^>]*?)\ssrc="([^"]+\.(?:mp4|webm))"([^>]*)>/gi, (_m, before: string, src: string, after: string) => {
+    const alt = /\salt="([^"]*)"/.exec(`${before} ${after}`)?.[1];
+    return `<video src="${src}" controls loop muted autoplay playsinline${alt ? ` title="${alt}"` : ''}></video>`;
   });
 }
 
@@ -894,8 +906,20 @@ export class TicketPanels implements vscode.Disposable {
       void vscode.window.showWarningMessage(`The run block "${title ?? id}" has no commands.`);
       return;
     }
+    // A demo (its name, then maybe a title) plays in the worktree's terminal, with the repository's player (BL-78).
+    const demoName = kind === 'demo' ? title?.split(/\s+/)[0] : undefined;
+    const demo = demoPath(demoName);
+    if (kind === 'demo' && !demo) {
+      void vscode.window.showWarningMessage(`${id}'s demo block doesn't name a demo: write its name after \`demo\` (letters, digits, - and _).`);
+      return;
+    }
+    const commands = demo ? [demoCommand(demoName!)] : lines;
     const place = await this.runPlace(id, item);
     if (!place) return;
+    if (demo && !fs.existsSync(path.join(place.dir, demo))) {
+      void vscode.window.showWarningMessage(`${demo} isn't in ${place.dir}.`);
+      return;
+    }
     // What an open block opens is checked before anyone is asked: a refused one doesn't get a dialog.
     const target = lines[0] ?? title ?? '';
     const opened = kind === 'open' ? openTarget(target, place.dir, realPath) : undefined;
@@ -921,16 +945,17 @@ export class TicketPanels implements vscode.Disposable {
     const fingerprint = runFingerprint(id, place.dir, picked.block);
     const approved = this.deps.approvals.has(fingerprint);
     if (!approved) {
-      const what = kind === 'shell' ? lines.join('\n') : kind === 'open' ? target : `${kind === 'launch' ? 'Launch configuration' : 'Task'} "${title ?? ''}"`;
-      const shown = kind === 'shell' ? `In ${place.dir}:\n\n${what}` : `${what}\n\nIn ${place.dir}`;
+      const inTerminal = kind === 'shell' || kind === 'demo';
+      const what = inTerminal ? commands.join('\n') : kind === 'open' ? target : `${kind === 'launch' ? 'Launch configuration' : 'Task'} "${title ?? ''}"`;
+      const shown = inTerminal ? `In ${place.dir}:\n\n${what}` : `${what}\n\nIn ${place.dir}`;
       const answer = await vscode.window.showWarningMessage(`Run ${title ?? kind} for ${id}?`, { modal: true, detail: shown }, 'Run');
       if (answer !== 'Run') return;
     }
-    if (kind === 'shell') {
+    if (kind === 'shell' || kind === 'demo') {
       const terminal = await this.deps.terminals.forRun(id, place.dir);
       if (!terminal) return;
       terminal.show();
-      for (const line of lines) terminal.sendText(line);
+      for (const line of commands) terminal.sendText(line);
     } else if (folder && kind === 'launch') {
       await startLaunch(folder, title ?? '');
     } else if (folder && kind === 'task') {
@@ -942,8 +967,9 @@ export class TicketPanels implements vscode.Disposable {
     }
     // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
     if (!approved) await this.deps.approvals.add(fingerprint);
-    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : 'ran';
-    await this.addActivity(id, 'Flotilla', `You ${verb} ${title ? `"${title}"` : `the ${kind} block`} in \`${place.label}\`.`);
+    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? 'played' : 'ran';
+    const ran = demoName ? `the demo "${demoName}"` : title ? `"${title}"` : `the ${kind} block`;
+    await this.addActivity(id, 'Flotilla', `You ${verb} ${ran} in \`${place.label}\`.`);
   }
 
   /**
@@ -1279,7 +1305,7 @@ export class TicketPanels implements vscode.Disposable {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${uri('codicons', 'codicon.css')}">
 <link rel="stylesheet" href="${uri('ticket.css')}">

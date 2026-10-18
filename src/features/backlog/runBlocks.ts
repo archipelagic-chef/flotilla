@@ -9,16 +9,17 @@
  *   ```
  *
  * Kinds: shell (the default: commands, run one after the other), launch and task (by name), open (a URL, or a file of
- * the worktree). Only the entries agents and Flotilla write count (not descriptions, nor comments from others).
+ * the worktree), demo (a recorded demo of the worktree played again live: `run demo <name>`, BL-78). Only the entries
+ * agents and Flotilla write count (not descriptions, nor comments from others).
  */
 import { entryAgent } from './backlog';
 import type { TicketEntry } from './ticket';
 
-export type RunKind = 'shell' | 'launch' | 'task' | 'open';
+export type RunKind = 'shell' | 'launch' | 'task' | 'open' | 'demo';
 
 export interface RunBlock {
   kind: RunKind;
-  /** The text after the kind: the title, or for launch and task the name of the configuration or task. */
+  /** The text after the kind: the title, or for launch and task the name of the configuration or task, for demo the demo's. */
   title?: string;
   /** The block's lines, without the blank ones: commands for shell, the URL or file for open. */
   lines: string[];
@@ -32,7 +33,7 @@ export interface RunBlockRef {
   title?: string;
 }
 
-const KINDS: readonly string[] = ['shell', 'launch', 'task', 'open'];
+const KINDS: readonly string[] = ['shell', 'launch', 'task', 'open', 'demo'];
 const OPENING = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const CLOSING = /^ {0,3}(`{3,}|~{3,})\s*$/;
 const RUN = /^run(?:\s+(.*))?$/;
@@ -112,7 +113,19 @@ export function runLabel(run: Pick<RunBlock, 'kind' | 'title' | 'lines'>): strin
       return `Run task ${run.title ?? 'its task'}`;
     case 'open':
       return `Open ${first ?? run.title ?? 'its link'}`;
+    case 'demo':
+      return `Play the demo ${run.title ?? ''}`.trim();
   }
+}
+
+/** A demo's file in its worktree (demos/<name>.json), or undefined when the name isn't one (it mustn't be a path). */
+export function demoPath(name: string | undefined): string | undefined {
+  return name && /^[\w-]+$/.test(name) ? `demos/${name}.json` : undefined;
+}
+
+/** What a demo block runs in its worktree's terminal: the repository's demo player (npm run demo, scripts/demo.mjs). */
+export function demoCommand(name: string): string {
+  return `npm run demo -- play ${name}`;
 }
 
 /** The ticket's run: the last run block of its reports (the Run buttons run it), or undefined if none. */

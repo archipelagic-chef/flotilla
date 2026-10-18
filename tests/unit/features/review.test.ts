@@ -60,10 +60,10 @@ describe('review loop', () => {
     for (const round of [1, 2]) {
       const prompt = reviewerPrompt({ ...args, round });
       expect(prompt).toMatch(/run block is the last fenced block whose info string is `run`/);
-      expect(prompt).toMatch(/a block whose kind is `launch`, `task` or `open` is skipped/);
+      expect(prompt).toMatch(/a block whose kind is `launch`, `task`, `open` or `demo` is skipped/);
       expect(prompt).toMatch(/run the window-free lines and skip the rest/);
       expect(prompt).toMatch(/shell lines that need no window/);
-      expect(prompt).toMatch(/`launch`, `task` or `open`/);
+      expect(prompt).toMatch(/`launch`, `task`, `open` or `demo`/);
       expect(prompt).toMatch(/what you ran and what it gave/);
       expect(prompt).toMatch(/git status/);
     }

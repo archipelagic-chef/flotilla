@@ -10,6 +10,15 @@ describe('images in tickets', () => {
     expect(out).toBe('<p><img src="data:image/png;base64,AAA" alt="a"> <img alt="b" src="https://x/b.png"> <img src="data:image/png;base64,AAA"></p>');
   });
 
+  it('plays videos linked as images (a long demo), and leaves the other images alone', async () => {
+    const { withVideos } = await import('../../../src/ui/backlog/ticketPanel');
+    const html = '<p><img src="https://w/BL-3/demo.mp4" alt="Creating a worktree"> <img src="BL-3/demo.gif" alt="g"> <img src="x.webm"></p>';
+    expect(withVideos(html)).toBe(
+      '<p><video src="https://w/BL-3/demo.mp4" controls loop muted autoplay playsinline title="Creating a worktree"></video> <img src="BL-3/demo.gif" alt="g"> ' +
+        '<video src="x.webm" controls loop muted autoplay playsinline></video></p>',
+    );
+  });
+
   it('fetches Jira\'s own images with the login, and only those', async () => {
     const { JiraSource } = await import('../../../src/features/backlog/sources/jira');
     const seen: Array<{ url: string; auth?: string }> = [];
