@@ -1,5 +1,6 @@
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
+import type { MergedInfo, MergeState } from './merge';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -68,6 +69,9 @@ export interface BacklogItem {
   history?: HistoryVersion[];
   /** The autopilot couldn't start an agent on it (why, and when): it waits for the user to start it (Run). */
   startFailed?: { message: string; /** ISO 8601. */ since: string };
+  /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
+  merging?: MergeState;
+  merged?: MergedInfo;
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
@@ -211,6 +215,11 @@ export function updateItem(
       return next;
     }),
   };
+}
+
+/** Whether an item is ready to merge: in review, approved, and not being merged already. */
+export function readyToMerge(item: Pick<BacklogItem, 'status' | 'review' | 'proposed' | 'merging'>): boolean {
+  return item.status === 'review' && item.review?.state === 'approved' && !item.proposed && !item.merging;
 }
 
 /** Accepts an agent's proposed item: it becomes an ordinary one. */

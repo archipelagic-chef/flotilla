@@ -9,6 +9,8 @@ import { readSettings } from '../settings';
 export interface MergesDeps {
   backlog: LocalBacklog;
   mainRoot: string;
+  /** An item Flotilla is merging itself now (Merge to main): it moves it to Done, saying what it merged. */
+  merging?(id: string): boolean;
 }
 
 /**
@@ -52,7 +54,7 @@ export class Merges {
     const before = JSON.stringify([...this.info]);
     this.info = info;
     for (const [id, merge] of info) if (merge.state === 'unmerged' || merge.state === 'partly') this.open.add(id);
-    const done = data.items.filter((i) => movesToDone(i, info.get(i.id), this.open.has(i.id)));
+    const done = data.items.filter((i) => movesToDone(i, info.get(i.id), this.open.has(i.id)) && !(i.merging || this.deps.merging?.(i.id)));
     if (done.length) await this.settle(done, info);
     if (before !== JSON.stringify([...this.info])) for (const listener of [...this.listeners]) listener();
   }
@@ -61,8 +63,16 @@ export class Merges {
   private async settle(items: BacklogItem[], info: Map<string, MergeInfo>): Promise<void> {
     const ids = new Set(items.map((i) => i.id));
     for (const id of ids) this.open.delete(id);
-    await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (ids.has(i.id) ? { ...i, status: 'done' } : i)) }), { by: 'Flotilla' });
-    for (const item of items) {
+    // Only what's still open when it's written: a merge that finished meanwhile has said so already.
+    const moved = new Set<string>();
+    await this.deps.backlog.change(
+      (d) => ({
+        ...d,
+        items: d.items.map((i) => (ids.has(i.id) && i.status !== 'done' && !i.merging ? (moved.add(i.id), { ...i, status: 'done' }) : i)),
+      }),
+      { by: 'Flotilla' },
+    );
+    for (const item of items.filter((i) => moved.has(i.id))) {
       await this.deps.backlog.appendActivity(item, {
         date: entryDate(new Date()),
         author: 'Flotilla',

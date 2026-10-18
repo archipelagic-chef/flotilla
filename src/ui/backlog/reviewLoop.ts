@@ -82,6 +82,8 @@ export interface ReviewDeps {
   repository: Repository<Workstream>;
   mainRoot: string;
   output: vscode.OutputChannel;
+  /** An item was approved: by the reviewer agent (its name), or by the user (undefined). */
+  onApproved?(id: string, by: string | undefined): void;
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
@@ -120,6 +122,9 @@ interface Running {
 
 /** The start that waits: runs with the item as it is then. */
 type StartFn = (item: BacklogItem) => Promise<void>;
+
+/** How long a chat that should be at work stays still before its agent counts as lost (see recoverLost). */
+const LOST_AFTER_MS = 2 * 60_000;
 
 const minutes = (ms: number) => `${Math.max(1, Math.round(ms / 60_000))} min`;
 
@@ -173,6 +178,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async retry(): Promise<void> {
     try {
       await this.resumePaused();
+      await this.recoverLost();
       await this.watchRunaways();
       await this.dispatch();
     } catch (e: unknown) {
@@ -643,6 +649,30 @@ export class ReviewLoop implements vscode.Disposable {
    * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
    * force) goes on at once.
    */
+  /**
+   * Once a minute (the leading window): a ticket whose agent should be at work, but runs in no window, is stopped with
+   * a way on (BL-87). That's an agent the window ended when it reloaded or closed: nothing else would move it on. Its
+   * chat tells: one that isn't working and hasn't changed for LOST_AFTER_MS. An agent this window runs, one starting,
+   * or one whose chat isn't known (yet) is left alone.
+   */
+  private async recoverLost(now = Date.now()): Promise<void> {
+    if (this.deps.isLeader && !this.deps.isLeader()) return;
+    const d = await this.deps.backlog.read();
+    for (const item of d.items) {
+      const r = item.review;
+      if (!r || (r.state !== 'working' && r.state !== 'revising' && r.state !== 'reviewing')) continue;
+      if (this.runs.has(item.id) || [...this.starting.values()].includes(item.id) || this.waiting.has(item.id)) continue;
+      const review = r.state === 'reviewing';
+      const session = review ? r.reviewerSession : r.implementerSession;
+      const chat = this.chatById(session);
+      if (!chat || chat.state === 'working' || chat.state === 'waiting-for-input' || isRunningHeadless(chat.id)) continue;
+      if (now - chat.updatedAt.getTime() < LOST_AFTER_MS) continue;
+      const agent = (review ? r.reviewer : r.implementer) || 'Its agent';
+      const task: RevisionTask | undefined = review ? undefined : { prompt: 'Go on where you left off, then report in the ticket as asked.', why: `${agent} stopped without finishing`, aside: true };
+      await this.stopLoop(item.id, `${agent} stopped without finishing (the window it ran in reloaded or closed).`, { kind: review ? 'no-verdict' : 'no-report', task });
+    }
+  }
+
   async resumePaused(force?: string): Promise<void> {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();
@@ -963,11 +993,11 @@ export class ReviewLoop implements vscode.Disposable {
   private readonly tasks = new Map<string, RevisionTask>();
 
   /** A chat in the repository, by its session. */
-  private chatById(session: string | undefined): { ws: Workstream; id: string; cwd?: string; state: string } | undefined {
+  private chatById(session: string | undefined): { ws: Workstream; id: string; cwd?: string; state: string; updatedAt: Date } | undefined {
     if (!session) return undefined;
     for (const ws of this.deps.repository.current) {
       const chat = ws.chats.find((c) => c.id === session);
-      if (chat) return { ws, id: chat.id, cwd: chat.cwd, state: chat.state };
+      if (chat) return { ws, id: chat.id, cwd: chat.cwd, state: chat.state, updatedAt: chat.updatedAt };
     }
     return undefined;
   }
@@ -1260,6 +1290,7 @@ export class ReviewLoop implements vscode.Disposable {
     const handled = [...(item.review.handled ?? []), this.key(id)(verdict.entry)];
     if (verdict.verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
+      this.deps.onApproved?.(id, item.review.reviewer);
       return;
     }
     // Changes requested again: a ticket on a lighter model moves up to the strong one (BL-69).
@@ -1301,6 +1332,7 @@ export class ReviewLoop implements vscode.Disposable {
     const handled = [...(item.review?.handled ?? []), this.key(id)(entry)];
     if (verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'approved', byUser: true, reason: undefined, handled }));
+      this.deps.onApproved?.(id, undefined);
       return;
     }
     // The implementer: the review's, else the last agent that reported (not a reviewer).

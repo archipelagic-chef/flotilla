@@ -18,6 +18,7 @@ import {
   linkedItem,
   unlinkIssue,
   updateItem,
+  readyToMerge,
   type AgentChoice,
   type BacklogItem,
 } from '../../features/backlog/backlog';
@@ -46,6 +47,7 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
+import type { Merger } from './merge';
 import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
@@ -310,6 +312,14 @@ export class TicketPanels implements vscode.Disposable {
   useShaping(shaping: Shaping): void {
     this.shaping = shaping;
     this.subscriptions.push(shaping.onDidChange(() => this.refreshAll()));
+  }
+
+  private merger: Merger | undefined;
+
+  /** The merges, for the tickets' Merge button and merge panel. */
+  useMerger(merger: Merger): void {
+    this.merger = merger;
+    this.subscriptions.push(merger.onDidChange(() => this.refreshAll()));
   }
 
   constructor(private readonly deps: TicketDeps) {
@@ -783,7 +793,7 @@ export class TicketPanels implements vscode.Disposable {
       panel.title = `${item.id} ${item.title}`;
       const dir = this.deps.backlog.dir;
       const { remote, ...plain } = item;
-      base = { ...this.baseView(plain, remote), ...(await this.work(plain)), ...(await this.family(plain)) };
+      base = { ...this.baseView(plain, remote), ...(await this.work(plain)), ...(await this.family(plain)), ...(await this.mergeInfo(plain)) };
       shown = plain;
       if (remote) {
         // What the backlog knows shows at once; the description and comments follow from the tracker.
@@ -820,6 +830,7 @@ export class TicketPanels implements vscode.Disposable {
           agentDefaults: {},
           children: [],
           canReview: false,
+          canMerge: false,
           canDiscuss: false,
           dependsOn: [],
         }),
@@ -884,6 +895,8 @@ export class TicketPanels implements vscode.Disposable {
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
+      canMerge: !remote && !!this.merger && readyToMerge(plain),
+      ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       dependsOn: [],
@@ -891,6 +904,18 @@ export class TicketPanels implements vscode.Disposable {
         ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}) } }
         : {}),
     };
+  }
+
+  /** The branch an item merges into (once it can be merged); once merged, what that has that its upstream doesn't. */
+  private async mergeInfo(item: BacklogItem): Promise<Pick<TicketView, 'unpushed' | 'mergeInto'>> {
+    if (!this.merger) return {};
+    if (readyToMerge(item)) {
+      const into = await this.merger.baseBranch().catch(() => undefined);
+      return into ? { mergeInto: into } : {};
+    }
+    if (!item.merged) return {};
+    const u = await this.merger.unpushed(item.merged.into).catch(() => undefined);
+    return u?.count ? { unpushed: { base: item.merged.into, ...u } } : {};
   }
 
   /** An item's parent and its parts. */
@@ -1379,6 +1404,21 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'compareCleanUp':
         await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
+        return;
+      case 'merge':
+        await this.merger?.merge(id);
+        return;
+      case 'mergeResolve':
+        await this.merger?.resolveWithAgent(id);
+        return;
+      case 'mergeApprove':
+        await this.merger?.approveResolution(id);
+        return;
+      case 'mergeCancel':
+        await this.merger?.cancel(id);
+        return;
+      case 'push':
+        await this.merger?.push();
         return;
       case 'run':
         await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index });

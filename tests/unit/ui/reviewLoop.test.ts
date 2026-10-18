@@ -1022,3 +1022,70 @@ describe('runaway agents (BL-76)', () => {
     loop.dispose();
   });
 });
+
+describe('agents lost to a reload (BL-87)', () => {
+  const session = 'a1b2c3d4-0000-4000-8000-0000000000aa';
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let chats: Array<Record<string, unknown>>;
+  let loop: { dispose(): void };
+  let recover: (now?: number) => Promise<void>;
+  const now = Date.parse('2026-10-18T12:00:00Z');
+  const review = () => data.items[0].review as { state: string; reason?: string; stop?: { kind: string; task?: { prompt: string } } };
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    memory.short = undefined;
+    data = {
+      version: 1,
+      next: 2,
+      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising' } }],
+    };
+    chats = [];
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Fix me', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/BL-1.md',
+      docPath: () => '/unused/BL-1.md',
+      appendActivity: async () => undefined,
+    };
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      get current() {
+        return [{ key: 'wt', worktree: { isMain: false, path: '/wt', branch: 'feature/BL-1-fix', adminDir: '/wt/.git' }, chats }];
+      },
+    };
+    const created = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never);
+    loop = created as never;
+    recover = (t) => (created as unknown as { recoverLost(now?: number): Promise<void> }).recoverLost(t);
+    await tick();
+  });
+
+  it('stops a ticket whose agent runs nowhere, with Resume It going on in its chat', async () => {
+    chats.push({ id: session, state: 'done', updatedAt: new Date(now - 10 * 60_000) });
+    await recover(now);
+    expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'no-report', task: { prompt: expect.stringMatching(/Go on where you left off/) } } });
+    expect(review().reason).toMatch(/Nova stopped without finishing \(the window it ran in reloaded or closed\)/);
+    loop.dispose();
+  });
+
+  it('leaves an agent at work, one that just went quiet, and one whose chat is not known yet', async () => {
+    chats.push({ id: session, state: 'working', updatedAt: new Date(now - 10 * 60_000) });
+    await recover(now);
+    expect(review().state).toBe('revising');
+    chats[0] = { id: session, state: 'done', updatedAt: new Date(now - 30_000) };
+    await recover(now);
+    expect(review().state).toBe('revising');
+    chats.length = 0;
+    await recover(now);
+    expect(review().state).toBe('revising');
+    loop.dispose();
+  });
+});

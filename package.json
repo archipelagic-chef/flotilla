@@ -43,6 +43,12 @@
     "workspaceContains:.git"
   ],
   "contributes": {
+    "taskDefinitions": [
+      {
+        "type": "flotilla-merge",
+        "properties": {}
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -62,6 +68,24 @@
       ]
     },
     "commands": [
+      {
+        "command": "flotilla.mergeBacklogItem",
+        "title": "Merge Ticket into the Base Branch…",
+        "category": "Flotilla",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "flotilla.mergeAllReady",
+        "title": "Merge All Ready Tickets",
+        "category": "Flotilla",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "flotilla.pushMerged",
+        "title": "Push the Base Branch…",
+        "category": "Flotilla",
+        "icon": "$(cloud-upload)"
+      },
       {
         "command": "flotilla.refresh",
         "title": "Refresh",
@@ -607,6 +631,18 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "flotilla.mergeBacklogItem",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.mergeAllReady",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.pushMerged",
+          "when": "flotilla.state == ready"
+        },
+        {
           "command": "flotilla.shareLinkedFolders",
           "when": "flotilla.state == ready"
         },
@@ -1048,6 +1084,16 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "flotilla.mergeBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
+          "group": "1_merge@1"
+        },
+        {
+          "command": "flotilla.mergeAllReady",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
+          "group": "1_merge@2"
+        },
         {
           "command": "flotilla.runBacklogItem",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogRunnable",
@@ -1617,6 +1663,22 @@
           ],
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
+        },
+        "flotilla.merge.checkCommand": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. Failing checks stop the merge, and nothing changes. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
+        },
+        "flotilla.merge.onApprove": {
+          "type": "string",
+          "enum": ["ask", "auto", "off"],
+          "enumDescriptions": [
+            "When a ticket is approved, offer to merge it.",
+            "When a ticket is approved, merge it (it stops at anything that needs you: conflicts, failing checks).",
+            "Approving doesn't merge; merge from the ticket."
+          ],
+          "default": "ask",
+          "markdownDescription": "What happens when a ticket's work is approved (by the reviewer agent, or by you)."
         },
         "flotilla.review.automatic": {
           "type": "boolean",
