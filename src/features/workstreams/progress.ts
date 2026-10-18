@@ -23,11 +23,29 @@ export async function resolveCommit(cwd: string, ref: string): Promise<string | 
 
 const isCommit = async (cwd: string, ref: string): Promise<boolean> => (await resolveCommit(cwd, ref)) !== undefined;
 
+/** The local branch of a remote one ("origin/main": main), when it has commits the remote one doesn't; else undefined. */
+async function localAhead(cwd: string, remote: string): Promise<string | undefined> {
+  const local = remote.slice(remote.indexOf('/') + 1);
+  if (!local || !(await isCommit(cwd, `refs/heads/${local}`))) return undefined;
+  try {
+    const ahead = Number((await runGit(['rev-list', '--count', `${remote}..refs/heads/${local}`], { cwd })).trim());
+    return ahead > 0 ? local : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The branch work starts from and merges into: the configured one, else origin's default branch (origin/main), else
+ * main or master. When the local branch of origin's default (main) has commits origin doesn't (work not pushed yet,
+ * BL-86), it's that local branch: starting from origin/main would leave that work out, and branches would conflict with
+ * main when merged.
+ */
 export async function resolveBase(cwd: string, configured: string): Promise<string | undefined> {
   if (configured && (await isCommit(cwd, configured))) return configured;
   try {
     const originHead = (await runGit(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd })).trim();
-    if (originHead) return originHead;
+    if (originHead) return (await localAhead(cwd, originHead)) ?? originHead;
   } catch {
     // no origin/HEAD
   }

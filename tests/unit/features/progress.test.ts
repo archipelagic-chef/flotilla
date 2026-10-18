@@ -18,6 +18,35 @@ describe('resolveBase', () => {
     expect(await resolveBase(repo, '')).toBe('origin/main');
   });
 
+  it('takes local main over origin/main when it has commits origin lacks (not pushed yet), not when it is behind', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    git(repo, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git(repo, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    const commit = (name: string) => {
+      writeFile(repo, `${name}.txt`, name);
+      git(repo, 'add', '.');
+      git(repo, 'commit', '-q', '-m', name);
+    };
+    // Ahead: work on main that isn't pushed.
+    commit('local');
+    expect(await resolveBase(repo, '')).toBe('main');
+    // Diverged: origin moved on too; main still has work origin lacks.
+    const local = headOf(repo, 'HEAD');
+    git(repo, 'checkout', '-q', '--detach', 'origin/main');
+    commit('remote');
+    git(repo, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git(repo, 'checkout', '-q', 'main');
+    expect(await resolveBase(repo, '')).toBe('main');
+    // Behind: origin has everything main has, and more.
+    git(repo, 'reset', '-q', '--hard', 'origin/main');
+    git(repo, 'reset', '-q', '--hard', 'HEAD~1');
+    expect(headOf(repo, 'HEAD')).not.toBe(local);
+    expect(await resolveBase(repo, '')).toBe('origin/main');
+    // A configured base still wins.
+    expect(await resolveBase(repo, 'HEAD')).toBe('HEAD');
+  });
+
   it('returns undefined when nothing fits', async () => {
     const repo = initRepo();
     cleanup.push(repo);
