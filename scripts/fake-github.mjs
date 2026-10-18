@@ -388,7 +388,12 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     url: base,
     /** Seeds a branch's runs now, as the first read does (for tests). */
     seed: (repo, branch) => seedBranch(repo, branch),
-    close: () => new Promise((resolve) => server.close(resolve)),
+    // Kept-alive connections (a VS Code window's) would hold the server open.
+    close: () =>
+      new Promise((resolve) => {
+        server.close(resolve);
+        server.closeAllConnections();
+      }),
   };
 }
 

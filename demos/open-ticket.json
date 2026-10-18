@@ -1,0 +1,14 @@
+{
+  "title": "Open a ticket from the backlog",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "caption": "The backlog: the playground's tickets" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1200 },
+    { "caption": "A click on a card opens its ticket" },
+    { "click": ".backlog-item:has-text(\"Sort the backlog by priority\")" },
+    { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
