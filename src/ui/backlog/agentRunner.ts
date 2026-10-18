@@ -31,6 +31,15 @@ export function claudeBinary(): string {
   return 'claude';
 }
 
+/**
+ * Folders every agent may reach besides its worktree: the backlog's, where its ticket is (BL-89). With Claude Code's
+ * permissions.blockReadsOutsideWorkingDirectories on, an agent can't read or write its ticket otherwise.
+ */
+let agentDirs: string[] = [];
+export function setAgentDirs(dirs: readonly string[]): void {
+  agentDirs = [...dirs];
+}
+
 /** Where Flotilla writes its agents' settings files and guard script. */
 const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
 
@@ -42,7 +51,8 @@ const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
  * - flotilla.agents.subagentModel: its subagents, which search and report back, run on a cheaper model, never a
  *   stronger one than its own (BL-77).
  * - flotilla.agents.guardOutput: large file reads and diffs are refused, with how to look instead (BL-75).
- * The last three go in a settings file (--settings), with the plugins the lean start switches off.
+ * The last three go in a settings file (--settings), with the plugins the lean start switches off. Every agent also
+ * gets the backlog's folder as a working directory (--add-dir, see setAgentDirs).
  */
 export function agentStart(cwd: string, model?: string): { flags: string[]; tools?: string[] } | undefined {
   const config = vscode.workspace.getConfiguration('flotilla');
@@ -64,7 +74,8 @@ export function agentStart(cwd: string, model?: string): { flags: string[]; tool
   } catch {
     // Started without them: the rest still applies.
   }
-  const flags = lean ? leanFlags(settings) : settings ? ['--settings', settings] : [];
+  // --add-dir takes several folders: the flags that follow it end them.
+  const flags = [...(lean ? leanFlags(settings) : settings ? ['--settings', settings] : []), ...(agentDirs.length ? ['--add-dir', ...agentDirs] : [])];
   return flags.length || lean ? { flags, ...(lean ? { tools: [...LEAN_TOOLS] } : {}) } : undefined;
 }
 

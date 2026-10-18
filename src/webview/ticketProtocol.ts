@@ -137,6 +137,14 @@ export interface TicketView {
   canCleanUp: boolean;
   /** Whether its work is merged into the base (read from git; undefined: no branch to tell about). */
   merge?: MergeInfo;
+  /** It can be merged into the base branch (a local item, approved in review, not being merged). */
+  canMerge: boolean;
+  /** The branch it merges into. */
+  mergeInto?: string;
+  /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
+  merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
+  /** Once merged: what the base branch has that its upstream doesn't (to push). */
+  unpushed?: { base: string; remote: string; count: number };
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
   /** The model Light tickets' work runs on (flotilla.agents.lightModel); unset: no ticket can be Light. */
@@ -241,6 +249,12 @@ export type TicketWebviewMessage =
   | { type: 'finishCleanUp' }
   | { type: 'cancelCleanUp' }
   | { type: 'compareCleanUp' }
+  /** Merge it into the base branch; a merge's decisions; push the base branch after. */
+  | { type: 'merge' }
+  | { type: 'mergeResolve' }
+  | { type: 'mergeApprove' }
+  | { type: 'mergeCancel' }
+  | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
   /** Done with unmerged work: a sibling ticket to merge a branch (asks which, unless given); or dismiss the warning. */
