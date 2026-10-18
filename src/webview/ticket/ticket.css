@@ -1055,6 +1055,26 @@ button.work-row:hover {
   border-radius: 6px;
   font-size: 12px;
 }
+.merge-output {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.merge-output > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.merge-output > pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .review-panel > .codicon {
   font-size: 16px;
 }

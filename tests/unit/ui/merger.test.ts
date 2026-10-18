@@ -26,8 +26,7 @@ vi.mock('vscode', () => {
     ui.messages.push(message);
     return Promise.resolve(ui.answers.shift());
   };
-  const processEnded = new EventEmitter<{ execution: unknown; exitCode: number | undefined }>();
-  const taskEnded = new EventEmitter<{ execution: unknown }>();
+  type Pty = { open(d: unknown): void; onDidClose: (l: (code: number) => void) => unknown };
   return {
     EventEmitter,
     window: { showInformationMessage: ask, showWarningMessage: ask, showErrorMessage: ask, showQuickPick: async () => undefined },
@@ -36,38 +35,41 @@ vi.mock('vscode', () => {
     Task: class {
       presentationOptions: unknown;
       constructor(
-        _d: unknown,
+        readonly definition: { command: string },
         _s: unknown,
         _n: string,
         _src: string,
-        readonly execution: { command: string },
+        readonly execution: { callback: () => Promise<Pty> },
       ) {}
     },
-    ShellExecution: class {
-      constructor(readonly command: string) {}
+    CustomExecution: class {
+      constructor(readonly callback: () => Promise<Pty>) {}
     },
     TaskScope: { Workspace: 2 },
     TaskRevealKind: { Always: 1 },
     TaskPanelKind: { Dedicated: 2 },
+    // The terminal: the checks command really runs (CHECKS reads ui.checksExit from the environment).
     tasks: {
-      onDidEndTaskProcess: processEnded.event,
-      onDidEndTask: taskEnded.event,
-      executeTask: async (task: { execution: { command: string } }) => {
-        ui.checks.push(task.execution.command);
-        const execution = {};
-        setTimeout(() => processEnded.fire({ execution, exitCode: ui.checksExit }), 5);
-        return execution;
+      executeTask: async (task: { definition: { command: string }; execution: { callback: () => Promise<Pty> } }) => {
+        ui.checks.push(task.definition.command);
+        process.env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExit);
+        const pty = await task.execution.callback();
+        pty.open(undefined);
+        return {};
       },
     },
   };
 });
+
+/** The checks: they print a failure and exit with ui.checksExit. */
+const CHECKS = `node -e "console.log('FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
 beforeEach(() => {
   ui.answers = [];
   ui.messages = [];
-  ui.settings = { 'merge.checkCommand': 'run-the-checks' };
+  ui.settings = { 'merge.checkCommand': CHECKS };
   ui.checksExit = 0;
   ui.checks = [];
 });
@@ -118,7 +120,7 @@ describe('Merge to main', () => {
     // The main worktree has the merge's files, and nothing else is left.
     expect(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('a\n');
     expect(worktrees()).toBe(1);
-    expect(ui.checks).toEqual(['run-the-checks']);
+    expect(ui.checks).toEqual([CHECKS]);
     const done = await item('BL-1');
     expect(done.status).toBe('done');
     expect(done.merged).toMatchObject({ into: 'main', commit: git(repo, 'rev-parse', 'main') });
@@ -129,8 +131,8 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
-  it('changes nothing when the checks fail', async () => {
-    const { repo, merger, item, worktrees } = await setup([approved('BL-1')]);
+  it('keeps a clean merge whose checks fail, with their output, and changes nothing (BL-65)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1')]);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
     commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
     git(repo, 'checkout', '-q', 'main');
@@ -140,8 +142,94 @@ describe('Merge to main', () => {
     expect(await merger.merge('BL-1')).toBe('stopped');
 
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    const kept = await item('BL-1');
+    expect(kept.status).toBe('review');
+    expect(kept.merging).toMatchObject({ state: 'failed', branch: 'feature/BL-1', base: 'main', baseTip: before, checks: { command: CHECKS } });
+    expect(kept.merging!.checks!.output).toContain('FAIL a.test.ts: expected 1, got 2');
+    // The merge is there, in its temporary worktree.
+    expect(worktrees()).toBe(2);
+    expect(git(kept.merging!.dir, 'log', '-1', '--format=%s')).toBe('Merge BL-1: Item BL-1');
+    expect((await backlog.readTicket(kept)).activity.map((e) => e.body).join('\n')).toContain('Fix with Agent, or cancel it');
+
+    // Cancel: the worktree goes, nothing changed.
+    await merger.cancel('BL-1');
     expect(worktrees()).toBe(1);
-    expect((await item('BL-1')).status).toBe('review');
+    expect((await item('BL-1')).merging).toBeUndefined();
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    merger.dispose();
+  });
+
+  it('merges with the fix committed on top, once approved and the checks pass (BL-65)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    const merge = git(dir, 'rev-parse', 'HEAD');
+
+    // What the agent does: a fix of its own, on the merge.
+    commit(dir, 'fix.txt', 'fixed\n', 'BL-1: Fix the checks after merging main');
+    ui.checksExit = 0;
+    expect(await merger.approveResolution('BL-1')).toBe('merged');
+
+    expect(git(repo, 'log', '-1', '--format=%s', 'main')).toBe('BL-1: Fix the checks after merging main');
+    expect(git(repo, 'rev-parse', 'main^')).toBe(merge);
+    expect(git(repo, 'rev-parse', 'main^^1')).toBe(before);
+    expect(worktrees()).toBe(1);
+    const done = await item('BL-1');
+    expect(done.status).toBe('done');
+    expect(done.merging).toBeUndefined();
+    expect(done.merged).toMatchObject({ into: 'main', commit: git(repo, 'rev-parse', 'main') });
+    const activity = (await backlog.readTicket(done)).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain(`merge commit ${merge.slice(0, 7)}`);
+    expect(activity).toContain('the fix of the checks: "BL-1: Fix the checks after merging main"');
+    merger.dispose();
+  });
+
+  it("doesn't take a commit after the merge that isn't the ticket's fix (BL-65)", async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    commit(dir, 'fix.txt', 'fixed\n', 'tweak');
+    ui.checksExit = 0;
+
+    expect(await merger.approveResolution('BL-1')).toBe('stopped');
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', reason: expect.stringContaining("doesn't start with BL-1") });
+    await merger.cancel('BL-1');
+    merger.dispose();
+  });
+
+  it('Merge All Ready stops at a ticket whose checks fail (BL-65)', async () => {
+    const { repo, merger, item, worktrees } = await setup([approved('BL-1'), approved('BL-2')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-2');
+    commit(repo, 'b.txt', 'b\n', 'BL-2: add b');
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 1;
+
+    await merger.mergeAllReady();
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    expect(ui.checks).toHaveLength(1);
+    expect(ui.messages.at(-1)).toMatch(/Merge All Ready stopped at BL-1/);
+    expect((await item('BL-1')).merging?.checks).toBeDefined();
+    expect((await item('BL-2')).merging).toBeUndefined();
+    expect((await item('BL-2')).status).toBe('review');
+    expect(worktrees()).toBe(2);
+    await merger.cancel('BL-1');
     merger.dispose();
   });
 

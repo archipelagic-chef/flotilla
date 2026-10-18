@@ -22,8 +22,22 @@ export interface MergeState {
   agent?: string;
   session?: string;
   reason?: string;
+  /** The checks failed on the merge (state failed): their command, and the end of their output. */
+  checks?: { command: string; output: string };
+  /** The worktree's HEAD when an agent started fixing the checks: its fix is a commit on top of it. */
+  from?: string;
   /** ISO 8601. */
   started: string;
+}
+
+/** The end of the checks' output, without terminal colours: what the ticket shows and the fixing agent is given. */
+export function outputTail(text: string, maxLines = 120, maxChars = 10_000): string {
+  // eslint-disable-next-line no-control-regex
+  const plain = text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g, '').replace(/\r\n?/g, '\n').trimEnd();
+  // Runs of blank lines as one.
+  const lines = plain.split('\n').filter((l, i, all) => l.trim() || (i > 0 && all[i - 1].trim()));
+  const tail = lines.slice(-maxLines).join('\n');
+  return tail.length > maxChars ? tail.slice(tail.length - maxChars).replace(/^[^\n]*\n/, '') : tail;
 }
 
 /** Where an item's branch was merged: the base branch, and the merge commit. */
@@ -180,8 +194,16 @@ export async function mergeInWorktree(
   return { kind: 'merged', commit: await rev(o.dir, 'HEAD') };
 }
 
-/** Whether a merge in dir is finished (committed, no conflicts left): its commit, or what's missing. */
-export async function mergeResult(dir: string, baseTip: string): Promise<{ commit: string } | { problem: string }> {
+/**
+ * Whether a merge in dir is finished (committed, no conflicts left): the commit to move the base to, or what's missing.
+ * That's the merge commit on top of baseTip, or fixes committed after it (an agent fixing the checks, BL-65): plain
+ * commits whose messages start with the item's id. merge is the merge commit; fixes, the fixes' subjects, oldest first.
+ */
+export async function mergeResult(
+  dir: string,
+  baseTip: string,
+  id?: string,
+): Promise<{ commit: string; merge: string; fixes: string[] } | { problem: string }> {
   const conflicts = await conflictedFiles(dir).catch(() => []);
   if (conflicts.length) return { problem: `${conflicts.length} file${conflicts.length === 1 ? ' still has' : 's still have'} conflicts (${conflicts.slice(0, 5).join(', ')}).` };
   const merging = await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], { cwd: dir }).then(() => true, () => false);
@@ -190,12 +212,28 @@ export async function mergeResult(dir: string, baseTip: string): Promise<{ commi
     await runGit(['commit', '--no-edit'], { cwd: dir, env: { GIT_EDITOR: ':' } });
   }
   const head = await rev(dir, 'HEAD');
-  const parents = (await runGit(['rev-list', '--parents', '-n', '1', head], { cwd: dir })).trim().split(/\s+/).slice(1);
-  if (parents.length < 2 || parents[0] !== baseTip) return { problem: 'its worktree has no merge commit on top of the base branch.' };
+  // The commits on top of baseTip, newest first: hash, parents, then the subject.
+  const log = (await runGit(['log', '--first-parent', '--format=%H %P%x00%s', `${baseTip}..${head}`], { cwd: dir })).split('\n').filter(Boolean);
+  const commits = log.map((l) => {
+    const [hashes, subject = ''] = l.split('\x00');
+    const [hash, ...parents] = hashes.trim().split(/\s+/);
+    return { hash, parents, subject };
+  });
+  const merge = commits.at(-1);
+  if (!merge || merge.parents.length < 2 || merge.parents[0] !== baseTip) return { problem: 'its worktree has no merge commit on top of the base branch.' };
+  const fixes = commits.slice(0, -1).reverse();
+  const stray = fixes.find((c) => c.parents.length !== 1 || !id || !startsWithId(c.subject, id));
+  if (stray) {
+    return {
+      problem: `${stray.hash.slice(0, 7)} "${stray.subject}" after the merge commit isn't a fix of it (${stray.parents.length !== 1 ? 'it merges' : `its message doesn't start with ${id ?? "the ticket's id"}`}).`,
+    };
+  }
   const dirty = (await runGit(['status', '--porcelain', '--untracked-files=no'], { cwd: dir })).trim();
   if (dirty) return { problem: 'its worktree has uncommitted changes.' };
-  return { commit: head };
+  return { commit: head, merge: merge.hash, fixes: fixes.map((c) => c.subject) };
 }
+
+const startsWithId = (subject: string, id: string) => subject.toLowerCase().startsWith(id.toLowerCase()) && !/[0-9]/.test(subject.charAt(id.length));
 
 /** The folder temporary merge worktrees go in: under the OS's temp folder, never in the user's. */
 export function mergeRoot(tmp: string): string {
@@ -266,6 +304,40 @@ export async function commitsTouching(cwd: string, from: string, to: string, fil
   if (!files.length) return [];
   const out = await runGit(['log', '--reverse', '--format=%h %s', `${from}..${to}`, '--', ...files], { cwd, env: { GIT_LITERAL_PATHSPECS: '1' } });
   return out.split('\n').filter(Boolean);
+}
+
+/**
+ * What the agent fixing a merge whose checks failed is told (after its lead line): the merge committed cleanly (or its
+ * conflicts were resolved), but together the two sides break the checks. It fixes that in a commit of its own on top
+ * of the merge, or asks in the ticket when the two intents can't both be kept.
+ */
+export function fixChecksPrompt(o: {
+  item: Pick<BacklogItem, 'id' | 'title'>;
+  agent: string;
+  ticket: string;
+  branch: string;
+  base: string;
+  start: string;
+  description: string;
+  checks: { command: string; output: string };
+  /** The base's commits since the branch started, as "abc1234 subject" lines. */
+  ours: readonly string[];
+  /** The tickets those commits are of. */
+  others: ReadonlyArray<{ id: string; title: string; description: string; ticket: string }>;
+}): string {
+  const quote = (s: string) => (s.trim() ? s.trim().replace(/^/gm, '> ') : '> (no description)');
+  const short = o.start.slice(0, 12);
+  const ours = o.ours.length ? o.ours.slice(-30).map((l) => `- ${l}`).join('\n') + (o.ours.length > 30 ? `\n- (and ${o.ours.length - 30} older)` : '') : '- (none)';
+  return [
+    `Your task: fix the checks on the merge of ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached, with the merge committed (\`git merge --no-ff ${o.branch}\` onto ${o.base}), but the checks fail on it: each side passed on its own, so it's the two together that break. The checks: \`${o.checks.command}\`. The end of their output:`,
+    `\`\`\`text\n${o.checks.output.trim() || '(no output)'}\n\`\`\``,
+    `${o.item.id} "${o.item.title}" (the branch being merged), as its ticket ${o.ticket} describes it:\n\n${quote(o.description)}`,
+    `What ${o.base} has that ${o.branch} didn't (\`git log ${short}..HEAD^1\`):\n${ours}`,
+    ...(o.others.length ? [`Those changes on ${o.base} are from:\n\n${o.others.map((t) => `${t.id} "${t.title}" (${t.ticket}):\n\n${quote(t.description)}`).join('\n\n')}`] : []),
+    `Keep both intents: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop or disable either side's code or tests to make the checks pass. Read the ticket's latest activity first: the user may have answered a question of yours there. Fix what the two sides break together, run the checks (\`${o.checks.command}\`) until they pass, then commit your fix on top of the merge, as a commit of its own whose message starts with "${o.item.id}: " (\`git commit -m "${o.item.id}: Fix the checks after merging ${o.base}"\`, or say what you fixed). Don't amend the merge commit, don't change any other branch or worktree, don't rebase or reset, and don't push.`,
+    `If the two intents can't both be kept (they want opposite things: a design conflict), don't pick a side: commit nothing, and ask in the ticket instead. In your report, after its summary, put the question in a block fenced with \`\`\`question: its first line the question, then the choices as "- " lines, the one you suggest marked "(recommended)". The user answers there and starts you again.`,
+    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time), then what broke, how you fixed it and why, and whether the checks pass (or your question). The user reads it and approves the fix from the ticket; Flotilla then runs the checks again and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
+  ].join('\n\n');
 }
 
 /** What the agent resolving a merge's conflicts is told (after its lead line, which names it and the item). */
