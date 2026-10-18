@@ -2,8 +2,12 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const warnings = vi.hoisted(() => [] as string[]);
+const infos = vi.hoisted(() => [] as string[]);
 vi.mock('vscode', () => ({
-  window: { showWarningMessage: async (m: string) => void warnings.push(m) },
+  window: {
+    showWarningMessage: async (m: string) => void warnings.push(m),
+    showInformationMessage: async (m: string) => void infos.push(m),
+  },
 }));
 vi.mock('../../../src/ui/settings', () => ({ readSettings: () => ({ defaultBase: '' }) }));
 
@@ -26,6 +30,7 @@ describe('keeping open tickets current with main', () => {
 
   beforeEach(async () => {
     warnings.length = 0;
+    infos.length = 0;
     repo = initRepo();
     cleanup.push(repo);
     writeFile(repo, 'a.txt', 'one\ntwo\nthree\n');
@@ -95,7 +100,15 @@ describe('keeping open tickets current with main', () => {
     expect(git(wt, 'log', '-1', '--format=%s')).toBe('BL-1: Merge main into feature/BL-1-x');
     expect(git(wt, 'show', 'HEAD:a.txt')).toBe('ONE\ntwo\nTHREE');
     expect((await activity()).at(-1)).toBe('Merged main into `feature/BL-1-x` (Update from Main).');
+    expect(infos).toEqual(['BL-1: Merged main into feature/BL-1-x.']);
     expect(handed).toEqual([]);
+  });
+
+  it('Update from Main says so when the branch already has main', async () => {
+    commitIn(wt, 'one\ntwo\nTHREE\n');
+    await sync.update('BL-1');
+    expect(infos).toEqual(['BL-1: feature/BL-1-x is already up to date with main.']);
+    expect((await activity()).at(-1)).toBe('`feature/BL-1-x` is already up to date with main.');
   });
 
   it('Update from Main hands a conflicting merge to the ticket\'s agent, leaving the worktree as it was', async () => {
@@ -108,5 +121,7 @@ describe('keeping open tickets current with main', () => {
     expect(handed).toHaveLength(1);
     expect(handed[0].prompt).toContain('git merge main');
     expect(handed[0].prompt).toContain('a.txt');
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/^BL-1: merging main into feature\/BL-1-x conflicts \(a\.txt\), so its agent/);
   });
 });
