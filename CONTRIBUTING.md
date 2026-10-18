@@ -68,7 +68,15 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 
 ## Demos
 
-When a change is something you see or click (a button, a panel, a flow), its ticket shows it working: a demo is a short script of steps in `demos/<name>.json`, which `npm run demo` plays in an isolated VS Code and records as a GIF. The ticket's Run button plays the same steps again live (a `run demo <name>` block), at the same pace, so you see what the GIF shows.
+When a change is something you see or click (a button, a panel, a flow), its ticket shows it working: a demo is a short script of steps in `demos/<name>.json`, which `npm run demo` plays in an isolated VS Code and records as a GIF. The ticket's Run button plays the same steps again live, at the same pace, so you see what the GIF shows. The report's run block names the demo, with the player's command as its line:
+
+````md
+```run demo open-ticket
+npm run demo -- play open-ticket
+```
+````
+
+Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for a Flotilla that doesn't know demo blocks: it runs the line as a shell command, with the same result.
 
 ```sh
 npm run build

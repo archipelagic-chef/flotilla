@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoCommand, demoPath, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
+import { demoCommand, demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 describe('run blocks', () => {
   it('reads each kind, with its title or name', () => {
@@ -159,5 +159,13 @@ describe('demo blocks', () => {
     expect(demoPath('a b')).toBeUndefined();
     expect(demoPath(undefined)).toBeUndefined();
     expect(demoCommand('open-ticket')).toBe('npm run demo -- play open-ticket');
+  });
+
+  it("plays the demo, not the block's lines, which are only there for a Flotilla without the demo kind", () => {
+    const [block] = parseRunBlocks('```run demo open-ticket Open a ticket\nnpm run demo -- play open-ticket\nrm -rf /\n```');
+    expect(block.lines).toHaveLength(2);
+    expect(demoRun(block)).toEqual({ name: 'open-ticket', file: 'demos/open-ticket.json', commands: [demoCommand('open-ticket')] });
+    expect(demoRun({ title: '../x' })).toBeUndefined();
+    expect(demoRun({})).toBeUndefined();
   });
 });

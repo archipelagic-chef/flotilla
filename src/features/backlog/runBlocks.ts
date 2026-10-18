@@ -128,6 +128,17 @@ export function demoCommand(name: string): string {
   return `npm run demo -- play ${name}`;
 }
 
+/**
+ * A demo block's demo (its name: the title's first word) and what plays it. The block's lines are ignored: agents write
+ * the player's command there only so that a Flotilla without the demo kind runs it as shell commands. Undefined when
+ * the block doesn't name a demo.
+ */
+export function demoRun(block: Pick<RunBlock, 'title'>): { name: string; file: string; commands: string[] } | undefined {
+  const name = block.title?.split(/\s+/)[0];
+  const file = demoPath(name);
+  return name && file ? { name, file, commands: [demoCommand(name)] } : undefined;
+}
+
 /** The ticket's run: the last run block of its reports (the Run buttons run it), or undefined if none. */
 export function latestRun(entries: readonly TicketEntry[], key: (entry: TicketEntry) => string): RunBlockRef | undefined {
   const last = pickRunBlock(placedRunBlocks(entries, key));

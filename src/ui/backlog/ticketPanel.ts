@@ -46,7 +46,7 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
-import { demoCommand, demoPath, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { openTarget } from '../../features/backlog/runTarget';
 import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
@@ -907,17 +907,16 @@ export class TicketPanels implements vscode.Disposable {
       return;
     }
     // A demo (its name, then maybe a title) plays in the worktree's terminal, with the repository's player (BL-78).
-    const demoName = kind === 'demo' ? title?.split(/\s+/)[0] : undefined;
-    const demo = demoPath(demoName);
+    const demo = kind === 'demo' ? demoRun(picked.block) : undefined;
     if (kind === 'demo' && !demo) {
       void vscode.window.showWarningMessage(`${id}'s demo block doesn't name a demo: write its name after \`demo\` (letters, digits, - and _).`);
       return;
     }
-    const commands = demo ? [demoCommand(demoName!)] : lines;
+    const commands = demo ? demo.commands : lines;
     const place = await this.runPlace(id, item);
     if (!place) return;
-    if (demo && !fs.existsSync(path.join(place.dir, demo))) {
-      void vscode.window.showWarningMessage(`${demo} isn't in ${place.dir}.`);
+    if (demo && !fs.existsSync(path.join(place.dir, demo.file))) {
+      void vscode.window.showWarningMessage(`${demo.file} isn't in ${place.dir}.`);
       return;
     }
     // What an open block opens is checked before anyone is asked: a refused one doesn't get a dialog.
@@ -968,7 +967,7 @@ export class TicketPanels implements vscode.Disposable {
     // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
     if (!approved) await this.deps.approvals.add(fingerprint);
     const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? 'played' : 'ran';
-    const ran = demoName ? `the demo "${demoName}"` : title ? `"${title}"` : `the ${kind} block`;
+    const ran = demo ? `the demo "${demo.name}"` : title ? `"${title}"` : `the ${kind} block`;
     await this.addActivity(id, 'Flotilla', `You ${verb} ${ran} in \`${place.label}\`.`);
   }
 
