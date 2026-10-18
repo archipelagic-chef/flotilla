@@ -169,7 +169,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
   const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
-    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState,
+    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState, output,
   });
   context.subscriptions.push(tickets);
   // A ticket's run block (its Run button names the entry and the block; without one, the ticket's run), after asking.

@@ -6,6 +6,8 @@
 
 - **Tickets stay current with main**: open tickets' branches are checked against main when it moves (a merge in memory); a conflict shows on the card and in the ticket, *Update from Main* merges main in (or hands the conflicts to the ticket's agent), and a ticket can depend on another ("Depends on: BL-12").
 
+- **Ask about a ticket, off the record**: the *Ask* pane in a ticket answers quick questions about it in a small chat that streams in and can be stopped; nothing goes into the ticket unless you *Post to Ticket* (`flotilla.ask.model`, default Sonnet).
+
 ## 0.2.0 (preview)
 
 - **Backlog**: tickets with status, priority, sub-tickets, worktrees, commits and an activity feed (comments, agents' reports, every change), in editor tabs. Images and file links in tickets.

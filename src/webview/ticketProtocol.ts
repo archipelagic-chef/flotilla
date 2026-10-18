@@ -8,6 +8,7 @@ import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { TicketEntry } from '../features/backlog/ticket';
+import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -164,7 +165,9 @@ export type TicketHostMessage =
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
   | { type: 'focus'; target: 'comment' }
   /** An image was saved next to the ticket; markdown links it. */
-  | { type: 'imageSaved'; requestId: number; markdown: string };
+  | { type: 'imageSaved'; requestId: number; markdown: string }
+  /** The Ask chat changed (BL-80). */
+  | { type: 'ask'; ask: AskView };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -231,4 +234,9 @@ export type TicketWebviewMessage =
   /** Run a run block of an agent's report (after asking): the Run buttons. */
   | { type: 'run'; key: string; index: number }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
-  | { type: 'showActivity'; shown: boolean };
+  | { type: 'showActivity'; shown: boolean }
+  /** The Ask chat (BL-80): a question, stop the answer, start over, post an answer to the ticket as a comment. */
+  | { type: 'ask'; text: string }
+  | { type: 'askStop' }
+  | { type: 'askNew' }
+  | { type: 'askPost'; index: number };

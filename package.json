@@ -1651,6 +1651,11 @@
           "default": true,
           "markdownDescription": "Start agents lean: without your skills, plugins and MCP servers, with the coding tools only (Bash, Read, Edit, Write, Grep, Glob, subagents, the web). Everything an agent starts with is context it re-reads on every turn; this makes it about a quarter smaller. Your own Claude Code sessions keep everything. Agents opened in Claude Code's panel (no model or effort chosen) start as usual."
         },
+        "flotilla.ask.model": {
+          "type": "string",
+          "default": "sonnet",
+          "markdownDescription": "The model that answers in a ticket's **Ask** chat (an alias like `sonnet` or `haiku`, or a model id). Ask is off the record: it only reads (files, and `git log`/`git diff`/`git show`/`git status`), nothing of it is written to the ticket or kept, and agents don't see it. It doesn't count against `#flotilla.agents.maxRunning#`, but waits while memory is short."
+        },
         "flotilla.agents.maxRunning": {
           "type": "number",
           "default": 2,
