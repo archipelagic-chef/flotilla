@@ -19,7 +19,11 @@ import {
   answerPrompt,
   AUTOPILOT_NOTE,
   resumeAfterLimitPrompt,
+  heldBy,
   resumeAfterPausePrompt,
+  resumeAfterUserPausePrompt,
+  startedInTerminal,
+  takeOverPrompt,
   readyReport,
   reviewerPrompt,
   revisionPrompt,
@@ -29,6 +33,7 @@ import {
   userReviewBody,
   userRevisionPrompt,
   verdictReport,
+  type HeldAgent,
   type ReviewFix,
   type ReviewState,
   type ReviewStopKind,
@@ -54,11 +59,14 @@ import {
   confirmMemory,
   describeChoice,
   isRunningHeadless,
+  isRunningInTerminal,
   memoryShortage,
   modelLevels,
   releaseStart,
   reserveStart,
   runAgentHeadless,
+  runAgentInTerminal,
+  stopTerminalAgent,
   validSession,
   type AgentResult,
   type AgentRun,
@@ -199,9 +207,14 @@ export class ReviewLoop implements vscode.Disposable {
   private async scan(): Promise<void> {
     const data = await this.deps.backlog.read();
     const automatic = settings().get<boolean>('review.automatic', true);
+    // The sessions the user paused or stopped: they don't take a slot, whatever their chats still say (see running).
+    this.held = new Set(data.items.flatMap((i) => heldBy(i.review)?.session ?? []));
     for (const item of data.items) {
       const before = this.statuses.get(item.id);
       this.statuses.set(item.id, item.status);
+      // An agent the user paused or stopped (in any window) that runs here ends.
+      const held = heldBy(item.review);
+      if (held && (this.runs.get(item.id)?.run.sessionId === held.session || isRunningInTerminal(held.session))) await this.end(item.id, held.session);
       if (before === undefined) {
         const ticket = await this.deps.backlog.readTicket(item);
         this.baseline.set(item.id, ticket.activity.map(this.key(item.id)));
@@ -562,7 +575,7 @@ export class ReviewLoop implements vscode.Disposable {
     void this.deps.backlog.read().then((d) => {
       // Past times are left to the minute's retry: a resume that waits for a slot would be tried every second otherwise.
       const next = d.items
-        .flatMap((i) => (i.review?.state === 'paused' && i.review.paused ? [Date.parse(i.review.paused.until)] : []))
+        .flatMap((i) => (i.review?.state === 'paused' && i.review.paused?.until ? [Date.parse(i.review.paused.until)] : []))
         .filter((t) => t > Date.now())
         .sort((a, b) => a - b)[0];
       clearTimeout(this.resumeTimer);
@@ -574,7 +587,7 @@ export class ReviewLoop implements vscode.Disposable {
   /** The earliest time paused agents go on (for the autopilot: no new work starts before). */
   async pausedUntil(): Promise<Date | undefined> {
     const d = await this.deps.backlog.read();
-    const times = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused?.known !== undefined ? [Date.parse(i.review.paused.until)] : []));
+    const times = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused?.until && i.review.paused.known !== undefined ? [Date.parse(i.review.paused.until)] : []));
     const next = times.filter((t) => t > Date.now()).sort((a, b) => a - b)[0];
     return next === undefined ? undefined : new Date(next);
   }
@@ -587,9 +600,10 @@ export class ReviewLoop implements vscode.Disposable {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();
     for (const item of d.items) {
-      const p = item.review?.state === 'paused' ? item.review.paused : undefined;
+      // Paused by the user, it waits for them.
+      const p = item.review?.state === 'paused' && !item.review.paused?.byUser ? item.review.paused : undefined;
       if (!p || this.runs.has(item.id) || (!force && this.waiting.has(item.id))) continue;
-      if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
+      if (force ? force !== item.id : !p.until || Date.parse(p.until) > Date.now()) continue;
       await this.resumeOne(item, { manual: !!force });
     }
     this.scheduleResume();
@@ -637,7 +651,8 @@ export class ReviewLoop implements vscode.Disposable {
   get running(): number {
     const sessions = new Set([...this.runs.values()].map((r) => r.run.sessionId));
     for (const ws of this.deps.repository.current)
-      for (const chat of ws.chats) if (chat.state === 'working' && agentChatItem(chat.firstPrompt) && !this.ended.has(chat.id)) sessions.add(chat.id);
+      for (const chat of ws.chats)
+        if (chat.state === 'working' && agentChatItem(chat.firstPrompt) && !this.ended.has(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
     return sessions.size + this.starting.size;
   }
 
@@ -648,6 +663,14 @@ export class ReviewLoop implements vscode.Disposable {
    * until its record goes stale.
    */
   private readonly ended = new Set<string>();
+
+  /** Whether this window ended a chat's run (its chat may still say it's working). */
+  hasEnded(session: string): boolean {
+    return this.ended.has(session);
+  }
+
+  /** The sessions of agents the user paused or stopped, in any window (as of the last scan): they take no slot. */
+  private held = new Set<string>();
 
   /**
    * Starts an agent on an item's work, without a window (for the autopilot): it reports in the ticket, asks there when
@@ -837,6 +860,9 @@ export class ReviewLoop implements vscode.Disposable {
     const r = item?.review;
     if (!item || !r || this.runs.has(id)) return;
     if (fix === 'resumeNow') return this.resumePaused(id);
+    if (fix === 'resume') return this.control(id, 'resume');
+    // A reviewer the user stopped: Review Again starts a review, not changes.
+    if (fix === 'retry' && r.stop?.kind === 'user' && r.stop.agent?.phase === 'review') return this.start(id, true);
     const task: RevisionTask | undefined =
       r.stop?.task ??
       (r.reviewer && r.stop?.kind !== 'no-verdict' && r.stop?.kind !== 'no-worktree'
@@ -920,8 +946,169 @@ export class ReviewLoop implements vscode.Disposable {
     await this.startRound(item, manual, item.review !== undefined && item.review.state !== 'revising');
   }
 
-  /** Stops the loop: the running agent, if any, and the handoffs. */
+  /**
+   * Pauses, stops or resumes the agent working on an item (session: that chat's; else the one working on it): one the
+   * loop runs without a window, or one in a terminal. One in Claude Code's panel can't be: the user is told so, and
+   * can open its chat.
+   */
+  async control(id: string, action: 'pause' | 'stop' | 'resume', session?: string): Promise<void> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (!item) return;
+    const paused = item.review?.state === 'paused' ? item.review.paused : undefined;
+    if (action === 'resume') {
+      // Paused on a limit or for another ticket: it goes on now.
+      if (paused && !paused.byUser) return this.resumePaused(id);
+      const held = heldBy(item.review);
+      if (held && !this.runs.has(id) && (!session || held.session === session)) await this.resumeHeld(item, held);
+      return;
+    }
+    // Paused by the user: stopped as it is (see stop).
+    if (action === 'stop' && paused?.byUser && (!session || paused.session === session)) return this.stop(id);
+    const target = this.target(item, session, (await this.deps.backlog.readTicket(item)).activity);
+    if (!target) {
+      // Nothing runs, but the loop waits (for an answer, or in the queue): Stop ends that.
+      if (action === 'stop' && !session && item.review) await this.stop(id);
+      return;
+    }
+    if (target.where === 'panel') {
+      const chat = this.chatById(target.session);
+      const choice = await vscode.window.showInformationMessage(
+        `${target.agent} works in Claude Code's panel, which can't be paused or stopped from outside: stop it in its chat (Esc, or its stop button).`,
+        ...(chat ? ['Open Chat'] : []),
+      );
+      if (choice && chat) await vscode.commands.executeCommand('flotilla.openChat', { key: chat.ws.key, chatId: chat.id });
+      return;
+    }
+    await this.halt(item, target, action);
+  }
+
+  /**
+   * The agent working on an item now (or the one with that session), and where it runs: the loop's own (running, or
+   * paused on a limit or for another ticket), else a busy chat started for the item by hand (in a terminal, or in
+   * Claude Code's panel; the ticket's notes say which, entries).
+   */
+  target(item: BacklogItem, session: string | undefined, entries: TicketEntry[]): AgentTarget | undefined {
+    const r = item.review;
+    const own: HeldAgent | undefined =
+      r?.state === 'reviewing' && r.reviewerSession
+        ? { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing' }
+        : (r?.state === 'working' || r?.state === 'revising') && r.implementerSession
+          ? { phase: 'work', session: r.implementerSession, agent: r.implementer ?? 'The agent', resume: r.state }
+          : r?.state === 'paused' && r.paused && !r.paused.byUser
+            ? { phase: r.paused.phase, session: r.paused.session, agent: r.paused.agent, resume: r.paused.resume, ...(r.paused.where ? { where: r.paused.where } : {}) }
+            : undefined;
+    if (own && (!session || own.session === session)) return { ...own, where: isRunningInTerminal(own.session) ? 'terminal' : (own.where ?? 'headless') };
+    const busy = (c: { id: string; state: string }) =>
+      isRunningInTerminal(c.id) || ((c.state === 'working' || c.state === 'waiting-for-input') && !this.ended.has(c.id));
+    const chats = this.deps.repository.current.flatMap((w) => w.chats);
+    const chat = session ? chats.find((c) => c.id === session) : chats.find((c) => c.open && busy(c) && agentChatItem(c.firstPrompt)?.item === item.id);
+    if (!chat || !busy(chat)) return undefined;
+    const agent = agentChatItem(chat.firstPrompt)?.agent ?? chat.agent ?? 'The agent';
+    const where = isRunningInTerminal(chat.id) || startedInTerminal(entries, agent) ? 'terminal' : isRunningHeadless(chat.id) ? 'headless' : 'panel';
+    return { phase: 'work', session: chat.id, agent, resume: 'working', before: r?.state ?? 'none', where };
+  }
+
+  /** Ends an item's agent if it runs in this window (without a window, or in a terminal): its slot frees. */
+  private async end(id: string, session: string): Promise<void> {
+    const live = this.runs.get(id);
+    this.ended.add(session);
+    if (live?.run.sessionId === session) {
+      this.runs.delete(id);
+      live.run.stop();
+    }
+    await stopTerminalAgent(session);
+    this.scheduleDispatch();
+  }
+
+  /** Pauses or stops an agent: it ends now (here, or in the window running it), its chat kept to go on in. */
+  private async halt(item: BacklogItem, target: AgentTarget, action: 'pause' | 'stop'): Promise<void> {
+    const at = new Date().toISOString();
+    const { where, ...rest } = target;
+    const held: HeldAgent = { ...rest, ...(where === 'terminal' ? { where } : {}) };
+    this.waiting.remove(item.id);
+    this.fireQueue(item.id);
+    // The review's state says so first: the window running it ends it when it sees that (this one, at once).
+    if (action === 'pause') {
+      await this.setReview(item.id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'paused', paused: { ...held, byUser: at }, reason: undefined, stop: undefined }));
+    } else {
+      const task: RevisionTask | undefined =
+        held.phase === 'work' ? { prompt: takeOverPrompt({ stopped: held.agent, ticket: this.deps.backlog.docPath(item.id) }), why: `you stopped ${held.agent}` } : undefined;
+      await this.setReview(item.id, (r) => ({
+        ...(r ?? { round: 0, reviewer: '' }),
+        state: 'stopped',
+        paused: undefined,
+        reason: `you stopped ${held.agent}.`,
+        stop: { kind: 'user', agent: held, at, ...(task ? { task } : {}) },
+      }));
+    }
+    await this.end(item.id, held.session);
+    const how = where === 'terminal' ? ' (its terminal says its process ended)' : '';
+    await this.note(
+      item.id,
+      action === 'pause'
+        ? `You paused ${held.agent}${how}. Its chat is kept, and its work stays in the worktree as it was, changes it hadn't committed too. Resume goes on in the same chat.`
+        : `You stopped ${held.agent}${how}. Resume goes on in its chat; New Agent hands the work to another agent.`,
+    );
+  }
+
+  /**
+   * Resumes an agent the user paused or stopped, in its chat, where it ran: without a window (a start of the user's,
+   * admitted at once, see admitStart), or in a new terminal.
+   */
+  private async resumeHeld(item: BacklogItem, held: HeldAgent): Promise<void> {
+    if (!validSession(held.session)) {
+      await this.stopLoop(item.id, `its chat isn't a valid session (${held.session.slice(0, 40)}).`, { kind: 'chat-gone' });
+      return;
+    }
+    const cwd = this.chatById(held.session)?.cwd ?? this.worktreeOf(item)?.worktree.path ?? this.deps.mainRoot;
+    const name = `${held.agent} · ${held.phase === 'review' ? `review ${item.id}` : item.id}`;
+    const choice = agentChoice(item, held.phase === 'review' ? 'review' : 'work');
+    const prompt = resumeAfterUserPausePrompt(held.phase);
+    // Its state first, so that no window takes it for still held and ends it again.
+    const restore = async () => {
+      this.ended.delete(held.session);
+      const before = held.before;
+      if (before === 'none') {
+        await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? withoutReview(i) : i)) }), { by: 'You' });
+        this.changed.fire(item.id);
+      } else {
+        await this.setReview(item.id, (r) => ({ ...r!, state: before ?? held.resume, paused: undefined, stop: undefined, reason: undefined }));
+      }
+    };
+    // "chat for agent <name>": the ticket links the note to the chat; ", in a terminal": where it runs.
+    if (held.where === 'terminal') {
+      await restore();
+      runAgentInTerminal({ cwd, resume: held.session, prompt, name, choice });
+      await this.note(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
+      return;
+    }
+    const admitted = await this.admitStart(item, 'resume', { manual: true }, (fresh) => this.resumeHeld(fresh, held));
+    if (!admitted) return;
+    let spawned = false;
+    try {
+      await restore();
+      const run = runAgentHeadless({ cwd, resume: held.session, prompt, name, choice, output: this.deps.output, slot: admitted.slot });
+      spawned = true;
+      this.launched(item.id, admitted.slot, { run, phase: held.phase, agent: held.agent, cwd, since: Date.now() });
+      void trackProgress('backlog', `${held.agent} goes on with ${item.id}`, () => run.done);
+      await this.note(item.id, `You resumed the chat for agent ${held.agent} to go on.`);
+      void run.done.then((result) => (held.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
+    } finally {
+      if (!spawned) this.release(admitted.slot);
+    }
+  }
+
+  /** Stops the loop: the running agent, if any (it can be resumed), and the handoffs. */
   async stop(id: string): Promise<void> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    // Paused by the user, it's stopped as it is (nothing runs), and can still be resumed.
+    const paused = item?.review?.state === 'paused' && item.review.paused?.byUser ? item.review.paused : undefined;
+    if (item && paused) {
+      const { until: _u, known: _k, for: _f, byUser: _b, ...held } = paused;
+      return this.halt(item, { ...held, where: held.where ?? 'headless' }, 'stop');
+    }
+    const target = item && this.target(item, undefined, (await this.deps.backlog.readTicket(item)).activity);
+    if (item && target && target.where !== 'panel') return this.halt(item, target, 'stop');
     const live = this.runs.get(id);
     this.runs.delete(id);
     this.waiting.remove(id);
@@ -1248,4 +1435,13 @@ export class ReviewLoop implements vscode.Disposable {
       });
     }
   }
+}
+
+/** An agent working on an item, and where it runs (in Claude Code's panel: it can't be stopped from outside). */
+export type AgentTarget = Omit<HeldAgent, 'where'> & { where: 'headless' | 'terminal' | 'panel' };
+
+/** An item without its review state. */
+function withoutReview(item: BacklogItem): BacklogItem {
+  const { review: _review, ...rest } = item;
+  return rest;
 }

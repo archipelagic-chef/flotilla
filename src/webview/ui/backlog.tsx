@@ -342,6 +342,18 @@ interface RowProps {
   openWorktree(key: string): void;
 }
 
+/**
+ * Where its agent is, for the card's menu: running (in the review loop, or busy in one of its worktrees), paused, or
+ * stopped by the user (it can be resumed).
+ */
+function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'paused' | 'stopped' | undefined {
+  const state = item.review?.state;
+  if (state === 'paused') return 'paused';
+  if (state === 'stopped' && item.review?.stop?.kind === 'user' && item.review.stop.agent) return 'stopped';
+  if (state === 'working' || state === 'reviewing' || state === 'revising') return 'running';
+  return worktrees.some((w) => w.attention === 'working' || w.attention === 'waiting-for-input') ? 'running' : undefined;
+}
+
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
@@ -358,7 +370,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? '') })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -415,7 +427,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       {!renaming && turn && (
         <span class={`turn-chip turn-${turn.kind}${turn.mine ? ' mine' : ''}`} data-tip={`${TURN_LABEL[turn.kind]}: ${turn.who}`}>
           <i class={`codicon codicon-${TURN_ICON[turn.kind]}`} />
-          {turn.who}
+          {turn.kind === 'paused' ? 'Paused' : turn.who}
         </span>
       )}
       {!renaming && !item.proposed && item.activity > 0 && (

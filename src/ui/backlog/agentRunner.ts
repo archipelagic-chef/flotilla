@@ -230,11 +230,20 @@ const terminals = new Map<string, vscode.Terminal>();
 export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: string; name: string; choice?: AgentChoice }): { sessionId: string; terminal: vscode.Terminal } {
   if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
   const sessionId = o.resume ?? crypto.randomUUID();
+  // A lean start's tool list takes several values: the --name after it ends it, before the prompt.
+  const lean = agentStart(o.cwd, o.choice?.model);
   const terminal = vscode.window.createTerminal({
     name: o.name,
     cwd: o.cwd,
     shellPath: claudeBinary(),
-    shellArgs: [...choiceArgs(o.choice ?? {}), '--name', o.name, ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]), o.prompt],
+    shellArgs: [
+      ...choiceArgs(o.choice ?? {}),
+      ...(lean ? [...lean.flags, ...(lean.tools ? ['--tools', lean.tools.join(',')] : [])] : []),
+      ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]),
+      '--name',
+      o.name,
+      o.prompt,
+    ],
     iconPath: new vscode.ThemeIcon('hubot'),
   });
   terminals.set(sessionId, terminal);

@@ -121,3 +121,27 @@ describe('the user’s turns and "Needs you"', () => {
     expect(mine.filter((id) => !notified.includes(id)).sort()).toEqual(['BL-1', 'BL-10']);
   });
 });
+
+describe('agents the user paused or stopped (BL-81)', () => {
+  const byUser = (phase: 'review' | 'work', agent: string): Partial<ReviewState> => ({
+    state: 'paused',
+    paused: { phase, session: 's', agent, resume: phase === 'review' ? 'reviewing' : 'working', byUser: '2026-10-18T10:00:00.000Z' },
+  });
+
+  it('is the user’s turn to resume a paused agent, at any stage of the work', () => {
+    expect(turnOf(item('doing', { ...byUser('work', 'Rune-3'), round: 0 }))).toEqual(turn('paused', 'You', true));
+    expect(turnOf(item('review', byUser('review', 'Jet-6')))).toEqual(turn('paused', 'You', true));
+    expect(turnSentence(turn('paused', 'You', true), item('doing', byUser('work', 'Rune-3')).review).text).toBe('You paused Rune-3, round 2.');
+    // Paused on a usage limit, it's still the agent's turn: it goes on by itself.
+    expect(turnOf(item('review', paused('review', 'Jet-6')))?.mine).toBe(false);
+  });
+
+  it('lists paused and stopped agents in "Needs you", but sends no notice of what the user did', () => {
+    const p = item('doing', byUser('work', 'Rune-3'));
+    expect(needOf(p, [])).toMatchObject({ kind: 'stopped', line: 'You paused Rune-3' });
+    const stopped = item('doing', { state: 'stopped', stop: { kind: 'user', agent: { phase: 'work', session: 's', agent: 'Rune-3', resume: 'working' } } });
+    expect(needOf(stopped, [])).toMatchObject({ kind: 'stopped', line: 'You stopped Rune-3' });
+    expect(turnSentence(turnOf(stopped)!, stopped.review).text).toBe('You stopped Rune-3, round 2.');
+    expect(needsYouList([p, stopped], [])).toEqual([]);
+  });
+});

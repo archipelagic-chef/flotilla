@@ -42,8 +42,13 @@ export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undef
       return { kind: 'asking', since: r.since, line: firstLine(report?.body ?? '') || `${r.implementer ?? 'The agent'} has a question` };
     }
     if (r?.state === 'approved') return { kind: 'approved', since: r.since, line: `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.` };
+    if (r?.state === 'paused') return { kind: 'stopped', since: r.paused?.byUser, line: `You paused ${r.paused?.agent ?? 'its agent'}` };
     if (r?.state === 'stopped')
-      return { kind: 'stopped', since: r.since, line: r.stop?.kind === 'user' ? 'You stopped the review' : `Stopped: ${r.reason ?? 'no verdict.'}` };
+      return {
+        kind: 'stopped',
+        since: r.since,
+        line: r.stop?.kind === 'user' ? (r.stop.agent ? `You stopped ${r.stop.agent.agent}` : 'You stopped the review') : `Stopped: ${r.reason ?? 'no verdict.'}`,
+      };
     return { kind: 'yours', since: r?.since, line: 'Ready for your review' };
   }
   if (item.startFailed && item.status === 'todo') return { kind: 'failed', since: item.startFailed.since, line: `Couldn't start: ${item.startFailed.message}` };

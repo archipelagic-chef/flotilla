@@ -52,7 +52,13 @@ export interface BacklogItem {
    * The discussion of a ticket nobody works on yet (BL-45): the shaping agent's name and chat, and whether it thinks
    * the ticket is ready to start (until the user writes again, or keeps discussing).
    */
-  shaping?: { agent: string; session: string; ready?: boolean };
+  shaping?: {
+    agent: string;
+    session: string;
+    ready?: boolean;
+    /** The user paused (or stopped) it, when (ISO 8601): it goes on in its chat when they resume it, or write again. */
+    held?: { kind: 'paused' | 'stopped'; at: string };
+  };
   /** Its branches merged with main in memory, last time either moved (BL-55): whether they conflict, and where. */
   mainCheck?: MainCheck;
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
