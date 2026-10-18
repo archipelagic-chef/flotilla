@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
@@ -151,4 +152,39 @@ export function runAgentHeadless(o: {
     });
   });
   return { sessionId, done, stop: () => child.kill() };
+}
+
+/**
+ * Whether Claude takes work again after a limit, asked without touching the agent's chat: a one-line question that
+ * keeps no session, runs no hooks (no chat for Flotilla to record) and no tools. The limit it still hits, or undefined
+ * when it got through (or failed otherwise: the resumed chat then says why).
+ */
+export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChannel }): Promise<UsageLimit | undefined> {
+  const args = [
+    '-p',
+    'Reply with just: OK',
+    '--output-format',
+    'json',
+    '--no-session-persistence',
+    '--max-turns',
+    '1',
+    '--settings',
+    JSON.stringify({ disableAllHooks: true }),
+    ...choiceArgs({ model: o.choice?.model }),
+  ];
+  return new Promise((resolve) => {
+    let out = '';
+    const child = spawn(claudeBinary(), args, { cwd: os.tmpdir(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => child.kill(), 120_000);
+    child.stdout.on('data', (d: Buffer) => (out = (out + d.toString()).slice(-4000)));
+    child.stderr.on('data', (d: Buffer) => (out = (out + d.toString()).slice(-4000)));
+    child.on('error', () => (clearTimeout(timer), resolve(undefined)));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const failed = code !== 0 || /"is_error"\s*:\s*true/.test(out);
+      const limit = failed ? parseUsageLimit(out, new Date()) : undefined;
+      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
+      resolve(limit);
+    });
+  });
 }

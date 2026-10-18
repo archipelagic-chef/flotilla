@@ -26,6 +26,11 @@ export interface ReviewState {
     session: string;
     agent: string;
     resume: 'working' | 'reviewing' | 'revising';
+    /** What was hit, when the reset wasn't said: the tries back off by it. */
+    kind?: 'usage' | 'rate' | 'overloaded';
+    /** Tries that failed on the limit again since it first stopped (ISO 8601), when the reset wasn't said. */
+    tries?: number;
+    since?: string;
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;
