@@ -2,31 +2,45 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Autopilot } from '../backlog/autopilot';
+import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
 import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { needOf, queuedNeed } from '../../features/backlog/needs';
+import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
-import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
+import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
+import type { Merges } from '../backlog/merges';
+import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type BacklogItemView, type HostMessage, type RefComparison, type SearchGroup, type Tool, type WebviewMessage } from '../../webview/protocol';
+import { baseLabel, dependsOn, waitingFor } from '../../features/backlog/mainDrift';
+import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type VcView, type WebviewMessage } from '../../webview/protocol';
+import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
 import { iconThemeRoot, loadIconTheme } from './iconTheme';
 import { excludeMatcher, listDirectory, markIgnored } from './files';
-import { tabOrder, toWorkstreamView } from './viewModel';
+import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
+import { ShownFolders } from './shownFolders';
+import { currentMissingExclusions } from '../hygiene';
+import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
+import { changeMarks, ListedFolders } from './changeMarks';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
 import { CiRuns } from '../ci/ciRuns';
 import { runWorkflowByHand } from '../ci/runWorkflow';
+import { webUrl } from '../../features/ci/githubDeployments';
+import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -39,6 +53,8 @@ export interface SidebarDeps {
   repository: Repository<Workstream>;
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
+  /** The main checkout's folder (worktrees inside it are the ones VS Code's watcher and search would see). */
+  mainRoot: string;
   inWorkspace: (ws: Workstream) => boolean;
   active: ActiveWorktree;
   backlog: LocalBacklog;
@@ -46,6 +62,10 @@ export interface SidebarDeps {
   /** Commits with the message from the webview's message box; true when a commit was made. */
   commit: (ws: Workstream, message: string, opts: { amend?: boolean; then?: 'push' | 'sync' }) => Promise<boolean>;
   output: vscode.OutputChannel;
+  /** The fake GitHub's address, in the debug window only (see devGitHubApi). */
+  githubApi?: string;
+  /** Runs that finished on a worktree's branch while they were read (for the notices). */
+  onCiFinished?: (items: FinishedRun[]) => void;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -57,12 +77,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private readonly visibility = new vscode.EventEmitter<boolean>();
   readonly onDidChangeVisibility = this.visibility.event;
   private readonly subscriptions: vscode.Disposable[] = [];
+  /** The view of each worktree as the webview last got it (JSON, by key): only changed ones are sent. */
+  private readonly sent = new Map<string, string>();
+  /** The folders the Files tab has listed, so that their entries' change marks can be sent. */
+  private readonly listed = new ListedFolders();
   readonly files: FileOps;
+  /** The folders the Files tab lists, watched directly: VS Code's watcher skips the worktrees (files.watcherExclude). */
+  private readonly shown = new ShownFolders((key, rel) => this.dirsChanged(key, [rel]));
   /** The CI/CD view's runs, read while the sidebar is visible. */
   private readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
-    this.ci = new CiRuns((views) => this.post({ type: 'ci', views }));
+    this.ci = new CiRuns(
+      (views) => this.post({ type: 'ci', views }),
+      deps.githubApi,
+      (items) => this.deps.onCiFinished?.(items),
+    );
     this.files = new FileOps({
       reference: deps.reference,
       find: (key) => this.find(key),
@@ -71,10 +101,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
+      }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
+      creatingWorktrees.onDidChange(() => void this.postBacklog()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
       this.ci,
@@ -88,11 +122,41 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private autopilot: Autopilot | undefined;
+  private storage: StorageMonitor | undefined;
+
+  /** Whether the repository is on a slow drive, shown in the Overview (created after the sidebar). */
+  useStorage(storage: StorageMonitor): void {
+    this.storage = storage;
+    this.subscriptions.push(storage.onDidChange(() => this.postStorage()));
+    this.postStorage();
+  }
+
+  private postStorage(): void {
+    this.post({ type: 'storage', ...(this.storage?.slow ? { slow: this.storage.slow } : {}) });
+  }
+
+  private queue: ReviewLoop | undefined;
+
+  /** The agents' queue: a user's reply waiting for one is a "Needs you" row, with Prioritize. */
+  useQueue(queue: ReviewLoop): void {
+    this.queue = queue;
+    this.subscriptions.push(queue.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
 
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
     this.autopilot = autopilot;
     this.subscriptions.push(autopilot.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
+  private merges: Merges | undefined;
+
+  /** Whether the items' work is merged (shown on the cards; they move to Done by themselves when it is). */
+  useMerges(merges: Merges): void {
+    this.merges = merges;
+    this.subscriptions.push(merges.watch(() => void this.postBacklog()));
     void this.postBacklog();
   }
 
@@ -103,12 +167,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const issues = this.deps.integrations.issues();
     const items = await Promise.all(
       data.items.map(async (item): Promise<BacklogItemView> => {
-        const ticket = await store.readTicket(item);
+        const ticket = await store.readTicketCached(item);
         const linked = item.links?.map((l) => {
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
-        return { ...item, summary: summaryOf(ticket.description), activity: ticket.activity.length, ...(linked?.length ? { linked } : {}) };
+        const merge = this.merges?.get(item.id);
+        const queued = this.queue?.queuedFor(item.id);
+        const need = needOf(item, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
+        // The ticket's run: its last run block (the one its Run button runs).
+        const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
+        const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
+        // What it waits for, and how its branches merge with main (BL-55).
+        const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
+        const base = item.mainCheck && baseLabel(item.mainCheck.base);
+        return {
+          ...item,
+          summary: summaryOf(ticket.description),
+          activity: ticket.activity.length,
+          ...(linked?.length ? { linked } : {}),
+          ...(merge ? { merge } : {}),
+          ...(need ? { need } : {}),
+          ...(run ? { run } : {}),
+          ...(waitsFor.length ? { waitsFor } : {}),
+          ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
+          ...(base ? { base } : {}),
+          ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
+        };
       }),
     );
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.
@@ -148,26 +233,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // Dragging a proposal into a lane accepts it.
         await store.change((d) => acceptItem(moveItem(d, m.id, m.status, m.before), m.id));
         break;
-      case 'delete': {
-        const item = (await store.read()).items.find((i) => i.id === m.id);
-        if (!item) return;
-        const choice = await vscode.window.showWarningMessage(`Delete ${item.id} '${item.title}' from the backlog?`, { modal: true }, 'Delete');
-        if (choice !== 'Delete') return;
-        await store.change((d) => removeItem(d, m.id));
-        await store.deleteDocument(m.id);
-        break;
-      }
+      case 'delete':
+        await vscode.commands.executeCommand('flotilla.deleteBacklogItem', m.id);
+        return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;
+      case 'createWorktree':
+        await vscode.commands.executeCommand(m.named ? 'flotilla.createBacklogWorktreeNamed' : 'flotilla.createBacklogWorktree', m.id);
+        return;
+      case 'comment':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
+        return;
+      case 'approve':
+        await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');
+        break;
+      case 'fix':
+        await vscode.commands.executeCommand('flotilla.fixBacklogReview', m.id, m.fix);
+        break;
+      case 'prioritize':
+        await vscode.commands.executeCommand('flotilla.prioritizeBacklogItem', m.id);
+        break;
       case 'open':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id);
         return;
-      case 'ai':
-        await vscode.commands.executeCommand('flotilla.writeBacklogItem', m.id);
+      case 'discuss':
+        await vscode.commands.executeCommand('flotilla.discussBacklogItem', m.id);
         return;
       case 'link':
         await vscode.commands.executeCommand('flotilla.linkBacklogItem', m.id);
+        return;
+      case 'run':
+        await vscode.commands.executeCommand('flotilla.runBacklogItem', m.id);
         return;
       case 'accept':
         await store.change((d) => acceptItem(d, m.id));
@@ -249,17 +346,48 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
+  /** Sends the worktrees whose view changed since the last state (all of them after the page loads). */
   postState(): void {
     const now = new Date();
     const all = this.deps.repository.current;
-    const pattern = vscode.workspace.getConfiguration('flotilla').get<string>('tabLabelPattern') || undefined;
-    this.post({ type: 'state', workstreams: tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern)) });
+    const config = vscode.workspace.getConfiguration('flotilla');
+    const pattern = config.get<string>('tabLabelPattern') || undefined;
+    const limit = config.get<number>('changes.limit', 5000);
+    const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()));
+    const { changed, keys } = changedViews(views, this.sent);
+    const machine: MachineState = {
+      freeMB: freeMemoryMB(),
+      minFreeMB: minFreeMemoryMB(),
+      agents: all.reduce((n, ws) => n + ws.chats.filter((c) => c.state === 'working').length, 0),
+      windows: all.filter((ws) => ws.windowOpen).length,
+    };
+    this.post({ type: 'state', workstreams: changed, keys, machine });
+    this.shown.retain(new Set(all.map((ws) => ws.key)));
+    this.listed.retain(new Set(all.map((ws) => ws.key)));
+    for (const ws of all) this.postMarks(ws);
+    this.postExclusions();
     this.ci.update(all);
   }
 
+  /** The Overview says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
+  private postExclusions(): void {
+    const inFolder = this.deps.repository.current.some((ws) => ws.worktree.path && isInWorktreesFolder(this.deps.mainRoot, ws.worktree.path));
+    this.post({ type: 'exclusions', missing: inFolder ? currentMissingExclusions() : [] });
+  }
+
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
-  reveal(key: string, relPath?: string, tool?: Tool): void {
-    this.act({ type: 'reveal', key, path: relPath, tool });
+  reveal(key: string, relPath?: string, tool?: Tool, vcView?: VcView): void {
+    this.act({ type: 'reveal', key, path: relPath, tool, vcView });
+  }
+
+  /** Shows a worktree's CI/CD view (Version Control › CI/CD). */
+  showCi(key: string): void {
+    this.reveal(key, undefined, 'vc', 'ci');
+  }
+
+  /** Whether the CI/CD view keeps reading while the sidebar is hidden (for the notices of the leading window). */
+  setKeepReading(on: boolean): void {
+    this.ci.setKeepReading(on);
   }
 
   /**
@@ -288,12 +416,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'tool', tool });
   }
 
+  /** The Files tab's change marks of a worktree, when they differ from the ones it has. */
+  private postMarks(ws: Workstream): void {
+    const marks = changeMarks(ws.staged, ws.unstaged, this.listed.of(ws.key));
+    if (this.listed.changed(ws.key, marks)) this.post({ type: 'marks', key: ws.key, marks });
+  }
+
   dirsChanged(key: string, paths: string[]): void {
     this.post({ type: 'dirsChanged', key, paths });
   }
 
   dispose(): void {
     this.subscriptions.forEach((d) => d.dispose());
+    this.shown.dispose();
     this.visibility.dispose();
   }
 
@@ -314,18 +449,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     switch (m.type) {
       case 'ready':
         void this.postIconTheme();
+        // A page that has just loaded has none of the views: send them all.
+        this.sent.clear();
+        this.listed.clear();
         this.postState();
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
         this.post({ type: 'progress', tools: progressByTool() });
         this.post({ type: 'ci', views: this.ci.snapshot() });
+        this.postStorage();
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;
       case 'listDir': {
         const ws = this.find(m.key);
         if (!ws?.worktree.path) return;
+        this.listed.add(m.key, m.path);
         const exclude = vscode.workspace.getConfiguration('files', this.deps.reference).get<Record<string, unknown>>('exclude') ?? {};
         let entries: Awaited<ReturnType<typeof listDirectory>> = [];
         try {
@@ -334,7 +474,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         } catch {
           // deleted meanwhile: show it empty
         }
+        this.shown.watch(m.key, ws.worktree.path, m.path);
         this.post({ type: 'dir', key: m.key, path: m.path, entries });
+        const current = this.find(m.key);
+        if (current) this.postMarks(current);
         return;
       }
       case 'openFile': {
@@ -408,8 +551,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // Only GitHub pages (a workflow run) open from the sidebar.
         if (/^https:\/\/github\.com\//.test(m.url)) await vscode.env.openExternal(vscode.Uri.parse(m.url));
         return;
+      case 'openSite': {
+        // A deployed site (its URL comes from GitHub's deployment status): http or https only.
+        const url = webUrl(m.url);
+        if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+        return;
+      }
       case 'ci':
         if (m.op === 'signIn') await this.ci.signIn().catch((e: unknown) => this.report(e));
+        else if (m.op === 'expand' || m.op === 'collapse') await this.ci.expand(m.key, m.runId, m.op === 'expand');
+        else if (m.op === 'showLog') await this.ci.showLog(m.key, m.jobId, m.jobName);
+        else if (m.op === 'act') await this.ci.act(m.key, m.run, m.action).catch((e: unknown) => this.report(e));
         else await this.ci.refresh();
         return;
       case 'runWorkflow': {
@@ -579,4 +731,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 </body>
 </html>`;
   }
+}
+
+/** Past this context a chat is marked as big (flotilla.chats.bigContext; 0: never). */
+function bigContext(): number {
+  return vscode.workspace.getConfiguration('flotilla').get<number>('chats.bigContext', 200_000);
 }

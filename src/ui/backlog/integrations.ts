@@ -15,7 +15,7 @@ interface IntegrationsFile {
   integrations: IntegrationConfig[];
 }
 
-const GITHUB_SCOPES = ['repo'];
+export const GITHUB_SCOPES = ['repo'];
 const jiraSecret = (c: Extract<IntegrationConfig, { kind: 'jira' }>) => `flotilla.jira:${c.site}:${c.email}`;
 
 /** What the backlog shows of one integration: its issues, or why it has none. */

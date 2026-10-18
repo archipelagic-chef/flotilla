@@ -33,21 +33,22 @@ function withRemote(): { dir: string; bare: string } {
 describe('staging', () => {
   it('stages and unstages individual paths, including literal special characters and deletions', async () => {
     const dir = repo();
-    writeFile(dir, 'a*.txt', 'star\n');
+    // As a glob, a[b].txt would match ab.txt; Windows can't name a file a*.txt.
+    writeFile(dir, 'a[b].txt', 'bracket\n');
     writeFile(dir, 'ab.txt', 'other\n');
     fs.rmSync(path.join(dir, 'README.md'));
 
-    await stage(dir, ['a*.txt', 'README.md']);
+    await stage(dir, ['a[b].txt', 'README.md']);
     let s = status(dir);
     expect(s.staged).toEqual([
       { path: 'README.md', kind: 'deleted' },
-      { path: 'a*.txt', kind: 'added' },
+      { path: 'a[b].txt', kind: 'added' },
     ]);
     expect(s.unstaged).toEqual([{ path: 'ab.txt', kind: 'untracked' }]);
 
     await unstage(dir, ['README.md']);
     s = status(dir);
-    expect(s.staged).toEqual([{ path: 'a*.txt', kind: 'added' }]);
+    expect(s.staged).toEqual([{ path: 'a[b].txt', kind: 'added' }]);
     expect(s.unstaged).toContainEqual({ path: 'README.md', kind: 'deleted' });
   });
 

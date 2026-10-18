@@ -1,12 +1,14 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type SlowStorageView } from '../protocol';
+import type { ChangeKind } from '../../core/git/porcelain';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { CiBody } from './ci';
 import { FilesBody, type Editing } from './files';
 import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
+import { scopeState, scopeSummary } from '../../features/ci/summary';
 import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
@@ -50,11 +52,15 @@ export interface Selection {
 
 export interface FilesApi {
   dirs: ReadonlyMap<string, DirEntry[]>;
+  /** Each worktree's change marks (by path) of the entries in the folders listed, from all of its changes. */
+  marks: ReadonlyMap<string, Record<string, ChangeKind>>;
   requestDir(key: string, path: string): void;
   selection: Selection | undefined;
   isSelected(key: string, path: string): boolean;
   /** single: just this row; toggle: add or remove it (Ctrl/Cmd); range: from the anchor to it (Shift). */
   select(key: string, path: string, mode: 'single' | 'toggle' | 'range'): void;
+  /** The paths of a worktree's tree rows in the order shown (drawn or not): a range covers them. */
+  publishRows(key: string, paths: string[]): void;
   editing: Editing | undefined;
   stopEditing(): void;
 }
@@ -105,10 +111,13 @@ export function App() {
     return { ...INITIAL, ...saved, search: { ...INITIAL_SEARCH, ...saved.search } };
   });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
+  const [machine, setMachine] = useState<MachineState | undefined>(undefined);
   const [active, setActiveState] = useState<string>(ALL);
   /** Worktrees whose tab is closed; they stay in the Overview. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
+  const [marks, setMarks] = useState<ReadonlyMap<string, Record<string, ChangeKind>>>(new Map());
   const [selection, setSelection] = useState<Selection | undefined>(undefined);
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [results, setResults] = useState<SearchResults | undefined>(undefined);
@@ -118,6 +127,7 @@ export function App() {
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
+  const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
@@ -132,7 +142,8 @@ export function App() {
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const searchId = useRef(0);
   const requested = useRef(new Set<string>());
-  const pendingScroll = useRef<{ key: string; path?: string; until: number } | undefined>(undefined);
+  /** Each worktree's Files rows in the order they're shown: a Shift range covers them, drawn or not. */
+  const treeOrder = useRef(new Map<string, string[]>());
   const stateRef = useRef({ persisted, active, workstreams });
   stateRef.current = { persisted, active, workstreams };
 
@@ -215,16 +226,32 @@ export function App() {
       const { persisted: p, active: current } = stateRef.current;
       switch (m.type) {
         case 'state':
-          setWorkstreams(m.workstreams);
+          // Only the worktrees that changed come; the others keep their views (and the same objects, so nothing re-renders).
+          setWorkstreams((prev) => {
+            const views = new Map((prev ?? []).map((w) => [w.key, w]));
+            for (const w of m.workstreams) views.set(w.key, w);
+            const next = m.keys.flatMap((key) => views.get(key) ?? []);
+            return prev && next.length === prev.length && next.every((w, i) => w === prev[i]) ? prev : next;
+          });
+          setMachine(m.machine);
           return;
         case 'active':
           setActiveState(m.key);
           return;
+        case 'storage':
+          setSlow(m.slow);
+          return;
         case 'tabs':
           setClosed(new Set(m.closed));
           return;
+        case 'exclusions':
+          setMissingExclusions(m.missing);
+          return;
         case 'dir':
           setDirs((prev) => new Map(prev).set(dirKey(m.key, m.path), m.entries));
+          return;
+        case 'marks':
+          setMarks((prev) => new Map(prev).set(m.key, m.marks));
           return;
         case 'dirsChanged':
           for (const path of m.paths) {
@@ -315,7 +342,7 @@ export function App() {
           if (m.path === undefined) {
             // A worktree to show (e.g. one just created): make it active.
             setActive(m.key);
-            if (m.tool) update((prev) => ({ ...prev, tool: m.tool! }));
+            if (m.tool) update((prev) => ({ ...prev, tool: m.tool!, ...(m.vcView ? { vcView: m.vcView } : {}) }));
             return;
           }
           // The active editor's file, like the Explorer's auto-reveal: only in the Files tool, and only if its worktree is shown.
@@ -328,7 +355,6 @@ export function App() {
           }));
           for (const d of ['', ...parents]) requestDir(m.key, d);
           setSelection({ key: m.key, paths: [m.path], anchor: m.path });
-          pendingScroll.current = { key: m.key, path: m.path, until: Date.now() + 3000 };
           return;
         }
       }
@@ -342,21 +368,6 @@ export function App() {
     send({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
   }, [onMessage]);
-
-  // Scrolls a revealed file into view once it is rendered (it may need folder listings first).
-  useLayoutEffect(() => {
-    const pending = pendingScroll.current;
-    if (!pending) return;
-    if (Date.now() > pending.until) {
-      pendingScroll.current = undefined;
-      return;
-    }
-    const row = document.querySelector<HTMLElement>(`[data-section="${CSS.escape(pending.key)}"] [data-path="${CSS.escape(pending.path ?? '')}"]`);
-    if (row) {
-      row.scrollIntoView({ block: 'nearest' });
-      pendingScroll.current = undefined;
-    }
-  });
 
   // Keep the active worktree tab visible when there are more tabs than room.
   useEffect(() => {
@@ -393,7 +404,7 @@ export function App() {
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
   const scope = activeWs ? [activeWs] : workstreams;
-  const changeCount = scope.reduce((n, w) => n + w.staged.length + w.unstaged.length, 0);
+  const changeCount = scope.reduce((n, w) => n + w.totals.staged + w.totals.unstaged, 0);
   // Chats waiting for the user, in every worktree (a chat waits wherever it runs): approvals, and output to reply to.
   // A chat linked to several worktrees counts once.
   const pending = new Map<string, 'approval' | 'reply'>();
@@ -404,15 +415,21 @@ export function App() {
     ...(approvals ? [`${approvals} chat${approvals === 1 ? ' needs' : 's need'} your approval`] : []),
     ...(replies ? [`${replies} chat${replies === 1 ? ' waits' : 's wait'} for your reply`] : []),
   ];
-  const proposedCount = (backlog ?? []).filter((i) => i.proposed).length;
+  // The backlog's badge counts what waits on the user ("Needs you") and the agents' proposals.
+  const backlogCount = (backlog ?? []).filter((i) => i.need || i.proposed).length;
   const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
   const busyFor = (id: Tool): string[] => [
     ...(progress[id] ?? []),
     ...(id === 'search' && searching ? ['Searching…'] : []),
   ];
+  /** CI of the scope (the active worktree, or all of them on the All tab): its state on the Version Control tool, and what failed. */
+  const ciViews = active === ALL ? workstreams.map((w) => ci[w.key]) : [ci[active]];
+  const ciState = scopeState(ciViews);
+  const ciTip = scopeSummary(ciViews);
   const files: FilesApi = {
     dirs,
+    marks,
     requestDir,
     selection,
     isSelected: (key, path) => selection?.key === key && selection.paths.includes(path),
@@ -423,13 +440,14 @@ export function App() {
           const paths = sel.paths.includes(path) ? sel.paths.filter((p) => p !== path) : [...sel.paths, path];
           return { key, paths, anchor: path };
         }
-        // A range covers the visible rows between the anchor and this one, in the order they are shown.
-        const rows = [...document.querySelectorAll<HTMLElement>(`.content [role="treeitem"][data-key="${CSS.escape(key)}"]`)].map(
-          (r) => r.dataset.path!,
-        );
+        // A range covers the rows between the anchor and this one, in the order they are shown.
+        const rows = treeOrder.current.get(key) ?? [];
         const [a, b] = [rows.indexOf(sel.anchor), rows.indexOf(path)].sort((x, y) => x - y);
         return a < 0 ? { key, paths: [path], anchor: path } : { key, paths: rows.slice(a, b + 1), anchor: sel.anchor };
       }),
+    publishRows: (key, paths) => {
+      treeOrder.current.set(key, paths);
+    },
     editing,
     stopEditing: () => setEditing(undefined),
   };
@@ -491,9 +509,13 @@ export function App() {
     content = (
       <Overview
         workstreams={workstreams}
+        machine={machine}
         active={active}
         colors={colors}
         closed={closed}
+        ci={ci}
+        missing={missingExclusions}
+        slow={slow}
         onSelect={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);
@@ -639,7 +661,7 @@ export function App() {
       <div class="body">
         <nav class="tools" role="tablist" aria-orientation="vertical" aria-label="Tools">
           {TOOLS.map((t) => {
-            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? proposedCount : 0;
+            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? backlogCount : 0;
             const busy = busyFor(t.id);
             return (
               <Fragment key={t.id}>
@@ -649,13 +671,14 @@ export function App() {
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
                   data-tip={(() => {
-                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : [])];
+                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : []), ...(t.id === 'vc' && ciTip ? [ciTip] : [])];
                     return lines.length ? [t.label, ...lines].join('\n') : undefined;
                   })()}
                   data-tip-pos="right"
                   onClick={() => update((p) => ({ ...p, tool: t.id }))}
                 >
                   <i class={`codicon codicon-${t.icon}`} />
+                  {t.id === 'vc' && ciState && <span class={`ci-dot ${ciState}`} />}
                   {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
                   {busy.length > 0 && (
                     <span class={`b busy${badge > 0 ? ' top' : ''}`}>
@@ -677,6 +700,7 @@ export function App() {
                         onClick={() => update((p) => ({ ...p, vcView: v.id }))}
                       >
                         <i class={`codicon codicon-${v.icon}`} />
+                        {v.id === 'ci' && ciState && <span class={`ci-dot ${ciState}`} />}
                       </button>
                     ))}
                     {addable.length > 0 && <AddViewMenu views={addable} />}
@@ -698,7 +722,7 @@ export function App() {
       <Hover
         render={(el) => {
           const ws = el.dataset.tipWs ? workstreams.find((w) => w.key === el.dataset.tipWs) : undefined;
-          return ws && <WorktreeCard ws={ws} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
+          return ws && <WorktreeCard ws={ws} ci={ci[ws.key]} color={colors.get(ws.key) ?? 'var(--focus)'} keys={el.dataset.keys} hint={el.dataset.tipHint} />;
         }}
       />
     </div>

@@ -4,3 +4,4 @@ out/
 .vscode-test/
 *.vsix
 .playground/
+.playground.old-*/

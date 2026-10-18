@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { WorkstreamView } from '../protocol';
+import { ciState, ciSummary } from '../../features/ci/summary';
+import type { CiView, WorkstreamView } from '../protocol';
 import { ATTENTION_ICON } from './section';
 
 /**
@@ -187,10 +188,10 @@ const STATE_CLASS: Partial<Record<WorkstreamView['attention'], string>> = {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** The hover of a worktree (tab, header, Overview card): branch, folder, status, changes, chats and how to open it. */
-export function WorktreeCard({ ws, color, keys, hint }: { ws: WorkstreamView; color: string; keys?: string; hint?: string }) {
+export function WorktreeCard({ ws, ci, color, keys, hint }: { ws: WorkstreamView; ci?: CiView; color: string; keys?: string; hint?: string }) {
   const open = ws.chats.filter((c) => c.open);
   const waiting = open.filter((c) => c.state === 'waiting-for-input').length;
-  const changes = [ws.staged.length ? `${ws.staged.length} staged` : '', ws.unstaged.length ? plural(ws.unstaged.length, 'change') : '']
+  const changes = [ws.totals.staged ? `${ws.totals.staged} staged` : '', ws.totals.unstaged ? plural(ws.totals.unstaged, 'change') : '']
     .filter(Boolean)
     .join(', ');
   const chats = open.length ? `${plural(open.length, 'open chat')}${waiting ? ` (${waiting} waiting)` : ''}` : '';
@@ -207,6 +208,12 @@ export function WorktreeCard({ ws, color, keys, hint }: { ws: WorkstreamView; co
           <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]} ${STATE_CLASS[ws.attention] ?? ''}`} />
           <span>{ws.description}</span>
         </div>
+        {ciSummary(ci) && (
+          <div class="hover-row">
+            <i class={`codicon codicon-github-action${ciState(ci) ? ` ci-state ${ciState(ci)}` : ''}`} />
+            <span>{ciSummary(ci)}</span>
+          </div>
+        )}
         {ws.agentMessage && <div class="hover-quote">{ws.agentMessage}</div>}
         {(changes || chats) && (
           <div class="hover-row">

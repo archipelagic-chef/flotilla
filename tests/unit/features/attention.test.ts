@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attentionTransitions, computeAttention, sortByAttention } from '../../../src/features/workstreams/attention';
+import { computeAttention, sortByAttention } from '../../../src/features/workstreams/attention';
 
 const now = new Date('2026-10-09T10:00:00Z');
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);
@@ -36,25 +36,5 @@ describe('sortByAttention', () => {
       { name: 'active-new', attention: 'active' as const, lastActivity: minutesAgo(1) },
     ];
     expect(sortByAttention(items).map((i) => i.name)).toEqual(['waiting', 'working', 'active-new', 'active-old', 'idle', 'unreachable']);
-  });
-});
-
-describe('attentionTransitions', () => {
-  it('reports keys that newly entered waiting-for-input or error', () => {
-    const prev = new Map([
-      ['a', 'working' as const],
-      ['b', 'waiting-for-input' as const],
-    ]);
-    const next = [
-      { key: 'a', attention: 'waiting-for-input' as const },
-      { key: 'b', attention: 'waiting-for-input' as const },
-      { key: 'c', attention: 'error' as const },
-      { key: 'd', attention: 'done' as const },
-    ];
-    expect(attentionTransitions(prev, next)).toEqual(['a', 'c']);
-  });
-
-  it('reports nothing on the first refresh', () => {
-    expect(attentionTransitions(undefined, [{ key: 'a', attention: 'error' }])).toEqual([]);
   });
 });

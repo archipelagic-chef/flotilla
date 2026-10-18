@@ -101,7 +101,16 @@ function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
           <i class="codicon codicon-close" />
         </button>
       </span>
-      <span class={`sub${chat.state === 'waiting-for-input' ? ' st-waiting' : ''}`}>{sub}</span>
+      <span class={`sub${chat.state === 'waiting-for-input' ? ' st-waiting' : ''}`}>
+        {sub}
+        {chat.size && (
+          <span class={`chat-size${chat.size.big ? ' big' : ''}`} data-tip={chat.size.tip}>
+            {' · '}
+            {chat.size.big && <i class="codicon codicon-warning" />}
+            {chat.size.label}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

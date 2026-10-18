@@ -1,15 +1,17 @@
 import { runGit } from '../../core/git/gitCli';
 import { parseStatusV2, type FileChange, type StatusBranch } from '../../core/git/porcelain';
 import { isInside, samePath } from '../../core/paths';
+import type { Scope } from '../../core/repository';
 import { claudeHome, homedElsewhere, mergeChats, mostUrgent, readChatRecords, readTranscript, readTranscripts, readUnlinked, type Chat, type TranscriptInfo } from '../chats/chats';
 import { hooksInstalled } from '../chats/hookInstall';
 import type { ResolvedWorktree } from '../worktrees/resolver';
 import type { WorktreeService } from '../worktrees/worktreeService';
-import { classifyActivity, lastActivity, type ActivityLevel } from './activity';
+import { classifyActivity, lastActivity, MAX_PATHS, type ActivityLevel } from './activity';
 import { readAgentStatus, type AgentStatus } from './agentStatus';
 import { computeAttention, sortByAttention, type AttentionState } from './attention';
 import { isAlive, readHeartbeat, type Heartbeat } from './heartbeat';
-import { computeProgress, resolveBase, type Progress } from './progress';
+import { computeProgress, resolveBase, resolveCommit, type Progress } from './progress';
+import { isRebuildDue } from './refreshPlan';
 
 export interface WorkstreamSettings {
   activeWindowMinutes: number;
@@ -53,6 +55,19 @@ export interface Workstream {
   progress: Progress | undefined;
   attention: AttentionState;
   isCurrent: boolean;
+  /** When this entry was built (ms since the epoch). */
+  refreshedAt: number;
+}
+
+/** A refresh of a snapshot: only the worktrees the scope names, and those due by their schedule, are rebuilt. */
+export interface RefreshOptions {
+  scope: Scope;
+  /** The snapshot being refreshed; worktrees not rebuilt keep their entries from it. */
+  previous: readonly Workstream[];
+  /** How often a live worktree is rebuilt (see refreshPlan.ts). */
+  pollMs: number;
+  /** The worktree picked in the sidebar. */
+  activeKey?: string;
 }
 
 export interface BuildOptions {
@@ -62,6 +77,8 @@ export interface BuildOptions {
   onInvalidStatus?: (file: string) => void;
   /** Claude Code's config dir (default ~/.claude); transcripts live under it. */
   claudeHome?: string;
+  /** Without it, every worktree is built. */
+  refresh?: RefreshOptions;
 }
 
 /** A chat that reported nothing for this long no longer counts as open. */
@@ -74,9 +91,31 @@ function agentFromChat(chat: Chat | undefined): AgentStatus | undefined {
 
 export async function buildWorkstreams(service: WorktreeService, opts: BuildOptions): Promise<Workstream[]> {
   const worktrees = await service.list();
-  const [base, hasRemote] = await Promise.all([resolveBase(service.roots.mainRoot, opts.settings.defaultBase), hasAnyRemote(service.roots.mainRoot)]);
-  const items = await Promise.all(worktrees.map((wt) => buildOne(wt, base, hasRemote, opts)));
+  const previous = new Map((opts.refresh?.previous ?? []).map((ws) => [ws.key, ws]));
+  // The repository's facts are read once, and only if a worktree is rebuilt.
+  let repo: Promise<RepoFacts> | undefined;
+  const items = await Promise.all(
+    worktrees.map(async (wt) => {
+      const prev = previous.get(wt.adminDir);
+      const refresh = opts.refresh;
+      if (refresh && !isRebuildDue(prev, refresh.scope, opts.now.getTime(), refresh.pollMs, refresh.activeKey)) return { ...prev!, worktree: wt };
+      repo ??= readRepoFacts(service.roots.mainRoot, opts.settings.defaultBase);
+      return buildOne(wt, await repo, opts, prev);
+    }),
+  );
   return sortByAttention(items);
+}
+
+interface RepoFacts {
+  base: string | undefined;
+  baseHead: string | undefined;
+  hasRemote: boolean;
+}
+
+async function readRepoFacts(mainRoot: string, defaultBase: string): Promise<RepoFacts> {
+  const [base, hasRemote] = await Promise.all([resolveBase(mainRoot, defaultBase), hasAnyRemote(mainRoot)]);
+  const baseHead = base ? await resolveCommit(mainRoot, base) : undefined;
+  return { base, baseHead, hasRemote };
 }
 
 async function hasAnyRemote(cwd: string): Promise<boolean> {
@@ -87,7 +126,13 @@ async function hasAnyRemote(cwd: string): Promise<boolean> {
   }
 }
 
-async function buildOne(wt: ResolvedWorktree, base: string | undefined, hasRemote: boolean, opts: BuildOptions): Promise<Workstream> {
+async function buildOne(
+  wt: ResolvedWorktree,
+  repo: RepoFacts,
+  opts: BuildOptions,
+  prev: Workstream | undefined,
+): Promise<Workstream> {
+  const { base, baseHead, hasRemote } = repo;
   const gitDir = wt.adminDir;
   const [legacyAgent, heartbeat, records, unlinked, transcripts, hasHooks] = await Promise.all([
     readAgentStatus(gitDir, opts.onInvalidStatus),
@@ -126,7 +171,8 @@ async function buildOne(wt: ResolvedWorktree, base: string | undefined, hasRemot
       // treat as no changes; the error shows up when the user acts on the worktree
     }
     last = await lastActivity(wt.path, gitDir, changes.map((c) => c.path));
-    progress = await computeProgress(wt.path, base);
+    const next = { head: branch.oid, base, baseHead, changes, last };
+    progress = prev && canReuseProgress(prev, next) ? prev.progress : await computeProgress(wt.path, base, baseHead);
   }
   const s = opts.settings;
   const activity = classifyActivity(last, opts.now, s.activeWindowMinutes, s.staleAfterDays);
@@ -155,7 +201,27 @@ async function buildOne(wt: ResolvedWorktree, base: string | undefined, hasRemot
     progress,
     attention: state,
     isCurrent: wt.path !== undefined && opts.currentWorktreeRoot !== undefined && samePath(wt.path, opts.currentWorktreeRoot),
+    refreshedAt: opts.now.getTime(),
   };
+}
+
+/**
+ * Progress (log, rev-list, merge-base, diff-index) only changes with HEAD, the base commit, the changed files or
+ * their contents. Contents show in the newest mtime, which is only checked for the first MAX_PATHS changed files.
+ */
+export function canReuseProgress(
+  prev: Workstream,
+  next: { head: string | undefined; base: string | undefined; baseHead: string | undefined; changes: readonly FileChange[]; last: Date | undefined },
+): boolean {
+  return (
+    prev.progress !== undefined &&
+    prev.sync.head === next.head &&
+    prev.progress.base === next.base &&
+    prev.progress.baseHead === next.baseHead &&
+    prev.lastActivity?.getTime() === next.last?.getTime() &&
+    next.changes.length <= MAX_PATHS &&
+    JSON.stringify(prev.changes) === JSON.stringify(next.changes)
+  );
 }
 
 /** The workstream whose worktree contains p (or is p). The innermost wins: the main worktree contains `.worktrees/*`. */
