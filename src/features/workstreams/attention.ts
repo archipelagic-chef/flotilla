@@ -27,13 +27,3 @@ export function sortByAttention<T extends { attention: AttentionState; lastActiv
     (a, b) => rank(a.attention) - rank(b.attention) || (b.lastActivity?.getTime() ?? 0) - (a.lastActivity?.getTime() ?? 0),
   );
 }
-
-const NEEDS_YOU: ReadonlySet<AttentionState> = new Set(['waiting-for-input', 'error']);
-
-export function attentionTransitions(
-  prev: ReadonlyMap<string, AttentionState> | undefined,
-  next: ReadonlyArray<{ key: string; attention: AttentionState }>,
-): string[] {
-  if (!prev) return [];
-  return next.filter((n) => NEEDS_YOU.has(n.attention) && prev.get(n.key) !== n.attention).map((n) => n.key);
-}

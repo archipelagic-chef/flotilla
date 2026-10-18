@@ -3,7 +3,8 @@ import * as path from 'node:path';
 
 export type ActivityLevel = 'active' | 'idle' | 'stale';
 
-const MAX_PATHS = 200;
+/** Changed files whose mtimes are checked for activity (more than this, and progress is not reused). */
+export const MAX_PATHS = 200;
 
 /** Newest mtime among changed files and the worktree's HEAD reflog. Never stats .git/index (git status may touch it). */
 export async function lastActivity(worktreeDir: string, gitDir: string, changedPaths: readonly string[]): Promise<Date | undefined> {

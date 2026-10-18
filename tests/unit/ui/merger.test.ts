@@ -176,7 +176,7 @@ describe('Merge to main', () => {
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
     expect(git(repo, 'status', '--porcelain')).toBe('');
     expect(worktrees()).toBe(1);
-    expect((await item('BL-1')).merge).toBeUndefined();
+    expect((await item('BL-1')).merging).toBeUndefined();
     merger.dispose();
   });
 

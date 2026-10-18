@@ -16,7 +16,7 @@ A **tool strip** runs down its left side:
 - **Files**: the file tree with your file icon theme (or VS Code's Seti, in a devcontainer where your theme isn't installed), git change badges, git-ignored files greyed out, reveal of the active editor's file, new file and folder (inline, `a/b/c.ts` creates the folders), rename (F2), delete to the Trash (Delete), cut/copy/paste (also between worktrees) and drag and drop.
 - **Search**: text search and replace in the active worktree (or all of them on the All tab), with match case, whole word and regex. It searches tracked and untracked files and skips ignored ones.
 - **Version Control**: like VS Code's Source Control, per worktree: a message box with Commit (and Commit & Push, Commit & Sync, Amend), Publish Branch or Sync Changes, and staged and unstaged changes with stage, unstage and discard.
-- **Backlog**: tickets in To Do, In Progress, In Review and Done (see below).
+- **Backlog**: tickets in To Do, In Progress, In Review, Ready to Merge and Done (see below). Each card says whether its work is merged into the base branch (from git).
 - **Chats**: the Claude Code chats linked to the worktree, with their state (working, waiting for you, finished), *New chat* and the history of every chat linked to it. Its icon counts the chats waiting for you (an approval, or output to reply to).
 
 At the bottom of the strip, buttons open VS Code's Run and Debug and Extensions views. To keep a single icon strip, move VS Code's activity bar to the top or hide it (`workbench.activityBar.location`); Flotilla offers this once (*Flotilla: Use Flotilla as the Sidebar…*). With it hidden, the Flotilla item in the status bar and Ctrl+Shift+E / F / G bring Flotilla back.
@@ -44,11 +44,15 @@ Worktrees created with plain `git worktree add` inside the repository are adopte
 The **Backlog** keeps the repository's work as tickets, in `.flotilla/backlog/` in the main worktree (kept out of git): `backlog.json` for the order and status, and a Markdown file per ticket with its description and its activity. A ticket opens in an editor tab, with its status, priority, worktrees, commits, the agents that worked on it, and an activity feed of comments, agents' reports and everything that changed.
 
 - **Agents on tickets**: *Start an Agent* opens a Claude Code chat in the ticket's worktree (created if needed). Agents report in the ticket, start commit messages with its id (a commit-msg hook checks it), keep its description up to date, ask when they need you, and end with "Ready for review." Pick each ticket's model and effort; with one chosen, the agent runs as a Claude Code session in a terminal.
+- **Ask, off the record**: the *Ask* pane in a ticket (folded until you open it) answers quick questions about it ("what's this for?", "how far is it?", "which files does it touch?") in a small chat. A lightweight agent (`flotilla.ask.model`, default Sonnet) answers from the ticket and its branch, reading the code and git only. Nothing is written to the ticket and agents don't see it; follow-ups go on in the same chat until you close the ticket or start a *New Question*. *Post to Ticket* adds an answer worth keeping as your comment. It doesn't count against `flotilla.agents.maxRunning`, but waits while memory is short.
 - **Any chat works through the backlog**: chats learn about it from `AGENTS.md` next to it, claim or add tickets through its inbox, and can split work into sub-tickets (as proposals you accept, or straight in: `flotilla.backlog.agentTickets`).
 - **Reviews**: a reviewer agent reviews work in review and gives a verdict; requested changes go back to the implementer. Review it yourself with *Approve* and *Request Changes*; the agent picks your changes up, asking first if it needs to. A stopped review offers the fixes for why it stopped.
 - **Merge to main**: an approved ticket merges from its ticket (or its card's right-click menu, which also has *Merge All Ready Tickets*, dependencies first). Flotilla merges in a temporary worktree (`git merge --no-ff`, "Merge BL-12: <title>"), so none of your worktrees is left mid-merge; it refuses a branch carrying unfinished tickets' commits and says when a ticket looks superseded. It runs the checks (`flotilla.merge.checkCommand`) in a terminal, and only when they pass moves the base branch to the merge and the ticket to Done. Conflicts: an agent resolves them, keeping both sides' intent, for you to approve; or cancel. Nothing is pushed until you click *Push*.
-- **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.autopilot.maxAgents` at once. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
+- **Autopilot** (the rocket in the backlog's title): agents take To Do tickets from the top and work on them without a window, up to `flotilla.agents.maxRunning` agents at once, shared with the reviews. Starts Flotilla makes on its own wait in a queue when that's reached: your replies to an agent first, then reviews and revisions, then resumes, then new tickets. **Prioritize** (in a ticket's queued note, or in Needs you) starts a queued start now, above the limit, up to `flotilla.agents.maxPrioritized` extra agents; at that ceiling it asks which running agent to pause for it. An agent that hits Claude's usage limit is paused, and goes on by itself when the limit resets.
+- **Current with main**: when main moves, each open ticket's branch is merged with it in memory (no worktree touched); one that would conflict says "conflicts with main" on its card and in its ticket, while its agent is still around. *Update from Main* in the ticket merges main into the branch, or has the ticket's agent do it when that conflicts. Agents merge main and run the checks before "Ready for review.", never merge other tickets' branches, and write "Depends on: BL-12" in the description when they need another ticket's work: the ticket then waits for it (the autopilot doesn't start it).
+- **Pause, Resume and Stop** any agent on a ticket (the implementer, the reviewer, the discussion's agent; without a window or in a terminal), from its *Agents* row, the ticket's status card, or the backlog card's right-click menu. *Pause* ends it now and keeps its chat and its uncommitted work; *Resume* goes on in the same chat, which checks `git status` first. A paused agent frees its slot (`flotilla.agents.maxRunning`), and nothing resumes it but you. A stopped agent offers *Resume* or *New Agent*. An agent in a terminal is ended through its terminal's process; one in Claude Code's panel can only be stopped there (the ticket offers to open its chat).
 - **History clean-up**: rewrite a ticket's branch into a few clean commits (an agent with you, or yourself); the old history is kept under `refs/flotilla/history/`.
+- **Merged or not**: a ticket's branches are read from git against the base branch (`flotilla.defaultBase`, or the remote's default). Work in review that's merged moves to Done by itself, also when the merge is done on the command line. A Done ticket with unmerged work says so, and offers to merge it (as a sibling ticket), dismiss it as superseded by another ticket, or open its branch.
 - **Jira and GitHub Issues**: list their issues in the backlog, link local tickets to them, and post comments, change status and priority, or create issues from a ticket. Every write asks you first; agents are told never to change trackers.
 
 Agents Flotilla starts without a window (the autopilot's, reviewers, and those making requested changes) run the Claude Code CLI with `flotilla.agents.permissionMode` (default `auto`): nobody is there to approve a request, so what that mode doesn't allow is refused. Choose it with care, especially `bypassPermissions`.
@@ -71,13 +75,16 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 |---|---|---|
 | `flotilla.copyFiles` | `[]` | Globs copied from the main worktree on create |
 | `flotilla.setupCommand` | `""` | Run in a terminal in the new worktree |
+| `flotilla.linkFolders` | `[]` | Folders (e.g. `node_modules`) a new worktree gets as hard links to the main worktree's: no extra space |
+| `flotilla.removeFinishedWorktrees` | `auto` | Remove a done ticket's worktree when nothing in it can be lost (`ask`, `off`); its branch is kept |
 | `flotilla.autoAdopt` | `true` | Make in-repo worktrees portable automatically |
 | `flotilla.defaultBase` | `""` | Base branch for progress and compare |
 | `flotilla.activeWindowMinutes` | `5` | Activity → active threshold |
 | `flotilla.staleAfterDays` | `7` | Activity → stale threshold |
 | `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
-| `flotilla.notifyOnAttention` | `true` | Notify on waiting-for-input / error |
-| `flotilla.pollSeconds` | `15` | Poll interval while the view is visible |
+| `flotilla.notify` | `needsYou` | Notifications for what needs you: `needsYou` (one a minute, gathered), `all` (each as it happens), or `off` |
+| `flotilla.ci.notify` | `failures` | Notify when a CI run on a worktree's branch finishes: `failures`, `all` or `off` |
+| `flotilla.pollSeconds` | `15` | Refresh interval for worktrees in use while the view is visible; other worktrees every few minutes |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |
 | `flotilla.backlog.commitPrefix` | `agents` | Whose commits in a ticket's worktree must start with its id: `agents`, `everyone` or `off` |
@@ -87,8 +94,18 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.merge.checkCommand` | `""` | Checks run on a merge before the base branch moves (default: the `typecheck` and `test` scripts) |
 | `flotilla.merge.onApprove` | `ask` | When a ticket is approved: offer to merge it (`ask`), merge it (`auto`), or nothing (`off`) |
 | `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
+| `flotilla.agents.lightModel` | `""` | Model for tickets marked Light (small, mechanical work). Reviewed by `flotilla.agents.model`, and moved up to it when the work turns out hard. Empty: no ticket is Light |
+| `flotilla.agents.autoCompactWindow` | `200000` | Context size agents compact against, so each turn re-reads less. 0: Claude Code's own |
+| `flotilla.agents.subagentModel` | `"sonnet"` | Model of agents' search subagents (never stronger than the agent's own). Empty: the agent's own |
+| `flotilla.agents.guardOutput` | `true` | Refuse whole reads of big files and whole large diffs, with how to look instead |
+| `flotilla.agents.tokenBudget` | `25` | Millions of tokens an agent may re-read before it's stopped and its ticket asks you; agents repeating a failing command are stopped too. 0: no budget |
+| `flotilla.chats.bigContext` | `200000` | Context size at which a chat is marked big, and you're told once what it costs. 0: never |
+| `flotilla.agents.lean` | `true` | Start agents without your skills, plugins and MCP servers, with the coding tools only: a quarter less context re-read every turn |
+| `flotilla.ask.model` | `"sonnet"` | Model that answers in a ticket's Ask chat |
 | `flotilla.review.model` / `.effort` | `""` | Model and effort for reviewer agents |
-| `flotilla.autopilot.maxAgents` | `2` | How many agents the autopilot runs at once |
+| `flotilla.autopilot.avoidClashes` | `true` | The autopilot holds back a ticket that would change files a ticket in progress changes, until that one is merged |
+| `flotilla.agents.maxRunning` | `2` | How many agents run at once, in all (the autopilot's, reviews, resumes); the rest wait in a queue |
+| `flotilla.agents.maxPrioritized` | `2` | How many agents Prioritize may run above `maxRunning` at once; at this ceiling it asks which running agent to pause |
 | `flotilla.agents.permissionMode` | `auto` | What agents without a window may do (user settings only) |
 | `flotilla.agents.claudePath` | `""` | The Claude Code CLI agents run with (user settings only) |
 

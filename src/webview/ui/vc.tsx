@@ -1,10 +1,11 @@
-import { Fragment, type Ref } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ChangeGroup, CommitView, FileChangeView, RefComparison, Tool, VcView, WorkstreamView } from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
+import { Virtual } from './virtual';
+import { historyRows, type HistoryRow } from './rows';
 
 interface Props {
   ws: WorkstreamView;
@@ -35,7 +36,7 @@ const COMMIT_MENU: Array<{ label: string; action: CommitAction }> = [
 function CommitBox({ ws, draft, update }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
-  const changes = ws.staged.length + ws.unstaged.length;
+  const changes = ws.totals.staged + ws.totals.unstaged;
   const setDraft = (value: string) => update((p) => ({ ...p, drafts: { ...p.drafts, [ws.key]: value } }));
   const commit = (action: CommitAction = {}) => {
     setMenuOpen(false);
@@ -61,7 +62,7 @@ function CommitBox({ ws, draft, update }: Props) {
 
   let primary;
   if (changes > 0) {
-    const what = ws.staged.length ? `${ws.staged.length} staged change(s)` : `all ${ws.unstaged.length} change(s)`;
+    const what = ws.totals.staged ? `${ws.totals.staged} staged change(s)` : `all ${ws.totals.unstaged} change(s)`;
     primary = (
       <div class="split-button">
         <button class="button" data-tip={`Commit ${what} on ${ws.branch}`} onClick={() => commit()}>
@@ -138,20 +139,24 @@ function CommitBox({ ws, draft, update }: Props) {
 
 /** Version Control › Changes: the commit box and the staged and unstaged changes. */
 export function VcBody({ ws, draft, update }: Props) {
-  const total = ws.staged.length + ws.unstaged.length;
+  const total = ws.totals.staged + ws.totals.unstaged;
   return (
     <div class="vc">
       <CommitBox ws={ws} draft={draft} update={update} />
-      <Group ws={ws} group="staged" title="Staged Changes" items={ws.staged} />
-      <Group ws={ws} group="unstaged" title="Changes" items={ws.unstaged} />
+      <Group ws={ws} group="staged" title="Staged Changes" items={ws.staged} total={ws.totals.staged} />
+      <Group ws={ws} group="unstaged" title="Changes" items={ws.unstaged} total={ws.totals.unstaged} />
       {total === 0 && ws.sync.kind === 'sync' && !ws.sync.ahead && !ws.sync.behind && <div class="empty">Up to date with the remote.</div>}
     </div>
   );
 }
 
-/** A group is always shown, also when empty, so the staged and unstaged lanes stay in place. */
-function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeGroup; title: string; items: FileChangeView[] }) {
+/**
+ * A group is always shown, also when empty, so the staged and unstaged lanes stay in place. Its rows are drawn as they
+ * scroll into view; items is what the sidebar got (flotilla.changes.limit), total is every change in the group.
+ */
+function Group({ ws, group, title, items, total }: { ws: WorkstreamView; group: ChangeGroup; title: string; items: FileChangeView[]; total: number }) {
   const target = { key: ws.key, group };
+  const more = total - items.length;
   return (
     <div class="group">
       <div
@@ -159,7 +164,7 @@ function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeG
         data-vscode-context={items.length ? menuContext('changeGroup', { key: ws.key, group, flotillaWs: ws.context }) : undefined}
       >
         <span class="name">{title}</span>
-        <span class="hover-actions" hidden={!items.length}>
+        <span class="hover-actions" hidden={!total}>
           <button class="icon" aria-label="Open Changes" onClick={() => run('flotilla.openChanges', target)}>
             <i class="codicon codicon-diff-multiple" />
           </button>
@@ -178,12 +183,18 @@ function Group({ ws, group, title, items }: { ws: WorkstreamView; group: ChangeG
             </>
           )}
         </span>
-        <span class="badge">{items.length}</span>
+        <span class="badge">{total}</span>
       </div>
-      {items.map((c) => (
-        <ChangeRow key={`${group}:${c.path}`} ws={ws} group={group} change={c} />
-      ))}
-      {!items.length && <div class="row group-empty">{group === 'staged' ? 'No staged changes' : 'No changes'}</div>}
+      <Virtual items={items} keyOf={(c) => c.path} render={(c) => <ChangeRow ws={ws} group={group} change={c} />} />
+      {more > 0 && (
+        <div class="row group-empty">
+          <span class="name">and {more.toLocaleString()} more</span>
+          <button class="link" data-tip="A terminal here: git status lists every change" onClick={() => run('flotilla.openTerminal', { key: ws.key })}>
+            Open Terminal
+          </button>
+        </div>
+      )}
+      {!total && <div class="row group-empty">{group === 'staged' ? 'No staged changes' : 'No changes'}</div>}
     </div>
   );
 }
@@ -288,7 +299,6 @@ const FIND_PAGES = 10;
 
 export function HistoryBody({ ws, log, requestLog, files, requestFiles, highlight, clearHighlight }: HistoryProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const selectedRow = useRef<HTMLDivElement>(null);
   const toggle = (hash: string) => {
     const open = !expanded.has(hash);
     if (open) requestFiles(ws.key, hash);
@@ -315,7 +325,6 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles, highligh
     // The commit clicked on the ticket opens, with its message and files.
     requestFiles(ws.key, highlight.selected);
     setExpanded((prev) => (prev.has(highlight.selected) ? prev : new Set(prev).add(highlight.selected)));
-    requestAnimationFrame(() => selectedRow.current?.scrollIntoView({ block: 'center' }));
   }, [found, highlight?.selected]);
   const inTicket = highlight ? commits.filter((c) => highlight.hashes.has(c.hash)).length : 0;
   return (
@@ -347,19 +356,25 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles, highligh
       )}
       {log?.error && <div class="row group-empty error">{log.error}</div>}
       {!log?.error && !commits.length && <div class="row group-empty">{log?.loading || !log ? 'Loading…' : 'No commits yet'}</div>}
-      {commits.map((c) => (
-        <Fragment key={c.hash}>
-          <CommitRow
-            ws={ws}
-            commit={c}
-            open={expanded.has(c.hash)}
-            onToggle={() => toggle(c.hash)}
-            mark={highlight?.selected === c.hash ? 'selected' : highlight?.hashes.has(c.hash) ? 'ticket' : undefined}
-            rowRef={highlight?.selected === c.hash ? selectedRow : undefined}
-          />
-          {expanded.has(c.hash) && <CommitDetails ws={ws} commit={c} files={files(c.hash)} />}
-        </Fragment>
-      ))}
+      <Virtual<HistoryRow>
+        items={historyRows(commits, expanded, files)}
+        keyOf={(row) => row.key}
+        reveal={found ? highlight?.selected : undefined}
+        render={(row) => {
+          const { commit } = row;
+          if (row.kind === 'file') return <CommitFileRow ws={ws} commit={commit} change={row.change} />;
+          if (row.kind === 'details') return <CommitDetails commit={commit} files={files(commit.hash)} />;
+          return (
+            <CommitRow
+              ws={ws}
+              commit={commit}
+              open={expanded.has(commit.hash)}
+              onToggle={() => toggle(commit.hash)}
+              mark={highlight?.selected === commit.hash ? 'selected' : highlight?.hashes.has(commit.hash) ? 'ticket' : undefined}
+            />
+          );
+        }}
+      />
       {log?.more && (
         <div class="row group-empty">
           <button class="link" disabled={log.loading} onClick={() => requestLog(ws.key, commits.length)}>
@@ -378,7 +393,6 @@ function CommitRow({
   open,
   onToggle,
   mark,
-  rowRef,
 }: {
   ws: WorkstreamView;
   commit: CommitView;
@@ -386,12 +400,10 @@ function CommitRow({
   onToggle(): void;
   /** Part of a highlighted ticket, or the one selected on it. */
   mark?: 'ticket' | 'selected';
-  rowRef?: Ref<HTMLDivElement>;
 }) {
   const icon = commit.parents.length > 1 ? 'git-merge' : 'git-commit';
   return (
     <div
-      ref={rowRef}
       class={`row log-row${commit.outgoing ? ' outgoing' : ''}${mark ? ` mark-${mark}` : ''}`}
       role="treeitem"
       aria-expanded={open}
@@ -429,8 +441,11 @@ function CommitRow({
   );
 }
 
-/** Under an expanded commit: the rest of its message, who and when, and the files it changed. */
-function CommitDetails({ ws, commit, files }: { ws: WorkstreamView; commit: CommitView; files: CommitFiles | undefined }) {
+/**
+ * Under an expanded commit: the rest of its message and who and when. Its changed files follow as rows of their own
+ * (or, while they're read or when there are none, a note here).
+ */
+function CommitDetails({ commit, files }: { commit: CommitView; files: CommitFiles | undefined }) {
   const date = new Date(commit.date);
   return (
     <div class="commit-details" role="group" aria-label={commit.subject}>
@@ -445,9 +460,6 @@ function CommitDetails({ ws, commit, files }: { ws: WorkstreamView; commit: Comm
       </div>
       {files?.error && <div class="row group-empty error">{files.error}</div>}
       {!files?.error && !files?.files.length && <div class="row group-empty">{!files || files.loading ? 'Loading…' : 'No file changes'}</div>}
-      {files?.files.map((f) => (
-        <CommitFileRow key={f.path} ws={ws} commit={commit} change={f} />
-      ))}
     </div>
   );
 }

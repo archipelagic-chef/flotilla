@@ -1,21 +1,29 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { branchMatches, readyToMerge } from '../../features/backlog/backlog';
+import { branchMatches, laneOf, readyToMerge, type BacklogLane } from '../../features/backlog/backlog';
+import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
+import { conflictsOf } from '../../features/backlog/mainDrift';
+import { fixesFor, fixLabel } from '../../features/backlog/review';
+import { runLabel } from '../../features/backlog/runBlocks';
+import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
 import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
-const LANES: Array<{ status: BacklogStatus; title: string; icon: string }> = [
-  { status: 'todo', title: 'To Do', icon: 'circle-large-outline' },
-  { status: 'doing', title: 'In Progress', icon: 'circle-large-filled' },
-  { status: 'review', title: 'In Review', icon: 'eye' },
-  { status: 'done', title: 'Done', icon: 'pass-filled' },
+const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
+  { lane: 'todo', title: 'To Do', icon: 'circle-large-outline' },
+  { lane: 'doing', title: 'In Progress', icon: 'circle-large-filled' },
+  { lane: 'review', title: 'In Review', icon: 'eye' },
+  { lane: 'ready', title: 'Ready to Merge', icon: 'git-merge' },
+  { lane: 'done', title: 'Done', icon: 'pass-filled' },
 ];
 
-const EMPTY_LANE: Record<BacklogStatus, string> = {
+const EMPTY_LANE: Record<BacklogLane, string> = {
   todo: 'Nothing here',
   doing: 'Start an item to work on it',
   review: 'Move items here when their work waits for a review',
+  ready: 'Approved work waits here to be merged',
   done: 'Nothing here',
 };
 
@@ -39,26 +47,29 @@ interface Props {
  */
 export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // The Review lane shows only the tickets whose turn is the user's.
+  const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
   // Agents' proposals wait above the lanes until they're accepted.
   const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
 
-  const drop = (e: DragEvent, status: BacklogStatus, before?: string) => {
+  // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
+  const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
     const id = e.dataTransfer?.getData(DRAG_TYPE);
     setDropAt(undefined);
-    if (!id) return;
+    if (!id || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
-    if (id !== before) send({ type: 'backlog', op: 'move', id, status, before });
+    if (id !== before) send({ type: 'backlog', op: 'move', id, status: lane, before });
   };
-  const dragOver = (e: DragEvent, status: BacklogStatus, before?: string) => {
-    if (!e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+  const dragOver = (e: DragEvent, lane: BacklogLane, before?: string) => {
+    if (!e.dataTransfer?.types.includes(DRAG_TYPE) || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    if (dropAt?.status !== status || dropAt.before !== before) setDropAt({ status, before });
+    if (dropAt?.status !== lane || dropAt.before !== before) setDropAt({ status: lane, before });
   };
 
   return (
@@ -105,7 +116,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
               ? 'runs in another window.'
               : autopilot.waitingUntil
                 ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
-                : `· ${autopilot.running} of ${autopilot.max} agents working. It takes To Do tickets from the top.`}
+                : autopilot.waitingForMemory
+                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                  : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
           </span>
         </button>
       )}
@@ -117,6 +130,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           </span>
         </button>
       ))}
+      <NeedsYou items={items ?? []} />
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && (
         <div class="empty">
@@ -157,24 +171,35 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
       {items &&
         items.length > 0 &&
         LANES.map((lane) => {
-          const laneItems = items.filter((i) => i.status === lane.status && !i.proposed);
-          const open = lane.status !== 'done' || doneOpen;
+          const filtered = lane.lane === 'review' && mineOnly;
+          const laneItems = items.filter((i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
+          const open = lane.lane !== 'done' || doneOpen;
           return (
-            <div key={lane.status} class={`group lane${dropAt?.status === lane.status && !dropAt.before ? ' drop-end' : ''}`}>
+            <div key={lane.lane} class={`group lane${dropAt?.status === lane.lane && !dropAt.before ? ' drop-end' : ''}`}>
               <div
                 class="row group-head"
-                onClick={lane.status === 'done' ? () => setDoneOpen(!doneOpen) : undefined}
-                onDragOver={(e) => dragOver(e, lane.status)}
-                onDrop={(e) => drop(e, lane.status)}
+                onClick={lane.lane === 'done' ? () => setDoneOpen(!doneOpen) : undefined}
+                onDragOver={(e) => dragOver(e, lane.lane)}
+                onDrop={(e) => drop(e, lane.lane)}
               >
                 <span class="name">{lane.title}</span>
-                {lane.status === 'done' && (
+                {lane.lane === 'done' && (
                   <i class={`codicon codicon-chevron-${doneOpen ? 'down' : 'right'} lane-chev`} aria-label={doneOpen ? 'Hide done items' : 'Show done items'} />
+                )}
+                {lane.lane === 'review' && (
+                  <button
+                    class={`icon lane-filter${mineOnly ? ' on' : ''}`}
+                    aria-pressed={mineOnly}
+                    aria-label={mineOnly ? 'Waiting for me: click to show every ticket in review' : 'Show only what waits for me'}
+                    onClick={() => setMineOnly(!mineOnly)}
+                  >
+                    <i class={`codicon codicon-${mineOnly ? 'filter-filled' : 'filter'}`} />
+                  </button>
                 )}
                 <span class="badge">{laneItems.length}</span>
               </div>
               {open && (
-                <div class="lane-body" onDragOver={(e) => dragOver(e, lane.status)} onDrop={(e) => drop(e, lane.status)}>
+                <div class="lane-body" onDragOver={(e) => dragOver(e, lane.lane)} onDrop={(e) => drop(e, lane.lane)}>
                   {laneItems.map((item) => (
                     <ItemRow
                       key={item.id}
@@ -185,17 +210,124 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
                       dropBefore={dropAt?.before === item.id}
-                      onDragOver={(e) => dragOver(e, lane.status, item.id)}
-                      onDrop={(e) => drop(e, lane.status, item.id)}
+                      onDragOver={(e) => dragOver(e, lane.lane, item.id)}
+                      onDrop={(e) => drop(e, lane.lane, item.id)}
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{EMPTY_LANE[lane.status]}</div>}
+                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
                 </div>
               )}
             </div>
           );
         })}
+    </div>
+  );
+}
+
+/** How long something has waited, short: "5m", "3h", "2d". */
+function waited(since: string | undefined): string | undefined {
+  if (!since) return undefined;
+  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(since)) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
+  return `${Math.floor(minutes / (24 * 60))}d`;
+}
+
+const NEED_ICON: Record<NeedKind, string> = { asking: 'comment-discussion', yours: 'eye', approved: 'pass-filled', stopped: 'debug-pause', failed: 'error', queued: 'clock' };
+const NEED_TITLE: Record<NeedKind, string> = {
+  asking: 'Has a question for you',
+  yours: 'Ready for your review',
+  approved: 'Approved, not merged yet',
+  stopped: 'Its review stopped',
+  failed: "The autopilot couldn't start it",
+  queued: 'Your reply waits for a free agent',
+};
+
+/**
+ * What waits on the user, across the backlog, oldest first: an agent's question, work ready for review, approved
+ * work, a stopped review, a start that failed. Each row has the actions for it; folded away when there's nothing.
+ */
+function NeedsYou({ items }: { items: BacklogItem[] }) {
+  const [open, setOpen] = useState(true);
+  const rows = oldestFirst(items);
+  if (!rows.length) return null;
+  return (
+    <div class="group lane needs-lane">
+      <div class="row group-head" onClick={() => setOpen(!open)}>
+        <span class="name">Needs you</span>
+        <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} lane-chev`} aria-label={open ? 'Hide what needs you' : 'Show what needs you'} />
+        <span class="badge">{rows.length}</span>
+      </div>
+      {open && (
+        <div class="lane-body">
+          {rows.map((item) => (
+            <NeedRow key={item.id} item={item} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NeedRow({ item }: { item: BacklogItem }) {
+  const need = item.need!;
+  const r = item.review;
+  const age = waited(need.since);
+  const open = () => send({ type: 'backlog', op: 'open', id: item.id });
+  // The actions of the ticket, here: the first fix of a stopped review is the one to offer first.
+  const fix = r?.state === 'stopped' ? fixesFor(r.stop?.kind, !!r.stop?.task)[0] : undefined;
+  return (
+    <div
+      class={`row backlog-item need need-${need.kind}`}
+      tabIndex={0}
+      title={NEED_TITLE[need.kind]}
+      onClick={open}
+      onKeyDown={(e) => {
+        // Enter on one of the row's buttons is theirs: only the row itself opens the ticket.
+        if (e.key === 'Enter' && e.target === e.currentTarget) open();
+      }}
+    >
+      <i class={`codicon codicon-${NEED_ICON[need.kind]} need-icon`} />
+      <span class="item-id">{item.id}</span>
+      <span class="name">{item.title}</span>
+      <span class="need-line">{need.line}</span>
+      {age && <span class="need-age">{age}</span>}
+      <span class="need-actions" onClick={(e) => e.stopPropagation()}>
+        {need.kind === 'asking' && (
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: answer there">
+            <i class="codicon codicon-comment" /> Answer
+          </button>
+        )}
+        {need.kind === 'yours' && (
+          <>
+            <button class="button secondary" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: write what should change">
+              <i class="codicon codicon-request-changes" /> Request Changes
+            </button>
+            <button class="button" onClick={() => send({ type: 'backlog', op: 'approve', id: item.id })}>
+              <i class="codicon codicon-check" /> Approve
+            </button>
+          </>
+        )}
+        {need.kind === 'stopped' && fix && (
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'fix', id: item.id, fix })}>
+            {fixLabel(fix, r?.stop?.kind)}
+          </button>
+        )}
+        {need.kind === 'queued' && (
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'prioritize', id: item.id })} title="Starts it now, above the limit, or pauses a running agent to make room">
+            <i class="codicon codicon-arrow-up" /> Prioritize
+          </button>
+        )}
+        {need.kind === 'failed' && (
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })} title="Creates its worktree if needed and starts an agent there">
+            <i class="codicon codicon-play" /> Run
+          </button>
+        )}
+        <button class="button secondary" onClick={open}>
+          Open
+        </button>
+      </span>
     </div>
   );
 }
@@ -214,6 +346,18 @@ interface RowProps {
   openWorktree(key: string): void;
 }
 
+/**
+ * Where its agent is, for the card's menu: running (in the review loop, or busy in one of its worktrees), paused, or
+ * stopped by the user (it can be resumed).
+ */
+function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'paused' | 'stopped' | undefined {
+  const state = item.review?.state;
+  if (state === 'paused') return 'paused';
+  if (state === 'stopped' && item.review?.stop?.kind === 'user' && item.review.stop.agent) return 'stopped';
+  if (state === 'working' || state === 'reviewing' || state === 'revising') return 'running';
+  return worktrees.some((w) => w.attention === 'working' || w.attention === 'waiting-for-input') ? 'running' : undefined;
+}
+
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
@@ -223,11 +367,14 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
   const remote = item.source;
   const worktree = worktrees[0];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
+  // Whose turn its review is (local items only: an issue's review is in its tracker).
+  const turn = remote || item.proposed ? undefined : turnOf(item);
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
-      data-vscode-context={remote ? undefined : menuContext('backlogItem', { itemId: item.id, flotillaItem: readyToMerge(item) ? ';readyToMerge;' : ';' })}
+      // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item) })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -281,10 +428,66 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {item.summary && <span class="desc">{item.summary}</span>}
         </>
       )}
+      {!renaming && turn && (
+        <span class={`turn-chip turn-${turn.kind}${turn.mine ? ' mine' : ''}`} data-tip={`${TURN_LABEL[turn.kind]}: ${turn.who}`}>
+          <i class={`codicon codicon-${TURN_ICON[turn.kind]}`} />
+          {turn.kind === 'paused' ? 'Paused' : turn.who}
+        </span>
+      )}
       {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
           {item.activity}
+        </span>
+      )}
+      {!renaming && !item.proposed && item.merge && mergeLabel(item.merge) && (
+        // Whether its work is merged (from git): "merged into main", "not merged (3 commits)", "partly merged".
+        <span class={`merge-chip ${item.merge.state}`} data-tip={item.merge.branches.map((b) => `${b.branch}: ${b.state}`).join('\n')}>
+          {mergeLabel(item.merge)}
+        </span>
+      )}
+      {!renaming && unmergedWarning(item, item.merge) && (
+        <span class="merge-warning" data-tip="Done, but its work isn't merged. Open its ticket to merge it, dismiss it or open its branch.">
+          <i class="codicon codicon-warning" />
+        </span>
+      )}
+      {!renaming && conflictsOf(item).length > 0 && (
+        <span
+          class="drift-badge conflict"
+          data-tip={conflictsOf(item)
+            .map((b) => `${b.branch} conflicts with ${item.base ?? 'main'} in:\n${b.conflicts.join('\n')}`)
+            .join('\n\n')}
+          data-tip-hint={`Update from ${item.base ?? 'main'} in the ticket hands the merge to its agent`}
+        >
+          <i class="codicon codicon-git-merge" />
+          conflicts with {item.base ?? 'main'}
+        </span>
+      )}
+      {!renaming && item.clash && (
+        <span
+          class="drift-badge"
+          data-tip={`The autopilot holds it back until ${item.clash.with} is merged: both change ${item.clash.files.join(', ')}. Start it yourself to go ahead anyway`}
+        >
+          <i class="codicon codicon-debug-pause" />
+          after {item.clash.with}
+        </span>
+      )}
+      {!renaming && item.agent?.light && !item.agent.model && (
+        <span class="drift-badge" data-tip="Light: small, mechanical work, on the light model (flotilla.agents.lightModel). Reviewed by the default model; moves up to it when it turns out hard">
+          <i class="codicon codicon-feather" />
+          Light
+        </span>
+      )}
+      {!renaming && item.agent?.movedUp && item.agent.model === item.agent.movedUp.to && (
+        <span class="drift-badge" data-tip={`Moved up from ${item.agent.movedUp.from} to ${item.agent.movedUp.to}: ${item.agent.movedUp.reason}`}>
+          <i class="codicon codicon-arrow-up" />
+          {item.agent.movedUp.to}
+        </span>
+      )}
+      {!renaming && item.waitsFor && (
+        <span class="drift-badge" data-tip={`Depends on ${item.waitsFor.join(', ')}: waits for ${item.waitsFor.length === 1 ? 'it' : 'them'} to be merged`}>
+          <i class="codicon codicon-debug-pause" />
+          {item.waitsFor.join(', ')}
         </span>
       )}
       {!renaming && item.linked && (
@@ -329,14 +532,40 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
             <i class="codicon codicon-check" />
           </button>
+          <button
+            class="icon"
+            aria-label="Discuss It with an Agent"
+            title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+            onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
+          >
+            <i class="codicon codicon-comment-discussion" />
+          </button>
           <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>
             <i class="codicon codicon-close" />
           </button>
         </span>
       )}
+      {!renaming && item.run && (
+        <button
+          class="icon run-button"
+          aria-label={`Run ${item.id}`}
+          data-tip={runLabel(item.run)}
+          onClick={(e) => {
+            e.stopPropagation();
+            send({ type: 'backlog', op: 'run', id: item.id });
+          }}
+        >
+          <i class="codicon codicon-play" />
+        </button>
+      )}
       {!renaming && !item.proposed && (
-        <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-          {!done && (
+        <span class={`hover-actions${item.creating ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+          {!done && item.creating && (
+            <span class="icon" role="status" aria-label="Creating its worktree…" title="Creating its worktree…">
+              <i class="codicon codicon-loading codicon-modifier-spin" />
+            </span>
+          )}
+          {!done && !item.creating && (
             <button
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
@@ -345,15 +574,23 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
               <i class="codicon codicon-play" />
             </button>
           )}
+          {!done && !item.creating && <CreateWorktreeIcons id={item.id} another={worktrees.length > 0} />}
           {remote ? (
             <a class="icon" href={remote.url} aria-label={`Open in ${remote.label}`}>
               <i class="codicon codicon-link-external" />
             </a>
           ) : (
             <>
-              <button class="icon" aria-label="Write It with Claude" onClick={() => send({ type: 'backlog', op: 'ai', id: item.id })}>
-                <i class="codicon codicon-sparkle" />
-              </button>
+              {item.status === 'todo' && (
+                <button
+                  class="icon"
+                  aria-label="Discuss It with an Agent"
+                  title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+                  onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
+                >
+                  <i class="codicon codicon-comment-discussion" />
+                </button>
+              )}
               <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
                 <i class="codicon codicon-link" />
               </button>
@@ -368,6 +605,50 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * A card's Create Worktree, as the ticket's (a split button): a click creates a new worktree at once, its branch named
+ * without asking; the arrow's menu names the branch first.
+ */
+function CreateWorktreeIcons({ id, another }: { id: string; another: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => (e instanceof KeyboardEvent ? e.key === 'Escape' : !box.current?.contains(e.target as Node)) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  const label = another ? 'Add a Worktree' : 'Create Worktree';
+  return (
+    <span class="split-icons" ref={box}>
+      <button class="icon" aria-label={label} data-tip={`${label}: a new worktree and branch for it at once, without an agent`} onClick={() => send({ type: 'backlog', op: 'createWorktree', id })}>
+        <i class="codicon codicon-git-branch" />
+      </button>
+      <button class="icon more" aria-label="More Ways to Create a Worktree…" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <i class="codicon codicon-chevron-down" />
+      </button>
+      {open && (
+        <span class="menu priority-menu split-menu" role="menu">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              send({ type: 'backlog', op: 'createWorktree', id, named: true });
+            }}
+          >
+            <i class="codicon codicon-edit" />
+            {another ? 'Add a Worktree with Branch Name…' : 'Create Worktree with Branch Name…'}
+          </button>
+        </span>
+      )}
+    </span>
   );
 }
 
