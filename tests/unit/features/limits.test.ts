@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseUsageLimit } from '../../../src/features/backlog/limits';
+import { parseUsageLimit, retryDelay } from '../../../src/features/backlog/limits';
 
 // 2026-10-11 14:20 local time.
 const now = new Date(2026, 9, 11, 14, 20);
@@ -28,5 +28,12 @@ describe('usage limits', () => {
     expect(parseUsageLimit('API Error: 529 {"type":"overloaded_error"}', now)).toMatchObject({ kind: 'overloaded' });
     expect(parseUsageLimit('API Error: 429 rate_limit_error', now)).toMatchObject({ kind: 'rate' });
     expect(parseUsageLimit('Error: ENOENT', now)).toBeUndefined();
+  });
+
+  it('waits longer each time a retry fails, up to an hour', () => {
+    const waits = [0, 1, 2, 3, 4, 5, 50].map((n) => retryDelay('rate', n) / 60_000);
+    expect(waits).toEqual([5, 10, 20, 40, 60, 60, 60]);
+    expect(retryDelay('overloaded', 1) / 60_000).toBe(10);
+    expect([0, 1, 2].map((n) => retryDelay('usage', n) / 60_000)).toEqual([30, 60, 60]);
   });
 });

@@ -1,11 +1,45 @@
 {
   "version": "2.0.0",
   "tasks": [
-    { "type": "npm", "script": "build", "label": "npm: build", "problemMatcher": [] },
-    { "type": "npm", "script": "playground", "label": "npm: playground", "problemMatcher": [] },
+    {
+      "type": "npm",
+      "script": "build",
+      "label": "npm: build",
+      "problemMatcher": []
+    },
+    {
+      "type": "npm",
+      "script": "playground",
+      "label": "npm: playground",
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npm run playground -- --reset",
+      "label": "npm: playground --reset",
+      "problemMatcher": []
+    },
+    {
+      "type": "npm",
+      "script": "debug-profile",
+      "label": "npm: debug profile",
+      "problemMatcher": []
+    },
     {
       "label": "flotilla: build + playground",
       "dependsOn": ["npm: build", "npm: playground"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "flotilla: build + fresh playground",
+      "dependsOn": ["npm: build", "npm: playground --reset"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "flotilla: build + debug profile",
+      "dependsOn": ["npm: build", "npm: debug profile"],
       "dependsOrder": "sequence",
       "problemMatcher": []
     }

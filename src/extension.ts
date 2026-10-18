@@ -5,20 +5,33 @@ import * as vscode from 'vscode';
 import { GIT_SCHEME, GitFileSystemProvider } from './core/diff/gitContentProvider';
 import { getGitVersion, GitError, MIN_GIT_VERSION, runGit, versionAtLeast } from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
-import { Repository } from './core/repository';
+import { Repository, type Scope } from './core/repository';
+import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
+import type { Fetch } from './features/backlog/sources/source';
+import { JOB_LOG_SCHEME, JobLogProvider, showJobLog, signedInActions } from './features/ci/jobLog';
+import { CiNotifier } from './ui/ci/ciNotifier';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
+import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
-import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, resumePendingActions, type CommandContext } from './ui/commands';
+import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
+import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger, readyToMerge } from './ui/backlog/merge';
+import { levelReport } from './features/backlog/modelLevel';
+import { BigChats } from './ui/bigChats';
+import { agentChatItem } from './features/backlog/backlog';
+import { modelLevels, trackTerminals } from './ui/backlog/agentRunner';
+import { backlogIdOf } from './ui/backlog/cardMenu';
+import { Shaping } from './ui/backlog/shaping';
+import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -29,11 +42,20 @@ import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
 import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
+import { Merges } from './ui/backlog/merges';
+import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { devGitHubApi } from './ui/ci/devGitHub';
+import { heldBy, type ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
-import { AttentionNotifier } from './ui/notifications';
+import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
+import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
+import { StorageMonitor } from './ui/storage';
+import { FinishedWorktrees } from './ui/finishedWorktrees';
+import { SharedFolders } from './ui/sharedFolders';
+import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 
 const BACKGROUND_POLL_SECONDS = 60;
@@ -60,6 +82,9 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
   context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
+  // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
+  const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));
+  context.subscriptions.push(jobLogs, vscode.workspace.registerTextDocumentContentProvider(JOB_LOG_SCHEME, jobLogs));
   // The terminal profile VS Code's + button uses once it's the default profile. It's registered first, so that it
   // always answers (a plain terminal) when Flotilla has no worktrees to offer: the setting applies to every window.
   let terminalOptions: (() => Promise<vscode.TerminalOptions | undefined>) | undefined;
@@ -105,14 +130,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     onAdoptError: (wt, error) =>
       output.appendLine(`Could not make ${wt.path ?? wt.adminDir} portable: ${error instanceof Error ? error.message : String(error)}`),
   }));
-  const repository = new Repository<Workstream>(
-    () =>
-      buildWorkstreams(service, {
-        currentWorktreeRoot: location.worktreeRoot,
-        settings: readSettings(),
-        now: new Date(),
-        onInvalidStatus: (file) => output.appendLine(`Ignoring invalid agent status file: ${file}`),
-      }),
+  const repository: Repository<Workstream> = new Repository<Workstream>(
+    (scope) => {
+      const build = () =>
+        buildWorkstreams(service, {
+          currentWorktreeRoot: location.worktreeRoot,
+          settings: readSettings(),
+          now: new Date(),
+          onInvalidStatus: (file) => output.appendLine(`Ignoring invalid agent status file: ${file}`),
+          refresh: { scope, previous: repository.current, pollMs: Math.max(5, readSettings().pollSeconds) * 1000, activeKey: active.key },
+        });
+      // Only a refresh the user asked for (scope 'all') goes ahead of the git processes of other refreshes.
+      return scope === 'all' ? build() : inBackground(build);
+    },
     300,
     (error) => output.appendLine(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`),
   );
@@ -129,17 +159,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,
+    mainRoot: location.mainRoot,
     inWorkspace,
     active,
     commit: (ws, message, opts) => commit(scmCtx, ws, message, opts),
     output,
     backlog,
     integrations,
+    githubApi: devGitHubApi(context.extensionMode),
+    onCiFinished: (items) => ciNotifier.notify(items),
   });
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
-    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
+  // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
+  const merges = new Merges({ backlog, mainRoot: location.mainRoot });
+  sidebar.useMerges(merges);
+  context.subscriptions.push(
+    repository.onDidChange(() => void merges.refresh()),
+    backlog.watch(() => void merges.refresh()),
+  );
+  void merges.refresh();
+  const runTerminals = new RunTerminals();
+  context.subscriptions.push(runTerminals);
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, merges, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
+    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState, output,
   });
   context.subscriptions.push(tickets);
+  // A ticket's run block (its Run button names the entry and the block; without one, the ticket's run), after asking.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.runBacklogItem', (id?: unknown, block?: unknown) => {
+      if (typeof id !== 'string') return;
+      const ref = block as { key?: unknown; index?: unknown } | undefined;
+      return tickets.run(id, typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index } : undefined);
+    }),
+  );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
@@ -148,18 +199,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repository,
     mainRoot: location.mainRoot,
     output,
-    openTicket: (id) => void tickets.open(id),
     isLeader: () => leader.isLeader,
     onApproved: (id, by) => merger.approved(id, by),
   });
-  context.subscriptions.push(reviews, merger);
-  // A ticket's id from a command's argument: the id, or a backlog card's menu context.
-  const itemArg = (arg: unknown) =>
-    typeof arg === 'string' ? arg : typeof arg === 'object' && arg !== null && typeof (arg as { itemId?: unknown }).itemId === 'string' ? (arg as { itemId: string }).itemId : undefined;
+  context.subscriptions.push(reviews, merger, trackTerminals());
   const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
+  // Merge to main: a backlog card's menu (its id in the menu's context), the ticket, or asking which ticket.
   context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {
-      let id = itemArg(arg);
+    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (card?: unknown) => {
+      let id = backlogIdOf(card);
       if (!id) {
         const ready = (await backlog.read()).items.filter(readyToMerge);
         id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;
@@ -169,13 +217,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
     vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
   );
+  // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
+  const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (card?: unknown) => {
+    let id = backlogIdOf(card);
+    if (!id) {
+      const items = (await backlog.read()).items.filter((i) =>
+        action === 'resume' ? heldBy(i.review) || i.review?.state === 'paused' : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
+      );
+      const title = { pause: 'Pause the agent on…', resume: 'Resume the agent on…', stop: 'Stop the agent on…' }[action];
+      id = (await vscode.window.showQuickPick(items.map((i) => ({ label: i.id, description: i.title })), { title }))?.label;
+    }
+    if (id) await tickets.controlAgent(id, action);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.pauseAgent', controlAgent('pause')),
+    vscode.commands.registerCommand('flotilla.resumeAgent', controlAgent('resume')),
+    vscode.commands.registerCommand('flotilla.stopAgent', controlAgent('stop')),
+  );
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
-  context.subscriptions.push(backlog.watch(noteDescriptions));
+  context.subscriptions.push(backlog.watch(() => noteDescriptions()));
   noteDescriptions();
   tickets.useReviews(reviews);
   tickets.useMerger(merger);
-  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, (id) => void tickets.open(id));
+  // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
+  const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
+  context.subscriptions.push(mainSync);
+  tickets.useMainSync(mainSync);
+  // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.
+  const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
+  context.subscriptions.push(shaping);
+  tickets.useShaping(shaping);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
+      if (typeof id !== 'string') return;
+      const item = (await backlog.read()).items.find((i) => i.id === id);
+      if (!item || !discussable(item)) return;
+      await tickets.open(id);
+      await shaping.discuss(id, true).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
+    }),
+  );
+  // Prioritize: a queued start runs now, above the limit, or pauses a running agent to make room (see reviewLoop).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'flotilla.prioritizeBacklogItem',
+      (id: unknown) => typeof id === 'string' && reviews.prioritize(id).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+    ),
+  );
+  // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'flotilla.fixBacklogReview',
+      (id: unknown, fix: unknown) =>
+        typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+    ),
+  );
+  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir });
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
@@ -192,17 +289,63 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tickets,
     integrations,
   };
+  // The CI notices (a run on a worktree's branch finished): the leading window tells the user, and reads the runs while the sidebar is hidden to see them.
+  const ciNotifier = new CiNotifier({
+    repository,
+    isLeader: () => leader.isLeader,
+    show: (key) => sidebar.showCi(key),
+    actions: signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
+  });
+  const updateCiReads = () => sidebar.setKeepReading(leader.isLeader && readSettings().ciNotify !== 'off');
+  // What needs the user: the status bar counts it, and it notifies (only the leading window does).
+  const needs = new NeedsYouNotifier({
+    backlog,
+    repository,
+    reviews,
+    leader,
+    openTicket: (id) => void tickets.open(id),
+    openWorktree: (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow),
+  });
   context.subscriptions.push(
     sidebar,
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     active,
-    new WorkstreamStatusBar(repository, active),
+    new WorkstreamStatusBar(repository, active, needs),
     decorations,
     vscode.window.registerFileDecorationProvider(decorations),
-    new AttentionNotifier(repository, (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow)),
+    needs,
     { dispose: () => repository.dispose() },
   );
   registerCommands(ctx);
+  // A done ticket's worktree is removed (its branch kept), so finished work doesn't fill the drive.
+  const finished = new FinishedWorktrees({
+    backlog,
+    repository,
+    service: ctx.service,
+    leader,
+    workspaceState: context.workspaceState,
+    output,
+    removeAnyway: (ws) => removeWorkstream(ctx, ws),
+  });
+  context.subscriptions.push(finished, vscode.commands.registerCommand('flotilla.keptWorktrees', () => finished.showKept()));
+  // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
+  const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
+  context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));
+  // One of the user's chats grew big: once, a word on what that costs (BL-70).
+  context.subscriptions.push(new BigChats({ repository, leader, globalState: context.globalState }));
+  // How finished tickets fared per model level: review rounds, and which moved up (BL-69).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.modelLevelReport', async () => {
+      // What each ticket's agents re-read, from their chats still around.
+      const reRead = new Map<string, number>();
+      for (const c of repository.current.flatMap((w) => w.chats)) {
+        const item = agentChatItem(c.firstPrompt)?.item;
+        if (item && c.usage) reRead.set(item, (reRead.get(item) ?? 0) + c.usage.reRead);
+      }
+      output.appendLine(levelReport((await backlog.read()).items, modelLevels(), reRead).join('\n'));
+      output.show(true);
+    }),
+  );
   let autopilotKey: Promise<string> | undefined;
   const autopilot = new Autopilot({
     backlog,
@@ -225,9 +368,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
+      updateCiReads();
       void autopilot.tick();
       void reviews.resumePaused();
+      void finished.sweep();
+      void shared.sweep();
+      void mainSync.check();
     }),
+    vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
       const on = !autopilot.enabled;
       await autopilot.setEnabled(on);
@@ -238,13 +386,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
   );
+  ctx.clashOf = (id) => autopilot.clashOf(id);
   sidebar.useAutopilot(autopilot);
+  // A repository on a slow drive is said so once, and packed in the background when it has too many loose objects.
+  const storage = new StorageMonitor({ mainRoot: location.mainRoot, commonDir: location.commonDir, backlog, globalState: context.globalState, output });
+  context.subscriptions.push(
+    storage,
+    vscode.commands.registerCommand('flotilla.slowStorageHelp', () => vscode.env.openExternal(vscode.Uri.parse(SLOW_STORAGE_DOCS))),
+  );
+  sidebar.useStorage(storage);
+  void storage.start();
+  sidebar.useQueue(reviews);
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('flotilla.ci.notify')) updateCiReads();
       if (e.affectsConfiguration('flotilla.backlog.agentTickets')) void inbox.writeGuide();
       if (!e.affectsConfiguration('flotilla.backlog.commitPrefix')) return;
       if (fs.existsSync(path.join(location.commonDir, 'flotilla', 'commit-prefix'))) {
@@ -253,7 +412,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.showJobLog', (arg?: unknown) => showJobLog(arg, jobLogs)),
     vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
+    vscode.commands.registerCommand('flotilla.showNeedsYou', () => needs.showList()),
     vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
     vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
     vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),
@@ -344,7 +505,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.onDidChangeActiveTextEditor(revealActive),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (findWorkstreamFor(repository.current, doc.uri.fsPath)) void repository.refresh();
+      const ws = findWorkstreamFor(repository.current, doc.uri.fsPath);
+      if (ws) void repository.refresh(new Set([ws.key]));
     }),
   );
 
@@ -356,18 +518,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
   context.subscriptions.push({ dispose: () => clearInterval(heartbeatTimer) });
 
-  // Refresh triggers: watchers (unreliable on bind mounts), focus, polling, settings.
-  const refresh = () => void repository.refresh();
-  const watched: Array<[string, string]> = [
-    [path.join(location.commonDir, 'worktrees'), '**'],
-    [location.commonDir, '{HEAD,workstream.json,flotilla/**}'],
-    [path.join(location.mainRoot, '.worktrees'), '*'],
+  // Refresh triggers: watchers (unreliable on bind mounts), focus, polling, settings. A change names the worktree it's
+  // in (the main worktree's admin dir is the common dir), so only that one is rebuilt. Polling and focus rebuild the
+  // worktrees that are due (see refreshPlan.ts); a settings change or a worktree added or removed rebuilds all.
+  const scheduled: Scope = new Set();
+  const refreshDue = () => void repository.refresh(scheduled);
+  const scopeOf = (file: string) => scopeForChange(file, location.commonDir);
+  const watched: Array<[string, string, (file: string) => Scope]> = [
+    [path.join(location.commonDir, 'worktrees'), '**', scopeOf],
+    // The main worktree's index and HEAD log: staging and committing there.
+    [location.commonDir, '{HEAD,index,logs/HEAD,workstream.json,flotilla/**}', scopeOf],
+    [path.join(location.mainRoot, '.worktrees'), '*', () => 'all'],
   ];
-  for (const [base, glob] of watched) {
+  for (const [base, glob, scopeOf] of watched) {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
       // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
-      if (!isHeartbeatPath(uri.path)) refresh();
+      if (!isHeartbeatPath(uri.path)) void repository.refresh(scopeOf(uri.fsPath));
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);
@@ -378,21 +545,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const schedulePoll = () => {
     if (pollTimer) clearInterval(pollTimer);
     const seconds = sidebar.visible ? readSettings().pollSeconds : BACKGROUND_POLL_SECONDS;
-    pollTimer = setInterval(refresh, Math.max(5, seconds) * 1000);
+    pollTimer = setInterval(refreshDue, Math.max(5, seconds) * 1000);
   };
   schedulePoll();
   context.subscriptions.push(
     sidebar.onDidChangeVisibility((visible) => {
       schedulePoll();
-      if (visible) refresh();
+      if (visible) refreshDue();
     }),
     vscode.window.onDidChangeWindowState((state) => {
-      if (state.focused) refresh();
+      if (state.focused) refreshDue();
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('flotilla')) {
         schedulePoll();
-        refresh();
+        void repository.refresh();
       }
     }),
     { dispose: () => pollTimer && clearInterval(pollTimer) },

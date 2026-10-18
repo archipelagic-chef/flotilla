@@ -1,0 +1,7 @@
+{
+  "flotilla.linkFolders": ["node_modules"],
+  // Agents and reviewers on Opus. A ticket marked Light (small, mechanical work) runs on Sonnet, is reviewed by Opus,
+  // and moves up to Opus when it turns out hard.
+  "flotilla.agents.model": "opus",
+  "flotilla.agents.lightModel": "sonnet"
+}

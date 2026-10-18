@@ -95,8 +95,8 @@ export class Merger implements vscode.Disposable {
         ...d,
         items: d.items.map((i) => {
           if (i.id !== id) return i;
-          const { merge: _old, ...rest } = i;
-          return merge ? { ...rest, merge } : rest;
+          const { merging: _old, ...rest } = i;
+          return merge ? { ...rest, merging: merge } : rest;
         }),
       }),
       { by: 'Flotilla' },
@@ -162,7 +162,7 @@ export class Merger implements vscode.Disposable {
   private async doMerge(id: string, batch: boolean): Promise<MergeEnd> {
     const item = await this.item(id);
     if (!item) return 'stopped';
-    if (item.merge) {
+    if (item.merging) {
       this.deps.openTicket(id);
       void vscode.window.showInformationMessage(`${id} is being merged already: its ticket says where it is.`);
       return 'stopped';
@@ -251,7 +251,7 @@ export class Merger implements vscode.Disposable {
   ): Promise<MergeEnd> {
     const keep = async (reason: string) => {
       if (m.resolved) {
-        const current = (await this.item(item.id))?.merge;
+        const current = (await this.item(item.id))?.merging;
         if (current) await this.setMerge(item.id, { ...current, state: 'failed', reason });
       } else await this.removeDir(m.dir);
     };
@@ -308,7 +308,7 @@ export class Merger implements vscode.Disposable {
         ...d,
         items: d.items.map((i) => {
           if (i.id !== item.id) return i;
-          const { merge: _m, ...rest } = i;
+          const { merging: _m, ...rest } = i;
           return { ...rest, status: 'done' as const, ...(m.already ? {} : { merged: { into: m.base, commit: m.commit, date: new Date().toISOString() } }) };
         }),
       }),
@@ -379,7 +379,7 @@ export class Merger implements vscode.Disposable {
 
   private async startResolver(id: string): Promise<void> {
     const item = await this.item(id);
-    const m = item?.merge;
+    const m = item?.merging;
     if (!item || !m || this.runs.has(id)) return;
     if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
     const root = this.deps.mainRoot;
@@ -432,7 +432,7 @@ export class Merger implements vscode.Disposable {
   private async afterResolver(id: string, run: AgentRun, error: string | undefined): Promise<void> {
     if (this.runs.get(id) !== run) return; // stopped
     this.runs.delete(id);
-    const m = (await this.item(id))?.merge;
+    const m = (await this.item(id))?.merging;
     if (!m) return;
     const result = await mergeResult(m.dir, m.baseTip).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
     if ('problem' in result) {
@@ -453,7 +453,7 @@ export class Merger implements vscode.Disposable {
     return this.serial(() =>
       trackProgress('backlog', `Merging ${id}`, async () => {
         const item = await this.item(id);
-        const m = item?.merge;
+        const m = item?.merging;
         if (!item || !m || this.runs.has(id)) return 'stopped';
         if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
         const result = await mergeResult(m.dir, m.baseTip);
@@ -473,7 +473,7 @@ export class Merger implements vscode.Disposable {
     return this.serial(async () => {
       this.runs.get(id)?.stop();
       this.runs.delete(id);
-      const m = (await this.item(id))?.merge;
+      const m = (await this.item(id))?.merging;
       if (!m) return;
       await this.removeDir(m.dir);
       await this.setMerge(id, undefined);

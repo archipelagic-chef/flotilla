@@ -2,7 +2,9 @@ import * as path from 'node:path';
 import { samePath } from '../../core/paths';
 import { awaiting, type Chat } from '../../features/chats/chats';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { ChatView, WorkstreamView } from '../../webview/protocol';
+import type { FileChange } from '../../core/git/porcelain';
+import { BIG_CHAT_HINT, formatTokens, usageTip } from '../../features/chats/usage';
+import type { ChatView, FileChangeView, WorkstreamView } from '../../webview/protocol';
 import { tabLabel } from './tabLabel';
 import { ATTENTION_LABEL, describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../format';
 
@@ -25,7 +27,9 @@ function chatVia(chat: Chat, all: readonly Workstream[]): string | undefined {
   return ws ? workstreamLabel(ws) : path.basename(chat.cwd);
 }
 
-export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): ChatView {
+export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000): ChatView {
+  const u = chat.usage;
+  const big = !!u && bigContext > 0 && u.context >= bigContext;
   return {
     id: chat.id,
     title: chat.title,
@@ -36,10 +40,36 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date): C
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),
     age: chatAge(chat, now),
+    ...(u?.context ? { size: { label: formatTokens(u.context), tip: big ? `${usageTip(u)} ${BIG_CHAT_HINT}` : usageTip(u), big } } : {}),
   };
 }
 
-export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern?: string): WorkstreamView {
+/** The first `limit` changes of a list (what the sidebar sends), and how many there are in all. */
+export function capChanges(changes: readonly FileChange[], limit: number): { items: FileChangeView[]; total: number } {
+  return { items: changes.slice(0, Math.max(0, Math.floor(limit))), total: changes.length };
+}
+
+/**
+ * The views that differ from the ones last sent (by key, as JSON), and every key in order. `sent` is updated to match,
+ * so the next call compares against what the webview now holds.
+ */
+export function changedViews(views: readonly WorkstreamView[], sent: Map<string, string>): { changed: WorkstreamView[]; keys: string[] } {
+  const changed: WorkstreamView[] = [];
+  const next = new Map<string, string>();
+  for (const view of views) {
+    const json = JSON.stringify(view);
+    next.set(view.key, json);
+    if (sent.get(view.key) !== json) changed.push(view);
+  }
+  sent.clear();
+  for (const [key, json] of next) sent.set(key, json);
+  return { changed, keys: views.map((v) => v.key) };
+}
+
+export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number, bigContext = 200_000): WorkstreamView {
+  // The limit is per worktree, across both lists: staged changes first (they're what a commit takes).
+  const staged = capChanges(ws.staged, changesLimit);
+  const unstaged = capChanges(ws.unstaged, changesLimit - staged.items.length);
   const branch = workstreamLabel(ws);
   const sync = syncKind(ws);
   const tooltip = [branch, ws.worktree.path ?? `${ws.worktree.recordedPath} (not reachable from this environment)`, ATTENTION_LABEL[ws.attention]]
@@ -59,10 +89,11 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     tooltip,
     path: ws.worktree.path ?? ws.worktree.recordedPath ?? '',
     agentMessage: ws.agent?.message || undefined,
-    staged: ws.staged,
-    unstaged: ws.unstaged,
+    staged: staged.items,
+    unstaged: unstaged.items,
+    totals: { staged: staged.total, unstaged: unstaged.total },
     sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind, head: ws.sync.head },
-    chats: ws.chats.map((c) => toChatView(c, all, now)),
+    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),
   };
