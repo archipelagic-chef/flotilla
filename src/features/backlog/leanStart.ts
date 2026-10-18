@@ -65,19 +65,22 @@ export function agentSettingsText(plugins: readonly string[], s: AgentSettings):
   return Object.keys(settings).length ? `${JSON.stringify(settings, null, 1)}\n` : undefined;
 }
 
+/** The plugins enabled for Claude Code in cwd: by the user's settings in configDir, or the project's. */
+export function userPlugins(cwd: string, configDir: string): string[] {
+  return enabledPlugins([
+    read(path.join(configDir, 'settings.json')),
+    read(path.join(cwd, '.claude', 'settings.json')),
+    read(path.join(cwd, '.claude', 'settings.local.json')),
+  ]);
+}
+
 /**
  * Writes the settings file for an agent in cwd into outDir (see AgentSettings; the plugins are those enabled by the
  * user's settings in configDir, or the project's) and returns its path, or undefined when it would set nothing. The
  * same settings give the same file, so it's written once.
  */
 export function writeAgentSettings(o: { cwd: string; configDir: string; outDir: string } & AgentSettings): string | undefined {
-  const plugins = o.lean
-    ? enabledPlugins([
-        read(path.join(o.configDir, 'settings.json')),
-        read(path.join(o.cwd, '.claude', 'settings.json')),
-        read(path.join(o.cwd, '.claude', 'settings.local.json')),
-      ])
-    : [];
+  const plugins = o.lean ? userPlugins(o.cwd, o.configDir) : [];
   const text = agentSettingsText(plugins, o);
   if (!text) return undefined;
   return writeOnce(o.outDir, 'flotilla-agent', 'json', text);

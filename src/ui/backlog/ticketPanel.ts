@@ -41,8 +41,11 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { agentChoice, isRunningHeadless, isRunningInTerminal, modelLevels, validModel } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
+import { AskChat } from '../../features/backlog/askChat';
+import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
+import { formatMemory } from '../../features/workstreams/memory';
 import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
@@ -71,6 +74,8 @@ export interface TicketDeps {
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
+  /** Where the Ask chats' processes log (BL-80). */
+  output?: vscode.OutputChannel;
 }
 
 /** The key the "Show activity" choice is kept under in the memento. */
@@ -265,6 +270,8 @@ export class TicketPanels implements vscode.Disposable {
   dispose(): void {
     this.subscriptions.forEach((d) => d.dispose());
     this.panels.forEach((p) => p.dispose());
+    this.asks.forEach((a) => a.dispose());
+    this.asks.clear();
   }
 
   /** Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes). */
@@ -291,9 +298,16 @@ export class TicketPanels implements vscode.Disposable {
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
     if (o.focus) this.focusOnPost.add(panel);
-    panel.onDidDispose(() => this.panels.delete(id));
+    panel.onDidDispose(() => {
+      this.panels.delete(id);
+      // Its Ask chat ends with it: nothing of it is kept.
+      this.asks.get(id)?.dispose();
+      this.asks.delete(id);
+    });
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      this.onMessage(id, panel, m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
+      (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost' ? this.onAsk(id, panel, m) : this.onMessage(id, panel, m)).catch(
+        (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)),
+      ),
     );
   }
 
@@ -1046,8 +1060,9 @@ export class TicketPanels implements vscode.Disposable {
     const backlog = this.deps.backlog;
     switch (m.type) {
       case 'ready':
-        // The webview has nothing yet (or reloaded): the whole view goes again.
+        // The webview has nothing yet (or reloaded): the whole view goes again, and its Ask chat.
         this.sentViews.delete(panel);
+        if (this.asks.has(id)) this.postAsk(id, panel, 0);
         break;
       case 'title': {
         const title = m.title.trim();
@@ -1280,6 +1295,103 @@ export class TicketPanels implements vscode.Disposable {
         break;
       }
     }
+  }
+
+  /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */
+  private readonly asks = new Map<string, AskChat>();
+  private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
+   * it's sent (or has waited for memory); its answer streams in as it's written.
+   */
+  private async onAsk(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
+    if (m.type === 'askNew') return this.asks.get(id)?.reset();
+    if (m.type === 'askStop') return this.asks.get(id)?.stop();
+    if (m.type === 'askPost') {
+      const chat = this.asks.get(id);
+      const turn = chat?.answered(m.index);
+      if (!chat || !turn || turn.posted) return;
+      await this.addActivity(id, 'You', postedAnswer(turn.question, turn.answer, askModel()));
+      chat.markPosted(turn);
+      return;
+    }
+    let chat = this.asks.get(id);
+    if (!chat) {
+      const created: AskChat = new AskChat({
+        model: askModel(),
+        memoryShort: () => {
+          const short = memoryShortage();
+          return short && `Waiting for memory: ${formatMemory(short.freeMB)} free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)}…`;
+        },
+        context: () => this.askContext(id, panel),
+        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output() }),
+        render: (markdown) => renderMarkdown(markdown, panel.webview, this.deps.backlog.dir, this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' })),
+        changed: () => {
+          if (this.asks.get(id) === created) this.postAsk(id, panel);
+        },
+        log: (line) => this.output().appendLine(line),
+      });
+      chat = created;
+      this.asks.set(id, chat);
+    }
+    await chat.ask(m.text);
+  }
+
+  private fallbackOutput: vscode.OutputChannel | undefined;
+  private output(): vscode.OutputChannel {
+    return this.deps.output ?? (this.fallbackOutput ??= vscode.window.createOutputChannel('Flotilla'));
+  }
+
+  /** Sends the Ask chat to its tab, at most every 60 ms while an answer streams in. */
+  private postAsk(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
+    if (this.askTimers.has(id)) return;
+    this.askTimers.set(
+      id,
+      setTimeout(() => {
+        this.askTimers.delete(id);
+        const chat = this.asks.get(id);
+        if (chat && this.panels.get(id) === panel) void panel.webview.postMessage({ type: 'ask', ask: chat.view() } satisfies TicketHostMessage);
+      }, delayMs),
+    );
+  }
+
+  /**
+   * What an Ask chat starts with (BL-80): the ticket as its tab shows it (description, latest activity), and its
+   * branch (commits, the files they change, what's uncommitted). It answers in the ticket's worktree, else the main one.
+   */
+  private async askContext(id: string, panel: vscode.WebviewPanel): Promise<{ cwd: string; text: string }> {
+    const view = this.sentViews.get(panel);
+    const item = view?.item ?? (await this.item(id));
+    if (!item) throw new Error(`${id} isn't in the backlog.`);
+    const mainRoot = this.deps.mainRoot;
+    const ws = this.worktreesOf(item).find((w) => w.worktree.path);
+    const cwd = ws?.worktree.path ?? mainRoot;
+    const base = await resolveBase(mainRoot, readSettings().defaultBase).catch(() => undefined);
+    const branch = ws?.worktree.branch ?? view?.branches[0];
+    const firstLines = (text: string, n: number) => {
+      const all = text.split('\n').filter((l) => l.trim());
+      return (all.length > n ? [...all.slice(0, n), `… ${all.length - n} more`] : all).join('\n');
+    };
+    const [diffStat, changes] = await Promise.all([
+      base && branch && branch !== base
+        ? runGit(['diff', '--stat=120', `${base}...${branch}`], { cwd: mainRoot }).then((t) => firstLines(t, 40), () => '')
+        : Promise.resolve(''),
+      ws ? runGit(['status', '--short'], { cwd }).then((t) => firstLines(t, 30), () => '') : Promise.resolve(''),
+    ]);
+    const text = askContextText({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      ...(view?.remote ? {} : { file: this.deps.backlog.docPath(item.id) }),
+      description: view?.description ?? '',
+      activity: view?.activity ?? [],
+      ...(ws ? { worktree: { path: cwd, branch: ws.worktree.branch, changes } } : {}),
+      ...(base ? { base } : {}),
+      commits: (view?.commits ?? []).filter((c) => c.branches.length),
+      diffStat,
+    });
+    return { cwd, text };
   }
 
   /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */

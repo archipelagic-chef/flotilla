@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -7,7 +7,8 @@ import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
-import { LEAN_TOOLS, leanFlags, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
+import { LEAN_TOOLS, leanFlags, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
+import { askArgs } from '../../features/backlog/ask';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
@@ -432,4 +433,30 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       resolve(limit);
     });
   });
+}
+
+/** The model a ticket's Ask chat answers with: flotilla.ask.model (an alias or a model id). */
+export function askModel(): string {
+  return validModel(vscode.workspace.getConfiguration('flotilla').get<string>('ask.model', 'sonnet').trim()) ?? 'sonnet';
+}
+
+/**
+ * Starts a ticket's Ask process in cwd (BL-80, see askArgs): lean, read-only, nothing kept, and no hooks, so it isn't
+ * recorded as a chat. It isn't one of the running agents (flotilla.agents.maxRunning), but its memory counts against
+ * the free memory for its first minute, like an agent's.
+ */
+export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.OutputChannel }): ChildProcessWithoutNullStreams {
+  let plugins: string[] = [];
+  try {
+    plugins = userPlugins(cwd, process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
+  } catch {
+    // Started with them.
+  }
+  const model = askModel();
+  o.output.appendLine(`Ask: starting in ${cwd} (model ${model}).`);
+  const child = spawn(claudeBinary(), askArgs({ model, instructions: o.instructions, plugins }), { cwd, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const slot = starting.begin();
+  child.on('exit', () => starting.end(slot));
+  child.on('error', () => starting.end(slot));
+  return child;
 }
