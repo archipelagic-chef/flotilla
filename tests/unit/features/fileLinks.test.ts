@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { agentGuide } from '../../../src/features/backlog/inbox';
-import { reviewNotes, userRevisionPrompt } from '../../../src/features/backlog/review';
+import { reviewNotes, reviewerPrompt, showNotes, userRevisionPrompt } from '../../../src/features/backlog/review';
+import { REPORT_FORMAT } from '../../../src/features/backlog/report';
 import { parseFileLink } from '../../../src/features/backlog/ticket';
 
 describe('links to files in tickets', () => {
@@ -24,5 +25,28 @@ describe('review notes', () => {
     expect(notes).toMatch(/!\[What it shows\]\(BL-2\/name\.svg\)/);
     expect(userRevisionPrompt({ item: { id: 'BL-2' }, ticket: '/r/.flotilla/backlog/BL-2.md', feedback: 'x' })).toContain(notes);
     expect(agentGuide('/r/.flotilla/backlog', 'add')).toMatch(/How to review/);
+  });
+
+  it('ask agents to show what has a shape, next to its text: diagrams, screenshots, GIFs and videos', () => {
+    const show = showNotes({ id: 'BL-2', backlogDir: '/r/.flotilla/backlog' });
+    expect(show).toMatch(/^Show rather than tell/);
+    expect(show).toContain('next to the text it explains (not at the end)');
+    expect(show).toContain('```mermaid block');
+    expect(show).toContain('two screenshots');
+    expect(show).toContain('demo GIF or video (MP4 or WebM)');
+    expect(show).toContain('/r/.flotilla/backlog/BL-2/');
+    expect(show).toContain('images and GIFs at most 2 MB, videos at most 10 MB');
+    // In the guide, every prompt that asks for a report to review, and the report format.
+    expect(reviewNotes({ id: 'BL-2', backlogDir: '/r/.flotilla/backlog' })).toContain(show);
+    expect(agentGuide('/r/.flotilla/backlog', 'add')).toContain('Show rather than tell');
+    expect(REPORT_FORMAT).toContain('```mermaid block');
+  });
+
+  it("have the reviewer ask for something to see when a UI change has none", () => {
+    for (const round of [1, 2]) {
+      const prompt = reviewerPrompt({ item: { id: 'BL-2', title: 'x' }, reviewer: 'Vega-2', ticket: '/t/BL-2.md', branch: 'b', base: 'main', round });
+      expect(prompt).toContain('If the work changes what the user sees (the UI), the report must show it');
+      expect(prompt).toContain('request one in your checklist');
+    }
   });
 });

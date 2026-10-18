@@ -10,6 +10,8 @@ import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
+import { fileKind, tooLarge } from '../../features/backlog/media';
+import { drawDiagrams } from './diagrams';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
@@ -198,10 +200,18 @@ function readAsBase64(file: File): Promise<string> {
   });
 }
 
-/** Saves the images among files next to the ticket and inserts links to them at the textarea's cursor. */
+/**
+ * Saves the images and videos among files next to the ticket and inserts links to them at the textarea's cursor. One
+ * over its kind's size limit isn't sent: the host says why.
+ */
 async function attachImages(files: FileList | File[], area: HTMLTextAreaElement, setText: (text: string) => void): Promise<boolean> {
-  const images = [...files].filter((f) => f.type.startsWith('image/'));
+  const images = [...files].filter((f) => fileKind(f));
   for (const file of images) {
+    const kind = fileKind(file)!;
+    if (tooLarge(kind, file.size)) {
+      send({ type: 'mediaRefused', name: file.name || 'pasted', kind, size: file.size });
+      continue;
+    }
     const requestId = nextImage++;
     const markdown = await new Promise<string>((resolve) => {
       imageReplies.set(requestId, resolve);
@@ -214,6 +224,7 @@ async function attachImages(files: FileList | File[], area: HTMLTextAreaElement,
         }),
       );
     });
+    if (!markdown) continue;
     const at = area.selectionStart ?? area.value.length;
     const before = area.value.slice(0, at);
     const text = `${before}${before && !before.endsWith('\n') ? '\n' : ''}${markdown}\n${area.value.slice(at)}`;
@@ -270,7 +281,7 @@ function MarkdownBox({
       }}
       onPaste={(e) => {
         const files = e.clipboardData?.files;
-        if (images && files?.length && [...files].some((f) => f.type.startsWith('image/'))) {
+        if (images && files?.length && [...files].some((f) => fileKind(f))) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
         }
@@ -289,6 +300,11 @@ function MarkdownBox({
 
 /** Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). */
 function Rendered({ html, empty }: { html: string; empty: string }) {
+  const el = useRef<HTMLDivElement>(null);
+  // Mermaid blocks become diagrams, again whenever the html is new.
+  useEffect(() => {
+    if (el.current) void drawDiagrams(el.current);
+  }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
@@ -307,7 +323,7 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
     e.preventDefault();
     send({ type: 'openHref', href });
   };
-  return <div class="rendered" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div ref={el} class="rendered" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function Title({ ticket }: { ticket: TicketView }) {
@@ -404,7 +420,7 @@ function Description({ ticket }: { ticket: TicketView }) {
                 ? 'In Jira formatting (h2. Heading, *bold*, * list). Ctrl+Enter saves it in Jira.'
                 : ticket.remote
                   ? 'Markdown. Ctrl+Enter saves it in GitHub.'
-                  : 'What and why, in Markdown. Paste or drop images. Ctrl+Enter saves.'
+                  : 'What and why, in Markdown. Paste or drop images and videos. Ctrl+Enter saves.'
             }
             label="Description"
             onSubmit={save}
@@ -1430,7 +1446,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
               ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
               : ticket.remote
                 ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
-                : 'Add a comment (Markdown; paste or drop images; Ctrl+Enter posts)'
+                : 'Add a comment (Markdown; paste or drop images and videos; Ctrl+Enter posts)'
           }
           label="Comment"
           onSubmit={post}

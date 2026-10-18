@@ -1858,6 +1858,7 @@
   },
   "dependencies": {
     "@vscode/codicons": "0.0.45",
+    "mermaid": "12.2.0",
     "picomatch": "4.0.7",
     "preact": "10.29.8",
     "tinyglobby": "^0.2.17"

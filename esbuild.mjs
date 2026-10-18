@@ -33,6 +33,19 @@ const webview = await esbuild.context({
   logLevel: 'info',
 });
 
+// Mermaid, minified: it's most of the extension's size even so (about 3 MB), and only tickets with a diagram load it.
+const mermaid = await esbuild.context({
+  entryPoints: { mermaid: 'src/webview/ticket/mermaid.ts' },
+  bundle: true,
+  platform: 'browser',
+  target: 'es2022',
+  format: 'iife',
+  outdir: 'dist',
+  minify: true,
+  legalComments: 'eof',
+  logLevel: 'info',
+});
+
 // The app's code the playground's seed uses (scripts/playground-seed.mjs), not part of the extension.
 const seedKit = await esbuild.context({ ...seedKitOptions, logLevel: 'info' });
 
@@ -41,8 +54,8 @@ fs.mkdirSync('dist/codicons', { recursive: true });
 for (const file of ['codicon.css', 'codicon.ttf']) fs.copyFileSync(`node_modules/@vscode/codicons/dist/${file}`, `dist/codicons/${file}`);
 
 if (watch) {
-  await Promise.all([host.watch(), webview.watch(), seedKit.watch()]);
+  await Promise.all([host.watch(), webview.watch(), mermaid.watch(), seedKit.watch()]);
 } else {
-  await Promise.all([host.rebuild(), webview.rebuild(), seedKit.rebuild()]);
-  await Promise.all([host.dispose(), webview.dispose(), seedKit.dispose()]);
+  await Promise.all([host.rebuild(), webview.rebuild(), mermaid.rebuild(), seedKit.rebuild()]);
+  await Promise.all([host.dispose(), webview.dispose(), mermaid.dispose(), seedKit.dispose()]);
 }
