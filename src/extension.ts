@@ -56,6 +56,7 @@ import { FinishedWorktrees } from './ui/finishedWorktrees';
 import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
+import { watchInstalledVersion } from './ui/installedVersion';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -80,6 +81,8 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
+  // An update installed while this window runs only applies after a reload: that's said (BL-85).
+  watchInstalledVersion(context);
   context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
   // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
   const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));

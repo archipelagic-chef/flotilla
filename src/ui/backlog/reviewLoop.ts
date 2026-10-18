@@ -54,6 +54,7 @@ import { agentPrompt } from '../commands';
 import { workstreamLabel } from '../format';
 import { formatMemory } from '../../features/workstreams/memory';
 import { readSettings } from '../settings';
+import { staleVersionNote } from '../installedVersion';
 import {
   agentChoice,
   confirmMemory,
@@ -552,6 +553,11 @@ export class ReviewLoop implements vscode.Disposable {
     await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
   }
 
+  /** A note of an agent started or resumed: it says when the window runs an older Flotilla than installed (BL-85). */
+  private async startNote(id: string, body: string): Promise<void> {
+    await this.note(id, `${body}${staleVersionNote()}`);
+  }
+
   /** Stops the loop, saying why; the ticket offers the fixes for it (and "Needs you" lists it). */
   private async stopLoop(id: string, reason: string, o: { kind: ReviewStopKind; task?: RevisionTask }): Promise<void> {
     await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'stopped', reason, stop: { kind: o.kind, ...(o.task ? { task: o.task } : {}) } }));
@@ -714,7 +720,7 @@ export class ReviewLoop implements vscode.Disposable {
       // "chat for agent <name>": the ticket links the note to the chat.
       if (!p.known && !p.for) this.retrying.set(item.id, { tries: p.tries ?? 0, since: p.since ?? new Date().toISOString() });
       const since = p.since ? new Date(p.since).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-      await this.note(
+      await this.startNote(
         item.id,
         p.for
           ? `A slot freed: resumed the chat for agent ${p.agent} to go on.`
@@ -806,7 +812,7 @@ export class ReviewLoop implements vscode.Disposable {
         reason: undefined,
         stop: undefined,
       }));
-      await this.note(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
+      await this.startNote(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
       void run.done.then((result) => this.afterRevision(item.id, run, result));
     } finally {
       if (!spawned) this.release(admitted.slot);
@@ -1164,7 +1170,7 @@ export class ReviewLoop implements vscode.Disposable {
     if (held.where === 'terminal') {
       await restore();
       runAgentInTerminal({ cwd, resume: held.session, prompt, name, choice });
-      await this.note(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
+      await this.startNote(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
       return;
     }
     const admitted = await this.admitStart(item, 'resume', { manual: true }, (fresh) => this.resumeHeld(fresh, held));
@@ -1176,7 +1182,7 @@ export class ReviewLoop implements vscode.Disposable {
       spawned = true;
       this.launched(item.id, admitted.slot, { run, phase: held.phase, agent: held.agent, cwd, since: Date.now() });
       void trackProgress('backlog', `${held.agent} goes on with ${item.id}`, () => run.done);
-      await this.note(item.id, `You resumed the chat for agent ${held.agent} to go on.`);
+      await this.startNote(item.id, `You resumed the chat for agent ${held.agent} to go on.`);
       void run.done.then((result) => (held.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
     } finally {
       if (!spawned) this.release(admitted.slot);
@@ -1255,7 +1261,7 @@ export class ReviewLoop implements vscode.Disposable {
         stop: undefined,
         byUser: undefined,
       }));
-      await this.note(
+      await this.startNote(
         item.id,
         `Review round ${round}: ${round > 1 && item.review?.reviewerSession ? 'resumed' : 'opened'} a chat for agent ${reviewer}${describeChoice(agentChoice(item, 'review'))} in worktree \`${workstreamLabel(ws)}\`. It reviews ${item.review?.implementer ?? 'the work'} and gives a verdict here.`,
       );
@@ -1471,7 +1477,7 @@ export class ReviewLoop implements vscode.Disposable {
       this.tasks.set(item.id, task);
       // "chat for agent <name>": the ticket links the note to the chat by it.
       const where = `a chat for agent ${implementer}${describeChoice(agentChoice(item))} in worktree \`${workstreamLabel(ws)}\``;
-      await this.note(
+      await this.startNote(
         item.id,
         task.resumeOnly
           ? `You answered ${implementer}'s question; resumed ${where} to go on.`
