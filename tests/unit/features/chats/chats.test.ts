@@ -10,11 +10,14 @@ import {
   parseChatRecord,
   parseTranscript,
   readChatRecords,
+  readTranscript,
   readTranscripts,
   readUnlinked,
   tagTranscriptTitle,
+  transcriptPath,
   unlinkChat,
   type ChatRecord,
+  type TranscriptInfo,
 } from '../../../../src/features/chats/chats';
 import { makeTempDir, removeDir } from '../../../helpers/gitRepo';
 
@@ -221,5 +224,104 @@ describe('the model and effort of a chat', () => {
       '',
     ].join('\n');
     expect(parseTranscript('s', raw, new Date())).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' });
+  });
+});
+
+describe('reading only what is new in a growing transcript', () => {
+  const sid = '7d3f2c1e-5a4b-4c3d-9e8f-0a1b2c3d4e5f';
+  const line = (o: object) => `${JSON.stringify(o)}\n`;
+  const facts = (i?: TranscriptInfo) => ({ title: i?.title, firstPrompt: i?.firstPrompt, startedAt: i?.startedAt, model: i?.model, effort: i?.effort });
+  /** What a whole-file parse of `raw` says: the reference for what an incremental read must say. */
+  const whole = (raw: string) => facts(parseTranscript(sid, raw, now));
+  function setup(): { home: string; file: string } {
+    const home = makeTempDir();
+    cleanup.push(home);
+    const file = transcriptPath('/r', sid, home);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    return { home, file };
+  }
+  const reply = (model: string, effort?: string) => line({ type: 'assistant', effort, message: { model } });
+
+  it('reads appended lines and keeps what it had read', async () => {
+    const { home, file } = setup();
+    let raw = line({ type: 'user', timestamp: '2026-10-10T09:00:00Z', message: { content: 'Fix login' } }) + reply('claude-sonnet-5-5', 'medium');
+    fs.writeFileSync(file, raw);
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(raw));
+    const added = reply('claude-opus-5-5', 'high') + line({ type: 'ai-title', aiTitle: 'Login fix' });
+    raw += added;
+    fs.appendFileSync(file, added);
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(raw));
+    expect(await readTranscript('/r', sid, home)).toMatchObject({ title: 'Login fix', model: 'claude-opus-5-5', effort: 'high' });
+  });
+
+  it('waits for a partial last line until its newline is written', async () => {
+    const { home, file } = setup();
+    const first = line({ type: 'user', timestamp: '2026-10-10T09:00:00Z', message: { content: 'Migrate the db' } });
+    const second = line({ type: 'ai-title', aiTitle: 'DB migration' });
+    fs.writeFileSync(file, first + second.slice(0, 20));
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(first));
+    fs.appendFileSync(file, second.slice(20, -1));
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(first));
+    fs.appendFileSync(file, '\n');
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(first + second));
+    expect((await readTranscript('/r', sid, home))?.title).toBe('DB migration');
+  });
+
+  it('reads the file again when it was rewritten or shrank', async () => {
+    const { home, file } = setup();
+    const a = line({ type: 'user', timestamp: '2026-10-10T09:00:00Z', message: { content: 'Old chat about CI' } }) + reply('claude-haiku-5-5');
+    fs.writeFileSync(file, a);
+    expect((await readTranscript('/r', sid, home))?.firstPrompt).toBe('Old chat about CI');
+    const b = line({ type: 'user', timestamp: '2026-10-11T09:00:00Z', message: { content: 'A new chat' } });
+    fs.writeFileSync(file, b);
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(b));
+    fs.writeFileSync(file, b + reply('claude-opus-5-5', 'low'));
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(b + reply('claude-opus-5-5', 'low')));
+  });
+
+  it('gives the same answer as a whole-file parse for a large transcript with long lines and multi-byte text', async () => {
+    const { home, file } = setup();
+    const parts: string[] = [line({ type: 'user', timestamp: '2026-10-10T09:00:00Z', message: { content: 'Größe — 漢字 test' } })];
+    // Mostly ~2.5 KB lines, and one line of about 360 KB, so reads cross chunk boundaries inside lines and characters.
+    for (let n = 0; n < 2200; n++) {
+      const content = n === 5 ? 'é漢🙂'.repeat(40_000) : `${'é漢🙂'.repeat(30)}${'x'.repeat(2000)}`;
+      parts.push(line({ type: 'user', message: { content: [{ type: 'tool_result', content }] } }), reply('claude-opus-5-5', 'high'));
+    }
+    const raw = parts.join('');
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(5 * 1024 * 1024);
+    fs.writeFileSync(file, raw);
+    expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(raw));
+  });
+
+  it('gives the same answer however the file is cut into appends', async () => {
+    const { home, file } = setup();
+    const lines = [
+      line({ type: 'queue-operation', timestamp: '2026-10-10T09:00:00Z' }),
+      line({ type: 'user', isMeta: true, message: { content: 'meta' } }),
+      line({ type: 'user', timestamp: '2026-10-10T09:00:02Z', message: { content: 'Ünïcode prompt' } }),
+      line({ type: 'assistant', isSidechain: true, effort: 'low', message: { model: 'claude-haiku-5-5' } }),
+      reply('claude-sonnet-5-5', 'medium'),
+      reply('<synthetic>'),
+      line({ type: 'custom-title', customTitle: 'feature/x: Mine' }),
+      line({ type: 'ai-title', aiTitle: 'Something' }),
+      reply('claude-opus-5-5'),
+    ];
+    const raw = lines.join('');
+    fs.writeFileSync(file, '');
+    let seed = 7;
+    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648) % n);
+    let done = '';
+    for (let at = 0; at < raw.length; ) {
+      const size = 1 + rnd(40);
+      const piece = Buffer.from(raw).subarray(at, at + size);
+      fs.appendFileSync(file, piece);
+      at += size;
+      done = Buffer.from(raw).subarray(0, at).toString('utf8');
+      const complete = done.slice(0, done.lastIndexOf('\n') + 1);
+      expect(facts(await readTranscript('/r', sid, home))).toEqual(whole(complete));
+    }
+    expect(done).toBe(raw);
+    // The custom title wins over the AI title. The last reply has a model and no effort, so the chat has no effort either.
+    expect(await readTranscript('/r', sid, home)).toMatchObject({ title: 'feature/x: Mine', model: 'claude-opus-5-5' });
   });
 });

@@ -38,6 +38,16 @@ describe('backlog inbox', () => {
     expect(parseProposal('No heading here')).toEqual({ error: expect.stringMatching(/no title/) });
   });
 
+  it('makes a proposal with level: light a Light ticket', () => {
+    const p = parseProposal('---\nlevel: light\n---\n# Rename a setting');
+    if ('error' in p) throw new Error(p.error);
+    expect(p.light).toBe(true);
+    const r = addProposal(EMPTY_BACKLOG, p, { prefix: 'BL', mode: 'propose', now: new Date(), taken: [] });
+    if ('error' in r) throw new Error(r.error);
+    expect(r.item.agent).toEqual({ light: true });
+    expect(parseProposal('---\nlevel: hard\n---\n# Redesign the queue')).not.toHaveProperty('light');
+  });
+
   it('adds a proposal as a proposed item, part of its parent, on its branch', () => {
     const data = addItem(EMPTY_BACKLOG, 'SSO', 'BL', new Date()).data;
     const p = parseProposal(PROPOSAL);

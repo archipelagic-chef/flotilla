@@ -1,0 +1,99 @@
+import { describe, expect, it } from 'vitest';
+import type { BacklogItem } from '../../../src/features/backlog/backlog';
+import type { ReviewState } from '../../../src/features/backlog/review';
+import { needsYouList, needsYouMessage, newNeeds, type NeedsYouWorktree } from '../../../src/features/needsYou';
+
+function item(id: string, extra: Partial<BacklogItem> = {}): BacklogItem {
+  return { id, title: `Title of ${id}`, status: 'review', priority: 'medium', created: '2026-10-12T09:00:00Z', ...extra } as BacklogItem;
+}
+
+function review(state: ReviewState['state'], extra: Partial<ReviewState> = {}): ReviewState {
+  return { round: 1, state, reviewer: 'Nova-7', ...extra };
+}
+
+function worktree(key: string, attention: NeedsYouWorktree['attention'], current = false): NeedsYouWorktree {
+  return { key, label: `feature/${key}`, attention, current };
+}
+
+describe('needsYouList', () => {
+  it('lists the tickets waiting for the user, by kind', () => {
+    const items = [
+      item('BL-1', { review: review('yours') }),
+      item('BL-2', { review: review('asking') }),
+      item('BL-3', { review: review('approved') }),
+      item('BL-4', { review: review('stopped', { stop: { kind: 'rounds' } }) }),
+      item('BL-5', { proposed: { by: 'Nova-7' }, status: 'todo' }),
+    ];
+    expect(needsYouList(items, []).map((n) => n.key)).toEqual(['asks:BL-2', 'stopped:BL-4', 'review:BL-1', 'approved:BL-3', 'proposed:BL-5']);
+  });
+
+  it('leaves out work agents do by themselves, done items, and reviews the user stopped', () => {
+    const items = [
+      item('BL-1', { status: 'doing', review: review('working') }),
+      item('BL-2', { status: 'doing', review: review('revising') }),
+      item('BL-3', { status: 'review', review: review('reviewing') }),
+      item('BL-4', { status: 'review', review: review('paused') }),
+      item('BL-5', { status: 'done', review: review('yours') }),
+      item('BL-6', { status: 'review', review: review('stopped', { stop: { kind: 'user' } }) }),
+      item('BL-7'),
+    ];
+    expect(needsYouList(items, [])).toEqual([]);
+  });
+
+  it('adds worktrees waiting for input or reporting an error, and says which one is this window', () => {
+    const list = needsYouList([], [worktree('a', 'waiting-for-input'), worktree('b', 'error', true), worktree('c', 'working')]);
+    expect(list.map((n) => n.key)).toEqual(['error:b', 'waiting:a']);
+    expect(list[0].worktree).toEqual({ key: 'b', label: 'feature/b', current: true });
+  });
+
+  it('puts the errors and questions before the reviews, and names in order', () => {
+    const items = [item('BL-12', { review: review('yours') }), item('BL-4', { review: review('asking') }), item('BL-13', { review: review('yours') })];
+    expect(needsYouList(items, [worktree('x', 'error')]).map((n) => n.key)).toEqual(['error:x', 'asks:BL-4', 'review:BL-12', 'review:BL-13']);
+  });
+});
+
+describe('newNeeds', () => {
+  it('is nothing on the first list: what was there when the window opened is not news', () => {
+    expect(newNeeds(undefined, needsYouList([item('BL-1', { review: review('yours') })], []))).toEqual([]);
+  });
+
+  it('is the needs that were not in the previous list', () => {
+    const before = new Set(['review:BL-1']);
+    const next = needsYouList([item('BL-1', { review: review('yours') }), item('BL-2', { review: review('asking') })], []);
+    expect(newNeeds(before, next).map((n) => n.key)).toEqual(['asks:BL-2']);
+  });
+
+  it('counts a changed kind as news', () => {
+    const before = new Set(['review:BL-1']);
+    const next = needsYouList([item('BL-1', { review: review('approved') })], []);
+    expect(newNeeds(before, next).map((n) => n.key)).toEqual(['approved:BL-1']);
+  });
+});
+
+describe('needsYouMessage', () => {
+  it('says one need as a sentence', () => {
+    const [n] = needsYouList([item('BL-4', { review: review('asking') })], []);
+    expect(needsYouMessage([n])).toBe('BL-4 asks a question.');
+  });
+
+  it('groups the needs by kind, as one line', () => {
+    const list = needsYouList(
+      [item('BL-4', { review: review('asking') }), item('BL-12', { review: review('yours') }), item('BL-13', { review: review('yours') })],
+      [],
+    );
+    expect(needsYouMessage(list)).toBe('3 tickets need you: BL-4 asks a question, BL-12 and BL-13 are ready for your review.');
+  });
+
+  it('names three in a group with commas and "and"', () => {
+    const list = needsYouList([item('BL-1', { review: review('yours') }), item('BL-2', { review: review('yours') }), item('BL-3', { review: review('yours') })], []);
+    expect(needsYouMessage(list)).toBe('3 tickets need you: BL-1, BL-2 and BL-3 are ready for your review.');
+  });
+
+  it('says worktrees and mixed needs by their nouns', () => {
+    expect(needsYouMessage(needsYouList([], [worktree('a', 'waiting-for-input'), worktree('b', 'waiting-for-input')]))).toBe(
+      '2 worktrees need you: feature/a and feature/b are waiting for input.',
+    );
+    const mixed = needsYouList([item('BL-1', { review: review('yours') })], [worktree('a', 'error')]);
+    expect(needsYouMessage(mixed)).toBe('2 items need you: feature/a reported an error, BL-1 is ready for your review.');
+  });
+});

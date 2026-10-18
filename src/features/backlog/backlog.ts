@@ -1,4 +1,5 @@
 import type { HistoryRewrite, HistoryVersion } from './history';
+import type { MainCheck } from './mainDrift';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -47,9 +48,18 @@ export interface BacklogItem {
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
   agent?: AgentChoice;
+  /**
+   * The discussion of a ticket nobody works on yet (BL-45): the shaping agent's name and chat, and whether it thinks
+   * the ticket is ready to start (until the user writes again, or keeps discussing).
+   */
+  shaping?: { agent: string; session: string; ready?: boolean };
+  /** Its branches merged with main in memory, last time either moved (BL-55): whether they conflict, and where. */
+  mainCheck?: MainCheck;
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+  /** The autopilot couldn't start an agent on it (why, and when): it waits for the user to start it (Run). */
+  startFailed?: { message: string; /** ISO 8601. */ since: string };
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
@@ -61,6 +71,10 @@ export interface AgentChoice {
   /** An alias ("opus", "sonnet") or a model's full name. */
   model?: string;
   effort?: AgentEffort;
+  /** A ticket's: small and mechanical, its work runs on flotilla.agents.lightModel (see modelLevel.ts). */
+  light?: boolean;
+  /** A ticket's: it moved up to the strong model (from what, to what, why, when: ISO 8601). */
+  movedUp?: { from: string; to: string; reason: string; at: string };
 }
 
 /** A local item's link to an issue in a tracker. */
@@ -163,7 +177,7 @@ export function addItem(data: BacklogData, title: string, prefix: string, now: D
 export function updateItem(
   data: BacklogData,
   id: string,
-  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches'>> & { priority?: BacklogPriority | null },
+  change: Partial<Pick<BacklogItem, 'title' | 'notes' | 'status' | 'branches' | 'shaping'>> & { priority?: BacklogPriority | null },
 ): BacklogData {
   return {
     ...data,
@@ -185,7 +199,8 @@ export function acceptItem(data: BacklogData, id: string): BacklogData {
     ...data,
     items: data.items.map((i) => {
       if (i.id !== id) return i;
-      const { proposed: _p, ...rest } = i;
+      // The owner accepted it: its discussion is over (Discuss starts a new one for a To Do), and the autopilot takes it.
+      const { proposed: _p, shaping: _s, ...rest } = i;
       return rest;
     }),
   };
@@ -198,6 +213,18 @@ export function childrenOf(data: BacklogData, id: string): BacklogItem[] {
 
 export function removeItem(data: BacklogData, id: string): BacklogData {
   return { ...data, items: data.items.filter((i) => i.id !== id) };
+}
+
+/** Records that the autopilot couldn't start an item (with why), or clears that record (without a failure). */
+export function setStartFailed(data: BacklogData, id: string, failed?: { message: string; since: string }): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id) return i;
+      const { startFailed: _old, ...rest } = i;
+      return failed ? { ...rest, startFailed: failed } : rest;
+    }),
+  };
 }
 
 /** Moves an item before another one (or to the end), and into a status: drag and drop between and within lanes. */

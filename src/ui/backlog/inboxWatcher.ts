@@ -27,7 +27,6 @@ export class BacklogInbox implements vscode.Disposable {
     private readonly integrations: BacklogIntegrations,
     private readonly repository: Repository<Workstream>,
     private readonly roots: { mainRoot: string; commonDir: string },
-    private readonly openTicket: (id: string) => void,
   ) {
     void this.writeGuide();
     this.timer = setInterval(() => void this.take(), 2000);
@@ -60,7 +59,8 @@ export class BacklogInbox implements vscode.Disposable {
     try {
       const mode = agentTicketMode();
       const prefix = currentPrefix(await this.backlog.read(), vscode.workspace.getConfiguration('flotilla').get<string>('backlog.idPrefix', 'BL'));
-      const added = await takeInbox(this.backlog, {
+      // What the agents added is news for "Needs you" (proposals), not a notification of its own.
+      await takeInbox(this.backlog, {
         prefix,
         mode,
         taken: this.integrations.issues().map((i) => i.id),
@@ -72,12 +72,6 @@ export class BacklogInbox implements vscode.Disposable {
           await installCommitHook(this.roots.mainRoot, this.roots.commonDir, commitPrefixMode()).catch(() => undefined);
         },
       });
-      if (!added.length) return;
-      const first = added[0];
-      const by = first.proposed?.by ? `${first.proposed.by} (an agent)` : 'An agent';
-      const what = added.length === 1 ? `${first.id} "${first.title}"` : `${added.length} tickets (${added.map((i) => i.id).join(', ')})`;
-      const message = mode === 'propose' ? `${by} proposed ${what}.` : `${by} added ${what} to the backlog.`;
-      void vscode.window.showInformationMessage(message, 'Open').then((c) => c && this.openTicket(first.id));
     } catch {
       // try again on the next round
     } finally {
