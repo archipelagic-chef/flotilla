@@ -1820,6 +1820,21 @@ ins {
 .backlog-item .link-badge .codicon {
   font-size: 13px;
 }
+.backlog-item .paused-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--vscode-editorWarning-foreground);
+  border: 1px solid currentColor;
+}
+.backlog-item .paused-badge .codicon {
+  font-size: 11px;
+}
 .backlog-title .title-actions {
   display: flex;
   gap: 2px;

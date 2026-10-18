@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Pause, Resume and Stop any agent on a ticket**: implementers, reviewers and the autopilot's agents, without a window or in a terminal, from the ticket (its Agents rows and status card) or the backlog card's menu. Paused tickets show a *Paused* badge.
+
 ## 0.2.0 (preview)
 
 - **Backlog**: tickets with status, priority, sub-tickets, worktrees, commits and an activity feed (comments, agents' reports, every change), in editor tabs. Images and file links in tickets.

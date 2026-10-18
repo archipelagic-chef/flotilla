@@ -599,8 +599,13 @@ async function writeBacklogItem(ctx: CommandContext, id: unknown): Promise<void>
   const ticket = await ctx.backlog.ensureDocument(item);
   // The ticket tab shows Claude's edits as they're saved.
   await ctx.tickets.open(item.id);
+  // Named like any agent on the item (its chat's first line): the ticket lists it, and says it's in Claude Code's panel.
+  const agent = agentName(ctx.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean));
+  await ctx.tickets.addActivity(item.id, 'Flotilla', `Opened a chat for agent ${agent} in Claude Code's panel, to help you write this ticket.`);
   await chatUi.askClaude(
     [
+      agentLead(item, agent),
+      `You don't implement it: you help me write it as a clear ticket. Sign anything you add to its activity as Agent ${agent}.`,
       `Help me write backlog item ${item.id} as a clear ticket. The ticket is ${ticket}: "# <title>", the description, then an "## Activity" log (leave that alone).`,
       `Read what's there (my notes so far), ask me what you need to know, and look at this repository's code where it helps. Then rewrite the title and description: the problem or goal, the context, and acceptance criteria as a checklist.`,
       '',

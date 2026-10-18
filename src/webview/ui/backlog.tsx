@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches } from '../../features/backlog/backlog';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
-import { send } from './api';
+import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
@@ -217,15 +217,29 @@ interface RowProps {
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
+/**
+ * Where its agent is, for the card's menu: running (in the review loop, or busy in one of its worktrees), paused, or
+ * stopped by the user (it can be resumed).
+ */
+function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'paused' | 'stopped' | undefined {
+  const state = item.review?.state;
+  if (state === 'paused') return 'paused';
+  if (state === 'stopped' && item.review?.stop?.kind === 'user' && item.review.stop.agent) return 'stopped';
+  if (state === 'working' || state === 'reviewing' || state === 'revising') return 'running';
+  return worktrees.some((w) => w.attention === 'working' || w.attention === 'waiting-for-input') ? 'running' : undefined;
+}
+
 function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   const done = item.status === 'done';
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
   const worktree = worktrees[0];
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
+  const agent = agentOf(item, worktrees);
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
+      data-vscode-context={remote ? undefined : menuContext('backlogItem', { id: item.id, flotillaAgent: agent ?? '' })}
       tabIndex={0}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
@@ -279,6 +293,19 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           <span class="name">{item.title}</span>
           {item.summary && <span class="desc">{item.summary}</span>}
         </>
+      )}
+      {!renaming && agent === 'paused' && (
+        <span
+          class="paused-badge"
+          data-tip={
+            item.review?.paused?.byUser
+              ? `You paused ${item.review.paused.agent}: its chat and its work are kept. Right-click to resume it.`
+              : `${item.review?.paused?.agent ?? 'Its agent'} stopped on Claude's usage limit; it goes on by itself when it resets.`
+          }
+        >
+          <i class="codicon codicon-debug-pause" />
+          Paused
+        </span>
       )}
       {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>

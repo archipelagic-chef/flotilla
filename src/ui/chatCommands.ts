@@ -8,7 +8,7 @@ import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import type { AgentChoice } from '../features/backlog/backlog';
-import { choiceArgs, claudeBinary, isRunningHeadless } from './backlog/agentRunner';
+import { choiceArgs, isRunningHeadless, runAgentInTerminal } from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
 
@@ -105,14 +105,8 @@ export async function startAgent(ctx: ChatContext, ws: Workstream, task: string,
     await newChat(ctx, ws, task, lead);
     return 'panel';
   }
-  const terminal = vscode.window.createTerminal({
-    name: o.name,
-    cwd: ws.worktree.path,
-    shellPath: claudeBinary(),
-    shellArgs: [...args, '--name', o.name, [lead, task].filter(Boolean).join('\n\n')],
-    iconPath: new vscode.ThemeIcon('hubot'),
-  });
-  terminal.show();
+  // With a session of its own, known at once: it can be paused, stopped and resumed from its ticket.
+  runAgentInTerminal({ cwd: ws.worktree.path, prompt: [lead, task].filter(Boolean).join('\n\n'), name: o.name, choice: o.choice });
   return 'terminal';
 }
 

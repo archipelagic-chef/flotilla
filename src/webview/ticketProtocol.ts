@@ -48,8 +48,12 @@ export interface TicketView {
     priorityName?: string;
     edit?: RemoteEditOptions;
   };
-  /** The agents that worked on it (their chats), oldest first, with how many reports each wrote. */
-  agents: Array<Exclude<AgentChatView, { pending: true }> & { reports: number }>;
+  /**
+   * The agents that worked on it (their chats), oldest first, with how many reports each wrote; where one that's busy
+   * runs (without a window or in a terminal: it can be paused and stopped here; in Claude Code's panel: only there);
+   * and whether the user paused or stopped it (it can be resumed).
+   */
+  agents: Array<Exclude<AgentChatView, { pending: true }> & { reports: number; runs?: 'headless' | 'terminal' | 'panel'; held?: 'paused' | 'stopped' }>;
   /** The issues local entries can be posted to: the issue itself, or a local item's linked issues. */
   postTargets: string[];
   /** A local item can get an issue created for it (a tracker is connected). */
@@ -133,6 +137,8 @@ export type TicketWebviewMessage =
   /** The user's own review: approve, or request changes (an agent picks them up). */
   | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
+  /** Pause, stop or resume an agent: the one with that chat, else the one working on it. */
+  | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }
   | { type: 'accept' }

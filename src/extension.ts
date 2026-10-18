@@ -18,6 +18,8 @@ import { Leader } from './features/backlog/leader';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
+import { heldBy } from './features/backlog/review';
+import { trackTerminals } from './ui/backlog/agentRunner';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
@@ -142,7 +144,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   const reviews = new ReviewLoop({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id), isLeader: () => leader.isLeader });
-  context.subscriptions.push(reviews);
+  context.subscriptions.push(reviews, trackTerminals());
+  // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
+  const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (target?: unknown) => {
+    let id = typeof target === 'string' ? target : typeof target === 'object' && target && 'id' in target && typeof target.id === 'string' ? target.id : undefined;
+    if (!id) {
+      const items = (await backlog.read()).items.filter((i) => (action === 'resume' ? heldBy(i.review) : ['working', 'reviewing', 'revising', 'paused', 'asking'].includes(i.review?.state ?? '') || i.status === 'doing'));
+      id = (await vscode.window.showQuickPick(items.map((i) => ({ label: i.id, description: i.title })), { title: `${action[0].toUpperCase()}${action.slice(1)} the agent on…` }))?.label;
+    }
+    if (id) await reviews.control(id, action);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.pauseAgent', controlAgent('pause')),
+    vscode.commands.registerCommand('flotilla.resumeAgent', controlAgent('resume')),
+    vscode.commands.registerCommand('flotilla.stopAgent', controlAgent('stop')),
+  );
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(noteDescriptions));

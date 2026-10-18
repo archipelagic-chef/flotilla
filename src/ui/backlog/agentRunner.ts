@@ -82,6 +82,59 @@ export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
 
+/** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
+const terminals = new Map<string, vscode.Terminal>();
+
+/**
+ * Starts an interactive Claude Code session in a terminal (in cwd): a new chat with prompt (its session chosen here, so
+ * it's known at once), or a chat resumed with it.
+ */
+export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: string; name: string; choice?: AgentChoice }): { sessionId: string; terminal: vscode.Terminal } {
+  if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
+  const sessionId = o.resume ?? crypto.randomUUID();
+  const terminal = vscode.window.createTerminal({
+    name: o.name,
+    cwd: o.cwd,
+    shellPath: claudeBinary(),
+    shellArgs: [...choiceArgs(o.choice ?? {}), '--name', o.name, ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]), o.prompt],
+    iconPath: new vscode.ThemeIcon('hubot'),
+  });
+  terminals.set(sessionId, terminal);
+  terminal.show();
+  return { sessionId, terminal };
+}
+
+/** Forgets terminals that were closed. */
+export function trackTerminals(): vscode.Disposable {
+  return vscode.window.onDidCloseTerminal((t) => {
+    for (const [session, terminal] of terminals) if (terminal === t) terminals.delete(session);
+  });
+}
+
+/** Whether a chat runs in a terminal of this window (its process not ended). */
+export function isRunningInTerminal(sessionId: string): boolean {
+  const t = terminals.get(sessionId);
+  return !!t && t.exitStatus === undefined;
+}
+
+/**
+ * Ends the process of an agent's terminal (the terminal stays, and says the process ended; its chat is kept). False if
+ * it doesn't run in a terminal of this window.
+ */
+export async function stopTerminalAgent(sessionId: string): Promise<boolean> {
+  const t = terminals.get(sessionId);
+  terminals.delete(sessionId);
+  if (!t || t.exitStatus !== undefined) return false;
+  const pid = await t.processId;
+  try {
+    if (pid === undefined) throw new Error('no process');
+    process.kill(pid);
+  } catch {
+    t.dispose();
+  }
+  return true;
+}
+
 export interface AgentResult {
   code: number | null;
   error?: string;

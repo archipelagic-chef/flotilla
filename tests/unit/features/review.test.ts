@@ -99,3 +99,46 @@ describe('fixing a stopped review', () => {
     expect(fixesFor('no-worktree', false)).toEqual(['worktree']);
   });
 });
+
+describe('pausing and stopping agents', () => {
+  it('offers Resume first for an agent the user stopped', async () => {
+    const { fixesFor, fixLabel } = await import('../../../src/features/backlog/review');
+    const worker = { phase: 'work' as const, session: 's', agent: 'Nova-7', resume: 'working' as const };
+    expect(fixesFor('user', true, worker).map((f) => fixLabel(f, 'user'))).toEqual(['Resume', 'New Agent']);
+    expect(fixesFor('user', false, { ...worker, phase: 'review', resume: 'reviewing' }).map((f) => fixLabel(f, 'user'))).toEqual(['Resume', 'Review Again']);
+    // Stopped before agents could be resumed: as before.
+    expect(fixesFor('user', false)).toEqual(['retry']);
+  });
+
+  it('knows which agent the user paused or stopped', async () => {
+    const { heldBy } = await import('../../../src/features/backlog/review');
+    const held = { phase: 'work' as const, session: 's', agent: 'Nova-7', resume: 'revising' as const };
+    expect(heldBy({ round: 1, reviewer: 'Kai-2', state: 'paused', paused: { ...held, byUser: '2026-10-18T10:00:00Z' } })?.agent).toBe('Nova-7');
+    // Paused on a usage limit: it goes on by itself, not held by the user.
+    expect(heldBy({ round: 1, reviewer: 'Kai-2', state: 'paused', paused: { ...held, until: '2026-10-18T10:00:00Z', known: true } })).toBeUndefined();
+    expect(heldBy({ round: 1, reviewer: 'Kai-2', state: 'stopped', stop: { kind: 'user', agent: held } })?.session).toBe('s');
+    expect(heldBy({ round: 1, reviewer: 'Kai-2', state: 'stopped', stop: { kind: 'no-report' } })).toBeUndefined();
+    expect(heldBy(undefined)).toBeUndefined();
+  });
+
+  it("reads from Flotilla's notes whether an agent runs in a terminal", async () => {
+    const { startedInTerminal } = await import('../../../src/features/backlog/review');
+    const notes = [
+      entry('2026-10-18 10:00', 'Flotilla', 'Opened a chat for agent Nova-7 (opus) in worktree `feature/x`, in a terminal. It reports here.'),
+      entry('2026-10-18 10:01', 'Flotilla', 'Opened a chat for agent Kai-2 in worktree `feature/x`. It reports here.'),
+      entry('2026-10-18 10:02', 'Agent Kai-2', 'Plan, in a terminal.'),
+    ];
+    expect(startedInTerminal(notes, 'Nova-7')).toBe(true);
+    expect(startedInTerminal(notes, 'Kai-2')).toBe(false);
+    expect(startedInTerminal(notes, 'Nova-70')).toBe(false);
+    // The latest note says where it runs now: resumed without a window.
+    expect(startedInTerminal([...notes, entry('2026-10-18 11:00', 'Flotilla', 'You resumed the chat for agent Nova-7 to go on.')], 'Nova-7')).toBe(false);
+  });
+
+  it('tells a resumed agent to check its uncommitted work first', async () => {
+    const { resumeAfterPausePrompt, takeOverPrompt } = await import('../../../src/features/backlog/review');
+    expect(resumeAfterPausePrompt('work')).toContain('git status');
+    expect(resumeAfterPausePrompt('review')).toContain('verdict');
+    expect(takeOverPrompt({ stopped: 'Nova-7', ticket: '/b/BL-1.md' })).toMatch(/Nova-7.*\/b\/BL-1\.md.*git status/s);
+  });
+});

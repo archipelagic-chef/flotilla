@@ -371,6 +371,24 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.pauseAgent",
+        "title": "Pause the Agent (Keeps Its Chat)",
+        "category": "Flotilla",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "flotilla.resumeAgent",
+        "title": "Resume the Agent (In Its Chat)",
+        "category": "Flotilla",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "flotilla.stopAgent",
+        "title": "Stop the Agent",
+        "category": "Flotilla",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "flotilla.cleanUpHistory",
         "title": "Clean Up Ticket History…",
         "category": "Flotilla"
@@ -867,6 +885,26 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "flotilla.pauseAgent",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && flotillaAgent == 'running'",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "flotilla.stopAgent",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && flotillaAgent == 'running'",
+          "group": "1_agent@2"
+        },
+        {
+          "command": "flotilla.resumeAgent",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && flotillaAgent =~ /^(paused|stopped)$/",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "flotilla.stopAgent",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && flotillaAgent == 'paused'",
+          "group": "1_agent@2"
+        },
         {
           "command": "flotilla.openInNewWindow",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'workstream' && flotillaWs =~ /;reachable;notCurrent;/",

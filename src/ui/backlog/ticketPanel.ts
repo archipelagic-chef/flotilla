@@ -22,7 +22,8 @@ import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { agentChoice, validModel } from './agentRunner';
+import { heldBy, startedInTerminal } from '../../features/backlog/review';
+import { agentChoice, isRunningHeadless, isRunningInTerminal, validModel } from './agentRunner';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -284,7 +285,7 @@ export class TicketPanels implements vscode.Disposable {
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
         const at = new Date(e.date.replace(' ', 'T')).getTime();
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
-        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
+        const chat: AgentChatView | undefined = found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round|without a window|^The limit reset|^You resumed the chat for agent [A-Za-z0-9-]+ to go on/.test(e.body) } : undefined);
         return {
           ...e,
           html: await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item)),
@@ -417,8 +418,29 @@ export class TicketPanels implements vscode.Disposable {
     const send = (view: Omit<TicketView, 'agents'>) => {
       if (this.posts.get(panel) !== seq) return;
       const chats = shown ? this.agentChats(shown, view.activity) : [];
-      // Each agent with the reports it signed.
-      const agents = chats.map((c) => ({ ...c, reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length }));
+      // Each agent with the reports it signed, where it runs if it's busy, and whether the user paused or stopped it.
+      const r = shown?.review;
+      const held = heldBy(r);
+      const own = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
+      const agents = chats.map((c) => {
+        const halted = held?.session === c.id ? (r?.state === 'paused' ? ('paused' as const) : ('stopped' as const)) : undefined;
+        const busy = !halted && (c.state === 'working' || c.state === 'waiting-for-input' || isRunningInTerminal(c.id));
+        const runs = !busy
+          ? undefined
+          : isRunningInTerminal(c.id)
+            ? ('terminal' as const)
+            : isRunningHeadless(c.id) || own === c.id
+              ? ('headless' as const)
+              : startedInTerminal(view.activity, c.agent)
+                ? ('terminal' as const)
+                : ('panel' as const);
+        return {
+          ...c,
+          reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length,
+          ...(runs ? { runs } : {}),
+          ...(halted ? { held: halted } : {}),
+        };
+      });
       const message: TicketHostMessage = { type: 'ticket', ticket: { ...view, agents } };
       void panel.webview.postMessage(message);
     };
@@ -783,6 +805,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'stopReview':
         await this.reviews?.stop(id);
+        return;
+      case 'agent':
+        await this.reviews?.control(id, m.action, m.session);
         return;
       case 'accept':
         await backlog.change((d) => acceptItem(d, id));

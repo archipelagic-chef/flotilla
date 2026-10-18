@@ -966,3 +966,33 @@ button.work-row:hover {
 .commit-line:hover .subject {
   text-decoration: underline;
 }
+.agent-row {
+  padding: 0 8px 0 0;
+}
+.agent-row .agent-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+}
+.agent-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.icon-button:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
