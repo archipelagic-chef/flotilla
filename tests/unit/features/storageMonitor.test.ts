@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runGit } from '../../../src/core/git/gitCli';
 import { parseLooseCount } from '../../../src/features/storage/packing';
-import { parseMountInfo } from '../../../src/features/storage/storage';
+import type { MountEntry } from '../../../src/features/storage/storage';
 import { git, initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
 
 const showWarningMessage = vi.fn(async (..._args: string[]) => undefined as string | undefined);
@@ -21,8 +21,8 @@ vi.mock('vscode', () => ({
   Uri: { parse: (s: string) => s },
 }));
 
-// A 9p mount over the whole file system, so that the temporary repositories are on it.
-const NINE_P = parseMountInfo('40 25 0:50 / / rw - 9p C:\\ rw');
+// A 9p mount at the repository itself, so that it holds the repository on any platform (C:\… isn't under /).
+const nineP = (repo: string): MountEntry[] => [{ mountPoint: fs.realpathSync.native(repo), fsType: '9p' }];
 const cleanup: string[] = [];
 const monitors: Array<{ dispose(): void }> = [];
 
@@ -60,7 +60,11 @@ function repoWithLooseObjects(): string {
     fs.writeFileSync(file, `object ${i}\n`);
     files.push(file);
   }
-  execFileSync('git', ['hash-object', '-w', '--stdin-paths'], { cwd: repo, input: files.join('\n') + '\n' });
+  const ids = execFileSync('git', ['hash-object', '-w', '--stdin-paths'], { cwd: repo, input: files.join('\n') + '\n', encoding: 'utf8' }).trim().split('\n');
+  // Reachable from a branch, so that gc packs them on any git (before 2.37, it leaves unreachable ones loose).
+  const tree = execFileSync('git', ['mktree'], { cwd: repo, input: ids.map((id, i) => `100644 blob ${id}\tf${i}\n`).join(''), encoding: 'utf8' }).trim();
+  const commit = execFileSync('git', ['commit-tree', tree, '-m', 'loose'], { cwd: repo, encoding: 'utf8' }).trim();
+  execFileSync('git', ['update-ref', 'refs/heads/loose', commit], { cwd: repo });
   return repo;
 }
 
@@ -72,7 +76,7 @@ function monitorFor(repo: string, opts: { backlogItems?: unknown[]; globalState?
     backlog: { read: async () => ({ items: opts.backlogItems ?? [] }) },
     globalState: opts.globalState ?? memento(),
     output: { appendLine: (line: string) => lines.push(line) },
-    mounts: () => NINE_P,
+    mounts: () => nineP(repo),
     probe: () => undefined,
   } as never);
   monitors.push(monitor);

@@ -63,7 +63,8 @@ export function parseMountInfo(text: string): MountEntry[] {
 export function fsTypeOf(mounts: readonly MountEntry[], dir: string): string | undefined {
   let best: MountEntry | undefined;
   for (const mount of mounts) {
-    const prefix = mount.mountPoint.endsWith(path.sep) ? mount.mountPoint : mount.mountPoint + path.sep;
+    // Mount tables are Linux's, so their paths are POSIX whatever runs this.
+    const prefix = mount.mountPoint.endsWith('/') ? mount.mountPoint : mount.mountPoint + '/';
     const holds = dir === mount.mountPoint || dir.startsWith(prefix);
     if (holds && (!best || mount.mountPoint.length >= best.mountPoint.length)) best = mount;
   }

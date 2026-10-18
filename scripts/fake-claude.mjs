@@ -88,7 +88,8 @@ const hasEntryBy = (text, author) => new RegExp(`^###\\s+.*·\\s*${author}\\s*$`
 
 /** The implementer's change: one more line in a file of the item's, committed with the item's id. */
 function change(id) {
-  const rel = path.join('fake-work', `${id}.txt`);
+  // Repository-relative, with /: it goes into the report's links (and fs takes / on Windows too).
+  const rel = path.posix.join('fake-work', `${id}.txt`);
   fs.mkdirSync(path.dirname(rel), { recursive: true });
   const n = fs.existsSync(rel) ? fs.readFileSync(rel, 'utf8').split('\n').filter(Boolean).length + 1 : 1;
   fs.appendFileSync(rel, `${stamp()} · ${who} · change ${n}\n`);
