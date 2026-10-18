@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
+import { demoCommand, demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 describe('run blocks', () => {
   it('reads each kind, with its title or name', () => {
@@ -138,11 +138,34 @@ describe('the label of a run', () => {
     expect(runLabel({ kind: 'launch', title: 'Run Extension', lines: [] })).toBe('Launch Run Extension');
     expect(runLabel({ kind: 'task', title: 'build', lines: [] })).toBe('Run task build');
     expect(runLabel({ kind: 'open', lines: ['http://localhost:5173'] })).toBe('Open http://localhost:5173');
+    expect(runLabel({ kind: 'demo', title: 'open-ticket', lines: [] })).toBe('Play the demo open-ticket');
   });
 
   it('says something when the block has no title or lines', () => {
     expect(runLabel({ kind: 'shell', lines: [] })).toBe('Run its commands');
     expect(runLabel({ kind: 'launch', lines: [] })).toBe('Launch its debug configuration');
     expect(runLabel({ kind: 'open', lines: [] })).toBe('Open its link');
+  });
+});
+
+describe('demo blocks', () => {
+  it("reads demo as a kind, with the demo's name", () => {
+    expect(parseRunBlocks('```run demo open-ticket\n```')).toEqual([{ kind: 'demo', title: 'open-ticket', lines: [] }]);
+  });
+
+  it("plays the worktree's demos/<name>.json with its player, and a name is never a path", () => {
+    expect(demoPath('open-ticket')).toBe('demos/open-ticket.json');
+    expect(demoPath('../../etc/passwd')).toBeUndefined();
+    expect(demoPath('a b')).toBeUndefined();
+    expect(demoPath(undefined)).toBeUndefined();
+    expect(demoCommand('open-ticket')).toBe('npm run demo -- play open-ticket');
+  });
+
+  it("plays the demo, not the block's lines, which are only there for a Flotilla without the demo kind", () => {
+    const [block] = parseRunBlocks('```run demo open-ticket Open a ticket\nnpm run demo -- play open-ticket\nrm -rf /\n```');
+    expect(block.lines).toHaveLength(2);
+    expect(demoRun(block)).toEqual({ name: 'open-ticket', file: 'demos/open-ticket.json', commands: [demoCommand('open-ticket')] });
+    expect(demoRun({ title: '../x' })).toBeUndefined();
+    expect(demoRun({})).toBeUndefined();
   });
 });

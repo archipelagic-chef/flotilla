@@ -66,6 +66,61 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 
 `scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
 
+## Demos
+
+When a change is something you see or click (a button, a panel, a flow), its ticket shows it working: a demo is a short script of steps in `demos/<name>.json`, which `npm run demo` plays in an isolated VS Code and records as a GIF. The ticket's Run button plays the same steps again live, at the same pace, so you see what the GIF shows. The report's run block names the demo, with the player's command as its line:
+
+````md
+```run demo open-ticket
+npm run demo -- play open-ticket
+```
+````
+
+Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for a Flotilla that doesn't know demo blocks: it runs the line as a shell command, with the same result.
+
+```sh
+npm run build
+npm run demo -- record open-ticket --out .flotilla/backlog/BL-3/demo.gif --still .vscode-test/last.png
+npm run demo -- play open-ticket    # live, in the window; it stays open until you close it
+npm run demo -- list
+```
+
+The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are screenshots of that window's page through its debugging port (playwright-core), never of the screen. Before a frame is kept, it's checked to come from that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`). If a frame fails the check, nothing is saved, and the recorder says why. `--still` saves the last frame as a PNG, to check how the demo ends.
+
+A demo of up to 15 s is a GIF (encoded in JavaScript with gifenc, at most 960 px wide). A longer demo is saved as an MP4 next to it when `ffmpeg` is on PATH. Without ffmpeg it stays a GIF, and the recorder says so. The ticket view shows GIFs as images and plays MP4s (`![What it shows](BL-3/demo.mp4)`).
+
+A demo's steps each do one thing, in order. A step waits up to 15 s for what it needs (`"timeout"` changes that), and pauses a little after it, so that a viewer can follow:
+
+| Step | What it does |
+| --- | --- |
+| `{ "command": "Focus on Flotilla View" }` | runs a command through the Command Palette, typed as a user would |
+| `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
+| `{ "type": "BL-3" }` / `{ "press": "Enter" }` | types text, presses a key (`Control+Enter`, `Escape`…) |
+| `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
+| `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |
+| `{ "caption": "A click on a card opens its ticket" }` | shows a caption at the bottom; `""` removes it |
+
+The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
+
+```json
+{
+  "title": "Open a ticket from the backlog",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "caption": "The backlog: the playground's tickets" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1200 },
+    { "caption": "A click on a card opens its ticket" },
+    { "click": ".backlog-item:has-text(\"Sort the backlog by priority\")" },
+    { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
+```
+
+Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). The window pops up on your screen while it records or plays.
+
 ## File icons
 
 `media/seti/` is a copy of VS Code's Seti icon theme plus a table of the built-in languages' file extensions, used when the user's icon theme isn't available where Flotilla runs (devcontainers). To refresh it from a newer VS Code: `node scripts/update-icons.mjs <path to a VS Code installation>`, e.g. `.vscode-test/vscode-linux-x64-<version>`.
