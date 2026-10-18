@@ -110,6 +110,47 @@ describe('AskChat', () => {
     expect(claude.killed).toBe(false);
   });
 
+  it('takes no question while a stopped answer is still ending, so the next one gets only its own answer', async () => {
+    const { chat, spawned } = setup();
+    await chat.ask('Tell me everything');
+    const claude = spawned[0];
+    claude.print(delta('Well, '));
+    await tick();
+    chat.stop();
+    expect(chat.busy).toBe(true);
+    expect(chat.view()).toMatchObject({ busy: true, turns: [{ state: 'stopped', activity: 'Stopping…' }] });
+    await chat.ask('Too soon');
+    expect(chat.view().turns).toHaveLength(1);
+
+    // The stopped answer's last words and its ending arrive late.
+    claude.print(delta('more'), { type: 'result', subtype: 'error_during_execution', is_error: true });
+    await tick();
+    expect(chat.view()).toMatchObject({ busy: false, turns: [{ state: 'stopped', answer: 'Well, ' }] });
+
+    await chat.ask('Next');
+    expect(claude.questions).toEqual([expect.any(String), 'Next']);
+    claude.print(delta('Its own.'), result('Its own.'));
+    await tick();
+    expect(chat.view().turns[1]).toMatchObject({ state: 'done', answer: 'Its own.' });
+    expect(chat.view().turns[0].answer).toBe('Well, ');
+  });
+
+  it('still ends a process that ignores the interrupt when a question was tried meanwhile', async () => {
+    const { chat, spawned } = setup();
+    await chat.ask('Tell me everything');
+    spawned[0].print(delta('Well, '));
+    await tick();
+    chat.stop();
+    await chat.ask('Too soon');
+    spawned[0].print(delta('on and on'));
+    await new Promise((r) => setTimeout(r, 40));
+    expect(spawned[0].killed).toBe(true);
+    expect(chat.view()).toMatchObject({ busy: false, turns: [{ state: 'stopped', answer: 'Well, ' }] });
+    await chat.ask('Next');
+    expect(spawned).toHaveLength(2);
+    expect(spawned[1].questions[0]).toContain('Q: Tell me everything\n\nA: Well, ');
+  });
+
   it('ends a process that does not stop, and starts a new one with the chat so far', async () => {
     const { chat, spawned } = setup();
     await chat.ask('First');

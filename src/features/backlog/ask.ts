@@ -91,6 +91,8 @@ export interface AskView {
   turns: AskTurn[];
   /** The model it answers with (flotilla.ask.model). */
   model: string;
+  /** A question is underway (or a stopped answer hasn't ended yet): the next one waits. */
+  busy: boolean;
 }
 
 /** What a chat starts with: the ticket, its latest activity, and its branch's state. */

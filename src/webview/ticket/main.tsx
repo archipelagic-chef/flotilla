@@ -485,7 +485,8 @@ function AskPane({ ask }: { ask?: AskView }) {
   const end = useRef<HTMLDivElement>(null);
   const turns = ask?.turns ?? [];
   const last = turns[turns.length - 1];
-  const busy = !!last && (last.state === 'waiting' || last.state === 'answering');
+  const busy = !!ask?.busy;
+  const stopping = busy && last?.state === 'stopped';
   useEffect(() => {
     if (open) box.current?.focus();
   }, [open]);
@@ -547,8 +548,8 @@ function AskPane({ ask }: { ask?: AskView }) {
               }}
             />
             {busy ? (
-              <button class="button secondary" onClick={() => send({ type: 'askStop' })} title="Stops the answer; what it wrote so far stays">
-                <i class="codicon codicon-debug-stop" /> Stop
+              <button class="button secondary" disabled={stopping} onClick={() => send({ type: 'askStop' })} title="Stops the answer; what it wrote so far stays">
+                <i class="codicon codicon-debug-stop" /> {stopping ? 'Stopping…' : 'Stop'}
               </button>
             ) : (
               <button class="button" disabled={!draft.trim()} onClick={submit}>

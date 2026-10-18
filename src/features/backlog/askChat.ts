@@ -45,7 +45,7 @@ export class AskChat {
   ) {}
 
   view(): AskView {
-    return { turns: this.turns.map((t) => ({ ...t })), model: this.d.model };
+    return { turns: this.turns.map((t) => ({ ...t })), model: this.d.model, busy: this.busy };
   }
 
   /** The question being answered (or waiting to be). */
@@ -54,8 +54,12 @@ export class AskChat {
     return last && (last.state === 'waiting' || last.state === 'answering') ? last : undefined;
   }
 
+  /**
+   * A question is underway: waiting, being answered, or stopped but not ended yet (its result, or the grace's end, is
+   * still to come). Until then a new question would get the stopped answer's last words and its ending.
+   */
   get busy(): boolean {
-    return !!this.current;
+    return !!this.current || !!this.active;
   }
 
   async ask(text: string): Promise<void> {
@@ -101,7 +105,8 @@ export class AskChat {
     if (!turn) return;
     const answering = turn.state === 'answering';
     turn.state = 'stopped';
-    turn.activity = undefined;
+    // Busy until it has ended (see busy).
+    turn.activity = answering && this.child ? 'Stopping…' : undefined;
     this.d.changed();
     if (!answering || !this.child) return;
     const child = this.child;

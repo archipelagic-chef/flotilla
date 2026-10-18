@@ -1254,7 +1254,6 @@ export class TicketPanels implements vscode.Disposable {
     }
   }
 
-  /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
   /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */
   private readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1352,6 +1351,7 @@ export class TicketPanels implements vscode.Disposable {
     return { cwd, text };
   }
 
+  /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
   private async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
     await write(await this.source(issue));
     this.details.delete(issue);
