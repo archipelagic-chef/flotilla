@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { branchMatches, childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
-import { changedFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
+import { changedFiles, clashFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
@@ -195,19 +195,21 @@ export class Autopilot implements vscode.Disposable {
     return map;
   }
 
-  /** Notes a new hold in its ticket, once. */
+  /** Notes a new hold in its ticket, once (also across reloads: a hold the ticket already notes isn't noted again). */
   private async noteClashes(data: BacklogData): Promise<void> {
     for (const [id, clash] of this.clashes) {
       if (this.noted.has(`${id}>${clash.with}`)) continue;
       this.noted.add(`${id}>${clash.with}`);
       const item = data.items.find((i) => i.id === id);
       if (!item) continue;
-      const shown = clash.files.slice(0, 3).map((f) => `\`${f}\``).join(', ');
-      const files = clash.files.length > 3 ? `${shown} and ${clash.files.length - 3} more` : shown;
+      const lead = `The autopilot holds it back: it would change`;
+      const tail = `which ${clash.with} (in progress) changes too.`;
+      const { activity } = await this.deps.backlog.readTicketCached(item);
+      if (activity.some((e) => e.author === 'Flotilla' && e.body.startsWith(lead) && e.body.includes(tail))) continue;
       await this.deps.backlog.appendActivity(item, {
         date: entryDate(new Date()),
         author: 'Flotilla',
-        body: `The autopilot holds it back: it would change ${files}, which ${clash.with} (in progress) changes too. It starts once ${clash.with} is merged, so its work builds on that; start it yourself to go ahead anyway.`,
+        body: `${lead} ${clashFiles(clash)}, ${tail} It starts once ${clash.with} is merged, so its work builds on that; start it yourself to go ahead anyway.`,
       });
     }
   }

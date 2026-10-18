@@ -146,6 +146,12 @@ export interface Clash {
   files: string[];
 }
 
+/** A clash's files for a ticket's activity: the first three, and how many more. */
+export function clashFiles(clash: Clash): string {
+  const shown = clash.files.slice(0, 3).map((f) => `\`${f}\``).join(', ');
+  return clash.files.length > 3 ? `${shown} and ${clash.files.length - 3} more` : shown;
+}
+
 /** The first ticket in progress (busy: its id and the files it changes) that changes one of the firm files. */
 export function findClash(firm: readonly string[], busy: ReadonlyMap<string, ReadonlySet<string>>, self: string): Clash | undefined {
   for (const [id, files] of busy) {

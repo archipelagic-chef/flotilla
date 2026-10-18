@@ -353,6 +353,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
   );
+  ctx.clashOf = (id) => autopilot.clashOf(id);
   sidebar.useAutopilot(autopilot);
   // A repository on a slow drive is said so once, and packed in the background when it has too many loose objects.
   const storage = new StorageMonitor({ mainRoot: location.mainRoot, commonDir: location.commonDir, backlog, globalState: context.globalState, output });
