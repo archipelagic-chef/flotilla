@@ -1908,6 +1908,29 @@ ins {
 .backlog-item .link-badge .codicon {
   font-size: 13px;
 }
+/* Whether a ticket's work is merged (from git): green when it is, yellow while some isn't, muted for none yet. */
+.backlog-item .merge-chip {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid currentColor;
+}
+.backlog-item .merge-chip.merged {
+  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+}
+.backlog-item .merge-chip.partly,
+.backlog-item .merge-chip.unmerged {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
+.backlog-item .merge-warning {
+  flex: none;
+  display: inline-flex;
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
 /* How its branches stand against main (BL-55): a conflict, or tickets it waits for. */
 .backlog-item .drift-badge {
   flex: none;

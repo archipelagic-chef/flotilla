@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { branchMatches } from '../../features/backlog/backlog';
+import { branchMatches, laneOf, type BacklogLane } from '../../features/backlog/backlog';
+import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
 import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
@@ -10,17 +11,19 @@ import { menuContext, send } from './api';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
-const LANES: Array<{ status: BacklogStatus; title: string; icon: string }> = [
-  { status: 'todo', title: 'To Do', icon: 'circle-large-outline' },
-  { status: 'doing', title: 'In Progress', icon: 'circle-large-filled' },
-  { status: 'review', title: 'In Review', icon: 'eye' },
-  { status: 'done', title: 'Done', icon: 'pass-filled' },
+const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
+  { lane: 'todo', title: 'To Do', icon: 'circle-large-outline' },
+  { lane: 'doing', title: 'In Progress', icon: 'circle-large-filled' },
+  { lane: 'review', title: 'In Review', icon: 'eye' },
+  { lane: 'ready', title: 'Ready to Merge', icon: 'git-merge' },
+  { lane: 'done', title: 'Done', icon: 'pass-filled' },
 ];
 
-const EMPTY_LANE: Record<BacklogStatus, string> = {
+const EMPTY_LANE: Record<BacklogLane, string> = {
   todo: 'Nothing here',
   doing: 'Start an item to work on it',
   review: 'Move items here when their work waits for a review',
+  ready: 'Approved work waits here to be merged',
   done: 'Nothing here',
 };
 
@@ -52,20 +55,21 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
   const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
 
-  const drop = (e: DragEvent, status: BacklogStatus, before?: string) => {
+  // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
+  const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
     const id = e.dataTransfer?.getData(DRAG_TYPE);
     setDropAt(undefined);
-    if (!id) return;
+    if (!id || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
-    if (id !== before) send({ type: 'backlog', op: 'move', id, status, before });
+    if (id !== before) send({ type: 'backlog', op: 'move', id, status: lane, before });
   };
-  const dragOver = (e: DragEvent, status: BacklogStatus, before?: string) => {
-    if (!e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+  const dragOver = (e: DragEvent, lane: BacklogLane, before?: string) => {
+    if (!e.dataTransfer?.types.includes(DRAG_TYPE) || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    if (dropAt?.status !== status || dropAt.before !== before) setDropAt({ status, before });
+    if (dropAt?.status !== lane || dropAt.before !== before) setDropAt({ status: lane, before });
   };
 
   return (
@@ -167,22 +171,22 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
       {items &&
         items.length > 0 &&
         LANES.map((lane) => {
-          const filtered = lane.status === 'review' && mineOnly;
-          const laneItems = items.filter((i) => i.status === lane.status && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
-          const open = lane.status !== 'done' || doneOpen;
+          const filtered = lane.lane === 'review' && mineOnly;
+          const laneItems = items.filter((i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
+          const open = lane.lane !== 'done' || doneOpen;
           return (
-            <div key={lane.status} class={`group lane${dropAt?.status === lane.status && !dropAt.before ? ' drop-end' : ''}`}>
+            <div key={lane.lane} class={`group lane${dropAt?.status === lane.lane && !dropAt.before ? ' drop-end' : ''}`}>
               <div
                 class="row group-head"
-                onClick={lane.status === 'done' ? () => setDoneOpen(!doneOpen) : undefined}
-                onDragOver={(e) => dragOver(e, lane.status)}
-                onDrop={(e) => drop(e, lane.status)}
+                onClick={lane.lane === 'done' ? () => setDoneOpen(!doneOpen) : undefined}
+                onDragOver={(e) => dragOver(e, lane.lane)}
+                onDrop={(e) => drop(e, lane.lane)}
               >
                 <span class="name">{lane.title}</span>
-                {lane.status === 'done' && (
+                {lane.lane === 'done' && (
                   <i class={`codicon codicon-chevron-${doneOpen ? 'down' : 'right'} lane-chev`} aria-label={doneOpen ? 'Hide done items' : 'Show done items'} />
                 )}
-                {lane.status === 'review' && (
+                {lane.lane === 'review' && (
                   <button
                     class={`icon lane-filter${mineOnly ? ' on' : ''}`}
                     aria-pressed={mineOnly}
@@ -195,7 +199,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 <span class="badge">{laneItems.length}</span>
               </div>
               {open && (
-                <div class="lane-body" onDragOver={(e) => dragOver(e, lane.status)} onDrop={(e) => drop(e, lane.status)}>
+                <div class="lane-body" onDragOver={(e) => dragOver(e, lane.lane)} onDrop={(e) => drop(e, lane.lane)}>
                   {laneItems.map((item) => (
                     <ItemRow
                       key={item.id}
@@ -206,12 +210,12 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
                       dropBefore={dropAt?.before === item.id}
-                      onDragOver={(e) => dragOver(e, lane.status, item.id)}
-                      onDrop={(e) => drop(e, lane.status, item.id)}
+                      onDragOver={(e) => dragOver(e, lane.lane, item.id)}
+                      onDrop={(e) => drop(e, lane.lane, item.id)}
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.status]}</div>}
+                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
                 </div>
               )}
             </div>
@@ -434,6 +438,17 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
           {item.activity}
+        </span>
+      )}
+      {!renaming && !item.proposed && item.merge && mergeLabel(item.merge) && (
+        // Whether its work is merged (from git): "merged into main", "not merged (3 commits)", "partly merged".
+        <span class={`merge-chip ${item.merge.state}`} data-tip={item.merge.branches.map((b) => `${b.branch}: ${b.state}`).join('\n')}>
+          {mergeLabel(item.merge)}
+        </span>
+      )}
+      {!renaming && unmergedWarning(item, item.merge) && (
+        <span class="merge-warning" data-tip="Done, but its work isn't merged. Open its ticket to merge it, dismiss it or open its branch.">
+          <i class="codicon codicon-warning" />
         </span>
       )}
       {!renaming && conflictsOf(item).length > 0 && (

@@ -2,6 +2,7 @@ import { Component, render, type ComponentChildren, type JSX } from 'preact';
 import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
+import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
@@ -999,6 +1000,46 @@ function CleanUpPanel({ ticket }: { ticket: TicketView }) {
       >
         <i class="codicon codicon-check" /> Finish Clean-Up
       </ActionButton>
+    </div>
+  );
+}
+
+/**
+ * Whether the ticket's work is merged into the base (read from git). A Done ticket with unmerged work warns, and offers
+ * to merge it (a sibling ticket), dismiss it (superseded by another ticket) or open its branch.
+ */
+function MergePanel({ ticket }: { ticket: TicketView }) {
+  const merge = ticket.merge;
+  const warn = unmergedWarning(ticket.item, merge);
+  const unmerged = merge?.branches.filter((b) => b.state === 'unmerged') ?? [];
+  const branch = unmerged[0]?.branch;
+  const hasWorktree = !!branch && ticket.worktrees.some((w) => w.branch === branch);
+  const label = merge && mergeLabel(merge);
+  return (
+    <div class={`review-panel ${warn ? 'waiting' : merge?.state === 'merged' ? 'done' : ''}`}>
+      <i class={`codicon codicon-${warn ? 'warning' : 'git-merge'}`} />
+      <span class="review-text">
+        {label && <strong>{label[0].toUpperCase() + label.slice(1)}</strong>}
+        {warn && ` It's Done, but this work isn't in ${merge!.base.replace(/^origin\//, '')} yet.`}
+        {ticket.item.supersededBy && ` Superseded by ${ticket.item.supersededBy}.`}
+      </span>
+      {warn && (
+        <>
+          <button class="button secondary" onClick={() => send({ type: 'mergeSibling' })} title="Adds a ticket, next to this one, to merge the branch (asks which, when there are several)">
+            <i class="codicon codicon-git-merge" /> Merge…
+          </button>
+          <button class="button secondary" onClick={() => send({ type: 'dismissUnmerged' })} title="The work is superseded by another ticket (asks which)">
+            Dismiss
+          </button>
+          <button
+            class="button secondary"
+            onClick={() => (hasWorktree ? send({ type: 'openWorktree', key: ticket.worktrees.find((w) => w.branch === branch)!.key }) : send({ type: 'checkout', branch: branch! }))}
+            title={`Opens ${branch}: its worktree, or a new one for the branch`}
+          >
+            <i class="codicon codicon-git-branch" /> Open Branch
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -2273,6 +2314,7 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />

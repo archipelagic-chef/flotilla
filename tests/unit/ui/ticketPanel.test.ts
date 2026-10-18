@@ -44,6 +44,7 @@ function panelsWith(change: () => Promise<unknown>) {
     backlog,
     repository: { current: [], onDidChange: () => none },
     integrations: { current: [], issues: () => [], onDidChange: () => none },
+    merges: { watch: () => none, get: () => undefined },
     memento: { get: (_key: string, fallback: unknown) => fallback, update: async () => undefined },
   };
   const panels = new TicketPanels(deps as never) as unknown as {

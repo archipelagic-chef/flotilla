@@ -15,6 +15,7 @@ import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
+import type { Merges } from '../backlog/merges';
 import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -146,6 +147,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
+  private merges: Merges | undefined;
+
+  /** Whether the items' work is merged (shown on the cards; they move to Done by themselves when it is). */
+  useMerges(merges: Merges): void {
+    this.merges = merges;
+    this.subscriptions.push(merges.watch(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   private async postBacklog(): Promise<void> {
     const store = this.deps.backlog;
     const data = await store.read();
@@ -158,6 +168,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           const now = issues.find((i) => i.id === l.id);
           return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
         });
+        const merge = this.merges?.get(item.id);
         const queued = this.queue?.queuedFor(item.id);
         const need = needOf(item, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
         // The ticket's run: its last run block (the one its Run button runs).
@@ -171,6 +182,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           summary: summaryOf(ticket.description),
           activity: ticket.activity.length,
           ...(linked?.length ? { linked } : {}),
+          ...(merge ? { merge } : {}),
           ...(need ? { need } : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor } : {}),

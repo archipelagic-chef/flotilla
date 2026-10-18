@@ -5,6 +5,7 @@
 import type { AgentChoice, AgentEffort, BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
+import type { MergeInfo } from '../features/backlog/merged';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
@@ -134,6 +135,8 @@ export interface TicketView {
   history: Array<HistoryVersion & { log: TicketCommit[] }>;
   /** It has a branch whose history can be cleaned up. */
   canCleanUp: boolean;
+  /** Whether its work is merged into the base (read from git; undefined: no branch to tell about). */
+  merge?: MergeInfo;
   /** The model and effort agents use when the ticket doesn't choose (the settings; unset: Claude Code's defaults). */
   agentDefaults: AgentChoice;
   /** The model Light tickets' work runs on (flotilla.agents.lightModel); unset: no ticket can be Light. */
@@ -240,6 +243,9 @@ export type TicketWebviewMessage =
   | { type: 'compareCleanUp' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
+  /** Done with unmerged work: a sibling ticket to merge a branch (asks which, unless given); or dismiss the warning. */
+  | { type: 'mergeSibling'; branch?: string }
+  | { type: 'dismissUnmerged' }
   /** Run a run block of an agent's report (after asking): the Run buttons. */
   | { type: 'run'; key: string; index: number }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */

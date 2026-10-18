@@ -41,6 +41,7 @@ import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
 import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
+import { Merges } from './ui/backlog/merges';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { devGitHubApi } from './ui/ci/devGitHub';
@@ -167,9 +168,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     githubApi: devGitHubApi(context.extensionMode),
     onCiFinished: (items) => ciNotifier.notify(items),
   });
+  // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
+  const merges = new Merges({ backlog, mainRoot: location.mainRoot });
+  sidebar.useMerges(merges);
+  context.subscriptions.push(
+    repository.onDidChange(() => void merges.refresh()),
+    backlog.watch(() => void merges.refresh()),
+  );
+  void merges.refresh();
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
+  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, merges, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState, output,
   });
   context.subscriptions.push(tickets);
