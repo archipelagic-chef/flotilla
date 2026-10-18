@@ -333,7 +333,7 @@ export function runAgentHeadless(o: {
 
 /**
  * Whether Claude takes work again after a limit, asked without touching the agent's chat: a one-line question that
- * keeps no session, runs no hooks (no chat for Flotilla to record) and no tools. The limit it still hits, or undefined
+ * keeps no session, runs no hooks (no chat for Flotilla to record), and has no tools. The limit it still hits, or undefined
  * when it got through (or failed otherwise: the resumed chat then says why).
  */
 export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChannel }): Promise<UsageLimit | undefined> {
@@ -347,6 +347,12 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
     '1',
     '--settings',
     JSON.stringify({ disableAllHooks: true }),
+    // A few hundred tokens instead of Claude Code's whole prompt, tools and servers.
+    '--system-prompt',
+    'Reply with just: OK',
+    '--tools',
+    '',
+    '--strict-mcp-config',
     ...choiceArgs({ model: o.choice?.model }),
   ];
   return new Promise((resolve) => {
