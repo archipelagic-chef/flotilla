@@ -210,6 +210,35 @@ h2 {
   max-width: 100%;
   border-radius: 3px;
 }
+/* Videos (BL-79): a player with its controls, as wide as the text at most. */
+.rendered video.media {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  margin: 4px 0;
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background);
+}
+/* A Mermaid diagram, drawn from its block. Its labels wrap as Mermaid measured them, not anywhere like the text. */
+.rendered .diagram {
+  margin: 8px 0;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.rendered .diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+/* Why a picture, a video or a diagram isn't shown (too large, in the wrong place, or wrong). */
+.rendered .media-note {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-inputValidation-warningBackground, var(--vscode-textCodeBlock-background));
+  font-size: 0.92em;
+}
 .rendered a {
   color: var(--vscode-textLink-foreground);
 }

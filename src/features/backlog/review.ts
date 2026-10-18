@@ -246,12 +246,20 @@ export function verdictReport(
 }
 
 /**
+ * Show rather than tell (BL-79): whatever has a shape is shown, next to the text it explains. The ticket draws Mermaid
+ * blocks, shows images and GIFs, and plays videos (files next to it, up to MEDIA_LIMITS).
+ */
+export function showNotes(o: { id: string; backlogDir: string }): string {
+  const folder = `${o.backlogDir}/${o.id}`;
+  return `Show rather than tell: when the work has a shape, show it, next to the text it explains (not at the end). A flow or a sequence: a diagram, as a \`\`\`mermaid block (the ticket draws it). A structure: a tree or boxes (Mermaid, or an SVG). Before and after: two screenshots. A UI change: a short demo GIF or video (MP4 or WebM). Save files in ${folder}/ and show each with ![What it shows](${o.id}/name.svg) (.png, .gif, .mp4 and .webm the same way; videos get a player). Keep them small: images and GIFs at most 2 MB, videos at most 10 MB; larger ones aren't shown.`;
+}
+
+/**
  * How a report that hands work over for review says what to look at: in order, with links to the files (which the
  * ticket opens at their lines), and pictures where they explain better (files next to the ticket, which it shows).
  */
 export function reviewNotes(o: { id: string; backlogDir: string }): string {
-  const folder = `${o.backlogDir}/${o.id}`;
-  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\` or \`open\`, which read as the kind.\`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. Where a picture explains it better than words (a flow, a structure, before and after, a screenshot), add one: save it as an SVG (or PNG) file in ${folder}/ and show it with ![What it shows](${o.id}/name.svg).`;
+  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\` or \`open\`, which read as the kind.\`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. ${showNotes(o)}`;
 }
 
 /**
@@ -279,6 +287,7 @@ export function reviewerPrompt(o: {
     CONTEXT_NOTES,
     `Run the work the way the ticket says, if you can. Its run block is the last fenced block whose info string is \`run\`, in an agent's report in the activity (if there's none, the "How to review" notes of the latest report say how to try it). The info string is \`run\`, then the kind if there is one, then a title: with no kind the block is shell commands; a block whose kind is \`launch\`, \`task\` or \`open\` is skipped. Run the shell lines that need no window (tests, a CLI, a build). If a block mixes shell lines with ones that open a window or a browser, run the window-free lines and skip the rest. Say which lines you skipped and why. Run only what the block says, and nothing that deploys or deletes data.`,
     `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time). Start the entry with your verdict as a line, exactly "Verdict: approved" or "Verdict: changes requested", then at most 3 lines right under it, with no blank line between (what's good, and what must change); then a blank line and the details: what must change, as a checklist, specific enough to act on; what you ran and what it gave (or why you didn't run it); and any files the run left changed in \`git status\`.`,
+    `If the work changes what the user sees (the UI), the report must show it: a screenshot, before and after, or a demo GIF or video. When it doesn't, request one in your checklist.`,
     `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
     `Never change issue trackers (Jira, GitHub Issues), and don't push.`,
   ].join('\n\n');

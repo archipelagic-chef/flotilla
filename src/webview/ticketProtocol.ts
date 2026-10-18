@@ -7,6 +7,7 @@ import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
+import type { MediaKind } from '../features/backlog/media';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
@@ -183,8 +184,10 @@ export type TicketWebviewMessage =
   | { type: 'status'; status: BacklogStatus }
   /** null clears it. */
   | { type: 'priority'; priority: BacklogPriority | null }
-  /** A pasted or dropped image, base64. */
+  /** A pasted or dropped image or video, base64. */
   | { type: 'image'; requestId: number; name: string; data: string }
+  /** A pasted or dropped file over its kind's size limit, not sent (the host says so). */
+  | { type: 'mediaRefused'; name: string; kind: MediaKind; size: number }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
   | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
   /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */

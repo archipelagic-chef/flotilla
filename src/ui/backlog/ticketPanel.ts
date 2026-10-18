@@ -33,6 +33,7 @@ import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer } from '../../features/backlog/report';
+import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -90,8 +91,6 @@ export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thena
   return memento.update(SHOW_ACTIVITY_KEY, shown);
 }
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-
 /** A path's real location (through symlinks), or the path itself when there's no such file. */
 function realPath(p: string): string {
   return fs.existsSync(p) ? fs.realpathSync(p) : p;
@@ -102,7 +101,7 @@ const rendered = new Map<string, string>();
 const RENDERED_MAX = 2000;
 
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
-async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
+export async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
   if (!text.trim()) return '';
   const key = crypto.createHash('sha1').update(text).digest('hex');
   let html = rendered.get(key);
@@ -115,53 +114,84 @@ async function renderMarkdown(text: string, webview: vscode.Webview, dir: string
       html = `<pre>${text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
     }
   }
+  html = stripStyles(html);
   // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
   // Others, in the repository (from its root: the ticket's worktrees, then the main one) or anywhere on disk, are
-  // embedded.
-  return replaceImages(html, async (src) => {
-    if (/^(https?|data):/i.test(src) || src.startsWith('//')) return undefined;
+  // embedded. Videos (MP4, WebM) get a player; a file over its kind's limit, a note instead (BL-79).
+  return replaceMedia(html, async (src) => {
+    const type = mediaType(src);
+    if (/^data:/i.test(src)) return undefined;
+    if (/^https?:/i.test(src) || src.startsWith('//')) return type?.kind === 'video' ? { src, kind: 'video' } : undefined;
     let rel = src;
     try {
       rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
     } catch {
       // As written.
     }
+    const name = path.basename(rel);
     const besideTicket = path.resolve(dir, rel);
-    if (besideTicket.startsWith(dir + path.sep) && fs.existsSync(besideTicket)) return webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString();
+    if (besideTicket.startsWith(dir + path.sep)) {
+      const bytes = await fileSize(besideTicket);
+      if (bytes !== undefined) {
+        if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
+        return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
+      }
+    }
+    if (!type) return undefined;
     const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
     for (const file of candidates) {
-      const uri = await imageDataUri(file);
-      if (uri) return uri;
+      const bytes = await fileSize(file);
+      if (bytes === undefined) continue;
+      // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
+      if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
+      if (tooLarge('image', bytes)) return { note: tooLargeNote(name, 'image', bytes) };
+      const uri = await imageDataUri(file, type.type);
+      if (uri) return { src: uri, kind: 'image' };
     }
     return undefined;
   });
 }
 
-const IMAGE_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.bmp': 'image/bmp',
-  '.avif': 'image/avif',
-};
+// A tag, its quoted attribute values may hold ">"; and an attribute in it (its name, and its value if it has one).
+const TAG = /<([a-zA-Z][^\s/>]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g;
+const ATTRIBUTE = /(\s*)([^\s"'>/=]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?/g;
+
+/**
+ * Html without its styles: no <style> elements and no style attributes. The page allows inline styles for Mermaid's
+ * diagrams, drawn in the webview (BL-79); what the host renders (a stranger's GitHub issue, Jira's html) mustn't use
+ * that to cover or hide the ticket.
+ */
+export function stripStyles(html: string): string {
+  return html
+    .replace(/<style\b(?:"[^"]*"|'[^']*'|[^'">])*>[\s\S]*?<\/style\s*>/gi, '')
+    .replace(/<\/?style\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi, '')
+    .replace(TAG, (tag, name: string, attributes: string) =>
+      /\bstyle\b/i.test(attributes) ? `<${name}${attributes.replace(ATTRIBUTE, (a, _s: string, attr: string) => (attr.toLowerCase() === 'style' ? '' : a))}>` : tag,
+    );
+}
+
+/** A file's size; undefined if it isn't a file, or isn't there. */
+async function fileSize(file: string): Promise<number | undefined> {
+  try {
+    const stat = await fs.promises.stat(file);
+    return stat.isFile() ? stat.size : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Image files as data: URIs, while each keeps its time and size; the oldest go once they fill IMAGE_CACHE_CHARS. */
 const images = new Map<string, { stamp: string; uri: string }>();
 const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
 let imageChars = 0;
 
-/** An image file as a data: URI (at most MAX_IMAGE_BYTES); undefined if it isn't one, or isn't there. */
-async function imageDataUri(file: string): Promise<string | undefined> {
-  const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
-  if (!type) return undefined;
+/** An image file as a data: URI; undefined if it isn't there. */
+async function imageDataUri(file: string, type: string): Promise<string | undefined> {
   try {
     const stat = await fs.promises.stat(file);
-    if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return undefined;
+    if (!stat.isFile()) return undefined;
     const stamp = `${stat.mtimeMs}:${stat.size}`;
     const known = images.get(file);
     if (known?.stamp === stamp) return known.uri;
@@ -181,14 +211,36 @@ async function imageDataUri(file: string): Promise<string | undefined> {
   }
 }
 
+/** What an image in the html becomes: an image or a video from src, or a note saying why it isn't shown. */
+export type Media = { src: string; kind: MediaKind } | { note: string };
+
+const IMG = /<img\b[^>]*>/g;
+const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+/** Replaces the images in html with what media says they are (undefined: kept as they are). */
+export async function replaceMedia(html: string, media: (src: string) => Promise<Media | undefined>): Promise<string> {
+  const found = [...new Set((html.match(IMG) ?? []).map(srcOf).filter((s): s is string => !!s))];
+  const resolved = new Map(await Promise.all(found.map(async (s) => [s, await media(s).catch(() => undefined)] as const)));
+  return html.replace(IMG, (tag) => {
+    const src = srcOf(tag);
+    const m = src === undefined ? undefined : resolved.get(src);
+    if (!m) return tag;
+    if ('note' in m) return `<span class="media-note"><i class="codicon codicon-file-media"></i> ${escapeHtml(m.note)}</span>`;
+    if (m.kind === 'video') {
+      // A player with its controls; it doesn't play until asked (so no sound at once), and loads only its first frame.
+      const alt = /\salt="([^"]*)"/.exec(tag)?.[1];
+      return `<video class="media" src="${escapeHtml(m.src)}" controls preload="metadata"${alt ? ` title="${alt}" aria-label="${alt}"` : ''}></video>`;
+    }
+    return tag.replace(/(\ssrc=")[^"]*(")/, (_m, a: string, c: string) => `${a}${escapeHtml(m.src)}${c}`);
+  });
+}
+
 /** Replaces the images' sources in html (src: the new one, or undefined to keep it). */
-export async function replaceImages(html: string, src: (current: string) => Promise<string | undefined>): Promise<string> {
-  const pattern = /(<img\b[^>]*?\ssrc=")([^"]+)(")/g;
-  const found = [...new Set([...html.matchAll(pattern)].map((m) => m[2].replace(/&amp;/g, '&')))];
-  const replaced = new Map(await Promise.all(found.map(async (s) => [s, await src(s).catch(() => undefined)] as const)));
-  return html.replace(pattern, (m, a: string, s: string, c: string) => {
-    const next = replaced.get(s.replace(/&amp;/g, '&'));
-    return next ? `${a}${next}${c}` : m;
+export function replaceImages(html: string, src: (current: string) => Promise<string | undefined>): Promise<string> {
+  return replaceMedia(html, async (s) => {
+    const next = await src(s);
+    return next ? { src: next, kind: 'image' } : undefined;
   });
 }
 
@@ -530,7 +582,8 @@ export class TicketPanels implements vscode.Disposable {
   /** Images in a tracker's HTML that need its login (Jira's attachments), fetched with it and embedded; cached. */
   private readonly trackerImageCache = new Map<string, Promise<string | undefined>>();
 
-  private async trackerImages(issue: string, html: string): Promise<string> {
+  private async trackerImages(issue: string, tracker: string): Promise<string> {
+    const html = stripStyles(tracker);
     if (!html.includes('<img')) return html;
     const source = await this.source(issue).catch(() => undefined);
     if (!source?.image) return html;
@@ -1113,12 +1166,19 @@ export class TicketPanels implements vscode.Disposable {
         break;
       case 'image': {
         const bytes = Buffer.from(m.data, 'base64');
-        if (bytes.length > MAX_IMAGE_BYTES) throw new Error('Images can be at most 10 MB.');
+        const kind = mediaType(m.name)?.kind ?? 'image';
+        if (tooLarge(kind, bytes.length)) {
+          void panel.webview.postMessage({ type: 'imageSaved', requestId: m.requestId, markdown: '' } satisfies TicketHostMessage);
+          throw new Error(tooLargeNote(m.name, kind, bytes.length));
+        }
         const rel = await backlog.saveImage(id, m.name, bytes);
         const reply: TicketHostMessage = { type: 'imageSaved', requestId: m.requestId, markdown: `![${path.basename(rel)}](${rel})` };
         void panel.webview.postMessage(reply);
         return;
       }
+      case 'mediaRefused':
+        void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
+        return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
         return;
@@ -1434,13 +1494,13 @@ export class TicketPanels implements vscode.Disposable {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${uri('codicons', 'codicon.css')}">
 <link rel="stylesheet" href="${uri('ticket.css')}">
 </head>
 <body>
-<div id="root"></div>
+<div id="root" data-mermaid="${uri('mermaid.js')}"></div>
 <script nonce="${nonce}" src="${uri('ticket.js')}"></script>
 </body>
 </html>`;

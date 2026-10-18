@@ -59,6 +59,12 @@ describe('shaping', () => {
     expect(prompt).toContain('Edit the ticket with the Edit tool');
   });
 
+  it('has the description show what has a shape, as a Mermaid diagram next to its text', () => {
+    for (const prompt of [shapingPrompt({ item: { id: 'BL-45', title: 'Shape a ticket' }, agent: 'Nova-7', ticket: '/t/BL-45.md' }), followUpPrompt({ ticket: '/t/BL-45.md', opened: false })]) {
+      expect(prompt).toContain('show it with a ```mermaid diagram next to the text it explains');
+    }
+  });
+
   it('tells a resumed discussion what changed, or that it was opened without a comment', () => {
     const comment = followUpPrompt({ ticket: '/t/BL-45.md', opened: false });
     expect(comment).toContain('wrote in the ticket since your last reply');

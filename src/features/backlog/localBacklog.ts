@@ -268,7 +268,7 @@ export class LocalBacklog {
     const folder = path.join(this.dir, id);
     await this.ensureDir();
     await fs.promises.mkdir(folder, { recursive: true });
-    const ext = (path.extname(name).toLowerCase().match(/^\.(png|jpe?g|gif|webp|svg)$/) ?? ['.png'])[0];
+    const ext = (path.extname(name).toLowerCase().match(/^\.(png|jpe?g|gif|webp|svg|mp4|webm)$/) ?? ['.png'])[0];
     const base = path.basename(name, path.extname(name)).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'image';
     let file = `${base}${ext}`;
     for (let n = 2; fs.existsSync(path.join(folder, file)); n++) file = `${base}-${n}${ext}`;

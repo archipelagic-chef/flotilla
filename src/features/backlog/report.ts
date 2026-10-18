@@ -55,7 +55,7 @@ const KINDS: Record<string, QuestionKind> = { one: 'one', several: 'several', te
 
 /** What agents are told about a report's shape: the summary, the Needs line and the questions. */
 export const REPORT_FORMAT = [
-  'Start each report with a summary of at most 3 lines, then a line "Needs from you: nothing", or "Needs from you:" and what you need. The details (how to review, findings) follow it: the ticket folds them under the summary, so keep the summary to what matters most.',
+  'Start each report with a summary of at most 3 lines, then a line "Needs from you: nothing", or "Needs from you:" and what you need. The details (how to review, findings) follow it: the ticket folds them under the summary, so keep the summary to what matters most. Where a diagram says it better than words (the steps of a plan, a flow, a structure), draw it in the report as a ```mermaid block.',
   'To ask the user, put the questions after that line, each in a block fenced with ```question: its first line is the question, then the choices as "- " lines, with the one you suggest marked "(recommended)". The user clicks an answer: one choice (the default), or "choose: several" for checkboxes. "Other…" is there for a free answer. With no choices, the question gets a text box; "choose: yes/no" gives Yes and No. Ask only what you can\'t decide yourself, and stop until you\'re resumed with the answer.',
 ].join('\n\n');
 
