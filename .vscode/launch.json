@@ -4,20 +4,45 @@
     {
       // Opens the test window on .playground. Works the same on the host and in the devcontainer:
       // press F5 in each to get two windows on the same repo, both running this build.
+      // Both configurations use the debug profile (.vscode-test/debug-profile, see scripts/debug-profile.mjs): the user's
+      // settings, secrets and state stay untouched, and only Claude Code is installed there (.vscode-test/debug-extensions).
       "name": "Run Extension (playground)",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/.playground"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--user-data-dir=${workspaceFolder}/.vscode-test/debug-profile",
+        "--extensions-dir=${workspaceFolder}/.vscode-test/debug-extensions",
+        "${workspaceFolder}/.playground"
+      ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
       "preLaunchTask": "flotilla: build + playground"
+    },
+    {
+      // Like the one above, but first moves .playground aside (to .playground.old-<date>) and builds a fresh one.
+      "name": "Run Extension (fresh playground)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--user-data-dir=${workspaceFolder}/.vscode-test/debug-profile",
+        "--extensions-dir=${workspaceFolder}/.vscode-test/debug-extensions",
+        "${workspaceFolder}/.playground"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "flotilla: build + fresh playground"
     },
     {
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--user-data-dir=${workspaceFolder}/.vscode-test/debug-profile",
+        "--extensions-dir=${workspaceFolder}/.vscode-test/debug-extensions"
+      ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "npm: build"
+      "preLaunchTask": "flotilla: build + debug profile"
     }
   ]
 }

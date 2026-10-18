@@ -3,12 +3,17 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { childrenOf, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { branchMatches, childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import { changedFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
+import { resolveBase } from '../../features/workstreams/progress';
+import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import { memoryShortage } from './agentRunner';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -31,25 +36,34 @@ export interface AutopilotDeps {
 /** What the backlog view shows of the autopilot. */
 export interface AutopilotView {
   enabled: boolean;
-  /** Agents working for it now, and the most at once. */
+  /** Agents working now (for any work), and the most at once (flotilla.agents.maxRunning). */
   running: number;
   max: number;
+  /** Starts waiting for a free slot (or for memory): they go on when there's room, reviews and resumes first. */
+  waiting: number;
   /** Waiting for Claude's usage limit to reset (ISO 8601). */
   waitingUntil?: string;
+  /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
+  waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
 }
 
-/** The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. */
+/**
+ * The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. A ticket
+ * with a discussion with an agent (BL-45) waits: its owner accepts it or starts it by hand, which ends the discussion
+ * (accepting does; a To Do is started with Start), so only then is it taken.
+ */
 export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): BacklogItem | undefined {
-  return data.items.find((i) => i.status === 'todo' && !i.proposed && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
+  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
 }
 
 /**
  * The autopilot: while it's on, agents take the backlog's To Do items in order and work on them without a window, up
- * to flotilla.autopilot.maxAgents at once: a worktree each, In Progress, reports in the ticket; their "Ready for
- * review." goes on to review. On a usage limit no new work starts until it resets (the paused agents go on then). Only
- * the leading window runs it.
+ * to the agent limit (flotilla.agents.maxRunning) at once, shared with the reviews: a worktree each, In Progress,
+ * reports in the ticket; their "Ready for review." goes on to review. Nothing new starts while work waits in the queue
+ * (reviews and resumes go first), on a usage limit until it resets (the paused agents go on then), or while the machine
+ * is short of memory (it tries again on the next tick). Only the leading window runs it.
  */
 export class Autopilot implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -59,6 +73,7 @@ export class Autopilot implements vscode.Disposable {
   private readonly failed = new Set<string>();
   private ticking = false;
   private waitingUntil: Date | undefined;
+  private waitingForMemory = false;
 
   constructor(private readonly deps: AutopilotDeps) {
     const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
@@ -102,10 +117,6 @@ export class Autopilot implements vscode.Disposable {
     return this.on;
   }
 
-  private get max(): number {
-    return Math.max(1, vscode.workspace.getConfiguration('flotilla').get<number>('autopilot.maxAgents', 2));
-  }
-
   async setEnabled(enabled: boolean): Promise<void> {
     await this.deps.backlog.ensureDir();
     const mac = this.sign(await this.deps.key(), enabled);
@@ -123,43 +134,155 @@ export class Autopilot implements vscode.Disposable {
     return {
       enabled: this.enabled,
       running: this.deps.reviews.running,
-      max: this.max,
+      max: this.deps.reviews.limit,
+      waiting: this.deps.reviews.waitingCount,
       ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now() ? { waitingUntil: this.waitingUntil.toISOString() } : {}),
+      ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
       elsewhere: !this.deps.leader.isLeader,
     };
+  }
+
+  /** The To Do tickets held back because they'd change files a ticket in progress changes (BL-71), as of the last tick. */
+  private clashes = new Map<string, Clash>();
+  /** Maps of To Do tickets, by id: kept while the backlog and the ticket stay as they were (at most 10 minutes). */
+  private readonly maps = new Map<string, { key: string; at: number; map: CodeMap }>();
+  /** The holds noted in their tickets ("BL-7>BL-3"): each once. */
+  private readonly noted = new Set<string>();
+
+  /** Why a To Do ticket waits for another one in progress (BL-71), if it does. */
+  clashOf(id: string): Clash | undefined {
+    return this.clashes.get(id);
+  }
+
+  /**
+   * The To Do tickets whose map is firm about files a ticket in progress changes (BL-71): they wait for it, so their
+   * work isn't built on code about to change under it (and done again after the merge). Off with
+   * flotilla.autopilot.avoidClashes.
+   */
+  private async clashing(data: BacklogData): Promise<Map<string, Clash>> {
+    const found = new Map<string, Clash>();
+    // Without the repository's worktrees (yet), there's nothing to compare.
+    const main = this.deps.repository?.current.find((w) => w.worktree.isMain)?.worktree.path;
+    if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', true)) return found;
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping);
+    const active = data.items.filter((i) => i.status === 'doing' || i.status === 'review');
+    if (!todo.length || !active.length) return found;
+    const base = (await resolveBase(main, readSettings().defaultBase)) ?? 'HEAD';
+    const busy = new Map<string, Set<string>>();
+    for (const item of active) {
+      const files = new Set<string>();
+      for (const w of this.deps.repository.current) {
+        if (w.worktree.isMain || !w.worktree.path || !w.worktree.branch || !branchMatches(item, w.worktree.branch)) continue;
+        for (const f of await changedFiles(w.worktree.path, base)) files.add(f);
+      }
+      if (files.size) busy.set(item.id, files);
+    }
+    for (const item of todo) {
+      const map = await this.mapOf(item, data, main);
+      const clash = map && findClash(map.firm, busy, item.id);
+      if (clash) found.set(item.id, clash);
+    }
+    return found;
+  }
+
+  private async mapOf(item: BacklogItem, data: BacklogData, main: string): Promise<CodeMap | undefined> {
+    const ticket = await this.deps.backlog.readTicketCached(item);
+    const key = JSON.stringify([ticket.description, item.parent, data.items.map((i) => [i.id, i.status, i.parent])]);
+    const known = this.maps.get(item.id);
+    if (known && known.key === key && Date.now() - known.at < 10 * 60_000) return known.map;
+    const map = await codeMap(main, item, ticket.description, data.items).catch(() => undefined);
+    if (map) this.maps.set(item.id, { key, at: Date.now(), map });
+    return map;
+  }
+
+  /** Notes a new hold in its ticket, once. */
+  private async noteClashes(data: BacklogData): Promise<void> {
+    for (const [id, clash] of this.clashes) {
+      if (this.noted.has(`${id}>${clash.with}`)) continue;
+      this.noted.add(`${id}>${clash.with}`);
+      const item = data.items.find((i) => i.id === id);
+      if (!item) continue;
+      const shown = clash.files.slice(0, 3).map((f) => `\`${f}\``).join(', ');
+      const files = clash.files.length > 3 ? `${shown} and ${clash.files.length - 3} more` : shown;
+      await this.deps.backlog.appendActivity(item, {
+        date: entryDate(new Date()),
+        author: 'Flotilla',
+        body: `The autopilot holds it back: it would change ${files}, which ${clash.with} (in progress) changes too. It starts once ${clash.with} is merged, so its work builds on that; start it yourself to go ahead anyway.`,
+      });
+    }
+  }
+
+  /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55). */
+  private async waiting(data: BacklogData): Promise<string[]> {
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed);
+    const waits = await Promise.all(
+      todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).length > 0),
+    );
+    return todo.filter((_, n) => waits[n]).map((i) => i.id);
   }
 
   /** Starts work on the next item, while there's room for another agent. */
   async tick(): Promise<void> {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
     this.ticking = true;
+    let memoryWait = false;
     try {
       const was = this.waitingUntil?.getTime();
       this.waitingUntil = await this.deps.reviews.pausedUntil();
       if (this.waitingUntil?.getTime() !== was) this.changed.fire();
       if (this.waitingUntil) return;
-      while (this.enabled && this.deps.reviews.running < this.max) {
-        const item = nextForAutopilot(await this.deps.backlog.read(), this.failed);
+      while (this.enabled && this.deps.reviews.canStartNew()) {
+        const data = await this.deps.backlog.read();
+        const clashes = await this.clashing(data);
+        const changed = JSON.stringify([...clashes]) !== JSON.stringify([...this.clashes]);
+        this.clashes = clashes;
+        if (changed) this.changed.fire();
+        await this.noteClashes(data);
+        const item = nextForAutopilot(data, new Set([...this.failed, ...(await this.waiting(data)), ...clashes.keys()]));
         if (!item) return;
-        await this.start(item);
+        // Too little memory for another agent: this one waits, and the next tick tries again.
+        if (memoryShortage()) {
+          memoryWait = true;
+          return;
+        }
+        // Admitted before the start's awaits (preparing the worktree takes a while): its slot and memory are reserved, so
+        // a start meanwhile sees them.
+        const slot = this.deps.reviews.admitNew(item.id);
+        if (slot === undefined) return;
+        await this.start(item, slot);
         this.changed.fire();
       }
     } finally {
       this.ticking = false;
+      if (memoryWait !== this.waitingForMemory) {
+        this.waitingForMemory = memoryWait;
+        this.changed.fire();
+      }
     }
   }
 
-  private async start(item: BacklogItem): Promise<void> {
+  /** Starts an agent on the item; `slot` is its admitted start (see ReviewLoop.admitNew), given back if the start fails. */
+  private async start(item: BacklogItem, slot: number): Promise<void> {
     try {
       const ws = await this.deps.prepareWorktree(item);
       if (!ws) throw new Error('it has no worktree free for an agent (one of its worktrees is in use, or its branch is checked out elsewhere).');
       const fresh = (await this.deps.backlog.read()).items.find((i) => i.id === item.id) ?? item;
-      await this.deps.reviews.startWork(fresh, ws);
+      // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
+      if (fresh.status !== 'doing') {
+        this.deps.reviews.giveBack(slot);
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
+        return;
+      }
+      await this.deps.reviews.startWork(fresh, ws, slot);
+      if (fresh.startFailed) await this.deps.backlog.change((d) => setStartFailed(d, item.id));
     } catch (error) {
+      this.deps.reviews.giveBack(slot);
       this.failed.add(item.id);
       const message = error instanceof Error ? error.message : String(error);
       this.deps.output.appendLine(`Autopilot couldn't start ${item.id}: ${message}`);
-      await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
+      const now = new Date();
+      await this.deps.backlog.change((d) => setStartFailed(d, item.id, { message, since: now.toISOString() }));
+      await this.deps.backlog.appendActivity(item, { date: entryDate(now), author: 'Flotilla', body: `The autopilot couldn't start on it: ${message}` });
     }
   }
 }

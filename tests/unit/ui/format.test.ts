@@ -38,6 +38,7 @@ function makeWs(overrides: Partial<Workstream> = {}, wt: Partial<ResolvedWorktre
     progress: undefined,
     attention: 'idle',
     isCurrent: false,
+    refreshedAt: 0,
     ...overrides,
   };
 }
@@ -62,7 +63,7 @@ describe('describeWorkstream', () => {
     const ws = makeWs({
       attention: 'waiting-for-input',
       agent: { state: 'waiting-for-input', updatedAt: ago(2 * MIN) },
-      progress: { base: 'main', ahead: 3, behind: 0, added: 120, deleted: 40, lastSubject: 'x' },
+      progress: { base: 'main', baseHead: 'abc', ahead: 3, behind: 0, added: 120, deleted: 40, lastSubject: 'x' },
       windowOpen: true,
       heartbeat: { env: 'container', os: 'linux', updatedAt: now },
     });

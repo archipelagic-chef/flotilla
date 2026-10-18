@@ -1,10 +1,13 @@
 import { execFile } from 'node:child_process';
+import { currentGitPriority, gitQueue } from './gitQueue';
 
 export class GitError extends Error {
   constructor(
     readonly args: readonly string[],
     readonly exitCode: number | null,
     readonly stderr: string,
+    /** What it printed before failing (some commands report through their exit code, e.g. merge-tree's conflicts). */
+    readonly stdout = '',
   ) {
     super(`git ${args.join(' ')} failed${exitCode === null ? '' : ` (exit ${exitCode})`}: ${stderr.trim() || 'no output'}`);
     this.name = 'GitError';
@@ -16,13 +19,20 @@ export interface RunGitOptions {
   timeoutMs?: number;
   /** Extra environment variables, merged over the defaults. */
   env?: Record<string, string>;
+  /** Written to git's standard input (for --stdin). */
+  input?: string;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** Runs git and returns its text output. Waits its turn behind the other git processes (see gitQueue). */
 export function runGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
+  return gitQueue.run(currentGitPriority(), () => execGit(args, opts));
+}
+
+function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'git',
       [...args],
       {
@@ -36,17 +46,22 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
       (error, stdout, stderr) => {
         if (error) {
           const code = (error as { code?: unknown }).code;
-          reject(new GitError(args, typeof code === 'number' ? code : null, stderr || error.message));
+          reject(new GitError(args, typeof code === 'number' ? code : null, stderr || error.message, stdout));
         } else {
           resolve(stdout);
         }
       },
     );
+    if (opts.input !== undefined) child.stdin?.end(opts.input);
   });
 }
 
 /** runGit, for output that may not be text (a file's bytes). */
 export function runGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
+  return gitQueue.run(currentGitPriority(), () => execGitBytes(args, opts));
+}
+
+function execGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
