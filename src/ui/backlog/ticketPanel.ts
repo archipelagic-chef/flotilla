@@ -108,6 +108,7 @@ export async function renderMarkdown(text: string, webview: vscode.Webview, dir:
       html = `<pre>${text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
     }
   }
+  html = stripStyles(html);
   // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
@@ -145,6 +146,24 @@ export async function renderMarkdown(text: string, webview: vscode.Webview, dir:
     }
     return undefined;
   });
+}
+
+// A tag, its quoted attribute values may hold ">"; and an attribute in it (its name, and its value if it has one).
+const TAG = /<([a-zA-Z][^\s/>]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g;
+const ATTRIBUTE = /(\s*)([^\s"'>/=]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?/g;
+
+/**
+ * Html without its styles: no <style> elements and no style attributes. The page allows inline styles for Mermaid's
+ * diagrams, drawn in the webview (BL-79); what the host renders (a stranger's GitHub issue, Jira's html) mustn't use
+ * that to cover or hide the ticket.
+ */
+export function stripStyles(html: string): string {
+  return html
+    .replace(/<style\b(?:"[^"]*"|'[^']*'|[^'">])*>[\s\S]*?<\/style\s*>/gi, '')
+    .replace(/<\/?style\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi, '')
+    .replace(TAG, (tag, name: string, attributes: string) =>
+      /\bstyle\b/i.test(attributes) ? `<${name}${attributes.replace(ATTRIBUTE, (a, _s: string, attr: string) => (attr.toLowerCase() === 'style' ? '' : a))}>` : tag,
+    );
 }
 
 /** A file's size; undefined if it isn't a file, or isn't there. */
@@ -535,7 +554,8 @@ export class TicketPanels implements vscode.Disposable {
   /** Images in a tracker's HTML that need its login (Jira's attachments), fetched with it and embedded; cached. */
   private readonly trackerImageCache = new Map<string, Promise<string | undefined>>();
 
-  private async trackerImages(issue: string, html: string): Promise<string> {
+  private async trackerImages(issue: string, tracker: string): Promise<string> {
+    const html = stripStyles(tracker);
     if (!html.includes('<img')) return html;
     const source = await this.source(issue).catch(() => undefined);
     if (!source?.image) return html;

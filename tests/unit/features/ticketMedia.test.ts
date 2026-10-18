@@ -12,7 +12,7 @@ vi.mock('vscode', () => ({
   workspace: {},
   EventEmitter: class {},
 }));
-const { renderMarkdown, replaceMedia } = await import('../../../src/ui/backlog/ticketPanel');
+const { renderMarkdown, replaceMedia, stripStyles } = await import('../../../src/ui/backlog/ticketPanel');
 
 const webview = { asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `webview:${u.fsPath.replace(/\\/g, '/')}` }) } as never;
 
@@ -103,5 +103,22 @@ describe('media in a ticket', () => {
     expect(html).toContain('a &lt;b&gt;&quot;note&quot;&lt;/b&gt;');
     const video = await replaceMedia('<img src="a.mp4">', async () => ({ src: 'https://x/a.mp4?a=1&b="2"', kind: 'video' }));
     expect(video).toBe('<video class="media" src="https://x/a.mp4?a=1&amp;b=&quot;2&quot;" controls preload="metadata"></video>');
+  });
+});
+
+describe('styles in rendered html', () => {
+  it('are stripped from what a ticket renders: inline styles are for diagrams the webview draws only', async () => {
+    const html = await renderMarkdown(
+      '<p style="position:fixed;inset:0">Over all</p><style>.rendered { display: none }</style><a href="https://x" STYLE=\'opacity:0\' title="a>b">x</a>',
+      webview,
+      '/nonexistent',
+    );
+    expect(html).toBe('<p>Over all</p><a href="https://x" title="a>b">x</a>');
+  });
+
+  it('keep other attributes, and text that only mentions a style', () => {
+    expect(stripStyles('<p class="a" data-style="b" style=color:red>style="x" stays</p>')).toBe('<p class="a" data-style="b">style="x" stays</p>');
+    expect(stripStyles('<svg><style>*{}</style><g style="fill:red" id="g"/></svg>')).toBe('<svg><g id="g"/></svg>');
+    expect(stripStyles('<STYLE type="text/css">x</STYLE>after <style>unclosed')).toBe('after unclosed');
   });
 });
