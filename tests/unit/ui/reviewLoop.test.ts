@@ -13,6 +13,8 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+/** Is Claude still limited? (undefined: it takes work again.) */
+const probe = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
 const levels = vi.hoisted(() => ({ now: {} as { strong?: string; light?: string } }));
 const quick = vi.hoisted(() => ({ choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>) }));
 
@@ -37,6 +39,7 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   describeChoice: () => '',
   isRunningHeadless: () => false,
   modelLevels: () => levels.now,
+  probeLimit: probe,
   memoryShortage: () => {
     if (memory.free === undefined) return memory.short;
     const left = memory.free - memory.live.size * 300;
@@ -420,6 +423,65 @@ describe('the agent limit', () => {
     await settle();
     expect(started()).toHaveLength(3);
     expect(spawn.mock.calls[2][0]).toMatchObject({ resume: 'session-3' });
+    loop.dispose();
+  });
+
+  it('retries a guessed-at limit outside the chat, waiting longer each time, with one note when it stops and one when it goes on (BL-82)', async () => {
+    const minutesLeft = () => Math.round((Date.parse((data.items[2].review as { paused: { until: string } }).paused.until) - Date.now()) / 60_000);
+    const paused = () => (data.items[2].review as { paused?: { tries?: number } }).paused;
+    const due = () => ((data.items[2].review as { paused: { until: string } }).paused.until = new Date(Date.now() - 1000).toISOString());
+    const rate = { until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate' };
+    data.items[2].review = {
+      round: 1,
+      state: 'paused',
+      reviewer: '',
+      paused: { until: at, known: false, kind: 'rate', tries: 0, since: at, phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+    };
+    probe.mockReset();
+    probe.mockResolvedValue(rate);
+    // Two tries fail: nothing is sent to the chat, nothing is written in the ticket, and the waits double.
+    await loop.resumePaused();
+    expect(paused()?.tries).toBe(1);
+    expect(minutesLeft()).toBe(10);
+    due();
+    await loop.resumePaused();
+    expect(paused()?.tries).toBe(2);
+    expect(minutesLeft()).toBe(20);
+    expect(started()).toHaveLength(0);
+    expect(notes).toEqual([]);
+
+    // The third gets through: the chat is resumed once, and the ticket says after how many tries.
+    probe.mockResolvedValue(undefined);
+    due();
+    await loop.resumePaused();
+    await settle();
+    expect(started()).toHaveLength(1);
+    expect(spawn.mock.calls[0][0]).toMatchObject({ resume: 'session-9' });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatch(/^BL-3: The limit reset after 3 tries \(since .+\): resumed the chat for agent Ada-3/);
+
+    // The resumed run hits the limit again: it goes on counting and backing off, with no new note.
+    finish[0]({ code: 1, limit: rate } as never);
+    await settle();
+    expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { tries: 3, session: 'session-1' } });
+    expect(minutesLeft()).toBe(40);
+    expect(notes).toHaveLength(1);
+    loop.dispose();
+  });
+
+  it('resumes a limit whose reset was said without asking first, and says so once', async () => {
+    probe.mockReset();
+    data.items[2].review = {
+      round: 1,
+      state: 'paused',
+      reviewer: '',
+      paused: { until: at, known: true, phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+    };
+    await loop.resumePaused();
+    await settle();
+    expect(probe).not.toHaveBeenCalled();
+    expect(started()).toHaveLength(1);
+    expect(notes).toEqual(['BL-3: The limit reset: resumed the chat for agent Ada-3 to go on.']);
     loop.dispose();
   });
 

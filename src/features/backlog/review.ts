@@ -29,6 +29,11 @@ export interface ReviewState {
     resume: 'working' | 'reviewing' | 'revising';
     /** Paused to make room for a prioritized start on this item (not for a limit): it goes on when a slot frees. */
     for?: string;
+    /** What was hit, when the reset wasn't said: the tries back off by it. */
+    kind?: 'usage' | 'rate' | 'overloaded';
+    /** Tries that failed on the limit again since it first stopped (ISO 8601), when the reset wasn't said. */
+    tries?: number;
+    since?: string;
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;

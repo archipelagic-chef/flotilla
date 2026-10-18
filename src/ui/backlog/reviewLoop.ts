@@ -42,7 +42,7 @@ import { mapFor } from '../../features/backlog/codeMap';
 import { readTranscript, type ChatUsage } from '../../features/chats/chats';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
-import type { UsageLimit } from '../../features/backlog/limits';
+import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
@@ -56,6 +56,7 @@ import {
   isRunningHeadless,
   memoryShortage,
   modelLevels,
+  probeLimit,
   releaseStart,
   reserveStart,
   runAgentHeadless,
@@ -545,16 +546,62 @@ export class ReviewLoop implements vscode.Disposable {
     id: string,
     o: { phase: 'review' | 'work'; session: string; agent: string; resume: 'working' | 'reviewing' | 'revising'; limit: UsageLimit },
   ): Promise<void> {
-    const until = o.limit.until;
+    const before = this.retrying.get(id);
+    this.retrying.delete(id);
+    // A resumed agent that hits a guessed-at limit again: one more try, a longer wait, and the note it had still holds.
+    const again = before && !o.limit.known ? { tries: before.tries + 1, since: before.since } : undefined;
+    const until = again ? new Date(Date.now() + retryDelay(o.limit.kind, again.tries)) : o.limit.until;
     await this.setReview(id, (r) => ({
       ...(r ?? { round: 0, reviewer: '' }),
       state: 'paused',
-      paused: { until: until.toISOString(), known: o.limit.known, phase: o.phase, session: o.session, agent: o.agent, resume: o.resume },
+      paused: {
+        until: until.toISOString(),
+        known: o.limit.known,
+        phase: o.phase,
+        session: o.session,
+        agent: o.agent,
+        resume: o.resume,
+        ...(o.limit.known ? {} : { kind: o.limit.kind, tries: again?.tries ?? 0, since: again?.since ?? new Date().toISOString() }),
+      },
     }));
-    const what = o.limit.kind === 'usage' ? "Claude's usage limit" : o.limit.kind === 'rate' ? "Claude's rate limit" : 'Claude being overloaded';
-    const when = until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-    await this.note(id, `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must`}.`);
+    if (!again) {
+      const what = o.limit.kind === 'usage' ? "Claude's usage limit" : o.limit.kind === 'rate' ? "Claude's rate limit" : 'Claude being overloaded';
+      const when = until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      await this.note(
+        id,
+        `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must, less often the longer it lasts`}.`,
+      );
+    }
     this.scheduleResume();
+  }
+
+  /**
+   * Agents resumed after a limit whose reset wasn't said, with the tries so far: hitting it again goes on backing off,
+   * without another note.
+   */
+  private readonly retrying = new Map<string, { tries: number; since: string }>();
+  /** Items whose probe (is Claude taking work again?) is running. */
+  private readonly probing = new Set<string>();
+
+  /**
+   * Whether Claude takes work again for a paused agent whose reset wasn't said, asked outside its chat: the tries leave
+   * no prompts there and no notes in the ticket. When it doesn't, the next try waits longer.
+   */
+  private async limitLifted(item: BacklogItem, p: NonNullable<ReviewState['paused']>): Promise<boolean> {
+    if (this.probing.has(item.id)) return false;
+    this.probing.add(item.id);
+    const limit = await probeLimit({ choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'), output: this.deps.output }).finally(() =>
+      this.probing.delete(item.id),
+    );
+    // Meanwhile it may have been resumed (Resume now) or stopped.
+    const now = (await this.deps.backlog.read()).items.find((i) => i.id === item.id)?.review;
+    if (this.runs.has(item.id) || now?.state !== 'paused' || now.paused?.session !== p.session) return false;
+    if (!limit) return true;
+    const tries = (p.tries ?? 0) + 1;
+    const until = limit.known ? limit.until : new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
+    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.`);
+    await this.setReview(item.id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: until.toISOString(), tries } } : r!));
+    return false;
   }
 
   /** The next resume, timed to the earliest paused agent. */
@@ -590,6 +637,7 @@ export class ReviewLoop implements vscode.Disposable {
       const p = item.review?.state === 'paused' ? item.review.paused : undefined;
       if (!p || this.runs.has(item.id) || (!force && this.waiting.has(item.id))) continue;
       if (force ? force !== item.id : Date.parse(p.until) > Date.now()) continue;
+      if (!force && !p.known && !p.for && !(await this.limitLifted(item, p))) continue;
       await this.resumeOne(item, { manual: !!force });
     }
     this.scheduleResume();
@@ -622,7 +670,16 @@ export class ReviewLoop implements vscode.Disposable {
       void trackProgress('backlog', `${p.agent} goes on with ${item.id}`, () => run.done);
       await this.setReview(item.id, (r) => ({ ...r!, state: p.resume, paused: undefined }));
       // "chat for agent <name>": the ticket links the note to the chat.
-      await this.note(item.id, p.for ? `A slot freed: resumed the chat for agent ${p.agent} to go on.` : `The limit reset: resumed the chat for agent ${p.agent} to go on.`);
+      if (!p.known && !p.for) this.retrying.set(item.id, { tries: p.tries ?? 0, since: p.since ?? new Date().toISOString() });
+      const since = p.since ? new Date(p.since).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      await this.note(
+        item.id,
+        p.for
+          ? `A slot freed: resumed the chat for agent ${p.agent} to go on.`
+          : p.tries
+            ? `The limit reset after ${p.tries + 1} tries (since ${since}): resumed the chat for agent ${p.agent} to go on.`
+            : `The limit reset: resumed the chat for agent ${p.agent} to go on.`,
+      );
       void run.done.then((result) => (p.phase === 'review' ? this.afterReview(item.id, run, result) : this.afterRevision(item.id, run, result)));
     } finally {
       if (!spawned) this.release(admitted.slot);
@@ -996,6 +1053,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async afterReview(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id)?.run !== run) return; // stopped
     this.runs.delete(id);
+    if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
     this.scheduleDispatch();
     const error = result.error;
@@ -1215,6 +1273,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async afterRevision(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id)?.run !== run) return;
     this.runs.delete(id);
+    if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
     this.scheduleDispatch();
     const error = result.error;
