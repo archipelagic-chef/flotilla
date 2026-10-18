@@ -28,7 +28,7 @@ import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
-import { modelLevels, trackTerminals } from './ui/backlog/agentRunner';
+import { modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
 import { discussable } from './features/backlog/shaping';
@@ -150,6 +150,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
+  // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
+  setAgentDirs([backlog.dir]);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
   context.subscriptions.push(integrations);
   void integrations.refresh();
@@ -169,8 +171,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     githubApi: devGitHubApi(context.extensionMode),
     onCiFinished: (items) => ciNotifier.notify(items),
   });
+  // Merge to main (BL-54): it moves its ticket to Done itself, saying what it merged, so the merge watcher leaves those to it.
+  const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
-  const merges = new Merges({ backlog, mainRoot: location.mainRoot });
+  const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });
   sidebar.useMerges(merges);
   context.subscriptions.push(
     repository.onDidChange(() => void merges.refresh()),
@@ -193,7 +197,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
-  const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
   const reviews = new ReviewLoop({
     backlog,
     repository,
@@ -204,10 +207,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(reviews, merger, trackTerminals());
   const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
-  // Merge to main: a backlog card's menu (its id in the menu's context), the ticket, or asking which ticket.
   context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (card?: unknown) => {
-      let id = backlogIdOf(card);
+    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {
+      let id = backlogIdOf(arg);
       if (!id) {
         const ready = (await backlog.read()).items.filter(readyToMerge);
         id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;

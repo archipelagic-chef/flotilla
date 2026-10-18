@@ -62,6 +62,8 @@ export class Merger implements vscode.Disposable {
   private queue: Promise<unknown> = Promise.resolve();
   /** Agents resolving conflicts, by item. */
   private readonly runs = new Map<string, AgentRun>();
+  /** Items whose merge is moving the base and the ticket now: the merge watcher leaves them to it. */
+  private readonly finishing = new Set<string>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
@@ -74,6 +76,11 @@ export class Merger implements vscode.Disposable {
 
   isRunning(id: string): boolean {
     return this.runs.has(id);
+  }
+
+  /** Its merge is being finished now (the base moves, then the ticket goes to Done with what was merged). */
+  isFinishing(id: string): boolean {
+    return this.finishing.has(id);
   }
 
   /** One at a time: merges move the base branch. */
@@ -307,18 +314,23 @@ export class Merger implements vscode.Disposable {
       }
       break;
     }
+    this.finishing.add(item.id);
     try {
-      await fastForward(this.deps.mainRoot, { base: m.base, baseTip: m.baseTip, commit: m.commit, worktree: holder?.worktree.path, message: mergeMessage(item) });
-    } catch (error) {
-      const why = error instanceof Error ? error.message : String(error);
-      await keep(why);
-      await this.note(item.id, `Merging \`${m.branch}\` into \`${m.base}\` stopped: ${why}`);
-      void vscode.window.showErrorMessage(`${item.id} wasn't merged: ${why}`);
-      return 'stopped';
+      try {
+        await fastForward(this.deps.mainRoot, { base: m.base, baseTip: m.baseTip, commit: m.commit, worktree: holder?.worktree.path, message: mergeMessage(item) });
+      } catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        await keep(why);
+        await this.note(item.id, `Merging \`${m.branch}\` into \`${m.base}\` stopped: ${why}`);
+        void vscode.window.showErrorMessage(`${item.id} wasn't merged: ${why}`);
+        return 'stopped';
+      }
+      await this.removeDir(m.dir);
+      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command });
+      return 'merged';
+    } finally {
+      this.finishing.delete(item.id);
     }
-    await this.removeDir(m.dir);
-    await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command });
-    return 'merged';
   }
 
   /** The ticket to Done, saying what was merged; then Push and the worktree's clean-up are offered. */

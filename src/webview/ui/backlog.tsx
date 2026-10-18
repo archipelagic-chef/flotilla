@@ -374,7 +374,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogReady: !remote && readyToMerge(item), backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? '') })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item) })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);

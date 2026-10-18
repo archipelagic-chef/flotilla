@@ -1076,12 +1076,12 @@
       "webview/context": [
         {
           "command": "flotilla.mergeBacklogItem",
-          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReady",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
           "group": "1_merge@1"
         },
         {
           "command": "flotilla.mergeAllReady",
-          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReady",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
           "group": "1_merge@2"
         },
         {

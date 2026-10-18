@@ -18,6 +18,7 @@ import {
   linkedItem,
   unlinkIssue,
   updateItem,
+  readyToMerge,
   type AgentChoice,
   type BacklogItem,
 } from '../../features/backlog/backlog';
@@ -46,7 +47,6 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
-import { readyToMerge } from '../../features/backlog/backlog';
 import type { Merger } from './merge';
 import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';

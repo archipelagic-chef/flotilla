@@ -219,7 +219,7 @@ export function updateItem(
 
 /** Whether an item is ready to merge: in review, approved, and not being merged already. */
 export function readyToMerge(item: Pick<BacklogItem, 'status' | 'review' | 'proposed' | 'merging'>): boolean {
-  return laneOf(item) === 'ready' && !item.proposed && !item.merging;
+  return item.status === 'review' && item.review?.state === 'approved' && !item.proposed && !item.merging;
 }
 
 /** Accepts an agent's proposed item: it becomes an ordinary one. */
