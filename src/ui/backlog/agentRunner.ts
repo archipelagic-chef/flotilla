@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
 import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
-import { LEAN_TOOLS, leanFlags, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
+import { LEAN_TOOLS, leanFlags, settingsFileOf, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
 import { askArgs } from '../../features/backlog/ask';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
@@ -232,6 +232,11 @@ export function isRunningHeadless(sessionId: string): boolean {
   return running.has(sessionId);
 }
 
+/** How many agents this window runs now, without a window and in its terminals: reloading it stops them. */
+export function runningAgentCount(): number {
+  return running.size + [...terminals.values()].filter((t) => t.exitStatus === undefined).length;
+}
+
 /** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
 const terminals = new Map<string, vscode.Terminal>();
 
@@ -373,8 +378,10 @@ export function runAgentHeadless(o: {
   const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
   const lean = agentStart(o.cwd, o.choice?.model);
   const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, lean });
+  // A missing one shows: the agent then starts without Flotilla's settings (BL-85).
+  const settingsFile = settingsFileOf(lean?.flags ?? []);
   o.output.appendLine(
-    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}).`,
+    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}, ${settingsFile ? `settings ${settingsFile}` : 'no settings file'}).`,
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.add(sessionId);
