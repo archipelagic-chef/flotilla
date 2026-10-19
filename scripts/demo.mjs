@@ -18,7 +18,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -244,32 +244,42 @@ async function main() {
 }
 
 /**
- * A virtual display (Xvfb) for the demo window, on the first free display number, so that it never opens on the user's
- * screen. Larger than the window, which is sized to WIDTH x HEIGHT on it, at 24-bit colour: frames are the same as on a
- * real display. Fails, rather than falling back to the screen, when Xvfb isn't there.
+ * A virtual display (Xvfb) for the demo window, so that it never opens on the user's screen: on the first number from
+ * :99 up that has neither a socket nor a lock (freeDisplay), the next one when another demo's Xvfb took it meanwhile.
+ * Larger than the window, which is sized to WIDTH x HEIGHT on it, at 24-bit colour: frames are the same as on a real
+ * display. Fails, rather than falling back to the screen, when Xvfb isn't there.
  */
-function startXvfb() {
+async function startXvfb() {
+  let from = 99;
+  for (let attempt = 1; ; attempt++) {
+    const n = freeDisplay(fs.existsSync, from);
+    try {
+      return await startXvfbOn(n);
+    } catch (error) {
+      if (error.missing || attempt === 5) throw error;
+      from = n + 1;
+    }
+  }
+}
+
+/** Xvfb on display `:n`, once it's ready for clients. */
+function startXvfbOn(n) {
   return new Promise((resolve, reject) => {
-    const xvfb = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', `${WIDTH + 640}x${HEIGHT + 400}x24`, '-nolisten', 'tcp'], {
+    const xvfb = spawn('Xvfb', [`:${n}`, '-displayfd', '3', '-screen', '0', `${WIDTH + 640}x${HEIGHT + 400}x24`, '-nolisten', 'tcp'], {
       stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
     });
-    let number = '';
+    let ready = '';
     let stderr = '';
     xvfb.stderr.on('data', (d) => (stderr = (stderr + d).slice(-2000)));
-    xvfb.on('error', (error) =>
-      reject(
-        new Error(
-          error.code === 'ENOENT'
-            ? "Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"
-            : `Xvfb didn't start: ${error.message}`,
-        ),
-      ),
-    );
-    xvfb.on('exit', (code) => reject(new Error(`Xvfb stopped (${code}): ${stderr.trim().split('\n').pop() ?? ''}`)));
+    xvfb.on('error', (error) => {
+      if (error.code !== 'ENOENT') return reject(new Error(`Xvfb didn't start: ${error.message}`));
+      reject(Object.assign(new Error("Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"), { missing: true }));
+    });
+    xvfb.on('exit', (code) => reject(new Error(`Xvfb stopped on :${n} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`)));
     // It writes the display's number to fd 3 once it's ready for clients.
     xvfb.stdio[3].on('data', (d) => {
-      number += d;
-      if (number.includes('\n')) resolve({ display: `:${number.trim()}`, stop: () => xvfb.kill() });
+      ready += d;
+      if (ready.includes('\n')) resolve({ display: `:${n}`, stop: () => xvfb.kill() });
     });
   });
 }

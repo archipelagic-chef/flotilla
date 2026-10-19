@@ -95,6 +95,16 @@ export function demoDisplay(env) {
   return env.CLAUDECODE ? 'virtual' : 'screen';
 }
 
+/**
+ * The first display number from `from` up that nothing serves: neither an X socket (/tmp/.X11-unix/X<n>) nor a lock
+ * (/tmp/.X<n>-lock). Xvfb's own pick looks at locks only, and the X forwarders of a dev container serve sockets
+ * without them: it took the user's display (BL-102).
+ */
+export function freeDisplay(exists, from = 99) {
+  for (let n = from; n < from + 1000; n++) if (!exists(`/tmp/.X11-unix/X${n}`) && !exists(`/tmp/.X${n}-lock`)) return n;
+  throw new Error(`no free X display from :${from} up`);
+}
+
 /** A PNG (8-bit RGB or RGBA, not interlaced: what Chromium's screenshots are) as RGBA pixels. */
 export function decodePng(buffer) {
   if (buffer.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');

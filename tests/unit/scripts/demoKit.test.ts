@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { decodePng, demoDisplay, demoFile, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { decodePng, demoDisplay, demoFile, freeDisplay, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -184,5 +184,14 @@ describe('demoDisplay', () => {
     expect(demoDisplay({ DEMO_DISPLAY: 'virtual' })).toBe('virtual');
     expect(demoDisplay({ DEMO_DISPLAY: ' Screen ', CLAUDECODE: '1' })).toBe('screen');
     expect(() => demoDisplay({ DEMO_DISPLAY: 'mine' })).toThrow(/virtual or screen/);
+  });
+});
+
+describe('freeDisplay', () => {
+  it('skips the displays with a socket or a lock', () => {
+    const files = new Set(['/tmp/.X11-unix/X0', '/tmp/.X11-unix/X99', '/tmp/.X100-lock', '/tmp/.X11-unix/X101', '/tmp/.X101-lock']);
+    expect(freeDisplay((f) => files.has(f))).toBe(102);
+    expect(freeDisplay((f) => files.has(f), 0)).toBe(1);
+    expect(freeDisplay(() => false, 103)).toBe(103);
   });
 });
