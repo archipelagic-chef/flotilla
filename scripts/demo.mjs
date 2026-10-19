@@ -40,6 +40,8 @@ const DEMO_SETTINGS = {
   'window.title': `${TITLE_MARKER} · \${rootName}\${separator}\${activeEditorShort}`,
   'window.restoreWindows': 'none',
   'window.commandCenter': false,
+  // Modal dialogs drawn in the page (not native ones), so a demo can wait for them, click them and record them.
+  'window.dialogStyle': 'custom',
   'workbench.startupEditor': 'none',
   'workbench.tips.enabled': false,
   'workbench.enableExperiments': false,
@@ -253,6 +255,8 @@ async function main() {
       '--skip-release-notes',
       '--disable-workspace-trust',
       '--new-window',
+      // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
+      '--disable-dev-shm-usage',
       playground,
     ],
     // The user's VS Code session variables would make this window talk to theirs.
@@ -318,7 +322,10 @@ async function main() {
   } finally {
     // VS Code may take a while to quit (or not at all, when something holds it): it's stopped after a few seconds.
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
-    app.process().kill();
+    // Once the window is gone, Playwright can't reach its process any more: that error would hide the one that matters.
+    try {
+      app.process().kill();
+    } catch {}
     await github.close();
   }
   if (failed) throw failed;
