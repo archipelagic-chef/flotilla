@@ -246,7 +246,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       html_url: `https://github.com/${run.repo}/actions/runs/${run.id}`,
       created_at: iso(run.startedAt),
       run_started_at: iso(run.startedAt),
-      updated_at: iso(at),
+      // As GitHub: a finished run was last updated when it ended.
+      updated_at: iso(p.status === 'completed' ? (run.cancelledAt ?? run.startedAt + QUEUE_MS + RUN_MS) : at),
     };
   }
 

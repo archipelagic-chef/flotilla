@@ -1,0 +1,59 @@
+/* The CI run list (ciList.tsx), in the sidebar's CI/CD view and in a ticket's CI (BL-106). */
+/* CI/CD runs, jobs and steps: log-style rows with a status icon; the icon's color says the status. */
+.ci-run .ci-status,
+.ci-job .ci-status,
+.ci-step .ci-status {
+  flex: none;
+}
+.ci-status.queued {
+  color: var(--muted);
+}
+.ci-status.running {
+  color: var(--working);
+}
+.ci-status.success {
+  color: var(--done);
+}
+.ci-status.failure {
+  color: var(--error);
+}
+.ci-status.cancelled,
+.ci-status.skipped,
+.ci-status.neutral {
+  color: var(--muted);
+}
+.ci-run.current .name {
+  font-weight: 600;
+}
+.ci-run .ci-age {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* A run's jobs and a job's steps are indented under it; a failed job's name stands out. */
+.ci-toggle {
+  flex: none;
+  color: var(--muted);
+}
+.ci-indent,
+.ci-job {
+  padding-left: 22px;
+}
+.ci-step {
+  padding-left: 40px;
+}
+.ci-job.failure .name,
+.ci-step.failure .name {
+  color: var(--error);
+  font-weight: 600;
+}
+.ci-job .ci-fix,
+.ci-job .ci-log {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+}
+/* Fix with Agent comes first at the row's end, then Show Log. */
+.ci-job .ci-fix + .ci-log {
+  margin-left: 8px;
+}

@@ -70,3 +70,31 @@ export function scopeSummary(views: ReadonlyArray<CiView | undefined>): string {
   const failed = state === 'failure' ? [...new Set(views.flatMap(failedWorkflows))] : [];
   return `CI ${WORD[state]}${failed.length ? `: ${failed.join(', ')}` : ''}`;
 }
+
+/** The latest run of a branch (of its pushed head), as a ticket's CI line says it (BL-106). */
+export interface LatestCi {
+  run: CiRunView;
+  /** How long it has taken: from its start to its last update, or to now while it's queued or running. Milliseconds. */
+  took: number;
+}
+
+/** The branch's latest run (GitHub lists runs newest first) and its time. Undefined when there's no CI to show. */
+export function latestCi(view: CiView | undefined, now = Date.now()): LatestCi | undefined {
+  const run = view?.kind === 'runs' ? view.runs[0] : undefined;
+  if (!run) return undefined;
+  const start = Date.parse(run.started ?? run.created);
+  const end = run.status === 'queued' || run.status === 'running' ? now : Date.parse(run.updated ?? run.started ?? run.created);
+  return { run, took: Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0 };
+}
+
+/** A run's duration as the CI line says it: "45s", "3m 07s", "1h 02m". */
+export function tookLabel(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+/** A state in plain words ("passed", "failed"), as the CI line says it. */
+export const ciWord = (status: CiStatus): string => WORD[status];

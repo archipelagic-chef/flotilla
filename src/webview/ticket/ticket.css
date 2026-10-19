@@ -1414,3 +1414,121 @@ button.timeline-item:hover .timeline-text {
 .active-agent-report .rendered > :last-child {
   margin-bottom: 0;
 }
+/* The ticket's CI (BL-106): a line per branch with CI, which opens to the CI/CD view's run list (ui/ci.css). */
+.ci-panel {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.ci-worktree + .ci-worktree {
+  border-top: 1px solid var(--border);
+}
+.ci-line {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px 2px 4px;
+}
+.ci-summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 4px;
+  text-align: left;
+}
+.ci-summary:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.ci-summary .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ci-line.failure strong {
+  color: var(--error);
+}
+.ci-branch {
+  margin-left: auto;
+  font-family: var(--vscode-editor-font-family);
+  color: var(--muted);
+}
+/* The run list's rows, as the sidebar draws them. */
+.ci-runs {
+  padding: 2px 0 4px;
+  border-top: 1px solid var(--border);
+}
+.ci-runs .row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ci-runs .row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.ci-runs .row .name {
+  flex: 0 1 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ci-runs .row .ref {
+  flex: 0 1 auto;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.ci-runs .row .desc {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.ci-runs .row.group-empty {
+  cursor: default;
+  font-style: italic;
+  color: var(--muted);
+}
+.ci-runs .row.group-empty.error {
+  color: var(--error);
+  font-style: normal;
+  white-space: normal;
+}
+.ci-runs button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.ci-runs button.icon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.ci-runs button.link {
+  color: var(--vscode-textLink-foreground);
+}
+.ci-runs button.link:hover {
+  text-decoration: underline;
+}
+.ci-runs .hover-actions {
+  display: none;
+  flex: none;
+}
+.ci-runs .row:hover .hover-actions,
+.ci-runs .row:focus-within .hover-actions {
+  display: flex;
+}

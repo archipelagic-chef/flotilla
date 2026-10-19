@@ -90,6 +90,17 @@ describe('GitHubActions', () => {
     ...over,
   });
 
+  it('reads when a run started and was last updated, and leaves them out when GitHub gives none', async () => {
+    const { fetch } = fakeFetch({
+      'https://api.github.com/repos/acme/app/actions/runs': {
+        workflow_runs: [run({ id: 1, run_started_at: '2026-10-11T10:01:00Z' }), run({ id: 2, updated_at: null })],
+      },
+    });
+    const [timed, untimed] = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('feat/x');
+    expect([timed.started, timed.updated]).toEqual(['2026-10-11T10:01:00Z', '2026-10-11T10:05:00Z']);
+    expect('started' in untimed || 'updated' in untimed).toBe(false);
+  });
+
   it('reads which attempt a run is from its run_attempt (1 when GitHub gives none)', async () => {
     const { fetch } = fakeFetch({
       'https://api.github.com/repos/acme/app/actions/runs': { workflow_runs: [run({ id: 1, run_attempt: 2 }), run({ id: 2 })] },
@@ -116,6 +127,7 @@ describe('GitHubActions', () => {
         sha: 'abc123',
         attempt: 1,
         created: '2026-10-11T10:00:00Z',
+        updated: '2026-10-11T10:05:00Z',
       },
     ]);
   });
