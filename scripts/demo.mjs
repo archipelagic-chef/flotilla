@@ -17,7 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
-import { mainRoot, withDownloadLock } from './vscode-download.mjs';
+import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
 import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -27,6 +27,11 @@ const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
  * extensions read the user's config and keys from it. Empty here, so the window sees none of the user's.
  */
 const HOME_DIR = path.join(root, '.vscode-test', 'demo-home');
+/**
+ * Held while a demo runs: a second VS Code on the same profile would hand itself to the first one's window and close.
+ * Demos in other worktrees have profiles of their own.
+ */
+const LOCK_FILE = `${PROFILE_DIR}.lock`;
 const WIDTH = 1280;
 const HEIGHT = 800;
 /** Screenshots a second while recording; frames that don't change are merged, so this costs little. */
@@ -224,8 +229,17 @@ async function main() {
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4 when ffmpeg is there)');
 
-  const playground = path.join(root, '.playground');
   if (!fs.existsSync(path.join(root, 'dist', 'extension.js'))) throw new Error('build first: npm run build');
+  // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
+  await withLock(LOCK_FILE, () => show(mode, demo, out, still), {
+    staleMs: Number.POSITIVE_INFINITY,
+    onWait: () => console.log('Another demo is running in this worktree: waiting for it to finish (or close its window)…'),
+  });
+}
+
+/** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
+async function show(mode, demo, out, still) {
+  const playground = path.join(root, '.playground');
   if (!fs.existsSync(path.join(playground, '.git'))) execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
