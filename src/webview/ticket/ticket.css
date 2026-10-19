@@ -1358,3 +1358,39 @@ button.timeline-item:hover .timeline-text {
 .ask-chat > .hint {
   margin-top: 0;
 }
+
+/* The agents on the ticket now (BL-98): a head line (name, state, running for, worktree, Open Chat), its last report. */
+.active-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.active-agent + .active-agent {
+  border-top: 1px solid var(--border);
+}
+.active-agent-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.active-agent-head .button {
+  margin-left: auto;
+}
+.active-agent-worktree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.active-agent-report {
+  padding-left: 34px;
+  min-width: 0;
+}
+.active-agent-report .rendered > :first-child {
+  margin-top: 2px;
+}
+.active-agent-report .rendered > :last-child {
+  margin-bottom: 0;
+}

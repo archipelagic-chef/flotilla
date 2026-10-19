@@ -16,6 +16,7 @@ import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
+import { activeAgents, lastReport, runningFor } from '../activeAgents';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
@@ -1285,6 +1286,58 @@ function modelName(model: string): string {
   return m[2] ? `${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : family;
 }
 
+/** Every agent on the ticket now, in full: its state, how long it has run, its worktree, what it last reported. */
+function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: TicketView['agents'] }) {
+  // How long each has run goes on counting between updates.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <section class="block active-agents">
+      <div class="block-head">
+        <h2>Active agents</h2>
+      </div>
+      <div class="agents">
+        {agents.map((a) => {
+          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : (CHAT_STATE[a.state] ?? CHAT_STATE.working);
+          const report = lastReport(ticket.activity, a.id);
+          return (
+            <div key={a.id} class={`active-agent ${state.cls}`}>
+              <div class="active-agent-head">
+                <span class="chat-icon small">
+                  <i class="codicon codicon-hubot" />
+                  <span class={`dot ${state.cls}`} />
+                </span>
+                <span class="agent-name">{a.agent}</span>
+                <span class={`state ${state.cls}`}>{state.label}</span>
+                <span class="muted agent-meta" title={`Started ${new Date(a.started).toLocaleString()}`}>
+                  <i class="codicon codicon-watch" /> running {runningFor(a.started)}
+                </span>
+                <span class="muted agent-meta active-agent-worktree" title={`Worktree: ${a.key}`}>
+                  <i class="codicon codicon-git-branch" /> {a.branch}
+                </span>
+                <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" aria-label={`Open ${a.agent}'s chat`} title="Open this agent's chat in Claude Code">
+                  <i class="codicon codicon-comment-discussion" /> Open Chat
+                </ActionButton>
+              </div>
+              {report ? (
+                <div class="active-agent-report">
+                  <span class="muted">Last report · {report.date}</span>
+                  <Rendered html={report.html} empty="" />
+                </div>
+              ) : (
+                <div class="active-agent-report muted">No report yet.</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /** Every agent that worked on the ticket: its chat, its state, how much it reported. */
 function Agents({ ticket }: { ticket: TicketView }) {
   // What its agents re-read in all (BL-76): most of what a ticket costs.
@@ -2251,6 +2304,7 @@ function App() {
   };
   shownEntries = ticket.activity.length;
   const worktrees = ticket.worktrees;
+  const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
   return (
     <main class="ticket">
@@ -2388,6 +2442,7 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
       <AskPane ask={ask} />
