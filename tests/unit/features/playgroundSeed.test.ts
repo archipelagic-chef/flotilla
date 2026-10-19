@@ -146,6 +146,16 @@ describe('playground seed', () => {
     expect(git(dir, 'status', '--porcelain')).toBe('');
   });
 
+  it("publishes BL-13's branch on origin, so its ticket shows its CI; the others aren't", async () => {
+    const { dir, backlog } = seeded();
+    const branches = (await backlog.read()).items.flatMap((i) => (i.branches ?? []).map((b) => [i.id, b] as const));
+    // Its upstream is origin's (playground.mjs adds the remote: the test's repository has none).
+    const remote = (b: string) => git(dir, 'config', '--default', '', `branch.${b}.remote`);
+    const upstreams = branches.filter(([, b]) => remote(b) === 'origin').map(([id]) => id);
+    expect(upstreams).toEqual(['BL-13']);
+    expect(git(dir, 'rev-parse', 'origin/feature/BL-13-say-hi-in-the-greeting')).toBe(git(dir, 'rev-parse', 'feature/BL-13-say-hi-in-the-greeting'));
+  });
+
   it('does nothing when the playground is seeded already', async () => {
     const { dir, backlog } = seeded();
     const before = await backlog.read();

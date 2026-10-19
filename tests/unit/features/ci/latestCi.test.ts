@@ -76,4 +76,16 @@ describe('latestCi against the fake GitHub', () => {
     clock = T0 + 600_000;
     expect(await line()).toBe('CI #3 failure 31s');
   });
+
+  it('goes from running to passed when the failed run is run again', async () => {
+    expect(await line()).toBe('CI #3 queued 0s');
+    clock = T0 + 31_000;
+    expect(await line()).toBe('CI #3 failure 31s');
+    const [failed] = await new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url).runs('feat');
+    await new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url).rerun(failed.id, false);
+    clock += 10_000;
+    expect(await line()).toBe('CI #3 running 10s');
+    clock += 21_000;
+    expect(await line()).toBe('CI #3 success 31s');
+  });
 });
