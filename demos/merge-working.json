@@ -14,9 +14,6 @@
       "waitFor": "h1:has-text(\"Say hi in the greeting\")"
     },
     {
-      "caption": "BL-13 is approved: Merge to main"
-    },
-    {
       "click": ".review-panel button:has-text(\"Approve\")"
     },
     {
@@ -29,7 +26,7 @@
       "caption": "The button says it's merging (or which merge it waits behind) while the checks run"
     },
     {
-      "wait": 2500
+      "wait": 1200
     },
     {
       "caption": ""
