@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { samePath } from '../../core/paths';
+import { agentChatItem } from '../../features/backlog/backlog';
 import { awaiting, type Chat } from '../../features/chats/chats';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { FileChange } from '../../core/git/porcelain';
@@ -30,6 +31,7 @@ function chatVia(chat: Chat, all: readonly Workstream[]): string | undefined {
 export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000): ChatView {
   const u = chat.usage;
   const big = !!u && bigContext > 0 && u.context >= bigContext;
+  const agent = agentChatItem(chat.firstPrompt);
   return {
     id: chat.id,
     title: chat.title,
@@ -40,6 +42,7 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bi
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),
     age: chatAge(chat, now),
+    ...(agent ? { agent: { name: agent.agent, item: agent.item } } : {}),
     ...(u?.context ? { size: { label: formatTokens(u.context), tip: big ? `${usageTip(u)} ${BIG_CHAT_HINT}` : usageTip(u), big } } : {}),
   };
 }
