@@ -1598,6 +1598,21 @@
           "default": "needsYou",
           "description": "Which notifications Flotilla shows for what needs you."
         },
+        "flotilla.ci.pushOnApproval": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Push when `origin` is on GitHub and a workflow in `.github/workflows` runs on push.",
+            "Push to `origin`, whatever it is.",
+            "Don't push approved tickets' branches."
+          ],
+          "default": "auto",
+          "markdownDescription": "When a ticket is approved, push its branch to `origin` (setting its upstream), and again when it gets new commits while approved, so CI runs on it before Merge to main. Never another remote, never a force push, and only commits authored and committed with the repository's identity (`user.name`, `user.email`): anything else stops the push, and the ticket says why."
+        },
         "flotilla.ci.notify": {
           "type": "string",
           "enum": [
