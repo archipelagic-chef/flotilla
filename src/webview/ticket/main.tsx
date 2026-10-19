@@ -900,38 +900,64 @@ function MergeButton({ into }: { into: string }) {
   );
 }
 
-/** A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve. */
+/**
+ * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
+ * or its checks failing (BL-65), with their output, to fix with an agent.
+ */
 function MergingPanel({ ticket }: { ticket: TicketView }) {
   const m = ticket.merging!;
   const agent = m.agent ?? 'An agent';
   const resolving = m.state === 'resolving' && m.running;
+  const checks = m.checks;
+  // With failing checks the agent fixes them; with conflicts, it resolves them.
+  const work = checks ? 'fixing the checks that fail on the merge' : 'resolving the conflicts';
   const [icon, cls, text] = resolving
-    ? ['git-merge', 'working', `${agent} is resolving the conflicts, in a temporary worktree; it reports below.`]
+    ? ['git-merge', 'working', `${agent} is ${work}, in a temporary worktree; it reports below.`]
     : m.state === 'resolved'
-      ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      ? checks
+        ? ['pass', 'waiting', `${agent} fixed the checks (its report is below). Approve the fix: the checks run again, then ${m.base} moves to the merge.`]
+        : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
       : m.state === 'resolving'
-        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the conflicts aren't resolved.`]
-        : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
+        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
+        : checks && m.reason?.startsWith('the checks failed')
+          ? ['error', 'stopped', `The checks (${checks.command}) fail on the merge, though each side passed alone. Nothing changed; the merge is kept in a temporary worktree.`]
+          : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
   return (
-    <div class={`review-panel ${cls}`}>
-      <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>Merging into {m.base}</strong> {text}
-      </span>
-      <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
-        <i class="codicon codicon-close" /> Cancel
-      </button>
-      {!resolving && m.state !== 'resolved' && (
-        <button class="button" onClick={() => send({ type: 'mergeResolve' })} title="An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve">
-          <i class="codicon codicon-hubot" /> Resolve with Agent
+    <>
+      <div class={`review-panel ${cls}`}>
+        <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>Merging into {m.base}</strong> {text}
+        </span>
+        <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
+          <i class="codicon codicon-close" /> Cancel
         </button>
+        {!resolving && m.state !== 'resolved' && (
+          <button
+            class="button"
+            onClick={() => send({ type: 'mergeResolve' })}
+            title={
+              checks
+                ? 'An agent fixes the merge, given the failing output and the tickets of both sides: it keeps both intents (or asks you here), and reports here for you to approve'
+                : "An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve"
+            }
+          >
+            <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (
+          <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the merge, then moves the base branch to it">
+            <i class="codicon codicon-check" /> {checks ? 'Approve Fix' : 'Approve Resolution'}
+          </button>
+        )}
+      </div>
+      {checks && (
+        <details class="merge-output" open={m.state === 'failed'}>
+          <summary>The checks' output (its end; all of it is in the terminal)</summary>
+          <pre>{checks.output.trim() || '(no output)'}</pre>
+        </details>
       )}
-      {m.state !== 'resolving' && (
-        <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the resolved merge, then moves the base branch to it">
-          <i class="codicon codicon-check" /> Approve Resolution
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
