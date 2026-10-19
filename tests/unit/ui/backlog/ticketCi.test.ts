@@ -29,7 +29,7 @@ function panel(visible = true) {
   let onState: (() => void) | undefined;
   const p = {
     visible,
-    webview: { postMessage: vi.fn(async () => true) },
+    webview: { postMessage: vi.fn(async (_message: unknown) => true) },
     onDidChangeViewState: (l: () => void) => ((onState = l), { dispose: () => {} }),
   };
   return { p, setVisible: (v: boolean) => ((p.visible = v), onState?.()) };
