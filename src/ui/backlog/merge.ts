@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -13,6 +14,7 @@ import {
   commitsTouching,
   conflictedFiles,
   fastForward,
+  fixChecksPrompt,
   hasUncommittedChanges,
   idsIn,
   isMergeDir,
@@ -23,6 +25,7 @@ import {
   mergeOrder,
   mergeResult,
   mergeRoot,
+  outputTail,
   removeMergeWorktree,
   resolvePrompt,
   type MergeState,
@@ -248,29 +251,48 @@ export class Merger implements vscode.Disposable {
   }
 
   /**
-   * After the merge commit: the checks, then the fast-forward and the ticket to Done. Failing checks stop it with
-   * nothing changed (a resolved merge stays, for another try).
+   * After the merge commit: the checks, then the fast-forward and the ticket to Done. Failing checks keep the merge
+   * (in its worktree, for an agent to fix or the user to cancel) with nothing changed; anything else that stops it
+   * keeps only a resolved merge, for another try.
    */
   private async complete(
     item: BacklogItem,
-    m: { dir: string; branch: string; base: string; baseTip: string; commit: string; resolved?: boolean },
+    m: { dir: string; branch: string; base: string; baseTip: string; commit: string; merge?: string; fixes?: readonly string[]; resolved?: boolean },
     batch: boolean,
   ): Promise<MergeEnd> {
     const keep = async (reason: string) => {
       if (m.resolved) {
         const current = (await this.item(item.id))?.merging;
-        if (current) await this.setMerge(item.id, { ...current, state: 'failed', reason });
+        if (current) await this.setMerge(item.id, { ...current, state: 'failed', reason, checks: undefined });
       } else await this.removeDir(m.dir);
     };
     const command = await checkCommand(m.dir, settings().get<string>('merge.checkCommand', ''));
     if (command) {
       const source = this.worktreeOn(m.base)?.worktree.path ?? this.deps.mainRoot;
       await linkDependencies(m.dir, source).catch((e: unknown) => this.deps.output.appendLine(`Merge: no node_modules link: ${String(e)}`));
-      const passed = await runChecks(m.dir, command, `Checks: merge ${item.id} into ${m.base}`);
-      if (!passed) {
-        await keep(`the checks failed (\`${command}\`).`);
-        await this.note(item.id, `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed (\`${command}\`; their output is in the terminal). Nothing changed.`);
-        void vscode.window.showErrorMessage(`The checks failed on the merge of ${item.id}: nothing changed. Their output is in the terminal.`, { modal: !batch });
+      const title = `Checks: merge ${item.id} into ${m.base}`;
+      const checks = await runChecks(m.dir, command, title).catch((e: unknown) => ({ passed: false, output: e instanceof Error ? e.message : String(e) }));
+      if (!checks.passed) {
+        // Kept: each side passed alone, so it's the two together; an agent can fix that on the merge.
+        const current = (await this.item(item.id))?.merging;
+        const state: MergeState = {
+          ...(current ?? { dir: m.dir, branch: m.branch, base: m.base, baseTip: m.baseTip, started: new Date().toISOString() }),
+          state: 'failed',
+          reason: `the checks failed (\`${command}\`).`,
+          checks: { command, output: checks.output },
+        };
+        await this.setMerge(item.id, state);
+        const again = m.resolved ? ' again' : '';
+        await this.note(
+          item.id,
+          `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed${again} on the merge (\`${command}\`; their output is in the terminal "${title}"). Nothing changed: the merge is kept in a temporary worktree. Fix with Agent, or cancel it.`,
+        );
+        if (!batch) {
+          this.deps.openTicket(item.id);
+          void vscode.window.showWarningMessage(`The checks failed${again} on the merge of ${item.id}: nothing changed. Fix with Agent from its ticket, or cancel.`, 'Fix with Agent').then(
+            (c) => c && void this.resolveWithAgent(item.id).catch(showError),
+          );
+        }
         return 'stopped';
       }
     }
@@ -304,7 +326,7 @@ export class Merger implements vscode.Disposable {
         return 'stopped';
       }
       await this.removeDir(m.dir);
-      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, checks: command });
+      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command });
       return 'merged';
     } finally {
       this.finishing.delete(item.id);
@@ -312,9 +334,14 @@ export class Merger implements vscode.Disposable {
   }
 
   /** The ticket to Done, saying what was merged; then Push and the worktree's clean-up are offered. */
-  private async finish(item: BacklogItem, m: { base: string; branch: string; commit: string; checks?: string; already?: boolean }): Promise<void> {
+  private async finish(
+    item: BacklogItem,
+    m: { base: string; branch: string; commit: string; merge?: string; fixes?: readonly string[]; checks?: string; already?: boolean },
+  ): Promise<void> {
     const root = this.deps.mainRoot;
-    const count = m.already ? 0 : Number((await runGit(['rev-list', '--count', `${m.commit}^1..${m.commit}^2`], { cwd: root }).catch(() => '0')).trim());
+    const merge = m.merge ?? m.commit;
+    const count = m.already ? 0 : Number((await runGit(['rev-list', '--count', `${merge}^1..${merge}^2`], { cwd: root }).catch(() => '0')).trim());
+    const fixes = m.fixes?.length ? ` On top of it, the fix${m.fixes.length === 1 ? '' : 'es'} of the checks: ${m.fixes.map((f) => `"${f}"`).join(', ')}.` : '';
     await this.deps.backlog.change(
       (d) => ({
         ...d,
@@ -331,7 +358,7 @@ export class Merger implements vscode.Disposable {
       item.id,
       m.already
         ? `\`${m.base}\` has \`${m.branch}\`'s work already: nothing was merged.`
-        : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${m.commit.slice(0, 7)} ("${mergeMessage(item)}").${m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'} Nothing was pushed.`,
+        : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${merge.slice(0, 7)} ("${mergeMessage(item)}").${fixes}${m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'} Nothing was pushed.`,
     );
     if (m.already) return;
     const ws = this.deps.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch === m.branch);
@@ -397,10 +424,14 @@ export class Merger implements vscode.Disposable {
     const root = this.deps.mainRoot;
     const files = await conflictedFiles(m.dir);
     const start = (await runGit(['merge-base', m.baseTip, `refs/heads/${m.branch}`], { cwd: root })).trim();
+    const failedChecks = !files.length ? m.checks : undefined;
     const touched = files.length ? files : (await runGit(['diff', '--name-only', `${start}`, m.baseTip], { cwd: root })).split('\n').filter(Boolean).slice(0, 20);
     const [theirs, ours] = await Promise.all([
       commitsTouching(root, start, `refs/heads/${m.branch}`, touched),
-      commitsTouching(root, start, m.baseTip, touched),
+      // Failing checks can come from any of the base's changes: all its commits since the branch started.
+      failedChecks
+        ? runGit(['log', '--reverse', '--format=%h %s', `${start}..${m.baseTip}`], { cwd: root }).then((o) => o.split('\n').filter(Boolean))
+        : commitsTouching(root, start, m.baseTip, touched),
     ]);
     // The tickets of the base's side, from its commits' messages.
     const data = await this.deps.backlog.read();
@@ -408,35 +439,30 @@ export class Merger implements vscode.Disposable {
     const others = await Promise.all(
       data.items
         .filter((i) => otherIds.includes(i.id))
-        .map(async (i) => ({ id: i.id, title: i.title, description: (await this.deps.backlog.readTicket(i)).description })),
+        .map(async (i) => ({ id: i.id, title: i.title, description: (await this.deps.backlog.readTicket(i)).description, ticket: this.deps.backlog.docPath(i.id) })),
     );
     const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? c.agent ?? '')).filter(Boolean);
     const agent = m.agent ?? agentName(taken);
     const checks = await checkCommand(m.dir, settings().get<string>('merge.checkCommand', ''));
     if (checks) await linkDependencies(m.dir, this.worktreeOn(m.base)?.worktree.path ?? root).catch(() => undefined);
+    const common = { item, agent, ticket: this.deps.backlog.docPath(id), branch: m.branch, base: m.base, start, description: (await this.deps.backlog.readTicket(item)).description, ours, others };
     const prompt = [
       agentLead(item, agent),
-      resolvePrompt({
-        item,
-        agent,
-        ticket: this.deps.backlog.docPath(id),
-        branch: m.branch,
-        base: m.base,
-        start,
-        files,
-        description: (await this.deps.backlog.readTicket(item)).description,
-        theirs,
-        ours,
-        others,
-        checks,
-        ...(files.length ? {} : { problem: m.reason }),
-      }),
+      failedChecks
+        ? fixChecksPrompt({ ...common, checks: failedChecks })
+        : resolvePrompt({ ...common, files, theirs, checks, ...(files.length ? {} : { problem: m.reason }) }),
     ].join('\n\n');
+    // The tip it starts from: a fix is a commit on top of it.
+    const from = failedChecks ? (await runGit(['rev-parse', 'HEAD'], { cwd: m.dir })).trim() : undefined;
     const choice = agentChoice(item);
     const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice, output: this.deps.output });
     this.runs.set(id, run);
-    await this.setMerge(id, { ...m, state: 'resolving', agent, session: run.sessionId, reason: undefined });
-    const task = files.length ? `resolve the conflicts in ${files.map((f) => `\`${f}\``).join(', ')}` : `fix the merge (${m.reason ?? 'it stopped'})`;
+    await this.setMerge(id, { ...m, state: 'resolving', agent, session: run.sessionId, reason: undefined, ...(from ? { from } : {}) });
+    const task = files.length
+      ? `resolve the conflicts in ${files.map((f) => `\`${f}\``).join(', ')}`
+      : failedChecks
+        ? `fix the checks that fail on the merge (\`${failedChecks.command}\`), keeping both sides' intent`
+        : `fix the merge (${m.reason ?? 'it stopped'})`;
     await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. It reports here for you to approve.`);
     void run.done.then((result) => this.afterResolver(id, run, result.error));
   }
@@ -446,17 +472,31 @@ export class Merger implements vscode.Disposable {
     this.runs.delete(id);
     const m = (await this.item(id))?.merging;
     if (!m) return;
-    const result = await mergeResult(m.dir, m.baseTip).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
+    const agent = m.agent ?? 'The agent';
+    const again = m.checks ? 'Fix with Agent' : 'Resolve with Agent';
+    const result = await mergeResult(m.dir, m.baseTip, id).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
     if ('problem' in result) {
-      const reason = `${m.agent ?? 'The agent'} stopped before the merge was resolved: ${result.problem}${error ? ` (${error.slice(0, 200)})` : ''}`;
+      const reason = `${agent} stopped before the merge was ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}${error ? ` (${error.slice(0, 200)})` : ''}`;
       await this.setMerge(id, { ...m, state: 'failed', reason });
-      await this.note(id, `${reason} Resolve with Agent again, or cancel the merge.`);
-      void vscode.window.showWarningMessage(`The merge of ${id} isn't resolved: ${result.problem}`, 'Open').then((c) => c && this.deps.openTicket(id));
+      await this.note(id, `${reason} ${again} again, or cancel the merge.`);
+      void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`, 'Open').then((c) => c && this.deps.openTicket(id));
+      return;
+    }
+    if (m.checks && result.commit === m.from) {
+      // No fix committed: it asks something in the ticket (a design conflict), or it gave up; its report says which.
+      const reason = `${agent} committed no fix: its report says why (it may ask you something). Answer there, then ${again} again; or cancel the merge.`;
+      await this.setMerge(id, { ...m, state: 'failed', reason });
+      void vscode.window.showWarningMessage(`${agent} didn't fix the checks on the merge of ${id}: its report in the ticket says why.`, 'Open').then((c) => c && this.deps.openTicket(id));
       return;
     }
     await this.setMerge(id, { ...m, state: 'resolved', reason: undefined });
     void vscode.window
-      .showInformationMessage(`${m.agent ?? 'The agent'} resolved the conflicts of merging ${id}. Read its report, and approve the resolution in the ticket.`, 'Open')
+      .showInformationMessage(
+        m.checks
+          ? `${agent} fixed the checks on the merge of ${id}. Read its report, and approve the fix in the ticket.`
+          : `${agent} resolved the conflicts of merging ${id}. Read its report, and approve the resolution in the ticket.`,
+        'Open',
+      )
       .then((c) => c && this.deps.openTicket(id));
   }
 
@@ -468,14 +508,18 @@ export class Merger implements vscode.Disposable {
         const m = item?.merging;
         if (!item || !m || this.runs.has(id)) return 'stopped';
         if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
-        const result = await mergeResult(m.dir, m.baseTip);
+        const result = await mergeResult(m.dir, m.baseTip, id);
         if ('problem' in result) {
-          await this.setMerge(id, { ...m, state: 'failed', reason: `the merge isn't resolved: ${result.problem}` });
-          void vscode.window.showWarningMessage(`The merge of ${id} isn't resolved: ${result.problem}`);
+          await this.setMerge(id, { ...m, state: 'failed', reason: `the merge isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}` });
+          void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
           return 'stopped';
         }
-        await this.note(id, `You approved the resolution of the merge's conflicts.`);
-        return this.complete(item, { dir: m.dir, branch: m.branch, base: m.base, baseTip: m.baseTip, commit: result.commit, resolved: true }, false);
+        await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
+        return this.complete(
+          item,
+          { dir: m.dir, branch: m.branch, base: m.base, baseTip: m.baseTip, commit: result.commit, merge: result.merge, fixes: result.fixes, resolved: true },
+          false,
+        );
       }),
     );
   }
@@ -561,42 +605,65 @@ function conflictsReason(files: readonly string[]): string {
   return `conflicts in ${files.slice(0, 5).join(', ')}${files.length > 5 ? ` and ${files.length - 5} more` : ''}.`;
 }
 
-/** Runs the checks in a terminal (a task), in dir: whether they passed. */
-async function runChecks(dir: string, command: string, title: string): Promise<boolean> {
-  const task = new vscode.Task({ type: 'flotilla-merge' }, vscode.TaskScope.Workspace, title, 'Flotilla', new vscode.ShellExecution(command, { cwd: dir }));
-  task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true, showReuseMessage: false };
-  let execution: vscode.TaskExecution | undefined;
-  // Ends seen before executeTask resolves (a quick command), matched once it does.
-  const early: Array<{ execution: vscode.TaskExecution; code: number | undefined }> = [];
-  return new Promise<boolean>((resolve, reject) => {
-    let settled = false;
-    const settle = (code: number | undefined) => {
-      if (settled) return;
-      settled = true;
-      exited.dispose();
-      ended.dispose();
-      resolve(code === 0);
+/**
+ * Runs the checks in a terminal (a task), in dir: whether they passed, and their output (kept, so a failure can be
+ * shown in the ticket and given to an agent). The command runs in a shell of its own, its output written to the
+ * task's terminal as it comes; closing the terminal stops it (a failure).
+ */
+async function runChecks(dir: string, command: string, title: string): Promise<{ passed: boolean; output: string }> {
+  let output = '';
+  let settle: (code: number | undefined) => void = () => undefined;
+  const done = new Promise<number | undefined>((resolve) => (settle = resolve));
+  const execution = new vscode.CustomExecution(async () => {
+    const write = new vscode.EventEmitter<string>();
+    const close = new vscode.EventEmitter<number>();
+    let child: ChildProcess | undefined;
+    const end = (code: number | undefined) => {
+      settle(code);
+      close.fire(code ?? 1);
     };
-    const exited = vscode.tasks.onDidEndTaskProcess((e) => {
-      if (!execution) early.push({ execution: e.execution, code: e.exitCode });
-      else if (e.execution === execution) settle(e.exitCode);
-    });
-    // A task that ends without its process's exit code (it couldn't start) failed.
-    const ended = vscode.tasks.onDidEndTask((e) => {
-      if (execution && e.execution === execution) setTimeout(() => settle(undefined), 1000);
-    });
-    vscode.tasks.executeTask(task).then(
-      (x) => {
-        execution = x;
-        const seen = early.find((e) => e.execution === x);
-        if (seen) settle(seen.code);
+    return {
+      onDidWrite: write.event,
+      onDidClose: close.event,
+      open: () => {
+        write.fire(`\x1b[2m${dir}> ${command}\x1b[0m\r\n`);
+        // Its own process group (not on Windows), so stopping it stops what the shell started too.
+        child = spawn(command, { cwd: dir, shell: true, env: { ...process.env, FORCE_COLOR: '1' }, windowsHide: true, detached: process.platform !== 'win32' });
+        const take = (b: Buffer) => {
+          const text = b.toString('utf8');
+          // Only the end is kept: that's where the failures are summed up.
+          output = (output + text).slice(-200_000);
+          write.fire(text.replace(/\r?\n/g, '\r\n'));
+        };
+        child.stdout?.on('data', take);
+        child.stderr?.on('data', take);
+        child.on('error', (e) => {
+          take(Buffer.from(`\n${e.message}\n`));
+          end(undefined);
+        });
+        child.on('close', (code) => end(code ?? undefined));
       },
-      (e: unknown) => {
-        settled = true;
-        exited.dispose();
-        ended.dispose();
-        reject(e instanceof Error ? e : new Error(String(e)));
+      close: () => {
+        if (child?.pid && child.exitCode === null) stopTree(child.pid);
+        settle(undefined);
       },
-    );
+    };
   });
+  const task = new vscode.Task({ type: 'flotilla-merge', command }, vscode.TaskScope.Workspace, title, 'Flotilla', execution);
+  task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true, showReuseMessage: false };
+  await vscode.tasks.executeTask(task);
+  const code = await done;
+  return { passed: code === 0, output: outputTail(output) };
+}
+
+/** Stops a process and the ones it started (the shell's command). */
+function stopTree(pid: number): void {
+  if (process.platform === 'win32') spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }).on('error', () => undefined);
+  else {
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      // gone already
+    }
+  }
 }

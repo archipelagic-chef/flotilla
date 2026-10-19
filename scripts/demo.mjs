@@ -40,7 +40,7 @@ const DEMO_SETTINGS = {
   'window.title': `${TITLE_MARKER} · \${rootName}\${separator}\${activeEditorShort}`,
   'window.restoreWindows': 'none',
   'window.commandCenter': false,
-  // Modal dialogs drawn in the page (not native ones), so a demo can wait for them, click them and record them.
+  // A modal (a confirmation) drawn in the page, not by the OS: frames show it and steps can click it.
   'window.dialogStyle': 'custom',
   'workbench.startupEditor': 'none',
   'workbench.tips.enabled': false,

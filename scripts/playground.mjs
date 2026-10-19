@@ -22,7 +22,7 @@ if (!fs.existsSync(fileURLToPath(new URL('../dist/playground-seed-kit.mjs', impo
 const { seedPlayground } = await import('./playground-seed.mjs');
 
 // Bump when this script changes what a new playground looks like or how it is built.
-const PLAYGROUND_VERSION = 1;
+const PLAYGROUND_VERSION = 2;
 
 // The playground's files (a small Node app, its tests and launch configurations) live in playground-app/.
 const app = fileURLToPath(new URL('playground-app/', import.meta.url));
@@ -38,13 +38,6 @@ let movedTo = null;
 
 const gitIn = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const git = (...args) => gitIn(dir, ...args);
-const configured = (key) => {
-  try {
-    return git('config', key) !== '';
-  } catch {
-    return false;
-  }
-};
 const recordedVersion = () => {
   try {
     return Number(git('config', 'flotilla.playgroundVersion'));
@@ -112,8 +105,9 @@ const create = () => {
   git('init', '-q');
   git('symbolic-ref', 'HEAD', 'refs/heads/main');
   git('config', 'core.autocrlf', 'false');
-  if (!configured('user.name')) git('config', 'user.name', 'Flotilla Playground');
-  if (!configured('user.email')) git('config', 'user.email', 'playground@flotilla.invalid');
+  // Its own identity, always: the demo window's home has no git config, so its merges need one here (BL-65).
+  git('config', 'user.name', 'Flotilla Playground');
+  git('config', 'user.email', 'playground@flotilla.invalid');
   fs.writeFileSync(path.join(dir, '.gitattributes'), '* text=auto eol=lf\n');
   git('add', '.');
   git('commit', '-q', '-m', 'Initial playground commit');

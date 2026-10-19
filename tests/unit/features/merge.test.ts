@@ -8,6 +8,7 @@ import {
   checkBranch,
   defaultCheckCommand,
   fastForward,
+  fixChecksPrompt,
   hasUncommittedChanges,
   idsIn,
   isMergeDir,
@@ -18,6 +19,7 @@ import {
   mergeOrder,
   mergeResult,
   mergeRoot,
+  outputTail,
   removeMergeWorktree,
   resolvePrompt,
 } from '../../../src/features/backlog/merge';
@@ -213,6 +215,62 @@ describe('merging in a temporary worktree', () => {
     await removeMergeWorktree(repo, dir);
     expect(fs.existsSync(dir)).toBe(false);
     expect(fs.existsSync(path.join(repo, 'node_modules', 'dep', 'index.js'))).toBe(true);
+  });
+});
+
+describe('a merge whose checks fail (BL-65)', () => {
+  it('takes fixes committed on top of the merge, when they start with the ticket id', async () => {
+    const { repo, tmp } = setup();
+    commit(repo, 'b.txt', 'b\n', 'BL-2: add b');
+    const baseTip = git(repo, 'rev-parse', 'main');
+    const dir = path.join(mergeRoot(tmp), 'm6');
+    const out = (await mergeInWorktree(repo, { dir, baseTip, branch: 'feature/BL-1', message: 'Merge BL-1: Item' })) as { commit: string };
+    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ commit: out.commit, merge: out.commit, fixes: [] });
+    commit(dir, 'c.txt', 'c\n', 'BL-1: Fix the checks after merging main');
+    const fix = git(dir, 'rev-parse', 'HEAD');
+    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ commit: fix, merge: out.commit, fixes: ['BL-1: Fix the checks after merging main'] });
+    // Not another ticket's commit ("BL-12" isn't BL-1), nor one without an id.
+    commit(dir, 'd.txt', 'd\n', 'BL-12: something else');
+    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ problem: expect.stringContaining("doesn't start with BL-1") });
+    git(dir, 'reset', '-q', '--hard', fix);
+    // Uncommitted fixes aren't taken.
+    writeFile(dir, 'a.txt', 'changed\n');
+    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ problem: expect.stringContaining('uncommitted') });
+    await removeMergeWorktree(repo, dir);
+  });
+
+  it('keeps the end of the output, without colours', () => {
+    const lines = Array.from({ length: 300 }, (_, i) => `line ${i}`);
+    const tail = outputTail(`\x1b[31mred\x1b[0m\r\n${lines.join('\n')}\n\n\n FAIL a.test.ts\n`);
+    expect(tail.endsWith(' FAIL a.test.ts')).toBe(true);
+    expect(tail.split('\n')).toHaveLength(120);
+    expect(tail).not.toContain('\x1b');
+    expect(outputTail('\x1b[31mred\x1b[0m')).toBe('red');
+  });
+
+  it('gives the agent the failing output, both tickets, and says to keep both intents or ask', () => {
+    const prompt = fixChecksPrompt({
+      item: { id: 'BL-1', title: 'One' },
+      agent: 'Nova-7',
+      ticket: '/b/BL-1.md',
+      branch: 'feature/BL-1',
+      base: 'main',
+      start: 'abcdef1234567890',
+      description: 'Do one.',
+      checks: { command: 'npm test', output: 'FAIL a.test.ts\nexpected 1, got 2' },
+      ours: ['222 BL-2: change the default'],
+      others: [{ id: 'BL-2', title: 'Two', description: 'Do two.', ticket: '/b/BL-2.md' }],
+    });
+    expect(prompt).toContain('```text\nFAIL a.test.ts\nexpected 1, got 2\n```');
+    expect(prompt).toContain('> Do one.');
+    expect(prompt).toContain('BL-2 "Two" (/b/BL-2.md)');
+    expect(prompt).toContain('> Do two.');
+    expect(prompt).toContain('- 222 BL-2: change the default');
+    expect(prompt).toContain('Keep both intents');
+    expect(prompt).toContain('starts with "BL-1: "');
+    expect(prompt).toContain("Don't amend the merge commit");
+    expect(prompt).toContain('```question');
+    expect(prompt).toContain('Agent Nova-7');
   });
 });
 

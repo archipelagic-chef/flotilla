@@ -16,6 +16,7 @@ import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
+import { activeAgents, lastReport, runningFor } from '../activeAgents';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
@@ -900,38 +901,64 @@ function MergeButton({ into }: { into: string }) {
   );
 }
 
-/** A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve. */
+/**
+ * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
+ * or its checks failing (BL-65), with their output, to fix with an agent.
+ */
 function MergingPanel({ ticket }: { ticket: TicketView }) {
   const m = ticket.merging!;
   const agent = m.agent ?? 'An agent';
   const resolving = m.state === 'resolving' && m.running;
+  const checks = m.checks;
+  // With failing checks the agent fixes them; with conflicts, it resolves them.
+  const work = checks ? 'fixing the checks that fail on the merge' : 'resolving the conflicts';
   const [icon, cls, text] = resolving
-    ? ['git-merge', 'working', `${agent} is resolving the conflicts, in a temporary worktree; it reports below.`]
+    ? ['git-merge', 'working', `${agent} is ${work}, in a temporary worktree; it reports below.`]
     : m.state === 'resolved'
-      ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      ? checks
+        ? ['pass', 'waiting', `${agent} fixed the checks (its report is below). Approve the fix: the checks run again, then ${m.base} moves to the merge.`]
+        : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
       : m.state === 'resolving'
-        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the conflicts aren't resolved.`]
-        : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
+        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
+        : checks && m.reason?.startsWith('the checks failed')
+          ? ['error', 'stopped', `The checks (${checks.command}) fail on the merge, though each side passed alone. Nothing changed; the merge is kept in a temporary worktree.`]
+          : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
   return (
-    <div class={`review-panel ${cls}`}>
-      <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>Merging into {m.base}</strong> {text}
-      </span>
-      <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
-        <i class="codicon codicon-close" /> Cancel
-      </button>
-      {!resolving && m.state !== 'resolved' && (
-        <button class="button" onClick={() => send({ type: 'mergeResolve' })} title="An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve">
-          <i class="codicon codicon-hubot" /> Resolve with Agent
+    <>
+      <div class={`review-panel ${cls}`}>
+        <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>Merging into {m.base}</strong> {text}
+        </span>
+        <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
+          <i class="codicon codicon-close" /> Cancel
         </button>
+        {!resolving && m.state !== 'resolved' && (
+          <button
+            class="button"
+            onClick={() => send({ type: 'mergeResolve' })}
+            title={
+              checks
+                ? 'An agent fixes the merge, given the failing output and the tickets of both sides: it keeps both intents (or asks you here), and reports here for you to approve'
+                : "An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve"
+            }
+          >
+            <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (
+          <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the merge, then moves the base branch to it">
+            <i class="codicon codicon-check" /> {checks ? 'Approve Fix' : 'Approve Resolution'}
+          </button>
+        )}
+      </div>
+      {checks && (
+        <details class="merge-output" open={m.state === 'failed'}>
+          <summary>The checks' output (its end; all of it is in the terminal)</summary>
+          <pre>{checks.output.trim() || '(no output)'}</pre>
+        </details>
       )}
-      {m.state !== 'resolving' && (
-        <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the resolved merge, then moves the base branch to it">
-          <i class="codicon codicon-check" /> Approve Resolution
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -1283,6 +1310,58 @@ function modelName(model: string): string {
   if (!m) return model;
   const family = `${m[1][0].toUpperCase()}${m[1].slice(1)}`;
   return m[2] ? `${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : family;
+}
+
+/** Every agent on the ticket now, in full: its state, how long it has run, its worktree, what it last reported. */
+function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: TicketView['agents'] }) {
+  // How long each has run goes on counting between updates.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <section class="block active-agents">
+      <div class="block-head">
+        <h2>Active agents</h2>
+      </div>
+      <div class="agents">
+        {agents.map((a) => {
+          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : a.state === 'waiting-for-input' ? CHAT_STATE['waiting-for-input'] : CHAT_STATE.working;
+          const report = lastReport(ticket.activity, a.id);
+          return (
+            <div key={a.id} class={`active-agent ${state.cls}`}>
+              <div class="active-agent-head">
+                <span class="chat-icon small">
+                  <i class="codicon codicon-hubot" />
+                  <span class={`dot ${state.cls}`} />
+                </span>
+                <span class="agent-name">{a.agent}</span>
+                <span class={`state ${state.cls}`}>{state.label}</span>
+                <span class="muted agent-meta" title={`Started ${new Date(a.started).toLocaleString()}`}>
+                  <i class="codicon codicon-watch" /> running {runningFor(a.started)}
+                </span>
+                <span class="muted agent-meta active-agent-worktree" title={`Worktree: ${a.key}`}>
+                  <i class="codicon codicon-git-branch" /> {a.branch}
+                </span>
+                <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" aria-label={`Open ${a.agent}'s chat`} title="Open this agent's chat in Claude Code">
+                  <i class="codicon codicon-comment-discussion" /> Open Chat
+                </ActionButton>
+              </div>
+              {report ? (
+                <div class="active-agent-report">
+                  <span class="muted">Last report · {report.date}</span>
+                  <Rendered html={report.html} empty="" />
+                </div>
+              ) : (
+                <div class="active-agent-report muted">No report yet.</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 /** Every agent that worked on the ticket: its chat, its state, how much it reported. */
@@ -2251,6 +2330,7 @@ function App() {
   };
   shownEntries = ticket.activity.length;
   const worktrees = ticket.worktrees;
+  const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
   return (
     <main class="ticket">
@@ -2388,6 +2468,7 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
       <AskPane ask={ask} />

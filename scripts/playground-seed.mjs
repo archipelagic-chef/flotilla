@@ -418,6 +418,30 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-13',
+    title: 'Say hi in the greeting',
+    status: 'review',
+    daysAgo: 3,
+    branch: 'feature/BL-13-say-hi-in-the-greeting',
+    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
+    review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
+    activity: [
+      {
+        ago: 60,
+        author: 'Agent Vega-2',
+        body: 'Done: the greeting says hi.\n\n#### How to review\n\n1. [src/greeting.js:2-4](src/greeting.js#L2-L4): the new wording.\n\nReady for review.',
+      },
+      { ago: 25, author: 'Agent Iris-4', body: 'Reviewed it. The greeting says hi, as the ticket asks.\n\nVerdict: approved' },
+    ],
+    // It merges cleanly, but the tests still expect the comma: the merge's checks fail (BL-65's demo).
+    commits: [
+      {
+        message: 'BL-13: Say hi in the greeting',
+        files: { 'src/greeting.js': "// The one place the greeting's wording lives.\nexport function greet(name = 'world') {\n  return `Hi ${name}!`;\n}\n" },
+      },
+    ],
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */

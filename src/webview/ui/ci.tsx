@@ -85,6 +85,9 @@ export function CiBody({ view, worktree }: { view: CiView | undefined; worktree:
         <div class="row group-head">
           <span class="name">CI/CD</span>
           <span class="hover-actions">
+            <button class="icon" aria-label="Run Workflow…" data-tip="Run Workflow… on this branch" onClick={() => send({ type: 'runWorkflow', key: worktree })}>
+              <i class="codicon codicon-play" />
+            </button>
             <button class="icon" aria-label="Refresh" onClick={refresh}>
               <i class="codicon codicon-refresh" />
             </button>

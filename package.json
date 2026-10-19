@@ -104,6 +104,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.runWorkflow",
+        "title": "Run Workflow…",
+        "category": "Flotilla",
+        "icon": "$(play)"
+      },
+      {
         "command": "flotilla.openInNewWindow",
         "title": "Open in New Window",
         "category": "Flotilla",
@@ -662,6 +668,10 @@
         },
         {
           "command": "flotilla.quickSwitch",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.runWorkflow",
           "when": "flotilla.state == ready"
         },
         {
@@ -1657,7 +1667,7 @@
         "flotilla.merge.checkCommand": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. Failing checks stop the merge, and nothing changes. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
+          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. It runs in the system shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows), not the terminal's default one. When they fail, the base branch doesn't move: the merge is kept for an agent to fix (Fix with Agent, in the ticket), or to cancel. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
         },
         "flotilla.merge.onApprove": {
           "type": "string",

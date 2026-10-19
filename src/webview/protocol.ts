@@ -112,6 +112,8 @@ export interface ChatView {
   age: string;
   /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
   size?: { label: string; tip: string; big: boolean };
+  /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */
+  agent?: { name: string; item: string };
 }
 
 export interface WorkstreamView {
@@ -316,6 +318,8 @@ export type WebviewMessage =
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
   | { type: 'openSite'; url: string }
+  /** The CI/CD view: starts a workflow by hand on the worktree's branch (asks first). */
+  | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */

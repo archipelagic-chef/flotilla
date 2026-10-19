@@ -34,6 +34,12 @@ export function leanFlags(settingsFile: string | undefined): string[] {
   return ['--disable-slash-commands', '--strict-mcp-config', ...(settingsFile ? ['--settings', settingsFile] : [])];
 }
 
+/** The settings file among an agent's flags (after --settings), if it got one. */
+export function settingsFileOf(flags: readonly string[]): string | undefined {
+  const i = flags.indexOf('--settings');
+  return i >= 0 ? flags[i + 1] : undefined;
+}
+
 const read = (file: string): string | undefined => {
   try {
     return fs.readFileSync(file, 'utf8');

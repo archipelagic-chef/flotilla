@@ -1,0 +1,42 @@
+{
+  "title": "A clean merge whose checks fail, kept to fix with an agent",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "caption": "BL-13 is approved, and merges into main without conflicts"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")"
+    },
+    {
+      "caption": "The checks (npm test) run on the merge, and fail"
+    },
+    {
+      "waitFor": "button:has-text(\"Fix with Agent\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "Main didn't move: the merge is kept, with the failing output, to fix with an agent"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
