@@ -151,6 +151,8 @@ export interface TicketView {
   canMerge: boolean;
   /** The branch it merges into. */
   mergeInto?: string;
+  /** Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"). */
+  mergeProgress?: { waitsFor?: string };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */

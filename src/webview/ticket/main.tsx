@@ -883,21 +883,29 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
               <i class="codicon codicon-eye" /> Review Again
             </ActionButton>
           )}
-          {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} />}
+          {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
         </>
       )}
     </div>
   );
 }
 
-function MergeButton({ into }: { into: string }) {
+/** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
+function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
+  const message: TicketWebviewMessage = { type: 'merge' };
+  const clicked = useWorking(message);
+  // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
+  const label = (progress && (progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
   return (
     <button
       class="button"
-      onClick={() => send({ type: 'merge' })}
+      disabled={!!label}
+      aria-busy={!!label}
+      onClick={() => act(message, 'Merging…')}
       title="Merges its branch in a temporary worktree (git merge --no-ff), runs the checks there, then moves the base branch to the merge. Nothing is pushed."
     >
       <i class="codicon codicon-git-merge" /> Merge to {into}
+      {label && <WorkingTag label={label} />}
     </button>
   );
 }

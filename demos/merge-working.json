@@ -1,0 +1,35 @@
+{
+  "title": "Merge to main says it's merging until its merge ends",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")"
+    },
+    {
+      "waitFor": ".review-panel button:has-text(\"Merging\u2026\")"
+    },
+    {
+      "caption": "The button says it's merging (or which merge it waits behind) while the checks run"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
