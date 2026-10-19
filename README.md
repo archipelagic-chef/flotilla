@@ -84,6 +84,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.agentStatusStaleMinutes` | `10` | When a `working` report is considered stale |
 | `flotilla.notify` | `needsYou` | Notifications for what needs you: `needsYou` (one a minute, gathered), `all` (each as it happens), or `off` |
 | `flotilla.ci.notify` | `failures` | Notify when a CI run on a worktree's branch finishes: `failures`, `all` or `off` |
+| `flotilla.ci.pushOnApproval` | `auto` | Push an approved ticket's branch to `origin` (and again on its new commits), so CI runs on it: `auto` (a GitHub `origin` with a workflow on push), `on` or `off`. Never forced; only commits with the repository's identity |
 | `flotilla.pollSeconds` | `15` | Refresh interval for worktrees in use while the view is visible; other worktrees every few minutes |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |

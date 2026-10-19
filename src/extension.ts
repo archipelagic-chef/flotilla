@@ -20,6 +20,7 @@ import * as chatUi from './ui/chatCommands';
 import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
+import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
@@ -206,9 +207,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     mainRoot: location.mainRoot,
     output,
     isLeader: () => leader.isLeader,
-    onApproved: (id, by) => merger.approved(id, by),
+    onApproved: (id, by) => {
+      pushes.approved(id);
+      merger.approved(id, by);
+    },
   });
-  context.subscriptions.push(reviews, merger, trackTerminals());
+  const pushes = new BranchPush({ backlog, repository, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
+  context.subscriptions.push(reviews, merger, pushes, trackTerminals());
   const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {

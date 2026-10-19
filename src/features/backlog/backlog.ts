@@ -1,3 +1,4 @@
+import type { PushedInfo } from './branchPush';
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
 import type { MergedInfo, MergeState } from './merge';
@@ -72,6 +73,8 @@ export interface BacklogItem {
   /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
   merging?: MergeState;
   merged?: MergedInfo;
+  /** Its branches' last pushes to origin once approved (BL-104): a tip is pushed, and noted, once. */
+  pushed?: PushedInfo[];
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
