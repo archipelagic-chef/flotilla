@@ -40,12 +40,13 @@ function solid(r: number, g: number, b: number): Buffer {
 
 describe('parseDemo', () => {
   it('reads the steps, one action each, with their timeouts', () => {
-    const demo = parseDemo(JSON.stringify({ title: 'T', steps: [{ command: 'Focus on Flotilla View' }, { click: 'text=BL-3', timeout: 5000 }, { wait: 500 }, { caption: '' }] }));
+    const demo = parseDemo(JSON.stringify({ title: 'T', steps: [{ command: 'Focus on Flotilla View' }, { click: 'text=BL-3', timeout: 5000 }, { hover: '.ci-run' }, { wait: 500 }, { caption: '' }] }));
     expect(demo).toEqual({
       title: 'T',
       steps: [
         { action: 'command', value: 'Focus on Flotilla View' },
         { action: 'click', value: 'text=BL-3', timeout: 5000 },
+        { action: 'hover', value: '.ci-run' },
         { action: 'wait', value: 500 },
         { action: 'caption', value: '' },
       ],
