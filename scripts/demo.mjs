@@ -17,6 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
+import { mainRoot, withDownloadLock } from './vscode-download.mjs';
 import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -55,15 +56,6 @@ const DEMO_SETTINGS = {
   'extensions.ignoreRecommendations': true,
   'git.openRepositoryInParentFolders': 'never',
 };
-
-/** The main worktree, where VS Code's test download is kept for every worktree (as .vscode-test.mjs does). */
-function mainRoot() {
-  try {
-    return path.dirname(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' }).trim());
-  } catch {
-    return root;
-  }
-}
 
 /** The demo profile, made ready: Claude Code copied in, the fakes on (pointing at `githubUrl`), the demo's settings. */
 function prepareProfile(githubUrl) {
@@ -242,7 +234,8 @@ async function main() {
   const github = await startFakeGitHub({ port: 0, repoDir: playground });
   prepareProfile(github.url);
   fs.mkdirSync(HOME_DIR, { recursive: true });
-  const executable = await downloadAndUnzipVSCode({ cachePath: path.join(mainRoot(), '.vscode-test') });
+  const cachePath = path.join(mainRoot(root), '.vscode-test');
+  const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 
   console.log(`${mode === 'record' ? 'Recording' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground)…`);
   const app = await _electron.launch({
@@ -265,6 +258,8 @@ async function main() {
     },
     timeout: 60_000,
   });
+  // Kept now: once the window is closed, app.process() no longer answers.
+  const child = app.process();
   let failed;
   try {
     const argv = await app.evaluate(() => process.argv);
@@ -319,9 +314,10 @@ async function main() {
     failed = error;
   } finally {
     // VS Code may take a while to quit (or not at all, when something holds it): it's stopped after a few seconds.
+    // Nothing here may hide the error a step ended with.
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
-    app.process().kill();
-    await github.close();
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await github.close().catch(() => undefined);
   }
   if (failed) throw failed;
 }
