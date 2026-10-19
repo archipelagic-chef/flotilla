@@ -229,7 +229,12 @@ async function main() {
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4 when ffmpeg is there)');
 
-  if (!fs.existsSync(path.join(root, 'dist', 'extension.js'))) throw new Error('build first: npm run build');
+  const built = ['extension.js', 'webview.js', 'ticket.js'].map((f) => path.join(root, 'dist', f));
+  if (!built.every((f) => fs.existsSync(f))) throw new Error('build first: npm run build');
+  // An old build plays an old sidebar, whose elements the demo's steps may not find.
+  const builtAt = Math.min(...built.map((f) => fs.statSync(f).mtimeMs));
+  const changed = fs.readdirSync(path.join(root, 'src'), { recursive: true }).find((f) => fs.statSync(path.join(root, 'src', f)).mtimeMs > builtAt);
+  if (changed) throw new Error(`build first: src/${changed} changed since the last build (npm run build)`);
   // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
   await withLock(LOCK_FILE, () => show(mode, demo, out, still), {
     staleMs: Number.POSITIVE_INFINITY,
@@ -324,7 +329,7 @@ async function show(mode, demo, out, still) {
       }
     } else {
       console.log('Done. The window stays open to look around; close it when you are done.');
-      await new Promise((resolve) => app.process().once('exit', resolve));
+      await new Promise((resolve) => child.once('exit', resolve));
     }
   } catch (error) {
     failed = error;
