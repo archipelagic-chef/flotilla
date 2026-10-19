@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { decodePng, demoFile, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { decodePng, demoFile, downscale, encodeGif, listDemos, parseDemo, timeline, tryLock, unlock, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -171,5 +171,43 @@ describe('encodeGif', () => {
     expect(gif.readUInt16LE(6)).toBe(2);
     expect(gif.includes(Buffer.from('NETSCAPE2.0'))).toBe(true);
     expect(gif[gif.length - 1]).toBe(0x3b);
+  });
+});
+
+describe('tryLock', () => {
+  const lockFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'demo-lock-')), 'sub', 'demo-profile.lock');
+  /** A pid no process has: one past the largest a Linux pid can be. */
+  const gone = 4_194_305;
+
+  it('takes a free lock, with its pid in it', () => {
+    const file = lockFile();
+    expect(tryLock(file, 123)).toEqual({ ok: true });
+    expect(fs.readFileSync(file, 'utf8')).toBe('123');
+  });
+
+  it("says who holds it while that process runs, and doesn't take it", () => {
+    const file = lockFile();
+    expect(tryLock(file, process.pid)).toEqual({ ok: true });
+    expect(tryLock(file, 123)).toEqual({ ok: false, pid: process.pid });
+    expect(fs.readFileSync(file, 'utf8')).toBe(String(process.pid));
+  });
+
+  it('takes over a lock whose process is gone, or that holds no pid', () => {
+    const file = lockFile();
+    expect(tryLock(file, gone)).toEqual({ ok: true });
+    expect(tryLock(file, 123)).toEqual({ ok: true });
+    fs.writeFileSync(file, 'junk');
+    expect(tryLock(file, 456)).toEqual({ ok: true });
+    expect(fs.readFileSync(file, 'utf8')).toBe('456');
+  });
+
+  it('is let go of only by the process holding it', () => {
+    const file = lockFile();
+    tryLock(file, process.pid);
+    unlock(file, 123);
+    expect(fs.existsSync(file)).toBe(true);
+    unlock(file, process.pid);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(() => unlock(file, process.pid)).not.toThrow();
   });
 });

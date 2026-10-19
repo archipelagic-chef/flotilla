@@ -17,7 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, tryLock, unlock, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -26,6 +26,13 @@ const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
  * extensions read the user's config and keys from it. Empty here, so the window sees none of the user's.
  */
 const HOME_DIR = path.join(root, '.vscode-test', 'demo-home');
+/**
+ * Held while a demo runs: a second VS Code on the same profile would hand itself to the first one's window and close.
+ * Demos in other worktrees have profiles of their own.
+ */
+const LOCK_FILE = `${PROFILE_DIR}.lock`;
+/** How long a second demo waits for the first (one being played stays open until it's closed). */
+const LOCK_WAIT_MS = 10 * 60_000;
 const WIDTH = 1280;
 const HEIGHT = 800;
 /** Screenshots a second while recording; frames that don't change are merged, so this costs little. */
@@ -55,6 +62,23 @@ const DEMO_SETTINGS = {
   'extensions.ignoreRecommendations': true,
   'git.openRepositoryInParentFolders': 'never',
 };
+
+/** Takes the demo profile's lock, waiting while another demo in this worktree holds it; let go of when this exits. */
+async function lockProfile() {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let told = false;
+  for (;;) {
+    const lock = tryLock(LOCK_FILE);
+    if (lock.ok) break;
+    const who = lock.pid ? ` (pid ${lock.pid})` : '';
+    if (Date.now() > deadline) throw new Error(`another demo is still running in this worktree${who}: close its window, or wait for it, and try again`);
+    if (!told) console.log(`Another demo is running in this worktree${who}: waiting for it to finish (close its window to go on)…`);
+    told = true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  process.on('exit', () => unlock(LOCK_FILE));
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130));
+}
 
 /** The main worktree, where VS Code's test download is kept for every worktree (as .vscode-test.mjs does). */
 function mainRoot() {
@@ -239,6 +263,7 @@ async function main() {
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');
   const { startFakeGitHub } = await import('./fake-github.mjs');
+  await lockProfile();
   const github = await startFakeGitHub({ port: 0, repoDir: playground });
   prepareProfile(github.url);
   fs.mkdirSync(HOME_DIR, { recursive: true });

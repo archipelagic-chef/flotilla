@@ -19,6 +19,8 @@ export function parseDemo(text: string, name?: string): { title: string; steps: 
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
 export function unsafeFrame(frame: { title?: string; argv?: string[] }, options: { profileDir: string }): string | undefined;
+export function tryLock(file: string, pid?: number): { ok: true } | { ok: false; pid: number | undefined };
+export function unlock(file: string, pid?: number): void;
 export function decodePng(buffer: Buffer): RgbaImage;
 export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
 export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; ms: number }[];
