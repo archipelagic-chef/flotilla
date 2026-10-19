@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches, laneOf, readyToMerge, type BacklogLane } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
+import { agentOf, hasActiveAgent } from '../../features/backlog/activeAgent';
 import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
@@ -38,6 +39,9 @@ interface Props {
   autopilot?: AutopilotState;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
+  /** The board shows only the tickets an agent works on (kept in the view's state). */
+  workingOnly: boolean;
+  setWorkingOnly(on: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -45,15 +49,16 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
   // Agents' proposals wait above the lanes until they're accepted.
-  const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
+  const proposed = workingOnly ? [] : (items ?? []).filter((i) => i.proposed);
+  const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
 
   // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
   const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
@@ -96,6 +101,14 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
               <i class="codicon codicon-rocket" />
             </button>
           )}
+          <button
+            class={`icon working-filter${workingOnly ? ' on' : ''}`}
+            aria-pressed={workingOnly}
+            aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
+            onClick={() => setWorkingOnly(!workingOnly)}
+          >
+            <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
+          </button>
           <button class="icon" aria-label="Plan the Backlog with Claude" onClick={() => send({ type: 'backlog', op: 'plan' })}>
             <i class="codicon codicon-sparkle" />
           </button>
@@ -119,6 +132,15 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 : autopilot.waitingForMemory
                   ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
                   : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
+          </span>
+        </button>
+      )}
+      {workingOnly && items && items.length > 0 && (
+        <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
+          <i class="codicon codicon-filter-filled" />
+          <span>
+            {working === 0 ? 'No ticket is being worked on' : `${working} ${working === 1 ? 'ticket' : 'tickets'} being worked on`} · {items.filter((i) => !i.proposed).length - working} hidden.{' '}
+            <span class="link">Show all</span>
           </span>
         </button>
       )}
@@ -172,7 +194,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         items.length > 0 &&
         LANES.map((lane) => {
           const filtered = lane.lane === 'review' && mineOnly;
-          const laneItems = items.filter((i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
+          const laneItems = items.filter(
+            (i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)) && (!workingOnly || hasActiveAgent(i, worktreesOf(i))),
+          );
           const open = lane.lane !== 'done' || doneOpen;
           return (
             <div key={lane.lane} class={`group lane${dropAt?.status === lane.lane && !dropAt.before ? ' drop-end' : ''}`}>
@@ -215,7 +239,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
+                  {!laneItems.length && <div class="row group-empty">{workingOnly ? 'No agent works on these' : filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
                 </div>
               )}
             </div>
@@ -344,18 +368,6 @@ interface RowProps {
   onDragOver(e: DragEvent): void;
   onDrop(e: DragEvent): void;
   openWorktree(key: string): void;
-}
-
-/**
- * Where its agent is, for the card's menu: running (in the review loop, or busy in one of its worktrees), paused, or
- * stopped by the user (it can be resumed).
- */
-function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'paused' | 'stopped' | undefined {
-  const state = item.review?.state;
-  if (state === 'paused') return 'paused';
-  if (state === 'stopped' && item.review?.stop?.kind === 'user' && item.review.stop.agent) return 'stopped';
-  if (state === 'working' || state === 'reviewing' || state === 'revising') return 'running';
-  return worktrees.some((w) => w.attention === 'working' || w.attention === 'waiting-for-input') ? 'running' : undefined;
 }
 
 /** The agent's state on a worktree chip, as on the worktree tabs. */

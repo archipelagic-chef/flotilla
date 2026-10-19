@@ -32,6 +32,8 @@ export interface Persisted {
   comparisons: CompareChoice[];
   nextComparison: number;
   search: SearchState;
+  /** The backlog shows only the tickets being worked on. */
+  workingOnly?: boolean;
 }
 
 const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparisons: [], nextComparison: 1, search: INITIAL_SEARCH };
@@ -482,6 +484,8 @@ export function App() {
         autopilot={backlogInfo.autopilot}
         workstreams={workstreams}
         colors={colors}
+        workingOnly={!!persisted.workingOnly}
+        setWorkingOnly={(on) => update((p) => ({ ...p, workingOnly: on }))}
         openWorktree={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);

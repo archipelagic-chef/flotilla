@@ -2125,6 +2125,30 @@ ins {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
 }
+/* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
+.working-filter.on {
+  color: var(--working);
+}
+.working-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--working);
+  background: color-mix(in srgb, var(--working) 10%, transparent);
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+}
+.working-bar .codicon {
+  margin-top: 1px;
+  color: var(--working);
+}
+.working-bar .link {
+  color: var(--vscode-textLink-foreground);
+}
 
 /* CI: a static dot on the Version Control tool for the scope's state (no spinner; its hover names the failed workflows), and a worktree's CI line in the same colors. */
 .tools .ci-dot {
