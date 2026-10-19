@@ -248,6 +248,8 @@ async function main() {
       '--skip-release-notes',
       '--disable-workspace-trust',
       '--new-window',
+      // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
+      '--disable-dev-shm-usage',
       playground,
     ],
     // The user's VS Code session variables would make this window talk to theirs.
