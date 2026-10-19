@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { decodePng, demoFile, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { decodePng, demoDisplay, demoFile, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -171,5 +171,18 @@ describe('encodeGif', () => {
     expect(gif.readUInt16LE(6)).toBe(2);
     expect(gif.includes(Buffer.from('NETSCAPE2.0'))).toBe(true);
     expect(gif[gif.length - 1]).toBe(0x3b);
+  });
+});
+
+describe('demoDisplay', () => {
+  it("opens an agent's demo on a virtual display, and anyone else's on the screen", () => {
+    expect(demoDisplay({ CLAUDECODE: '1', DISPLAY: ':2' })).toBe('virtual');
+    expect(demoDisplay({ DISPLAY: ':2' })).toBe('screen');
+  });
+
+  it('does what DEMO_DISPLAY says', () => {
+    expect(demoDisplay({ DEMO_DISPLAY: 'virtual' })).toBe('virtual');
+    expect(demoDisplay({ DEMO_DISPLAY: ' Screen ', CLAUDECODE: '1' })).toBe('screen');
+    expect(() => demoDisplay({ DEMO_DISPLAY: 'mine' })).toThrow(/virtual or screen/);
   });
 });

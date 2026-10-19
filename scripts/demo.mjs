@@ -11,14 +11,14 @@
 // of its own (.vscode-test/demo-profile: no accounts, no secrets), the fake Claude and a fake GitHub started here, and it
 // opens on this worktree's .playground. Frames are screenshots of that window's page through its debugging port, never
 // of the screen, and each is checked to come from that window before it's kept: if one doesn't, nothing is saved.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -236,14 +236,46 @@ async function main() {
   const changed = fs.readdirSync(path.join(root, 'src'), { recursive: true }).find((f) => fs.statSync(path.join(root, 'src', f)).mtimeMs > builtAt);
   if (changed) throw new Error(`build first: src/${changed} changed since the last build (npm run build)`);
   // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
-  await withLock(LOCK_FILE, () => show(mode, demo, out, still), {
+  const display = demoDisplay(process.env);
+  await withLock(LOCK_FILE, () => show(mode, demo, out, still, display), {
     staleMs: Number.POSITIVE_INFINITY,
     onWait: () => console.log('Another demo is running in this worktree: waiting for it to finish (or close its window)…'),
   });
 }
 
+/**
+ * A virtual display (Xvfb) for the demo window, on the first free display number, so that it never opens on the user's
+ * screen. Larger than the window, which is sized to WIDTH x HEIGHT on it, at 24-bit colour: frames are the same as on a
+ * real display. Fails, rather than falling back to the screen, when Xvfb isn't there.
+ */
+function startXvfb() {
+  return new Promise((resolve, reject) => {
+    const xvfb = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', `${WIDTH + 640}x${HEIGHT + 400}x24`, '-nolisten', 'tcp'], {
+      stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
+    });
+    let number = '';
+    let stderr = '';
+    xvfb.stderr.on('data', (d) => (stderr = (stderr + d).slice(-2000)));
+    xvfb.on('error', (error) =>
+      reject(
+        new Error(
+          error.code === 'ENOENT'
+            ? "Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"
+            : `Xvfb didn't start: ${error.message}`,
+        ),
+      ),
+    );
+    xvfb.on('exit', (code) => reject(new Error(`Xvfb stopped (${code}): ${stderr.trim().split('\n').pop() ?? ''}`)));
+    // It writes the display's number to fd 3 once it's ready for clients.
+    xvfb.stdio[3].on('data', (d) => {
+      number += d;
+      if (number.includes('\n')) resolve({ display: `:${number.trim()}`, stop: () => xvfb.kill() });
+    });
+  });
+}
+
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
-async function show(mode, demo, out, still) {
+async function show(mode, demo, out, still, display) {
   const playground = path.join(root, '.playground');
   if (!fs.existsSync(path.join(playground, '.git'))) execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
@@ -256,7 +288,10 @@ async function show(mode, demo, out, still) {
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 
-  console.log(`${mode === 'record' ? 'Recording' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground)…`);
+  const xvfb = display === 'virtual' ? await startXvfb() : undefined;
+  console.log(
+    `${mode === 'record' ? 'Recording' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
+  );
   const app = await _electron.launch({
     executablePath: executable,
     args: [
@@ -273,11 +308,16 @@ async function show(mode, demo, out, still) {
     ],
     // The user's VS Code session variables would make this window talk to theirs.
     env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE')),
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && !(xvfb && k === 'WAYLAND_DISPLAY'))),
       HOME: HOME_DIR,
       USERPROFILE: HOME_DIR,
+      // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
+      ...(xvfb ? { DISPLAY: xvfb.display } : {}),
     },
     timeout: 60_000,
+  }).catch((error) => {
+    xvfb?.stop();
+    throw error;
   });
   // Kept now: once the window is closed, app.process() no longer answers.
   const child = app.process();
@@ -327,6 +367,8 @@ async function show(mode, demo, out, still) {
         fs.writeFileSync(still, captures[captures.length - 1].png);
         console.log(`Its last frame: ${still}`);
       }
+    } else if (xvfb) {
+      console.log('Done. The window was on a virtual display, so it closes now.');
     } else {
       console.log('Done. The window stays open to look around; close it when you are done.');
       await new Promise((resolve) => child.once('exit', resolve));
@@ -339,6 +381,7 @@ async function show(mode, demo, out, still) {
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
     if (child.exitCode === null && child.signalCode === null) child.kill();
     await github.close().catch(() => undefined);
+    xvfb?.stop();
   }
   if (failed) throw failed;
 }

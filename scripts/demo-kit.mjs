@@ -83,6 +83,18 @@ export function unsafeFrame({ title, argv }, { profileDir }) {
   return undefined;
 }
 
+/**
+ * Where the demo window opens (BL-102): `virtual`, a display of its own (Xvfb) that nobody sees, or `screen`, the
+ * display it was started on. `DEMO_DISPLAY` says which; without it, it's virtual for an agent (Claude Code sets
+ * `CLAUDECODE` in the commands its agents run), so an agent's demos never open windows on the user's screen.
+ */
+export function demoDisplay(env) {
+  const asked = env.DEMO_DISPLAY?.trim().toLowerCase();
+  if (asked === 'virtual' || asked === 'screen') return asked;
+  if (asked) throw new Error(`DEMO_DISPLAY is "${env.DEMO_DISPLAY}": it's virtual or screen`);
+  return env.CLAUDECODE ? 'virtual' : 'screen';
+}
+
 /** A PNG (8-bit RGB or RGBA, not interlaced: what Chromium's screenshots are) as RGBA pixels. */
 export function decodePng(buffer) {
   if (buffer.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
