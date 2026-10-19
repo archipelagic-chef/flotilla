@@ -1,0 +1,27 @@
+{
+  "title": "The ticket's CI, live: a failed run re-run from the ticket, going from running to passed",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
+    { "caption": "The ticket shows its branch's latest CI run, its state and the time it's taken" },
+    { "waitFor": ".ci-panel .ci-line" },
+    { "wait": 2500 },
+    { "caption": "It opens to the runs and their jobs, as the CI/CD view lists them" },
+    { "click": ".ci-panel .ci-summary" },
+    { "caption": "The run fails: its failed job opens, with Fix with Agent and its log" },
+    { "waitFor": ".ci-line.failure", "timeout": 60000 },
+    { "wait": 2500 },
+    { "caption": "Re-run it from the ticket" },
+    { "hover": ".ci-runs .ci-run.failure" },
+    { "click": ".ci-runs .ci-run.failure [aria-label=\"Re-run\"]" },
+    { "caption": "It's read every 10 seconds while it runs" },
+    { "waitFor": ".ci-line.running", "timeout": 30000 },
+    { "waitFor": ".ci-line.success", "timeout": 60000 },
+    { "caption": "And passes" },
+    { "wait": 2500 },
+    { "click": ".ci-panel .ci-summary" },
+    { "caption": "" }
+  ]
+}
