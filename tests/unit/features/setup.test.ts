@@ -100,6 +100,17 @@ describe('linkFolders', () => {
     expect(fs.realpathSync(alias)).toBe(fs.realpathSync(path.join(wt, 'node_modules/real')));
   });
 
+  it('keeps links that point outside the folder pointing where they did', async () => {
+    const { main, wt } = pair();
+    writeFile(main, 'node_modules/a/index.js', 'a');
+    writeFile(main, 'shared/lib.js', 'x');
+    fs.symlinkSync(path.join(main, 'shared'), path.join(main, 'node_modules/outside'), 'junction');
+
+    await linkFolders(main, wt, ['node_modules']);
+
+    expect(fs.realpathSync(path.join(wt, 'node_modules/outside'))).toBe(path.join(main, 'shared'));
+  });
+
   it('falls back when hard links fail, leaving nothing half made', async () => {
     const { main, wt } = pair();
     writeFile(main, 'node_modules/a/index.js', 'a');
