@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { branchMatches, laneOf, readyToMerge, type BacklogLane } from '../../features/backlog/backlog';
+import { CARD_AGENT_LABEL, cardAgents, type CardAgent } from '../../features/backlog/cardAgents';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
 import { conflictsOf } from '../../features/backlog/mainDrift';
@@ -54,6 +55,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
   // Agents' proposals wait above the lanes until they're accepted.
   const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
+  // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
+  const chats = workstreams.flatMap((w) => w.chats);
+  const agentsOf = (item: BacklogItem) => (item.source ? [] : cardAgents(item, chats));
 
   // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
   const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
@@ -156,6 +160,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 item={item}
                 icon="lightbulb"
                 worktrees={worktreesOf(item)}
+                agents={agentsOf(item)}
                 color={(ws) => colors.get(ws.key)}
                 renaming={renaming === item.id}
                 setRenaming={(on) => setRenaming(on ? item.id : undefined)}
@@ -206,6 +211,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       item={item}
                       icon={lane.icon}
                       worktrees={worktreesOf(item)}
+                      agents={agentsOf(item)}
                       color={(ws) => colors.get(ws.key)}
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
@@ -337,6 +343,8 @@ interface RowProps {
   icon: string;
   /** The worktrees working on it: one, or several for an epic. */
   worktrees: WorkstreamView[];
+  /** The agents on it, with what each is doing (BL-96). */
+  agents: CardAgent[];
   color(ws: WorkstreamView): string | undefined;
   renaming: boolean;
   setRenaming(on: boolean): void;
@@ -361,7 +369,7 @@ function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'p
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
-function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   const done = item.status === 'done';
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
@@ -434,6 +442,13 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {turn.kind === 'paused' ? 'Paused' : turn.who}
         </span>
       )}
+      {!renaming &&
+        agents.map((a) => (
+          <span key={a.name} class={`agent-chip ${a.state}`} data-tip={`Agent ${a.name}: ${CARD_AGENT_LABEL[a.state]}`}>
+            {a.state === 'paused' ? <i class="codicon codicon-debug-pause" /> : <span class={`dot ${a.state}`} />}
+            {a.name}
+          </span>
+        ))}
       {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
