@@ -349,9 +349,15 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       const body = raw ? JSON.parse(raw) : undefined;
       const logs = /^\/logs\/(\d+)$/.exec(url.pathname);
       const repos = /^\/repos\/([^/]+)\/([^/]+)\/actions(\/.*)?$/.exec(url.pathname);
+      const branch = /^\/repos\/[^/]+\/[^/]+\/branches\/(.+)$/.exec(url.pathname);
       if (logs && method === 'GET') {
         const job = jobs.get(Number(logs[1]));
         result = job ? { status: 200, text: logOf(job.run, job.index) } : notFound();
+      } else if (branch && method === 'GET') {
+        // Run Workflow… reads the branch's head before it asks (BL-5).
+        const name = branch[1].split('/').map(decodeURIComponent).join('/');
+        const commit = commitOf(name);
+        result = commit ? json(200, { name, commit: { sha: commit.sha } }) : json(404, { message: 'Branch not found' });
       } else if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/deployments$/.test(url.pathname)) {
         // The CI/CD view also reads a branch's deployments (BL-8): the playground has none.
         result = json(200, []);

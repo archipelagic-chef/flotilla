@@ -1,0 +1,21 @@
+name: Deploy
+
+# Started by hand (Run Workflow… in the CI/CD view). The fake GitHub only pretends to run it.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Deploying to ${{ inputs.environment }}"
