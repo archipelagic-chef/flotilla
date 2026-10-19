@@ -64,6 +64,10 @@ export class Merger implements vscode.Disposable {
   private readonly runs = new Map<string, AgentRun>();
   /** Items whose merge is moving the base and the ticket now: the merge watcher leaves them to it. */
   private readonly finishing = new Set<string>();
+  /** The queue's tasks, in order, the first one running: what each does ("BL-3's merge"), and for which ticket. */
+  private readonly tasks: Array<{ id?: string; what: string }> = [];
+  /** Tickets whose Merge to main is queued or running. */
+  private readonly merging = new Set<string>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
@@ -83,9 +87,26 @@ export class Merger implements vscode.Disposable {
     return this.finishing.has(id);
   }
 
-  /** One at a time: merges move the base branch. */
-  private serial<T>(task: () => Promise<T>): Promise<T> {
-    const next = this.queue.then(task, task);
+  /**
+   * A Merge to main of the ticket on its way (undefined: none): waitsFor says what it waits behind. Nothing in the
+   * queue waits on an answer that can go unanswered (a notification): only modal questions are awaited there (BL-101).
+   */
+  mergeProgress(id: string): { waitsFor?: string } | undefined {
+    if (!this.merging.has(id)) return undefined;
+    const first = this.tasks[0];
+    return first && first.id !== id ? { waitsFor: first.what } : {};
+  }
+
+  /** One at a time: merges move the base branch. what: what the task does, for those waiting behind it. */
+  private serial<T>(what: { id?: string; what: string }, task: () => Promise<T>): Promise<T> {
+    this.tasks.push(what);
+    this.changed.fire();
+    const run = () =>
+      task().finally(() => {
+        this.tasks.splice(this.tasks.indexOf(what), 1);
+        this.changed.fire();
+      });
+    const next = this.queue.then(run, run);
     this.queue = next.catch(() => undefined);
     return next;
   }
@@ -166,7 +187,12 @@ export class Merger implements vscode.Disposable {
    * decision stops it.
    */
   merge(id: string, o: { batch?: boolean } = {}): Promise<MergeEnd> {
-    return this.serial(() => trackProgress('backlog', `Merging ${id}`, () => this.doMerge(id, !!o.batch)));
+    if (this.tasks.length) this.deps.output.appendLine(`Merge: ${id} waits for ${this.tasks[0].what}.`);
+    this.merging.add(id);
+    return this.serial({ id, what: `${id}'s merge` }, () => trackProgress('backlog', `Merging ${id}`, () => this.doMerge(id, !!o.batch))).finally(() => {
+      this.merging.delete(id);
+      this.changed.fire();
+    });
   }
 
   private async doMerge(id: string, batch: boolean): Promise<MergeEnd> {
@@ -190,8 +216,12 @@ export class Merger implements vscode.Disposable {
     }
     const check = await checkBranch(root, base, branch);
     if (check.merged) {
-      const done = batch ? undefined : await vscode.window.showInformationMessage(`${base} has all of ${branch}'s commits already: there's nothing to merge.`, 'Move to Done');
-      if (done) await this.finish(item, { base, branch, commit: check.baseTip, already: true });
+      // Not awaited: an unanswered notification would hold up every merge after it (BL-101). Move to Done is a step of its own.
+      if (!batch)
+        void vscode.window
+          .showInformationMessage(`${base} has all of ${branch}'s commits already: there's nothing to merge.`, 'Move to Done')
+          .then((c) => c && this.moveToDone(id, { base, branch, commit: check.baseTip }))
+          .then(undefined, showError);
       return 'stopped';
     }
     const data = await this.deps.backlog.read();
@@ -333,6 +363,14 @@ export class Merger implements vscode.Disposable {
     }
   }
 
+  /** Moves a ticket whose branch main has already to Done (asked after its merge ended), unless that changed since. */
+  private moveToDone(id: string, m: { base: string; branch: string; commit: string }): Promise<void> {
+    return this.serial({ id, what: `moving ${id} to Done` }, async () => {
+      const item = await this.item(id);
+      if (item && item.status !== 'done' && !item.merging) await this.finish(item, { ...m, already: true });
+    });
+  }
+
   /** The ticket to Done, saying what was merged; then Push and the worktree's clean-up are offered. */
   private async finish(
     item: BacklogItem,
@@ -371,7 +409,8 @@ export class Merger implements vscode.Disposable {
 
   /** Merges every ticket ready to merge, dependencies first; stops at the first that needs a decision. */
   mergeAllReady(): Promise<void> {
-    return this.serial(async () => {
+    const job = { what: 'Merge All Ready' };
+    return this.serial(job, async () => {
       const root = this.deps.mainRoot;
       const base = await this.baseBranch();
       const ready = (await this.deps.backlog.read()).items.filter(readyToMerge);
@@ -398,6 +437,8 @@ export class Merger implements vscode.Disposable {
       const order = mergeOrder(ready, (a, b) => !!ancestor.get(`${a.id} ${b.id}`));
       const merged: string[] = [];
       for (const item of order) {
+        job.what = `${item.id}'s merge (Merge All Ready)`;
+        this.changed.fire();
         const end = await trackProgress('backlog', `Merging ${item.id}`, () => this.doMerge(item.id, true));
         if (end !== 'merged') {
           void vscode.window.showWarningMessage(
@@ -413,7 +454,7 @@ export class Merger implements vscode.Disposable {
 
   /** Starts (or starts again) an agent resolving a merge's conflicts in its worktree. */
   resolveWithAgent(id: string): Promise<void> {
-    return this.serial(() => this.startResolver(id));
+    return this.serial({ id, what: `${id}'s merge` }, () => this.startResolver(id));
   }
 
   private async startResolver(id: string): Promise<void> {
@@ -502,7 +543,7 @@ export class Merger implements vscode.Disposable {
 
   /** The user approved the agent's resolution: the checks, then the fast-forward. */
   approveResolution(id: string): Promise<MergeEnd> {
-    return this.serial(() =>
+    return this.serial({ id, what: `${id}'s merge` }, () =>
       trackProgress('backlog', `Merging ${id}`, async () => {
         const item = await this.item(id);
         const m = item?.merging;
@@ -526,7 +567,7 @@ export class Merger implements vscode.Disposable {
 
   /** Cancels a merge waiting for a decision: its agent stops, its worktree goes; nothing changes. */
   cancel(id: string): Promise<void> {
-    return this.serial(async () => {
+    return this.serial({ id, what: `cancelling ${id}'s merge` }, async () => {
       this.runs.get(id)?.stop();
       this.runs.delete(id);
       const m = (await this.item(id))?.merging;
