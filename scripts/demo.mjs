@@ -17,7 +17,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, tryLock, unlock, unsafeFrame } from './demo-kit.mjs';
+import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoFile, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -31,8 +32,6 @@ const HOME_DIR = path.join(root, '.vscode-test', 'demo-home');
  * Demos in other worktrees have profiles of their own.
  */
 const LOCK_FILE = `${PROFILE_DIR}.lock`;
-/** How long a second demo waits for the first (one being played stays open until it's closed). */
-const LOCK_WAIT_MS = 10 * 60_000;
 const WIDTH = 1280;
 const HEIGHT = 800;
 /** Screenshots a second while recording; frames that don't change are merged, so this costs little. */
@@ -62,32 +61,6 @@ const DEMO_SETTINGS = {
   'extensions.ignoreRecommendations': true,
   'git.openRepositoryInParentFolders': 'never',
 };
-
-/** Takes the demo profile's lock, waiting while another demo in this worktree holds it; let go of when this exits. */
-async function lockProfile() {
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  let told = false;
-  for (;;) {
-    const lock = tryLock(LOCK_FILE);
-    if (lock.ok) break;
-    const who = lock.pid ? ` (pid ${lock.pid})` : '';
-    if (Date.now() > deadline) throw new Error(`another demo is still running in this worktree${who}: close its window, or wait for it, and try again`);
-    if (!told) console.log(`Another demo is running in this worktree${who}: waiting for it to finish (close its window to go on)…`);
-    told = true;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  process.on('exit', () => unlock(LOCK_FILE));
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130));
-}
-
-/** The main worktree, where VS Code's test download is kept for every worktree (as .vscode-test.mjs does). */
-function mainRoot() {
-  try {
-    return path.dirname(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' }).trim());
-  } catch {
-    return root;
-  }
-}
 
 /** The demo profile, made ready: Claude Code copied in, the fakes on (pointing at `githubUrl`), the demo's settings. */
 function prepareProfile(githubUrl) {
@@ -256,18 +229,27 @@ async function main() {
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4 when ffmpeg is there)');
 
-  const playground = path.join(root, '.playground');
   if (!fs.existsSync(path.join(root, 'dist', 'extension.js'))) throw new Error('build first: npm run build');
+  // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
+  await withLock(LOCK_FILE, () => show(mode, demo, out, still), {
+    staleMs: Number.POSITIVE_INFINITY,
+    onWait: () => console.log('Another demo is running in this worktree: waiting for it to finish (or close its window)…'),
+  });
+}
+
+/** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
+async function show(mode, demo, out, still) {
+  const playground = path.join(root, '.playground');
   if (!fs.existsSync(path.join(playground, '.git'))) execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');
   const { startFakeGitHub } = await import('./fake-github.mjs');
-  await lockProfile();
   const github = await startFakeGitHub({ port: 0, repoDir: playground });
   prepareProfile(github.url);
   fs.mkdirSync(HOME_DIR, { recursive: true });
-  const executable = await downloadAndUnzipVSCode({ cachePath: path.join(mainRoot(), '.vscode-test') });
+  const cachePath = path.join(mainRoot(root), '.vscode-test');
+  const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 
   console.log(`${mode === 'record' ? 'Recording' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground)…`);
   const app = await _electron.launch({
@@ -290,6 +272,8 @@ async function main() {
     },
     timeout: 60_000,
   });
+  // Kept now: once the window is closed, app.process() no longer answers.
+  const child = app.process();
   let failed;
   try {
     const argv = await app.evaluate(() => process.argv);
@@ -344,9 +328,10 @@ async function main() {
     failed = error;
   } finally {
     // VS Code may take a while to quit (or not at all, when something holds it): it's stopped after a few seconds.
+    // Nothing here may hide the error a step ended with.
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
-    app.process().kill();
-    await github.close();
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await github.close().catch(() => undefined);
   }
   if (failed) throw failed;
 }

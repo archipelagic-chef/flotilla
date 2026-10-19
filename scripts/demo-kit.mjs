@@ -1,6 +1,6 @@
-// The parts of the demo recorder (scripts/demo.mjs) that don't need a window: reading a demo's script, the lock that
-// keeps two demos off one profile, checking that a frame comes from the isolated window, and turning screenshots into a
-// GIF (a PNG decoder, a downscale, the frames' timing and gifenc's encoder), so no ffmpeg is needed.
+// The parts of the demo recorder (scripts/demo.mjs) that don't need a window: reading a demo's script, checking that a
+// frame comes from the isolated window, and turning screenshots into a GIF (a PNG decoder, a downscale, the frames'
+// timing and gifenc's encoder), so no ffmpeg is needed.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
@@ -81,50 +81,6 @@ export function unsafeFrame({ title, argv }, { profileDir }) {
   const shown = typeof title === 'string' && title.startsWith(DEV_HOST) ? title.slice(DEV_HOST.length) : title;
   if (typeof shown !== 'string' || !shown.startsWith(TITLE_MARKER)) return `the window's title isn't the demo window's ("${title ?? ''}")`;
   return undefined;
-}
-
-/** Whether a process with this pid is still running (one we may not signal is: it exists). */
-function alive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === 'EPERM';
-  }
-}
-
-/**
- * Takes the lock file `file` for this process (its pid in it), or says who holds it: `{ ok: true }`, or
- * `{ ok: false, pid }` while a running process holds it. A lock whose process is gone (a demo that died) is taken over.
- */
-export function tryLock(file, pid = process.pid) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      fs.writeFileSync(file, String(pid), { flag: 'wx' });
-      return { ok: true };
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-    }
-    let holder;
-    try {
-      holder = Number.parseInt(fs.readFileSync(file, 'utf8'), 10);
-    } catch {
-      continue; // released in between: try again
-    }
-    if (Number.isInteger(holder) && holder > 0 && holder !== pid && alive(holder)) return { ok: false, pid: holder };
-    fs.rmSync(file, { force: true });
-  }
-  return { ok: false, pid: undefined };
-}
-
-/** Lets go of the lock file `file`, when this process holds it. */
-export function unlock(file, pid = process.pid) {
-  try {
-    if (fs.readFileSync(file, 'utf8').trim() === String(pid)) fs.rmSync(file, { force: true });
-  } catch {
-    // not there: nothing to let go of
-  }
 }
 
 /** A PNG (8-bit RGB or RGBA, not interlaced: what Chromium's screenshots are) as RGBA pixels. */
