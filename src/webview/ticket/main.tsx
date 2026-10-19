@@ -1301,7 +1301,7 @@ function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: TicketVi
       </div>
       <div class="agents">
         {agents.map((a) => {
-          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : (CHAT_STATE[a.state] ?? CHAT_STATE.working);
+          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : a.state === 'waiting-for-input' ? CHAT_STATE['waiting-for-input'] : CHAT_STATE.working;
           const report = lastReport(ticket.activity, a.id);
           return (
             <div key={a.id} class={`active-agent ${state.cls}`}>
