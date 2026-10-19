@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { agentCountLabel } from './agentCount';
 import { branchMatches, laneOf, readyToMerge, type BacklogLane } from '../../features/backlog/backlog';
 import { CARD_AGENT_LABEL, cardAgents, type CardAgent } from '../../features/backlog/cardAgents';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
@@ -59,6 +60,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
   // Agents' proposals wait above the lanes until they're accepted.
   const proposed = workingOnly ? [] : (items ?? []).filter((i) => i.proposed);
+  const agentCount = agentCountLabel(autopilot);
   const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
   const chats = workstreams.flatMap((w) => w.chats);
@@ -85,6 +87,11 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <div class="tool-title backlog-title">
         <span>Backlog</span>
+        {agentCount && (
+          <button class={`agent-count${workingOnly ? ' on' : ''}`} onClick={() => setWorkingOnly(!workingOnly)} title="Show only tickets being worked on">
+            {agentCount}
+          </button>
+        )}
         <span class="title-actions">
           {integrations > 0 && (
             <button class="icon" aria-label="Refresh Issues" onClick={() => send({ type: 'backlog', op: 'refresh' })}>

@@ -2208,3 +2208,16 @@ ins {
   right: 2px;
   top: 2px;
 }
+/* The agents working, in the backlog's title while the autopilot is off: click to narrow the board to them. */
+.agent-count {
+  margin-left: 8px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: normal;
+  text-transform: none;
+  color: var(--vscode-descriptionForeground);
+}
+.agent-count:hover,
+.agent-count.on {
+  color: var(--working);
+}
