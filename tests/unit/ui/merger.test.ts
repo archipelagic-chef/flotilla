@@ -286,6 +286,37 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it("doesn't hold up the next merge behind an unanswered \"nothing to merge\" (BL-101)", async () => {
+    const { repo, merger, item } = await setup([approved('BL-1'), approved('BL-2')]);
+    git(repo, 'branch', 'feature/BL-1'); // nothing main lacks
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-2');
+    commit(repo, 'b.txt', 'b\n', 'BL-2: add b');
+    git(repo, 'checkout', '-q', 'main');
+    let answer!: (choice: string | undefined) => void;
+    const vscode = await import('vscode');
+    const ask = vi.spyOn(vscode.window, 'showInformationMessage').mockImplementationOnce(((message: string) => {
+      ui.messages.push(message);
+      return new Promise((resolve) => (answer = resolve)); // left in the notification center
+    }) as never);
+
+    const first = merger.merge('BL-1');
+    const second = merger.merge('BL-2');
+    expect(merger.mergeProgress('BL-2')).toEqual({ waitsFor: "BL-1's merge" });
+
+    expect(await first).toBe('stopped');
+    expect(ui.messages[0]).toMatch(/nothing to merge/);
+    expect(await second).toBe('merged');
+    expect((await item('BL-2')).status).toBe('done');
+    expect(merger.mergeProgress('BL-1')).toBeUndefined();
+    expect(merger.mergeProgress('BL-2')).toBeUndefined();
+
+    // Answered later: Move to Done is a step of its own.
+    answer('Move to Done');
+    await vi.waitFor(async () => expect((await item('BL-1')).status).toBe('done'));
+    ask.mockRestore();
+    merger.dispose();
+  });
+
   it('merges all ready tickets, dependencies first', async () => {
     // BL-2's branch is built on BL-1's (it carries BL-1's commits): BL-1 goes first, which unblocks BL-2.
     const { repo, merger, item } = await setup([approved('BL-2'), approved('BL-1')]);

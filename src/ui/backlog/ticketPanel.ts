@@ -853,6 +853,7 @@ export class TicketPanels implements vscode.Disposable {
   /** A ticket's view without its description and activity. */
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
+    const mergeProgress = this.merger?.mergeProgress(plain.id);
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -896,6 +897,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canMerge: !remote && !!this.merger && readyToMerge(plain),
+      ...(mergeProgress ? { mergeProgress } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
