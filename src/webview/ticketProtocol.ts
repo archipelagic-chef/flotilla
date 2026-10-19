@@ -66,6 +66,23 @@ export interface ReportView {
   answer?: string;
 }
 
+/** An attachment as the Attachments section shows it (BL-110). */
+export interface AttachmentView {
+  /** What the webview loads: the resolved source. */
+  src: string;
+  kind: MediaKind;
+  name: string;
+  /** Its caption: the reference's alt text. */
+  alt?: string;
+  /** Who added it (the entry's author), and when ("YYYY-MM-DD HH:MM"). */
+  author?: string;
+  date?: string;
+  /** The activity entry that added it: "Show in activity" goes there. */
+  entryKey?: string;
+  from: 'description' | 'activity' | 'folder';
+  demo: boolean;
+}
+
 export interface TicketView {
   item: BacklogItem;
   /** Markdown, for editing. */
@@ -153,6 +170,10 @@ export interface TicketView {
   lightModel?: string;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
+  /** Its attachments (BL-110), newest first: the Attachments section above the activity. None: no section. */
+  attachments?: AttachmentView[];
+  /** The user folded its Attachments section (remembered per ticket). */
+  attachmentsFolded?: boolean;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
   /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
@@ -266,6 +287,8 @@ export type TicketWebviewMessage =
   | { type: 'run'; key: string; index: number }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
+  /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
+  | { type: 'foldAttachments'; folded: boolean }
   /** The Ask chat (BL-80): a question, stop the answer, start over, post an answer to the ticket as a comment. */
   | { type: 'ask'; text: string }
   | { type: 'askStop' }

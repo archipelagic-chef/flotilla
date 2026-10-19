@@ -14,6 +14,7 @@ import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketVi
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
+import { Attachments, SHOW_ENTRY } from './attachments';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -1629,7 +1630,7 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
   const kind = kindOf(e.author);
   const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
   return (
-    <li class={`entry kind-${kind}`}>
+    <li class={`entry kind-${kind}`} data-entry-key={e.key}>
       <div class="entry-head">
         <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
         {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
@@ -1685,6 +1686,12 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
 /** A review's rounds folded into one line ("Reviewed by Flux-3 in 2 rounds → approved"); a click shows them, in order. */
 function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: TicketView }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // "Show in activity" (BL-110) for an entry in it opens it.
+    const show = (e: Event) => fold.items.some((f) => !('commit' in f) && f.key === (e as CustomEvent<string>).detail) && setOpen(true);
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [fold]);
   return (
     <li class="entry kind-review">
       <button
@@ -1784,6 +1791,28 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setTimeline(!timeline);
     send({ type: 'showActivity', shown: !timeline });
   };
+  useEffect(() => {
+    // "Show in activity" (BL-110): the entry opens, with its details, and shows in the middle for a moment.
+    const show = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      const i = ticket.activity.findIndex((e) => e.key === key);
+      if (i < 0) return;
+      setTab(undefined);
+      setOpened((s) => new Set(s).add(i));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
+          if (!li) return;
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video')) d.open = true;
+          li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          li.classList.add('flash');
+          setTimeout(() => li.classList.remove('flash'), 1600);
+        }),
+      );
+    };
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [ticket.activity]);
   const sending = useSending();
   useEffect(() => {
     const listener = (m: TicketWebviewMessage, failed: boolean) => {
@@ -1853,7 +1882,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
           const i = ticket.activity.indexOf(e);
           if (e !== latest && !opened.has(i)) {
             return (
-              <li key={i} class={`entry folded kind-${kindOf(e.author)}`}>
+              <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
                   <i class="codicon codicon-chevron-right" />
                   <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
@@ -2479,6 +2508,7 @@ function App() {
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
+      <Attachments ticket={ticket} send={send} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
