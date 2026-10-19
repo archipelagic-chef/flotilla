@@ -233,7 +233,12 @@ async function main() {
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4 when ffmpeg is there)');
 
   const playground = path.join(root, '.playground');
-  if (!fs.existsSync(path.join(root, 'dist', 'extension.js'))) throw new Error('build first: npm run build');
+  const built = ['extension.js', 'webview.js', 'ticket.js'].map((f) => path.join(root, 'dist', f));
+  if (!built.every((f) => fs.existsSync(f))) throw new Error('build first: npm run build');
+  // An old build plays an old sidebar, whose elements the demo's steps may not find.
+  const builtAt = Math.min(...built.map((f) => fs.statSync(f).mtimeMs));
+  const changed = fs.readdirSync(path.join(root, 'src'), { recursive: true }).find((f) => fs.statSync(path.join(root, 'src', f)).mtimeMs > builtAt);
+  if (changed) throw new Error(`build first: src/${changed} changed since the last build (npm run build)`);
   if (!fs.existsSync(path.join(playground, '.git'))) execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
@@ -265,6 +270,8 @@ async function main() {
     },
     timeout: 60_000,
   });
+  // Taken now: once the window has closed, app.process() throws (its connection is gone).
+  const child = app.process();
   let failed;
   try {
     const argv = await app.evaluate(() => process.argv);
@@ -313,14 +320,14 @@ async function main() {
       }
     } else {
       console.log('Done. The window stays open to look around; close it when you are done.');
-      await new Promise((resolve) => app.process().once('exit', resolve));
+      await new Promise((resolve) => child.once('exit', resolve));
     }
   } catch (error) {
     failed = error;
   } finally {
     // VS Code may take a while to quit (or not at all, when something holds it): it's stopped after a few seconds.
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
-    app.process().kill();
+    child.kill();
     await github.close();
   }
   if (failed) throw failed;
