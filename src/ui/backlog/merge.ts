@@ -7,6 +7,7 @@ import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { ciStop, type CiStop } from '../../features/backlog/ciStop';
 import { decideCi, failedNote, passedNote, waitingNote, type CiDecision, type CiReader, type MergeChecks } from '../../features/backlog/mergeCi';
 import type { CiRun } from '../../features/ci/githubActions';
 import {
@@ -93,6 +94,8 @@ export class Merger implements vscode.Disposable {
   private readonly merging = new Set<string>();
   /** Merges waiting for CI to pass, by ticket: outside the queue, so they hold up no other merge. */
   private readonly ciWaits = new Map<string, CiWait>();
+  /** Why each ticket's last Merge to main stopped on CI (BL-112): red CI, or the base moved on. In memory. */
+  private readonly ciStops = new Map<string, CiStop>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
@@ -124,6 +127,22 @@ export class Merger implements vscode.Disposable {
     if (!this.merging.has(id)) return undefined;
     const first = this.tasks[0];
     return first && first.id !== id ? { waitsFor: first.what } : {};
+  }
+
+  /** Why the ticket's last Merge to main stopped on CI, while its branch is at the tip it stopped on (BL-112). */
+  ciStop(id: string, tipOf: (branch: string) => string | undefined): CiStop | undefined {
+    const stop = this.ciStops.get(id);
+    if (!stop || this.merging.has(id) || this.ciWaits.has(id)) return undefined;
+    const tip = tipOf(stop.branch);
+    return tip === undefined || tip === stop.tip ? stop : undefined;
+  }
+
+  /** Fix with Agent on the red CI Merge to main stopped on: its first failed job. */
+  async fixCiStop(id: string): Promise<void> {
+    const stop = this.ciStops.get(id);
+    if (stop?.kind !== 'failed') return;
+    const first = stop.jobs[0];
+    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId);
   }
 
   /** One at a time: merges move the base branch. what: what the task does, for those waiting behind it. */
@@ -283,6 +302,9 @@ export class Merger implements vscode.Disposable {
       if (choice !== 'Merge Anyway') return 'stopped';
     }
     const ci = await this.decideCi(item, branch, check);
+    const stop = ciStop(ci, branch, base);
+    if (stop) this.ciStops.set(id, stop);
+    else this.ciStops.delete(id);
     if (ci.kind === 'moved') {
       await this.note(
         id,
