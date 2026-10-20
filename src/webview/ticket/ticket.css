@@ -1192,6 +1192,59 @@ button.work-row:hover {
   margin-left: auto;
   font-size: 11px;
 }
+/* Replies (BL-126): under their top-level entry, indented, each with whom it answers. */
+.reply-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+.reply-entry + .fold-entry {
+  margin-left: 0;
+}
+.replies {
+  list-style: none;
+  margin: 8px 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--vscode-panel-border, var(--muted));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reply-to {
+  display: block;
+  margin-bottom: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+}
+button.reply-to {
+  cursor: pointer;
+}
+button.reply-to:hover {
+  color: var(--vscode-textLink-foreground);
+}
+.entry-fold .reply-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.replying-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
 .activity-toggle {
   margin: 4px 0 8px;
 }

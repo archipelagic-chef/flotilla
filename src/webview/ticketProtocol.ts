@@ -100,8 +100,23 @@ export interface TicketView {
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
-  /** key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. */
-  activity: Array<TicketEntry & { html: string; key?: string; posted?: string; chat?: AgentChatView; report?: ReportView }>;
+  /**
+   * key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. anchor: its
+   * id in the ticket file, to reply to it; reply: whom a reply answers (its body is without the reply line), and root:
+   * the index of the top-level entry it shows under (BL-126).
+   */
+  activity: Array<
+    TicketEntry & {
+      html: string;
+      key?: string;
+      posted?: string;
+      chat?: AgentChatView;
+      report?: ReportView;
+      anchor?: string;
+      reply?: { to: string; author: string; date: string; label: string };
+      root?: number;
+    }
+  >;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
   remote?: {
     kind: 'jira' | 'github';
@@ -236,7 +251,8 @@ export type TicketWebviewMessage =
   | { type: 'ready' }
   | { type: 'title'; title: string }
   | { type: 'description'; text: string }
-  | { type: 'comment'; text: string }
+  /** replyTo: the anchor of the entry it answers (BL-126). */
+  | { type: 'comment'; text: string; replyTo?: string }
   | { type: 'status'; status: BacklogStatus }
   /** null clears it. */
   | { type: 'priority'; priority: BacklogPriority | null }

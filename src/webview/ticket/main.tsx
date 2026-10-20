@@ -14,7 +14,7 @@ import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMes
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
-import { Attachments, SHOW_ENTRY } from './attachments';
+import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -66,11 +66,19 @@ const sendingListeners = new Set<() => void>();
 let shownEntries = 0;
 
 /** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
-function sendComment(text: string) {
+function sendComment(text: string, replyTo?: string) {
   sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
   sendingListeners.forEach((f) => f());
-  act({ type: 'comment', text }, 'Sending…');
+  act({ type: 'comment', text, ...(replyTo ? { replyTo } : {}) }, 'Sending…');
 }
+
+type ActivityEntry = TicketView['activity'][number];
+
+/** The window event a Reply button sends (BL-126): the comment box replies to that entry (its detail). */
+const REPLY_TO = 'flotilla-reply-to';
+
+/** Who an entry is by, as the ticket names it: an agent by its name. */
+const byName = (e: Pick<ActivityEntry, 'author'>) => entryAgent(e.author) ?? (e.author || 'Note');
 
 function useSending(): SentComment[] {
   const [, refresh] = useState(0);
@@ -1717,7 +1725,7 @@ const feedRound = (f: FeedRow): RoundInfo => ('commit' in f ? { part: 'round' } 
 const rowKey = (f: FeedRow, ticket: TicketView) => ('commit' in f ? `commit-${f.commit.hash}` : `entry-${ticket.activity.indexOf(f)}`);
 
 /** One row of the feed: a commit, or an entry (a comment, an agent's report, a note). */
-function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; onFold?: () => void }) {
+function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketView; onFold?: () => void; nest?: boolean }) {
   if ('commit' in f) {
     const c = f.commit;
     return (
@@ -1742,8 +1750,11 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
   const e = f;
   const kind = kindOf(e.author);
   const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
+  // Its replies show under it, one level deep (BL-126): a top-level entry's, in the conversation.
+  const replies = nest ? repliesTo(e, ticket) : [];
   return (
-    <li class={`entry kind-${kind}`} data-entry-key={e.key}>
+    <li class={`entry kind-${kind}${e.reply ? ' reply' : ''}`} data-entry-key={e.key}>
+      {e.reply && <ReplyLine e={e} ticket={ticket} />}
       <div class="entry-head">
         <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
         {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
@@ -1771,6 +1782,15 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
           </ActionButton>
         )}
+        {!ticket.remote && e.anchor && kind !== 'history' && (
+          <button
+            class="text-button reply-entry"
+            onClick={() => window.dispatchEvent(new CustomEvent<ActivityEntry>(REPLY_TO, { detail: e }))}
+            title="Reply to this entry: your comment shows under it"
+          >
+            <i class="codicon codicon-reply" /> Reply
+          </button>
+        )}
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
             <i class="codicon codicon-chevron-up" /> Fold
@@ -1792,7 +1812,41 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
         <Rendered html={e.html} empty="" />
       )}
       {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
+      {replies.length > 0 && (
+        <ol class="replies">
+          {replies.map((r) => (
+            <FeedRowView key={rowKey(r, ticket)} f={r} ticket={ticket} />
+          ))}
+        </ol>
+      )}
     </li>
+  );
+}
+
+/** The replies grouped under a top-level entry (BL-126): in the conversation, by anyone but Flotilla. */
+function repliesTo(e: ActivityEntry, ticket: TicketView): ActivityEntry[] {
+  const i = ticket.activity.indexOf(e);
+  return ticket.activity.filter((r) => r.root === i && kindOf(r.author) !== 'history');
+}
+
+/** Whether an entry shows under its top-level entry, not on its own: a reply to an entry of the conversation. */
+const nested = (e: ActivityEntry, ticket: TicketView) =>
+  e.root !== undefined && kindOf(e.author) !== 'history' && !!ticket.activity[e.root] && kindOf(ticket.activity[e.root].author) !== 'history';
+
+/** "↩ reply to You, 16:04" above a reply: a click goes to the entry it answers (when it's still there). */
+function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
+  const r = e.reply!;
+  const parent = ticket.activity.find((p) => p.anchor === r.to);
+  const day = r.date.slice(0, 10) === e.date.slice(0, 10) ? r.date.slice(11) : r.date;
+  const label = parent ? `reply to ${byName(parent)}${day ? `, ${day}` : ''}` : r.label.replace(/^Reply/, 'reply') || 'reply';
+  return parent?.key ? (
+    <button class="reply-to" onClick={() => showEntry(parent.key!)} title="Go to the entry it answers">
+      ↩ {label}
+    </button>
+  ) : (
+    <div class="reply-to" title={parent ? undefined : 'The entry it answers is no longer in the ticket'}>
+      ↩ {label}
+    </div>
   );
 }
 
@@ -1822,7 +1876,7 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
       {open && (
         <ol class="fold-items">
           {fold.items.map((f) => (
-            <FeedRowView key={rowKey(f, ticket)} f={f} ticket={ticket} />
+            <FeedRowView key={rowKey(f, ticket)} f={f} ticket={ticket} nest />
           ))}
         </ol>
       )}
@@ -1888,6 +1942,8 @@ function Timeline({ ticket }: { ticket: TicketView }) {
 
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
+  // The entry the comment box replies to (BL-126).
+  const [replyTo, setReplyTo] = useState<ActivityEntry | undefined>(undefined);
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
   const [timeline, setTimeline] = useState(ticket.showActivity);
   // The entries (by their place in the activity) the user opened: all but the latest report fold to a line.
@@ -1911,7 +1967,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
       const i = ticket.activity.findIndex((e) => e.key === key);
       if (i < 0) return;
       setTab(undefined);
-      setOpened((s) => new Set(s).add(i));
+      // A reply's top-level entry opens with it (BL-126).
+      const root = ticket.activity[i].root;
+      setOpened((s) => new Set(s).add(i).add(root ?? i));
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
           const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
@@ -1926,6 +1984,16 @@ function Activity({ ticket }: { ticket: TicketView }) {
     window.addEventListener(SHOW_ENTRY, show);
     return () => window.removeEventListener(SHOW_ENTRY, show);
   }, [ticket.activity]);
+  useEffect(() => {
+    const reply = (event: Event) => {
+      setReplyTo((event as CustomEvent<ActivityEntry>).detail);
+      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+    };
+    window.addEventListener(REPLY_TO, reply);
+    return () => window.removeEventListener(REPLY_TO, reply);
+  }, []);
+  // The entry replied to, as the ticket has it now (gone when it was removed).
+  const replying = replyTo && ticket.activity.find((e) => e.anchor === replyTo.anchor);
   const sending = useSending();
   useEffect(() => {
     const listener = (m: TicketWebviewMessage, failed: boolean) => {
@@ -1941,8 +2009,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
   const post = () => {
     if (!comment.trim()) return;
-    sendComment(comment);
+    sendComment(comment, replying?.anchor);
     setComment('');
+    setReplyTo(undefined);
     if (tab && tab !== 'comment') setTab(undefined);
   };
   const review = (verdict: 'approved' | 'changes') => {
@@ -1963,7 +2032,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
   // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's entry is open,
   // older ones are folded to a line each (opened by a click).
   const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
-  const inConversation = (e: TicketView['activity'][number]) => kindOf(e.author) !== 'history' && (!tab || kindOf(e.author) === tab);
+  // In All, a reply shows under its top-level entry (BL-126); a tab shows each entry of its kind on its own.
+  const inConversation = (e: ActivityEntry) => kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
   // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
   // which then stay in the timeline: a fold shows the reviews and revisions.
   const groups: Array<FeedGroup<FeedRow>> = tab
@@ -1993,7 +2063,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
           if ('fold' in g) return <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />;
           const e = g.item as TicketView['activity'][number];
           const i = ticket.activity.indexOf(e);
-          if (e !== latest && !opened.has(i)) {
+          const replies = tab ? 0 : repliesTo(e, ticket).length;
+          // The latest agent's entry is open, and so is the entry it replies to.
+          const holdsLatest = !!latest && latest.root === i && nested(latest, ticket);
+          if (e !== latest && !holdsLatest && !opened.has(i)) {
             return (
               <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
@@ -2001,11 +2074,16 @@ function Activity({ ticket }: { ticket: TicketView }) {
                   <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
                   {e.date && <span class="muted">{e.date}</span>}
                   <span class="fold-first">{summaryOf(e.body) ?? ''}</span>
+                  {replies > 0 && (
+                    <span class="reply-count">
+                      {replies} repl{replies === 1 ? 'y' : 'ies'}
+                    </span>
+                  )}
                 </button>
               </li>
             );
           }
-          return <FeedRowView key={i} f={e} ticket={ticket} onFold={e !== latest ? () => toggleOpened(i) : undefined} />;
+          return <FeedRowView key={i} f={e} ticket={ticket} nest={!tab} onFold={e !== latest && !holdsLatest ? () => toggleOpened(i) : undefined} />;
         })}
         {(!tab || tab === 'comment') &&
           unconfirmed.map((p, i) => (
@@ -2025,11 +2103,23 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </button>
       {timeline && <Timeline ticket={ticket} />}
       <div class="comment-box">
+        {replying && (
+          <div class="replying">
+            <i class="codicon codicon-reply" /> Replying to <strong>{byName(replying)}</strong>
+            {replying.date && <span class="muted">{replying.date}</span>}
+            <span class="replying-first">{summaryOf(replying.body) ?? ''}</span>
+            <button class="icon-button" onClick={() => setReplyTo(undefined)} title="Cancel the reply: the comment goes at the end" aria-label="Cancel the reply">
+              <i class="codicon codicon-close" />
+            </button>
+          </div>
+        )}
         <MarkdownBox
           value={comment}
           setValue={setComment}
           placeholder={
-            asking
+            replying
+              ? `Reply to ${byName(replying)} (Markdown; Ctrl+Enter posts the reply)`
+              : asking
               ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
               : ticket.remote
                 ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
