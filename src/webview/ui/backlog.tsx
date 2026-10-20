@@ -11,6 +11,7 @@ import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
 import { menuContext, send } from './api';
+import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
@@ -89,12 +90,10 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         <span>Backlog</span>
         <span class="title-actions">
           {integrations > 0 && (
-            <button class="icon" aria-label="Refresh Issues" onClick={() => send({ type: 'backlog', op: 'refresh' })}>
-              <i class="codicon codicon-refresh" />
-            </button>
+            <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
           )}
           {autopilot && (
-            <button
+            <BusyButton
               class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
               aria-pressed={autopilot.enabled}
               aria-label={
@@ -102,10 +101,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                   ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
                   : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
               }
-              onClick={() => send({ type: 'backlog', op: 'autopilot' })}
-            >
-              <i class="codicon codicon-rocket" />
-            </button>
+              message={{ type: 'backlog', op: 'autopilot' }}
+              icon="rocket"
+            />
           )}
           <button
             class={`icon working-filter${workingOnly ? ' on' : ''}`}
@@ -115,9 +113,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           >
             <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
           </button>
-          <button class="icon" aria-label="Plan the Backlog with Claude" onClick={() => send({ type: 'backlog', op: 'plan' })}>
-            <i class="codicon codicon-sparkle" />
-          </button>
+          <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
           <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
             <i class="codicon codicon-plug" />
           </button>
@@ -182,9 +178,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         <div class="group lane proposed-lane">
           <div class="row group-head">
             <span class="name">Proposed by Agents</span>
-            <button class="icon" aria-label="Accept All" onClick={() => send({ type: 'backlog', op: 'acceptAll' })}>
-              <i class="codicon codicon-check-all" />
-            </button>
+            <BusyButton class="icon" aria-label="Accept All" message={{ type: 'backlog', op: 'acceptAll' }} icon="check-all" />
             <span class="badge">{proposed.length}</span>
           </div>
           <div class="lane-body">
@@ -346,25 +340,25 @@ function NeedRow({ item }: { item: BacklogItem }) {
             <button class="button secondary" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: write what should change">
               <i class="codicon codicon-request-changes" /> Request Changes
             </button>
-            <button class="button" onClick={() => send({ type: 'backlog', op: 'approve', id: item.id })}>
-              <i class="codicon codicon-check" /> Approve
-            </button>
+            <BusyButton class="button" message={{ type: 'backlog', op: 'approve', id: item.id }} icon="check">
+              {' '}Approve
+            </BusyButton>
           </>
         )}
         {need.kind === 'stopped' && fix && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'fix', id: item.id, fix })}>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'fix', id: item.id, fix }}>
             {fixLabel(fix, r?.stop?.kind)}
-          </button>
+          </BusyButton>
         )}
         {need.kind === 'queued' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'prioritize', id: item.id })} title="Starts it now, above the limit, or pauses a running agent to make room">
-            <i class="codicon codicon-arrow-up" /> Prioritize
-          </button>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'prioritize', id: item.id }} icon="arrow-up" title="Starts it now, above the limit, or pauses a running agent to make room">
+            {' '}Prioritize
+          </BusyButton>
         )}
         {need.kind === 'failed' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })} title="Creates its worktree if needed and starts an agent there">
-            <i class="codicon codicon-play" /> Run
-          </button>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there">
+            {' '}Run
+          </BusyButton>
         )}
         <button class="button secondary" onClick={open}>
           Open
@@ -394,6 +388,8 @@ interface RowProps {
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
 function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+  // A card whose button is working keeps its hover buttons shown (BL-117).
+  const busy = useBusy();
   const done = item.status === 'done';
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
@@ -419,7 +415,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
         if (renaming) return;
         if (e.key === 'F2' && !remote) setRenaming(true);
         else if (e.key === 'Enter') send({ type: 'backlog', op: 'open', id: item.id });
-        else if (e.key === 'Delete' && !remote) send({ type: 'backlog', op: 'delete', id: item.id });
+        else if (e.key === 'Delete' && !remote) act({ type: 'backlog', op: 'delete', id: item.id });
         else return;
         e.preventDefault();
       }}
@@ -568,50 +564,41 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
       )}
       {!renaming && item.proposed && (
         <span class="proposal-actions" onClick={(e) => e.stopPropagation()}>
-          <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
-            <i class="codicon codicon-check" />
-          </button>
-          <button
+          <BusyButton class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} message={{ type: 'backlog', op: 'accept', id: item.id }} icon="check" />
+          <BusyButton
             class="icon"
             aria-label="Discuss It with an Agent"
             title="An agent talks it through with you in the ticket, and writes what's agreed into it"
-            onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
-          >
-            <i class="codicon codicon-comment-discussion" />
-          </button>
-          <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>
-            <i class="codicon codicon-close" />
-          </button>
+            message={{ type: 'backlog', op: 'discuss', id: item.id }}
+            icon="comment-discussion"
+          />
+          <BusyButton class="icon" aria-label="Dismiss" message={{ type: 'backlog', op: 'dismiss', id: item.id }} icon="close" />
         </span>
       )}
       {!renaming && item.run && (
-        <button
+        <BusyButton
           class="icon run-button"
           aria-label={`Run ${item.id}`}
           data-tip={runLabel(item.run)}
-          onClick={(e) => {
-            e.stopPropagation();
-            send({ type: 'backlog', op: 'run', id: item.id });
-          }}
-        >
-          <i class="codicon codicon-play" />
-        </button>
+          onClick={(e) => e.stopPropagation()}
+          message={{ type: 'backlog', op: 'run', id: item.id }}
+          icon="play"
+        />
       )}
       {!renaming && !item.proposed && (
-        <span class={`hover-actions${item.creating ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <span class={`hover-actions${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
           {!done && item.creating && (
             <span class="icon" role="status" aria-label="Creating its worktree…" title="Creating its worktree…">
               <i class="codicon codicon-loading codicon-modifier-spin" />
             </span>
           )}
           {!done && !item.creating && (
-            <button
+            <BusyButton
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
-              onClick={() => send({ type: 'backlog', op: 'start', id: item.id })}
-            >
-              <i class="codicon codicon-play" />
-            </button>
+              message={{ type: 'backlog', op: 'start', id: item.id }}
+              icon="play"
+            />
           )}
           {!done && !item.creating && <CreateWorktreeIcons id={item.id} another={worktrees.length > 0} />}
           {remote ? (
@@ -621,14 +608,13 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
           ) : (
             <>
               {item.status === 'todo' && (
-                <button
+                <BusyButton
                   class="icon"
                   aria-label="Discuss It with an Agent"
                   title="An agent talks it through with you in the ticket, and writes what's agreed into it"
-                  onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
-                >
-                  <i class="codicon codicon-comment-discussion" />
-                </button>
+                  message={{ type: 'backlog', op: 'discuss', id: item.id }}
+                  icon="comment-discussion"
+                />
               )}
               <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
                 <i class="codicon codicon-link" />
@@ -636,9 +622,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
               <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                 <i class="codicon codicon-edit" />
               </button>
-              <button class="icon" aria-label="Delete…" onClick={() => send({ type: 'backlog', op: 'delete', id: item.id })}>
-                <i class="codicon codicon-trash" />
-              </button>
+              <BusyButton class="icon" aria-label="Delete…" message={{ type: 'backlog', op: 'delete', id: item.id }} icon="trash" />
             </>
           )}
         </span>
