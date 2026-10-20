@@ -102,4 +102,28 @@ describe('pushing approved tickets’ branches', () => {
     expect(onOrigin()).toBe('');
     expect((await item()).pushed).toBeUndefined();
   });
+
+  it('pushes only to a local origin while the fake GitHub is on', async () => {
+    const local = new BranchPush({
+      backlog: store,
+      repository: { current: [], onDidChange: () => ({ dispose() {} }) } as never,
+      mainRoot: repo,
+      isLeader: () => true,
+      output: { appendLine: () => undefined } as never,
+      localOnly: true,
+    });
+    try {
+      const one = commit('one');
+      await approve();
+      git(repo, 'remote', 'set-url', '--push', 'origin', 'https://github.com/playground/app.git');
+      await local.check();
+      expect((await item()).pushed).toBeUndefined();
+      expect(await notes()).toEqual([]);
+      git(repo, 'config', '--unset', 'remote.origin.pushurl');
+      await local.check();
+      expect(onOrigin()).toBe(one);
+    } finally {
+      local.dispose();
+    }
+  });
 });
