@@ -683,10 +683,13 @@ export class TicketPanels implements vscode.Disposable {
     const found = gatherAttachments(description, entries, await folderFiles(dir, item.id));
     const views = await Promise.all(
       found.map(async ({ src, entry, ...a }): Promise<AttachmentView | undefined> => {
+        const entryKey = entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {};
+        // A diagram (BL-136) is drawn from its code: there's nothing to load.
+        if (a.kind === 'diagram') return { ...a, src, ...entryKey };
         // An image on the web loads as it is (the page allows https images); a video the same.
         const media = /^https?:|^\/\//i.test(src) ? { src, kind: a.kind } : await resolveMedia(src, webview, dir, roots).catch(() => undefined);
         if (!media || 'note' in media) return undefined;
-        return { ...a, src: media.src, kind: media.kind, ...(entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {}) };
+        return { ...a, src: media.src, kind: media.kind, ...entryKey };
       }),
     );
     return views.filter((v): v is AttachmentView => !!v);

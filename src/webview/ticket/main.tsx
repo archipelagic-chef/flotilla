@@ -14,7 +14,7 @@ import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMes
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
-import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
+import { Attachments, SHOW_ENTRY, diagramsIn, showEntry, shownDiagram } from './attachments';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -1961,8 +1961,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
         requestAnimationFrame(() => {
           const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
           if (!li) return;
-          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video')) d.open = true;
-          li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video, [data-diagram], code.language-mermaid')) d.open = true;
+          // A diagram's "Show in activity" (BL-136) goes to the diagram in it.
+          const n = shownDiagram(key);
+          ((n !== undefined ? diagramsIn(li)[n] : undefined) ?? li).scrollIntoView({ behavior: 'smooth', block: 'center' });
           li.classList.add('flash');
           setTimeout(() => li.classList.remove('flash'), 1600);
         }),
