@@ -559,3 +559,108 @@ function writeBacklog(backlog, now) {
   const data = { version: 1, next: TICKETS.length + 1, counters: { BL: TICKETS.length }, items };
   fs.writeFileSync(path.join(backlog, 'backlog.json'), `${JSON.stringify(data, null, 1)}\n`);
 }
+
+// ---- chats (BL-123) ----
+
+/** The seeded chats' session ids: fixed, so seeding again rewrites the same chats. */
+const AGENT_CHAT = '7a3e5b21-4c6d-4f80-9b1a-2d3c4e5f6a70';
+const PANEL_CHAT = '8b4f6c32-5d7e-4a91-8c2b-3e4d5f6a7b81';
+const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
+const MODEL = 'claude-opus-5-5';
+
+/**
+ * The turns of a chat, as Claude Code writes its transcript: `say` is the user's prompt, `reply` Claude's text, `tools`
+ * the calls it makes (each with its result).
+ */
+const AGENT_TURNS = [
+  {
+    say: 'You are agent Vega-2, working on backlog item BL-3: "Keep chats when a window reloads". Read its ticket, then go on.',
+    tools: [
+      { name: 'Read', input: { file_path: '.flotilla/backlog/BL-3.md' }, result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again." },
+      { name: 'Grep', input: { pattern: 'saveChat', description: 'Find where chats are saved' }, result: 'src/chats.js:1:export function saveChat(store, worktree, id) {' },
+    ],
+    reply: "The chat's id is saved with its worktree in `src/chats.js`, but nothing reads it back after a reload.",
+  },
+];
+/** What the agent goes on with: appended one at a time by a demo's `agentTurn` step, so the transcript view follows it. */
+const AGENT_NEXT = [
+  {
+    tools: [{ name: 'Edit', input: { file_path: 'src/chats.js', description: 'Add chatOf' }, result: 'The file src/chats.js has been updated.' }],
+    reply: 'Added chatOf, which finds the chat of a worktree again. Next: read the store on start.',
+  },
+];
+const PANEL_TURNS = [
+  {
+    say: 'What does chatOf return for a worktree that has no chat yet?',
+    tools: [{ name: 'Read', input: { file_path: 'src/chats.js' }, result: 'export function chatOf(store, worktree) {\n  return store[worktree];\n}' }],
+    reply: "`undefined`: `chatOf` reads the store's key for the worktree, and there's none until `saveChat` writes it.",
+  },
+];
+
+/** A turn's transcript lines, from `at` on, a second apart. */
+function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
+  let t = at.getTime();
+  const base = () => ({ sessionId, cwd, entrypoint, version: '2.1.0', isSidechain: false, timestamp: new Date((t += 1000)).toISOString() });
+  const id = (kind, i = 0) => `${sessionId.slice(0, 8)}-${n}-${kind}-${i}`;
+  const lines = [];
+  if (turn.say) lines.push({ type: 'user', ...base(), uuid: id('u'), message: { role: 'user', content: turn.say } });
+  const usage = { input_tokens: 4, cache_read_input_tokens: 18000 + n * 900, cache_creation_input_tokens: 600, output_tokens: 180 };
+  for (const [i, tool] of (turn.tools ?? []).entries()) {
+    const call = { type: 'tool_use', id: `toolu_${id('t', i).replace(/-/g, '')}`, name: tool.name, input: tool.input };
+    lines.push({ type: 'assistant', ...base(), uuid: id('a', i), message: { id: id('m', i), role: 'assistant', model: MODEL, content: [call], usage } });
+    lines.push({ type: 'user', ...base(), uuid: id('r', i), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] } });
+  }
+  lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
+  return lines.map((l) => `${JSON.stringify(l)}\n`).join('');
+}
+
+/** Where Claude Code keeps a chat's transcript: <home>/projects/<cwd, every non-alphanumeric character a '-'>/<id>.jsonl. */
+const transcriptFile = (home, cwd, sessionId) => path.join(home, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`);
+
+/**
+ * Seeds the playground's chats: an agent's (claude -p, so it opens read-only, BL-121) in BL-3's worktree, working,
+ * and a panel chat there, done. Their records go to the worktree's git folder (as Flotilla's hook writes them), their
+ * transcripts to `claudeHome`'s projects (the demo window's own home: never the user's). Written again on every call,
+ * so the agent's chat is fresh and open whenever a demo starts. Returns the transcripts' paths.
+ */
+export function seedChats(dir, claudeHome, now = new Date()) {
+  const cwd = path.join(dir, BL3_WORKTREE);
+  if (!fs.existsSync(cwd)) return [];
+  const records = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats');
+  fs.mkdirSync(records, { recursive: true });
+  const chats = [
+    { sessionId: AGENT_CHAT, entrypoint: 'sdk-cli', turns: AGENT_TURNS, title: 'Vega-2 · BL-3', state: 'working', agent: 'Vega-2', ago: 6 },
+    { sessionId: PANEL_CHAT, entrypoint: 'claude-vscode', turns: PANEL_TURNS, title: 'What chatOf returns without a chat', state: 'done', ago: 50 },
+  ];
+  return chats.map((c) => {
+    const startedAt = new Date(now.getTime() - c.ago * 60_000);
+    const lines = c.turns.map((turn, n) => turnLines(turn, { ...c, cwd, n }, new Date(startedAt.getTime() + n * 60_000))).join('');
+    const file = transcriptFile(claudeHome, cwd, c.sessionId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${lines}${JSON.stringify({ type: 'custom-title', sessionId: c.sessionId, customTitle: c.title })}\n`);
+    const record = { sessionId: c.sessionId, state: c.state, cwd, linkedBy: 'cwd', firstPrompt: c.turns[0].say.slice(0, 200), startedAt: startedAt.toISOString(), updatedAt: now.toISOString() };
+    if (c.agent) record.agent = c.agent;
+    fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
+    return file;
+  });
+}
+
+/**
+ * The agent's chat goes on: its next turn (of AGENT_NEXT) is appended to its transcript, and its record says it's
+ * still working. Returns false when it has no turn left (or wasn't seeded).
+ */
+export function appendAgentTurn(dir, claudeHome, now = new Date()) {
+  const cwd = path.join(dir, BL3_WORKTREE);
+  const file = transcriptFile(claudeHome, cwd, AGENT_CHAT);
+  if (!fs.existsSync(file)) return false;
+  const done = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.includes('-a-end"')).length;
+  const next = AGENT_NEXT[done - AGENT_TURNS.length];
+  if (!next) return false;
+  fs.appendFileSync(file, turnLines(next, { sessionId: AGENT_CHAT, cwd, entrypoint: 'sdk-cli', n: done }, now));
+  const recordFile = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats', `${AGENT_CHAT}.json`);
+  if (fs.existsSync(recordFile)) {
+    const record = JSON.parse(fs.readFileSync(recordFile, 'utf8'));
+    fs.writeFileSync(recordFile, `${JSON.stringify({ ...record, state: 'working', updatedAt: now.toISOString() }, null, 1)}\n`);
+  }
+  return true;
+}

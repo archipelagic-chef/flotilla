@@ -4,7 +4,7 @@ export const GIF_MAX_MS: number;
 export const TITLE_MARKER: string;
 
 export interface DemoStep {
-  action: 'command' | 'click' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption';
+  action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'agentTurn';
   value: string | number;
   timeout?: number;
 }

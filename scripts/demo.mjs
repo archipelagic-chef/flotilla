@@ -28,6 +28,9 @@ const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
  * extensions read the user's config and keys from it. Empty here, so the window sees none of the user's.
  */
 const HOME_DIR = path.join(root, '.vscode-test', 'demo-home');
+/** Claude Code's folder in that home: the playground's chats are seeded there (seedChats), so demos can open them. */
+const CLAUDE_DIR = path.join(HOME_DIR, '.claude');
+const PLAYGROUND = path.join(root, '.playground');
 /**
  * Held while a demo runs: a second VS Code on the same profile would hand itself to the first one's window and close.
  * Demos in other worktrees have profiles of their own.
@@ -188,6 +191,12 @@ async function play(page, step) {
     case 'caption':
       await caption(page, step.value);
       break;
+    case 'agentTurn': {
+      // The seeded agent's chat goes on by a turn, as a running agent's would (its transcript grows).
+      const { appendAgentTurn } = await import('./playground-seed.mjs');
+      if (!appendAgentTurn(PLAYGROUND, CLAUDE_DIR)) throw new Error(`the agent's chat (${step.value}) has no turn left`);
+      break;
+    }
   }
   await page.waitForTimeout(PACE_MS);
 }
@@ -313,7 +322,7 @@ function startXvfbOn(n) {
 
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
 async function show(mode, demo, out, still, display) {
-  const playground = path.join(root, '.playground');
+  const playground = PLAYGROUND;
   // Made when missing, and brought up to date otherwise (its local origin, BL-113): it changes nothing else.
   execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
@@ -323,6 +332,9 @@ async function show(mode, demo, out, still, display) {
   const github = await startFakeGitHub({ port: 0, repoDir: playground });
   prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
+  // Its chats, fresh: the agent's is working (BL-123).
+  const { seedChats } = await import('./playground-seed.mjs');
+  seedChats(playground, CLAUDE_DIR);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 
@@ -346,7 +358,7 @@ async function show(mode, demo, out, still, display) {
     ],
     // The user's VS Code session variables would make this window talk to theirs.
     env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && !(xvfb && k === 'WAYLAND_DISPLAY'))),
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDE_CONFIG_DIR' && !(xvfb && k === 'WAYLAND_DISPLAY'))),
       HOME: HOME_DIR,
       USERPROFILE: HOME_DIR,
       // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
