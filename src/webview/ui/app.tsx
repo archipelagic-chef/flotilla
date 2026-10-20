@@ -13,6 +13,7 @@ import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
+import { finished, pruneBusy } from './backlogBusy';
 import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CommitHighlight, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
@@ -289,8 +290,12 @@ export function App() {
           setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
           return;
         case 'backlog':
+          pruneBusy(new Set(m.items.map((i) => i.id)));
           setBacklog(m.items);
           setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot });
+          return;
+        case 'backlogDone':
+          finished(m.message);
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
