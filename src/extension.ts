@@ -17,6 +17,7 @@ import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
+import { registerTranscriptView } from './ui/transcriptView';
 import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
@@ -426,6 +427,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void storage.start();
   sidebar.useQueue(reviews);
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).
+  context.subscriptions.push(registerTranscriptView());
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
@@ -524,7 +526,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repository.onDidChange(() => {
       const report = (e: unknown) => output.appendLine(`Chat linking failed: ${e instanceof Error ? e.message : String(e)}`);
       void chatUi.linkPendingChats(chats).catch(report);
-      void chatUi.tagLinkedChatTitles(chats).catch(report);
+      void chatUi
+        .removeCopiedChats(chats)
+        .then(() => chatUi.tagLinkedChatTitles(chats))
+        .catch(report);
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       updateExplorerContext();

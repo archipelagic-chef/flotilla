@@ -259,7 +259,8 @@ export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: st
       ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]),
       '--name',
       o.name,
-      o.prompt,
+      // Resumed without a prompt, it waits for one.
+      ...(o.prompt ? [o.prompt] : []),
     ],
     iconPath: new vscode.ThemeIcon('hubot'),
   });
