@@ -6,12 +6,14 @@ Open the folder in the devcontainer (or on the host with Node 22 and git), then:
 
 ```bash
 npm ci
-npm test               # unit + git integration tests (vitest)
+npm test               # unit + git integration tests (vitest), queued with the other worktrees' runs
 npm run typecheck
 npm run build
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
+
+`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 8 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
 
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 

@@ -24,6 +24,7 @@ import { Leader } from './features/backlog/leader';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
+import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger, readyToMerge } from './ui/backlog/merge';
@@ -430,9 +431,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(registerTranscriptView());
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });
+  // Test scripts that queue for the machine (scripts/test.mjs) read how many runs go at once from .git/flotilla.
+  const updateChecksConfig = () =>
+    void writeChecksConfig(location.commonDir, vscode.workspace.getConfiguration('flotilla').get<number>('checks.maxParallel', 0)).catch(() => undefined);
+  updateChecksConfig();
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('flotilla.checks.maxParallel')) updateChecksConfig();
       if (e.affectsConfiguration('flotilla.ci.notify')) updateCiReads();
       if (e.affectsConfiguration('flotilla.backlog.agentTickets')) void inbox.writeGuide();
       if (!e.affectsConfiguration('flotilla.backlog.commitPrefix')) return;
