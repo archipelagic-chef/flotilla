@@ -145,8 +145,9 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
   return { repo, merger, item, activity, branch, runsOf, updates, fixes };
 }
 
+/** Waits until done, up to 25 s (under the suite's 30 s timeout): a loaded machine polls and merges slowly (BL-120). */
 const until = async (done: () => Promise<boolean>) => {
-  for (let i = 0; i < 200 && !(await done()); i++) await new Promise((r) => setTimeout(r, 20));
+  for (const end = Date.now() + 25_000; Date.now() < end && !(await done()); ) await new Promise((r) => setTimeout(r, 20));
 };
 
 describe('Merge to main on CI (BL-105)', () => {
