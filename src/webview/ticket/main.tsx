@@ -22,6 +22,7 @@ import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
 import { TicketCi } from './ci';
+import { ciWord } from '../../features/ci/summary';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -895,7 +896,8 @@ function MergeButton({ into, progress }: { into: string; progress?: TicketView['
   const message: TicketWebviewMessage = { type: 'merge' };
   const clicked = useWorking(message);
   // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
-  const label = (progress && (progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
+  const label = (progress && (progress.ci ? 'Merges when CI passes' : progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
+  if (progress?.ci) return <CiWait into={into} runs={progress.ci} />;
   return (
     <button
       class="button"
@@ -907,6 +909,25 @@ function MergeButton({ into, progress }: { into: string; progress?: TicketView['
       <i class="codicon codicon-git-merge" /> Merge to {into}
       {label && <WorkingTag label={label} />}
     </button>
+  );
+}
+
+/**
+ * Merge to main waiting for CI to pass (BL-105), and Cancel. It merges once the runs are green; their progress is in
+ * its tooltip, and live in the ticket's CI below.
+ */
+function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<TicketView['mergeProgress']>['ci']> }) {
+  const progress = runs.length ? runs.map((r) => `${r.workflow} #${r.number} ${ciWord(r.status)}`).join(', ') : "GitHub hasn't started CI yet";
+  return (
+    <>
+      <button class="button merge-ci-wait" disabled aria-busy title={`Merges into ${into} once every run on the branch's pushed tip has passed; nothing runs locally.\n${progress}`}>
+        <i class="codicon codicon-git-merge" /> Merge to {into}
+        <WorkingTag label="Merges when CI passes" />
+      </button>
+      <ActionButton class="button secondary" message={{ type: 'mergeCiCancel' }} working="Cancelling…" title="Stop waiting for CI: nothing is merged">
+        Cancel
+      </ActionButton>
+    </>
   );
 }
 

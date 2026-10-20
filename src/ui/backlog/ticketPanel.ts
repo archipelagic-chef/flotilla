@@ -1439,6 +1439,9 @@ export class TicketPanels implements vscode.Disposable {
       case 'mergeCancel':
         await this.merger?.cancel(id);
         return;
+      case 'mergeCiCancel':
+        await this.merger?.cancelCiWait(id);
+        return;
       case 'push':
         await this.merger?.push();
         return;

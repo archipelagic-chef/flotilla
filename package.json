@@ -1684,6 +1684,16 @@
           "default": "",
           "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. It runs in the system shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows), not the terminal's default one. When they fail, the base branch doesn't move: the merge is kept for an agent to fix (Fix with Agent, in the ticket), or to cancel. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
         },
+        "flotilla.merge.checks": {
+          "type": "string",
+          "enum": ["ci", "local"],
+          "enumDescriptions": [
+            "When GitHub Actions runs on the branch's pushed tip, Merge to main decides on CI's result (it waits while CI runs, and never merges past red CI); the checks run locally only when there's no CI.",
+            "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
+          ],
+          "default": "ci",
+          "markdownDescription": "What Merge to main decides on: CI's result for the branch's pushed tip, or the local checks."
+        },
         "flotilla.merge.onApprove": {
           "type": "string",
           "enum": ["ask", "auto", "off"],

@@ -15,7 +15,7 @@ export interface RgbaImage {
   data: Uint8Array;
 }
 
-export function parseDemo(text: string, name?: string): { title: string; steps: DemoStep[] };
+export function parseDemo(text: string, name?: string): { title: string; steps: DemoStep[]; settings: Record<string, unknown> };
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
 export function unsafeFrame(frame: { title?: string; argv?: string[] }, options: { profileDir: string }): string | undefined;

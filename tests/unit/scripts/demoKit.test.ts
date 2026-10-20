@@ -50,7 +50,14 @@ describe('parseDemo', () => {
         { action: 'wait', value: 500 },
         { action: 'caption', value: '' },
       ],
+      settings: {},
     });
+  });
+
+  it("takes Flotilla's settings the demo plays with, and no others", () => {
+    expect(parseDemo('{"settings": {"flotilla.merge.checks": "local"}, "steps": [{"wait": 1}]}', 'd').settings).toEqual({ 'flotilla.merge.checks': 'local' });
+    expect(() => parseDemo('{"settings": {"editor.fontSize": 30}, "steps": [{"wait": 1}]}', 'd')).toThrow(/only Flotilla's settings/);
+    expect(() => parseDemo('{"settings": {"flotilla.dev.githubApi": "x"}, "steps": [{"wait": 1}]}', 'd')).toThrow(/not flotilla.dev/);
   });
 
   it('says what is wrong, and in which step', () => {
