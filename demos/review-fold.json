@@ -1,0 +1,21 @@
+{
+  "title": "The implementer's report stays open while it's reviewed",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "caption": "Pip-3's report, with How to review, stays open in the feed" },
+    { "waitFor": ".feed .entry:has-text(\"How to review\")" },
+    { "wait": 2500 },
+    { "caption": "Its review folds to one line under it" },
+    { "hover": ".feed .review-fold" },
+    { "wait": 1500 },
+    { "caption": "A click shows the reviewer's verdict" },
+    { "click": ".feed .review-fold" },
+    { "waitFor": ".fold-items .entry:has-text(\"Verdict: approved\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
