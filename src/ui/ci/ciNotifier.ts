@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import type { FailedJob } from '../../features/ci/failureTask';
-import { cleanLog, type GitHubActions } from '../../features/ci/githubActions';
+import { failedJob } from '../../features/ci/failureTask';
+import type { GitHubActions } from '../../features/ci/githubActions';
 import { notifies, type FinishedRun } from '../../features/ci/notify';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { workstreamLabel } from '../format';
@@ -44,18 +44,11 @@ export class CiNotifier {
     try {
       const [owner, repo] = item.repo.split('/');
       const client = this.deps.actions(owner, repo);
-      const job = (await client.jobs(item.run.id)).find((j) => j.status === 'failure');
-      if (!job) {
+      const failure = await failedJob(client, item.branch, item.run);
+      if (!failure) {
         void vscode.window.showWarningMessage(`No job of ${item.run.workflow} #${item.run.number} failed, so there's nothing for an agent to fix.`);
         return;
       }
-      const failure: FailedJob = {
-        branch: item.branch,
-        run: { name: item.run.workflow, url: item.run.url, commit: item.run.sha },
-        job: { name: job.name, ...(job.url ? { url: job.url } : {}) },
-        failedSteps: job.steps.filter((s) => s.status === 'failure').map((s) => s.name),
-        log: cleanLog(await client.log(job.id)),
-      };
       await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
     } catch (error) {
       void vscode.window.showErrorMessage(`Fix with Agent: ${error instanceof Error ? error.message : String(error)}`);

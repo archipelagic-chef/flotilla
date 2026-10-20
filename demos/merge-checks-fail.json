@@ -1,5 +1,8 @@
 {
   "title": "A clean merge whose checks fail, kept to fix with an agent",
+  "settings": {
+    "flotilla.merge.checks": "local"
+  },
   "steps": [
     {
       "command": "Focus on Flotilla View"

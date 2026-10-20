@@ -21,6 +21,9 @@ export interface CiRun {
   attempt: number;
   /** ISO 8601. */
   created: string;
+  /** When its latest attempt started, and when GitHub last changed it (its end, once it's finished): ISO 8601. */
+  started?: string;
+  updated?: string;
 }
 
 export interface CiStep {
@@ -64,6 +67,8 @@ interface ApiRun {
   head_sha: string;
   run_attempt?: number;
   created_at: string;
+  run_started_at?: string | null;
+  updated_at?: string | null;
 }
 
 const API = 'https://api.github.com';
@@ -143,6 +148,8 @@ export class GitHubActions {
       sha: r.head_sha,
       attempt: r.run_attempt ?? 1,
       created: r.created_at,
+      ...(r.run_started_at ? { started: r.run_started_at } : {}),
+      ...(r.updated_at ? { updated: r.updated_at } : {}),
     }));
   }
 

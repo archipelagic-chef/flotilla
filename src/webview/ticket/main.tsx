@@ -10,10 +10,11 @@ import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
+import { Attachments, SHOW_ENTRY } from './attachments';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -21,6 +22,8 @@ import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
+import { TicketCi } from './ci';
+import { ciWord } from '../../features/ci/summary';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -894,7 +897,8 @@ function MergeButton({ into, progress }: { into: string; progress?: TicketView['
   const message: TicketWebviewMessage = { type: 'merge' };
   const clicked = useWorking(message);
   // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
-  const label = (progress && (progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
+  const label = (progress && (progress.ci ? 'Merges when CI passes' : progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
+  if (progress?.ci) return <CiWait into={into} runs={progress.ci} />;
   return (
     <button
       class="button"
@@ -906,6 +910,25 @@ function MergeButton({ into, progress }: { into: string; progress?: TicketView['
       <i class="codicon codicon-git-merge" /> Merge to {into}
       {label && <WorkingTag label={label} />}
     </button>
+  );
+}
+
+/**
+ * Merge to main waiting for CI to pass (BL-105), and Cancel. It merges once the runs are green; their progress is in
+ * its tooltip, and live in the ticket's CI below.
+ */
+function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<TicketView['mergeProgress']>['ci']> }) {
+  const progress = runs.length ? runs.map((r) => `${r.workflow} #${r.number} ${ciWord(r.status)}`).join(', ') : "GitHub hasn't started CI yet";
+  return (
+    <>
+      <button class="button merge-ci-wait" disabled aria-busy title={`Merges into ${into} once every run on the branch's pushed tip has passed; nothing runs locally.\n${progress}`}>
+        <i class="codicon codicon-git-merge" /> Merge to {into}
+        <WorkingTag label="Merges when CI passes" />
+      </button>
+      <ActionButton class="button secondary" message={{ type: 'mergeCiCancel' }} working="Cancelling…" title="Stop waiting for CI: nothing is merged">
+        Cancel
+      </ActionButton>
+    </>
   );
 }
 
@@ -1629,7 +1652,7 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
   const kind = kindOf(e.author);
   const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
   return (
-    <li class={`entry kind-${kind}`}>
+    <li class={`entry kind-${kind}`} data-entry-key={e.key}>
       <div class="entry-head">
         <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
         {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
@@ -1685,6 +1708,12 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
 /** A review's rounds folded into one line ("Reviewed by Flux-3 in 2 rounds → approved"); a click shows them, in order. */
 function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: TicketView }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // "Show in activity" (BL-110) for an entry in it opens it.
+    const show = (e: Event) => fold.items.some((f) => !('commit' in f) && f.key === (e as CustomEvent<string>).detail) && setOpen(true);
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [fold]);
   return (
     <li class="entry kind-review">
       <button
@@ -1784,6 +1813,28 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setTimeline(!timeline);
     send({ type: 'showActivity', shown: !timeline });
   };
+  useEffect(() => {
+    // "Show in activity" (BL-110): the entry opens, with its details, and shows in the middle for a moment.
+    const show = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      const i = ticket.activity.findIndex((e) => e.key === key);
+      if (i < 0) return;
+      setTab(undefined);
+      setOpened((s) => new Set(s).add(i));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
+          if (!li) return;
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video')) d.open = true;
+          li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          li.classList.add('flash');
+          setTimeout(() => li.classList.remove('flash'), 1600);
+        }),
+      );
+    };
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [ticket.activity]);
   const sending = useSending();
   useEffect(() => {
     const listener = (m: TicketWebviewMessage, failed: boolean) => {
@@ -1853,7 +1904,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
           const i = ticket.activity.indexOf(e);
           if (e !== latest && !opened.has(i)) {
             return (
-              <li key={i} class={`entry folded kind-${kindOf(e.author)}`}>
+              <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
                   <i class="codicon codicon-chevron-right" />
                   <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
@@ -2302,6 +2353,7 @@ function App() {
   // What was just picked (status, priority) shows at once; the view the host sends after the action is the truth.
   const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   const [ask, setAsk] = useState<AskView>();
+  const [ci, setCi] = useState<TicketCiView>();
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
@@ -2318,6 +2370,7 @@ function App() {
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
       } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
+      else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
@@ -2476,9 +2529,11 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      <TicketCi ci={ci} send={send} />
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
+      <Attachments ticket={ticket} send={send} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}

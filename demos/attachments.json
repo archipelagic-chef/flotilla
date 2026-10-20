@@ -1,0 +1,23 @@
+{
+  "title": "A ticket's attachments, and the viewer",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "caption": "Its attachments, above the activity: newest first" },
+    { "waitFor": ".attachments .attachment-thumb" },
+    { "wait": 1200 },
+    { "caption": "A click opens one large; the arrows go to the next" },
+    { "click": ".attachment-thumb:has(img[alt=\"A new window, on the backlog\"])" },
+    { "waitFor": ".viewer" },
+    { "wait": 1000 },
+    { "press": "ArrowRight" },
+    { "wait": 1000 },
+    { "caption": "Show in activity goes to the report that added it" },
+    { "click": ".viewer .text-button:has-text(\"Show in activity\")" },
+    { "wait": 1500 },
+    { "caption": "" }
+  ]
+}

@@ -14,6 +14,17 @@ import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
+import type { CiRequest, CiView } from './protocol';
+import type { CiStatus } from '../features/ci/githubActions';
+
+/**
+ * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
+ * user keeps it open in this ticket.
+ */
+export interface TicketCiView {
+  open: boolean;
+  worktrees: Array<{ key: string; branch: string; view?: CiView }>;
+}
 
 /** An agent's chat, as a ticket entry links it: click to open it in Claude Code. */
 export type AgentChatView =
@@ -64,6 +75,23 @@ export interface ReportView {
   questions: Question[];
   /** The comment of yours that answered it (the first after the report); undefined while it's unanswered. */
   answer?: string;
+}
+
+/** An attachment as the Attachments section shows it (BL-110). */
+export interface AttachmentView {
+  /** What the webview loads: the resolved source. */
+  src: string;
+  kind: MediaKind;
+  name: string;
+  /** Its caption: the reference's alt text. */
+  alt?: string;
+  /** Who added it (the entry's author), and when ("YYYY-MM-DD HH:MM"). */
+  author?: string;
+  date?: string;
+  /** The activity entry that added it: "Show in activity" goes there. */
+  entryKey?: string;
+  from: 'description' | 'activity' | 'folder';
+  demo: boolean;
 }
 
 export interface TicketView {
@@ -141,8 +169,11 @@ export interface TicketView {
   canMerge: boolean;
   /** The branch it merges into. */
   mergeInto?: string;
-  /** Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"). */
-  mergeProgress?: { waitsFor?: string };
+  /**
+   * Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"); or
+   * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
+   */
+  mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -153,6 +184,10 @@ export interface TicketView {
   lightModel?: string;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
+  /** Its attachments (BL-110), newest first: the Attachments section above the activity. None: no section. */
+  attachments?: AttachmentView[];
+  /** The user folded its Attachments section (remembered per ticket). */
+  attachmentsFolded?: boolean;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
   /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
@@ -185,7 +220,9 @@ export type TicketHostMessage =
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** The Ask chat changed (BL-80). */
-  | { type: 'ask'; ask: AskView };
+  | { type: 'ask'; ask: AskView }
+  /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
+  | { type: 'ci'; ci: TicketCiView };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -256,6 +293,8 @@ export type TicketWebviewMessage =
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
   | { type: 'mergeCancel' }
+  /** Stop waiting for CI to pass (BL-105): nothing is merged. */
+  | { type: 'mergeCiCancel' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
@@ -266,8 +305,14 @@ export type TicketWebviewMessage =
   | { type: 'run'; key: string; index: number }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
+  /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
+  | { type: 'foldAttachments'; folded: boolean }
   /** The Ask chat (BL-80): a question, stop the answer, start over, post an answer to the ticket as a comment. */
   | { type: 'ask'; text: string }
   | { type: 'askStop' }
   | { type: 'askNew' }
-  | { type: 'askPost'; index: number };
+  | { type: 'askPost'; index: number }
+  /** Its CI (BL-106): the CI/CD view's requests for a worktree of the ticket; open or close it; show the CI/CD view. */
+  | ({ type: 'ci' } & CiRequest)
+  | { type: 'ciOpen'; open: boolean }
+  | { type: 'ciShow'; key: string };
