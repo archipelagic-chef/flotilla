@@ -8,7 +8,7 @@ const stop: CiStop = {
   runs: [{ id: 7, workflow: 'CI', number: 3, attempt: 1, status: 'failure', url: 'u' }],
   jobs: [],
 };
-const run = (o: Partial<{ id: number; workflow: string; number: number; attempt: number; status: 'failure' | 'in_progress' | 'success'; sha: string }>) => ({
+const run = (o: Partial<{ id: number; workflow: string; number: number; attempt: number; status: 'failure' | 'running' | 'success'; sha: string }>) => ({
   id: 7,
   workflow: 'CI',
   number: 3,
@@ -25,9 +25,9 @@ describe('ciMovedPast (BL-112)', () => {
   });
 
   it('moves past on a re-run, or a later run of the workflow, on the tip', () => {
-    expect(ciMovedPast(stop, [run({ attempt: 2, status: 'in_progress' })])).toBe(true);
+    expect(ciMovedPast(stop, [run({ attempt: 2, status: 'running' })])).toBe(true);
     expect(ciMovedPast(stop, [run({ status: 'success' })])).toBe(true);
-    expect(ciMovedPast(stop, [run({ id: 8, number: 4, status: 'in_progress' })])).toBe(true);
+    expect(ciMovedPast(stop, [run({ id: 8, number: 4, status: 'running' })])).toBe(true);
   });
 
   it('never for main having moved on: only the branch moving ends that', () => {
