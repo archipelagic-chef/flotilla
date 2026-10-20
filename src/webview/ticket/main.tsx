@@ -3,8 +3,8 @@ import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
-import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
-import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
+import { fixesFor, fixLabel, heldBy, parseVerdict, type ReviewFix } from '../../features/backlog/review';
+import { entryRound, foldRounds, foldTitle, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
@@ -1856,9 +1856,7 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
       >
         <i class={`codicon codicon-${open ? 'chevron-down' : 'chevron-right'}`} />
         <i class="codicon codicon-eye" />
-        <span>
-          {fold.reviewer ? `Reviewed by ${fold.reviewer}` : 'Reviewed'} in {fold.rounds} round{fold.rounds === 1 ? '' : 's'} → {fold.outcome}
-        </span>
+        <span>{foldTitle(fold)}</span>
       </button>
       {open && (
         <ol class="fold-items">
@@ -2016,9 +2014,6 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
-  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's entry is open,
-  // older ones are folded to a line each (opened by a click).
-  const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
   // In All, a reply shows under its top-level entry (BL-126); a tab shows each entry of its kind on its own.
   const inConversation = (e: ActivityEntry) => kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
   // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
@@ -2028,6 +2023,13 @@ function Activity({ ticket }: { ticket: TicketView }) {
     : foldRounds<FeedRow>(ticket.activity, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer })
         .map((g) => ('fold' in g ? { fold: { ...g.fold, items: g.fold.items.filter((f) => !('commit' in f) && inConversation(f)) } } : g))
         .filter((g) => ('fold' in g ? g.fold.items.length > 0 : !('commit' in g.item) && inConversation(g.item)));
+  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's report in the
+  // feed is open, older ones are folded to a line each (opened by a click). A reviewer's verdict isn't it: the work is
+  // the implementer's, so their report stays open while it's reviewed (BL-115).
+  const folded = new Set(groups.flatMap((g) => ('fold' in g ? g.fold.items : [])));
+  const latest = [...ticket.activity]
+    .reverse()
+    .find((e) => kindOf(e.author) === 'agent' && !parseVerdict(e.body) && !folded.has(e) && (!nested(e, ticket) || !folded.has(ticket.activity[e.root!])));
   return (
     <section class="block">
       <div class="block-head">

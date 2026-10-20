@@ -84,18 +84,35 @@ export function parseReport(body: string): ReportParts {
   }
   const first = lines.findIndex((l) => l.trim() !== '');
   if (first >= 0 && VERDICT.test(lines[first])) {
-    // A verdict starts the report: its summary is that line and the lines down to the next blank one.
+    // A verdict starts the report: its summary is that line and the lines down to the next blank one, and its checklist
+    // (what must change), which shows with it; the rest is the details.
     const end = lines.findIndex((l, i) => i > first && l.trim() === '');
     const cut = end < 0 ? lines.length : end;
+    const { checklist, rest } = takeChecklist(lines.slice(cut));
     return {
-      summary: lines.slice(first, cut).join('\n').trim(),
+      summary: [lines.slice(first, cut).join('\n').trim(), checklist].filter(Boolean).join('\n\n'),
       asks: false,
       questions: [],
-      details: lines.slice(cut).join('\n').trim(),
+      details: rest.trim(),
       waiting: lastLineWaits(lines),
     };
   }
   return { asks: false, questions: [], details: text.trim(), waiting: lastLineWaits(lines) };
+}
+
+const TASK = /^\s*[-*+] \[[ xX]\]\s/;
+
+/** A verdict's checklist: its task items ("- [ ] add the test"), with the lines that go on each; the rest stays. */
+function takeChecklist(lines: string[]): { checklist: string; rest: string } {
+  const items: string[] = [];
+  const rest: string[] = [];
+  let inItem = false;
+  for (const l of lines) {
+    if (TASK.test(l)) inItem = true;
+    else if (inItem && !/^\s+\S/.test(l)) inItem = false;
+    (inItem ? items : rest).push(l);
+  }
+  return { checklist: items.join('\n').trim(), rest: rest.join('\n').replace(/\n{3,}/g, '\n\n') };
 }
 
 const isNothing = (text: string) => /^nothing\.?$/i.test(text.trim());
