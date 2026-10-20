@@ -54,9 +54,14 @@ const QUESTION_BLOCK = /^(`{3,}|~{3,})question[ \t]*\n([\s\S]*?)\n\1[ \t]*$/gm;
 const KINDS: Record<string, QuestionKind> = { one: 'one', several: 'several', text: 'text', 'yes/no': 'yesno', 'yes or no': 'yesno', yesno: 'yesno' };
 
 /** What agents are told about a report's shape: the summary, the Needs line and the questions. */
+/** How an agent answers a comment in the ticket (BL-126): with a reply, whose first line names and links it. */
+export const REPLY_RULE =
+  'To answer a comment (or any entry) in the ticket, write your entry as a reply to it: its first line is "↩ [Reply to <its author>, <its date>](#<its anchor>)", then your answer. The anchor is its heading\'s date, time and author, lowercased, with other characters as "-" ("### 2026-10-20 16:04 · You" is `2026-10-20-1604-you`), and "-2", "-3"… for the second and later entries by that author in that minute. A report that answers nothing in particular is no reply.';
+
 export const REPORT_FORMAT = [
   'Start each report with a summary of at most 3 lines, then a line "Needs from you: nothing", or "Needs from you:" and what you need. The details (how to review, findings) follow it: the ticket folds them under the summary, so keep the summary to what matters most. Where a diagram says it better than words (the steps of a plan, a flow, a structure), draw it in the report as a ```mermaid block.',
   'To ask the user, put the questions after that line, each in a block fenced with ```question: its first line is the question, then the choices as "- " lines, with the one you suggest marked "(recommended)". The user clicks an answer: one choice (the default), or "choose: several" for checkboxes. "Other…" is there for a free answer. With no choices, the question gets a text box; "choose: yes/no" gives Yes and No. Ask only what you can\'t decide yourself, and stop until you\'re resumed with the answer.',
+  REPLY_RULE,
 ].join('\n\n');
 
 /** Parses a report's Markdown (an agent's entry in a ticket's activity). */
