@@ -174,24 +174,81 @@ describe('tagTranscriptTitle', () => {
   });
 });
 
-describe('importTranscript', () => {
-  it('copies a transcript and its folder into another project, once', async () => {
-    const { importTranscript, transcriptPath } = await import('../../../../src/features/chats/chats');
-    const home = makeTempDir();
-    cleanup.push(home);
-    const src = transcriptPath('/r/.worktrees/a', 's1', home);
-    fs.mkdirSync(path.join(path.dirname(src), 's1', 'subagents'), { recursive: true });
-    fs.writeFileSync(src, 'original\n');
-    fs.writeFileSync(path.join(path.dirname(src), 's1', 'subagents', 'x.jsonl'), 'sub\n');
+describe('removeChatCopies', () => {
+  /** What opening a chat from worktree a in a window on /r did before BL-121: a copy in /r's project, linked by hand. */
+  async function copied(home: string, gits: { main: string; a: string }, entrypoint: string) {
+    const { transcriptPath } = await import('../../../../src/features/chats/chats');
+    const lines = [{ type: 'user', entrypoint, message: { content: 'Fix it' } }, { type: 'assistant', entrypoint, message: { content: [{ type: 'text', text: 'Fixed.' }] } }];
+    const original = transcriptPath('/r/.worktrees/a', 's1', home);
+    fs.mkdirSync(path.dirname(original), { recursive: true });
+    fs.writeFileSync(original, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const copy = transcriptPath('/r', 's1', home);
+    fs.mkdirSync(path.dirname(copy), { recursive: true });
+    fs.writeFileSync(copy, `${fs.readFileSync(original, 'utf8')}${JSON.stringify({ type: 'custom-title', customTitle: 'a: Fix it' })}\n`);
+    await linkChat({ sessionId: 's1', ownerGitDir: gits.main, cwd: '/r', targetGitDir: gits.a, title: 'Fix it' });
+    return { original, copy };
+  }
 
-    expect(await importTranscript('/r/.worktrees/a', '/r', 's1', home)).toBe('copied');
-    const dest = transcriptPath('/r', 's1', home);
-    expect(fs.readFileSync(dest, 'utf8')).toBe('original\n');
-    expect(fs.existsSync(path.join(path.dirname(dest), 's1', 'subagents', 'x.jsonl'))).toBe(true);
-    fs.writeFileSync(dest, 'continued here\n');
-    expect(await importTranscript('/r/.worktrees/a', '/r', 's1', home)).toBe('exists');
-    expect(fs.readFileSync(dest, 'utf8')).toBe('continued here\n');
-    expect(await importTranscript('/r/.worktrees/a', '/r', 'nope', home)).toBe('missing');
+  it("removes an unchanged copy, and points the worktree's record back at the original", async () => {
+    const { removeChatCopies } = await import('../../../../src/features/chats/chats');
+    const home = makeTempDir();
+    const gits = { main: makeTempDir(), a: makeTempDir() };
+    cleanup.push(home, gits.main, gits.a);
+    const { original, copy } = await copied(home, gits, 'sdk-cli');
+    const worktrees = [{ root: '/r', gitDir: gits.main }, { root: '/r/.worktrees/a', gitDir: gits.a }];
+
+    expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual(['s1']);
+    expect(fs.existsSync(copy)).toBe(false);
+    expect(fs.existsSync(original)).toBe(true);
+    expect(await readChatRecords(gits.main)).toEqual([]);
+    const [record] = await readChatRecords(gits.a);
+    expect(record).toMatchObject({ sessionId: 's1', linkedBy: 'cwd', cwd: '/r/.worktrees/a', linkedDirs: [] });
+    expect(record!.home).toBeUndefined();
+    expect(record!.firstPrompt).toBeUndefined();
+    // Done once: there's nothing left to put back.
+    expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual([]);
+  });
+
+  it('keeps a copy that was continued, and a chat started here for the worktree', async () => {
+    const { removeChatCopies } = await import('../../../../src/features/chats/chats');
+    const home = makeTempDir();
+    const gits = { main: makeTempDir(), a: makeTempDir() };
+    cleanup.push(home, gits.main, gits.a);
+    const { original, copy } = await copied(home, gits, 'claude-vscode');
+    fs.appendFileSync(copy, `${JSON.stringify({ type: 'user', message: { content: 'And the tests' } })}\n`);
+    const worktrees = [{ root: '/r', gitDir: gits.main }, { root: '/r/.worktrees/a', gitDir: gits.a }];
+    expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual([]);
+    expect(fs.existsSync(copy)).toBe(true);
+    fs.rmSync(original);
+    expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual([]);
+    expect((await readChatRecords(gits.a))[0]).toMatchObject({ linkedBy: 'manual', cwd: '/r' });
+  });
+});
+
+describe("an agent's chat", () => {
+  it('is known by its entrypoint, and reads as Markdown with its tool calls folded', async () => {
+    const { isHeadless } = await import('../../../../src/features/chats/chats');
+    const { transcriptMarkdown } = await import('../../../../src/features/chats/transcriptMarkdown');
+    const raw = [
+      { type: 'user', entrypoint: 'sdk-cli', message: { content: 'You are agent Nova-7' } },
+      { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hm' }, { type: 'text', text: 'Looking.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls <dir>' } }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a.ts\n```x```' }] } },
+      { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'A subagent' }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join('\n');
+    expect(isHeadless(parseTranscript('s', raw, now))).toBe(true);
+    expect(isHeadless(parseTranscript('s', raw.replace('sdk-cli', 'claude-vscode'), now))).toBe(false);
+    const md = transcriptMarkdown(raw, 'Nova-7 · BL-1');
+    expect(md).toContain('# Nova-7 · BL-1');
+    expect(md).toContain('## You\n\n> You are agent Nova-7');
+    expect(md).toContain('<details><summary>🔧 Bash: ls &lt;dir&gt;</summary>');
+    expect(md).toContain('````\na.ts\n```x```\n````');
+    expect(md).not.toContain('subagent');
+    expect(md).not.toContain('hm');
+    // One heading for Claude's whole turn, its tool results included.
+    expect(md.match(/## Claude/g)).toHaveLength(1);
   });
 });
 

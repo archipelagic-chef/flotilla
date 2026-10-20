@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside, samePath, toGitPath } from '../core/paths';
-import { claudeHome, importTranscript, linkChat, readChatRecords, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
+import { claudeHome, isHeadless, linkChat, removeChatCopies, readChatRecords, readTranscript, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
 import { hooksPresent, installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
@@ -10,6 +10,7 @@ import { workstreamLabel } from './format';
 import type { AgentChoice } from '../features/backlog/backlog';
 import { choiceArgs, isRunningHeadless, runAgentInTerminal } from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
+import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
 
 const CLAUDE_EXTENSION = 'anthropic.claude-code';
@@ -111,40 +112,57 @@ export async function startAgent(ctx: ChatContext, ws: Workstream, task: string,
 }
 
 /**
- * Opens a chat in Claude Code's panel in this window. The panel only lists chats recorded under this window's folder,
- * so a chat that ran in another worktree's folder is first copied there (its transcript; the original stays) and
- * linked to its worktree. It then continues in this window, like chats started here for a worktree.
+ * Opens a chat. Claude Code's panel only lists chats recorded under this window's folder, and leaves agents' chats
+ * (`claude -p`) out, so:
+ * - an agent's chat is shown read-only here (its transcript), and can be continued in a terminal in its own folder;
+ * - a chat that ran in another worktree's folder opens in the window on that worktree (opened when there's none);
+ * - a chat that ran here opens in this window's panel.
+ * Nothing is copied or relinked: the chat stays where it ran, with its title (BL-121).
  */
 export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string, prompt?: string): Promise<void> {
   const chat = ws.chats.find((c) => c.id === chatId);
   if (!chat) return;
-  const dir = chat.cwd ?? ws.worktree.path;
-  // An active chat is selected where it runs (another window can do that without Claude Code here); it's never copied.
-  if (dir && !samePath(dir, ctx.currentRoot) && chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
+  const dir = chat.cwd ?? ws.worktree.path ?? ctx.currentRoot;
+  const here = samePath(dir, ctx.currentRoot);
+  // An active chat is selected where it runs (another window can do that without Claude Code here).
+  if (!here && chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
     await selectActiveChat(ctx, chat.id, chat.title, dir);
     return;
   }
-  if (!claudeAvailable()) return;
-  if (dir && !samePath(dir, ctx.currentRoot)) {
-    const result = await importTranscript(dir, ctx.currentRoot, chat.id);
-    if (result === 'missing') {
-      void vscode.window.showWarningMessage(
-        `Can't open '${chat.title}': its transcript isn't in this environment (it ran in ${dir}). Open it from a window in the environment it ran in.`,
-      );
+  const transcript = await readTranscript(dir, chat.id);
+  const owner = here ? undefined : ownerOf(ctx, dir);
+  if (isHeadless(transcript) || (!here && !owner?.worktree.path)) {
+    if (!transcript) {
+      void vscode.window.showWarningMessage(`Can't open '${chat.title}': its transcript isn't in this environment (it ran in ${dir}).`);
       return;
     }
-    // From now on the chat runs in this window's folder, but belongs to its worktree.
-    await linkChat({
-      sessionId: chat.id,
-      ownerGitDir: ctx.currentGitDir,
-      cwd: ctx.currentRoot,
-      targetGitDir: ws.worktree.adminDir,
-      title: chat.title,
-      state: chat.state,
-    });
-    void ctx.refresh();
+    await showTranscript(chat, dir);
+    return;
   }
-  await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id, prompt);
+  if (!claudeAvailable()) return;
+  if (here) {
+    await vscode.commands.executeCommand(CLAUDE_OPEN, chat.id, prompt);
+    return;
+  }
+  await openInWindowOf(ctx, owner!, chat.id, chat.title);
+}
+
+/** Opens a chat in the window on the worktree it ran in: asks the window open there, or opens one, which takes the request. */
+async function openInWindowOf(ctx: ChatContext, owner: Workstream, chatId: string, title: string): Promise<void> {
+  const dir = owner.worktree.path!;
+  if (!owner.windowOpen) {
+    const choice = await vscode.window.showInformationMessage(
+      `'${title}' ran in ${workstreamLabel(owner)}: Claude Code opens it in a window on that worktree.`,
+      'Open Its Window',
+    );
+    if (!choice) return;
+    await sendWindowRequest(owner.worktree.adminDir, { type: 'openChat', sessionId: chatId });
+    await ctx.focusWindow(dir);
+    return;
+  }
+  await sendWindowRequest(owner.worktree.adminDir, { type: 'openChat', sessionId: chatId });
+  if (owner.heartbeat?.env === ctx.env) await ctx.focusWindow(dir);
+  else void vscode.window.showInformationMessage(`'${title}' is opened in the window on ${workstreamLabel(owner)}.`);
 }
 
 /**
@@ -172,6 +190,23 @@ export async function handleWindowRequests(ctx: ChatContext): Promise<void> {
   for (const r of await takeWindowRequests(ctx.currentGitDir)) {
     if (r.type === 'openChat' && claudeAvailable()) await vscode.commands.executeCommand(CLAUDE_OPEN, r.sessionId);
   }
+}
+
+/**
+ * Once per folder: removes the copies of chats that opening them here made before BL-121, and puts their worktrees'
+ * records back. Runs before the titles are tagged.
+ */
+let copiesChecked = false;
+export async function removeCopiedChats(ctx: ChatContext): Promise<void> {
+  const key = `flotilla.chatCopiesRemoved:${ctx.currentRoot}`;
+  const worktrees = ctx.workstreams().flatMap((w) => (w.worktree.path ? [{ root: w.worktree.path, gitDir: w.worktree.adminDir }] : []));
+  if (copiesChecked || ctx.extension.globalState.get<boolean>(key) || worktrees.length < 2) return;
+  copiesChecked = true;
+  const restored = await removeChatCopies({ root: ctx.currentRoot, gitDir: ctx.currentGitDir, worktrees });
+  await ctx.extension.globalState.update(key, true);
+  if (!restored.length) return;
+  ctx.output.appendLine(`Removed ${restored.length} copied chat(s) from this folder's Claude Code project; they're back in their worktrees: ${restored.join(', ')}`);
+  await ctx.refresh();
 }
 
 /** Shows each linked chat's worktree in Claude Code's own session list (setting flotilla.tagChatTitles). */
