@@ -24,6 +24,7 @@ import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
 import { TicketCi } from './ci';
 import { ciWord } from '../../features/ci/summary';
+import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -828,66 +829,143 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   // A reviewer agent's approval waits for the user's: they approve it too, or ask for changes.
   const yours = r.state === 'yours' || (r.state === 'approved' && !r.byUser);
   return (
-    <div class={`review-panel ${cls}`}>
-      <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>{label}</strong> {text}
-        {todo && <span class="muted review-todo"> {todo}</span>}
-      </span>
-      {r.state === 'paused' &&
-        (r.paused?.byUser ? (
-          <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
-            <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
-          </ActionButton>
-        ) : (
-          <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
-            <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
-          </ActionButton>
-        ))}
-      {running && !yours && (
-        <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
-          <i class="codicon codicon-debug-pause" /> Pause
-        </ActionButton>
-      )}
-      {yours ? (
-        <>
-          <button
-            class="button secondary"
-            onClick={() => {
-              // What should change is written in the comment box: Request Changes sends it.
-              const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
-              box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              box?.focus();
-            }}
-            title="Write what should change below, then Request Changes"
-          >
-            <i class="codicon codicon-request-changes" /> Request Changes…
-          </button>
-          <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
-            <i class="codicon codicon-check" /> Approve
-          </ActionButton>
-        </>
-      ) : active ? (
-        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
-          <i class="codicon codicon-debug-stop" /> Stop
-        </ActionButton>
-      ) : r.state === 'stopped' ? (
-        // Fixes for why it stopped, the first one first.
-        fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
-          <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
-            <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
-          </ActionButton>
-        ))
-      ) : (
-        <>
-          {ticket.canReview && (
-            <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
-              <i class="codicon codicon-eye" /> Review Again
+    <>
+      <div class={`review-panel ${cls}`}>
+        <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>{label}</strong> {text}
+          {todo && <span class="muted review-todo"> {todo}</span>}
+        </span>
+        {r.state === 'paused' &&
+          (r.paused?.byUser ? (
+            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
+              <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
             </ActionButton>
-          )}
-          {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
-        </>
-      )}
+          ) : (
+            <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
+              <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+            </ActionButton>
+          ))}
+        {running && !yours && (
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+        )}
+        {yours ? (
+          <>
+            <button
+              class="button secondary"
+              onClick={() => {
+                // What should change is written in the comment box: Request Changes sends it.
+                const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                box?.focus();
+              }}
+              title="Write what should change below, then Request Changes"
+            >
+              <i class="codicon codicon-request-changes" /> Request Changes…
+            </button>
+            <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
+              <i class="codicon codicon-check" /> Approve
+            </ActionButton>
+          </>
+        ) : active ? (
+          <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
+            <i class="codicon codicon-debug-stop" /> Stop
+          </ActionButton>
+        ) : r.state === 'stopped' ? (
+          // Fixes for why it stopped, the first one first.
+          fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
+            <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
+              <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
+            </ActionButton>
+          ))
+        ) : (
+          <>
+            {ticket.canReview && (
+              <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
+                <i class="codicon codicon-eye" /> Review Again
+              </ActionButton>
+            )}
+            {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
+          </>
+        )}
+      </div>
+      {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
+    </>
+  );
+}
+
+/** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
+function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {
+  const stop = ticket.mergeStop;
+  const view = stop && ci?.worktrees.find((w) => w.branch === stop.branch)?.view;
+  return stop && view?.kind === 'runs' && ciMovedPast(stop, view.runs) ? { ...ticket, mergeStop: undefined } : ticket;
+}
+
+/** A link the host opens (job logs, runs on GitHub). */
+function HostLink({ href, children }: { href: string; children: ComponentChildren }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        send({ type: 'openHref', href });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
+ * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs and Fix with Agent, or
+ * the base moved on with Update from Main. It holds until the branch's tip or its CI changes.
+ */
+function MergeStop({ stop }: { stop: CiStop }) {
+  if (stop.kind === 'moved')
+    return (
+      <div class="merge-stop">
+        <i class="codicon codicon-warning" />
+        <span class="review-text">
+          <strong>Not merged:</strong> {stop.base} has moved on since <code>{stop.branch}</code> took it in, so CI checked another tree than the merge's. Update
+          from {capitalize(stop.base)}, then merge when CI passes.
+        </span>
+        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Merges ${stop.base} into the branch, which is pushed, and CI runs again`}>
+          <i class="codicon codicon-sync" /> Update from {capitalize(stop.base)}
+        </ActionButton>
+      </div>
+    );
+  const cancelled = stop.runs.every((r) => r.status === 'cancelled');
+  const runLink = (r: Extract<CiStop, { kind: 'failed' }>['runs'][number]) => <HostLink href={r.url}>{`${r.workflow} #${r.number}`}</HostLink>;
+  const word = (status: string) => (status === 'cancelled' ? 'Cancelled' : 'Failed');
+  return (
+    <div class="merge-stop">
+      <i class="codicon codicon-error" />
+      <span class="review-text">
+        <strong>Not merged:</strong> CI {cancelled ? 'was cancelled' : 'failed'} on <code>{stop.branch}</code> at <code>{stop.tip.slice(0, 7)}</code>. There's no
+        merging past red CI.
+        <ul class="merge-stop-jobs">
+          {stop.jobs.length
+            ? stop.jobs.map((j) => {
+                const run = stop.runs.find((r) => r.id === j.runId);
+                return (
+                  <li key={j.jobId}>
+                    {word(j.status)}: <HostLink href={j.url}>{j.name}</HostLink>
+                    {run && <> in {runLink(run)}</>}
+                  </li>
+                );
+              })
+            : stop.runs.map((r) => (
+                <li key={r.id}>
+                  {word(r.status)}: {runLink(r)}
+                </li>
+              ))}
+        </ul>
+      </span>
+      <ActionButton class="button" message={{ type: 'mergeCiFix' }} working="Starting…" title="An agent reads the failed job's log, fixes it on the branch and pushes; CI runs again">
+        <i class="codicon codicon-hubot" /> Fix with Agent
+      </ActionButton>
     </div>
   );
 }
@@ -2471,7 +2549,7 @@ function App() {
             </button>
           )}
         </div>
-        <StateCard ticket={ticket} />
+        <StateCard ticket={withCiStop(ticket, ci)} />
         <div class="toolbar">
           {!done && (
             <ActionButton
