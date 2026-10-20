@@ -18,7 +18,7 @@ Press F5 ("Run Extension (playground)") to launch an Extension Development Host 
 The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`), so run that first. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
 
 An existing playground is never reset by F5; if it was built by an older version of `scripts/playground.mjs`, the task output says so. To start over, run `npm run playground -- --reset` or launch "Run Extension (fresh playground)". The old playground is moved to `.playground.old-<date>` (its worktrees move with it and keep working there, uncommitted changes included).
-The CI/CD view needs GitHub's Actions API, which the test window reads from a fake one when it's offline: run `npm run fake-github` in a terminal (it stays up until Ctrl+C), and switch the fakes on in the debug profile (`npm run debug-profile -- --fakes`), which points the test window at it (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log. The playground's `origin` is a GitHub address that's never pushed to.
+The CI/CD view needs GitHub's Actions API, which the test window reads from a fake one when it's offline: run `npm run fake-github` in a terminal (it stays up until Ctrl+C), and switch the fakes on in the debug profile (`npm run debug-profile -- --fakes`), which points the test window at it (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log; run again, it passes (as a flaky test would). The playground's `origin` is a GitHub address that's never pushed to.
 
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
 
@@ -89,7 +89,7 @@ The recorder refuses a build older than `src/` (it would play an old sidebar, wh
 
 The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are screenshots of that window's page through its debugging port (playwright-core), never of the screen. Before a frame is kept, it's checked to come from that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`). If a frame fails the check, nothing is saved, and the recorder says why. `--still` saves the last frame as a PNG, to check how the demo ends. One demo runs at a time in a worktree, as it holds that profile: a second one started there says so and waits for the first to finish (or its window to be closed); demos in other worktrees run alongside.
 
-A demo of up to 15 s is a GIF (encoded in JavaScript with gifenc, at most 960 px wide). A longer demo is saved as an MP4 next to it when `ffmpeg` is on PATH. Without ffmpeg it stays a GIF, and the recorder says so. The ticket view shows GIFs as images and plays MP4s (`![What it shows](BL-3/demo.mp4)`).
+A demo of up to 15 s is a GIF (encoded in JavaScript with gifenc, at most 960 px wide). A longer demo is saved as an MP4 next to it, made with ffmpeg: the one on PATH, else the one the dev dependency `@ffmpeg-installer/ffmpeg` brings (a static build per platform, installed by `npm ci` from the npm registry), so no system ffmpeg is needed. Only when neither is there (say, `npm ci --omit=optional` or a platform it has no build for) does it stay a GIF, and the recorder says so. The ticket view shows GIFs as images and plays MP4s (`![What it shows](BL-3/demo.mp4)`).
 
 A demo's steps each do one thing, in order. A step waits up to 15 s for what it needs (`"timeout"` changes that), and pauses a little after it, so that a viewer can follow:
 
@@ -97,6 +97,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | --- | --- |
 | `{ "command": "Focus on Flotilla View" }` | runs a command through the Command Palette, typed as a user would |
 | `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
+| `{ "hover": ".ci-run" }` | moves the pointer onto it and leaves it there, so what shows on hover (a row's actions) can be clicked next |
 | `{ "type": "BL-3" }` / `{ "press": "Enter" }` | types text, presses a key (`Control+Enter`, `Escape`…) |
 | `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |
@@ -120,6 +121,8 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
   ]
 }
 ```
+
+A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
 
 Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). The window pops up on your screen while it records or plays.
 

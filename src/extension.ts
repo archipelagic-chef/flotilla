@@ -176,7 +176,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     onCiFinished: (items) => ciNotifier.notify(items),
   });
   // Merge to main (BL-54): it moves its ticket to Done itself, saying what it merged, so the merge watcher leaves those to it.
-  const merger = new Merger({ backlog, repository, mainRoot: location.mainRoot, output, openTicket: (id) => void tickets.open(id) });
+  const merger = new Merger({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    openTicket: (id) => void tickets.open(id),
+    // Merge to main decides on CI's result when there is one (BL-105).
+    ciReader: () => sidebar.ci.originActions(location.mainRoot),
+    updateFromMain: (id) => mainSync.update(id),
+    fixCi: (branch, runId, jobId) => sidebar.ci.fixOnOrigin(location.mainRoot, branch, runId, jobId),
+  });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
   const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });
   sidebar.useMerges(merges);
@@ -189,6 +199,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(runTerminals);
   const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, merges, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState, output,
+    ci: sidebar.ci, showCi: (key) => sidebar.showCi(key),
   });
   context.subscriptions.push(tickets);
   // A ticket's run block (its Run button names the entry and the block; without one, the ticket's run), after asking.

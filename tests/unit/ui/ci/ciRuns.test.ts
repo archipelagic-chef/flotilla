@@ -876,3 +876,95 @@ describe('CiRuns: finished runs and reading while hidden (for the notices)', () 
     ci.dispose();
   });
 });
+
+describe('CiRuns: the tickets that show their CI (BL-106)', () => {
+  it("reads a ticket's worktrees when it opens, even with the sidebar hidden, and tells its listeners", async () => {
+    const { fetch } = github({ feat: [apiRun()], other: [apiRun()] });
+    const { ci } = setup();
+    const heard = vi.fn();
+    ci.onDidChange(heard);
+    ci.update([ws('a'), ws('b', { upstream: 'origin/other' })]);
+    ci.watch('BL-1', ['a']);
+    await settle();
+
+    expect(runReads(fetch)).toBe(1);
+    expect(runsOf((heard.mock.lastCall?.[0] as Record<string, CiView>).a)).toHaveLength(1);
+    ci.dispose();
+  });
+
+  it('reads them again every 10 seconds only while a run goes on, and not at all once it has finished', async () => {
+    const reads = github({ feat: [apiRun({ status: 'in_progress', conclusion: null })] });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.watch('BL-1', ['a']);
+    await settle();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runReads(reads.fetch)).toBe(2);
+
+    reads.runs.feat = [apiRun()];
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(runReads(reads.fetch)).toBe(3);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(runReads(reads.fetch)).toBe(3);
+    ci.dispose();
+  });
+
+  it('reads a watched worktree at once on a push, and stops reading when the ticket is closed', async () => {
+    const reads = github({ feat: [apiRun({ status: 'queued', conclusion: null })] });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.watch('BL-1', ['a']);
+    await settle();
+    ci.update([ws('a', { head: 'pushed' })]);
+    await settle();
+    expect(runReads(reads.fetch)).toBe(2);
+
+    ci.unwatch('BL-1');
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(runReads(reads.fetch)).toBe(2);
+    ci.dispose();
+  });
+
+  it("doesn't read again for a ticket the sidebar already keeps read", async () => {
+    const { fetch } = github();
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    ci.watch('BL-1', ['a']);
+    await settle();
+    expect(runReads(fetch)).toBe(1);
+    ci.dispose();
+  });
+
+  it("keeps the sidebar's jobs when a ticket collapses the same run, and forgets them once neither has it open", async () => {
+    githubJobs({ feat: [apiRun({ id: 1 })] }, { 1: [apiJob()] });
+    const { ci, last } = setup();
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    await ci.expand('a', 1, true);
+    await ci.expand('a', 1, true, 'BL-1');
+    await ci.expand('a', 1, false, 'BL-1');
+    expect(runsOf(last().a)[0].jobs).toHaveLength(1);
+
+    await ci.expand('a', 1, true, 'BL-1');
+    ci.unwatch('BL-1');
+    await ci.expand('a', 1, false);
+    expect(runsOf(last().a)[0].jobs).toBeUndefined();
+    ci.dispose();
+  });
+
+  it('says there is nothing to fix when no job of the run failed, and starts no agent', async () => {
+    githubJobs({ feat: [apiRun({ id: 1, conclusion: 'failure' })] }, { 1: [apiJob()] });
+    const { ci } = setup();
+    ci.update([ws('a')]);
+    ci.watch('BL-1', ['a']);
+    await settle();
+    await ci.fix('a', 1, 9);
+
+    expect(win.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('nothing for an agent to fix'));
+    expect(commands.executeCommand).not.toHaveBeenCalled();
+    ci.dispose();
+  });
+});

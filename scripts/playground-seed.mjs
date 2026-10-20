@@ -302,6 +302,14 @@ const TICKETS = [
           '',
           '1. [src/last.js:2-4](src/last.js#L2-L4): where the id is remembered.',
           '',
+          'Before, a new window opens on the backlog:',
+          '',
+          '![A new window, on the backlog](BL-10/before.svg)',
+          '',
+          'After, it opens the last ticket again:',
+          '',
+          '![The last ticket, open again](BL-10/after.svg)',
+          '',
           'Try it:',
           '',
           '```run Check the file',
@@ -319,6 +327,8 @@ const TICKETS = [
         files: { 'src/last.js': '// The last ticket opened in this window.\nexport function rememberTicket(state, id) {\n  return { ...state, lastTicket: id };\n}\n' },
       },
     ],
+    // Its folder (BL-110's Attachments): the report's pictures, and a sketch nothing references.
+    files: { 'before.svg': picture('#3a6ea5', 'Backlog'), 'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'), 'sketch.svg': picture('#a5763a', 'Sketch') },
   },
   {
     id: 'BL-11',
@@ -427,6 +437,8 @@ const TICKETS = [
     status: 'review',
     daysAgo: 3,
     branch: 'feature/BL-13-say-hi-in-the-greeting',
+    // Pushed to the playground's origin (a GitHub address): its ticket shows its CI from the fake GitHub (BL-106).
+    published: true,
     description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
     activity: [
@@ -469,9 +481,9 @@ const branchExists = (dir, branch) => {
 
 /**
  * A branch in its own worktree (.worktrees/, as Flotilla lays them out): its commits, then the changes not committed
- * (staged, unstaged, untracked). A branch that exists already is left as it is.
+ * (staged, unstaged, untracked), and published: its upstream on origin. A branch that exists already is left as it is.
  */
-function branchWorktree(dir, { branch, commits = [], dirty = {} }, from) {
+function branchWorktree(dir, { branch, commits = [], dirty = {}, published = false }, from) {
   if (branchExists(dir, branch)) return;
   const folder = path.join(dir, '.worktrees', branch.replace(/\//g, '-'));
   git(dir, 'worktree', 'add', '-q', '-b', branch, folder, from);
@@ -483,6 +495,12 @@ function branchWorktree(dir, { branch, commits = [], dirty = {} }, from) {
   }
   for (const [rel, text] of Object.entries(dirty.unstaged ?? {})) fs.writeFileSync(path.join(folder, rel), text);
   for (const [rel, text] of Object.entries(dirty.untracked ?? {})) fs.writeFileSync(path.join(folder, rel), text);
+  // As if pushed: a remote-tracking ref of its commit, and its upstream (nothing is pushed anywhere).
+  if (published) {
+    git(dir, 'update-ref', `refs/remotes/origin/${branch}`, `refs/heads/${branch}`);
+    git(dir, 'config', `branch.${branch}.remote`, 'origin');
+    git(dir, 'config', `branch.${branch}.merge`, `refs/heads/${branch}`);
+  }
 }
 
 /** Keeps the playground's worktrees and its backlog folder out of its own git status (as Flotilla does). */
@@ -512,6 +530,12 @@ export function seedPlayground(dir, now = new Date()) {
   return true;
 }
 
+/** A small picture of a window: a coloured title bar with a label, and some lines of text. */
+function picture(colour, label) {
+  const lines = [0, 1, 2, 3].map((i) => `<rect x="24" y="${70 + i * 26}" width="${280 - i * 40}" height="10" rx="5" fill="#8884"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240"><rect width="480" height="240" rx="8" fill="#1e1e1e"/><rect width="480" height="40" rx="8" fill="${colour}"/><text x="20" y="26" font-family="sans-serif" font-size="16" fill="#fff">${label}</text>${lines}</svg>\n`;
+}
+
 /** backlog.json and the tickets: each ticket's file, its review's handled reports, and its description's fingerprint. */
 function writeBacklog(backlog, now) {
   fs.mkdirSync(backlog, { recursive: true });
@@ -524,6 +548,10 @@ function writeBacklog(backlog, now) {
     if (t.branch) item.branches = [t.branch];
     if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
     item.descriptionHash = descriptionHash(t.description);
+    for (const [name, text] of Object.entries(t.files ?? {})) {
+      fs.mkdirSync(path.join(backlog, t.id), { recursive: true });
+      fs.writeFileSync(path.join(backlog, t.id, name), text);
+    }
     fs.writeFileSync(path.join(backlog, `${t.id}.md`), formatTicket({ title: t.title, description: t.description, activity }));
     return item;
   });

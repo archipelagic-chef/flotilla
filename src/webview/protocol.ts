@@ -76,6 +76,19 @@ export type CiView =
   | { kind: 'error'; error: string }
   | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string };
 
+/** What a CI view (the sidebar's CI/CD view, or a ticket's CI) asks of the extension about a worktree's runs (key). */
+export type CiRequest =
+  /** Sign in to GitHub (asks), or read the runs again now. */
+  | { op: 'signIn' | 'refresh' }
+  /** A run expanded or collapsed: its jobs are read while it's expanded. */
+  | { op: 'expand' | 'collapse'; key: string; runId: number }
+  /** Shows a job's log (read-only, cleaned, at its first error). */
+  | { op: 'showLog'; key: string; jobId: number; jobName: string }
+  /** A run's action: a cancel asks first. */
+  | { op: 'act'; key: string; run: number; action: RunAction }
+  /** Fix with Agent on a failed job of a run (BL-7). */
+  | { op: 'fix'; key: string; run: number; job: number };
+
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
 
@@ -307,14 +320,7 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
-  /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
-  | { type: 'ci'; op: 'signIn' | 'refresh' }
-  /** A run expanded or collapsed in a worktree's CI/CD view: its jobs are read while it's expanded. */
-  | { type: 'ci'; op: 'expand' | 'collapse'; key: string; runId: number }
-  /** Shows a job's log (read-only, cleaned, at its first error). */
-  | { type: 'ci'; op: 'showLog'; key: string; jobId: number; jobName: string }
-  /** A run's action in the CI/CD view, for a worktree (key): a cancel asks first. */
-  | { type: 'ci'; op: 'act'; key: string; run: number; action: RunAction }
+  | ({ type: 'ci' } & CiRequest)
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
   | { type: 'openSite'; url: string }

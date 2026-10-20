@@ -1,5 +1,8 @@
 {
   "title": "Merge to main says it's merging until its merge ends",
+  "settings": {
+    "flotilla.merge.checks": "local"
+  },
   "steps": [
     {
       "command": "Focus on Flotilla View"
@@ -20,7 +23,7 @@
       "click": ".review-panel button:has-text(\"Merge to main\")"
     },
     {
-      "waitFor": ".review-panel button:has-text(\"Merging\u2026\")"
+      "waitFor": ".review-panel button:has-text(\"Merging…\")"
     },
     {
       "caption": "The button says it's merging (or which merge it waits behind) while the checks run"

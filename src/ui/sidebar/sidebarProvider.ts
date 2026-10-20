@@ -85,7 +85,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** The folders the Files tab lists, watched directly: VS Code's watcher skips the worktrees (files.watcherExclude). */
   private readonly shown = new ShownFolders((key, rel) => this.dirsChanged(key, [rel]));
   /** The CI/CD view's runs, read while the sidebar is visible. */
-  private readonly ci: CiRuns;
+  readonly ci: CiRuns;
 
   constructor(private readonly deps: SidebarDeps) {
     this.ci = new CiRuns(
@@ -562,6 +562,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         else if (m.op === 'expand' || m.op === 'collapse') await this.ci.expand(m.key, m.runId, m.op === 'expand');
         else if (m.op === 'showLog') await this.ci.showLog(m.key, m.jobId, m.jobName);
         else if (m.op === 'act') await this.ci.act(m.key, m.run, m.action).catch((e: unknown) => this.report(e));
+        else if (m.op === 'fix') await this.ci.fix(m.key, m.run, m.job).catch((e: unknown) => this.report(e));
         else await this.ci.refresh();
         return;
       case 'runWorkflow': {
