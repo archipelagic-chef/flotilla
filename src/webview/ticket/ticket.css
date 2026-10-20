@@ -1532,3 +1532,14 @@ button.timeline-item:hover .timeline-text {
 .ci-runs .row:focus-within .hover-actions {
   display: flex;
 }
+
+/* Merge to main waiting for CI to pass (BL-105). */
+.merge-ci-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.merge-ci-runs {
+  color: var(--vscode-descriptionForeground);
+}

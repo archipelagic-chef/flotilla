@@ -7,6 +7,8 @@ import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { decideCi, failedNote, passedNote, waitingNote, type CiDecision, type CiReader, type MergeChecks } from '../../features/backlog/mergeCi';
+import type { CiRun } from '../../features/ci/githubActions';
 import {
   blockingItems,
   checkBranch,
@@ -43,10 +45,31 @@ export interface MergeDeps {
   mainRoot: string;
   output: vscode.OutputChannel;
   openTicket(id: string): void;
+  /** GitHub's runs of origin for Merge to main to decide on (BL-105), or why they can't be read. None: local checks. */
+  ciReader?(): Promise<CiReader | string>;
+  /** Update from Main (BL-55): main into the ticket's branch, which is then pushed, and CI runs again. */
+  updateFromMain?(id: string): Promise<void>;
+  /** Fix with Agent (BL-7) on a failed CI job of the branch. */
+  fixCi?(branch: string, runId: number, jobId?: number): Promise<void>;
+  /** How often a merge waiting for CI reads its runs again (the tests' is short). */
+  ciPollMs?: number;
 }
 
-/** How a merge ended: merged, or stopped (it needs a decision, failed, or was cancelled). */
-export type MergeEnd = 'merged' | 'stopped';
+/** How a merge ended: merged, stopped (it needs a decision, failed, or was cancelled), or waiting for CI to pass. */
+export type MergeEnd = 'merged' | 'stopped' | 'waiting';
+
+/** How often a merge waiting for CI reads its runs again. */
+const CI_POLL_MS = 10_000;
+
+/** A merge waiting for CI (BL-105): what it was asked on, and the runs as last read. */
+interface CiWait {
+  branch: string;
+  tip: string;
+  baseTip: string;
+  batch: boolean;
+  runs: CiRun[];
+  timer?: ReturnType<typeof setTimeout>;
+}
 
 export { readyToMerge };
 
@@ -68,6 +91,8 @@ export class Merger implements vscode.Disposable {
   private readonly tasks: Array<{ id?: string; what: string }> = [];
   /** Tickets whose Merge to main is queued or running. */
   private readonly merging = new Set<string>();
+  /** Merges waiting for CI to pass, by ticket: outside the queue, so they hold up no other merge. */
+  private readonly ciWaits = new Map<string, CiWait>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
@@ -75,6 +100,8 @@ export class Merger implements vscode.Disposable {
 
   dispose(): void {
     this.runs.forEach((r) => r.stop());
+    this.ciWaits.forEach((w) => clearTimeout(w.timer));
+    this.ciWaits.clear();
     this.changed.dispose();
   }
 
@@ -91,7 +118,9 @@ export class Merger implements vscode.Disposable {
    * A Merge to main of the ticket on its way (undefined: none): waitsFor says what it waits behind. Nothing in the
    * queue waits on an answer that can go unanswered (a notification): only modal questions are awaited there (BL-101).
    */
-  mergeProgress(id: string): { waitsFor?: string } | undefined {
+  mergeProgress(id: string): { waitsFor?: string; ci?: Array<Pick<CiRun, 'workflow' | 'number' | 'status' | 'url'>> } | undefined {
+    const wait = this.ciWaits.get(id);
+    if (wait && !this.merging.has(id)) return { ci: wait.runs.map((r) => ({ workflow: r.workflow, number: r.number, status: r.status, url: r.url })) };
     if (!this.merging.has(id)) return undefined;
     const first = this.tasks[0];
     return first && first.id !== id ? { waitsFor: first.what } : {};
@@ -198,6 +227,10 @@ export class Merger implements vscode.Disposable {
   private async doMerge(id: string, batch: boolean): Promise<MergeEnd> {
     const item = await this.item(id);
     if (!item) return 'stopped';
+    if (this.ciWaits.has(id)) {
+      if (!batch) void vscode.window.showInformationMessage(`${id} merges when CI passes: its ticket shows the runs.`);
+      return 'waiting';
+    }
     if (item.merging) {
       this.deps.openTicket(id);
       void vscode.window.showInformationMessage(`${id} is being merged already: its ticket says where it is.`);
@@ -249,6 +282,35 @@ export class Merger implements vscode.Disposable {
       if (choice === 'Move to Done') await this.finish(item, { base, branch, commit: check.baseTip, already: true });
       if (choice !== 'Merge Anyway') return 'stopped';
     }
+    const ci = await this.decideCi(item, branch, check);
+    if (ci.kind === 'moved') {
+      await this.note(
+        id,
+        `Not merged: \`${base}\` has moved on since \`${branch}\` took it in, so CI checked another tree than the merge's. Update from Main merges it into the branch, which is pushed, and CI runs again; then Merge to main.`,
+      );
+      if (!batch)
+        void vscode.window
+          .showWarningMessage(`${base} has moved on since ${branch} took it in: CI's result isn't for the merge. Update from Main, then merge when CI passes.`, 'Update from Main')
+          .then((c) => (c ? this.deps.updateFromMain?.(id) : undefined))
+          .then(undefined, showError);
+      return 'stopped';
+    }
+    if (ci.kind === 'failed') {
+      await this.note(id, failedNote(ci, branch));
+      if (!batch) {
+        this.deps.openTicket(id);
+        const first = ci.jobs[0];
+        void vscode.window
+          .showWarningMessage(`CI failed on ${branch}: ${id} wasn't merged.`, ...(this.deps.fixCi ? ['Fix with Agent'] : []))
+          .then((c) => (c ? this.deps.fixCi?.(branch, first?.run.id ?? ci.runs[0].id, first?.job.id) : undefined))
+          .then(undefined, showError);
+      }
+      return 'stopped';
+    }
+    if (ci.kind === 'running') {
+      await this.waitForCi(id, { branch, tip: ci.tip, baseTip: check.baseTip, batch, runs: ci.runs });
+      return 'waiting';
+    }
     const dir = this.mergeDir(id);
     const message = mergeMessage(item);
     this.deps.output.appendLine(`Merge: ${branch} into ${base} in ${dir}.`);
@@ -277,7 +339,63 @@ export class Merger implements vscode.Disposable {
       await this.startResolver(id);
       return 'stopped';
     }
-    return this.complete(item, { dir, branch, base, baseTip: check.baseTip, commit: outcome.commit }, batch);
+    const onCi = ci.kind === 'passed' ? { ci } : { localWhy: ci.why };
+    return this.complete(item, { dir, branch, base, baseTip: check.baseTip, commit: outcome.commit, ...onCi }, batch);
+  }
+
+  /** What the merge decides on (BL-105): CI's result for the branch's pushed tip, or the local checks. */
+  private async decideCi(item: BacklogItem, branch: string, check: { tip: string; baseTip: string }): Promise<CiDecision> {
+    const setting = settings().get<MergeChecks>('merge.checks', 'ci') === 'local' ? 'local' : 'ci';
+    if (setting === 'local') return { kind: 'local' };
+    const reader = this.deps.ciReader
+      ? await this.deps.ciReader().catch((e: unknown) => `GitHub couldn't be read: ${e instanceof Error ? e.message : String(e)}`)
+      : "this window doesn't read GitHub's runs.";
+    const pushed = item.pushed?.find((p) => p.branch === branch && p.commit === check.tip);
+    return decideCi({ cwd: this.deps.mainRoot, setting, branch, tip: check.tip, baseTip: check.baseTip, reader, pushError: pushed?.error });
+  }
+
+  /** The merge waits for CI, outside the queue: its runs are read every few seconds, and it merges once they've ended. */
+  private async waitForCi(id: string, wait: CiWait): Promise<void> {
+    const known = this.ciWaits.get(id);
+    if (known) clearTimeout(known.timer);
+    this.ciWaits.set(id, wait);
+    wait.timer = setTimeout(() => void this.pollCi(id, wait).catch(showError), this.deps.ciPollMs ?? CI_POLL_MS);
+    this.changed.fire();
+    if (known !== wait) await this.note(id, waitingNote(wait, wait.branch));
+  }
+
+  private async pollCi(id: string, wait: CiWait): Promise<void> {
+    if (this.ciWaits.get(id) !== wait) return;
+    const root = this.deps.mainRoot;
+    const item = await this.item(id);
+    const tip = (await runGit(['rev-parse', `refs/heads/${wait.branch}`], { cwd: root }).catch(() => '')).trim();
+    const base = await this.baseBranch().catch(() => undefined);
+    const baseTip = base && (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root }).catch(() => '')).trim();
+    // The same commits as when it was asked: CI's result decides; anything that moved is decided again by Merge to main.
+    const ci = item && tip === wait.tip && baseTip === wait.baseTip ? await this.decideCi(item, wait.branch, { tip, baseTip }).catch(() => undefined) : undefined;
+    if (this.ciWaits.get(id) !== wait) return;
+    if (ci?.kind === 'running') {
+      wait.runs = ci.runs;
+      await this.waitForCi(id, wait);
+      return;
+    }
+    this.ciWaits.delete(id);
+    this.changed.fire();
+    if (!item || !readyToMerge(item)) {
+      if (item) await this.note(id, `Stopped waiting for CI: ${id} isn't ready to merge any more. Nothing was merged.`);
+      return;
+    }
+    await this.merge(id, { batch: wait.batch });
+  }
+
+  /** Cancels a merge waiting for CI: nothing is merged. */
+  async cancelCiWait(id: string): Promise<void> {
+    const wait = this.ciWaits.get(id);
+    if (!wait) return;
+    clearTimeout(wait.timer);
+    this.ciWaits.delete(id);
+    this.changed.fire();
+    await this.note(id, `You cancelled the merge of \`${wait.branch}\` waiting for CI. Nothing was merged.`);
   }
 
   /**
@@ -287,7 +405,20 @@ export class Merger implements vscode.Disposable {
    */
   private async complete(
     item: BacklogItem,
-    m: { dir: string; branch: string; base: string; baseTip: string; commit: string; merge?: string; fixes?: readonly string[]; resolved?: boolean },
+    m: {
+      dir: string;
+      branch: string;
+      base: string;
+      baseTip: string;
+      commit: string;
+      merge?: string;
+      fixes?: readonly string[];
+      resolved?: boolean;
+      /** CI passed on the merge's tree (BL-105): nothing runs locally. */
+      ci?: { tip: string; runs: CiRun[] };
+      /** Why CI wasn't used, when it wasn't for want of it. */
+      localWhy?: string;
+    },
     batch: boolean,
   ): Promise<MergeEnd> {
     const keep = async (reason: string) => {
@@ -296,7 +427,8 @@ export class Merger implements vscode.Disposable {
         if (current) await this.setMerge(item.id, { ...current, state: 'failed', reason, checks: undefined });
       } else await this.removeDir(m.dir);
     };
-    const command = await checkCommand(m.dir, settings().get<string>('merge.checkCommand', ''));
+    const command = m.ci ? undefined : await checkCommand(m.dir, settings().get<string>('merge.checkCommand', ''));
+    const noCi = m.localWhy ? ` CI wasn't used: ${m.localWhy}` : '';
     if (command) {
       const source = this.worktreeOn(m.base)?.worktree.path ?? this.deps.mainRoot;
       await linkDependencies(m.dir, source).catch((e: unknown) => this.deps.output.appendLine(`Merge: no node_modules link: ${String(e)}`));
@@ -315,7 +447,7 @@ export class Merger implements vscode.Disposable {
         const again = m.resolved ? ' again' : '';
         await this.note(
           item.id,
-          `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed${again} on the merge (\`${command}\`; their output is in the terminal "${title}"). Nothing changed: the merge is kept in a temporary worktree. Fix with Agent, or cancel it.`,
+          `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed${again} on the merge (\`${command}\`; their output is in the terminal "${title}"). Nothing changed: the merge is kept in a temporary worktree. Fix with Agent, or cancel it.${noCi}`,
         );
         if (!batch) {
           this.deps.openTicket(item.id);
@@ -356,7 +488,7 @@ export class Merger implements vscode.Disposable {
         return 'stopped';
       }
       await this.removeDir(m.dir);
-      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command });
+      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command, ci: m.ci, localWhy: m.localWhy });
       return 'merged';
     } finally {
       this.finishing.delete(item.id);
@@ -374,7 +506,17 @@ export class Merger implements vscode.Disposable {
   /** The ticket to Done, saying what was merged; then Push and the worktree's clean-up are offered. */
   private async finish(
     item: BacklogItem,
-    m: { base: string; branch: string; commit: string; merge?: string; fixes?: readonly string[]; checks?: string; already?: boolean },
+    m: {
+      base: string;
+      branch: string;
+      commit: string;
+      merge?: string;
+      fixes?: readonly string[];
+      checks?: string;
+      already?: boolean;
+      ci?: { tip: string; runs: CiRun[] };
+      localWhy?: string;
+    },
   ): Promise<void> {
     const root = this.deps.mainRoot;
     const merge = m.merge ?? m.commit;
@@ -396,7 +538,7 @@ export class Merger implements vscode.Disposable {
       item.id,
       m.already
         ? `\`${m.base}\` has \`${m.branch}\`'s work already: nothing was merged.`
-        : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${merge.slice(0, 7)} ("${mergeMessage(item)}").${fixes}${m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'} Nothing was pushed.`,
+        : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${merge.slice(0, 7)} ("${mergeMessage(item)}").${fixes}${m.ci ? ` ${passedNote(m.ci)}` : m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'}${m.localWhy ? ` CI wasn't used: ${m.localWhy}` : ''} Nothing was pushed.`,
     );
     if (m.already) return;
     const ws = this.deps.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch === m.branch);
@@ -440,6 +582,8 @@ export class Merger implements vscode.Disposable {
         job.what = `${item.id}'s merge (Merge All Ready)`;
         this.changed.fire();
         const end = await trackProgress('backlog', `Merging ${item.id}`, () => this.doMerge(item.id, true));
+        // Waiting for CI holds up none of the others: it merges when CI passes.
+        if (end === 'waiting') continue;
         if (end !== 'merged') {
           void vscode.window.showWarningMessage(
             `Merge All Ready stopped at ${item.id}${merged.length ? `, after merging ${merged.join(', ')}` : ''}: it needs you. Its ticket says why.`,

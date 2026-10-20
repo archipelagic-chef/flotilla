@@ -288,6 +288,36 @@ export class CiRuns implements vscode.Disposable {
     await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
   }
 
+  /**
+   * GitHub's runs of the repository's origin, for Merge to main to decide on (BL-105), or why they can't be read: no
+   * GitHub origin, or no GitHub sign-in (never asked for here: without one, the checks run locally). interactive: asks
+   * to sign in (for an action the user clicked).
+   */
+  async originActions(cwd: string, interactive = false): Promise<GitHubActions | string> {
+    const url = (await runGit(['remote', 'get-url', 'origin'], { cwd }).catch(() => '')).trim();
+    if (!url) return 'the repository has no `origin`.';
+    const gh = gitHubRepo(url);
+    if (!gh || !gitHubName(gh.owner) || !gitHubName(gh.repo)) return "`origin` isn't a GitHub repository.";
+    const session: Session | undefined = this.api
+      ? { accessToken: FAKE_TOKEN }
+      : await vscode.authentication.getSession('github', SCOPES, interactive ? { createIfNone: true } : { silent: true }).then((s) => s, () => undefined);
+    if (!session) return "you aren't signed in to GitHub in VS Code (the CI/CD view's Sign In).";
+    return new GitHubActions(gh.owner, gh.repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
+  }
+
+  /** Fix with Agent on a failed job of a branch's run on origin (BL-7), from Merge to main's red CI. */
+  async fixOnOrigin(cwd: string, branch: string, runId: number, jobId?: number): Promise<void> {
+    const github = await this.originActions(cwd, true);
+    if (typeof github === 'string') throw new Error(`Can't read the run: ${github}`);
+    const run = (await github.runs(branch, 30)).find((r) => r.id === runId);
+    const failure = run && (await failedJob(github, branch, run, jobId));
+    if (!failure) {
+      void vscode.window.showWarningMessage("That run has no failed job any more, so there's nothing for an agent to fix.");
+      return;
+    }
+    await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
+  }
+
   /** Shows a job's log in an editor, of the repository the worktree's runs are on (the log's command checks the ids). */
   async showLog(key: string, jobId: number, jobName: string): Promise<void> {
     const view = this.views.get(key);

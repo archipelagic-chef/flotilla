@@ -15,6 +15,7 @@ import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
 import type { CiRequest, CiView } from './protocol';
+import type { CiStatus } from '../features/ci/githubActions';
 
 /**
  * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
@@ -151,8 +152,11 @@ export interface TicketView {
   canMerge: boolean;
   /** The branch it merges into. */
   mergeInto?: string;
-  /** Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"). */
-  mergeProgress?: { waitsFor?: string };
+  /**
+   * Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"); or
+   * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
+   */
+  mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -268,6 +272,8 @@ export type TicketWebviewMessage =
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
   | { type: 'mergeCancel' }
+  /** Stop waiting for CI to pass (BL-105): nothing is merged. */
+  | { type: 'mergeCiCancel' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
