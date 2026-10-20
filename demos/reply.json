@@ -1,0 +1,21 @@
+{
+  "title": "Reply to an entry of a ticket",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "caption": "Every comment and report has a Reply button" },
+    { "click": ".feed .reply-entry" },
+    { "waitFor": ".comment-box .replying" },
+    { "caption": "The comment box says whom it replies to (✕ cancels)" },
+    { "wait": 1200 },
+    { "type": "Yes: keep them for a week, then drop them." },
+    { "caption": "Ctrl+Enter posts the reply: it shows under the entry, indented" },
+    { "press": "Control+Enter" },
+    { "waitFor": ".feed .replies .entry.reply" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
