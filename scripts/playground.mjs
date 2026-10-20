@@ -27,10 +27,12 @@ const PLAYGROUND_VERSION = 2;
 // The playground's files (a small Node app, its tests and launch configurations) live in playground-app/.
 const app = fileURLToPath(new URL('playground-app/', import.meta.url));
 const dir = path.resolve('.playground');
-// A GitHub address for the playground's origin, so the CI/CD view takes it for a GitHub repository. It's never fetched
-// from or pushed to; the debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug
-// profile: npm run debug-profile -- --fakes).
-const REMOTE = 'https://github.com/playground/app.git';
+// The playground's origin: a local bare repository whose path ends like a GitHub address, so the CI/CD view takes it for
+// GitHub's playground/app, while fetches and pushes (Flotilla's push on approval, BL-104) never leave the machine
+// (BL-113). The debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug profile:
+// npm run debug-profile -- --fakes).
+// Forward slashes, on Windows too: git takes them, and the address reads as GitHub's.
+const REMOTE = path.join(dir, '.git', 'origin', 'github.com', 'playground', 'app.git').split(path.sep).join('/');
 const reset = process.argv.includes('--reset');
 const exists = fs.existsSync(path.join(dir, '.git'));
 // Set once the old playground has been renamed, so a later failure can say where it is.
@@ -86,8 +88,10 @@ const moveAside = () => {
 };
 
 // The playground looks like a GitHub repository to the CI/CD view: origin is REMOTE, and the checked-out branch is
-// "published" there (a remote-tracking ref of its own commit, and its upstream), so its runs can be read.
+// published there (its commit pushed, and its upstream), so its runs can be read. A playground made before REMOTE was
+// local (it was https://github.com/playground/app.git) gets it too, with what it had marked as pushed.
 const asGitHubRepository = () => {
+  if (!fs.existsSync(REMOTE)) gitIn(dir, 'init', '-q', '--bare', REMOTE);
   const remotes = git('remote').split('\n');
   if (!remotes.includes('origin')) git('remote', 'add', 'origin', REMOTE);
   else if (git('remote', 'get-url', 'origin') !== REMOTE) git('remote', 'set-url', 'origin', REMOTE);
@@ -98,6 +102,8 @@ const asGitHubRepository = () => {
     git('update-ref', `refs/remotes/origin/${branch}`, `refs/heads/${branch}`);
   }
   git('branch', `--set-upstream-to=origin/${branch}`, branch);
+  // The seed marks branches as pushed with remote-tracking refs alone: origin gets their commits.
+  git('push', '-q', '--force', 'origin', 'refs/remotes/origin/*:refs/heads/*');
 };
 
 const create = () => {
