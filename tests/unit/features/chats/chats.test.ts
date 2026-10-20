@@ -243,7 +243,7 @@ describe("an agent's chat", () => {
     const md = transcriptMarkdown(raw, 'Nova-7 · BL-1');
     expect(md).toContain('# Nova-7 · BL-1');
     expect(md).toContain('## You\n\n> You are agent Nova-7');
-    expect(md).toContain('<details><summary>🔧 Bash: ls &lt;dir&gt;</summary>');
+    expect(md).toContain('<details><summary>Bash: ls &lt;dir&gt;</summary>');
     expect(md).toContain('````\na.ts\n```x```\n````');
     expect(md).not.toContain('subagent');
     expect(md).not.toContain('hm');

@@ -124,14 +124,20 @@ export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string,
   if (!chat) return;
   const dir = chat.cwd ?? ws.worktree.path ?? ctx.currentRoot;
   const here = samePath(dir, ctx.currentRoot);
+  const active = chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input');
+  const transcript = await readTranscript(dir, chat.id);
+  // An agent's chat (a running one too) is shown here, following its transcript: Claude Code's panel can't open it.
+  if (isHeadless(transcript) || isRunningHeadless(chat.id)) {
+    await showTranscript(chat, dir, active || isRunningHeadless(chat.id));
+    return;
+  }
   // An active chat is selected where it runs (another window can do that without Claude Code here).
-  if (!here && chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input')) {
+  if (!here && active) {
     await selectActiveChat(ctx, chat.id, chat.title, dir);
     return;
   }
-  const transcript = await readTranscript(dir, chat.id);
   const owner = here ? undefined : ownerOf(ctx, dir);
-  if (isHeadless(transcript) || (!here && !owner?.worktree.path)) {
+  if (!here && !owner?.worktree.path) {
     if (!transcript) {
       void vscode.window.showWarningMessage(`Can't open '${chat.title}': its transcript isn't in this environment (it ran in ${dir}).`);
       return;
@@ -167,14 +173,9 @@ async function openInWindowOf(ctx: ChatContext, owner: Workstream, chatId: strin
 
 /**
  * Selects a chat that's active in another folder: in the Flotilla window open on that folder (which brings it to the
- * front), or, running without a window, says so. Otherwise it's in this window's Claude Code (or a terminal), which is
- * asked to select it.
+ * front). Otherwise it's in this window's Claude Code (or a terminal), which is asked to select it.
  */
 async function selectActiveChat(ctx: ChatContext, chatId: string, title: string, dir: string): Promise<void> {
-  if (isRunningHeadless(chatId)) {
-    void vscode.window.showInformationMessage(`'${title}' is an agent running without a window; it reports in its ticket. Open it once it's done.`);
-    return;
-  }
   const owner = ctx.workstreams().find((w) => w.worktree.path && samePath(w.worktree.path, dir));
   if (owner?.windowOpen && !samePath(owner.worktree.adminDir, ctx.currentGitDir)) {
     await sendWindowRequest(owner.worktree.adminDir, { type: 'openChat', sessionId: chatId });

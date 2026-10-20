@@ -76,11 +76,11 @@ export function transcriptMarkdown(raw: string, title: string): string {
         if (entry.type === 'assistant') say('assistant', part.text);
         else if (entry.isMeta !== true) say('user', part.text.split('\n').map((l) => `> ${l}`).join('\n'));
       } else if (part.type === 'tool_use') {
-        say('assistant', folded(`🔧 ${callSummary(part)}`, fenced(cut(JSON.stringify(part.input ?? {}, null, 2)), 'json')));
+        say('assistant', folded(callSummary(part), fenced(cut(JSON.stringify(part.input ?? {}, null, 2)), 'json')));
       } else if (part.type === 'tool_result') {
         // A tool's result comes back in a user line, but is part of Claude's turn.
         const text = resultText(part.content);
-        out.push(folded(part.is_error === true ? '⚠️ Failed' : '↳ Result', text ? fenced(cut(text)) : '_(no output)_'));
+        out.push(folded(part.is_error === true ? 'Failed' : 'Result', text ? fenced(cut(text)) : '_(no output)_'));
       }
     }
   }

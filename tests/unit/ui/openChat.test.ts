@@ -16,10 +16,17 @@ vi.mock('vscode', () => ({
   },
   Uri: { from: (u: { scheme: string; path: string; query: string }) => ({ ...u, toString: () => `${u.scheme}:${u.path}?${u.query}` }) },
   ThemeIcon: class {},
+  EventEmitter: class {
+    listeners: ((u: unknown) => void)[] = [];
+    event = (l: (u: unknown) => void) => this.listeners.push(l);
+    fire = (u: unknown) => this.listeners.forEach((l) => l(u));
+    dispose() {}
+  },
 }));
 
 import { readChatRecords, transcriptPath } from '../../../src/features/chats/chats';
 import { openChat, type ChatContext } from '../../../src/ui/chatCommands';
+import { TranscriptViews } from '../../../src/ui/transcriptView';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 
 const ID = '3f1c2a4e-5b6d-4e7f-8a9b-0c1d2e3f4a5b';
@@ -103,6 +110,21 @@ describe('openChat', () => {
     expect(terminal.cwd).toBe(ws.worktree.path);
     expect(terminal.shellArgs).toContain('--resume');
     expect(terminal.shellArgs.at(-1)).not.toBe('');
+    // Resumed under the title it has (--name sets it), so it isn't renamed.
+    expect(terminal.shellArgs[terminal.shellArgs.indexOf('--name') + 1]).toBe('Fix the bug');
+  });
+
+  it("shows a running agent's chat from another worktree (as the ticket's agent card opens it), without offering to resume it", async () => {
+    const ws = workstream('bl-1');
+    Object.assign(ws.chats[0]!, { state: 'working', open: true });
+    ctx.workstreams = () => [ws];
+    transcript(ws.worktree.path!, 'sdk-cli');
+    calls.answer = 'Continue in Terminal';
+    await openChat(ctx, ws, ID);
+    expect(calls.commands.map((c) => c[0])).toEqual(['markdown.showPreview']);
+    expect(calls.messages[0]).toMatch(/is running/);
+    expect(calls.terminals).toEqual([]);
+    expect(transcripts()).toHaveLength(1);
   });
 
   it("opens your own chat from another worktree in that worktree's window, leaving it where it is", async () => {
@@ -136,5 +158,39 @@ describe('openChat', () => {
     transcript(ctx.currentRoot, 'claude-vscode');
     await openChat(ctx, ws, ID, 'Go on');
     expect(calls.commands).toEqual([['claude-vscode.editor.open', ID, 'Go on']]);
+  });
+});
+
+describe('the transcript view', () => {
+  it('follows its transcript while open: re-rendered once for a burst of writes, and no more once closed', async () => {
+    vi.useFakeTimers();
+    try {
+      const ws = workstream('bl-1');
+      const file = transcriptPath(ws.worktree.path!, ID, home);
+      const watchers: { changed: () => void; disposed: boolean }[] = [];
+      const views = new TranscriptViews((_f, changed) => {
+        const w = { changed, disposed: false };
+        watchers.push(w);
+        return { dispose: () => void (w.disposed = true) };
+      });
+      const fired: unknown[] = [];
+      views.onDidChange((u) => fired.push(u));
+      const uri = { scheme: 'flotilla-transcript', path: '/Nova-7.md', query: file, toString: () => `t:${file}` } as never;
+
+      // Not written yet (an agent that has just started): an empty chat, followed until it is.
+      expect(await views.provideTextDocumentContent(uri)).toContain('no messages yet');
+      transcript(ws.worktree.path!, 'sdk-cli');
+      watchers[0]!.changed();
+      watchers[0]!.changed();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(fired).toEqual([uri]);
+      expect(await views.provideTextDocumentContent(uri)).toContain('Done.');
+      expect(watchers).toHaveLength(1);
+
+      views.unfollow(uri);
+      expect(watchers[0]!.disposed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
