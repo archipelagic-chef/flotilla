@@ -61,6 +61,16 @@ export async function pushOnApproval(cwd: string, setting: PushSetting): Promise
   return false;
 }
 
+/** Whether a remote's URL is on this machine (a path or file://), not on the network (https://, ssh://, host:path). */
+export function isLocalUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return false;
+  if (/^file:\/\//i.test(u)) return true;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return false;
+  if (/^[a-z]:[\\/]/i.test(u)) return true;
+  return !/^[^/\\]*:/.test(u);
+}
+
 /** What to do about a failed push, from git's message. */
 export function pushHint(error: string): string {
   if (/could not read Username|Authentication failed|terminal prompts disabled|Permission denied|403|denied to/i.test(error))

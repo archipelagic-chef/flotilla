@@ -1,6 +1,6 @@
 // Demos (BL-78): a short script of steps (demos/<name>.json) that shows a change working, played in an isolated
-// VS Code window, recorded as a GIF (or an MP4 when it's long and ffmpeg is there), and played again live for the
-// ticket's Run button (a `run demo <name>` block).
+// VS Code window, recorded as a GIF (or an MP4 when it's long: ffmpeg from PATH or @ffmpeg-installer/ffmpeg), and
+// played again live for the ticket's Run button (a `run demo <name>` block).
 //
 //   npm run demo -- record <name> --out <file.gif>   records it (agents put it next to the ticket: <backlog>/<id>/demo.gif)
 //        [--still <file.png>]                        and saves its last frame, to check how it ends
@@ -12,6 +12,7 @@
 // opens on this worktree's .playground. Frames are screenshots of that window's page through its debugging port, never
 // of the screen, and each is checked to come from that window before it's kept: if one doesn't, nothing is saved.
 import { execFileSync, spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -191,20 +192,32 @@ async function play(page, step) {
   await page.waitForTimeout(PACE_MS);
 }
 
-/** Whether ffmpeg is on PATH (for an MP4 of a long demo). */
-function hasFfmpeg() {
+/**
+ * The ffmpeg to make an MP4 of a long demo with: the one on PATH, else the one @ffmpeg-installer/ffmpeg brings (a dev
+ * dependency, so no system install is needed); undefined when neither runs.
+ */
+function findFfmpeg() {
+  const candidates = ['ffmpeg'];
   try {
-    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-    return true;
+    candidates.push(createRequire(import.meta.url)('@ffmpeg-installer/ffmpeg').path);
   } catch {
-    return false;
+    // Not installed, or no build for this platform.
   }
+  return candidates.find((bin) => {
+    try {
+      execFileSync(bin, ['-version'], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
-/** Writes the recording: a GIF, or an MP4 (next to it, same name) when it's longer than GIF_MAX_MS and ffmpeg is there. */
+/** Writes the recording: a GIF, or an MP4 (next to it, same name) when it's longer than GIF_MAX_MS and there's an ffmpeg. */
 function save(captures, endMs, out) {
   const frames = timeline(captures, endMs);
-  if (endMs > GIF_MAX_MS && hasFfmpeg()) {
+  const ffmpeg = endMs > GIF_MAX_MS ? findFfmpeg() : undefined;
+  if (ffmpeg) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-demo-'));
     try {
       const list = frames.map((f, n) => {
@@ -215,14 +228,14 @@ function save(captures, endMs, out) {
       list.push(`file '${frames.length - 1}.png'`);
       fs.writeFileSync(path.join(dir, 'frames.txt'), `${list.join('\n')}\n`);
       const mp4 = out.replace(/\.[^./\\]+$/, '') + '.mp4';
-      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
+      execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
       return { file: mp4, note: '' };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
   fs.writeFileSync(out, encodeGif(frames));
-  const note = endMs > GIF_MAX_MS ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but ffmpeg isn't on PATH: it's a GIF.` : '';
+  const note = endMs > GIF_MAX_MS ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.` : '';
   return { file: out, note };
 }
 
@@ -241,7 +254,7 @@ async function main() {
   const out = outAt >= 0 ? rest[outAt + 1] : undefined;
   const stillAt = rest.indexOf('--still');
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
-  if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4 when ffmpeg is there)');
+  if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4)');
 
   const built = ['extension.js', 'webview.js', 'ticket.js'].map((f) => path.join(root, 'dist', f));
   if (!built.every((f) => fs.existsSync(f))) throw new Error('build first: npm run build');
@@ -301,7 +314,8 @@ function startXvfbOn(n) {
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
 async function show(mode, demo, out, still, display) {
   const playground = path.join(root, '.playground');
-  if (!fs.existsSync(path.join(playground, '.git'))) execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
+  // Made when missing, and brought up to date otherwise (its local origin, BL-113): it changes nothing else.
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');

@@ -13,7 +13,7 @@ const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder 
 export const ACTIONS = ['command', 'click', 'hover', 'type', 'press', 'waitFor', 'wait', 'caption'];
 /** The demos' folder, from the repository root; a demo is `demos/<name>.json`. */
 export const DEMOS_DIR = 'demos';
-/** Longer than this, a demo is an MP4 (when ffmpeg is there); a GIF otherwise. */
+/** Longer than this, a demo is an MP4 (when there's an ffmpeg: see findFfmpeg in demo.mjs); a GIF otherwise. */
 export const GIF_MAX_MS = 15_000;
 /** What the isolated window's title starts with: the demo profile sets it (window.title), and no other profile does. */
 export const TITLE_MARKER = 'Flotilla demo';

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { pushBranch, pushHint, pushNote, pushOnApproval, runsOnPush } from '../../../src/features/backlog/branchPush';
+import { isLocalUrl, pushBranch, pushHint, pushNote, pushOnApproval, runsOnPush } from '../../../src/features/backlog/branchPush';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -96,6 +96,12 @@ describe('pushing an approved branch to origin', () => {
     expect(pushNote(r)).toContain('Merge to main runs the checks locally.');
     git(repo, 'remote', 'remove', 'origin');
     expect(pushNote(await pushBranch(repo, BRANCH))).toContain('no `origin` remote');
+  });
+
+  it('tells a local origin from one on the network', () => {
+    for (const u of ['/tmp/origin.git', '../origin', 'C:\\repos\\app.git', 'C:/repos/app.git', 'file:///tmp/o.git', '/x/.git/origin/github.com/playground/app.git'])
+      expect(isLocalUrl(u), u).toBe(true);
+    for (const u of ['', 'https://github.com/o/r.git', 'ssh://git@host/r.git', 'git@github.com:o/r.git', 'host:repo.git']) expect(isLocalUrl(u), u).toBe(false);
   });
 
   it('hints at signing in, the network or a rejection', () => {
