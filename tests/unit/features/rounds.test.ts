@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryRound, foldRounds, foldTitle, reviewOutcome, type FeedGroup, type RoundInfo } from '../../../src/features/backlog/rounds';
+import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundInfo } from '../../../src/features/backlog/rounds';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
 const entry = (date: string, author: string, body: string): TicketEntry => ({ date, author, body });
@@ -177,6 +177,38 @@ describe('folding a review\'s rounds', () => {
     const feed: Item[] = [entry('2026-10-11 08:00', 'Agent Vega-3', 'Did X.'), commit('BL-40: x'), entry('2026-10-11 09:00', 'You', 'Thanks.')];
     expect(foldRounds(feed, info).every((g) => 'item' in g)).toBe(true);
     expect(foldRounds(feed, info)).toHaveLength(3);
+  });
+});
+
+describe('the entry that is open', () => {
+  const again = entry('2026-10-11 09:50', 'Agent Vega-3', 'Fixed the tests.\n\nReady for review.');
+  const round2 = entry('2026-10-11 09:51', 'Flotilla', 'Review round 2: resumed a chat for agent Flux-3 in worktree `w`. It reviews Vega-3 and gives a verdict here.');
+  /** The open entry of a ticket's activity, as the feed shows it: what a fold holds isn't shown. */
+  const open = (activity: TicketEntry[]) => {
+    const folded = new Set(foldRounds<Item>(activity, info).flatMap((g) => ('fold' in g ? g.fold.items : [])));
+    return openEntry(activity, (e) => !folded.has(e))?.body.split('\n')[0];
+  };
+
+  it("is the implementer's report while it's reviewed, and after the verdict", () => {
+    expect(open([ready, started])).toBe('Done.');
+    expect(open([ready, started, changes])).toBe('Done.');
+    expect(open([ready, started, approved])).toBe('Done.');
+  });
+
+  it('is the report of the next round, once the implementer reports again', () => {
+    expect(open([ready, started, changes, revision, again])).toBe('Fixed the tests.');
+    expect(open([ready, started, changes, revision, again, round2, approved])).toBe('Fixed the tests.');
+  });
+
+  it('is a verdict that waits for the user, so its question shows', () => {
+    const asks = entry('2026-10-11 10:40', 'Agent Flux-3', 'Verdict: changes requested\nShould the cache be per key?\n\nWaiting for you.');
+    expect(entryRound(asks)).toEqual({ part: 'stay' });
+    expect(open([ready, started, changes, revision, again, round2, asks])).toBe('Verdict: changes requested');
+  });
+
+  it("is an agent's entry, never the user's or Flotilla's", () => {
+    expect(open([ready, started, approved, entry('2026-10-11 11:00', 'You', 'Thanks.')])).toBe('Done.');
+    expect(open([started, entry('2026-10-11 11:00', 'You', 'Thanks.')])).toBeUndefined();
   });
 });
 

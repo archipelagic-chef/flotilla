@@ -98,6 +98,17 @@ export function foldRounds<T>(feed: T[], info: (item: T) => RoundInfo, current?:
   return groups;
 }
 
+/**
+ * The entry that's open in the feed: the latest agent's entry that no fold holds (`shown` says which do show). A
+ * reviewer's verdict isn't it, as the work is the implementer's: their report stays open while it's reviewed (BL-115).
+ * A verdict that waits for the user's answer is, so its question shows.
+ */
+export function openEntry<E extends { author: string; body: string }>(entries: E[], shown: (e: E) => boolean): E | undefined {
+  return [...entries]
+    .reverse()
+    .find((e) => (!!entryAgent(e.author) || e.author.toLowerCase() === 'agent') && shown(e) && (!parseVerdict(e.body) || saysWaitingForUser(e.body)));
+}
+
 const ENDS = new Set<RoundPart>(['stay', 'report']);
 
 function makeFold<T>(items: T[], parts: RoundInfo[], current?: CurrentReview): RoundFold<T> {

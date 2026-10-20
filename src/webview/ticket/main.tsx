@@ -3,8 +3,8 @@ import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
-import { fixesFor, fixLabel, heldBy, parseVerdict, type ReviewFix } from '../../features/backlog/review';
-import { entryRound, foldRounds, foldTitle, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
+import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
+import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
@@ -2024,12 +2024,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
         .map((g) => ('fold' in g ? { fold: { ...g.fold, items: g.fold.items.filter((f) => !('commit' in f) && inConversation(f)) } } : g))
         .filter((g) => ('fold' in g ? g.fold.items.length > 0 : !('commit' in g.item) && inConversation(g.item)));
   // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's report in the
-  // feed is open, older ones are folded to a line each (opened by a click). A reviewer's verdict isn't it: the work is
-  // the implementer's, so their report stays open while it's reviewed (BL-115).
+  // feed is open (rounds.ts says which), older ones are folded to a line each (opened by a click).
   const folded = new Set(groups.flatMap((g) => ('fold' in g ? g.fold.items : [])));
-  const latest = [...ticket.activity]
-    .reverse()
-    .find((e) => kindOf(e.author) === 'agent' && !parseVerdict(e.body) && !folded.has(e) && (!nested(e, ticket) || !folded.has(ticket.activity[e.root!])));
+  const latest = openEntry(ticket.activity, (e) => !folded.has(e) && (!nested(e, ticket) || !folded.has(ticket.activity[e.root!])));
   return (
     <section class="block">
       <div class="block-head">
