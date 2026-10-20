@@ -10,7 +10,7 @@ import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
@@ -21,6 +21,7 @@ import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
+import { TicketCi } from './ci';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -2302,6 +2303,7 @@ function App() {
   // What was just picked (status, priority) shows at once; the view the host sends after the action is the truth.
   const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   const [ask, setAsk] = useState<AskView>();
+  const [ci, setCi] = useState<TicketCiView>();
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
@@ -2318,6 +2320,7 @@ function App() {
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
       } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
+      else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
@@ -2476,6 +2479,7 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      <TicketCi ci={ci} send={send} />
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />

@@ -4,7 +4,8 @@ import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
 import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
 import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
-import { anyDeploymentActive, anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { anyDeploymentActive, anyRunActive, CI_ACTIVE_INTERVAL_MS, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { failedJob } from '../../features/ci/failureTask';
 import { finished, type FinishedRun } from '../../features/ci/notify';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -49,17 +50,27 @@ async function readBranch(owner: string, repo: string, branch: string, token: ()
   return { runs: read, ...found };
 }
 
+/** Who expanded a run: the sidebar's CI/CD view, or an open ticket (by its id). */
+const SIDEBAR = 'sidebar';
+
 /**
  * The CI/CD view's data: the latest workflow runs of each worktree's branch on GitHub, read through the user's GitHub
  * sign-in. Read at once when the sidebar shows and when a worktree's commit or upstream moves (a push), then every
  * minute while it's shown (every 10 seconds while a run goes on); nothing while it's hidden.
+ *
+ * Open tickets watch their worktrees (BL-106): those are read when the ticket opens and on a push, then every 10
+ * seconds only while one of their runs is queued or running. Both get the same views and share the reads.
  */
 export class CiRuns implements vscode.Disposable {
   private views = new Map<string, CiView>();
   private workstreams: readonly Workstream[] = [];
   private stamps = new Map<string, string>();
-  /** The runs the user expanded, per worktree: their jobs are read. */
-  private expanded = new Map<string, Set<number>>();
+  /** The runs the user expanded, per worktree, and where (the sidebar, tickets): their jobs are read. */
+  private expanded = new Map<string, Map<number, Set<string>>>();
+  /** The worktrees each open ticket watches, by its id. */
+  private watchers = new Map<string, string[]>();
+  /** Who else gets the views (the open tickets). */
+  private listeners = new Set<(views: Record<string, CiView>) => void>();
   private jobs = new Map<string, Map<number, JobsState>>();
   private visible = false;
   /** Whether it reads while the sidebar is hidden (this window leads and tells the user about finished runs). */
@@ -102,8 +113,46 @@ export class CiRuns implements vscode.Disposable {
       this.followUps.delete(key);
       this.lastRuns.delete(key);
     }
-    if (this.reading && moved.length) void this.load(moved.map((ws) => ws.key));
-    else if (gone.length) this.post(this.snapshot());
+    const read = this.broad ? moved : moved.filter((ws) => this.watched.has(ws.key));
+    if (read.length) void this.load(read.map((ws) => ws.key));
+    else if (gone.length) this.publish();
+  }
+
+  /** Gets the views whenever they're sent (as the sidebar gets them). */
+  onDidChange(listener: (views: Record<string, CiView>) => void): vscode.Disposable {
+    this.listeners.add(listener);
+    return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  /**
+   * An open ticket (id) shows the CI of these worktrees: the ones it didn't watch yet are read now (unless the sidebar
+   * keeps them read), and all of them while a run of theirs goes on. No keys: it stops watching (it's closed).
+   */
+  watch(id: string, keys: readonly string[]): void {
+    const before = this.watched;
+    if (keys.length) this.watchers.set(id, [...keys]);
+    else this.watchers.delete(id);
+    const fresh = keys.filter((key) => !before.has(key) && (!this.broad || !this.views.has(key)));
+    if (fresh.length) void this.load(fresh);
+    else this.schedule();
+  }
+
+  /** A ticket was closed: it watches nothing, and the runs it expanded are its own (the sidebar's stay expanded). */
+  unwatch(id: string): void {
+    for (const [key, runs] of [...this.expanded]) for (const runId of [...runs.keys()]) this.setExpanded(key, runId, id, false);
+    this.watch(id, []);
+  }
+
+  /** The worktrees open tickets watch. */
+  private get watched(): Set<string> {
+    return new Set([...this.watchers.values()].flat());
+  }
+
+  /** Sends the views to the sidebar and the tickets. */
+  private publish(): void {
+    const views = this.snapshot();
+    this.post(views);
+    for (const listener of this.listeners) listener(views);
   }
 
   /** The sidebar is shown (reads now, then regularly) or hidden (nothing is read). */
@@ -111,7 +160,7 @@ export class CiRuns implements vscode.Disposable {
     if (visible === this.visible) return;
     this.visible = visible;
     if (visible) void this.load();
-    else if (!this.keepReading) clearTimeout(this.timer);
+    else if (!this.keepReading) this.schedule();
   }
 
   /** Whether it keeps reading while the sidebar is hidden (for the notices of the leading window). */
@@ -119,11 +168,11 @@ export class CiRuns implements vscode.Disposable {
     if (on === this.keepReading) return;
     this.keepReading = on;
     if (on && !this.visible) void this.load();
-    else if (!on && !this.visible) clearTimeout(this.timer);
+    else if (!on && !this.visible) this.schedule();
   }
 
-  /** Runs are read while the sidebar is shown, or while this window keeps reading for notices. */
-  private get reading(): boolean {
+  /** Every worktree's runs are read while the sidebar is shown, or while this window keeps reading for notices. */
+  private get broad(): boolean {
     return this.visible || this.keepReading;
   }
 
@@ -174,8 +223,8 @@ export class CiRuns implements vscode.Disposable {
       key,
       setTimeout(() => {
         this.followUps.delete(key);
-        // Nothing is read while the sidebar is hidden, and a worktree that was removed has no runs to read.
-        if (this.visible && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
+        // Nothing is read while the sidebar is hidden (unless a ticket shows it), and a removed worktree has no runs to read.
+        if ((this.visible || this.watched.has(key)) && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
       }, FOLLOW_UP_MS),
     );
   }
@@ -192,18 +241,51 @@ export class CiRuns implements vscode.Disposable {
     await this.load();
   }
 
-  /** A run was expanded or collapsed: its jobs are read now, and while it's expanded. */
-  async expand(key: string, runId: number, expanded: boolean): Promise<void> {
-    const runs = this.expanded.get(key) ?? new Set<number>();
-    if (expanded) runs.add(runId);
+  /**
+   * A run was expanded or collapsed, in the sidebar or in a ticket (by): its jobs are read now, and while it's expanded
+   * anywhere.
+   */
+  async expand(key: string, runId: number, expanded: boolean, by = SIDEBAR): Promise<void> {
+    this.setExpanded(key, runId, by, expanded);
+    if (expanded) await this.load([key]);
+    else this.publish();
+  }
+
+  /** Marks a run expanded (or not) by one of the views; its jobs are forgotten once no view has it expanded. */
+  private setExpanded(key: string, runId: number, by: string, expanded: boolean): void {
+    const runs = this.expanded.get(key) ?? new Map<number, Set<string>>();
+    const views = runs.get(runId) ?? new Set<string>();
+    if (expanded) views.add(by);
+    else views.delete(by);
+    if (views.size) runs.set(runId, views);
     else {
       runs.delete(runId);
       this.jobs.get(key)?.delete(runId);
     }
     if (runs.size) this.expanded.set(key, runs);
     else this.expanded.delete(key);
-    if (expanded) await this.load([key]);
-    else this.post(this.snapshot());
+  }
+
+  /**
+   * Fix with Agent on a failed job of a run the view shows (BL-7's command, with the job's failed steps and log). No
+   * job: the run's first failed job.
+   */
+  async fix(key: string, runId: number, jobId?: number): Promise<void> {
+    const view = this.views.get(key);
+    const run = view?.kind === 'runs' ? view.runs.find((r) => r.id === runId) : undefined;
+    if (view?.kind !== 'runs' || !run) throw new Error("That run isn't in this worktree's CI any more. Refresh it and try again.");
+    const session: Session | undefined = this.api
+      ? { accessToken: FAKE_TOKEN }
+      : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+    if (!session) return;
+    const [owner, repo] = view.repo.split('/');
+    const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
+    const failure = await failedJob(github, view.branch, run, jobId);
+    if (!failure) {
+      void vscode.window.showWarningMessage(`No job of ${run.workflow} #${run.number} failed, so there's nothing for an agent to fix.`);
+      return;
+    }
+    await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
   }
 
   /** Shows a job's log in an editor, of the repository the worktree's runs are on (the log's command checks the ids). */
@@ -240,7 +322,7 @@ export class CiRuns implements vscode.Disposable {
     const jobs = this.jobs.get(key) ?? new Map<number, JobsState>();
     this.jobs.set(key, jobs);
     await Promise.all(
-      [...expanded].map(async (runId) => {
+      [...expanded.keys()].map(async (runId) => {
         const run = view.runs.find((r) => r.id === runId);
         const known = jobs.get(runId);
         if (!run || !jobsDue(run.status, known)) return;
@@ -284,19 +366,34 @@ export class CiRuns implements vscode.Disposable {
       }),
     );
     this.reportFinished();
-    this.post(this.snapshot());
+    this.publish();
     // The jobs of the expanded runs come after the runs, so that the runs show at once.
     await Promise.all(targets.map((ws) => this.readJobs(ws.key, session)));
-    this.post(this.snapshot());
+    this.publish();
     // The last load to finish sets the next one (a load that overlapped another doesn't leave a second timer running).
-    // Only the worktrees there are now count: a run or deployment on a removed one doesn't keep the timer short.
-    const views = Object.values(this.snapshot());
+    this.schedule();
+  }
+
+  /**
+   * Sets the next read: of every worktree while the sidebar reads them (see refreshDelay), else of the worktrees
+   * tickets watch, only while a run or deployment of theirs goes on. Only the worktrees there are now count: a run or
+   * deployment on a removed one doesn't keep the timer short.
+   */
+  private schedule(): void {
+    clearTimeout(this.timer);
+    const watched = this.watched;
+    const views = Object.entries(this.snapshot())
+      .filter(([key]) => this.broad || watched.has(key))
+      .map(([, view]) => view);
     const anyActive =
       anyRunActive(views.flatMap((v) => (v.kind === 'runs' ? v.runs : []))) ||
       anyDeploymentActive(views.flatMap((v) => (v.kind === 'runs' ? v.deployments : [])));
-    const delay = refreshDelay(this.reading, anyActive);
-    clearTimeout(this.timer);
-    this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
+    if (this.broad) {
+      const delay = refreshDelay(true, anyActive);
+      this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
+    } else {
+      this.timer = watched.size && anyActive ? setTimeout(() => void this.load([...watched]), CI_ACTIVE_INTERVAL_MS) : undefined;
+    }
   }
 
   /** Where a worktree's runs are: its branch on GitHub, or the view that says why there are none. */

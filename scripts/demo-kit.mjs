@@ -10,7 +10,7 @@ import * as gifencModule from 'gifenc';
 const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
 
 /** What a demo's step does: one of these keys, with its value. */
-export const ACTIONS = ['command', 'click', 'type', 'press', 'waitFor', 'wait', 'caption'];
+export const ACTIONS = ['command', 'click', 'hover', 'type', 'press', 'waitFor', 'wait', 'caption'];
 /** The demos' folder, from the repository root; a demo is `demos/<name>.json`. */
 export const DEMOS_DIR = 'demos';
 /** Longer than this, a demo is an MP4 (when there's an ffmpeg: see findFfmpeg in demo.mjs); a GIF otherwise. */

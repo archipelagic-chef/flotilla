@@ -14,6 +14,16 @@ import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
+import type { CiRequest, CiView } from './protocol';
+
+/**
+ * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
+ * user keeps it open in this ticket.
+ */
+export interface TicketCiView {
+  open: boolean;
+  worktrees: Array<{ key: string; branch: string; view?: CiView }>;
+}
 
 /** An agent's chat, as a ticket entry links it: click to open it in Claude Code. */
 export type AgentChatView =
@@ -185,7 +195,9 @@ export type TicketHostMessage =
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** The Ask chat changed (BL-80). */
-  | { type: 'ask'; ask: AskView };
+  | { type: 'ask'; ask: AskView }
+  /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
+  | { type: 'ci'; ci: TicketCiView };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -270,4 +282,8 @@ export type TicketWebviewMessage =
   | { type: 'ask'; text: string }
   | { type: 'askStop' }
   | { type: 'askNew' }
-  | { type: 'askPost'; index: number };
+  | { type: 'askPost'; index: number }
+  /** Its CI (BL-106): the CI/CD view's requests for a worktree of the ticket; open or close it; show the CI/CD view. */
+  | ({ type: 'ci' } & CiRequest)
+  | { type: 'ciOpen'; open: boolean }
+  | { type: 'ciShow'; key: string };

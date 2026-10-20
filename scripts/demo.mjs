@@ -159,6 +159,13 @@ async function play(page, step) {
       await target.click({ timeout });
       break;
     }
+    case 'hover': {
+      const target = await find(page, step.value, timeout);
+      const box = await target.boundingBox();
+      if (box) await pointer(page, box.x + box.width / 2, box.y + box.height / 2);
+      await target.hover({ timeout });
+      break;
+    }
     case 'type':
       await page.keyboard.type(step.value, { delay: 45 });
       break;
