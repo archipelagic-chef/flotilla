@@ -434,6 +434,8 @@ const TICKETS = [
     status: 'review',
     daysAgo: 3,
     branch: 'feature/BL-13-say-hi-in-the-greeting',
+    // Pushed to the playground's origin (a GitHub address): its ticket shows its CI from the fake GitHub (BL-106).
+    published: true,
     description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
     activity: [
@@ -476,9 +478,9 @@ const branchExists = (dir, branch) => {
 
 /**
  * A branch in its own worktree (.worktrees/, as Flotilla lays them out): its commits, then the changes not committed
- * (staged, unstaged, untracked). A branch that exists already is left as it is.
+ * (staged, unstaged, untracked), and published: its upstream on origin. A branch that exists already is left as it is.
  */
-function branchWorktree(dir, { branch, commits = [], dirty = {} }, from) {
+function branchWorktree(dir, { branch, commits = [], dirty = {}, published = false }, from) {
   if (branchExists(dir, branch)) return;
   const folder = path.join(dir, '.worktrees', branch.replace(/\//g, '-'));
   git(dir, 'worktree', 'add', '-q', '-b', branch, folder, from);
@@ -490,6 +492,12 @@ function branchWorktree(dir, { branch, commits = [], dirty = {} }, from) {
   }
   for (const [rel, text] of Object.entries(dirty.unstaged ?? {})) fs.writeFileSync(path.join(folder, rel), text);
   for (const [rel, text] of Object.entries(dirty.untracked ?? {})) fs.writeFileSync(path.join(folder, rel), text);
+  // As if pushed: a remote-tracking ref of its commit, and its upstream (nothing is pushed anywhere).
+  if (published) {
+    git(dir, 'update-ref', `refs/remotes/origin/${branch}`, `refs/heads/${branch}`);
+    git(dir, 'config', `branch.${branch}.remote`, 'origin');
+    git(dir, 'config', `branch.${branch}.merge`, `refs/heads/${branch}`);
+  }
 }
 
 /** Keeps the playground's worktrees and its backlog folder out of its own git status (as Flotilla does). */

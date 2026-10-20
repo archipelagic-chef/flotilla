@@ -1,3 +1,5 @@
+import { cleanLog, type CiRun, type GitHubActions } from './githubActions';
+
 /**
  * What an agent is told to fix a failed CI job: the run, the job, its failed steps and commit, a link to the run, and
  * the end of the job's log. Pure: the CI view and the failure notice hand over a FailedJob, the agent's chat gets the text.
@@ -10,6 +12,22 @@ export interface FailedJob {
   failedSteps: string[];
   /** The job's log, cleaned by the CI view (no time stamps or colors). Only its end is quoted. */
   log: string;
+}
+
+/**
+ * A run's failed job, as Fix with Agent hands it over: the job (or the run's first failed one), its failed steps and its
+ * cleaned log, read from GitHub. Undefined when no such job failed.
+ */
+export async function failedJob(github: Pick<GitHubActions, 'jobs' | 'log'>, branch: string, run: CiRun, jobId?: number): Promise<FailedJob | undefined> {
+  const job = (await github.jobs(run.id)).find((j) => j.status === 'failure' && (jobId === undefined || j.id === jobId));
+  if (!job) return undefined;
+  return {
+    branch,
+    run: { name: run.workflow, url: run.url, commit: run.sha },
+    job: { name: job.name, ...(job.url ? { url: job.url } : {}) },
+    failedSteps: job.steps.filter((s) => s.status === 'failure').map((s) => s.name),
+    log: cleanLog(await github.log(job.id)),
+  };
 }
 
 /** How much of a log is quoted: the lines with errors from further up, then the end. */

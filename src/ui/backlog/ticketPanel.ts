@@ -63,6 +63,8 @@ import { openTarget } from '../../features/backlog/runTarget';
 import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
+import type { CiRuns } from '../ci/ciRuns';
+import { TicketCi } from './ticketCi';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -86,6 +88,9 @@ export interface TicketDeps {
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
   output?: vscode.OutputChannel;
+  /** The CI/CD view's reader, and showing a worktree's CI/CD view: for the tickets' CI (BL-106). */
+  ci?: CiRuns;
+  showCi?(key: string): void;
 }
 
 /** The key the "Show activity" choice is kept under in the memento. */
@@ -354,7 +359,12 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(merger.onDidChange(() => this.refreshAll()));
   }
 
+  /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
+  private readonly ci: TicketCi | undefined;
+
   constructor(private readonly deps: TicketDeps) {
+    this.ci = deps.ci && new TicketCi({ ci: deps.ci, showCi: (key) => deps.showCi?.(key), memento: deps.memento, mainRoot: deps.mainRoot });
+    if (this.ci) this.subscriptions.push(this.ci);
     this.subscriptions.push(
       creatingWorktrees.onDidChange(() => this.refreshAll()),
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
@@ -399,14 +409,22 @@ export class TicketPanels implements vscode.Disposable {
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
     if (o.focus) this.focusOnPost.add(panel);
+    const ci = this.ci?.open(id, panel);
     panel.onDidDispose(() => {
+      ci?.dispose();
       this.panels.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.
       this.asks.get(id)?.dispose();
       this.asks.delete(id);
     });
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost' ? this.onAsk(id, panel, m) : this.onMessage(id, panel, m)).catch(
+      (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost'
+        ? this.onAsk(id, panel, m)
+        : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
+          ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
+            (this.ci?.handle(id, m) ?? Promise.resolve())
+          : this.onMessage(id, panel, m)
+      ).catch(
         (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)),
       ),
     );
@@ -829,6 +847,7 @@ export class TicketPanels implements vscode.Disposable {
         };
       });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
+      this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
       const showActivity = showActivityKept(this.deps.memento);
       const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id) };
       const update = ticketUpdate(this.sentViews.get(panel), next);
@@ -1276,6 +1295,7 @@ export class TicketPanels implements vscode.Disposable {
         // The webview has nothing yet (or reloaded): the whole view goes again, and its Ask chat.
         this.sentViews.delete(panel);
         if (this.asks.has(id)) this.postAsk(id, panel, 0);
+        this.ci?.resend(id);
         break;
       case 'title': {
         const title = m.title.trim();

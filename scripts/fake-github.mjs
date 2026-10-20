@@ -246,7 +246,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       html_url: `https://github.com/${run.repo}/actions/runs/${run.id}`,
       created_at: iso(run.startedAt),
       run_started_at: iso(run.startedAt),
-      updated_at: iso(at),
+      // As GitHub: a finished run was last updated when it ended.
+      updated_at: iso(p.status === 'completed' ? (run.cancelledAt ?? run.startedAt + QUEUE_MS + RUN_MS) : at),
     };
   }
 
@@ -314,7 +315,10 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     if (method === 'POST' && (m = /^\/runs\/(\d+)\/(rerun|rerun-failed-jobs)$/.exec(rest))) {
       const run = findRun(repo, m[1]);
       if (!run) return notFound();
-      if (phase(run, at).status !== 'completed') return json(409, { message: 'Cannot rerun a workflow run that is still going.' });
+      const done = phase(run, at);
+      if (done.status !== 'completed') return json(409, { message: 'Cannot rerun a workflow run that is still going.' });
+      // A run that failed passes when it's run again (as a flaky test would): the view can be seen going to passed.
+      if (done.conclusion === 'failure') run.outcome = 'success';
       run.attempt += 1;
       run.startedAt = at;
       run.cancelledAt = undefined;
