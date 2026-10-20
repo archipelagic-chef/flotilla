@@ -521,9 +521,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'log':
         await this.postLog(m.key, m.skip);
         return;
-      case 'backlog':
-        await this.onBacklog(m);
+      case 'backlog': {
+        // The card's button shows it's working until this says it's done (BL-117), whether it posted, failed or returned early.
+        let failed = false;
+        try {
+          await this.onBacklog(m);
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          this.post({ type: 'backlogDone', message: m, ...(failed ? { failed } : {}) });
+        }
         return;
+      }
       case 'folding':
         await vscode.commands.executeCommand('setContext', 'flotilla.canFold', m.canFold);
         await vscode.commands.executeCommand('setContext', 'flotilla.allFolded', m.allFolded);
