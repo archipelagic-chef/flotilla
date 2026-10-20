@@ -29,7 +29,7 @@ import type { BacklogIntegrations } from './integrations';
 import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -262,6 +262,29 @@ export type Media = { src: string; kind: MediaKind } | { note: string };
 const IMG = /<img\b[^>]*>/g;
 const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+const MERMAID = /^ {0,3}(`{3,}|~{3,})\s*mermaid[^\n]*\n([\s\S]*?)\n? {0,3}\1[`~]*\s*$/i;
+const PICTURE = /^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)/;
+
+/**
+ * A report's media (parseReport's, BL-114) as thumbnails: a diagram by its code, a picture by what media says it is
+ * (as written when it says nothing); one over its limit has none (its note shows in the open entry).
+ */
+export async function mediaThumbs(media: string[], resolve: (src: string) => Promise<Media | undefined>): Promise<MediaThumb[]> {
+  const thumbs = await Promise.all(
+    media.map(async (m): Promise<MediaThumb | undefined> => {
+      const diagram = MERMAID.exec(m);
+      if (diagram) return { kind: 'diagram', code: diagram[2] };
+      const picture = PICTURE.exec(m);
+      if (!picture) return undefined;
+      const src = picture[2].replace(/^<|>$/g, '');
+      const r = await resolve(src).catch(() => undefined);
+      if (r && 'note' in r) return undefined;
+      return { kind: r?.kind ?? mediaType(src)?.kind ?? 'image', src: r?.src ?? src, ...(picture[1] ? { alt: picture[1] } : {}) };
+    }),
+  );
+  return thumbs.filter((t): t is MediaThumb => !!t);
+}
 
 /** Replaces the images in html with what media says they are (undefined: kept as they are). */
 export async function replaceMedia(html: string, media: (src: string) => Promise<Media | undefined>): Promise<string> {
@@ -589,6 +612,13 @@ export class TicketPanels implements vscode.Disposable {
         key,
         parseRunBlocks(parts.summary).length,
       ),
+      // Its pictures, videos and diagrams lead the details (BL-114).
+      ...(parts.media.length
+        ? {
+            media: await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots),
+            thumbs: await mediaThumbs(parts.media, (src) => resolveMedia(src, webview, this.deps.backlog.dir, roots)),
+          }
+        : {}),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
       questions: parts.questions,

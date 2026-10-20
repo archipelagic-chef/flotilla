@@ -1624,6 +1624,108 @@ button.timeline-item:hover .timeline-text {
 .feed .rendered video.media {
   max-height: 270px;
 }
+/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
+.feed .report-media .rendered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+.feed .report-media .rendered > * {
+  margin: 0;
+}
+.feed .report-media .rendered > .diagram {
+  flex: 1 1 100%;
+}
+.feed .report-media .rendered img {
+  max-height: 420px;
+}
+.feed .report-media .rendered video.media {
+  max-height: 420px;
+  margin: 0;
+}
+/* A folded report's media: thumbnails beside its line, each opening in the viewer. */
+.entry.folded:has(.media-strip) {
+  display: flex;
+  align-items: center;
+}
+.entry.folded:has(.media-strip) .entry-fold {
+  flex: 1;
+}
+.media-strip {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  max-width: 50%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 3px 8px 3px 0;
+  list-style: none;
+}
+.media-thumb {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 36px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: zoom-in;
+}
+.media-thumb:hover,
+.media-thumb:focus-visible {
+  border-color: var(--focus);
+}
+.media-thumb img,
+.media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.media-thumb .play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+}
+.media-thumb-diagram {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.media-thumb-diagram pre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 4px;
+}
+.media-thumb-diagram .diagram,
+.media-thumb-diagram svg {
+  width: 100%;
+  height: 100%;
+}
+.media-thumb-diagram .media-note {
+  display: none;
+}
+.viewer-diagram {
+  min-width: min(640px, 80vw);
+  max-width: 90vw;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 12px;
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+.viewer-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
 .feed .entry.flash {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
