@@ -89,9 +89,16 @@ describe('reading a report', () => {
 
   it('reads a verdict that starts a review: its first paragraph is the summary', () => {
     const parts = parseReport(['Verdict: changes requested', '- The cache never expires entries.', '- No test for restarts.', '', '- [ ] expire entries', '- [ ] add the test'].join('\n'));
-    expect(parts.summary).toBe('Verdict: changes requested\n- The cache never expires entries.\n- No test for restarts.');
-    expect(parts.details).toBe('- [ ] expire entries\n- [ ] add the test');
+    expect(parts.summary).toBe('Verdict: changes requested\n- The cache never expires entries.\n- No test for restarts.\n\n- [ ] expire entries\n- [ ] add the test');
+    expect(parts.details).toBe('');
     expect(parts.asks).toBe(false);
+  });
+
+  it("shows a verdict's checklist with its summary, and folds the rest", () => {
+    const body = ['Verdict: changes requested', 'Close.', '', '### What must change', '- [ ] expire entries', '  after an hour', '- [x] add the test', '', 'Ran `npm test`: 2 failed.'].join('\n');
+    const parts = parseReport(body);
+    expect(parts.summary).toBe('Verdict: changes requested\nClose.\n\n- [ ] expire entries\n  after an hour\n- [x] add the test');
+    expect(parts.details).toBe('### What must change\n\nRan `npm test`: 2 failed.');
   });
 
   it('shows an older report whole: no summary', () => {
