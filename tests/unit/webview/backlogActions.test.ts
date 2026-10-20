@@ -26,8 +26,8 @@ describe('backlog busy actions (BL-117)', () => {
   it('tells actions apart by op, item and fix', () => {
     expect(backlogActionKey(approve)).not.toBe(backlogActionKey({ type: 'backlog', op: 'approve', id: 'BL-4' }));
     expect(backlogActionKey({ type: 'backlog', op: 'start', id: 'BL-3' })).not.toBe(backlogActionKey(approve));
-    expect(backlogActionKey({ type: 'backlog', op: 'fix', id: 'BL-3', fix: 'resume' } as BacklogMessage)).not.toBe(
-      backlogActionKey({ type: 'backlog', op: 'fix', id: 'BL-3', fix: 'merge' } as BacklogMessage),
+    expect(backlogActionKey({ type: 'backlog', op: 'fix', id: 'BL-3', fix: 'resume' })).not.toBe(
+      backlogActionKey({ type: 'backlog', op: 'fix', id: 'BL-3', fix: 'retry' }),
     );
     expect(backlogActionKey({ type: 'backlog', op: 'plan' })).toBe('plan:');
   });
