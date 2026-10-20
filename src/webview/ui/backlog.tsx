@@ -88,7 +88,11 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
       <div class="tool-title backlog-title">
         <span>Backlog</span>
         {agentCount && (
-          <button class={`agent-count${workingOnly ? ' on' : ''}`} onClick={() => setWorkingOnly(!workingOnly)} title="Show only tickets being worked on">
+          <button
+            class={`agent-count${workingOnly ? ' on' : ''}`}
+            onClick={() => setWorkingOnly(!workingOnly)}
+            title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
+          >
             {agentCount}
           </button>
         )}

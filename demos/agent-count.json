@@ -1,0 +1,21 @@
+{
+  "title": "The backlog counts the agents working, with the autopilot off",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 2000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\")" },
+    { "caption": "With the autopilot off, sending work back starts its agent" },
+    { "click": ".comment-box textarea" },
+    { "type": "Test an empty list." },
+    { "click": ".actions-row button:has-text(\"Request Changes\")" },
+    { "caption": "The backlog's title counts the agents working, and the limit" },
+    { "waitFor": ".agent-count" },
+    { "wait": 1000 },
+    { "caption": "A click narrows the board to the tickets being worked on" },
+    { "click": ".agent-count" },
+    { "waitFor": ".working-bar" },
+    { "wait": 1000 },
+    { "caption": "" }
+  ]
+}
