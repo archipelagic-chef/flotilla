@@ -289,9 +289,9 @@ describe('Merge to main on CI (BL-105)', () => {
     // cancel and once CI has passed, as a timer that fires late would, and waits for it to end (BL-120).
     const polls: Array<() => void> = [];
     const setTimer = globalThis.setTimeout;
-    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => {
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
       if (ms === HOUR) polls.push(fn);
-      return setTimer(fn, ms, ...args);
+      return setTimer(fn, ms);
     }) as typeof setTimeout);
     try {
       expect(await merger.merge('BL-1')).toBe('waiting');
