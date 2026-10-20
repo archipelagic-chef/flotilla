@@ -362,7 +362,7 @@ function NeedRow({ item }: { item: BacklogItem }) {
           </button>
         )}
         {need.kind === 'failed' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })} title="Creates its worktree if needed and starts an agent there">
+          <button class="button" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })} title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket">
             <i class="codicon codicon-play" /> Run
           </button>
         )}
@@ -608,6 +608,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
             <button
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
+              title={`${worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}: it runs in the background and reports in the ticket`}
               onClick={() => send({ type: 'backlog', op: 'start', id: item.id })}
             >
               <i class="codicon codicon-play" />

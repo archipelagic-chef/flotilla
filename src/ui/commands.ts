@@ -68,6 +68,8 @@ export interface CommandContext {
   integrations: BacklogIntegrations;
   /** Why the autopilot holds a To Do ticket back (BL-71), if it does: a start by hand says so. Set once it's made. */
   clashOf?(id: string): Clash | undefined;
+  /** Starts an agent on an item's work without a window, through the agent queue (the review loop's). Set once it's made. */
+  startWork?(item: BacklogItem, ws: Workstream): Promise<void>;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -681,8 +683,17 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   );
 }
 
-/** Opens a Claude Code chat for an agent on an item, working in its worktree. */
+/**
+ * Starts an agent on an item, working in its worktree: a local item's agent runs without a window, through the agent
+ * queue, as the autopilot's do (BL-122); an issue from a tracker gets a Claude Code chat.
+ */
 async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, remote?: RemoteIssue): Promise<void> {
+  if (!remote && ctx.startWork) {
+    // As it is now: starting it moved it to In Progress, and the queue gives up starts on an item that changed.
+    const fresh = (await ctx.backlog.read()).items.find((i) => i.id === item.id);
+    if (fresh) await ctx.startWork(fresh, ws);
+    return;
+  }
   let ticket: string;
   if (remote) {
     // The issue lives in its tracker; the agent gets a local copy of it to read and to report in.
