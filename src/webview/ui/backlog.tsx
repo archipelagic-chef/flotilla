@@ -87,15 +87,6 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <div class="tool-title backlog-title">
         <span>Backlog</span>
-        {agentCount && (
-          <button
-            class={`agent-count${workingOnly ? ' on' : ''}`}
-            onClick={() => setWorkingOnly(!workingOnly)}
-            title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
-          >
-            {agentCount}
-          </button>
-        )}
         <span class="title-actions">
           {integrations > 0 && (
             <button class="icon" aria-label="Refresh Issues" onClick={() => send({ type: 'backlog', op: 'refresh' })}>
@@ -135,6 +126,16 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           </button>
         </span>
       </div>
+      {agentCount && (
+        <button
+          class={`agent-count${workingOnly ? ' on' : ''}`}
+          onClick={() => setWorkingOnly(!workingOnly)}
+          title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
+        >
+          <i class="codicon codicon-hubot" />
+          <span>{agentCount}</span>
+        </button>
+      )}
       {autopilot?.enabled && (
         <button class="autopilot-bar" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
           <i class="codicon codicon-rocket" />
