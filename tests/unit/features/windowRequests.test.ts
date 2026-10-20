@@ -13,7 +13,7 @@ describe('window requests', () => {
     cleanup.push(gitDir);
     await sendWindowRequest(gitDir, { type: 'openChat', sessionId: 'abc-123' });
     const dir = path.join(gitDir, 'flotilla', 'requests');
-    fs.writeFileSync(path.join(dir, `${Date.now() - 60_000}-old.json`), JSON.stringify({ type: 'openChat', sessionId: 'old' }));
+    fs.writeFileSync(path.join(dir, `${Date.now() - 180_000}-old.json`), JSON.stringify({ type: 'openChat', sessionId: 'old' }));
     fs.writeFileSync(path.join(dir, `${Date.now()}-bad.json`), JSON.stringify({ type: 'openChat', sessionId: '../x' }));
     expect(await takeWindowRequests(gitDir)).toEqual([{ type: 'openChat', sessionId: 'abc-123' }]);
     expect(await takeWindowRequests(gitDir)).toEqual([]);
