@@ -62,15 +62,22 @@ const DEMO_SETTINGS = {
   'git.openRepositoryInParentFolders': 'never',
 };
 
+/** The Flotilla settings the last demo set (its "settings"), taken out before the next one sets its own. */
+const DEMO_OWN_FILE = path.join(PROFILE_DIR, 'demo-settings.json');
+
 /** The demo profile, made ready: Claude Code copied in, the fakes on (pointing at `githubUrl`), the demo's settings. */
-function prepareProfile(githubUrl) {
+function prepareProfile(githubUrl, own = {}) {
   installClaudeCode(findClaudeCode(extensionFolders())?.path, path.join(root, EXTENSIONS_DIR));
   const result = writeProfileSettings(PROFILE_DIR, { root, fakes: true });
   if (result.unreadable) throw new Error(`${PROFILE_DIR}/User/settings.json isn't plain JSON: delete .vscode-test/demo-profile and try again`);
   if (!result.applied.includes('fake Claude') || !result.applied.includes('fake GitHub')) throw new Error('the fakes (scripts/fake-claude.mjs, scripts/fake-github.mjs) are missing');
   const file = path.join(PROFILE_DIR, 'User', 'settings.json');
   const settings = { ...JSON.parse(fs.readFileSync(file, 'utf8')), ...DEMO_SETTINGS, 'flotilla.dev.githubApi': githubUrl };
+  const last = fs.existsSync(DEMO_OWN_FILE) ? JSON.parse(fs.readFileSync(DEMO_OWN_FILE, 'utf8')) : [];
+  for (const key of Array.isArray(last) ? last : []) delete settings[key];
+  Object.assign(settings, own);
   fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+  fs.writeFileSync(DEMO_OWN_FILE, `${JSON.stringify(Object.keys(own))}\n`);
 }
 
 function usage(message) {
@@ -258,7 +265,7 @@ async function show(mode, demo, out, still) {
   const { _electron } = await import('playwright-core');
   const { startFakeGitHub } = await import('./fake-github.mjs');
   const github = await startFakeGitHub({ port: 0, repoDir: playground });
-  prepareProfile(github.url);
+  prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));

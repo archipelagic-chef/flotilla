@@ -48,7 +48,12 @@ export function parseDemo(text, name = 'demo') {
     if (step.timeout !== undefined && !(Number.isFinite(step.timeout) && step.timeout > 0)) throw new Error(`${where}: "timeout" is a number of milliseconds`);
     return { action, value, ...(step.timeout ? { timeout: step.timeout } : {}) };
   });
-  return { title: typeof demo.title === 'string' ? demo.title : name, steps };
+  // Flotilla's settings the demo plays with (say, the local checks on Merge to main): only Flotilla's own.
+  const settings = demo.settings ?? {};
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error(`${name}: "settings" is an object of Flotilla's settings`);
+  const other = Object.keys(settings).filter((k) => !/^flotilla\.[\w.]+$/.test(k) || k.startsWith('flotilla.dev.'));
+  if (other.length) throw new Error(`${name}: "settings" takes only Flotilla's settings (flotilla.*, not flotilla.dev.*), not ${other.join(', ')}`);
+  return { title: typeof demo.title === 'string' ? demo.title : name, steps, settings };
 }
 
 /** A demo's file by name (letters, digits, - and _ only: a name isn't a path). */

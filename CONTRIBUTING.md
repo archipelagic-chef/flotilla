@@ -122,6 +122,8 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
 }
 ```
 
+A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
+
 Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). The window pops up on your screen while it records or plays.
 
 ## File icons

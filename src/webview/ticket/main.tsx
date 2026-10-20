@@ -912,20 +912,22 @@ function MergeButton({ into, progress }: { into: string; progress?: TicketView['
   );
 }
 
-/** Merge to main waiting for CI to pass (BL-105): the runs' progress, and Cancel. It merges once they're green. */
+/**
+ * Merge to main waiting for CI to pass (BL-105), and Cancel. It merges once the runs are green; their progress is in
+ * its tooltip, and live in the ticket's CI below.
+ */
 function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<TicketView['mergeProgress']>['ci']> }) {
   const progress = runs.length ? runs.map((r) => `${r.workflow} #${r.number} ${ciWord(r.status)}`).join(', ') : "GitHub hasn't started CI yet";
   return (
-    <span class="merge-ci-wait" data-tip={`Merges into ${into} once every run on the branch's pushed tip has passed; nothing runs locally.`}>
-      <button class="button" disabled aria-busy>
+    <>
+      <button class="button merge-ci-wait" disabled aria-busy title={`Merges into ${into} once every run on the branch's pushed tip has passed; nothing runs locally.\n${progress}`}>
         <i class="codicon codicon-git-merge" /> Merge to {into}
         <WorkingTag label="Merges when CI passes" />
       </button>
-      <span class="merge-ci-runs">{progress}</span>
-      <ActionButton class="button secondary" message={{ type: 'mergeCiCancel' }} working="Cancelling…">
+      <ActionButton class="button secondary" message={{ type: 'mergeCiCancel' }} working="Cancelling…" title="Stop waiting for CI: nothing is merged">
         Cancel
       </ActionButton>
-    </span>
+    </>
   );
 }
 
