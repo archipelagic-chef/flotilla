@@ -1010,6 +1010,9 @@ function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<Ti
   );
 }
 
+/** When the checks failed: "Oct 19, 20:16". */
+const failedAt = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
 /**
  * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
  * or its checks failing (BL-65), with their output, to fix with an agent.
@@ -1038,6 +1041,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
         <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
         <span class="review-text">
           <strong>Merging into {m.base}</strong> {text}
+          {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
@@ -1053,6 +1057,15 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
             }
           >
             <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {checks && m.state === 'failed' && !resolving && (
+          <button
+            class="button secondary"
+            onClick={() => send({ type: 'mergeRecheck' })}
+            title="Runs the checks again on the merge as it is (a failure that was only a loaded machine's goes away): passing, the base branch moves to the merge"
+          >
+            <i class="codicon codicon-refresh" /> Run the Checks Again
           </button>
         )}
         {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (

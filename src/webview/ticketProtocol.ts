@@ -300,6 +300,7 @@ export type TicketWebviewMessage =
   | { type: 'merge' }
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
+  | { type: 'mergeRecheck' }
   | { type: 'mergeCancel' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
