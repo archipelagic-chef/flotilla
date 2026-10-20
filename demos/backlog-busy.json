@@ -1,0 +1,15 @@
+{
+  "title": "The backlog's Approve shows it's working until the card moves",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".need-yours:has-text(\"Show a run button on review cards\")" },
+    { "caption": "Approve on a card that waits for your review" },
+    { "wait": 1200 },
+    { "click": ".need-yours:has-text(\"Show a run button on review cards\") button:has-text(\"Approve\")" },
+    { "caption": "Its icon spins and it takes no second click until the approval is done" },
+    { "waitFor": ".need-approved:has-text(\"Show a run button on review cards\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
