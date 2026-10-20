@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
 import { itemBranches, type BacklogItem } from '../../features/backlog/backlog';
-import { pushBranch, pushedInfo, pushNote, pushOnApproval, type PushSetting } from '../../features/backlog/branchPush';
+import { isLocalUrl, pushBranch, pushedInfo, pushNote, pushOnApproval, PUSH_REMOTE, type PushSetting } from '../../features/backlog/branchPush';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -14,6 +14,8 @@ export interface BranchPushDeps {
   /** Only the leading window pushes (and notes it in the tickets). */
   isLeader: () => boolean;
   output: vscode.OutputChannel;
+  /** The fake GitHub is on (flotilla.dev.githubApi): only a local origin is pushed to, never the network (BL-113). */
+  localOnly?: boolean;
 }
 
 /** An approved ticket, not merged yet: its branches are pushed. */
@@ -80,6 +82,13 @@ export class BranchPush implements vscode.Disposable {
     if (!items.length) return;
     const setting = vscode.workspace.getConfiguration('flotilla').get<PushSetting>('ci.pushOnApproval', 'auto');
     if (!(await pushOnApproval(cwd, setting))) return;
+    if (this.deps.localOnly) {
+      const url = (await runGit(['remote', 'get-url', '--push', PUSH_REMOTE], { cwd }).catch(() => '')).trim();
+      if (!isLocalUrl(url)) {
+        this.deps.output.appendLine(`Push: off, the fake GitHub is on and origin (${url}) isn't local.`);
+        return;
+      }
+    }
     for (const item of items) {
       for (const branch of itemBranches(item)) {
         const tip = (await runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`], { cwd }).catch(() => '')).trim();
