@@ -225,6 +225,8 @@ export type TicketHostMessage =
   | { type: 'focus'; target: 'comment' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
+  /** A Markdown box's Preview (BL-129): its text rendered as the activity shows it. */
+  | { type: 'previewed'; requestId: number; html: string }
   /** The Ask chat changed (BL-80). */
   | { type: 'ask'; ask: AskView }
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
@@ -244,6 +246,8 @@ export type TicketWebviewMessage =
   | { type: 'image'; requestId: number; name: string; data: string }
   /** A pasted or dropped file over its kind's size limit, not sent (the host says so). */
   | { type: 'mediaRefused'; name: string; kind: MediaKind; size: number }
+  /** Renders a Markdown box's text for its Preview tab (BL-129); answered with previewed. */
+  | { type: 'preview'; requestId: number; text: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
   | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
   /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
