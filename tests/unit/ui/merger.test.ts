@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
+import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 /** What the mocked VS Code answers and records. */
@@ -100,8 +101,8 @@ type Private = { runs: Map<string, unknown>; afterResolver(id: string, run: unkn
 const run = { stop() {} };
 
 /** As if an agent started fixing the checks at HEAD from, and ended. */
-async function agentDone(backlog: { change: (f: (d: never) => unknown) => Promise<unknown> }, merger: unknown, id: string, from: string) {
-  await backlog.change((d: { items: BacklogItem[] }) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, merging: { ...i.merging!, state: 'resolving', agent: 'Ace-1', from } } : i)) }) as never);
+async function agentDone(backlog: LocalBacklog, merger: unknown, id: string, from: string) {
+  await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, merging: { ...i.merging!, state: 'resolving', agent: 'Ace-1', from } } : i)) }));
   (merger as Private).runs.set(id, run);
 }
 
