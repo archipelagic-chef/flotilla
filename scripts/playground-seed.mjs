@@ -115,6 +115,9 @@ const TICKETS = [
       '',
       '- [ ] Scrolling stays put on a refresh when the list is unchanged.',
       '- [ ] An empty list still scrolls to the top.',
+      '',
+      // Its agent, when sent back, works long enough to be seen in the backlog's count (demos/agent-count.json).
+      'fake: wait 60s',
     ].join('\n'),
     review: { round: 1, state: 'yours', implementer: 'Ada-1', reviewer: '' },
     activity: [
