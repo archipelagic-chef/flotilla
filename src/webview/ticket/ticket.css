@@ -1575,6 +1575,7 @@ button.timeline-item:hover .timeline-text {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   transition: outline-color 0.4s;
+}
 
 /* The ticket's CI (BL-106): a line per branch with CI, which opens to the CI/CD view's run list (ui/ci.css). */
 .ci-panel {
