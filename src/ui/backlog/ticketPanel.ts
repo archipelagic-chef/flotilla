@@ -29,7 +29,7 @@ import type { BacklogIntegrations } from './integrations';
 import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -37,6 +37,7 @@ import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
+import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -104,6 +105,33 @@ export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thena
   return memento.update(SHOW_ACTIVITY_KEY, shown);
 }
 
+/** The key the tickets whose Attachments section the user folded are kept under in the memento (BL-110). */
+const FOLDED_ATTACHMENTS_KEY = 'flotilla.ticket.foldedAttachments';
+
+/** Whether the user folded a ticket's Attachments section. */
+export function attachmentsFolded(memento: vscode.Memento, id: string): boolean {
+  return memento.get<string[]>(FOLDED_ATTACHMENTS_KEY, []).includes(id);
+}
+
+export function keepAttachmentsFolded(memento: vscode.Memento, id: string, folded: boolean): Thenable<void> {
+  const others = memento.get<string[]>(FOLDED_ATTACHMENTS_KEY, []).filter((i) => i !== id);
+  return memento.update(FOLDED_ATTACHMENTS_KEY, folded ? [...others, id] : others);
+}
+
+/** The media files in a ticket's folder, by their path from the backlog's folder ("BL-3/shot.png"), with their times. */
+async function folderFiles(dir: string, id: string): Promise<FolderFile[]> {
+  const names = await fs.promises.readdir(path.join(dir, id)).catch(() => [] as string[]);
+  const files = await Promise.all(
+    names
+      .filter((n) => mediaType(n))
+      .map(async (n) => {
+        const stat = await fs.promises.stat(path.join(dir, id, n)).catch(() => undefined);
+        return stat?.isFile() ? [{ path: `${id}/${n}`, date: entryDate(stat.mtime) }] : [];
+      }),
+  );
+  return files.flat();
+}
+
 /** A path's real location (through symlinks), or the path itself when there's no such file. */
 function realPath(p: string): string {
   return fs.existsSync(p) ? fs.realpathSync(p) : p;
@@ -128,43 +156,47 @@ export async function renderMarkdown(text: string, webview: vscode.Webview, dir:
     }
   }
   html = stripStyles(html);
-  // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
-  // Others, in the repository (from its root: the ticket's worktrees, then the main one) or anywhere on disk, are
-  // embedded. Videos (MP4, WebM) get a player; a file over its kind's limit, a note instead (BL-79).
-  return replaceMedia(html, async (src) => {
-    const type = mediaType(src);
-    if (/^data:/i.test(src)) return undefined;
-    if (/^https?:/i.test(src) || src.startsWith('//')) return type?.kind === 'video' ? { src, kind: 'video' } : undefined;
-    let rel = src;
-    try {
-      rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
-    } catch {
-      // As written.
+  return replaceMedia(html, (src) => resolveMedia(src, webview, dir, roots));
+}
+
+/**
+ * What an image or video source in a ticket shows (undefined: kept as written): a file next to the tickets loads
+ * through the webview; one elsewhere in the repository (from its root: the ticket's worktrees, then the main one) or
+ * anywhere on disk is embedded. Videos (MP4, WebM) get a player; a file over its kind's limit, a note (BL-79).
+ */
+export async function resolveMedia(src: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<Media | undefined> {
+  const type = mediaType(src);
+  if (/^data:/i.test(src)) return undefined;
+  if (/^https?:/i.test(src) || src.startsWith('//')) return type?.kind === 'video' ? { src, kind: 'video' } : undefined;
+  let rel = src;
+  try {
+    rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
+  } catch {
+    // As written.
+  }
+  const name = path.basename(rel);
+  const besideTicket = path.resolve(dir, rel);
+  if (besideTicket.startsWith(dir + path.sep)) {
+    const bytes = await fileSize(besideTicket);
+    if (bytes !== undefined) {
+      if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
+      return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
     }
-    const name = path.basename(rel);
-    const besideTicket = path.resolve(dir, rel);
-    if (besideTicket.startsWith(dir + path.sep)) {
-      const bytes = await fileSize(besideTicket);
-      if (bytes !== undefined) {
-        if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
-        return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
-      }
-    }
-    if (!type) return undefined;
-    const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
-    for (const file of candidates) {
-      const bytes = await fileSize(file);
-      if (bytes === undefined) continue;
-      // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
-      if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
-      if (tooLarge('image', bytes)) return { note: tooLargeNote(name, 'image', bytes) };
-      const uri = await imageDataUri(file, type.type);
-      if (uri) return { src: uri, kind: 'image' };
-    }
-    return undefined;
-  });
+  }
+  if (!type) return undefined;
+  const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
+  for (const file of candidates) {
+    const bytes = await fileSize(file);
+    if (bytes === undefined) continue;
+    // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
+    if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
+    if (tooLarge('image', bytes)) return { note: tooLargeNote(name, 'image', bytes) };
+    const uri = await imageDataUri(file, type.type);
+    if (uri) return { src: uri, kind: 'image' };
+  }
+  return undefined;
 }
 
 // A tag, its quoted attribute values may hold ">"; and an attribute in it (its name, and its value if it has one).
@@ -634,14 +666,36 @@ export class TicketPanels implements vscode.Disposable {
     });
   }
 
+  /**
+   * A ticket's attachments (BL-110), each resolved as the ticket's inline media are; one that shows nothing there (not
+   * found, or over its limit) isn't listed.
+   */
+  private async attachments(item: BacklogItem, description: string, entries: TicketEntry[], webview: vscode.Webview): Promise<AttachmentView[]> {
+    const dir = this.deps.backlog.dir;
+    const roots = this.roots(item);
+    const found = gatherAttachments(description, entries, await folderFiles(dir, item.id));
+    const views = await Promise.all(
+      found.map(async ({ src, entry, ...a }): Promise<AttachmentView | undefined> => {
+        // An image on the web loads as it is (the page allows https images); a video the same.
+        const media = /^https?:|^\/\//i.test(src) ? { src, kind: a.kind } : await resolveMedia(src, webview, dir, roots).catch(() => undefined);
+        if (!media || 'note' in media) return undefined;
+        return { ...a, src: media.src, kind: media.kind, ...(entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {}) };
+      }),
+    );
+    return views.filter((v): v is AttachmentView => !!v);
+  }
+
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
   private async remoteView(
     item: BacklogItem & { remote: RemoteIssue },
     webview: vscode.Webview,
-  ): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'> & { edit?: RemoteEditOptions; priorityName?: string }> {
+  ): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'attachments' | 'error'> & { edit?: RemoteEditOptions; priorityName?: string }> {
     const dir = this.deps.backlog.dir;
+    const local = (await this.deps.backlog.readTicket(item)).activity;
     // Entries posted to the issue show as its comments.
-    const localEntries = (await this.localEntries(item, (await this.deps.backlog.readTicket(item)).activity, webview)).filter((e) => !e.posted);
+    const localEntries = (await this.localEntries(item, local, webview)).filter((e) => !e.posted);
+    // What the agents' reports show, and the ticket's folder; the tracker's own attachments stay in the tracker.
+    const attachments = await this.attachments(item, '', local, webview);
     try {
       const { details: d, edit } = await this.remoteDetails(item.id);
       const remoteEntries = await Promise.all(
@@ -657,11 +711,12 @@ export class TicketPanels implements vscode.Disposable {
         descriptionHtml:
           d.format === 'html' ? await this.trackerImages(item.id, d.description) : await renderMarkdown(d.description, webview, dir, this.roots(item)),
         activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
+        attachments,
         edit,
         priorityName: d.issue.priorityName,
       };
     } catch (error) {
-      return { description: '', descriptionHtml: '', activity: localEntries, error: error instanceof Error ? error.message : String(error) };
+      return { description: '', descriptionHtml: '', activity: localEntries, attachments, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -794,7 +849,7 @@ export class TicketPanels implements vscode.Disposable {
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
       const showActivity = showActivityKept(this.deps.memento);
-      const next: TicketView = { ...view, agents, showActivity };
+      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id) };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {
         this.sentViews.set(panel, next);
@@ -826,6 +881,7 @@ export class TicketPanels implements vscode.Disposable {
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
           activity: await this.localEntries(item, ticket.activity, panel.webview),
+          attachments: await this.attachments(item, ticket.description, ticket.activity, panel.webview),
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
           ...(await this.mainView(plain, ticket.description)),
         });
@@ -1267,6 +1323,10 @@ export class TicketPanels implements vscode.Disposable {
       case 'showActivity':
         // Remembered for the user, and every ticket shows it the same way; no view changes.
         await keepShowActivity(this.deps.memento, m.shown);
+        return;
+      case 'foldAttachments':
+        // Remembered for this ticket; the tab already shows it.
+        await keepAttachmentsFolded(this.deps.memento, id, m.folded);
         return;
       case 'comment':
         if (!m.text.trim()) return;

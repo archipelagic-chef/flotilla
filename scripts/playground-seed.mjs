@@ -299,6 +299,14 @@ const TICKETS = [
           '',
           '1. [src/last.js:2-4](src/last.js#L2-L4): where the id is remembered.',
           '',
+          'Before, a new window opens on the backlog:',
+          '',
+          '![A new window, on the backlog](BL-10/before.svg)',
+          '',
+          'After, it opens the last ticket again:',
+          '',
+          '![The last ticket, open again](BL-10/after.svg)',
+          '',
           'Try it:',
           '',
           '```run Check the file',
@@ -316,6 +324,8 @@ const TICKETS = [
         files: { 'src/last.js': '// The last ticket opened in this window.\nexport function rememberTicket(state, id) {\n  return { ...state, lastTicket: id };\n}\n' },
       },
     ],
+    // Its folder (BL-110's Attachments): the report's pictures, and a sketch nothing references.
+    files: { 'before.svg': picture('#3a6ea5', 'Backlog'), 'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'), 'sketch.svg': picture('#a5763a', 'Sketch') },
   },
   {
     id: 'BL-11',
@@ -517,6 +527,12 @@ export function seedPlayground(dir, now = new Date()) {
   return true;
 }
 
+/** A small picture of a window: a coloured title bar with a label, and some lines of text. */
+function picture(colour, label) {
+  const lines = [0, 1, 2, 3].map((i) => `<rect x="24" y="${70 + i * 26}" width="${280 - i * 40}" height="10" rx="5" fill="#8884"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240"><rect width="480" height="240" rx="8" fill="#1e1e1e"/><rect width="480" height="40" rx="8" fill="${colour}"/><text x="20" y="26" font-family="sans-serif" font-size="16" fill="#fff">${label}</text>${lines}</svg>\n`;
+}
+
 /** backlog.json and the tickets: each ticket's file, its review's handled reports, and its description's fingerprint. */
 function writeBacklog(backlog, now) {
   fs.mkdirSync(backlog, { recursive: true });
@@ -529,6 +545,10 @@ function writeBacklog(backlog, now) {
     if (t.branch) item.branches = [t.branch];
     if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
     item.descriptionHash = descriptionHash(t.description);
+    for (const [name, text] of Object.entries(t.files ?? {})) {
+      fs.mkdirSync(path.join(backlog, t.id), { recursive: true });
+      fs.writeFileSync(path.join(backlog, t.id, name), text);
+    }
     fs.writeFileSync(path.join(backlog, `${t.id}.md`), formatTicket({ title: t.title, description: t.description, activity }));
     return item;
   });

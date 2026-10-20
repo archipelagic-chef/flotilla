@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('vscode', () => ({}));
-const { keepShowActivity, showActivityKept, TicketPanels } = await import('../../../src/ui/backlog/ticketPanel');
+const { attachmentsFolded, keepAttachmentsFolded, keepShowActivity, showActivityKept, TicketPanels } = await import('../../../src/ui/backlog/ticketPanel');
 
 /** A memento as VS Code's global state is: values kept by key, read synchronously. */
 function memento(initial: Record<string, unknown> = {}) {
@@ -23,6 +23,19 @@ describe('the Show activity choice', () => {
     expect(showActivityKept(state as never)).toBe(true);
     await keepShowActivity(state as never, false);
     expect(showActivityKept(state as never)).toBe(false);
+  });
+});
+
+describe('the Attachments section, folded', () => {
+  it('is remembered per ticket', async () => {
+    const state = memento();
+    expect(attachmentsFolded(state as never, 'BL-1')).toBe(false);
+    await keepAttachmentsFolded(state as never, 'BL-1', true);
+    await keepAttachmentsFolded(state as never, 'BL-2', true);
+    expect(attachmentsFolded(state as never, 'BL-1')).toBe(true);
+    await keepAttachmentsFolded(state as never, 'BL-1', false);
+    expect(attachmentsFolded(state as never, 'BL-1')).toBe(false);
+    expect(attachmentsFolded(state as never, 'BL-2')).toBe(true);
   });
 });
 
