@@ -4,7 +4,7 @@
 // as there are cores, so three runs at once each at full width overload the machine and time out.
 //
 // N is `flotilla.checks.maxParallel` (the extension writes it to .git/flotilla/checks.json; FLOTILLA_CHECKS_MAX_PARALLEL
-// overrides it), by default 1 per 8 cores. A merge's runs (its checks, and its fix agent's) go first: they run in a
+// overrides it), by default 1 per 16 cores. A merge's runs (its checks, and its fix agent's) go first: they run in a
 // temporary worktree in a `flotilla-merge` folder, and someone is waiting on them. Runs given files
 // (`npm test -- tests/unit/x.test.ts`) don't queue: they're light, and that's how agents work between full runs.
 import { execFileSync, spawn } from 'node:child_process';
@@ -22,10 +22,10 @@ const VALUE_OPTIONS = new Set([
   '--pool', '--shard', '--bail', '--retry', '--maxWorkers', '--environment', '--exclude', '--mode', '--testTimeout',
 ]);
 
-/** How many runs go at once: the configured number, or 1 per 8 cores; at least 1. */
+/** How many runs go at once: the configured number, or 1 per 16 cores (git-heavy tests time out with two 8-worker runs on 16 cores); at least 1. */
 export function slotCount(cores, configured) {
   const n = Number(configured);
-  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : Math.max(1, Math.floor(cores / 8));
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : Math.max(1, Math.floor(cores / 16));
 }
 
 /** A run's share of the cores, when n runs go at once. */

@@ -1699,7 +1699,7 @@
           "default": 0,
           "minimum": 0,
           "maximum": 64,
-          "markdownDescription": "How many test runs of the repository's worktrees (agents', merges') go at once; the others wait their turn, a merge's first, and each run gets its share of the cores. `0`: 1 per 8 cores. Read by test scripts that queue (this repository's `npm test`), from `.git/flotilla/checks.json`."
+          "markdownDescription": "How many test runs of the repository's worktrees (agents', merges') go at once; the others wait their turn, a merge's first, and each run gets its share of the cores. `0`: 1 per 16 cores. Read by test scripts that queue (this repository's `npm test`), from `.git/flotilla/checks.json`."
         },
         "flotilla.merge.onApprove": {
           "type": "string",

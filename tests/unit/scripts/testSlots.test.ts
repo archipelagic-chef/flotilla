@@ -29,11 +29,11 @@ afterEach(() => {
 });
 
 describe('slots and workers', () => {
-  it('gives 1 slot per 8 cores by default, at least 1, or the configured number', () => {
-    expect(slotCount(16, undefined)).toBe(2);
+  it('gives 1 slot per 16 cores by default, at least 1, or the configured number', () => {
+    expect(slotCount(32, undefined)).toBe(2);
     expect(slotCount(4, 0)).toBe(1);
     expect(slotCount(16, '3')).toBe(3);
-    expect(slotCount(16, 'x')).toBe(2);
+    expect(slotCount(32, 'x')).toBe(2);
   });
 
   it('splits the cores between the slots', () => {
