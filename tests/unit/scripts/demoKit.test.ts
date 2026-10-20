@@ -3,7 +3,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { decodePng, demoDisplay, demoFile, freeDisplay, downscale, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { gifSeconds } from '../../../src/features/backlog/demo';
+import { decodePng, demoDisplay, demoFile, freeDisplay, downscale, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -179,6 +180,23 @@ describe('encodeGif', () => {
     expect(gif.readUInt16LE(6)).toBe(2);
     expect(gif.includes(Buffer.from('NETSCAPE2.0'))).toBe(true);
     expect(gif[gif.length - 1]).toBe(0x3b);
+  });
+
+  it("makes a GIF whose length the ticket's Demo section reads (BL-135)", () => {
+    const gif = encodeGif([
+      { png: solid(255, 0, 0), ms: 500 },
+      { png: solid(0, 0, 255), ms: 1200 },
+    ]);
+    expect(gifSeconds(gif)).toBeCloseTo(1.7);
+  });
+});
+
+describe('stepsToPlay', () => {
+  it('plays every step, and none to try it yourself', () => {
+    const demo = { steps: [{ action: 'click' }, { action: 'wait' }] };
+    expect(stepsToPlay(demo, 'play')).toEqual(demo.steps);
+    expect(stepsToPlay(demo, 'record')).toEqual(demo.steps);
+    expect(stepsToPlay(demo, 'try')).toEqual([]);
   });
 });
 

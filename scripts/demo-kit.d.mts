@@ -19,6 +19,7 @@ export function parseDemo(text: string, name?: string): { title: string; steps: 
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
 export function unsafeFrame(frame: { title?: string; argv?: string[] }, options: { profileDir: string }): string | undefined;
+export function stepsToPlay<S>(demo: { steps: S[] }, mode: 'record' | 'play' | 'try'): S[];
 export function demoDisplay(env: Record<string, string | undefined>): 'virtual' | 'screen';
 export function freeDisplay(exists: (file: string) => boolean, from?: number): number;
 export function decodePng(buffer: Buffer): RgbaImage;

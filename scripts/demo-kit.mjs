@@ -88,6 +88,11 @@ export function unsafeFrame({ title, argv }, { profileDir }) {
   return undefined;
 }
 
+/** The steps a mode plays: all of them, except for `try` (Try it yourself, BL-135), which only sets the window up. */
+export function stepsToPlay(demo, mode) {
+  return mode === 'try' ? [] : demo.steps;
+}
+
 /**
  * Where the demo window opens (BL-102): `virtual`, a display of its own (Xvfb) that nobody sees, or `screen`, the
  * display it was started on. `DEMO_DISPLAY` says which; without it, it's virtual for an agent (Claude Code sets

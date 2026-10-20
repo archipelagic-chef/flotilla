@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, timeline, unsafeFrame } from './demo-kit.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -86,7 +86,7 @@ function prepareProfile(githubUrl, own = {}) {
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('Usage: npm run demo -- record <name> --out <file.gif> | play <name> | list');
+  console.error('Usage: npm run demo -- record <name> --out <file.gif> | play <name> | try <name> | list');
   process.exit(1);
 }
 
@@ -255,7 +255,7 @@ async function main() {
     console.log(names.length ? names.join('\n') : `No demos yet: they're ${path.join('demos', '<name>.json')}.`);
     return;
   }
-  if (mode !== 'record' && mode !== 'play') usage();
+  if (mode !== 'record' && mode !== 'play' && mode !== 'try') usage();
   const file = demoFile(root, name);
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
   const demo = parseDemo(fs.readFileSync(file, 'utf8'), name);
@@ -340,7 +340,7 @@ async function show(mode, demo, out, still, display) {
 
   const xvfb = display === 'virtual' ? await startXvfb() : undefined;
   console.log(
-    `${mode === 'record' ? 'Recording' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
+    `${mode === 'record' ? 'Recording' : mode === 'try' ? 'Setting up' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
   );
   const app = await _electron.launch({
     executablePath: executable,
@@ -395,7 +395,8 @@ async function show(mode, demo, out, still, display) {
       }
     })();
     try {
-      for (const [n, step] of demo.steps.entries()) {
+      // Try it yourself (BL-135): the window as the demo starts, its steps left to you.
+      for (const [n, step] of stepsToPlay(demo, mode).entries()) {
         if (unsafe) break;
         try {
           await play(page, step);
@@ -419,6 +420,9 @@ async function show(mode, demo, out, still, display) {
       }
     } else if (xvfb) {
       console.log('Done. The window was on a virtual display, so it closes now.');
+    } else if (mode === 'try') {
+      console.log(`Ready: "${demo.title}" as it starts. Try it yourself; close the window when you are done.`);
+      await new Promise((resolve) => child.once('exit', resolve));
     } else {
       console.log('Done. The window stays open to look around; close it when you are done.');
       await new Promise((resolve) => child.once('exit', resolve));

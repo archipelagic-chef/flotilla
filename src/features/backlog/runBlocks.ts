@@ -123,9 +123,12 @@ export function demoPath(name: string | undefined): string | undefined {
   return name && /^[\w-]+$/.test(name) ? `demos/${name}.json` : undefined;
 }
 
-/** What a demo block runs in its worktree's terminal: the repository's demo player (npm run demo, scripts/demo.mjs). */
-export function demoCommand(name: string): string {
-  return `npm run demo -- play ${name}`;
+/**
+ * What a demo block runs in its worktree's terminal: the repository's demo player (npm run demo, scripts/demo.mjs). It
+ * plays the demo's steps, or with `try`, only sets its window up as the demo starts and leaves it to you (BL-135).
+ */
+export function demoCommand(name: string, mode: 'play' | 'try' = 'play'): string {
+  return `npm run demo -- ${mode} ${name}`;
 }
 
 /**
@@ -133,10 +136,10 @@ export function demoCommand(name: string): string {
  * the player's command there only so that a Flotilla without the demo kind runs it as shell commands. Undefined when
  * the block doesn't name a demo.
  */
-export function demoRun(block: Pick<RunBlock, 'title'>): { name: string; file: string; commands: string[] } | undefined {
+export function demoRun(block: Pick<RunBlock, 'title'>, mode: 'play' | 'try' = 'play'): { name: string; file: string; commands: string[] } | undefined {
   const name = block.title?.split(/\s+/)[0];
   const file = demoPath(name);
-  return name && file ? { name, file, commands: [demoCommand(name)] } : undefined;
+  return name && file ? { name, file, commands: [demoCommand(name, mode)] } : undefined;
 }
 
 /** The ticket's run: the last run block of its reports (the Run buttons run it), or undefined if none. */

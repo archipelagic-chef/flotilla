@@ -82,6 +82,7 @@ Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for
 npm run build
 npm run demo -- record open-ticket --out .flotilla/backlog/BL-3/demo.gif --still .vscode-test/last.png
 npm run demo -- play open-ticket    # live, in the window; it stays open until you close it
+npm run demo -- try open-ticket     # its window as the demo starts, its steps left to you (Try it yourself)
 npm run demo -- list
 ```
 

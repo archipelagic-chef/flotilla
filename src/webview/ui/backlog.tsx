@@ -462,6 +462,20 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
           {turn.kind === 'paused' ? 'Paused' : turn.who}
         </span>
       )}
+      {!renaming && item.demo && (
+        <button
+          class="demo-mark"
+          data-tip="It has a recorded demo: click to see it in the ticket"
+          aria-label="Show its demo"
+          onClick={(e) => {
+            e.stopPropagation();
+            send({ type: 'backlog', op: 'demo', id: item.id });
+          }}
+        >
+          <i class="codicon codicon-device-camera-video" />
+          demo
+        </button>
+      )}
       {!renaming &&
         agents.map((a) => (
           <span key={a.name} class={`agent-chip ${a.state}`} data-tip={`Agent ${a.name}: ${CARD_AGENT_LABEL[a.state]}`}>

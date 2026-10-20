@@ -207,8 +207,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.runBacklogItem', (id?: unknown, block?: unknown) => {
       if (typeof id !== 'string') return;
-      const ref = block as { key?: unknown; index?: unknown } | undefined;
-      return tickets.run(id, typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index } : undefined);
+      const ref = block as { key?: unknown; index?: unknown; try?: unknown } | undefined;
+      return tickets.run(
+        id,
+        typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index, ...(ref.try === true ? { try: true } : {}) } : undefined,
+      );
     }),
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).

@@ -1948,6 +1948,31 @@ ins {
 .backlog-item .turn-chip.turn-stopped {
   color: var(--error);
 }
+/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
+.backlog-item .demo-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  cursor: pointer;
+}
+.backlog-item .demo-mark .codicon {
+  font-size: 11px;
+}
+.backlog-item .demo-mark:hover,
+.backlog-item .demo-mark:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
 .backlog-item .agent-chip {
   flex: none;
   display: inline-flex;
