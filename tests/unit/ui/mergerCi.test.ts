@@ -119,6 +119,7 @@ async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
   const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: repo, isMain: true }, chats: [] }] };
   const reader = new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url);
   const updates: string[] = [];
+  const fixes: Array<[string, number, number | undefined]> = [];
   const merger = new Merger({
     backlog,
     repository,
@@ -127,6 +128,7 @@ async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
     openTicket() {},
     ciReader: async () => o.reader ?? reader,
     updateFromMain: async (id: string) => void updates.push(id),
+    fixCi: async (branch: string, run: number, job?: number) => void fixes.push([branch, run, job]),
     ciPollMs: 20,
   } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
@@ -139,7 +141,7 @@ async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
     git(repo, 'push', '-q', 'origin', name);
   };
   const runsOf = (name: string) => reader.runs(name);
-  return { repo, merger, item, activity, branch, runsOf, updates };
+  return { repo, merger, item, activity, branch, runsOf, updates, fixes };
 }
 
 const until = async (done: () => Promise<boolean>) => {
@@ -226,6 +228,25 @@ describe('Merge to main on CI (BL-105)', () => {
     merger.dispose();
   });
 
+  it('keeps why it stopped on red CI for the ticket, with the failed jobs, until the branch moves (BL-112)', async () => {
+    const { repo, merger, branch, runsOf, fixes } = await setup([approved('BL-1')]);
+    branch('feature/BL-1', 'a.txt', 'BL-1');
+    const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
+    clock += DONE_MS;
+    const tip = git(repo, 'rev-parse', 'feature/BL-1');
+
+    expect(await merger.merge('BL-1')).toBe('stopped');
+
+    const stop = merger.ciStop('BL-1', () => tip);
+    expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip, runs: [{ id: ci.id, workflow: 'CI', status: 'failure' }] });
+    expect(stop?.kind === 'failed' && stop.jobs[0]).toMatchObject({ runId: ci.id, name: 'test', url: expect.stringContaining(`/actions/runs/${ci.id}/job/`) });
+    expect(merger.ciStop('BL-1', () => undefined)).toEqual(stop);
+    expect(merger.ciStop('BL-1', () => 'another tip')).toBeUndefined();
+    await merger.fixCiStop('BL-1');
+    expect(fixes).toEqual([['feature/BL-1', ci.id, stop?.kind === 'failed' ? stop.jobs[0].jobId : -1]]);
+    merger.dispose();
+  });
+
   it("doesn't merge on CI once main has moved on, and offers Update from Main", async () => {
     const { repo, merger, activity, branch, updates } = await setup([approved('BL-1')]);
     branch('feature/BL-1', 'a.txt', 'BL-1');
@@ -239,6 +260,7 @@ describe('Merge to main on CI (BL-105)', () => {
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
     expect(updates).toEqual(['BL-1']);
     expect(await activity('BL-1')).toContain("Not merged: `main` has moved on since `feature/BL-1` took it in");
+    expect(merger.ciStop('BL-1', () => undefined)).toEqual({ kind: 'moved', branch: 'feature/BL-1', base: 'main', tip: git(repo, 'rev-parse', 'feature/BL-1') });
     merger.dispose();
   });
 
