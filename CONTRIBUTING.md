@@ -104,6 +104,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |
 | `{ "caption": "A click on a card opens its ticket" }` | shows a caption at the bottom; `""` removes it |
+| `{ "agentTurn": "Vega-2" }` | the seeded agent's chat goes on by a turn: its transcript grows, as a running agent's does (the value names it, for the reader) |
 
 The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
 
@@ -125,6 +126,8 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
 ```
 
 A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
+
+The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows) and a panel chat (done). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
 
 Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). When you run it, the window pops up on your screen while it records or plays.
 
