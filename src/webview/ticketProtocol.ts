@@ -16,6 +16,7 @@ import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
 import type { CiRequest, CiView } from './protocol';
 import type { CiStatus } from '../features/ci/githubActions';
+import type { CiStop } from '../features/backlog/ciStop';
 
 /**
  * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
@@ -174,6 +175,11 @@ export interface TicketView {
    * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
    */
   mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
+  /**
+   * Why its last Merge to main stopped on CI (BL-112): red CI, with the failed jobs, or the base moved on. Only while
+   * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
+   */
+  mergeStop?: CiStop;
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -267,6 +273,8 @@ export type TicketWebviewMessage =
   | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
   | { type: 'updateFromMain' }
+  /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
+  | { type: 'mergeCiFix' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }
   /** The queued start of this ticket: start it now (see ReviewLoop.prioritize). */

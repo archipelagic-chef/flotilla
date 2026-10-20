@@ -224,7 +224,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       merger.approved(id, by);
     },
   });
-  const pushes = new BranchPush({ backlog, repository, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
+  const pushes = new BranchPush({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    isLeader: () => leader.isLeader,
+    output,
+    localOnly: devGitHubApi(context.extensionMode) !== undefined,
+  });
   context.subscriptions.push(reviews, merger, pushes, trackTerminals());
   const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
   context.subscriptions.push(
