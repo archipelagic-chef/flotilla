@@ -26,7 +26,7 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
-import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { AgentChatView, AttachmentView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
@@ -543,9 +543,13 @@ export class TicketPanels implements vscode.Disposable {
   private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
+    const threads = entryThreads(entries);
     return Promise.all(
-      entries.map(async (e, n) => {
-        const key = Store.entryKey(item.id, e);
+      entries.map(async (whole, n) => {
+        const key = Store.entryKey(item.id, whole);
+        // A reply shows whom it answers above it, not its reply line (BL-126).
+        const thread = threads[n];
+        const e = thread.reply ? { ...whole, body: parseReply(whole.body)?.text ?? whole.body } : whole;
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
@@ -559,6 +563,9 @@ export class TicketPanels implements vscode.Disposable {
           ...e,
           html: !report && isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
           key,
+          anchor: thread.anchor,
+          ...(thread.reply ? { reply: thread.reply } : {}),
+          ...(thread.root !== undefined ? { root: thread.root } : {}),
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
@@ -1134,6 +1141,14 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
+  /** A reply's text, with the line that names the entry it answers first (BL-126); as it is when that entry is gone. */
+  private async withReplyLine(item: BacklogItem, text: string, replyTo: string | undefined): Promise<string> {
+    if (!replyTo) return text;
+    const activity = (await this.deps.backlog.readTicket(item)).activity;
+    const parent = activity[entryAnchors(activity).indexOf(replyTo)];
+    return parent ? `${replyLine(parent, replyTo)}\n${text.trim()}` : text;
+  }
+
   async addActivity(id: string, author: string, body: string): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
@@ -1339,7 +1354,7 @@ export class TicketPanels implements vscode.Disposable {
           await this.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
           return;
         } else {
-          await this.addActivity(id, 'You', m.text);
+          await this.addActivity(id, 'You', await this.withReplyLine(item, m.text, m.replyTo));
           // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
           await this.shaping?.discuss(id);
         }
