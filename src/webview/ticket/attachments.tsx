@@ -105,7 +105,8 @@ function Viewer({ list, at, go, close }: { list: Shown[]; at: number; go: (n: nu
           <span class="viewer-caption">{a.alt ?? a.name}</span>
           {a.demo && <span class="demo-tag">demo</span>}
           <span class="muted">
-            {a.name} · {addedBy(a)}
+            {a.kind === 'diagram' ? '' : `${a.name} · `}
+            {addedBy(a)}
             {many && ` · ${at + 1} of ${list.length}`}
           </span>
           {a.entryKey && (

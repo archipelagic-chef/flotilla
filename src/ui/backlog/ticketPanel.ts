@@ -35,7 +35,7 @@ import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
-import { parseReport, reportAnswer } from '../../features/backlog/report';
+import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
 import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
@@ -582,6 +582,9 @@ export class TicketPanels implements vscode.Disposable {
           found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
         const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key) : undefined;
         const html = report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
+        // Any entry's media (a report's, a comment's) show beside its line when it's folded (BL-114).
+        const media = takeMedia(e.body).media;
+        const thumbs = media.length ? await mediaThumbs(media, (src) => resolveMedia(src, webview, this.deps.backlog.dir, this.roots(item))) : [];
         return {
           ...e,
           html: !report && isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
@@ -592,6 +595,7 @@ export class TicketPanels implements vscode.Disposable {
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
+          ...(thumbs.length ? { thumbs } : {}),
         };
       }),
     );
@@ -613,12 +617,7 @@ export class TicketPanels implements vscode.Disposable {
         parseRunBlocks(parts.summary).length,
       ),
       // Its pictures, videos and diagrams lead the details (BL-114).
-      ...(parts.media.length
-        ? {
-            media: await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots),
-            thumbs: await mediaThumbs(parts.media, (src) => resolveMedia(src, webview, this.deps.backlog.dir, roots)),
-          }
-        : {}),
+      ...(parts.media.length ? { media: await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots) } : {}),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
       questions: parts.questions,

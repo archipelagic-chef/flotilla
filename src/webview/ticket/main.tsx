@@ -1845,7 +1845,7 @@ function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
 
 /** A folded report's media (BL-114), beside its line: a click opens one in the viewer, and the entry stays folded. */
 function MediaStrip({ e }: { e: ActivityEntry }) {
-  const thumbs = e.report!.thumbs!;
+  const thumbs = e.thumbs!;
   const open = (at: number) =>
     openMedia(
       thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
@@ -2103,7 +2103,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     </span>
                   )}
                 </button>
-                {!!e.report?.thumbs?.length && <MediaStrip e={e} />}
+                {!!e.thumbs?.length && <MediaStrip e={e} />}
               </li>
             );
           }
