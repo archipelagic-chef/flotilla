@@ -171,7 +171,7 @@ describe('playground seed', () => {
     expect(await backlog.read()).toEqual(before);
   });
 
-  it("seeds chats in BL-3's worktree that read as an agent's, working, and a panel chat, done", async () => {
+  it("seeds chats in BL-3's worktree that read as an agent's, working, a panel chat, done, and a stale agent's", async () => {
     const { dir } = seeded();
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
     cleanup.push(home);
@@ -183,7 +183,7 @@ describe('playground seed', () => {
       return { transcripts, chats };
     };
 
-    expect(seedChats(dir, home, now)).toHaveLength(2);
+    expect(seedChats(dir, home, now)).toHaveLength(3);
     const { transcripts, chats } = await read(now);
     const agent = chats.find((c) => c.title === 'Vega-2 · BL-3');
     expect(agent).toMatchObject({ state: 'working', open: true, agent: 'Vega-2', model: 'claude-opus-5-5' });
@@ -191,6 +191,10 @@ describe('playground seed', () => {
     const panel = chats.find((c) => c.title === 'What chatOf returns without a chat');
     expect(panel).toMatchObject({ state: 'done' });
     expect(isHeadless(transcripts.find((t) => t.sessionId === panel?.id))).toBe(false);
+    // Its process ended 7 minutes ago (nothing runs it), yet it still shows as working: a Check finds it (BL-163).
+    const stale = chats.find((c) => c.title === 'Orbit-2 · BL-3');
+    expect(stale).toMatchObject({ state: 'working', agent: 'Orbit-2' });
+    expect(now.getTime() - stale!.updatedAt.getTime()).toBe(7 * 60_000);
 
     // The agent goes on by one turn (its transcript grows), then has none left.
     const file = transcripts.find((t) => t.sessionId === agent?.id)!;
