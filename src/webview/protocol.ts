@@ -134,6 +134,8 @@ export interface ChatView {
   via?: string;
   /** "2m", "3h", "yesterday"-style age. */
   age: string;
+  /** Its record says working, but it went quiet: it shows as stopped (BL-131). */
+  stalled?: boolean;
   /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
   size?: { label: string; tip: string; big: boolean };
   /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */

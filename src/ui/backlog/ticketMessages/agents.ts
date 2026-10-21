@@ -50,7 +50,10 @@ export const agentsHandlers: Handlers = {
   agent: async ({ id, panels }, m) => {
     await panels.controlAgent(id, m.action, m.session);
   },
-  openChat: async ({ item, panels }, m) => {
-    if (panels.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
+  openChat: async ({ item, backlog, panels }, m) => {
+    // Any chat the ticket lists opens, in whichever worktree it ran (BL-131): not only the ticket's own.
+    const listed = panels.agentChats(item, (await backlog.readTicket(item)).activity).some((c) => c.key === m.key && c.id === m.id);
+    if (listed) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
+    else void vscode.window.showWarningMessage(`Can't open this chat: it's no longer among ${item.id}'s chats (its worktree may have been removed).`);
   },
 };
