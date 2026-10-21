@@ -255,6 +255,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (id) await merger.merge(id).catch(reportError);
     }),
     vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.mergeNext', async (arg?: unknown) => {
+      const id = backlogIdOf(arg);
+      if (id) await merger.mergeNext(id).catch(reportError);
+    }),
     vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
   );
   // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
