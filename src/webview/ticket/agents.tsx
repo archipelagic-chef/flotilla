@@ -4,7 +4,7 @@ import type { AgentChatView, TicketView } from '../ticketProtocol';
 import { lastReport, runningFor } from '../activeAgents';
 import { ActionButton, send } from './actions';
 import { Rendered } from './markdownBox';
-import { FIX_TIP } from './main';
+import { FIX_TIP } from './reviewPanel';
 
 export const CHAT_STATE: Record<string, { label: string; cls: string }> = {
   working: { label: 'Working', cls: 'working' },

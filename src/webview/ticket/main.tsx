@@ -3,15 +3,12 @@ import { useEffect, useState } from 'preact/hooks';
 import { entryAgent, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { mergeActions } from '../../features/backlog/mergeStates';
-import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
-import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
+import { entryRound, foldRounds, foldTitle, openEntry, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
-import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskView } from '../../features/backlog/ask';
-import type { QueuedView, ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
-import { queuedNeed } from '../../features/backlog/needs';
+import type { ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { applyTicketParts } from '../ticketParts';
@@ -29,7 +26,8 @@ import { imageReplies, MarkdownBox, mentionPrefix, previewReplies, Rendered } fr
 import { AgentPicker, LANE_ICON, RemotePriority, STATUSES, StatusMenu, Title } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
-import { ActiveAgents, Agents, AgentStatus, ago, CHAT_STATE, ChatCard, outsideAgents, PAUSE_TIP, STOP_TIP } from './agents';
+import { ActiveAgents, Agents, AgentStatus, ago, CHAT_STATE, ChatCard, outsideAgents } from './agents';
+import { DiscussPanel, QueuedPanel, ReviewPanel } from './reviewPanel';
 
 type ActivityEntry = TicketView['activity'][number];
 
@@ -101,207 +99,6 @@ const AUTHOR_ICON: Record<string, string> = {
   flotilla: 'info',
 };
 
-const FIX_ICON: Record<ReviewFix, string> = {
-  retry: 'debug-restart',
-  newAgent: 'hubot',
-  inChat: 'comment-discussion',
-  anotherRound: 'refresh',
-  worktree: 'git-branch',
-  resumeNow: 'debug-continue',
-  resume: 'debug-continue',
-};
-
-export const FIX_TIP: Record<ReviewFix, string> = {
-  retry: 'Go on where it stopped',
-  newAgent: 'Hand the request to a new agent, running without a window',
-  inChat: "Opens the agent's chat with the request in its message box (and on the clipboard): send it there",
-  anotherRound: 'Allow one more round of review and changes',
-  worktree: 'Creates a worktree for it, then goes on',
-  resumeNow: "Goes on now, without waiting for the limit's reset (if it hasn't reset, it pauses again)",
-  resume: 'Goes on in its chat, where it left off (it checks git status first)',
-};
-
-/** A time as the status card says it: "Sun 14:02". */
-const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-
-const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
-/** The ticket's discussion with its agent (BL-45): while the agent replies, and when it says the ticket is ready. */
-function DiscussPanel({ ticket }: { ticket: TicketView }) {
-  const s = ticket.shaping!;
-  if (s.held && !s.running) {
-    return (
-      <div class="review-panel waiting">
-        <i class="codicon codicon-debug-pause" />
-        <span class="review-text">
-          <strong>Discussion</strong> You {s.held} {s.agent}. Its chat is kept: Resume, or write a comment, and it goes on there.
-        </span>
-        <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
-          <i class="codicon codicon-debug-continue" /> Resume
-        </ActionButton>
-      </div>
-    );
-  }
-  if (!s.running && !s.ready) return null;
-  return (
-    <div class={`review-panel ${s.running ? 'working' : 'done'}`}>
-      <i class={`codicon codicon-comment-discussion${s.running ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>Discussion</strong> {s.running ? `${s.agent} is replying; its reply comes here.` : `${s.agent} says the ticket is ready to start.`}
-      </span>
-      {s.running && (
-        <>
-          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
-            <i class="codicon codicon-debug-pause" /> Pause
-          </ActionButton>
-          <ActionButton class="button secondary" message={{ type: 'agent', action: 'stop' }} working="Stopping…" title={STOP_TIP}>
-            <i class="codicon codicon-debug-stop" /> Stop
-          </ActionButton>
-        </>
-      )}
-      {s.ready && !s.running && (
-        <>
-          {ticket.item.proposed ? (
-            <button class="button" onClick={() => send({ type: 'accept' })}>
-              <i class="codicon codicon-check" /> Accept
-            </button>
-          ) : (
-            <ActionButton class="button" message={{ type: 'start', agent: true }} working="Starting…">
-              <i class="codicon codicon-play" /> Start
-            </ActionButton>
-          )}
-          <ActionButton class="button secondary" message={{ type: 'keepDiscussing' }} working="Continuing…" title="Dismisses this; the discussion goes on with your next comment">
-            Keep discussing
-          </ActionButton>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** A start that waits for a free agent slot or for free memory, with Prioritize (it starts now, above the limit). */
-function QueuedPanel({ queued }: { queued: QueuedView }) {
-  return (
-    <div class="review-panel waiting">
-      <i class="codicon codicon-clock" />
-      <span class="review-text">
-        {queuedNeed(queued).line}
-        {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
-      </span>
-      <button class="button secondary" onClick={() => send({ type: 'prioritize' })} title="Starts it now, above the limit, or pauses a running agent to make room">
-        <i class="codicon codicon-arrow-up" /> Prioritize
-      </button>
-    </div>
-  );
-}
-
-/** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
-function ReviewPanel({ ticket }: { ticket: TicketView }) {
-  const r = ticket.review!;
-  const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
-  // Whose turn it is, said in words with the reviewer and the implementer named, and what the user can do now.
-  const turn = turnOf({ status: ticket.item.status, review: r });
-  const said = turn && turnSentence(turn, r);
-  const pause =
-    r.state === 'paused' && r.paused?.byUser
-      ? `(${when(r.paused.byUser)}) Its chat is kept, and its work in the worktree as it was.`
-      : r.state === 'paused' && r.paused?.for
-      ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
-      : r.state === 'paused' && r.paused
-      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
-      : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
-      ? `(${when(r.stop.at)})`
-      : undefined;
-  // The agent the user paused or stopped: it can be resumed in its chat.
-  const held = heldBy(r);
-  const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
-  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
-  const [icon, cls, label, text, todo] = autopilot
-    ? r.byHand
-      ? ['play', 'working', 'Working', pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`, undefined]
-      : ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
-    : turn && said
-      ? [
-          r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
-          turn.kind === 'stopped' ? 'stopped' : r.state === 'approved' && r.byUser ? 'done' : turn.mine ? 'waiting' : 'working',
-          TURN_LABEL[turn.kind],
-          pause ? `${said.text} ${pause}` : said.text,
-          said.todo,
-        ]
-      : r.state === 'approved'
-        ? ['pass-filled', 'done', 'Approved', `by ${r.byUser ? 'you' : r.reviewer}.`, undefined]
-        : ['circle-large-outline', 'idle', capitalized(reviewOutcome(r.state)), pause ?? '', undefined];
-  // A reviewer agent's approval waits for the user's: they approve it too, or ask for changes.
-  const yours = r.state === 'yours' || (r.state === 'approved' && !r.byUser);
-  return (
-    <>
-      <div class={`review-panel ${cls}`}>
-        <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
-        <span class="review-text">
-          <strong>{label}</strong> {text}
-          {todo && <span class="muted review-todo"> {todo}</span>}
-        </span>
-        {r.state === 'paused' &&
-          (r.paused?.byUser ? (
-            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
-              <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
-            </ActionButton>
-          ) : (
-            <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
-              <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
-            </ActionButton>
-          ))}
-        {running && !yours && (
-          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
-            <i class="codicon codicon-debug-pause" /> Pause
-          </ActionButton>
-        )}
-        {yours ? (
-          <>
-            <button
-              class="button secondary"
-              onClick={() => {
-                // What should change is written in the comment box: Request Changes sends it.
-                const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
-                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                box?.focus();
-              }}
-              title="Write what should change below, then Request Changes"
-            >
-              <i class="codicon codicon-request-changes" /> Request Changes…
-            </button>
-            <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
-              <i class="codicon codicon-check" /> Approve
-            </ActionButton>
-          </>
-        ) : active ? (
-          <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
-            <i class="codicon codicon-debug-stop" /> Stop
-          </ActionButton>
-        ) : r.state === 'stopped' ? (
-          // Fixes for why it stopped, the first one first.
-          fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
-            <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
-              <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
-            </ActionButton>
-          ))
-        ) : (
-          <>
-            {ticket.canReview && (
-              <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
-                <i class="codicon codicon-eye" /> Review Again
-              </ActionButton>
-            )}
-            {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
-          </>
-        )}
-      </div>
-      {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
-      {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
-    </>
-  );
-}
-
 /** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
 function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {
   const stop = ticket.mergeStop;
@@ -328,7 +125,7 @@ function HostLink({ href, children }: { href: string; children: ComponentChildre
  * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs and Fix with Agent, or
  * the base moved on with Update from Main. It holds until the branch's tip or its CI changes.
  */
-function MergeStop({ stop }: { stop: CiStop }) {
+export function MergeStop({ stop }: { stop: CiStop }) {
   if (stop.kind === 'moved')
     return (
       <div class="merge-stop">
@@ -380,7 +177,7 @@ function MergeStop({ stop }: { stop: CiStop }) {
  * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
  * and the tickets ahead, or conflicts with them), and Remove from Queue.
  */
-function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
+export function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
   const conflicts = !!queue.state?.startsWith('Conflicts');
   return (
     <div class={`merge-queue${conflicts ? ' conflicts' : ''}`}>
@@ -418,7 +215,7 @@ function Code({ text }: { text: string }) {
 }
 
 /** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
-function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
+export function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
   const message: TicketWebviewMessage = { type: 'merge' };
   const clicked = useWorking(message);
   // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
