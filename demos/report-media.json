@@ -1,0 +1,29 @@
+{
+  "title": "Pictures and diagrams lead each report in the activity",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 500 },
+    { "click": "[aria-label=\"Show done items\"]" },
+    { "wait": 500 },
+    { "click": ".backlog-item:has-text(\"Show the backlog as a board\")" },
+    { "waitFor": "h1:has-text(\"Show the backlog as a board\")" },
+    { "caption": "The latest report: its diagram and picture right under its summary" },
+    { "waitFor": ".feed .report-media .diagram" },
+    { "hover": ".feed .report-media" },
+    { "wait": 1500 },
+    { "caption": "Older reports fold to a line, with their pictures and diagrams beside it" },
+    { "hover": ".feed .media-strip" },
+    { "wait": 1500 },
+    { "caption": "A click opens one large; the entry stays folded" },
+    { "click": ".media-strip .media-thumb:has(img[alt=\"The board, after\"])" },
+    { "waitFor": ".viewer" },
+    { "wait": 1500 },
+    { "press": "Escape" },
+    { "click": ".media-strip .media-thumb:has(.media-thumb-diagram)" },
+    { "waitFor": ".viewer .viewer-diagram svg" },
+    { "wait": 1500 },
+    { "press": "Escape" },
+    { "caption": "" }
+  ]
+}

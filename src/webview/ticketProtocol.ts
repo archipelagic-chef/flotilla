@@ -69,6 +69,8 @@ export interface ReportView {
   summary: string;
   /** Rendered Markdown, folded under the summary. */
   details: string;
+  /** Its pictures, videos and diagrams (BL-114), rendered: under the summary, out of the details. */
+  media?: string;
   /** The report asks the user something (its questions, or the Needs line's text). */
   asks: boolean;
   /** What the Needs line says it needs from the user: rendered Markdown. */
@@ -76,6 +78,14 @@ export interface ReportView {
   questions: Question[];
   /** The comment of yours that answered it (the first after the report); undefined while it's unanswered. */
   answer?: string;
+}
+
+/** A report's picture, video or diagram (BL-114), as a thumbnail: its resolved source, or a diagram's Mermaid code. */
+export interface MediaThumb {
+  kind: MediaKind | 'diagram';
+  src?: string;
+  code?: string;
+  alt?: string;
 }
 
 /** An attachment as the Attachments section shows it (BL-110). */
@@ -115,6 +125,8 @@ export interface TicketView {
       posted?: string;
       chat?: AgentChatView;
       report?: ReportView;
+      /** Its pictures, videos and diagrams as thumbnails, beside its folded line (BL-114; those over their limits aside: the open entry says why). */
+      thumbs?: MediaThumb[];
       anchor?: string;
       reply?: { to: string; author: string; date: string; label: string };
       root?: number;

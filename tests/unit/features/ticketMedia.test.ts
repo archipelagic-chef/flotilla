@@ -12,7 +12,7 @@ vi.mock('vscode', () => ({
   workspace: {},
   EventEmitter: class {},
 }));
-const { renderMarkdown, replaceMedia, stripStyles } = await import('../../../src/ui/backlog/ticketPanel');
+const { mediaThumbs, renderMarkdown, replaceMedia, stripStyles } = await import('../../../src/ui/backlog/ticketPanel');
 
 const webview = { asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `webview:${u.fsPath.replace(/\\/g, '/')}` }) } as never;
 
@@ -120,5 +120,22 @@ describe('styles in rendered html', () => {
     expect(stripStyles('<p class="a" data-style="b" style=color:red>style="x" stays</p>')).toBe('<p class="a" data-style="b">style="x" stays</p>');
     expect(stripStyles('<svg><style>*{}</style><g style="fill:red" id="g"/></svg>')).toBe('<svg><g id="g"/></svg>');
     expect(stripStyles('<STYLE type="text/css">x</STYLE>after <style>unclosed')).toBe('after unclosed');
+  });
+});
+
+describe("a folded report's thumbnails (BL-114)", () => {
+  it('gives each picture its resolved source and kind, a diagram its code, and none to one over its limit', async () => {
+    const resolve = async (src: string) =>
+      src === 'BL-1/big.gif' ? { note: 'big.gif is 3 MB' } : src === 'https://x/a.png' ? undefined : { src: `webview:${src}`, kind: mediaType(src)!.kind };
+    const thumbs = await mediaThumbs(
+      ['![The demo](BL-1/demo.mp4)', '![](BL-1/big.gif)', '![Shot](<BL-1/a shot.png> "title")', '![](https://x/a.png)', '```mermaid\nflowchart LR\n  A --> B\n```'],
+      resolve,
+    );
+    expect(thumbs).toEqual([
+      { kind: 'video', src: 'webview:BL-1/demo.mp4', alt: 'The demo' },
+      { kind: 'image', src: 'webview:BL-1/a shot.png', alt: 'Shot' },
+      { kind: 'image', src: 'https://x/a.png' },
+      { kind: 'diagram', code: 'flowchart LR\n  A --> B' },
+    ]);
   });
 });

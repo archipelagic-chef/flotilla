@@ -18,13 +18,13 @@
     { "waitFor": "h1:has-text(\"Remember the last open tab\")" },
     { "click": ".review-panel button:has-text(\"Approve\")" },
     { "waitFor": ".merge-queue:has-text(\"Conflicts with main + BL-10\")", "timeout": 30000 },
-    { "caption": "BL-14 conflicts with BL-10 in the train: it waits, and offers Resolve with Agent" },
+    { "caption": "BL-15 conflicts with BL-10 in the train: it waits, and offers Resolve with Agent" },
     { "wait": 3000 },
-    { "caption": "The agent resolves it in BL-14's merge in the train, onto main + BL-10; its branch isn't changed" },
+    { "caption": "The agent resolves it in BL-15's merge in the train, onto main + BL-10; its branch isn't changed" },
     { "click": ".merge-queue button:has-text(\"Resolve with Agent\")" },
     { "waitFor": ".review-panel:has-text(\"(the merge train)\")", "timeout": 30000 },
     { "wait": 3000 },
-    { "caption": "Approved, the resolution is recorded (rerere): the train reuses it, and BL-14 lands from it" },
+    { "caption": "Approved, the resolution is recorded (rerere): the train reuses it, and BL-15 lands from it" },
     { "wait": 3000 },
     { "caption": "" }
   ]
