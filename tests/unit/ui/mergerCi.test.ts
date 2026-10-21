@@ -95,6 +95,7 @@ const approved = (id: string, extra: Partial<BacklogItem> = {}): BacklogItem => 
 // The fake GitHub's timeline (scripts/fake-github.mjs): a branch's first read makes its runs; the CI run then waits
 // 6 s, runs for 25 s and fails in its tests. Run again, it passes.
 const DONE_MS = 40_000;
+const HOUR = 3_600_000;
 let clock = 0;
 let fake: FakeGitHub;
 afterEach(async () => {
@@ -102,7 +103,7 @@ afterEach(async () => {
 });
 
 /** A repository whose branches are pushed to a (local) origin, and run on push by a workflow, as the fake GitHub's. */
-async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
+async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: number } = {}) {
   const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
   const { Merger } = await import('../../../src/ui/backlog/merge');
   const repo = initRepo();
@@ -129,7 +130,7 @@ async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
     ciReader: async () => o.reader ?? reader,
     updateFromMain: async (id: string) => void updates.push(id),
     fixCi: async (branch: string, run: number, job?: number) => void fixes.push([branch, run, job]),
-    ciPollMs: 20,
+    ciPollMs: o.ciPollMs ?? 20,
   } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
   const activity = async (id: string) => (await backlog.readTicket(await item(id))).activity.map((e) => e.body).join('\n');
@@ -144,8 +145,9 @@ async function setup(items: BacklogItem[], o: { reader?: string } = {}) {
   return { repo, merger, item, activity, branch, runsOf, updates, fixes };
 }
 
+/** Waits until done, up to 25 s (under the suite's 30 s timeout): a loaded machine polls and merges slowly (BL-120). */
 const until = async (done: () => Promise<boolean>) => {
-  for (let i = 0; i < 200 && !(await done()); i++) await new Promise((r) => setTimeout(r, 20));
+  for (const end = Date.now() + 25_000; Date.now() < end && !(await done()); ) await new Promise((r) => setTimeout(r, 20));
 };
 
 describe('Merge to main on CI (BL-105)', () => {
@@ -281,17 +283,36 @@ describe('Merge to main on CI (BL-105)', () => {
   });
 
   it('stops waiting when cancelled: nothing is merged', async () => {
-    const { merger, item, activity, branch } = await setup([approved('BL-1')]);
+    const { merger, item, activity, branch, runsOf } = await setup([approved('BL-1')], { ciPollMs: HOUR });
     branch('feature/BL-1', 'a.txt', 'BL-1');
 
-    expect(await merger.merge('BL-1')).toBe('waiting');
+    // No poll runs on its own (an hour apart), however slow the suite is: the test runs the one it scheduled, after the
+    // cancel and once CI has passed, as a timer that fires late would, and waits for it to end (BL-120).
+    const polls: Array<() => void> = [];
+    const setTimer = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === HOUR) polls.push(fn);
+      return setTimer(fn, ms);
+    }) as typeof setTimeout);
+    try {
+      expect(await merger.merge('BL-1')).toBe('waiting');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(polls).toHaveLength(1);
     await merger.cancelCiWait('BL-1');
-    clock += 10 * DONE_MS;
-    await new Promise((r) => setTimeout(r, 100));
+    // CI then passes: its first run fails, run again it passes.
+    const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
+    clock += DONE_MS;
+    await fetch(`${fake.url}/repos/playground/app/actions/runs/${ci.id}/rerun`, { method: 'POST' });
+    clock += DONE_MS;
+    const poll = vi.spyOn(merger as unknown as { pollCi(): Promise<void> }, 'pollCi');
+    polls[0]();
+    await poll.mock.results[0].value;
 
     expect(merger.mergeProgress('BL-1')).toBeUndefined();
     expect((await item('BL-1')).status).toBe('review');
-    expect(await activity('BL-1')).toContain('You cancelled the merge of `feature/BL-1` waiting for CI. Nothing was merged.');
+    expect((await activity('BL-1')).split('\n').at(-1)).toBe('You cancelled the merge of `feature/BL-1` waiting for CI. Nothing was merged.');
     merger.dispose();
   });
 });
