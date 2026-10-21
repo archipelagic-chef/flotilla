@@ -327,6 +327,8 @@ export type TicketWebviewMessage =
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
   | { type: 'mergeQueueRemove' }
+  /** Merge Next (BL-144): to the front of the merge queue. */
+  | { type: 'mergeNext' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }

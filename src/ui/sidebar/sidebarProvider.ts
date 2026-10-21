@@ -307,6 +307,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'landAll':
         await vscode.commands.executeCommand('flotilla.mergeAllReady');
         return;
+      case 'queueOrder':
+        await this.merger?.reorderQueue(m.ids);
+        return;
+      case 'mergeNext':
+        await this.merger?.mergeNext(m.id);
+        return;
       case 'integrations':
         await this.deps.integrations.manage();
         return;

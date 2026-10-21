@@ -105,6 +105,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "command": "Focus on Flotilla View" }` | runs a command through the Command Palette, typed as a user would |
 | `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
 | `{ "hover": ".ci-run" }` | moves the pointer onto it and leaves it there, so what shows on hover (a row's actions) can be clicked next |
+| `{ "drag": "text=BL-2", "to": "text=BL-1" }` | drags the first element onto the second (both in the same webview), as a mouse would |
 | `{ "type": "BL-3" }` / `{ "press": "Enter" }` | types text, presses a key (`Control+Enter`, `Escape`…) |
 | `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |

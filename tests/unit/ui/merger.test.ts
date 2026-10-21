@@ -506,4 +506,28 @@ describe('The merge queue (BL-140)', () => {
     ]);
     again.dispose();
   });
+
+  it('reorders the queue (dragged, or Merge Next) and rebuilds the train in the new order (BL-144)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
+    branches(repo);
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-2', 'BL-3', 'BL-1']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+
+    await merger.reorderQueue(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeTrain?.entries.map((e) => e.id)).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect(merger.queueView().entries).toEqual([
+      { id: 'BL-3', state: 'clean' },
+      { id: 'BL-1', state: 'clean' },
+      { id: 'BL-2', state: 'conflicts' },
+    ]);
+
+    await merger.mergeNext('BL-2');
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-2', 'BL-3', 'BL-1']);
+    expect(merger.queuePlace('BL-2')).toMatchObject({ place: '1st of 3', ahead: [] });
+    expect(merger.queuePlace('BL-3')).toMatchObject({ state: 'Conflicts with main + BL-2 in `shared.txt`.' });
+    expect((await backlog.readTicket(await item('BL-2'))).activity.map((e) => e.body)).toContain('You moved it to the front of the merge queue (Merge Next).');
+    merger.dispose();
+  });
 });

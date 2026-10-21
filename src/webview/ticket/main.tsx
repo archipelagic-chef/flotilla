@@ -1006,6 +1006,11 @@ function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> })
         {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
         {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
       </span>
+      {queue.ahead.length > 0 && (
+        <ActionButton class="button secondary" message={{ type: 'mergeNext' }} working="Moving…" title="Moves it to the front of the merge queue: the train is rebuilt in the new order">
+          Merge Next
+        </ActionButton>
+      )}
       <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
         Remove from Queue
       </ActionButton>
