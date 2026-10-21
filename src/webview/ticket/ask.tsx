@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
 import { send } from './actions';
 import { Rendered } from './markdownBox';
-import { modelName } from './main';
+import { modelName } from './agents';
 
 /** A question in the Ask chat, and its answer: streaming in as plain text, rendered once it's finished. */
 function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
