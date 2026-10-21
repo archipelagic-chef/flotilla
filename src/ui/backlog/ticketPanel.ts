@@ -29,13 +29,13 @@ import type { BacklogIntegrations } from './integrations';
 import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
-import { parseReport, reportAnswer } from '../../features/backlog/report';
+import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
 import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
@@ -293,6 +293,32 @@ export type Media = { src: string; kind: MediaKind } | { note: string };
 const IMG = /<img\b[^>]*>/g;
 const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+const MERMAID = /^ {0,3}(`{3,}|~{3,})\s*mermaid[^\n]*\n([\s\S]*?)\n? {0,3}\1[`~]*\s*$/i;
+const PICTURE = /^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)/;
+
+/**
+ * A report's media (parseReport's, BL-114) as thumbnails: a diagram by its code, a picture by what media says it is
+ * (as written when it says nothing); one over its limit has none (its note shows in the open entry).
+ */
+export async function mediaThumbs(media: string[], resolve: (src: string) => Promise<Media | undefined>): Promise<MediaThumb[]> {
+  const thumbs = await Promise.all(
+    media.map(async (m): Promise<MediaThumb | undefined> => {
+      const diagram = MERMAID.exec(m);
+      if (diagram) return { kind: 'diagram', code: diagram[2] };
+      const picture = PICTURE.exec(m);
+      if (!picture) return undefined;
+      const src = picture[2].replace(/^<|>$/g, '');
+      const r = await resolve(src).catch(() => undefined);
+      if (r && 'note' in r) return undefined;
+      return { kind: r?.kind ?? mediaType(src)?.kind ?? 'image', src: r?.src ?? src, ...(picture[1] ? { alt: picture[1] } : {}) };
+    }),
+  );
+  return thumbs.filter((t): t is MediaThumb => !!t);
+}
+
+/** Between a report's media and its details while their demos are paired (a comment: no html has it). */
+const MEDIA_SPLIT = '<!--flotilla-media-split-->';
 
 /** Replaces the images in html with what media says they are (undefined: kept as they are). */
 export async function replaceMedia(html: string, media: (src: string) => Promise<Media | undefined>): Promise<string> {
@@ -596,6 +622,9 @@ export class TicketPanels implements vscode.Disposable {
           found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
         const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key, units) : undefined;
         const html = report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
+        // Any entry's media (a report's, a comment's) show beside its line when it's folded (BL-114).
+        const media = takeMedia(e.body).media;
+        const thumbs = media.length ? await mediaThumbs(media, (src) => resolveMedia(src, webview, this.deps.backlog.dir, this.roots(item))) : [];
         return {
           ...e,
           html: !report && isReport(e.author) ? units(withRunButtons(html, parseRunBlocks(e.body), key)) : html,
@@ -606,6 +635,7 @@ export class TicketPanels implements vscode.Disposable {
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
+          ...(thumbs.length ? { thumbs } : {}),
         };
       }),
     );
@@ -624,17 +654,16 @@ export class TicketPanels implements vscode.Disposable {
     if (parts.summary === undefined) return undefined;
     const roots = this.roots(item);
     const answer = reportAnswer(later);
+    // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
+    const details = withRunButtons(await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.details), key, parseRunBlocks(parts.summary).length);
+    // Its pictures, videos and diagrams lead the details (BL-114). A recording goes with its demo block in the details
+    // (BL-111): they're paired as one, which shows with the media.
+    const media = parts.media.length ? await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots) : '';
+    const [ledBy, rest] = units(`${media}${MEDIA_SPLIT}${details}`).split(MEDIA_SPLIT);
     return {
-      // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
       summary: units(withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key)),
-      details: units(
-        withRunButtons(
-          await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
-          parseRunBlocks(parts.details),
-          key,
-          parseRunBlocks(parts.summary).length,
-        ),
-      ),
+      details: rest.trim(),
+      ...(ledBy.trim() ? { media: ledBy.trim() } : {}),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
       questions: parts.questions,
@@ -1447,6 +1476,11 @@ export class TicketPanels implements vscode.Disposable {
         void panel.webview.postMessage(reply);
         return;
       }
+      case 'preview': {
+        const html = await renderMarkdown(m.text, panel.webview, this.deps.backlog.dir, this.roots(item));
+        void panel.webview.postMessage({ type: 'previewed', requestId: m.requestId, html } satisfies TicketHostMessage);
+        return;
+      }
       case 'mediaRefused':
         void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
         return;
@@ -1594,6 +1628,12 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'mergeQueueRemove':
         await this.merger?.removeFromQueue(id);
+        return;
+      case 'mergeQueueResolve':
+        await this.merger?.resolveTrainConflict(id);
+        return;
+      case 'mergeNext':
+        await this.merger?.mergeNext(id);
         return;
       case 'mergeCiFix':
         await this.merger?.fixCiStop(id);

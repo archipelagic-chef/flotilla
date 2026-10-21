@@ -14,7 +14,8 @@ import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMes
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
-import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
+import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
+import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
@@ -207,6 +208,9 @@ const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = 
 /** Replies to pasted or dropped images, by request id. */
 const imageReplies = new Map<number, (markdown: string) => void>();
 let nextImage = 1;
+/** Replies to a Markdown box's Preview, by request id. */
+const previewReplies = new Map<number, (html: string) => void>();
+let nextPreview = 1;
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -250,7 +254,42 @@ async function attachImages(files: FileList | File[], area: HTMLTextAreaElement,
   return images.length > 0;
 }
 
-/** A Markdown box that grows with its text and takes pasted or dropped images. */
+/** What the Mention button inserts: the prefix of this ticket's id (BL-, or a tracker's PROJ-). */
+const mentionPrefix = (id: string) => /^(.*?-)\d+$/.exec(id)?.[1] ?? '';
+
+/** The formatting toolbar's buttons (BL-129), with their keys. */
+const FORMATS: Array<{ format: Format; icon: string; label: string; key?: string }> = [
+  { format: 'bold', icon: 'bold', label: 'Bold', key: 'b' },
+  { format: 'italic', icon: 'italic', label: 'Italic', key: 'i' },
+  { format: 'code', icon: 'code', label: 'Code' },
+  { format: 'codeBlock', icon: 'file-code', label: 'Code block' },
+  { format: 'link', icon: 'link', label: 'Link', key: 'k' },
+  { format: 'bullets', icon: 'list-unordered', label: 'Bulleted list' },
+  { format: 'numbers', icon: 'list-ordered', label: 'Numbered list' },
+  { format: 'quote', icon: 'quote', label: 'Quote' },
+  { format: 'mention', icon: 'mention', label: 'Mention a ticket or comment' },
+];
+
+/**
+ * Makes an edit in the textarea as typing would, so Ctrl+Z undoes it; where the browser won't, the value is set.
+ * The textarea's input event updates the box's state.
+ */
+function editArea(el: HTMLTextAreaElement, edit: TextEdit, setValue: (text: string) => void): void {
+  const expected = el.value.slice(0, edit.from) + edit.insert + el.value.slice(edit.to);
+  el.focus();
+  el.setSelectionRange(edit.from, edit.to);
+  const typed = edit.insert ? document.execCommand('insertText', false, edit.insert) : edit.from === edit.to || document.execCommand('delete');
+  if (!typed || el.value !== expected) {
+    el.value = expected;
+    setValue(expected);
+  }
+  el.setSelectionRange(edit.selStart, edit.selEnd);
+}
+
+/**
+ * A Markdown box that grows with its text and takes pasted or dropped images. With format, it has a toolbar (in that
+ * markup) and, for Markdown, Write and Preview tabs: Preview renders the text as the activity shows it.
+ */
 function MarkdownBox({
   value,
   setValue,
@@ -260,6 +299,8 @@ function MarkdownBox({
   autoFocus,
   minRows = 3,
   images = true,
+  format,
+  mention = '',
 }: {
   value: string;
   setValue(text: string): void;
@@ -270,21 +311,41 @@ function MarkdownBox({
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
   images?: boolean;
+  /** The toolbar, writing this markup (none without). */
+  format?: Markup;
+  /** What the Mention button inserts: the ticket ids' prefix. */
+  mention?: string;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
+  const [preview, setPreview] = useState<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight + 2}px`;
-  }, [value]);
+  }, [value, preview === undefined]);
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
-  return (
+  const apply = (f: Format) => {
+    const el = area.current;
+    if (el) editArea(el, formatEdit(el.value, el.selectionStart, el.selectionEnd, f, format, mention), setValue);
+  };
+  const showPreview = () => {
+    const requestId = nextPreview++;
+    setPreview('');
+    previewReplies.set(requestId, (html) => setPreview((shown) => (shown === undefined ? undefined : html)));
+    send({ type: 'preview', requestId, text: value });
+  };
+  const write = () => {
+    setPreview(undefined);
+    setTimeout(() => area.current?.focus());
+  };
+  const box = (
     <textarea
       ref={area}
       class="md-box"
+      hidden={preview !== undefined}
       rows={minRows}
       value={value}
       placeholder={placeholder}
@@ -294,6 +355,14 @@ function MarkdownBox({
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           onSubmit();
+          return;
+        }
+        const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());
+        if (key) {
+          // Not on to VS Code, where Ctrl+B toggles the sidebar and Ctrl+K starts a chord.
+          e.preventDefault();
+          e.stopPropagation();
+          apply(key.format);
         }
       }}
       onPaste={(e) => {
@@ -301,6 +370,13 @@ function MarkdownBox({
         if (images && files?.length && [...files].some((f) => fileKind(f))) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
+          return;
+        }
+        const el = area.current!;
+        const link = format && pasteLink(el.value, el.selectionStart, el.selectionEnd, e.clipboardData?.getData('text/plain') ?? '', format);
+        if (link) {
+          e.preventDefault();
+          editArea(el, link, setValue);
         }
       }}
       onDragOver={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
@@ -312,6 +388,47 @@ function MarkdownBox({
         }
       }}
     />
+  );
+  if (!format) return box;
+  const key = (k?: string) => (k ? ` (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}${k.toUpperCase()})` : '');
+  return (
+    <div class="md-editor">
+      <div class="md-toolbar">
+        {format === 'markdown' && (
+          <span class="md-tabs" role="tablist">
+            <button role="tab" class="md-tab" aria-selected={preview === undefined} onClick={write}>
+              Write
+            </button>
+            <button role="tab" class="md-tab" aria-selected={preview !== undefined} onClick={showPreview}>
+              Preview
+            </button>
+          </span>
+        )}
+        {preview === undefined && (
+          <span class="md-formats" role="toolbar" aria-label="Formatting">
+            {FORMATS.map((f) => (
+              <button
+                key={f.format}
+                class="icon-button"
+                title={f.label + key(f.key)}
+                aria-label={f.label}
+                // The textarea keeps its focus and selection.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => apply(f.format)}
+              >
+                <i class={`codicon codicon-${f.icon}`} />
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
+      {box}
+      {preview !== undefined && (
+        <div class="md-preview" style={{ minHeight: `${minRows * 1.5 + 1}em` }}>
+          {preview || !value.trim() ? <Rendered html={preview} empty="Nothing to preview." /> : <div class="rendered empty-text">Rendering…</div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -455,6 +572,8 @@ function Description({ ticket }: { ticket: TicketView }) {
             autoFocus
             minRows={8}
             images={!ticket.remote}
+            format={jira ? 'jira' : 'markdown'}
+            mention={mentionPrefix(ticket.item.id)}
           />
           {jira && <div class="hint">Jira's own formatting: this is the description as Jira stores it.</div>}
           <div class="actions-row">
@@ -833,9 +952,11 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   // The agent the user paused or stopped: it can be resumed in its chat.
   const held = heldBy(r);
   const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
-  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot && !turn);
+  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
   const [icon, cls, label, text, todo] = autopilot
-    ? ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
+    ? r.byHand
+      ? ['play', 'working', 'Working', pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`, undefined]
+      : ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
     : turn && said
       ? [
           r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
@@ -1004,8 +1125,23 @@ function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> })
       <span class="review-text">
         <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
         {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
-        {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
+        {conflicts && <> It waits: Resolve with Agent resolves them in its merge in the train (its branch isn't changed), or Merge to main merges it onto main as it is.</>}
       </span>
+      {conflicts && (
+        <ActionButton
+          class="button"
+          message={{ type: 'mergeQueueResolve' }}
+          working="Starting…"
+          title="An agent resolves the conflicts in its merge in the train, onto main and the tickets ahead; approved, the resolution is recorded and reused"
+        >
+          <i class="codicon codicon-hubot" /> Resolve with Agent
+        </ActionButton>
+      )}
+      {queue.ahead.length > 0 && (
+        <ActionButton class="button secondary" message={{ type: 'mergeNext' }} working="Moving…" title="Moves it to the front of the merge queue: the train is rebuilt in the new order">
+          Merge Next
+        </ActionButton>
+      )}
       <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
         Remove from Queue
       </ActionButton>
@@ -1077,7 +1213,9 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
     : m.state === 'resolved'
       ? checks
         ? ['pass', 'waiting', `${agent} fixed the checks (its report is below). Approve the fix: the checks run again, then ${m.base} moves to the merge.`]
-        : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+        : m.train
+          ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
+          : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
       : m.state === 'resolving'
         ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
         : checks && m.reason?.startsWith('the checks failed')
@@ -1088,7 +1226,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
       <div class={`review-panel ${cls}`}>
         <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
         <span class="review-text">
-          <strong>Merging into {m.base}</strong> {text}
+          <strong>Merging into {m.train ? `${[m.base, ...m.train.ahead].join(' + ')} (the merge train)` : m.base}</strong> {text}
           {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
@@ -1840,6 +1978,12 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
       {e.report ? (
         <>
           <Rendered html={e.report.summary} empty="" />
+          {/* Its pictures, videos and diagrams lead it (BL-114): the text they belong to stays in Details. */}
+          {e.report.media && (
+            <div class="report-media">
+              <Rendered html={e.report.media} empty="" />
+            </div>
+          )}
           {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
           {e.report.details && (
             <details class="report-details">
@@ -1887,6 +2031,37 @@ function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
     <div class="reply-to" title={parent ? undefined : 'The entry it answers is no longer in the ticket'}>
       ↩ {label}
     </div>
+  );
+}
+
+/** A folded report's media (BL-114), beside its line: a click opens one in the viewer, and the entry stays folded. */
+function MediaStrip({ e }: { e: ActivityEntry }) {
+  const thumbs = e.thumbs!;
+  const open = (at: number) =>
+    openMedia(
+      thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
+      at,
+    );
+  return (
+    <ul class="media-strip">
+      {thumbs.map((t, i) => (
+        <li key={i}>
+          <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
+            {t.kind === 'diagram' ? (
+              <Diagram code={t.code ?? ''} class="media-thumb-diagram" />
+            ) : t.kind === 'video' ? (
+              <>
+                {/* Its first frame; it doesn't play here. */}
+                <video src={t.src} preload="metadata" muted tabIndex={-1} />
+                <i class="codicon codicon-play-circle play-mark" />
+              </>
+            ) : (
+              <img src={t.src} alt={t.alt ?? ''} loading="lazy" />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -2119,6 +2294,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     </span>
                   )}
                 </button>
+                {!!e.thumbs?.length && <MediaStrip e={e} />}
               </li>
             );
           }
@@ -2167,6 +2343,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
           label="Comment"
           onSubmit={post}
           images={!ticket.remote}
+          format="markdown"
+          mention={mentionPrefix(ticket.item.id)}
         />
         <div class="actions-row">
           {reviewable && (
@@ -2595,6 +2773,9 @@ function App() {
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
+      } else if (m.type === 'previewed') {
+        previewReplies.get(m.requestId)?.(m.html);
+        previewReplies.delete(m.requestId);
       }
     };
     window.addEventListener('message', listener);
@@ -2701,9 +2882,9 @@ function App() {
               working="Starting…"
               disabled={ticket.creating}
               title={
-                ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
-                  ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
-                  : 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                ticket.remote
+                  ? 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                  : 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen. It runs in the background, without a window (in the agent queue, as the autopilot’s agents do), and reports below'
               }
             >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}

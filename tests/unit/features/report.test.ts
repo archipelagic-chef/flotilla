@@ -9,6 +9,7 @@ import {
   parseQuestion,
   parseReport,
   reportAnswer,
+  takeMedia,
   type Question,
 } from '../../../src/features/backlog/report';
 
@@ -103,7 +104,7 @@ describe('reading a report', () => {
 
   it('shows an older report whole: no summary', () => {
     const body = 'Did X.\n\nReady for review.';
-    expect(parseReport(body)).toEqual({ asks: false, questions: [], details: body, waiting: false });
+    expect(parseReport(body)).toEqual({ asks: false, questions: [], details: body, media: [], waiting: false });
     expect(parseReport('Should it be per key?\n\nWaiting for you.')).toMatchObject({ waiting: true });
     expect(parseReport('Should it be per key?\n\nWaiting for you.').summary).toBeUndefined();
     expect(parseReport('Waiting for you to decide, but I went ahead.\n\nReady for review.')).toMatchObject({ waiting: false });
@@ -225,5 +226,45 @@ describe('answering a question', () => {
         { question: several, answer: 'Unit' },
       ]),
     ).toBe('**Which storage?** Redis\n\n**Which checks?** Unit');
+  });
+});
+
+describe("a report's media (BL-114)", () => {
+  const report = [
+    'Added the strip.',
+    'Needs from you: nothing',
+    '',
+    '#### How to review',
+    'The strip, folded:',
+    '',
+    '![The demo](BL-1/demo.gif)',
+    '',
+    '![Before](BL-1/before.png) ![After](BL-1/after.png)',
+    '',
+    'A flow:',
+    '```mermaid',
+    'flowchart LR',
+    '  A --> B',
+    '```',
+    '',
+    'Ready for review.',
+  ].join('\n');
+
+  it('takes the pictures (each apart) and diagrams out of the details, in order; their text stays there', () => {
+    const parts = parseReport(report);
+    expect(parts.summary).toBe('Added the strip.');
+    expect(parts.media).toEqual(['![The demo](BL-1/demo.gif)', '![Before](BL-1/before.png)', '![After](BL-1/after.png)', '```mermaid\nflowchart LR\n  A --> B\n```']);
+    expect(parts.details).toBe('#### How to review\nThe strip, folded:\n\nA flow:\n\nReady for review.');
+  });
+
+  it("leaves a picture in a sentence, a list or another code block, and other blocks, where they are", () => {
+    const text = ['See ![x](a.png) here.', '- ![y](b.png)', '```markdown', '![z](c.png)', '```', '```run', 'npm test', '```'].join('\n');
+    expect(takeMedia(text)).toEqual({ media: [], text });
+  });
+
+  it("takes a verdict's media too; a report with none has none, and an older report keeps them in its text", () => {
+    expect(parseReport('Verdict: approved\nGood.\n\n![Run](BL-1/run.png)\n\nRan the tests.')).toMatchObject({ media: ['![Run](BL-1/run.png)'], details: 'Ran the tests.' });
+    expect(parseReport('Done.\nNeeds from you: nothing\n\nRan the tests.').media).toEqual([]);
+    expect(parseReport('Did X.\n\n![Run](BL-1/run.png)')).toMatchObject({ media: [], details: 'Did X.\n\n![Run](BL-1/run.png)' });
   });
 });

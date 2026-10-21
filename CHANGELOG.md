@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Try Now on a usage limit**: while the autopilot waits for Claude's usage limit to reset, its bar has *Try Now*: if Claude takes work again, the paused agents go on (top of the backlog first, within `flotilla.agents.maxRunning`) and the autopilot with them; if not, nothing starts and the bar says when it tried and when it tries next. **Flotilla: Try Paused Agents Now** does the same with the autopilot off. The bar shows the reset's day when it isn't today.
+
 - **Worktrees take less space**: a done ticket's worktree is removed when nothing in it can be lost and nobody is using it, keeping its branch (`flotilla.removeFinishedWorktrees`), and **Flotilla: Kept Worktrees and Folders…** takes back a Keep; a new worktree can get big folders such as `node_modules` as hard links to the main worktree's (`flotilla.linkFolders`).
 
 - **Tickets stay current with main**: open tickets' branches are checked against main when it moves (a merge in memory); a conflict shows on the card and in the ticket, *Update from Main* merges main in (or hands the conflicts to the ticket's agent), and a ticket can depend on another ("Depends on: BL-12").

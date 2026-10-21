@@ -280,10 +280,16 @@ export interface AutopilotState {
   waiting: number;
   /** ISO 8601. */
   waitingUntil?: string;
+  /** When Try Now last found the limit still there (BL-132). */
+  triedAt?: string;
   /** Too little memory free to start an agent. */
   waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
+  /** Why it starts nothing though a slot is free (BL-142). */
+  idle?: string;
+  /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
+  away?: string;
 }
 
 /** A repository on a slow drive: what the Overview says, and how to fix it. */
@@ -353,8 +359,12 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  | { type: 'backlog'; op: 'tryNow' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
+  /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
+  | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
+  | { type: 'backlog'; op: 'mergeNext'; id: string }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
   | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }

@@ -11,6 +11,7 @@ import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { menuContext, send } from './api';
+import { shortTime } from '../shortTime';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
 import './priority.css';
@@ -32,6 +33,8 @@ const EMPTY_LANE: Record<BacklogLane, string> = {
 };
 
 const DRAG_TYPE = 'application/x-flotilla-backlog';
+/** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
+const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
 
 interface Props {
   items: BacklogItem[] | undefined;
@@ -134,19 +137,35 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
         </button>
       )}
       {autopilot?.enabled && (
-        <button class="autopilot-bar" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
-          <i class="codicon codicon-rocket" />
-          <span>
-            <strong>Autopilot</strong>{' '}
-            {autopilot.elsewhere
-              ? 'runs in another window.'
-              : autopilot.waitingUntil
-                ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
-                : autopilot.waitingForMemory
-                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                  : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
-          </span>
-        </button>
+        <div class="autopilot-bar">
+          <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
+            <i class="codicon codicon-rocket" />
+            <span>
+              <strong>Autopilot</strong>{' '}
+              {autopilot.elsewhere
+                ? 'runs in another window.'
+                : autopilot.waitingUntil
+                  ? autopilot.triedAt
+                    ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
+                    : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
+                  : autopilot.waitingForMemory
+                    ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                    : autopilot.idle && !autopilot.running
+                      ? `· Idle: ${autopilot.idle}.`
+                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+              {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
+            </span>
+          </button>
+          {autopilot.waitingUntil && !autopilot.elsewhere && (
+            <BusyButton
+              class="try-now"
+              message={{ type: 'backlog', op: 'tryNow' }}
+              title="Asks Claude whether it takes work again: if it does, the paused agents go on now (top of the backlog first) and the autopilot takes To Do tickets again"
+            >
+              Try Now
+            </BusyButton>
+          )}
+        </div>
       )}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
@@ -247,6 +266,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
                       color={(ws) => colors.get(ws.key)}
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
+                      queuedBehind={(mergeQueue?.entries.findIndex((e) => e.id === item.id) ?? -1) > 0}
                       dropBefore={dropAt?.before === item.id}
                       onDragOver={(e) => dragOver(e, lane.lane, item.id)}
                       onDrop={(e) => drop(e, lane.lane, item.id)}
@@ -358,7 +378,7 @@ function NeedRow({ item }: { item: BacklogItem }) {
           </BusyButton>
         )}
         {need.kind === 'failed' && (
-          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there">
+          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket">
             {' '}Run
           </BusyButton>
         )}
@@ -380,6 +400,8 @@ interface RowProps {
   color(ws: WorkstreamView): string | undefined;
   renaming: boolean;
   setRenaming(on: boolean): void;
+  /** In the merge queue, behind other tickets: its menu has Merge Next (BL-144). */
+  queuedBehind?: boolean;
   dropBefore: boolean;
   onDragOver(e: DragEvent): void;
   onDrop(e: DragEvent): void;
@@ -389,7 +411,7 @@ interface RowProps {
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
-function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   // A card whose button is working keeps its hover buttons shown (BL-117).
   const busy = useBusy();
   const done = item.status === 'done';
@@ -404,7 +426,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item) })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item), backlogQueued: !!queuedBehind })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -612,6 +634,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
             <BusyButton
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
+              title={`${worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}: it runs in the background and reports in the ticket`}
               message={{ type: 'backlog', op: 'start', id: item.id }}
               icon="play"
             />
@@ -723,8 +746,29 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
 /**
  * The merge queue (BL-140), above the board: the tickets waiting to land, first to land first, each opening its ticket
  * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
+ * Its tickets are dragged to change the order they land in (BL-144).
  */
 function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
+  // Where a dragged ticket would go: before this one, or at the end (null).
+  const [dropBefore, setDropBefore] = useState<string | null>();
+  const ids = queue.entries.map((e) => e.id);
+  const dragOver = (e: DragEvent, before: string | null) => {
+    if (!e.dataTransfer?.types.includes(QUEUE_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropBefore(before);
+  };
+  const drop = (e: DragEvent) => {
+    const id = e.dataTransfer?.getData(QUEUE_DRAG_TYPE);
+    const before = dropBefore;
+    setDropBefore(undefined);
+    if (!id || before === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const order = moveBefore(ids, id, before);
+    if (order.join() !== ids.join()) send({ type: 'backlog', op: 'queueOrder', ids: order });
+  };
   return (
     <div class="merge-queue-bar">
       <i class="codicon codicon-git-merge" />
@@ -732,29 +776,46 @@ function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
         <strong>Merge queue</strong>
         {queue.working ? ` · ${capitalizeFirst(queue.working)}` : ''}
         {' · '}
-        {queue.entries.map((e, i) => (
-          <span key={e.id}>
-            {i > 0 && ', '}
-            <a
-              href="#"
-              class={e.state === 'conflicts' ? 'conflicts' : undefined}
-              title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
-              onClick={(ev) => {
-                ev.preventDefault();
-                send({ type: 'backlog', op: 'open', id: e.id });
-              }}
-            >
-              {e.id}
-              {e.state === 'conflicts' && ' (conflicts)'}
-            </a>
-          </span>
-        ))}
+        <span class="queue-entries" onDragOver={(e) => dragOver(e, null)} onDragLeave={() => setDropBefore(undefined)} onDrop={drop}>
+          {queue.entries.map((e, i) => (
+            <span key={e.id} onDragOver={(ev) => dragOver(ev, e.id)}>
+              {i > 0 && ', '}
+              <a
+                href="#"
+                draggable
+                onDragStart={(ev) => {
+                  ev.dataTransfer?.setData(QUEUE_DRAG_TYPE, e.id);
+                  if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => setDropBefore(undefined)}
+                class={[e.state === 'conflicts' ? 'conflicts' : '', dropBefore === e.id ? 'drop-before' : ''].filter(Boolean).join(' ') || undefined}
+                title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  send({ type: 'backlog', op: 'open', id: e.id });
+                }}
+              >
+                {e.id}
+                {e.state === 'conflicts' && ' (conflicts)'}
+              </a>
+            </span>
+          ))}
+          {dropBefore === null && <span class="drop-end" />}
+        </span>
       </span>
       <button class="land-all" disabled={!!queue.working} onClick={() => send({ type: 'backlog', op: 'landAll' })} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
         Land All
       </button>
     </div>
   );
+}
+
+/** The ids with one moved before another (null: to the end). */
+function moveBefore(ids: readonly string[], id: string, before: string | null): string[] {
+  if (id === before) return [...ids];
+  const rest = ids.filter((x) => x !== id);
+  const at = before === null ? rest.length : rest.indexOf(before);
+  return at < 0 ? [...ids] : [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
 const capitalizeFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

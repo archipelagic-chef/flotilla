@@ -66,6 +66,13 @@ vi.mock('vscode', () => {
   };
 });
 
+/** The resolving agent: never started for real; the test does its work in the merge's worktree. */
+const agents = { prompts: [] as string[] };
+vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/ui/backlog/agentRunner')>()),
+  runAgentHeadless: (o: { prompt: string }) => (agents.prompts.push(o.prompt), { sessionId: 'session', done: new Promise(() => undefined), stop() {} }),
+}));
+
 /** The checks: they print a failure and exit with ui.checksExit. */
 const CHECKS = `node -e "console.log(process.env.FLOTILLA_TEST_CHECKS_OUT || 'FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
 
@@ -481,6 +488,47 @@ describe('The merge queue (BL-140)', () => {
     merger.dispose();
   });
 
+  it("resolves a train conflict with an agent in the ticket's merge in the train, records it, and lands it from the train (BL-146)", async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1'), approved('BL-2'), approved('BL-3')]);
+    branches(repo);
+    const tip3 = git(repo, 'rev-parse', 'feature/BL-3');
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-1', 'BL-2', 'BL-3']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+    expect(merger.queuePlace('BL-3')?.state).toBe('Conflicts with main + BL-1 + BL-2 in `shared.txt`.');
+    const before = (await backlog.read()).mergeTrain!;
+
+    await merger.resolveTrainConflict('BL-3');
+
+    const m = (await item('BL-3')).merging!;
+    expect(m).toMatchObject({ state: 'resolving', baseTip: before.entries[1].commit, train: { ahead: ['BL-1', 'BL-2'] } });
+    expect(git(m.dir, 'diff', '--name-only', '--diff-filter=U')).toBe('shared.txt');
+    expect(agents.prompts.at(-1)).toContain("resolve the conflicts of merging BL-3's branch feature/BL-3 into main + BL-1 + BL-2");
+    // Meanwhile it keeps its place, and the tickets behind it are merged as if it weren't there.
+    await merger.refreshTrain();
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect((await backlog.read()).mergeTrain!.entries.map((e) => e.id)).toEqual(['BL-1', 'BL-2']);
+
+    // What the agent does: resolves and commits the merge.
+    writeFile(m.dir, 'shared.txt', 'two and three\n');
+    git(m.dir, 'add', '.');
+    git(m.dir, 'commit', '-q', '--no-edit');
+    merger['runs'].delete('BL-3');
+    await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === 'BL-3' ? { ...i, merging: { ...m, state: 'resolved' } } : i)) }));
+    ui.answers = ['Land 3'];
+
+    expect(await merger.approveResolution('BL-3')).toBe('merged');
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-3', 'main').split('\n')).toEqual(['Merge BL-3: Item BL-3', 'Merge BL-2: Item BL-2', 'Merge BL-1: Item BL-1']);
+    expect(git(repo, 'show', 'main:shared.txt')).toBe('two and three');
+    expect(git(repo, 'rev-parse', 'feature/BL-3')).toBe(tip3);
+    expect((await item('BL-3')).status).toBe('done');
+    expect(worktrees()).toBe(1);
+    const activity = (await backlog.readTicket(await item('BL-3'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain('in the merge train: it\'s recorded (`shared.txt`)');
+    merger.dispose();
+  });
+
   it('keeps the queue in backlog.json, and Remove from Queue rebuilds the train without the ticket', async () => {
     const { repo, backlog, merger } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
     branches(repo);
@@ -505,5 +553,29 @@ describe('The merge queue (BL-140)', () => {
       { id: 'BL-1', state: 'clean' },
     ]);
     again.dispose();
+  });
+
+  it('reorders the queue (dragged, or Merge Next) and rebuilds the train in the new order (BL-144)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
+    branches(repo);
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-2', 'BL-3', 'BL-1']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+
+    await merger.reorderQueue(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeTrain?.entries.map((e) => e.id)).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect(merger.queueView().entries).toEqual([
+      { id: 'BL-3', state: 'clean' },
+      { id: 'BL-1', state: 'clean' },
+      { id: 'BL-2', state: 'conflicts' },
+    ]);
+
+    await merger.mergeNext('BL-2');
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-2', 'BL-3', 'BL-1']);
+    expect(merger.queuePlace('BL-2')).toMatchObject({ place: '1st of 3', ahead: [] });
+    expect(merger.queuePlace('BL-3')).toMatchObject({ state: 'Conflicts with main + BL-2 in `shared.txt`.' });
+    expect((await backlog.readTicket(await item('BL-2'))).activity.map((e) => e.body)).toContain('You moved it to the front of the merge queue (Merge Next).');
+    merger.dispose();
   });
 });

@@ -53,6 +53,7 @@ describe('describeRun', () => {
   it("names an agent's run by its branch's ticket, and a merge's as going first", () => {
     expect(describeRun('/w/.worktrees/feature-BL-120-x', 'feature/BL-120-share-the-machine')).toEqual({ label: 'BL-120', first: false });
     expect(describeRun('/tmp/flotilla-merge/worktree_extension-BL-122-1a2b3c4d', 'HEAD')).toEqual({ label: 'BL-122 merge', first: true });
+    expect(describeRun('/tmp/flotilla-merge/worktree_extension-train-1a2b3c4d', 'HEAD')).toEqual({ label: 'a merge', first: true });
     expect(describeRun('/w/repo', 'main')).toEqual({ label: 'main', first: false });
   });
 });
@@ -101,6 +102,16 @@ describe('takeSlot', () => {
     expect(mine).toMatchObject([{ pid: process.pid, label: 'BL-138', running: true }]);
     release();
     expect(readQueue(tmp)).toEqual([]);
+  });
+});
+
+describe('a merge in the train', () => {
+  it('starts its checks before an agent run that has waited longer', async () => {
+    fs.writeFileSync(path.join(tmp, 'agent.json'), JSON.stringify(entry(process.ppid, { label: 'BL-120', since: 0 })));
+    const { label, first } = describeRun('/tmp/flotilla-merge/repo-train-1a2b3c4d', 'HEAD');
+    const release = await takeSlot({ dir: tmp, n: 1, label, first, pollMs: 10 });
+    expect(readQueue(tmp).find((e) => e.pid === process.pid)).toMatchObject({ running: true, first: true });
+    release();
   });
 });
 

@@ -68,6 +68,8 @@ export interface CommandContext {
   integrations: BacklogIntegrations;
   /** Why the autopilot holds a To Do ticket back (BL-71), if it does: a start by hand says so. Set once it's made. */
   clashOf?(id: string): Clash | undefined;
+  /** Starts an agent on an item's work without a window, through the agent queue (the review loop's). Set once it's made. */
+  startWork?(item: BacklogItem, ws: Workstream): Promise<void>;
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
@@ -617,7 +619,7 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
 }
 
 /** How agents keep their branch current with main, and what they do when they need another ticket's work (BL-55). */
-export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged.`;
+export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
 
 /** What an agent is told when it starts on an item. */
 export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
@@ -682,8 +684,17 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   );
 }
 
-/** Opens a Claude Code chat for an agent on an item, working in its worktree. */
+/**
+ * Starts an agent on an item, working in its worktree: a local item's agent runs without a window, through the agent
+ * queue, as the autopilot's do (BL-122); an issue from a tracker gets a Claude Code chat.
+ */
 async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, remote?: RemoteIssue): Promise<void> {
+  if (!remote && ctx.startWork) {
+    // As it is now: starting it moved it to In Progress, and the queue gives up starts on an item that changed.
+    const fresh = (await ctx.backlog.read()).items.find((i) => i.id === item.id);
+    if (fresh) await ctx.startWork(fresh, ws);
+    return;
+  }
   let ticket: string;
   if (remote) {
     // The issue lives in its tracker; the agent gets a local copy of it to read and to report in.

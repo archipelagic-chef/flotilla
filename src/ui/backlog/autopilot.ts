@@ -14,6 +14,7 @@ import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import { memoryShortage } from './agentRunner';
+import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -43,11 +44,22 @@ export interface AutopilotView {
   waiting: number;
   /** Waiting for Claude's usage limit to reset (ISO 8601). */
   waitingUntil?: string;
+  /** When Try Now last found the limit still there (ISO 8601), while it waits on. */
+  triedAt?: string;
   /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
   waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
+  /** Why it starts nothing though a slot is free (BL-142): "BL-130 waits for BL-126 (in review)", "nothing left in To Do". */
+  idle?: string;
+  /** What it did while the user was away, for a while after they're back: "Overnight: 6 tickets done, 3 waiting for you". */
+  away?: string;
 }
+
+/** How long it's idle, with tickets waiting, before a notification says so (once). */
+const IDLE_NOTICE_MS = 30 * 60_000;
+/** An absence shorter than this gets no "while you were away" line; the line stays this long after the return, too. */
+const AWAY_MS = 60 * 60_000;
 
 /**
  * The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. A ticket
@@ -74,11 +86,22 @@ export class Autopilot implements vscode.Disposable {
   private ticking = false;
   private waitingUntil: Date | undefined;
   private waitingForMemory = false;
+  /** When Try Now last found the limit still there: shown while it waits on. */
+  private triedAt: Date | undefined;
+  /** Why it starts nothing (BL-142), since when, and whether a notification said so. */
+  private idle: string | undefined;
+  private idleSince: number | undefined;
+  private idleNoticed = false;
+  /** The window lost focus (when, and the tickets through then); the line for the return, until when. */
+  private awayFrom: { at: Date; finished: Set<string> } | undefined;
+  private away: { line: string; until: number } | undefined;
 
   constructor(private readonly deps: AutopilotDeps) {
     const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
     const timer = setInterval(() => void this.tick(), 30_000);
     this.subscriptions.push({ dispose: () => watch.dispose() }, { dispose: () => clearInterval(timer) }, this.changed);
+    const focus = vscode.window.onDidChangeWindowState((s) => void this.focused(s.focused));
+    this.subscriptions.push(focus);
     void this.refresh().then(() => this.tick());
   }
 
@@ -136,10 +159,47 @@ export class Autopilot implements vscode.Disposable {
       running: this.deps.reviews.running,
       max: this.deps.reviews.limit,
       waiting: this.deps.reviews.waitingCount,
-      ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now() ? { waitingUntil: this.waitingUntil.toISOString() } : {}),
+      ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now()
+        ? { waitingUntil: this.waitingUntil.toISOString(), ...(this.triedAt ? { triedAt: this.triedAt.toISOString() } : {}) }
+        : {}),
       ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
       elsewhere: !this.deps.leader.isLeader,
+      ...(this.idle ? { idle: this.idle } : {}),
+      ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
     };
+  }
+
+  /** The window lost or got focus: on the return after a while, what the autopilot got done meanwhile. */
+  async focused(focused: boolean, now = new Date()): Promise<void> {
+    if (!focused) {
+      if (this.enabled && !this.awayFrom) this.awayFrom = { at: now, finished: finished(await this.deps.backlog.read()) };
+      return;
+    }
+    const from = this.awayFrom;
+    this.awayFrom = undefined;
+    if (!from || !this.enabled || now.getTime() - from.at.getTime() < AWAY_MS) return;
+    const line = awayLine(from.finished, await this.deps.backlog.read(), wasOvernight(from.at, now));
+    if (!line) return;
+    this.away = { line, until: now.getTime() + AWAY_MS };
+    this.changed.fire();
+  }
+
+  /** Notes why it's idle; after half an hour of it with tickets waiting, a notification says so, once. */
+  private setIdle(reason: string | undefined, now = Date.now()): void {
+    // Idle only with no agent at work; tickets wait unless nothing is left.
+    const waits = reason !== undefined && reason !== 'nothing left in To Do' && this.deps.reviews.running === 0;
+    if (!waits) {
+      this.idleSince = undefined;
+      this.idleNoticed = false;
+    } else if (this.idleSince === undefined) this.idleSince = now;
+    else if (!this.idleNoticed && now - this.idleSince >= IDLE_NOTICE_MS) {
+      this.idleNoticed = true;
+      void vscode.window.showInformationMessage(`The autopilot has been idle for ${Math.round((now - this.idleSince) / 60_000)} minutes: ${reason}.`);
+    }
+    if (reason !== this.idle) {
+      this.idle = reason;
+      this.changed.fire();
+    }
   }
 
   /** The To Do tickets held back because they'd change files a ticket in progress changes (BL-71), as of the last tick. */
@@ -156,14 +216,14 @@ export class Autopilot implements vscode.Disposable {
 
   /**
    * The To Do tickets whose map is firm about files a ticket in progress changes (BL-71): they wait for it, so their
-   * work isn't built on code about to change under it (and done again after the merge). Off with
-   * flotilla.autopilot.avoidClashes.
+   * work isn't built on code about to change under it (and done again after the merge). Only with
+   * flotilla.autopilot.avoidClashes on: off by default (BL-142), tickets wait only for what they say they depend on.
    */
   private async clashing(data: BacklogData): Promise<Map<string, Clash>> {
     const found = new Map<string, Clash>();
     // Without the repository's worktrees (yet), there's nothing to compare.
     const main = this.deps.repository?.current.find((w) => w.worktree.isMain)?.worktree.path;
-    if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', true)) return found;
+    if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', false)) return found;
     const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping);
     const active = data.items.filter((i) => i.status === 'doing' || i.status === 'review');
     if (!todo.length || !active.length) return found;
@@ -214,13 +274,27 @@ export class Autopilot implements vscode.Disposable {
     }
   }
 
-  /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55). */
-  private async waiting(data: BacklogData): Promise<string[]> {
+  /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55), and for which. */
+  private async waiting(data: BacklogData): Promise<Map<string, string[]>> {
     const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed);
     const waits = await Promise.all(
-      todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).length > 0),
+      todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).map((d) => d.id)),
     );
-    return todo.filter((_, n) => waits[n]).map((i) => i.id);
+    return new Map(todo.flatMap((i, n) => (waits[n].length ? [[i.id, waits[n]] as const] : [])));
+  }
+
+  /**
+   * Try Now (BL-132): the agents paused on a usage limit go on now if Claude takes work again (see
+   * ReviewLoop.tryPausedNow), and the autopilot takes To Do tickets again; if it doesn't, it waits on, and says when it
+   * tried. Its switch stays as it is.
+   */
+  async tryNow(): Promise<Awaited<ReturnType<ReviewLoop['tryPausedNow']>>> {
+    const result = await this.deps.reviews.tryPausedNow();
+    this.triedAt = result?.limited ? result.tried : undefined;
+    this.waitingUntil = await this.deps.reviews.pausedUntil();
+    this.changed.fire();
+    await this.tick();
+    return result;
   }
 
   /** Starts work on the next item, while there's room for another agent. */
@@ -228,9 +302,11 @@ export class Autopilot implements vscode.Disposable {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
     this.ticking = true;
     let memoryWait = false;
+    let idle: string | undefined;
     try {
       const was = this.waitingUntil?.getTime();
       this.waitingUntil = await this.deps.reviews.pausedUntil();
+      if (!this.waitingUntil) this.triedAt = undefined;
       if (this.waitingUntil?.getTime() !== was) this.changed.fire();
       if (this.waitingUntil) return;
       while (this.enabled && this.deps.reviews.canStartNew()) {
@@ -240,8 +316,12 @@ export class Autopilot implements vscode.Disposable {
         this.clashes = clashes;
         if (changed) this.changed.fire();
         await this.noteClashes(data);
-        const item = nextForAutopilot(data, new Set([...this.failed, ...(await this.waiting(data)), ...clashes.keys()]));
-        if (!item) return;
+        const waits = await this.waiting(data);
+        const item = nextForAutopilot(data, new Set([...this.failed, ...waits.keys(), ...clashes.keys()]));
+        if (!item) {
+          idle = clashes.size ? undefined : idleReason(data, waits, this.failed);
+          return;
+        }
         // Too little memory for another agent: this one waits, and the next tick tries again.
         if (memoryShortage()) {
           memoryWait = true;
@@ -256,6 +336,7 @@ export class Autopilot implements vscode.Disposable {
       }
     } finally {
       this.ticking = false;
+      this.setIdle(idle);
       if (memoryWait !== this.waitingForMemory) {
         this.waitingForMemory = memoryWait;
         this.changed.fire();
@@ -275,7 +356,7 @@ export class Autopilot implements vscode.Disposable {
         await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
         return;
       }
-      await this.deps.reviews.startWork(fresh, ws, slot);
+      await this.deps.reviews.startWork(fresh, ws, { slot });
       if (fresh.startFailed) await this.deps.backlog.change((d) => setStartFailed(d, item.id));
     } catch (error) {
       this.deps.reviews.giveBack(slot);

@@ -224,6 +224,8 @@ explanations that change nothing don't need one.
    into) into your branch, resolve any conflicts, and run the project's checks (build, tests). Merge only main, never
    another ticket's branch. If you need another ticket's work, add a line \`Depends on: BL-12\` (its id) to your
    ticket's description and say so in your report: your ticket then shows that it waits for that one to be merged.
+   Use \`Depends on:\` only when a ticket builds on another's work or reshapes the same feature, not because both
+   change the same files: tickets start from main at once, and overlapping changes are reconciled when they merge.
 
 ## Adding tickets
 

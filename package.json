@@ -81,6 +81,12 @@
         "icon": "$(git-merge)"
       },
       {
+        "command": "flotilla.mergeNext",
+        "title": "Merge Next",
+        "category": "Flotilla",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "flotilla.pushMerged",
         "title": "Push the Base Branch…",
         "category": "Flotilla",
@@ -415,6 +421,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.tryPausedNow",
+        "title": "Try Paused Agents Now",
+        "category": "Flotilla",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "flotilla.toggleAutopilot",
         "title": "Toggle Autopilot (Agents Take To Do Tickets)",
         "category": "Flotilla",
@@ -647,6 +659,10 @@
         {
           "command": "flotilla.mergeAllReady",
           "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.mergeNext",
+          "when": "false"
         },
         {
           "command": "flotilla.pushMerged",
@@ -1100,9 +1116,14 @@
           "group": "1_merge@1"
         },
         {
+          "command": "flotilla.mergeNext",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogQueued",
+          "group": "1_merge@2"
+        },
+        {
           "command": "flotilla.mergeAllReady",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
-          "group": "1_merge@2"
+          "group": "1_merge@3"
         },
         {
           "command": "flotilla.runBacklogItem",
@@ -1837,8 +1858,8 @@
         },
         "flotilla.autopilot.avoidClashes": {
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "The autopilot holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
+          "default": false,
+          "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
         },
         "flotilla.autopilot.maxAgents": {
           "type": "number",

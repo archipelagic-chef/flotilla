@@ -222,6 +222,16 @@ async function play(page, step) {
       await target.hover({ timeout });
       break;
     }
+    case 'drag': {
+      const source = await find(page, step.value, timeout);
+      const target = await find(page, step.to, timeout);
+      const from = await source.boundingBox();
+      const to = await target.boundingBox();
+      if (from) await pointer(page, from.x + from.width / 2, from.y + from.height / 2);
+      if (to) await pointer(page, to.x + to.width / 2, to.y + to.height / 2);
+      await source.dragTo(target, { timeout });
+      break;
+    }
     case 'type':
       await page.keyboard.type(step.value, { delay: 45 });
       break;
@@ -403,6 +413,8 @@ async function show(mode, demo, out, still, display) {
       '--new-window',
       // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
       '--disable-dev-shm-usage',
+      // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
+      '--password-store=basic',
       playground,
     ],
     // The user's VS Code session variables would make this window talk to theirs.

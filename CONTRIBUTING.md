@@ -15,6 +15,8 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 `npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
 
+Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
+
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
 The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`), so run that first. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
@@ -68,6 +70,16 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 
 `scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
 
+## Buttons that wait
+
+A button that starts something taking a while (git, GitHub, an agent starting, a file write and the backlog's refresh) says it's working from the click until the host is done, and takes no second click meanwhile (BL-116). The webview marks the action busy when it sends it; the host replies "done" for every such message, in a `finally`, whether the action posted, failed (`failed: true`; the error shows as before), was cancelled at a question or returned early. So nothing sticks, and a button whose action asks first (a confirmation, a quick pick) stays working while the question is up.
+
+- **The ticket view**: use `ActionButton` with the message (`working="Merging…"` for a label of its own; "Working…" by default), or call `act(message, label)` from a button of your own and read `useWorking(message)` ([src/webview/ticket/main.tsx](src/webview/ticket/main.tsx)). The host's `{ type: 'done' }` is posted for every message ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)). Two clicks are the same action when `actionKey` ([src/webview/ticketActions.ts](src/webview/ticketActions.ts)) gives them the same key: give a new message type a case there when it carries a target (a hash, a key, a verdict), so one item's busy button doesn't disable another's.
+- **The sidebar's backlog**: use `BusyButton` with the `backlog` message and its codicon (it spins while working), or `act(message)` and `useBusy().has(message)` ([src/webview/ui/backlogBusy.tsx](src/webview/ui/backlogBusy.tsx)). The sidebar posts `backlogDone` for every `backlog` message ([src/ui/sidebar/sidebarProvider.ts](src/ui/sidebar/sidebarProvider.ts)); `backlogActionKey` ([src/webview/backlogActions.ts](src/webview/backlogActions.ts)) keys them by op and item, and an item's busy actions end when it leaves the backlog.
+- **Other sidebar messages**: a message that has no done reply yet gets one the same way: the host posts it in a `finally` around the handler, with the message as it was sent, and the webview clears the busy state on it. Don't rely on the tool icon's spinner (`trackProgress`): it isn't where the user clicked.
+
+Test it as `tests/unit/webview/backlogActions.test.ts` does (a second start of the same action is refused; finishing, failing and pruning clear it), and show it in the ticket's demo, as `demos/backlog-busy.json` does: a caption right after the click, while the button is still working.
+
 ## Demos
 
 When a change is something you see or click (a button, a panel, a flow), its ticket shows it working: a demo is a short script of steps in `demos/<name>.json`, which `npm run demo` plays in an isolated VS Code and records as a GIF. The ticket's Run button plays the same steps again live, at the same pace, so you see what the GIF shows. The report's run block names the demo, with the player's command as its line:
@@ -105,6 +117,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "command": "Focus on Flotilla View" }` | runs a command through the Command Palette, typed as a user would |
 | `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
 | `{ "hover": ".ci-run" }` | moves the pointer onto it and leaves it there, so what shows on hover (a row's actions) can be clicked next |
+| `{ "drag": "text=BL-2", "to": "text=BL-1" }` | drags the first element onto the second (both in the same webview), as a mouse would |
 | `{ "type": "BL-3" }` / `{ "press": "Enter" }` | types text, presses a key (`Control+Enter`, `Escape`…) |
 | `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |

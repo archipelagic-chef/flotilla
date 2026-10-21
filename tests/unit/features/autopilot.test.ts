@@ -41,6 +41,7 @@ describe('the autopilot switch', () => {
         dispose() {}
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
     }));
     const fs = await import('node:fs');
     const path = await import('node:path');
@@ -100,6 +101,7 @@ describe('the autopilot and memory', () => {
         dispose() {}
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
     }));
     vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => short }));
     const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
@@ -147,6 +149,7 @@ describe('the autopilot gives up a start whose item moved on', () => {
         dispose() {}
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
     }));
     // The real ledger (so the memory given back is what's counted); only the free-memory check is passed.
     vi.doMock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
@@ -206,6 +209,7 @@ describe('the autopilot and tickets that depend on others', () => {
         dispose() {}
       },
       workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
     }));
     vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined, reserveStart: () => 1, releaseStart: () => undefined }));
     const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
@@ -264,6 +268,7 @@ describe('the autopilot and tickets whose files clash with work in progress', ()
         dispose() {}
       },
       workspace: { getConfiguration: () => ({ get: (k: string, d: unknown) => (k === 'autopilot.avoidClashes' ? avoidClashes : d) }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
     }));
     vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
     const path = await import('node:path');
@@ -353,5 +358,213 @@ describe('the autopilot and tickets whose files clash with work in progress', ()
       removeDir(path.dirname(wt));
       removeDir(main);
     }
+  });
+});
+
+describe('the autopilot starts tickets at once, and sequences them only by "Depends on" (BL-142)', () => {
+  const setup = async () => {
+    vi.resetModules();
+    const notices: string[] = [];
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async (m: string) => void notices.push(m) },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    return { Autopilot, notices };
+  };
+  const at = '2026-10-21T00:00:00Z';
+  type Item = { id: string; title: string; status: 'todo' | 'doing' | 'review' | 'done'; created: string };
+
+  it('starts two tickets changing a file a ticket in progress changes, by default', async () => {
+    const { Autopilot } = await setup();
+    const path = await import('node:path');
+    const { git, initRepo, makeTempDir, removeDir, writeFile } = await import('../../helpers/gitRepo');
+    const main = initRepo();
+    const wt = path.join(makeTempDir(), 'bl-2');
+    try {
+      writeFile(main, 'src/a.ts', '1');
+      git(main, 'add', '.');
+      git(main, 'commit', '-qm', 'files');
+      git(main, 'worktree', 'add', '-q', '-b', 'feature/BL-2-busy', wt);
+      writeFile(wt, 'src/a.ts', '2');
+      git(wt, 'commit', '-qam', 'BL-2: change a');
+      const data = {
+        version: 1 as const,
+        next: 5,
+        items: [
+          { id: 'BL-1', title: 'One', status: 'todo', created: at },
+          { id: 'BL-2', title: 'Busy', status: 'doing', created: at },
+          { id: 'BL-3', title: 'Two', status: 'todo', created: at },
+        ] as Item[],
+      };
+      const prepareWorktree = vi.fn(async (i: Item) => void (i.status = 'doing') as undefined);
+      const pilot = new Autopilot({
+        backlog: {
+          dir: '/unused',
+          watch: () => ({ dispose() {} }),
+          ensureDir: async () => undefined,
+          read: async () => data,
+          readTicketCached: async () => ({ description: 'Change `src/a.ts`.', activity: [] }),
+          appendActivity: async () => undefined,
+          change: async () => data,
+        },
+        repository: { current: [{ worktree: { isMain: true, path: main, branch: 'main' } }, { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } }] },
+        reviews: { running: 0, limit: 3, waitingCount: 0, canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+        leader: { isLeader: true, check: () => true },
+        output: { appendLine() {} },
+        key: async () => 'key',
+        prepareWorktree,
+      } as never);
+      await (pilot as unknown as { refresh(): Promise<void> }).refresh();
+      (pilot as unknown as { on: boolean }).on = true;
+      await pilot.tick();
+      expect(prepareWorktree.mock.calls.map((c) => (c as unknown as [Item])[0].id)).toEqual(['BL-1', 'BL-3']);
+      expect(pilot.clashOf('BL-1')).toBeUndefined();
+      pilot.dispose();
+    } finally {
+      git(main, 'worktree', 'remove', '--force', wt);
+      removeDir(path.dirname(wt));
+      removeDir(main);
+    }
+  });
+
+  it('holds a ticket that depends on an unmerged one, says why when idle, notifies once after 30 minutes, and starts it once that one has landed', async () => {
+    const { Autopilot, notices } = await setup();
+    const data = {
+      version: 1 as const,
+      next: 5,
+      items: [
+        { id: 'BL-130', title: 'Waits', status: 'todo', created: at },
+        { id: 'BL-126', title: 'First', status: 'review', created: at },
+      ] as Item[],
+    };
+    const started: string[] = [];
+    const pilot = new Autopilot({
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async (i: Item) => ({ description: i.id === 'BL-130' ? 'Depends on: BL-126' : '', activity: [] }),
+        appendActivity: async () => undefined,
+        change: async () => data,
+      },
+      repository: { current: [] },
+      reviews: { running: 0, limit: 2, waitingCount: 0, canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree: async (i: Item) => {
+        started.push(i.id);
+        i.status = 'doing';
+        return undefined;
+      },
+    } as never);
+    await (pilot as unknown as { refresh(): Promise<void> }).refresh();
+    (pilot as unknown as { on: boolean }).on = true;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-21T01:00:00Z'));
+      await pilot.tick();
+      expect(started).toEqual([]);
+      expect(pilot.view().idle).toBe('BL-130 waits for BL-126 (in review)');
+      vi.setSystemTime(new Date('2026-10-21T01:20:00Z'));
+      await pilot.tick();
+      expect(notices).toEqual([]);
+      vi.setSystemTime(new Date('2026-10-21T01:31:00Z'));
+      await pilot.tick();
+      await pilot.tick();
+      expect(notices).toEqual(['The autopilot has been idle for 31 minutes: BL-130 waits for BL-126 (in review).']);
+      // BL-126 lands: BL-130 starts.
+      data.items[1].status = 'done';
+      await pilot.tick();
+      expect(started).toEqual(['BL-130']);
+      expect(pilot.view().idle).toBe('nothing left in To Do');
+    } finally {
+      vi.useRealTimers();
+      pilot.dispose();
+    }
+  });
+
+  it('says on the return what it got done while the user was away', async () => {
+    const { Autopilot } = await setup();
+    const data = { version: 1 as const, next: 5, items: [{ id: 'BL-1', title: 'A', status: 'doing', created: at }] as Item[] };
+    const pilot = new Autopilot({
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }) },
+      repository: { current: [] },
+      reviews: { running: 0, limit: 2, waitingCount: 0, canStartNew: () => false, pausedUntil: async () => undefined },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree: async () => undefined,
+    } as never);
+    await (pilot as unknown as { refresh(): Promise<void> }).refresh();
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.focused(false, new Date(2026, 9, 20, 22, 0));
+    Object.assign(data.items[0], { status: 'review', review: { state: 'yours' } });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(2026, 9, 21, 7, 0));
+      await pilot.focused(true, new Date(2026, 9, 21, 7, 0));
+      expect(pilot.view().away).toBe('Overnight: 1 ticket done, 1 waiting for you');
+    } finally {
+      vi.useRealTimers();
+      pilot.dispose();
+    }
+  });
+});
+
+describe('the autopilot and Try Now (BL-132)', () => {
+  it('waits on, saying when it tried, while the limit is still there; takes To Do tickets again once it lifted', async () => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const at = '2026-10-11T00:00:00Z';
+    const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
+    const reset = new Date(Date.now() + 3600_000);
+    let until: Date | undefined = reset;
+    const tried = new Date();
+    const tryPausedNow = vi.fn(async () => ({ tried, resumed: 0, limited: reset }) as { tried: Date; resumed: number; limited?: Date });
+    const prepareWorktree = vi.fn(async () => undefined);
+    const pilot = new Autopilot({
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity: async () => undefined, change: async () => data },
+      reviews: { running: 0, limit: 2, waitingCount: 0, canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => until, startWork: async () => undefined, tryPausedNow },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree,
+    } as never);
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(pilot.view()).toMatchObject({ waitingUntil: reset.toISOString() });
+    expect(pilot.view().triedAt).toBeUndefined();
+
+    await pilot.tryNow();
+    expect(pilot.enabled).toBe(true);
+    expect(pilot.view()).toMatchObject({ waitingUntil: reset.toISOString(), triedAt: tried.toISOString() });
+    expect(prepareWorktree).not.toHaveBeenCalled();
+
+    tryPausedNow.mockResolvedValue({ tried: new Date(), resumed: 1 });
+    until = undefined;
+    await pilot.tryNow();
+    expect(pilot.view().waitingUntil).toBeUndefined();
+    expect(pilot.view().triedAt).toBeUndefined();
+    expect(prepareWorktree).toHaveBeenCalledTimes(1);
+    pilot.dispose();
   });
 });
