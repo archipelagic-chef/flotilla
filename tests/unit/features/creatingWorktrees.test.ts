@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { CreatingWorktrees } from '../../../src/features/backlog/creatingWorktrees';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { clearCreatingRecord, CreatingWorktrees, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
 
 describe('CreatingWorktrees', () => {
   it('runs one creation per ticket at a time; a second start meanwhile creates nothing', async () => {
@@ -41,5 +44,65 @@ describe('CreatingWorktrees', () => {
     await waited;
     expect(creating.has('BL-3')).toBe(false);
     expect((await creating.run('BL-3', async () => 'again')).busy).toBe(false);
+  });
+
+  describe('shared between windows', () => {
+    const dirs: string[] = [];
+    const tmp = () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'creating-'));
+      dirs.push(dir);
+      return path.join(dir, 'flotilla', 'creating');
+    };
+    afterEach(() => {
+      for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+    });
+    const window = (pid: number, running: Set<number>, host = 'box') => new CreatingWorktrees({ pid, host }, (p) => running.has(p));
+
+    it('records a creation while it runs, so another window sees it and creates nothing', async () => {
+      const dir = tmp();
+      const running = new Set([1, 2]);
+      const a = window(1, running);
+      const b = window(2, running);
+      const disposers = [a.attach(dir), b.attach(dir)];
+      let finish!: () => void;
+      const first = a.run('BL-7', () => new Promise<void>((resolve) => (finish = resolve)));
+
+      expect(readCreatingRecords(dir)).toMatchObject([{ id: 'BL-7', pid: 1, host: 'box' }]);
+      b.reload();
+      expect(b.has('BL-7')).toBe(true);
+      expect(await b.run('BL-7', async () => 'second')).toEqual({ busy: true });
+
+      const waited = b.settled('BL-7');
+      finish();
+      await first;
+      await waited;
+      expect(readCreatingRecords(dir)).toEqual([]);
+      expect(b.has('BL-7')).toBe(false);
+      for (const d of disposers) d.dispose();
+    });
+
+    it("doesn't count a record left by a window that closed mid-creation; clearing removes it", () => {
+      const dir = tmp();
+      const running = new Set([2]);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'BL-8.json'), JSON.stringify({ id: 'BL-8', pid: 1, host: 'box', at: 0 }));
+      const b = window(2, running);
+      const d = b.attach(dir);
+      expect(b.has('BL-8')).toBe(false);
+      expect(readCreatingRecords(dir)).toHaveLength(1);
+      clearCreatingRecord(dir, 'BL-8');
+      expect(readCreatingRecords(dir)).toEqual([]);
+      d.dispose();
+    });
+
+    it("trusts another machine's record, whose process it can't see", () => {
+      const dir = tmp();
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'BL-9.json'), JSON.stringify({ id: 'BL-9', pid: 1, host: 'elsewhere', at: 0 }));
+      const b = window(2, new Set([2]));
+      const d = b.attach(dir);
+      expect(b.has('BL-9')).toBe(true);
+      d.dispose();
+    });
   });
 });

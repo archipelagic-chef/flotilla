@@ -65,6 +65,7 @@ import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
+import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -211,6 +212,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // The merge queue's train is rebuilt when main, a queued branch or the queue moves.
     repository.onDidChange(() => merger.queueChanged()),
     backlog.watch(() => merger.queueChanged()),
+  );
+  // Worktrees being created are recorded in the common dir, so every window sees each other's (and doesn't make another).
+  context.subscriptions.push(
+    creatingWorktrees.attach(creatingDir(location.commonDir)),
+    repository.onDidChange(() => creatingWorktrees.reload()),
   );
   void merges.refresh();
   const runTerminals = new RunTerminals();
