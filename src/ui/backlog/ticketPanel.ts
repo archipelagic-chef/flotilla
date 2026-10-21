@@ -43,7 +43,6 @@ import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
 import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
-import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
 import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
@@ -1417,9 +1416,6 @@ export class TicketPanels implements vscode.Disposable {
       case 'keepDiscussing':
         await this.shaping?.keepDiscussing(id);
         break;
-      case 'openFile':
-        await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
-        return;
       case 'link':
         await vscode.commands.executeCommand('flotilla.linkBacklogItem', id);
         return;
@@ -1431,9 +1427,6 @@ export class TicketPanels implements vscode.Disposable {
         if (link) await vscode.env.openExternal(vscode.Uri.parse(link.url));
         return;
       }
-      case 'openWorktree':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
-        return;
       case 'transition': {
         const move = (await this.remoteDetails(id)).edit?.transitions.find((t) => t.id === m.id);
         if (!move || !item.remote) return;
@@ -1451,43 +1444,6 @@ export class TicketPanels implements vscode.Disposable {
       }
       case 'remotePriority':
         await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
-        return;
-      case 'openCommit': {
-        // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
-        const work = await this.work(item);
-        const { commits } = work;
-        const commit = commits.find((c) => c.hash === m.hash);
-        // A commit of a kept history is on no branch: its diff.
-        if (!commit) {
-          if (work.history.some((v) => v.log.some((c) => c.hash === m.hash))) await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-          return;
-        }
-        const candidates = [
-          ...this.worktreesOf(item).filter((w) => w.worktree.branch && commit.branches.includes(w.worktree.branch)),
-          ...this.worktreesOf(item),
-          ...this.deps.repository.current.filter((w) => w.worktree.isMain),
-        ];
-        for (const ws of candidates) {
-          if (!ws.worktree.path) continue;
-          const has = await runGit(['merge-base', '--is-ancestor', m.hash, 'HEAD'], { cwd: ws.worktree.path }).then(
-            () => true,
-            () => false,
-          );
-          if (has) {
-            await this.deps.showCommits(
-              ws.key,
-              id,
-              commits.map((c) => c.hash),
-              m.hash,
-            );
-            return;
-          }
-        }
-        await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-        return;
-      }
-      case 'openHref':
-        await this.openHref(item, m.href);
         return;
       case 'agentModel': {
         if (item.remote) return;
@@ -1561,13 +1517,6 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'push':
         await this.merger?.push();
-        return;
-      case 'run':
-        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index, ...(m.try ? { try: true } : {}) });
-        return;
-      case 'checkout':
-        if ((await this.work(item)).branches.includes(m.branch))
-          await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
         return;
       case 'mergeSibling':
         await this.mergeSibling(item, m.branch);
