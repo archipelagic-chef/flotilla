@@ -12,9 +12,7 @@ import {
   itemBranches,
   entryAgent,
   sameAgent,
-  linkIssue,
   linkedItem,
-  unlinkIssue,
   readyToMerge,
   type AgentChoice,
   type BacklogItem,
@@ -1404,9 +1402,6 @@ export class TicketPanels implements vscode.Disposable {
     if (!item) return;
     const backlog = this.deps.backlog;
     switch (m.type) {
-      case 'openRemote':
-        if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-        return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
         return;
@@ -1416,35 +1411,6 @@ export class TicketPanels implements vscode.Disposable {
       case 'keepDiscussing':
         await this.shaping?.keepDiscussing(id);
         break;
-      case 'link':
-        await vscode.commands.executeCommand('flotilla.linkBacklogItem', id);
-        return;
-      case 'unlink':
-        await backlog.change((d) => unlinkIssue(d, id, m.id));
-        break;
-      case 'openLink': {
-        const link = item.links?.find((l) => l.id === m.id);
-        if (link) await vscode.env.openExternal(vscode.Uri.parse(link.url));
-        return;
-      }
-      case 'transition': {
-        const move = (await this.remoteDetails(id)).edit?.transitions.find((t) => t.id === m.id);
-        if (!move || !item.remote) return;
-        if (move.needs?.length) {
-          // The workflow asks for more on this move (a resolution, a reviewer): that's done in the tracker.
-          const open = await vscode.window.showWarningMessage(
-            `"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`,
-            'Do It in the Tracker',
-          );
-          if (open) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-          return;
-        }
-        await this.writeRemote(id, (s) => s.transition(id, move.id));
-        return;
-      }
-      case 'remotePriority':
-        await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
-        return;
       case 'agentModel': {
         if (item.remote) return;
         let model = m.model?.trim() || undefined;
@@ -1548,15 +1514,6 @@ export class TicketPanels implements vscode.Disposable {
       case 'openChat':
         if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
         return;
-      case 'createIssue': {
-        if (item.remote) return;
-        const ticket = await backlog.readTicket(item);
-        const link = await this.deps.integrations.createIssue(id, item.title, ticket.description);
-        if (!link) return;
-        await backlog.change((d) => linkIssue(d, id, link));
-        await this.addActivity(id, 'Flotilla', `Created [${link.id}](${link.url}) and linked it.`);
-        break;
-      }
       default:
         await handleMessage({ id, panel, item, backlog, panels: this }, m);
     }
