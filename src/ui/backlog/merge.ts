@@ -35,7 +35,7 @@ import {
   timeoutsOnly,
   type MergeState,
 } from '../../features/backlog/merge';
-import { buildTrain, dequeue, enqueue, landing, ordinal, queuedItems, trainIsCurrent, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
+import { buildTrain, dequeue, enqueue, landing, ordinal, queuedItems, recordResolution, startTrainMerge, trainIsCurrent, trainOnto, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -230,7 +230,7 @@ export class Merger implements vscode.Disposable {
    * The train for the queue as it is now: the saved one if it was built on the same tips, else built again (in a
    * temporary worktree) and saved. The queue drops tickets that aren't ready to merge any more. Runs inside a task.
    */
-  private async currentTrain(): Promise<MergeTrain | undefined> {
+  private async currentTrain(o: { rebuild?: boolean } = {}): Promise<MergeTrain | undefined> {
     const root = this.deps.mainRoot;
     const base = await this.baseBranch();
     if (!base) return undefined;
@@ -243,8 +243,12 @@ export class Merger implements vscode.Disposable {
       if (branch && tip) entries.push({ id: item.id, branch, tip, message: mergeMessage(item) });
     }
     const baseTip = (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root })).trim();
-    const ids = queued.map((i) => i.id);
-    if (trainIsCurrent(data.mergeTrain, baseTip, entries) && JSON.stringify(ids) === JSON.stringify(data.mergeQueue ?? [])) {
+    // A ticket whose train conflict is being resolved keeps its place: it's left out of the train meanwhile (BL-146).
+    const keep = (d: BacklogData) => {
+      const kept = new Set([...queuedItems(d).map((i) => i.id), ...d.items.filter((i) => i.merging?.train).map((i) => i.id)]);
+      return (d.mergeQueue ?? []).filter((id) => kept.has(id));
+    };
+    if (!o.rebuild && trainIsCurrent(data.mergeTrain, baseTip, entries) && JSON.stringify(keep(data)) === JSON.stringify(data.mergeQueue ?? [])) {
       await this.readQueue();
       return data.mergeTrain;
     }
@@ -253,8 +257,7 @@ export class Merger implements vscode.Disposable {
       (d) => {
         const { mergeTrain: _old, ...rest } = d;
         // Tickets queued meanwhile stay, at the end.
-        const queue = [...ids, ...dequeue(queuedItems(d).map((i) => i.id), ids)];
-        return { ...rest, mergeQueue: queue, ...(train ? { mergeTrain: train } : {}) };
+        return { ...rest, mergeQueue: keep(d), ...(train ? { mergeTrain: train } : {}) };
       },
       { by: 'Flotilla' },
     );
@@ -849,9 +852,41 @@ export class Merger implements vscode.Disposable {
       }
       if (waiting.length)
         void vscode.window.showWarningMessage(
-          `Merge All Ready ${merged.length ? `merged ${merged.join(', ')}` : 'merged nothing'}. ${waiting.join(', ')} ${waiting.length === 1 ? 'waits: it conflicts' : 'wait: they conflict'} with the tickets ahead in the merge queue. Merge to main merges one onto ${base} as it is, to resolve its conflicts.`,
+          `Merge All Ready ${merged.length ? `merged ${merged.join(', ')}` : 'merged nothing'}. ${waiting.join(', ')} ${waiting.length === 1 ? 'waits: it conflicts' : 'wait: they conflict'} with the tickets ahead in the merge queue. Resolve with Agent in its ticket resolves them in the train; Merge to main merges one onto ${base} as it is.`,
           'Open',
         ).then((c) => c && this.deps.openTicket(waiting[0]));
+    });
+  }
+
+  /**
+   * A queued ticket that conflicts with the tickets ahead of it in the train (BL-146): its merge in the train is made
+   * in a temporary worktree at the train's commit before it, for an agent to resolve. Its branch isn't changed; the
+   * tickets behind it are merged as if it weren't there until you approve.
+   */
+  resolveTrainConflict(id: string): Promise<void> {
+    return this.serial({ id, what: `${id}'s merge in the merge train` }, async () => {
+      const item = await this.item(id);
+      if (!item || item.merging) return this.startResolver(id);
+      const base = await this.baseBranch();
+      const train = await this.currentTrain();
+      const entry = train?.entries.find((e) => e.id === id);
+      const onto = train && trainOnto(train, id);
+      if (!base || !entry?.conflicts || !onto) {
+        void vscode.window.showInformationMessage(`${id} doesn't conflict with the tickets ahead of it in the merge queue (any more).`);
+        return;
+      }
+      const dir = this.mergeDir(id);
+      await fs.promises.mkdir(path.dirname(dir), { recursive: true });
+      const files = await startTrainMerge(this.deps.mainRoot, { dir, onto: onto.commit, branch: entry.branch, message: mergeMessage(item) });
+      if (!files.length) {
+        void vscode.window.showInformationMessage(`${id}'s merge in the merge train has no conflicts now: the train is rebuilt.`);
+        await this.currentTrain({ rebuild: true });
+        return;
+      }
+      this.deps.output.appendLine(`Merge: ${id}'s merge in the merge train (onto ${[base, ...onto.ahead].join(' + ')}, ${onto.commit.slice(0, 7)}) in ${dir}.`);
+      await this.setMerge(id, { dir, branch: entry.branch, base, baseTip: onto.commit, train: { ahead: onto.ahead }, state: 'failed', reason: conflictsReason(files), started: new Date().toISOString() });
+      await this.startResolver(id);
+      await this.readQueue();
     });
   }
 
@@ -889,7 +924,9 @@ export class Merger implements vscode.Disposable {
     const agent = m.agent ?? agentName(taken);
     const checks = await checkCommand(m.dir, settings().get<string>('merge.checkCommand', ''));
     if (checks) await linkDependencies(m.dir, this.worktreeOn(m.base)?.worktree.path ?? root).catch(() => undefined);
-    const common = { item, agent, ticket: this.deps.backlog.docPath(id), branch: m.branch, base: m.base, start, description: (await this.deps.backlog.readTicket(item)).description, ours, others };
+    // A merge in the train goes onto the base and the tickets ahead of it there (BL-146).
+    const onto = m.train ? [m.base, ...m.train.ahead].join(' + ') : m.base;
+    const common = { item, agent, ticket: this.deps.backlog.docPath(id), branch: m.branch, base: onto, start, description: (await this.deps.backlog.readTicket(item)).description, ours, others };
     const prompt = [
       agentLead(item, agent),
       failedChecks
@@ -964,6 +1001,7 @@ export class Merger implements vscode.Disposable {
           void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
           return 'stopped';
         }
+        if (m.train) return this.landResolved(item, m, result.merge);
         await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
         return this.complete(
           item,
@@ -972,6 +1010,28 @@ export class Merger implements vscode.Disposable {
         );
       }),
     );
+  }
+
+  /**
+   * An approved resolution of a merge in the train (BL-146): recorded (rerere), the train rebuilt with it, and the
+   * ticket landed from the train, as Merge to main does. Runs inside a task.
+   */
+  private async landResolved(item: BacklogItem, m: MergeState, merge: string): Promise<MergeEnd> {
+    const files = await recordResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge, message: mergeMessage(item) });
+    await this.removeDir(m.dir);
+    await this.setMerge(item.id, undefined);
+    const onto = [m.base, ...(m.train?.ahead ?? [])].join(' + ');
+    await this.note(
+      item.id,
+      `You approved the resolution of its merge onto ${onto} in the merge train: it's recorded (${files.map((f) => `\`${f}\``).join(', ') || 'no conflicts to record'}), so the train reuses it when it's rebuilt. \`${m.branch}\` wasn't changed.`,
+    );
+    const train = await this.currentTrain({ rebuild: true });
+    const entry = train?.entries.find((e) => e.id === item.id);
+    if (!entry?.commit) {
+      await this.note(item.id, `The merge train still doesn't take it: ${(train && trainState(train, item.id)) ?? "it isn't in the merge queue."} Resolve with Agent again, or Merge to main merges it onto ${m.base} as it is.`);
+      return 'stopped';
+    }
+    return this.doMerge(item.id, false);
   }
 
   /**

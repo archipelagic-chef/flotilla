@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { mergeRoot } from '../../../src/features/backlog/merge';
-import { buildTrain, dequeue, enqueue, landing, lastInTrain, ordinal, queuedItems, TRAIN_BRANCH, trainIsCurrent, trainState } from '../../../src/features/backlog/mergeTrain';
+import { buildTrain, dequeue, enqueue, landing, lastInTrain, ordinal, queuedItems, recordResolution, startTrainMerge, TRAIN_BRANCH, trainIsCurrent, trainOnto, trainState } from '../../../src/features/backlog/mergeTrain';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -115,5 +115,38 @@ describe('the train', () => {
       ['BL-3', true, true],
     ]);
     expect(git(repo, 'show', `${train.tip}:shared.txt`)).toBe('two and three');
+  });
+
+  it("resolves a conflict between the 2nd and 3rd ticket once, in the entry's merge in the train, and reuses it on every rebuild", async () => {
+    const { repo, tmp } = setup();
+    const baseTip = rev(repo, 'main');
+    const tip3 = rev(repo, 'feature/BL-3');
+    const first = await buildTrain(repo, { dir: dir(tmp, '5'), base: 'main', baseTip, entries: entries('BL-1', 'BL-2', 'BL-3') });
+    expect(first.entries[2].conflicts).toEqual(['shared.txt']);
+    const onto = trainOnto(first, 'BL-3')!;
+    expect(onto).toEqual({ commit: first.entries[1].commit, ahead: ['BL-1', 'BL-2'] });
+    // The agent's worktree: at the train's commit before BL-3, its merge in progress.
+    const work = dir(tmp, 'resolve');
+    expect(await startTrainMerge(repo, { dir: work, onto: onto.commit, branch: 'feature/BL-3', message: 'Merge BL-3: Item BL-3' })).toEqual(['shared.txt']);
+    // It resolves and commits the merge as git is configured (no rerere).
+    writeFile(work, 'shared.txt', 'two and three\n');
+    git(work, 'add', '.');
+    git(work, 'commit', '-q', '--no-edit');
+    const resolved = rev(work, 'HEAD');
+    expect(await recordResolution(work, { onto: onto.commit, tip: 'feature/BL-3', resolved, message: 'Merge BL-3: Item BL-3' })).toEqual(['shared.txt']);
+    expect(rev(work, 'HEAD')).toBe(resolved);
+    git(repo, 'worktree', 'remove', '--force', work);
+    for (const n of ['6', '7']) {
+      const train = await buildTrain(repo, { dir: dir(tmp, n), base: 'main', baseTip, entries: entries('BL-1', 'BL-2', 'BL-3') });
+      expect(train.entries.map((e) => [e.id, !!e.commit, !!e.reused])).toEqual([
+        ['BL-1', true, false],
+        ['BL-2', true, false],
+        ['BL-3', true, true],
+      ]);
+      expect(trainState(train, 'BL-3')).toBe('Merges cleanly onto main + BL-1 + BL-2 (with a resolution recorded before).');
+      expect(git(repo, 'show', `${train.tip}:shared.txt`)).toBe('two and three');
+    }
+    // Its branch wasn't changed, and nothing was merged into it.
+    expect(rev(repo, 'feature/BL-3')).toBe(tip3);
   });
 });

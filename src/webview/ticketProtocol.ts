@@ -343,6 +343,8 @@ export type TicketWebviewMessage =
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
   | { type: 'mergeQueueRemove' }
+  /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
+  | { type: 'mergeQueueResolve' }
   /** Merge Next (BL-144): to the front of the merge queue. */
   | { type: 'mergeNext' }
   | { type: 'push' }

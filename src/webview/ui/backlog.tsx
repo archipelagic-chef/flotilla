@@ -150,7 +150,10 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
                     : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
                   : autopilot.waitingForMemory
                     ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                    : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
+                    : autopilot.idle && !autopilot.running
+                      ? `· Idle: ${autopilot.idle}.`
+                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+              {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
             </span>
           </button>
           {autopilot.waitingUntil && !autopilot.elsewhere && (
