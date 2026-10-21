@@ -385,16 +385,19 @@ export class TicketPanels implements vscode.Disposable {
     this.asks.clear();
   }
 
-  /** Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes). */
-  private readonly focusOnPost = new WeakSet<vscode.WebviewPanel>();
+  /**
+   * Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes),
+   * or to show their Demo section in (opened from a review card's demo mark, BL-135).
+   */
+  private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, 'comment' | 'demo'>();
 
-  async open(id: string, o: { focus?: 'comment' } = {}): Promise<void> {
+  async open(id: string, o: { focus?: 'comment' | 'demo' } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
     id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
     if (existing) {
       existing.reveal();
-      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
+      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: o.focus } satisfies TicketHostMessage);
       return;
     }
     const item = await this.item(id);
@@ -408,7 +411,7 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
-    if (o.focus) this.focusOnPost.add(panel);
+    if (o.focus) this.focusOnPost.set(panel, o.focus);
     const ci = this.ci?.open(id, panel);
     panel.onDidDispose(() => {
       ci?.dispose();
@@ -862,7 +865,8 @@ export class TicketPanels implements vscode.Disposable {
         this.sentViews.set(panel, next);
         void panel.webview.postMessage(update);
       }
-      if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
+      const focus = this.focusOnPost.get(panel);
+      if (focus && this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: focus } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
     try {
@@ -1160,9 +1164,10 @@ export class TicketPanels implements vscode.Disposable {
    * the ticket's run (its last block). It runs in the ticket's worktree: shell commands one after the other in that
    * worktree's terminal, `launch` and `task` by name, and `open` a web link or a file of the worktree. The first time
    * (and whenever the block or its worktree changed) it asks, showing what runs. The block is read from the ticket when
-   * it runs: one that's gone (its entry was edited) isn't run.
+   * it runs: one that's gone (its entry was edited) isn't run. A demo block with `try` only sets the demo's window up
+   * (Try it yourself, BL-135).
    */
-  async run(id: string, ref?: { key: string; index: number }): Promise<void> {
+  async run(id: string, ref?: { key: string; index: number; try?: boolean }): Promise<void> {
     const item = await this.item(id);
     if (!item || item.remote) return;
     const ticket = await this.deps.backlog.readTicket(item);
@@ -1188,7 +1193,7 @@ export class TicketPanels implements vscode.Disposable {
       return;
     }
     // A demo (its name, then maybe a title) plays in the worktree's terminal, with the repository's player (BL-78).
-    const demo = kind === 'demo' ? demoRun(picked.block) : undefined;
+    const demo = kind === 'demo' ? demoRun(picked.block, ref?.try ? 'try' : 'play') : undefined;
     if (kind === 'demo' && !demo) {
       void vscode.window.showWarningMessage(`${id}'s demo block doesn't name a demo: write its name after \`demo\` (letters, digits, - and _).`);
       return;
@@ -1247,7 +1252,7 @@ export class TicketPanels implements vscode.Disposable {
     }
     // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
     if (!approved) await this.deps.approvals.add(fingerprint);
-    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? 'played' : 'ran';
+    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? (ref?.try ? 'tried' : 'played') : 'ran';
     const ran = demo ? `the demo "${demo.name}"` : title ? `"${title}"` : `the ${kind} block`;
     await this.addActivity(id, 'Flotilla', `You ${verb} ${ran} in \`${place.label}\`.`);
   }
@@ -1529,7 +1534,7 @@ export class TicketPanels implements vscode.Disposable {
         await this.merger?.push();
         return;
       case 'run':
-        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index });
+        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index, ...(m.try ? { try: true } : {}) });
         return;
       case 'checkout':
         if ((await this.work(item)).branches.includes(m.branch))
@@ -1725,7 +1730,7 @@ export class TicketPanels implements vscode.Disposable {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource} https:; connect-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${uri('codicons', 'codicon.css')}">
 <link rel="stylesheet" href="${uri('ticket.css')}">

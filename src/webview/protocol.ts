@@ -43,6 +43,8 @@ export interface BacklogItemView extends BacklogItem {
   clash?: { with: string; files: string[] };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
+  /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
+  demo?: boolean;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -345,7 +347,8 @@ export type WebviewMessage =
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
-  | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
+  /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
+  | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }
   | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** Needs you (queued reply): start it now, above the limit, or pause a running agent for it. */
   | { type: 'backlog'; op: 'prioritize'; id: string }

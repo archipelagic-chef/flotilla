@@ -15,6 +15,7 @@ import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
+import { DEMO_SECTION, DemoSection } from './demo';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -2535,7 +2536,8 @@ function App() {
       } else if (m.type === 'done') {
         finished(m.message, !!m.failed);
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
-      } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+      } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
       else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
@@ -2700,6 +2702,7 @@ function App() {
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
+      <DemoSection ticket={ticket} Action={ActionButton} />
       <Attachments ticket={ticket} send={send} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />

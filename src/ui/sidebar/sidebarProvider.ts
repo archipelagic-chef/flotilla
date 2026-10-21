@@ -10,6 +10,7 @@ import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
+import { gatherAttachments } from '../../features/backlog/attachments';
 import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
@@ -181,6 +182,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // What it waits for, and how its branches merge with main (BL-55).
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
         const base = item.mainCheck && baseLabel(item.mainCheck.base);
+        // A ticket in review that shows a demo: its card has the demo mark (BL-135).
+        const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
           summary: summaryOf(ticket.description),
@@ -192,6 +195,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(waitsFor.length ? { waitsFor } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
+          ...(demo ? { demo } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
         };
       }),
@@ -244,6 +248,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'comment':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
+        return;
+      case 'demo':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'demo' });
         return;
       case 'approve':
         await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');

@@ -237,7 +237,8 @@ export type TicketHostMessage =
   /** An action (the webview's message, as it was sent) is finished, its view posted: failed if it threw. */
   | { type: 'done'; message: TicketWebviewMessage; failed?: boolean }
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
-  | { type: 'focus'; target: 'comment' }
+  /** The comment box, or the Demo section (BL-135). */
+  | { type: 'focus'; target: 'comment' | 'demo' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** The Ask chat changed (BL-80). */
@@ -326,7 +327,8 @@ export type TicketWebviewMessage =
   | { type: 'mergeSibling'; branch?: string }
   | { type: 'dismissUnmerged' }
   /** Run a run block of an agent's report (after asking): the Run buttons. */
-  | { type: 'run'; key: string; index: number }
+  /** try: a demo block's window set up as the demo starts, its steps not played (Try it yourself, BL-135). */
+  | { type: 'run'; key: string; index: number; try?: boolean }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
   /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
