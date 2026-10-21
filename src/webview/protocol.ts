@@ -284,6 +284,10 @@ export interface AutopilotState {
   waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
+  /** Why it starts nothing though a slot is free (BL-142). */
+  idle?: string;
+  /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
+  away?: string;
 }
 
 /** A repository on a slow drive: what the Overview says, and how to fix it. */
