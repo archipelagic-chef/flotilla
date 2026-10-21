@@ -940,6 +940,7 @@ export class TicketPanels implements vscode.Disposable {
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
     const mergeProgress = this.merger?.mergeProgress(plain.id);
+    const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
     const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
       const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
       return ws && (ws.sync.head ?? ws.worktree.head);
@@ -989,6 +990,7 @@ export class TicketPanels implements vscode.Disposable {
       canMerge: !remote && !!this.merger && readyToMerge(plain),
       ...(mergeProgress ? { mergeProgress } : {}),
       ...(mergeStop ? { mergeStop } : {}),
+      ...(mergeQueue ? { mergeQueue } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
@@ -1526,6 +1528,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'mergeCiCancel':
         await this.merger?.cancelCiWait(id);
+        return;
+      case 'mergeQueueRemove':
+        await this.merger?.removeFromQueue(id);
         return;
       case 'mergeCiFix':
         await this.merger?.fixCiStop(id);

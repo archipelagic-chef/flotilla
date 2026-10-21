@@ -901,6 +901,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         )}
       </div>
       {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
+      {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
     </>
   );
 }
@@ -977,6 +978,32 @@ function MergeStop({ stop }: { stop: CiStop }) {
       </ActionButton>
     </div>
   );
+}
+
+/**
+ * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
+ * and the tickets ahead, or conflicts with them), and Remove from Queue.
+ */
+function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
+  const conflicts = !!queue.state?.startsWith('Conflicts');
+  return (
+    <div class={`merge-queue${conflicts ? ' conflicts' : ''}`}>
+      <i class={`codicon ${conflicts ? 'codicon-warning' : 'codicon-list-ordered'}`} />
+      <span class="review-text">
+        <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
+        {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
+        {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
+      </span>
+      <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
+        Remove from Queue
+      </ActionButton>
+    </div>
+  );
+}
+
+/** A text with `code` spans. */
+function Code({ text }: { text: string }) {
+  return <>{text.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</>;
 }
 
 /** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */

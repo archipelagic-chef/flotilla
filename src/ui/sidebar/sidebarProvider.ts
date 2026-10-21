@@ -1,3 +1,4 @@
+import type { Merger } from '../backlog/merge';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -152,6 +153,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
+  private merger: Merger | undefined;
+
+  /** The merge queue (BL-140), shown as a bar above the board. */
+  useMerger(merger: Merger): void {
+    this.merger = merger;
+    this.subscriptions.push(merger.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   private merges: Merges | undefined;
 
   /** Whether the items' work is merged (shown on the cards; they move to Done by themselves when it is). */
@@ -214,7 +224,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}) });
+    const queue = this.merger?.queueView();
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -292,6 +303,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'autopilot':
         await vscode.commands.executeCommand('flotilla.toggleAutopilot');
+        return;
+      case 'landAll':
+        await vscode.commands.executeCommand('flotilla.mergeAllReady');
         return;
       case 'integrations':
         await this.deps.integrations.manage();

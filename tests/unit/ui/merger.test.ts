@@ -334,3 +334,82 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 });
+
+describe('The merge queue (BL-140)', () => {
+  /** BL-1 adds a.txt; BL-2 and BL-3 change shared.txt's line (they conflict with each other, not with main). */
+  function branches(repo: string): void {
+    commit(repo, 'shared.txt', 'one\n', 'shared');
+    for (const [id, file, content] of [
+      ['BL-1', 'a.txt', 'a\n'],
+      ['BL-2', 'shared.txt', 'two\n'],
+      ['BL-3', 'shared.txt', 'three\n'],
+    ]) {
+      git(repo, 'checkout', '-q', '-b', `feature/${id}`, 'main');
+      commit(repo, file, content, `${id}: change ${file}`);
+    }
+    git(repo, 'checkout', '-q', 'main');
+  }
+
+  it('lands the tickets ahead of one in order, each on the main the one before left, after its own checks', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1'), approved('BL-2')]);
+    branches(repo);
+    const before = git(repo, 'rev-parse', 'main');
+    ui.settings['merge.onApprove'] = 'off';
+    await merger.approved('BL-2', 'Rex-1');
+    await merger.approved('BL-1', 'Rex-1');
+    await merger.refreshTrain();
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-2', 'BL-1']);
+    expect(merger.queuePlace('BL-1')).toEqual({ place: '2nd of 2', state: 'Merges cleanly onto main + BL-2.', ahead: ['BL-2'] });
+    ui.answers = ['Land 2'];
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect(ui.messages).toContain('Merging BL-1 lands BL-2 too: it\'s ahead of it in the merge queue.');
+    expect(git(repo, 'log', '--first-parent', '--format=%s', `${before}..main`).split('\n')).toEqual(['Merge BL-1: Item BL-1', 'Merge BL-2: Item BL-2']);
+    expect(ui.checks).toEqual([CHECKS, CHECKS]);
+    expect((await item('BL-1')).status).toBe('done');
+    expect((await item('BL-2')).merged?.commit).toBe(git(repo, 'rev-parse', 'main^1'));
+    expect((await backlog.read()).mergeQueue).toEqual([]);
+    expect(merger.queuePlace('BL-1')).toBeUndefined();
+    merger.dispose();
+  });
+
+  it('Merge All Ready lets a ticket that conflicts with the ones ahead wait, and lands the ones behind it', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
+    branches(repo);
+
+    await merger.mergeAllReady();
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-2', 'main').split('\n')).toEqual(['Merge BL-1: Item BL-1', 'Merge BL-2: Item BL-2']);
+    expect((await item('BL-3')).status).toBe('review');
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-3']);
+    expect(ui.messages.at(-1)).toContain('BL-3 waits: it conflicts with the tickets ahead in the merge queue.');
+    merger.dispose();
+  });
+
+  it('keeps the queue in backlog.json, and Remove from Queue rebuilds the train without the ticket', async () => {
+    const { repo, backlog, merger } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
+    branches(repo);
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-2', 'BL-3', 'BL-1']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+    expect(merger.queueView().entries).toEqual([
+      { id: 'BL-2', state: 'clean' },
+      { id: 'BL-3', state: 'conflicts' },
+      { id: 'BL-1', state: 'clean' },
+    ]);
+    merger.dispose();
+
+    // Another window (or a reload) reads the same queue.
+    const { Merger } = await import('../../../src/ui/backlog/merge');
+    const again = new Merger({ backlog, repository: { current: [] }, mainRoot: repo, output: { appendLine() {} }, openTicket() {} } as never);
+    await again.refreshTrain();
+    expect(again.queuePlace('BL-3')).toMatchObject({ place: '2nd of 3', state: 'Conflicts with main + BL-2 in `shared.txt`.' });
+    await again.removeFromQueue('BL-2');
+    expect(again.queueView().entries).toEqual([
+      { id: 'BL-3', state: 'clean' },
+      { id: 'BL-1', state: 'clean' },
+    ]);
+    again.dispose();
+  });
+});

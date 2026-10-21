@@ -195,6 +195,8 @@ export interface TicketView {
    * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
    */
   mergeStop?: CiStop;
+  /** Its place in the merge queue (BL-140): "2nd of 3", what the train says of it, and the tickets that land before it. */
+  mergeQueue?: { place: string; state?: string; ahead: string[] };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -320,6 +322,7 @@ export type TicketWebviewMessage =
   | { type: 'mergeCancel' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
+  | { type: 'mergeQueueRemove' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
