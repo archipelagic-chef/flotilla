@@ -1648,6 +1648,27 @@ button.timeline-item:hover .timeline-text {
   border-radius: 3px;
   background: var(--vscode-editor-background);
 }
+/* A video, large (BL-134): when it can't play by itself, a big play button over it, so it doesn't pass for a picture. */
+.viewer-video {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+}
+.viewer-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+}
+.viewer-play .codicon {
+  font-size: 72px;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
+}
 /* A diagram, large: it fits the window; a click zooms in to twice that, to scroll around in. */
 .viewer-diagram {
   max-width: 100%;
