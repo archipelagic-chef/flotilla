@@ -2,10 +2,12 @@
  * The Attachments section (BL-110), between the description and the activity: the ticket's images, GIFs, videos and
  * Mermaid diagrams (BL-136) as thumbnails, newest first; a click opens one large, in an overlay, with the next and previous.
  */
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { diagramSvg } from './diagrams';
+import { RecordingBar, type Action } from './demo';
 
 /** The window event "Show in activity" sends: the activity opens the entry (its detail: the entry's key) and goes there. */
 export const SHOW_ENTRY = 'flotilla-show-entry';
@@ -108,7 +110,7 @@ function Thumb({ a, onOpen }: { a: AttachmentView; onOpen: () => void }) {
 }
 
 /** One attachment large, over the ticket: Escape (or the backdrop) closes it, the arrows go to the next and previous. */
-function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; go: (n: number) => void; close: () => void }) {
+function Viewer({ list, at, go, close, demo }: { list: AttachmentView[]; at: number; go: (n: number) => void; close: () => void; demo: (a: AttachmentView) => JSX.Element }) {
   const a = list[at];
   const many = list.length > 1;
   useEffect(() => {
@@ -133,6 +135,7 @@ function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; g
         </button>
       )}
       <figure class="viewer-figure">
+        {a.demo && demo(a)}
         {a.kind === 'diagram' ? (
           <LargeDiagram key={a.src} code={a.code ?? ''} label={caption(a)} />
         ) : a.kind === 'video' ? (
@@ -169,7 +172,7 @@ function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; g
   );
 }
 
-export function Attachments({ ticket, send }: { ticket: TicketView; send: (m: TicketWebviewMessage) => void }) {
+export function Attachments({ ticket, send, Action }: { ticket: TicketView; send: (m: TicketWebviewMessage) => void; Action: Action }) {
   const list = ticket.attachments ?? [];
   const [folded, setFolded] = useState(!!ticket.attachmentsFolded);
   const [open, setOpen] = useState<number | undefined>(undefined);
@@ -217,7 +220,7 @@ export function Attachments({ ticket, send }: { ticket: TicketView; send: (m: Ti
           ))}
         </ul>
       )}
-      {open !== undefined && list[open] && <Viewer list={list} at={open} go={setOpen} close={() => setOpen(undefined)} />}
+      {open !== undefined && list[open] && <Viewer list={list} at={open} go={setOpen} close={() => setOpen(undefined)} demo={(a) => <RecordingBar a={a} ticket={ticket} Action={Action} />} />}
     </section>
   );
 }

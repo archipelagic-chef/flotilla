@@ -18,6 +18,8 @@ const RENAME_RETRY_MS = 1000;
 
 /** Errors Windows gives while another program (Explorer's preview, an indexer, a virus scanner) holds the file open. */
 const HELD_OPEN = new Set(['EPERM', 'EACCES', 'EBUSY']);
+/** How long an empty ticket file is read again before it's taken as empty (see readTicketText). */
+const BLANK_READ_MS = 1000;
 
 /**
  * Writes a file as a whole: a temporary file next to it, renamed over it, so a reader never sees half of it. On Windows
@@ -190,6 +192,7 @@ export class LocalBacklog {
         body = edit
           ? `${edit.by === 'You' ? 'You' : edit.by} edited the description${size}.`
           : `The description was edited in its file${size}: by an agent, or in an editor.`;
+        if (!description.trim() && before?.trim()) body += `\n\n${await this.keepDescription(item.id, before)}`;
       }
       changed.push({ item, hash, body });
     }
@@ -197,6 +200,20 @@ export class LocalBacklog {
     const hashes = new Map(changed.map((c) => [c.item.id, c.hash]));
     await this.change((d) => ({ ...d, items: d.items.map((i) => (hashes.has(i.id) ? { ...i, descriptionHash: hashes.get(i.id) } : i)) }));
     for (const c of changed) if (c.body) await this.appendActivity(c.item, { date: entryDate(new Date()), author: 'Flotilla', body: c.body });
+  }
+
+  /**
+   * Keeps a description that an edit removed entirely in the ticket's folder (<id>/description-<time>.md), and returns
+   * the activity's note of it, with a link to it to restore it from.
+   */
+  private async keepDescription(id: string, description: string): Promise<string> {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const now = new Date();
+    const name = `description-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.md`;
+    const folder = path.join(this.dir, id);
+    await fs.promises.mkdir(folder, { recursive: true });
+    await writeAtomic(path.join(folder, name), `${description.trim()}\n`);
+    return `**The description is now empty.** The one before is kept in [${id}/${name}](${id}/${name}): copy it back into the ticket to restore it.`;
   }
 
   /** Adds an entry at the end of an item's ticket activity; entries written together all stay. */
@@ -213,10 +230,34 @@ export class LocalBacklog {
 
   /** An item's ticket; one without a file yet has its title (and any old notes) and no activity. */
   async readTicket(item: Pick<BacklogItem, 'id' | 'title' | 'notes'>): Promise<Ticket> {
-    try {
-      return parseTicket(await fs.promises.readFile(this.docPath(item.id), 'utf8'), item.title);
-    } catch {
-      return { title: item.title, description: item.notes ?? '', activity: [] };
+    const text = await this.readTicketText(item.id);
+    return text === undefined ? { title: item.title, description: item.notes ?? '', activity: [] } : parseTicket(text, item.title);
+  }
+
+  /**
+   * A ticket file's text, or undefined when it has none. An agent's editor writes the file in place: read at that
+   * moment it's empty (or, being replaced, briefly gone), and a ticket written back from that read loses its
+   * description and activity (BL-147). So an empty or missing file is read again for a moment before it's believed.
+   */
+  private async readTicketText(id: string): Promise<string | undefined> {
+    const file = this.docPath(id);
+    const deadline = Date.now() + BLANK_READ_MS;
+    let missing = 0;
+    for (;;) {
+      let text: string | undefined;
+      try {
+        text = await fs.promises.readFile(file, 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          // A ticket that has no file yet is common: only once more.
+          if (++missing > 1) return undefined;
+        } else if (!HELD_OPEN.has((error as NodeJS.ErrnoException).code ?? '')) {
+          throw error;
+        }
+      }
+      if (text !== undefined && (text.trim() !== '' || Date.now() >= deadline)) return text;
+      if (text === undefined && Date.now() >= deadline) throw new Error(`The ticket ${id} can't be read.`);
+      await new Promise((r) => setTimeout(r, 25));
     }
   }
 

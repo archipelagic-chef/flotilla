@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type SlowStorageView } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type MergeQueueView, type SlowStorageView } from '../protocol';
 import type { ChangeKind } from '../../core/git/porcelain';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
@@ -135,7 +135,7 @@ export function App() {
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
   const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -292,7 +292,7 @@ export function App() {
         case 'backlog':
           pruneBusy(new Set(m.items.map((i) => i.id)));
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot, mergeQueue: m.mergeQueue });
           return;
         case 'backlogDone':
           finished(m.message);
@@ -487,6 +487,7 @@ export function App() {
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
         autopilot={backlogInfo.autopilot}
+        mergeQueue={backlogInfo.mergeQueue}
         workstreams={workstreams}
         colors={colors}
         workingOnly={!!persisted.workingOnly}

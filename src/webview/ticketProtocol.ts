@@ -97,6 +97,9 @@ export interface AttachmentView {
   entryKey?: string;
   from: 'description' | 'activity' | 'folder';
   demo: boolean;
+  /** A demo's recording: the demo it was recorded from, as the recorder noted it in the file, and how long a GIF plays (BL-111). */
+  recorded?: string;
+  seconds?: number;
 }
 
 export interface TicketView {
@@ -199,6 +202,8 @@ export interface TicketView {
    * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
    */
   mergeStop?: CiStop;
+  /** Its place in the merge queue (BL-140): "2nd of 3", what the train says of it, and the tickets that land before it. */
+  mergeQueue?: { place: string; state?: string; ahead: string[] };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -241,7 +246,8 @@ export type TicketHostMessage =
   /** An action (the webview's message, as it was sent) is finished, its view posted: failed if it threw. */
   | { type: 'done'; message: TicketWebviewMessage; failed?: boolean }
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
-  | { type: 'focus'; target: 'comment' }
+  /** The comment box, or the Demo section (BL-135). */
+  | { type: 'focus'; target: 'comment' | 'demo' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** The Ask chat changed (BL-80). */
@@ -320,9 +326,11 @@ export type TicketWebviewMessage =
   | { type: 'merge' }
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
+  | { type: 'mergeRecheck' }
   | { type: 'mergeCancel' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
+  | { type: 'mergeQueueRemove' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
@@ -330,7 +338,8 @@ export type TicketWebviewMessage =
   | { type: 'mergeSibling'; branch?: string }
   | { type: 'dismissUnmerged' }
   /** Run a run block of an agent's report (after asking): the Run buttons. */
-  | { type: 'run'; key: string; index: number }
+  /** try: a demo block's window set up as the demo starts, its steps not played (Try it yourself, BL-135). */
+  | { type: 'run'; key: string; index: number; try?: boolean }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
   /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
