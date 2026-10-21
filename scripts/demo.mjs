@@ -387,8 +387,8 @@ async function show(mode, demo, out, still, display) {
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');
-  const { startFakeGitHub } = await import('./fake-github.mjs');
-  const github = await startFakeGitHub({ port: 0, repoDir: playground });
+  const { ACTION_DELAY_MS, startFakeGitHub } = await import('./fake-github.mjs');
+  const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS });
   prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).

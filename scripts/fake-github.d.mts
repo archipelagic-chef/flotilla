@@ -8,7 +8,12 @@ export interface FakeGitHubOptions {
   repoDir?: string;
   /** The clock, in milliseconds since the epoch. */
   now?: () => number;
+  /** How long it takes to answer an action (a POST: re-run, cancel, dispatch), as GitHub does; 0 by default. */
+  actionDelayMs?: number;
 }
+
+/** The delay the demo window's and npm run fake-github's fake answer actions after. */
+export const ACTION_DELAY_MS: number;
 
 export interface FakeGitHub {
   /** The address to give Flotilla (flotilla.dev.githubApi). */
