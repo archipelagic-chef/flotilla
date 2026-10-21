@@ -10,6 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_PORT = 4010;
+/** How long the demo window's and `npm run fake-github`'s fake take to answer an action, about as long as GitHub does (BL-119). */
+export const ACTION_DELAY_MS = 1200;
 
 /** How long a run waits before its jobs start, and how long its jobs then run. */
 const QUEUE_MS = 6_000;
@@ -86,7 +88,7 @@ function gitBranch(dir, branch) {
  * Starts the fake on host:port (port 0 picks a free one). `repoDir` is a git repository whose branches the fake knows;
  * without it, every branch exists, with made-up commits. `now` is the clock (tests move it).
  */
-export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1', repoDir, now = () => Date.now() } = {}) {
+export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1', repoDir, now = () => Date.now(), actionDelayMs = 0 } = {}) {
   const runs = [];
   const jobs = new Map(); // job id → { run, index }
   const seeded = new Set(); // "owner/repo@branch", once its runs are made
@@ -371,6 +373,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       } else {
         result = notFound();
       }
+      // GitHub takes a moment to answer a re-run, a cancel or a dispatch: the fake can too, so the views' working state shows.
+      if (method === 'POST' && actionDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, actionDelayMs));
     } catch (error) {
       result = json(error instanceof SyntaxError ? 400 : 500, { message: error instanceof Error ? error.message : String(error) });
     }
@@ -419,6 +423,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const fake = await startFakeGitHub({
     port: Number(process.env.PORT ?? DEFAULT_PORT),
     repoDir: fs.existsSync(path.join(repoDir, '.git')) ? repoDir : undefined,
+    actionDelayMs: ACTION_DELAY_MS,
   });
   console.log(`Fake GitHub Actions API at ${fake.url}, for flotilla.dev.githubApi. Ctrl+C stops it.`);
 }

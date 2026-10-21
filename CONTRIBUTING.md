@@ -19,14 +19,25 @@ Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-â
 
 The merge flow (Merge to main, the merge train, Resolve and Fix with Agent, Approve, Cancel) has scenario tests in `tests/integration/merge/`: whole sequences of clicks on a real repository, with scripted agents (resolve, fix, commit nothing, redo the merge, crash, or work later) and checks (pass, fail, time out), and main moved by another merge when a scenario says. Each step records the ticket's merge state and what it offers to click next (`mergeActions`, which the ticket's buttons use too), and fails if a step leaves it where an earlier one did: a loop. The states and what moves each are in the table at the top of `src/features/backlog/mergeStates.ts`. A new path goes into that table and into a scenario together; a sequence that broke becomes a scenario as it happened.
 
-Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
-
-The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`), so run that first. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
-
-An existing playground is never reset by F5; if it was built by an older version of `scripts/playground.mjs`, the task output says so. To start over, run `npm run playground -- --reset` or launch "Run Extension (fresh playground)". The old playground is moved to `.playground.old-<date>` (its worktrees move with it and keep working there, uncommitted changes included).
-The CI/CD view needs GitHub's Actions API, which the test window reads from a fake one when it's offline: run `npm run fake-github` in a terminal (it stays up until Ctrl+C), and switch the fakes on in the debug profile (`npm run debug-profile -- --fakes`), which points the test window at it (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log; run again, it passes (as a flaky test would). The playground's `origin` is a local bare repository (in `.playground/.git/origin/`) whose path ends like GitHub's `playground/app`: approving a ticket pushes its branch there, never to github.com. With the fakes on, Flotilla pushes on approval only to a local `origin`.
 
 The devcontainer keeps its own `node_modules` in a Docker volume, so installing in the container never breaks the host's (and vice versa). It also installs the Claude Code extension; log in once inside the container and the login is kept in a volume across rebuilds.
+
+## The playground
+
+Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` (`scripts/playground.mjs`) creates on first launch. Run `npm run build` first: the seeding below needs it. Everything Flotilla does can be tried there by hand, in seconds, without touching your own repositories or using any usage.
+
+What's in it:
+
+- **A small project worth running** (from `scripts/playground-app/`, plain Node, nothing to install): a CLI, a server and tests, with a launch configuration ("Run App") and tasks ("test", "serve"), so the run blocks of a review have something to start. The branch `feature/greeting-without-comma` has a failing test.
+- **Tickets and worktrees in every state** Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), seeded by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`). To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
+- **A local `origin`**: a bare repository in `.playground/.git/origin/`, whose path ends like GitHub's `playground/app`. Approving a ticket pushes its branch there, never to github.com.
+
+An existing playground is never reset by F5; if it was built by an older version of `scripts/playground.mjs`, the task output says so. To start over, run `npm run playground -- --reset` or launch "Run Extension (fresh playground)". The old playground is moved to `.playground.old-<date>` (its worktrees move with it and keep working there, uncommitted changes included).
+
+The fakes stand in for Claude and GitHub, so agents and the CI/CD view can be tried for free and offline. They're off by default; switch them on with `npm run debug-profile -- --fakes` (see [The debug window's profile](#the-debug-windows-profile)):
+
+- **Claude** (`scripts/fake-claude.mjs`): agents answer in seconds, as a ticket's `fake:` lines say (see [Trying agents without usage](#trying-agents-without-usage)).
+- **GitHub** (`scripts/fake-github.mjs`): run `npm run fake-github` in a terminal (it stays up until Ctrl+C). It serves the Actions API the CI/CD view reads (`flotilla.dev.githubApi`, read only in the test window). Its branches get runs that move on by themselves, and the CI run fails in its tests with a realistic log; run again, it passes (as a flaky test would). With the fakes on, Flotilla pushes on approval only to a local `origin`.
 
 ## The debug window's profile
 
@@ -70,7 +81,7 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 
 ## Trying agents without usage
 
-`scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
+`scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. `npm run debug-profile -- --fakes` points the debug window's `flotilla.agents.claudePath` at it. Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. `npm run debug-profile -- --no-fakes` switches back to the real one. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
 
 ## Buttons that wait
 

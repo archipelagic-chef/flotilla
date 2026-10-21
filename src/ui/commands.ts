@@ -20,6 +20,7 @@ import { installCommitHook, markWorktree, type CommitPrefixMode } from '../featu
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
+import { removingWorktrees } from '../features/workstreams/removingWorktrees';
 import { clashFiles, mapFor, mapNote, type Clash, type CodeMap } from '../features/backlog/codeMap';
 import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
@@ -27,6 +28,7 @@ import { REPORT_FORMAT } from '../features/backlog/report';
 import { agentChoice, confirmMemory, describeChoice, levelNote } from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
+import type { ResolvedWorktree } from '../features/worktrees/resolver';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
@@ -890,7 +892,10 @@ export async function removeWorkstream(ctx: CommandContext, ws: Workstream): Pro
     return;
   }
   if (!wt.path) return forgetWorkstream(ctx, ws);
-  const risks = await ctx.service.removalRisks(wt);
+  if (removingWorktrees.has(ws.key)) return;
+  const risks = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `Checking '${workstreamLabel(ws)}' before removing it…` }, () =>
+    ctx.service.removalRisks(wt),
+  );
   const lines: string[] = [];
   if (risks.changedFiles) lines.push(`${risks.changedFiles} uncommitted or untracked file(s) will be deleted.`);
   if (risks.unmergedCommits && wt.branch) {
@@ -935,6 +940,11 @@ async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promis
     await ctx.repository.refresh();
     return;
   }
+  // Its row shows it's being removed until it's gone (or the removal failed and it's back as it was).
+  await removingWorktrees.run(wt.adminDir, () => removeAndRecord(ctx, plan, wt));
+}
+
+async function removeAndRecord(ctx: CommandContext, plan: PendingRemoval, wt: ResolvedWorktree): Promise<void> {
   if (extraWorkspaceFolder(wt.path)) removeWorkspaceFolder(wt.path);
   await ctx.service.remove(wt, { force: plan.force });
   let deleted = false;

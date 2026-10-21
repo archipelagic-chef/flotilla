@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { CiJobView, CiRequest, CiRunView } from '../protocol';
+import type { CiJobView, CiRequest, CiRunView, RunBusy } from '../protocol';
 import { isActive } from '../../features/ci/githubActions';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import { ago } from './ago';
@@ -127,9 +127,11 @@ export function CiRunList({ runs, worktree, actions }: { runs: CiRunView[]; work
                     class="icon"
                     aria-label={ACTIONS[action].label}
                     data-tip={ACTIONS[action].label}
+                    disabled={!!run.busy}
+                    aria-busy={run.busy === action}
                     onClick={() => actions.request({ op: 'act', key: worktree, run: run.id, action })}
                   >
-                    <i class={`codicon codicon-${ACTIONS[action].icon}`} />
+                    <i class={`codicon codicon-${run.busy === action ? 'loading codicon-modifier-spin' : ACTIONS[action].icon}`} />
                   </button>
                 ))}
               </span>
@@ -150,13 +152,13 @@ function Jobs({ run, worktree, open, onJob, actions }: { run: CiRunView; worktre
   return (
     <>
       {run.jobs.map((job) => (
-        <JobRow key={job.id} job={job} run={run.id} worktree={worktree} isOpen={open.has(`job:${job.id}`)} onToggle={() => onJob(job.id)} actions={actions} />
+        <JobRow key={job.id} job={job} run={run.id} busy={run.busy} worktree={worktree} isOpen={open.has(`job:${job.id}`)} onToggle={() => onJob(job.id)} actions={actions} />
       ))}
     </>
   );
 }
 
-function JobRow({ job, run, worktree, isOpen, onToggle, actions }: { job: CiJobView; run: number; worktree: string; isOpen: boolean; onToggle: () => void; actions: CiActions }) {
+function JobRow({ job, run, busy, worktree, isOpen, onToggle, actions }: { job: CiJobView; run: number; busy?: RunBusy; worktree: string; isOpen: boolean; onToggle: () => void; actions: CiActions }) {
   const status = STATUS[job.status];
   return (
     <>
@@ -178,12 +180,15 @@ function JobRow({ job, run, worktree, isOpen, onToggle, actions }: { job: CiJobV
           <button
             class="link ci-fix"
             data-tip="Start an agent on this job's failure, in the branch's worktree"
+            disabled={!!busy}
+            aria-busy={busy === 'fix'}
             onClick={(e) => {
               e.stopPropagation();
               actions.request({ op: 'fix', key: worktree, run, job: job.id });
             }}
           >
-            Fix with Agent
+            {busy === 'fix' && <i class="codicon codicon-loading codicon-modifier-spin" />}
+            {busy === 'fix' ? 'Starting Agent…' : 'Fix with Agent'}
           </button>
         )}
         <button
