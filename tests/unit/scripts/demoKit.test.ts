@@ -41,13 +41,14 @@ function solid(r: number, g: number, b: number): Buffer {
 
 describe('parseDemo', () => {
   it('reads the steps, one action each, with their timeouts', () => {
-    const demo = parseDemo(JSON.stringify({ title: 'T', steps: [{ command: 'Focus on Flotilla View' }, { click: 'text=BL-3', timeout: 5000 }, { hover: '.ci-run' }, { wait: 500 }, { caption: '' }] }));
+    const demo = parseDemo(JSON.stringify({ title: 'T', steps: [{ command: 'Focus on Flotilla View' }, { click: 'text=BL-3', timeout: 5000 }, { hover: '.ci-run' }, { drag: 'text=BL-2', to: 'text=BL-1' }, { wait: 500 }, { caption: '' }] }));
     expect(demo).toEqual({
       title: 'T',
       steps: [
         { action: 'command', value: 'Focus on Flotilla View' },
         { action: 'click', value: 'text=BL-3', timeout: 5000 },
         { action: 'hover', value: '.ci-run' },
+        { action: 'drag', value: 'text=BL-2', to: 'text=BL-1' },
         { action: 'wait', value: 500 },
         { action: 'caption', value: '' },
       ],
@@ -69,6 +70,8 @@ describe('parseDemo', () => {
     expect(() => parseDemo('{"steps": [{"wait": "1s"}]}', 'd')).toThrow(/"wait" takes a number/);
     expect(() => parseDemo('{"steps": [{"click": "  "}]}', 'd')).toThrow(/"click" takes a string/);
     expect(() => parseDemo('{"steps": [{"click": "x", "timeout": -1}]}', 'd')).toThrow(/"timeout"/);
+    expect(() => parseDemo('{"steps": [{"drag": "x"}]}', 'd')).toThrow(/"drag" drops "to" a selector/);
+    expect(() => parseDemo('{"steps": [{"click": "x", "to": "y"}]}', 'd')).toThrow(/unknown to/);
   });
 
   it('reads the example in demos/', () => {

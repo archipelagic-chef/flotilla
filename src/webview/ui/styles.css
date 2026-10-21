@@ -2138,6 +2138,21 @@ ins {
   margin-top: 1px;
   color: var(--vscode-charts-purple, var(--working));
 }
+.merge-queue-bar a[draggable] {
+  cursor: grab;
+}
+/* Where a ticket dragged in the queue would go (BL-144). */
+.merge-queue-bar a.drop-before,
+.merge-queue-bar .drop-end {
+  box-shadow: -2px 0 0 var(--vscode-focusBorder);
+}
+.merge-queue-bar .drop-end {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 .merge-queue-bar a.conflicts {
   color: var(--vscode-charts-yellow, #cca700);
 }

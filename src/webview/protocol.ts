@@ -355,6 +355,9 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'autopilot' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
+  /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
+  | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
+  | { type: 'backlog'; op: 'mergeNext'; id: string }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
   | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }

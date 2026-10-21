@@ -10,7 +10,7 @@ import * as gifencModule from 'gifenc';
 const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
 
 /** What a demo's step does: one of these keys, with its value. */
-export const ACTIONS = ['command', 'click', 'hover', 'type', 'press', 'waitFor', 'wait', 'caption', 'agentTurn'];
+export const ACTIONS = ['command', 'click', 'hover', 'drag', 'type', 'press', 'waitFor', 'wait', 'caption', 'agentTurn'];
 /** The demos' folder, from the repository root; a demo is `demos/<name>.json`. */
 export const DEMOS_DIR = 'demos';
 /** Longer than this, a demo is an MP4 (when there's an ffmpeg: see findFfmpeg in demo.mjs); a GIF otherwise. */
@@ -37,7 +37,8 @@ export function parseDemo(text, name = 'demo') {
     const where = `${name}, step ${n + 1}`;
     if (!step || typeof step !== 'object' || Array.isArray(step)) throw new Error(`${where}: a step is an object, such as { "click": "text=Create Worktree" }`);
     const actions = Object.keys(step).filter((k) => ACTIONS.includes(k));
-    const unknown = Object.keys(step).filter((k) => !ACTIONS.includes(k) && k !== 'timeout');
+    // A drag names where it drops: { "drag": "<what>", "to": "<onto what>" }.
+    const unknown = Object.keys(step).filter((k) => !ACTIONS.includes(k) && k !== 'timeout' && !(k === 'to' && 'drag' in step));
     if (unknown.length) throw new Error(`${where}: unknown ${unknown.join(', ')} (a step is one of ${ACTIONS.join(', ')})`);
     if (actions.length !== 1) throw new Error(`${where}: a step does one thing: ${ACTIONS.join(', ')}`);
     const action = actions[0];
@@ -46,7 +47,8 @@ export function parseDemo(text, name = 'demo') {
       throw new Error(`${where}: "${action}" takes ${action === 'wait' ? 'a number of milliseconds' : 'a string'}`);
     }
     if (step.timeout !== undefined && !(Number.isFinite(step.timeout) && step.timeout > 0)) throw new Error(`${where}: "timeout" is a number of milliseconds`);
-    return { action, value, ...(step.timeout ? { timeout: step.timeout } : {}) };
+    if (action === 'drag' && (typeof step.to !== 'string' || !step.to.trim())) throw new Error(`${where}: "drag" drops "to" a selector`);
+    return { action, value, ...(action === 'drag' ? { to: step.to } : {}), ...(step.timeout ? { timeout: step.timeout } : {}) };
   });
   // Flotilla's settings the demo plays with (say, the local checks on Merge to main): only Flotilla's own.
   const settings = demo.settings ?? {};
