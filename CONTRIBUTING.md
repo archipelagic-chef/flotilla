@@ -15,6 +15,8 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 `npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
 
+Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
+
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
 The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`), so run that first. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
