@@ -15,6 +15,7 @@ import { shortTime } from '../shortTime';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
 import './priority.css';
+import { TitleBar } from './titleBar';
 
 const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
   { lane: 'todo', title: 'To Do', icon: 'circle-large-outline' },
@@ -36,7 +37,7 @@ const DRAG_TYPE = 'application/x-flotilla-backlog';
 /** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
 const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
 
-interface Props {
+export interface Props {
   items: BacklogItem[] | undefined;
   /** Integrations whose issues don't load. */
   problems: BacklogProblem[];
@@ -214,49 +215,6 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
             </div>
           );
         })}
-    </div>
-  );
-}
-
-/** How long something has waited, short: "5m", "3h", "2d". */
-/** The backlog's title bar: its name and the actions on the whole backlog. */
-function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly }: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly'>) {
-  return (
-    <div class="tool-title backlog-title">
-      <span>Backlog</span>
-      <span class="title-actions">
-        {integrations > 0 && (
-          <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
-        )}
-        {autopilot && (
-          <BusyButton
-            class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
-            aria-pressed={autopilot.enabled}
-            aria-label={
-              autopilot.enabled
-                ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
-                : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
-            }
-            message={{ type: 'backlog', op: 'autopilot' }}
-            icon="rocket"
-          />
-        )}
-        <button
-          class={`icon working-filter${workingOnly ? ' on' : ''}`}
-          aria-pressed={workingOnly}
-          aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
-          onClick={() => setWorkingOnly(!workingOnly)}
-        >
-          <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
-        </button>
-        <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
-        <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
-          <i class="codicon codicon-plug" />
-        </button>
-        <button class="icon" aria-label="Add Item" onClick={() => send({ type: 'backlog', op: 'new' })}>
-          <i class="codicon codicon-add" />
-        </button>
-      </span>
     </div>
   );
 }
