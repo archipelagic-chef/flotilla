@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as esbuild from 'esbuild';
 import { seedKitOptions } from './scripts/seed-kit.mjs';
@@ -49,6 +50,11 @@ const mermaid = await esbuild.context({
 // The app's code the playground's seed uses (scripts/playground-seed.mjs), not part of the extension.
 const seedKit = await esbuild.context({ ...seedKitOptions, logLevel: 'info' });
 
+// The commit this build is from (BL-151): the status bar's hover and "Flotilla: About" show it, and in Flotilla's own
+// repository it's how the window counts what main has merged since.
+fs.mkdirSync('dist', { recursive: true });
+fs.writeFileSync('dist/build.json', `${JSON.stringify(buildStamp())}\n`);
+
 // Codicons for the webview (font + stylesheet), served from dist/ like the rest.
 fs.mkdirSync('dist/codicons', { recursive: true });
 for (const file of ['codicon.css', 'codicon.ttf']) fs.copyFileSync(`node_modules/@vscode/codicons/dist/${file}`, `dist/codicons/${file}`);
@@ -58,4 +64,16 @@ if (watch) {
 } else {
   await Promise.all([host.rebuild(), webview.rebuild(), mermaid.rebuild(), seedKit.rebuild()]);
   await Promise.all([host.dispose(), webview.dispose(), mermaid.dispose(), seedKit.dispose()]);
+}
+
+function buildStamp() {
+  const git = (...args) => {
+    try {
+      return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {
+      return '';
+    }
+  };
+  const commit = git('rev-parse', 'HEAD');
+  return { commit: commit || undefined, dirty: commit ? git('status', '--porcelain', '--untracked-files=no') !== '' : undefined, builtAt: new Date().toISOString() };
 }
