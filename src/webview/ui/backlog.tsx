@@ -90,42 +90,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
 
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
-      <div class="tool-title backlog-title">
-        <span>Backlog</span>
-        <span class="title-actions">
-          {integrations > 0 && (
-            <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
-          )}
-          {autopilot && (
-            <BusyButton
-              class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
-              aria-pressed={autopilot.enabled}
-              aria-label={
-                autopilot.enabled
-                  ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
-                  : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
-              }
-              message={{ type: 'backlog', op: 'autopilot' }}
-              icon="rocket"
-            />
-          )}
-          <button
-            class={`icon working-filter${workingOnly ? ' on' : ''}`}
-            aria-pressed={workingOnly}
-            aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
-            onClick={() => setWorkingOnly(!workingOnly)}
-          >
-            <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
-          </button>
-          <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
-          <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
-            <i class="codicon codicon-plug" />
-          </button>
-          <button class="icon" aria-label="Add Item" onClick={() => send({ type: 'backlog', op: 'new' })}>
-            <i class="codicon codicon-add" />
-          </button>
-        </span>
-      </div>
+      <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
       {agentCount && (
         <button
           class={`agent-count${workingOnly ? ' on' : ''}`}
@@ -136,37 +101,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
           <span>{agentCount}</span>
         </button>
       )}
-      {autopilot?.enabled && (
-        <div class="autopilot-bar">
-          <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
-            <i class="codicon codicon-rocket" />
-            <span>
-              <strong>Autopilot</strong>{' '}
-              {autopilot.elsewhere
-                ? 'runs in another window.'
-                : autopilot.waitingUntil
-                  ? autopilot.triedAt
-                    ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
-                    : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
-                  : autopilot.waitingForMemory
-                    ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                    : autopilot.idle && !autopilot.running
-                      ? `· Idle: ${autopilot.idle}.`
-                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
-              {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
-            </span>
-          </button>
-          {autopilot.waitingUntil && !autopilot.elsewhere && (
-            <BusyButton
-              class="try-now"
-              message={{ type: 'backlog', op: 'tryNow' }}
-              title="Asks Claude whether it takes work again: if it does, the paused agents go on now (top of the backlog first) and the autopilot takes To Do tickets again"
-            >
-              Try Now
-            </BusyButton>
-          )}
-        </div>
-      )}
+      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
@@ -284,6 +219,83 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
 }
 
 /** How long something has waited, short: "5m", "3h", "2d". */
+/** The backlog's title bar: its name and the actions on the whole backlog. */
+function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly }: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly'>) {
+  return (
+    <div class="tool-title backlog-title">
+      <span>Backlog</span>
+      <span class="title-actions">
+        {integrations > 0 && (
+          <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
+        )}
+        {autopilot && (
+          <BusyButton
+            class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
+            aria-pressed={autopilot.enabled}
+            aria-label={
+              autopilot.enabled
+                ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
+                : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
+            }
+            message={{ type: 'backlog', op: 'autopilot' }}
+            icon="rocket"
+          />
+        )}
+        <button
+          class={`icon working-filter${workingOnly ? ' on' : ''}`}
+          aria-pressed={workingOnly}
+          aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
+          onClick={() => setWorkingOnly(!workingOnly)}
+        >
+          <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
+        </button>
+        <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
+        <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
+          <i class="codicon codicon-plug" />
+        </button>
+        <button class="icon" aria-label="Add Item" onClick={() => send({ type: 'backlog', op: 'new' })}>
+          <i class="codicon codicon-add" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** The autopilot's bar, while it's on: what it does now, and Try Now while it waits for the usage limit. */
+function AutopilotBar({ autopilot }: { autopilot: AutopilotState }) {
+  return (
+    <div class="autopilot-bar">
+      <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
+        <i class="codicon codicon-rocket" />
+        <span>
+          <strong>Autopilot</strong>{' '}
+          {autopilot.elsewhere
+            ? 'runs in another window.'
+            : autopilot.waitingUntil
+              ? autopilot.triedAt
+                ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
+                : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
+              : autopilot.waitingForMemory
+                ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                : autopilot.idle && !autopilot.running
+                  ? `· Idle: ${autopilot.idle}.`
+                  : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+          {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
+        </span>
+      </button>
+      {autopilot.waitingUntil && !autopilot.elsewhere && (
+        <BusyButton
+          class="try-now"
+          message={{ type: 'backlog', op: 'tryNow' }}
+          title="Asks Claude whether it takes work again: if it does, the paused agents go on now (top of the backlog first) and the autopilot takes To Do tickets again"
+        >
+          Try Now
+        </BusyButton>
+      )}
+    </div>
+  );
+}
+
 function waited(since: string | undefined): string | undefined {
   if (!since) return undefined;
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(since)) / 60_000));
