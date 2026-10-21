@@ -280,6 +280,8 @@ export interface AutopilotState {
   waiting: number;
   /** ISO 8601. */
   waitingUntil?: string;
+  /** When Try Now last found the limit still there (BL-132). */
+  triedAt?: string;
   /** Too little memory free to start an agent. */
   waitingForMemory?: boolean;
   /** Another window runs it. */
@@ -357,6 +359,7 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  | { type: 'backlog'; op: 'tryNow' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
