@@ -1387,8 +1387,7 @@ export class TicketPanels implements vscode.Disposable {
   private async handle(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
-    const backlog = this.deps.backlog;
-    await handleMessage({ id, panel, item, backlog, panels: this }, m);
+    await handleMessage({ id, panel, item, backlog: this.deps.backlog, panels: this }, m);
   }
 
   /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */

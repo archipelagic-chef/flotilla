@@ -72,11 +72,32 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 
 `scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
 
+## Where a part goes
+
+The views are split into one file per part, so two tickets that change different parts change different files, and
+their merges don't conflict. Add to the part's file, or give a new part a file of its own; keep the entry files small.
+
+- **The ticket view** ([src/webview/ticket/](src/webview/ticket/)): [main.tsx](src/webview/ticket/main.tsx) is the app
+  shell (the messages from the host, the layout of the sections) only. Each section is a module: `header.tsx`,
+  `description.tsx`, `stateCard.tsx`, `ask.tsx`, `work.tsx`, `agents.tsx`, `reviewPanel.tsx`, `mergePanel.tsx`,
+  `activity.tsx` (the feed and the comment box), `attachments.tsx`, `demo.tsx`, `ci.tsx`. What sections share is in its
+  own: `actions.tsx` (`send`, `act`, `useWorking`, `ActionButton`, `Dropdown`), `comments.tsx` (sending a comment,
+  replying), `markdownBox.tsx` (the Markdown editor and `Rendered`). A new section is a new module, which `main.tsx`
+  places.
+- **The ticket tab's host** ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)) builds the view; the
+  webview's messages are handled in [src/ui/backlog/ticketMessages/](src/ui/backlog/ticketMessages/), one module per
+  group (`ticket`, `comments`, `files`, `tracker`, `agents`, `review`, `merge`), each a map of handlers by message type.
+  A new message type gets its handler in its group's module (or a new group, listed in `index.ts`); the panel only
+  dispatches.
+- **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
+  the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
+  `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+
 ## Buttons that wait
 
 A button that starts something taking a while (git, GitHub, an agent starting, a file write and the backlog's refresh) says it's working from the click until the host is done, and takes no second click meanwhile (BL-116). The webview marks the action busy when it sends it; the host replies "done" for every such message, in a `finally`, whether the action posted, failed (`failed: true`; the error shows as before), was cancelled at a question or returned early. So nothing sticks, and a button whose action asks first (a confirmation, a quick pick) stays working while the question is up.
 
-- **The ticket view**: use `ActionButton` with the message (`working="Merging…"` for a label of its own; "Working…" by default), or call `act(message, label)` from a button of your own and read `useWorking(message)` ([src/webview/ticket/main.tsx](src/webview/ticket/main.tsx)). The host's `{ type: 'done' }` is posted for every message ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)). Two clicks are the same action when `actionKey` ([src/webview/ticketActions.ts](src/webview/ticketActions.ts)) gives them the same key: give a new message type a case there when it carries a target (a hash, a key, a verdict), so one item's busy button doesn't disable another's.
+- **The ticket view**: use `ActionButton` with the message (`working="Merging…"` for a label of its own; "Working…" by default), or call `act(message, label)` from a button of your own and read `useWorking(message)` ([src/webview/ticket/actions.tsx](src/webview/ticket/actions.tsx)). The host's `{ type: 'done' }` is posted for every message ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)). Two clicks are the same action when `actionKey` ([src/webview/ticketActions.ts](src/webview/ticketActions.ts)) gives them the same key: give a new message type a case there when it carries a target (a hash, a key, a verdict), so one item's busy button doesn't disable another's.
 - **The sidebar's backlog**: use `BusyButton` with the `backlog` message and its codicon (it spins while working), or `act(message)` and `useBusy().has(message)` ([src/webview/ui/backlogBusy.tsx](src/webview/ui/backlogBusy.tsx)). The sidebar posts `backlogDone` for every `backlog` message ([src/ui/sidebar/sidebarProvider.ts](src/ui/sidebar/sidebarProvider.ts)); `backlogActionKey` ([src/webview/backlogActions.ts](src/webview/backlogActions.ts)) keys them by op and item, and an item's busy actions end when it leaves the backlog.
 - **Other sidebar messages**: a message that has no done reply yet gets one the same way: the host posts it in a `finally` around the handler, with the message as it was sent, and the webview clears the busy state on it. Don't rely on the tool icon's spinner (`trackProgress`): it isn't where the user clicked.
 
