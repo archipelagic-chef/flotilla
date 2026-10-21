@@ -13,6 +13,7 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+const terminal = vi.hoisted(() => vi.fn(() => ({ sessionId: 'terminal-session' })));
 /** Is Claude still limited? (undefined: it takes work again.) */
 const probe = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
 /** The token use agents' transcripts show (see watchRunaways); none: no transcript. */
@@ -36,12 +37,12 @@ vi.mock('vscode', () => ({
   env: { clipboard: { writeText: async () => undefined } },
 }));
 vi.mock('../../../src/ui/backlog/agentRunner', () => ({
-  agentChoice: () => ({}),
+  agentChoice: (item?: { agent?: unknown }) => item?.agent ?? {},
   confirmMemory: async () => false,
   describeChoice: () => '',
   isRunningHeadless: () => false,
   isRunningInTerminal: () => false,
-  runAgentInTerminal: () => ({ sessionId: 'terminal-session' }),
+  runAgentInTerminal: terminal,
   stopTerminalAgent: async () => false,
   modelLevels: () => levels.now,
   probeLimit: probe,
@@ -306,9 +307,11 @@ describe('the agent limit', () => {
   let finish: Array<(result: { code: number }) => void>;
   let loop: {
     start(id: string, manual?: boolean): Promise<void>;
-    startWork(item: unknown, ws: unknown): Promise<void>;
+    startWork(item: unknown, ws: unknown, o?: { byHand?: boolean }): Promise<void>;
     stop(id: string): Promise<void>;
     resumePaused(): Promise<void>;
+    tryPausedNow(): Promise<{ tried: Date; resumed: number; limited?: Date } | undefined>;
+    pausedUntil(): Promise<Date | undefined>;
     dispose(): void;
   };
   /** While set, every backlog read waits for it: a read that's still pending when the user acts. */
@@ -397,6 +400,27 @@ describe('the agent limit', () => {
     await settle();
     expect(started()).toHaveLength(4);
     expect(started()[3]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('runs an agent started by hand from its ticket without a window, with its choice, and queues it at the limit (BL-122)', async () => {
+    terminal.mockClear();
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    data.items[4] = { ...data.items[4], status: 'doing', agent: { model: 'opus', effort: 'high' } };
+    await loop.startWork(structuredClone(data.items[4]), worktrees[4], { byHand: true });
+    expect(started()).toHaveLength(2);
+    expect(notes).toContain('BL-5: Queued: an agent takes this up when one is free (1st in line).');
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    const call = spawn.mock.calls[2][0] as { name: string; cwd: string; choice: unknown; prompt: string };
+    expect(call).toMatchObject({ name: expect.stringContaining('BL-5'), cwd: '/wt/5', choice: { model: 'opus', effort: 'high' } });
+    expect(call.prompt).toContain('You were started from your ticket and run without a window');
+    expect(terminal).not.toHaveBeenCalled();
+    expect(data.items[4].review).toMatchObject({ state: 'working', autopilot: false, byHand: true, implementerSession: 'session-3' });
+    expect(notes.some((n) => /^BL-5: Opened a chat for agent .* It works without a window and reports here\.$/.test(n))).toBe(true);
     loop.dispose();
   });
 
@@ -491,6 +515,69 @@ describe('the agent limit', () => {
     expect(probe).not.toHaveBeenCalled();
     expect(started()).toHaveLength(1);
     expect(notes).toEqual(['BL-3: The limit reset: resumed the chat for agent Ada-3 to go on.']);
+    loop.dispose();
+  });
+
+  const pauseOn = (n: number, until: string) =>
+    (data.items[n].review = {
+      round: 1,
+      state: 'paused',
+      reviewer: '',
+      paused: { until, known: true, phase: 'work', session: `session-p${n}`, agent: `Ada-${n}`, resume: 'revising' },
+    });
+
+  it('Try Now resumes the paused agents, top of the backlog first, within the limit (BL-132)', async () => {
+    const later = new Date(Date.now() + 3 * 3600_000).toISOString();
+    probe.mockReset();
+    probe.mockResolvedValue(undefined);
+    pauseOn(4, later);
+    pauseOn(1, later);
+    pauseOn(3, later);
+    const result = await loop.tryPausedNow();
+    await settle();
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ resumed: 3 });
+    expect(result?.limited).toBeUndefined();
+    // Two slots: BL-2 and BL-4 go on, BL-5 waits for one.
+    expect(spawn.mock.calls.map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p1', 'session-p3']);
+    expect(notes).toContain('BL-5: Queued: an agent takes this up when one is free (1st in line).');
+    // The queued one waits for a slot, not for the limit: the autopilot doesn't wait for its reset.
+    expect(await loop.pausedUntil()).toBeUndefined();
+    finish[0]({ code: 0 });
+    await settle();
+    expect((spawn.mock.calls[2][0] as { resume?: string }).resume).toBe('session-p4');
+    loop.dispose();
+  });
+
+  it('Try Now on a limit still there starts nobody and keeps the wait, following the reset Claude says now (BL-132)', async () => {
+    const later = new Date(Date.now() + 3 * 3600_000).toISOString();
+    const sooner = new Date(Date.now() + 3600_000);
+    probe.mockReset();
+    probe.mockResolvedValue({ until: sooner, known: true, kind: 'usage' });
+    pauseOn(1, later);
+    pauseOn(2, later);
+    const result = await loop.tryPausedNow();
+    await settle();
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(started()).toHaveLength(0);
+    expect(result).toMatchObject({ resumed: 0, limited: sooner });
+    expect(data.items[1].review).toMatchObject({ state: 'paused', paused: { until: sooner.toISOString() } });
+    expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { until: later } });
+    expect(notes).toEqual([]);
+    loop.dispose();
+  });
+
+  it('Try Now leaves agents the user paused alone, and says when no agent waits for a limit (BL-132)', async () => {
+    probe.mockReset();
+    data.items[1].review = {
+      round: 1,
+      state: 'paused',
+      reviewer: '',
+      paused: { phase: 'work', session: 'session-u', agent: 'Ada-1', resume: 'revising', byUser: at },
+    };
+    expect(await loop.tryPausedNow()).toBeUndefined();
+    expect(probe).not.toHaveBeenCalled();
+    expect(started()).toHaveLength(0);
     loop.dispose();
   });
 

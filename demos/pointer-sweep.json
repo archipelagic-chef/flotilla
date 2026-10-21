@@ -1,0 +1,13 @@
+{
+  "title": "The pointer sweeps across the window (to measure how smooth recordings are)",
+  "steps": [
+    { "hover": ".activitybar .action-item:first-child" },
+    { "hover": ".statusbar-item:last-child" },
+    { "hover": ".activitybar .action-item:first-child" },
+    { "hover": ".statusbar-item:last-child" },
+    { "command": "Focus on Flotilla View" },
+    { "hover": "[aria-label=\"Backlog\"]" },
+    { "hover": ".statusbar-item:last-child" },
+    { "hover": "[aria-label=\"Backlog\"]" }
+  ]
+}

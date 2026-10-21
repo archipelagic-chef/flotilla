@@ -1326,59 +1326,6 @@ ins {
   font-style: normal;
   white-space: normal;
 }
-/* CI/CD runs, jobs and steps: log-style rows with a status icon; the icon's color says the status. */
-.ci-run .ci-status,
-.ci-job .ci-status,
-.ci-step .ci-status {
-  flex: none;
-}
-.ci-status.queued {
-  color: var(--muted);
-}
-.ci-status.running {
-  color: var(--working);
-}
-.ci-status.success {
-  color: var(--done);
-}
-.ci-status.failure {
-  color: var(--error);
-}
-.ci-status.cancelled,
-.ci-status.skipped,
-.ci-status.neutral {
-  color: var(--muted);
-}
-.ci-run.current .name {
-  font-weight: 600;
-}
-.ci-run .ci-age {
-  flex: none;
-  font-size: 12px;
-  color: var(--muted);
-}
-/* A run's jobs and a job's steps are indented under it; a failed job's name stands out. */
-.ci-toggle {
-  flex: none;
-  color: var(--muted);
-}
-.ci-indent,
-.ci-job {
-  padding-left: 22px;
-}
-.ci-step {
-  padding-left: 40px;
-}
-.ci-job.failure .name,
-.ci-step.failure .name {
-  color: var(--error);
-  font-weight: 600;
-}
-.ci-job .ci-log {
-  flex: none;
-  margin-left: auto;
-  font-size: 12px;
-}
 .hover-status .codicon {
   font-size: 12px;
   vertical-align: -2px;
@@ -2001,6 +1948,54 @@ ins {
 .backlog-item .turn-chip.turn-stopped {
   color: var(--error);
 }
+/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
+.backlog-item .demo-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  cursor: pointer;
+}
+.backlog-item .demo-mark .codicon {
+  font-size: 11px;
+}
+.backlog-item .demo-mark:hover,
+.backlog-item .demo-mark:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.backlog-item .agent-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 8em;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item .agent-chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.backlog-item .agent-chip.waiting {
+  color: var(--waiting);
+}
+.backlog-item .agent-chip .codicon {
+  font-size: 12px;
+}
 .lane .lane-filter {
   margin-left: auto;
 }
@@ -2112,7 +2107,6 @@ ins {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  width: 100%;
   margin: 2px 0 6px;
   padding: 5px 8px;
   border-left: 2px solid var(--vscode-charts-green, var(--working));
@@ -2124,6 +2118,113 @@ ins {
 .autopilot-bar .codicon {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
+}
+/* The bar's text turns the autopilot off; Try Now (BL-132), next to it, tries a usage limit's paused agents now. */
+.autopilot-bar .autopilot-what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.autopilot-bar .try-now {
+  flex: none;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.autopilot-bar .try-now:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.autopilot-bar .try-now .codicon {
+  color: inherit;
+}
+/* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
+.merge-queue-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--vscode-charts-purple, var(--working));
+  background: color-mix(in srgb, var(--vscode-charts-purple, var(--working)) 10%, transparent);
+  font-size: 12px;
+}
+.merge-queue-bar > span {
+  flex: 1;
+}
+.merge-queue-bar .codicon {
+  margin-top: 1px;
+  color: var(--vscode-charts-purple, var(--working));
+}
+.merge-queue-bar a[draggable] {
+  cursor: grab;
+}
+/* Where a ticket dragged in the queue would go (BL-144). */
+.merge-queue-bar a.drop-before,
+.merge-queue-bar .drop-end {
+  box-shadow: -2px 0 0 var(--vscode-focusBorder);
+}
+.merge-queue-bar .drop-end {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.merge-queue-bar a.conflicts {
+  color: var(--vscode-charts-yellow, #cca700);
+}
+.merge-queue-bar .land-all {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 12px;
+}
+.merge-queue-bar .land-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
+.working-filter.on {
+  color: var(--working);
+}
+.working-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--working);
+  background: color-mix(in srgb, var(--working) 10%, transparent);
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+}
+.working-bar .codicon {
+  margin-top: 1px;
+  color: var(--working);
+}
+.working-bar .link {
+  color: var(--vscode-textLink-foreground);
 }
 
 /* CI: a static dot on the Version Control tool for the scope's state (no spinner; its hover names the failed workflows), and a worktree's CI line in the same colors. */
@@ -2160,4 +2261,20 @@ ins {
   left: auto;
   right: 2px;
   top: 2px;
+}
+/* The agents working, on a line under the backlog's title while the autopilot is off (its bar says it while on): click to narrow the board to them. */
+.agent-count {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-descriptionForeground);
+}
+.agent-count:hover,
+.agent-count.on {
+  color: var(--working);
 }

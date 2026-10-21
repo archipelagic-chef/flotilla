@@ -246,7 +246,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       html_url: `https://github.com/${run.repo}/actions/runs/${run.id}`,
       created_at: iso(run.startedAt),
       run_started_at: iso(run.startedAt),
-      updated_at: iso(at),
+      // As GitHub: a finished run was last updated when it ended.
+      updated_at: iso(p.status === 'completed' ? (run.cancelledAt ?? run.startedAt + QUEUE_MS + RUN_MS) : at),
     };
   }
 
@@ -314,7 +315,10 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     if (method === 'POST' && (m = /^\/runs\/(\d+)\/(rerun|rerun-failed-jobs)$/.exec(rest))) {
       const run = findRun(repo, m[1]);
       if (!run) return notFound();
-      if (phase(run, at).status !== 'completed') return json(409, { message: 'Cannot rerun a workflow run that is still going.' });
+      const done = phase(run, at);
+      if (done.status !== 'completed') return json(409, { message: 'Cannot rerun a workflow run that is still going.' });
+      // A run that failed passes when it's run again (as a flaky test would): the view can be seen going to passed.
+      if (done.conclusion === 'failure') run.outcome = 'success';
       run.attempt += 1;
       run.startedAt = at;
       run.cancelledAt = undefined;
@@ -349,9 +353,15 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       const body = raw ? JSON.parse(raw) : undefined;
       const logs = /^\/logs\/(\d+)$/.exec(url.pathname);
       const repos = /^\/repos\/([^/]+)\/([^/]+)\/actions(\/.*)?$/.exec(url.pathname);
+      const branch = /^\/repos\/[^/]+\/[^/]+\/branches\/(.+)$/.exec(url.pathname);
       if (logs && method === 'GET') {
         const job = jobs.get(Number(logs[1]));
         result = job ? { status: 200, text: logOf(job.run, job.index) } : notFound();
+      } else if (branch && method === 'GET') {
+        // Run Workflow… reads the branch's head before it asks (BL-5).
+        const name = branch[1].split('/').map(decodeURIComponent).join('/');
+        const commit = commitOf(name);
+        result = commit ? json(200, { name, commit: { sha: commit.sha } }) : json(404, { message: 'Branch not found' });
       } else if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/deployments$/.test(url.pathname)) {
         // The CI/CD view also reads a branch's deployments (BL-8): the playground has none.
         result = json(200, []);

@@ -1,0 +1,31 @@
+{
+  "title": "A ticket that conflicts in the merge train is resolved by an agent in its merge there",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")", "timeout": 30000 },
+    { "caption": "BL-10 is approved: first in the merge queue" },
+    { "wait": 1500 },
+    { "caption": "" },
+    { "click": ".backlog-item:has-text(\"Remember the last open tab\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open tab\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Conflicts with main + BL-10\")", "timeout": 30000 },
+    { "caption": "BL-15 conflicts with BL-10 in the train: it waits, and offers Resolve with Agent" },
+    { "wait": 3000 },
+    { "caption": "The agent resolves it in BL-15's merge in the train, onto main + BL-10; its branch isn't changed" },
+    { "click": ".merge-queue button:has-text(\"Resolve with Agent\")" },
+    { "waitFor": ".review-panel:has-text(\"(the merge train)\")", "timeout": 30000 },
+    { "wait": 3000 },
+    { "caption": "Approved, the resolution is recorded (rerere): the train reuses it, and BL-15 lands from it" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}

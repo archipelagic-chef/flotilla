@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { git, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 // scripts/playground.mjs, run in a scratch directory: it creates .playground under the working directory.
@@ -9,8 +9,13 @@ const script = path.join(process.cwd(), 'scripts', 'playground.mjs');
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
 
+// An empty home: the script's debug profile finds no Claude Code there to copy (some 300 MB into each scratch
+// directory, which made these tests take minutes when several suites ran at once, BL-139).
+const home = makeTempDir('flotilla-playground-home-');
+afterAll(() => removeDir(home));
+
 function playground(cwd: string, ...args: string[]) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
 }
 
 function scratch(): string {
@@ -24,12 +29,14 @@ function movedAside(cwd: string): string[] {
   return fs.readdirSync(cwd).filter((name) => /^\.playground\.old-/.test(name)).sort();
 }
 
-describe('scripts/playground.mjs', () => {
+// Each test builds whole playgrounds (a worktree per seeded ticket): slow under a full, parallel run.
+describe('scripts/playground.mjs', { timeout: 90_000 }, () => {
   it('creates a playground once and leaves an up-to-date one alone', () => {
     const cwd = scratch();
     expect(playground(cwd).stdout).toMatch(/Created playground/);
     expect(playground(cwd).stdout).toMatch(/already exists/);
-    expect(git(path.join(cwd, '.playground'), 'config', 'flotilla.playgroundVersion')).toBe('1');
+    expect(git(path.join(cwd, '.playground'), 'config', 'flotilla.playgroundVersion')).toBe('2');
+    expect(fs.readdirSync(path.join(cwd, '.vscode-test', 'debug-extensions'))).toEqual([]);
   });
 
   it('says an outdated playground is outdated, and leaves it as it is', () => {
@@ -68,7 +75,7 @@ describe('scripts/playground.mjs', () => {
     expect(git(path.join(cwd, old), 'worktree', 'list')).toMatch(/\.worktrees[\\/]clean .*\[clean\]/);
     expect(git(movedWorktree, 'branch', '--show-current')).toBe('clean');
     expect(git(playgroundDir, 'worktree', 'list')).not.toMatch(/\[clean\]/);
-    expect(git(playgroundDir, 'config', 'flotilla.playgroundVersion')).toBe('1');
+    expect(git(playgroundDir, 'config', 'flotilla.playgroundVersion')).toBe('2');
   });
 
   it('keeps a worktree’s uncommitted changes, staged ones included, when it moves aside', () => {

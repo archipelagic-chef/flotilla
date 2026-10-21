@@ -1,6 +1,7 @@
 **
 !dist/*.js
 !dist/*.css
+!dist/build.json
 !dist/codicons/**
 !media/**
 !package.json

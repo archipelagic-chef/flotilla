@@ -15,6 +15,7 @@
   "include": [
     "src",
     "tests/unit",
+    "tests/integration",
     "tests/helpers",
     "vitest.config.ts"
   ],

@@ -1,0 +1,32 @@
+{
+  "title": "Merge to main decides on CI: it waits while CI runs, merges nothing on red, and merges once it's green",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
+    { "caption": "BL-13's branch is pushed, and CI runs on it" },
+    { "waitFor": ".ci-panel .ci-line" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "click": ".review-panel button:has-text(\"Merge to main\")" },
+    { "caption": "Merge to main waits for CI: nothing runs locally, and no other merge waits behind it" },
+    { "waitFor": ".merge-ci-wait" },
+    { "wait": 2500 },
+    { "caption": "CI fails: nothing is merged" },
+    { "waitFor": ".review-panel button:has-text(\"Merge to main\"):not([disabled])", "timeout": 60000 },
+    { "click": ".ci-panel .ci-summary" },
+    { "caption": "The failed job, with its log and Fix with Agent" },
+    { "wait": 3000 },
+    { "caption": "Run it again from the ticket, and Merge to main once more" },
+    { "hover": ".ci-runs .ci-run.failure" },
+    { "click": ".ci-runs .ci-run.failure [aria-label=\"Re-run\"]" },
+    { "waitFor": ".ci-line.running", "timeout": 30000 },
+    { "click": ".review-panel button:has-text(\"Merge to main\")" },
+    { "waitFor": ".merge-ci-wait" },
+    { "caption": "It merges by itself once CI passes" },
+    { "waitFor": "text=Merged into main", "timeout": 60000 },
+    { "wait": 3000 },
+    { "click": ".ci-panel .ci-summary" },
+    { "caption": "" }
+  ]
+}

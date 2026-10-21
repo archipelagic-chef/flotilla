@@ -20,7 +20,7 @@ export function actionKey(m: TicketWebviewMessage): string {
     case 'checkout':
       return `checkout:${m.branch}`;
     case 'run':
-      return `run:${m.key}:${m.index}`;
+      return `run:${m.key}:${m.index}${m.try ? ':try' : ''}`;
     default:
       return m.type;
   }

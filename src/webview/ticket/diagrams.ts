@@ -88,3 +88,20 @@ function note(e: unknown): HTMLElement {
   el.textContent = `This diagram can't be drawn: ${e instanceof Error ? e.message : String(e)}`;
   return el;
 }
+
+/** One diagram's SVG, drawn from its code (BL-136: the Attachments section's); in the queue with the others. */
+export function diagramSvg(code: string): Promise<string> {
+  const done = queue.then(async () => {
+    const mermaid = await load();
+    const id = `flotilla-diagram-${next++}`;
+    try {
+      return (await mermaid.render(id, code)).svg;
+    } catch (e) {
+      document.getElementById(`d${id}`)?.remove();
+      document.getElementById(id)?.remove();
+      throw e;
+    }
+  });
+  queue = done.catch(() => undefined);
+  return done;
+}

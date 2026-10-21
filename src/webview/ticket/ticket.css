@@ -301,6 +301,41 @@ h2 {
 .md-box:focus {
   border-color: var(--focus);
 }
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-bottom: 4px;
+}
+.md-tabs {
+  display: inline-flex;
+  border-bottom: 1px solid var(--border);
+}
+.md-tab {
+  padding: 2px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.md-tab[aria-selected='true'] {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--focus);
+}
+.md-formats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+.md-preview {
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px;
+  box-sizing: border-box;
+}
 .md-box::placeholder {
   color: var(--vscode-input-placeholderForeground);
 }
@@ -1055,6 +1090,26 @@ button.work-row:hover {
   border-radius: 6px;
   font-size: 12px;
 }
+.merge-output {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.merge-output > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.merge-output > pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .review-panel > .codicon {
   font-size: 16px;
 }
@@ -1171,6 +1226,59 @@ button.work-row:hover {
 .fold-entry {
   margin-left: auto;
   font-size: 11px;
+}
+/* Replies (BL-126): under their top-level entry, indented, each with whom it answers. */
+.reply-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+.reply-entry + .fold-entry {
+  margin-left: 0;
+}
+.replies {
+  list-style: none;
+  margin: 8px 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--vscode-panel-border, var(--muted));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reply-to {
+  display: block;
+  margin-bottom: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+}
+button.reply-to {
+  cursor: pointer;
+}
+button.reply-to:hover {
+  color: var(--vscode-textLink-foreground);
+}
+.entry-fold .reply-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.replying-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
 }
 .activity-toggle {
   margin: 4px 0 8px;
@@ -1357,4 +1465,588 @@ button.timeline-item:hover .timeline-text {
 }
 .ask-chat > .hint {
   margin-top: 0;
+}
+
+/* The agents on the ticket now (BL-98): a head line (name, state, running for, worktree, Open Chat), its last report. */
+.active-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.active-agent + .active-agent {
+  border-top: 1px solid var(--border);
+}
+.active-agent-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.active-agent-head .button {
+  margin-left: auto;
+}
+.active-agent-worktree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.active-agent-report {
+  padding-left: 34px;
+  min-width: 0;
+}
+.active-agent-report .rendered > :first-child {
+  margin-top: 2px;
+}
+.active-agent-report .rendered > :last-child {
+  margin-bottom: 0;
+}
+
+/* The Attachments section (BL-110): thumbnails in a row that wraps, newest first; one opens large in the viewer. */
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.section-toggle:hover h2 {
+  color: var(--vscode-foreground);
+}
+.section-toggle .count {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attachment {
+  display: flex;
+  flex-direction: column;
+  width: 140px;
+  min-width: 0;
+}
+.attachment-thumb {
+  position: relative;
+  width: 140px;
+  height: 96px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: zoom-in;
+}
+.attachment-thumb:hover,
+.attachment-thumb:focus-visible {
+  border-color: var(--focus);
+}
+.attachment-thumb img,
+.attachment-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+/* A diagram's thumbnail (BL-136): the whole diagram, small. */
+.attachment-thumb .attachment-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  background: var(--vscode-editor-background);
+  pointer-events: none;
+}
+.attachment-thumb .attachment-diagram svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+.attachment-thumb .media-note {
+  padding: 4px;
+  font-size: 11px;
+  white-space: normal;
+}
+.attachment-thumb .play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 32px;
+  color: #fff;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.7));
+}
+.demo-tag {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.attachment-thumb .demo-tag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+}
+.attachment-name,
+.attachment-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.attachment-name {
+  margin-top: 4px;
+}
+.attachment-meta {
+  font-size: 11px;
+}
+
+/* An attachment large, over the ticket. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px 16px;
+  background: rgba(0, 0, 0, 0.8);
+}
+.viewer-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 96px);
+  max-height: 100%;
+  margin: 0;
+}
+.viewer-figure img,
+.viewer-figure video {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+/* A diagram, large: it fits the window; a click zooms in to twice that, to scroll around in. */
+.viewer-diagram {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+  cursor: zoom-in;
+}
+.viewer-diagram.zoomed {
+  cursor: zoom-out;
+}
+.viewer-diagram .attachment-diagram {
+  padding: 12px;
+}
+.viewer-diagram svg {
+  display: block;
+  width: calc(100vw - 160px);
+  max-width: none !important;
+  height: auto;
+  max-height: calc(100vh - 164px);
+}
+.viewer-diagram.zoomed svg {
+  width: calc(2 * (100vw - 160px));
+  max-height: none;
+}
+.viewer-figure figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  color: #eee;
+}
+.viewer-figure figcaption .muted {
+  color: #bbb;
+}
+.viewer-figure figcaption .text-button {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+.viewer .icon-button {
+  color: #eee;
+  font-size: 20px;
+}
+.viewer-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* In the activity, pictures stay where the report shows them, but smaller: a click opens them large. */
+.feed .rendered img {
+  max-height: 240px;
+  cursor: zoom-in;
+}
+.feed .rendered video.media {
+  max-height: 270px;
+}
+/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
+.feed .report-media .rendered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+.feed .report-media .rendered > * {
+  margin: 0;
+}
+.feed .report-media .rendered > .diagram {
+  flex: 1 1 100%;
+}
+.feed .report-media .rendered img {
+  max-height: 420px;
+}
+.feed .report-media .rendered video.media {
+  max-height: 420px;
+  margin: 0;
+}
+/* A folded report's media: thumbnails beside its line, each opening in the viewer. */
+.entry.folded:has(.media-strip) {
+  display: flex;
+  align-items: center;
+}
+.entry.folded:has(.media-strip) .entry-fold {
+  flex: 1;
+}
+.media-strip {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  max-width: 50%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 3px 8px 3px 0;
+  list-style: none;
+}
+.media-thumb {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 36px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: zoom-in;
+}
+.media-thumb:hover,
+.media-thumb:focus-visible {
+  border-color: var(--focus);
+}
+.media-thumb img,
+.media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.media-thumb .play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+}
+.media-thumb-diagram {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.media-thumb-diagram pre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 4px;
+}
+.media-thumb-diagram .diagram,
+.media-thumb-diagram svg {
+  width: 100%;
+  height: 100%;
+}
+.media-thumb-diagram .media-note,
+.media-thumb > .media-note {
+  display: none;
+}
+.feed .entry.flash {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  transition: outline-color 0.4s;
+}
+
+/* The ticket's CI (BL-106): a line per branch with CI, which opens to the CI/CD view's run list (ui/ci.css). */
+.ci-panel {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.ci-worktree + .ci-worktree {
+  border-top: 1px solid var(--border);
+}
+.ci-line {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px 2px 4px;
+}
+.ci-summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 4px;
+  text-align: left;
+}
+.ci-summary:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.ci-summary .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ci-line.failure strong {
+  color: var(--error);
+}
+.ci-branch {
+  margin-left: auto;
+  font-family: var(--vscode-editor-font-family);
+  color: var(--muted);
+}
+/* The run list's rows, as the sidebar draws them. */
+.ci-runs {
+  padding: 2px 0 4px;
+  border-top: 1px solid var(--border);
+}
+.ci-runs .row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ci-runs .row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.ci-runs .row .name {
+  flex: 0 1 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ci-runs .row .ref {
+  flex: 0 1 auto;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.ci-runs .row .desc {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.ci-runs .row.group-empty {
+  cursor: default;
+  font-style: italic;
+  color: var(--muted);
+}
+.ci-runs .row.group-empty.error {
+  color: var(--error);
+  font-style: normal;
+  white-space: normal;
+}
+.ci-runs button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.ci-runs button.icon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.ci-runs button.link {
+  color: var(--vscode-textLink-foreground);
+}
+.ci-runs button.link:hover {
+  text-decoration: underline;
+}
+.ci-runs .hover-actions {
+  display: none;
+  flex: none;
+}
+.ci-runs .row:hover .hover-actions,
+.ci-runs .row:focus-within .hover-actions {
+  display: flex;
+}
+/* Why Merge to main stopped on CI (BL-112), under the merge button. */
+.merge-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.merge-stop > .codicon {
+  font-size: 16px;
+  color: var(--error);
+}
+.merge-queue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--working);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.merge-queue.conflicts {
+  border-left-color: var(--waiting);
+}
+.merge-queue > .codicon {
+  font-size: 16px;
+}
+.merge-stop-jobs {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* The Demo section (BL-135): the latest recording, large, as the demo unit. */
+.demo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.demo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.demo-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--vscode-editorWarning-foreground);
+}
+.demo-figure {
+  margin: 0;
+}
+.demo-figure img,
+.demo-figure video {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.demo-figure figcaption,
+.demo-earlier li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.demo-earlier {
+  margin-top: 10px;
+}
+.demo-earlier summary {
+  cursor: pointer;
+}
+.demo-earlier ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.demo-earlier li {
+  width: 240px;
+}
+.demo-earlier img,
+.demo-earlier video {
+  width: 240px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.demo-missing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+/* A demo in a report (BL-111): its recording with the bar over it, as in the Demo section; its run block's buttons. */
+.demo-inline {
+  margin: 8px 0;
+}
+.demo-inline img,
+.demo-inline video {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+}
+.demo-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.viewer-figure .demo-bar {
+  width: 100%;
 }

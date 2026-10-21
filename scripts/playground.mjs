@@ -22,15 +22,17 @@ if (!fs.existsSync(fileURLToPath(new URL('../dist/playground-seed-kit.mjs', impo
 const { seedPlayground } = await import('./playground-seed.mjs');
 
 // Bump when this script changes what a new playground looks like or how it is built.
-const PLAYGROUND_VERSION = 1;
+const PLAYGROUND_VERSION = 2;
 
 // The playground's files (a small Node app, its tests and launch configurations) live in playground-app/.
 const app = fileURLToPath(new URL('playground-app/', import.meta.url));
 const dir = path.resolve('.playground');
-// A GitHub address for the playground's origin, so the CI/CD view takes it for a GitHub repository. It's never fetched
-// from or pushed to; the debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug
-// profile: npm run debug-profile -- --fakes).
-const REMOTE = 'https://github.com/playground/app.git';
+// The playground's origin: a local bare repository whose path ends like a GitHub address, so the CI/CD view takes it for
+// GitHub's playground/app, while fetches and pushes (Flotilla's push on approval, BL-104) never leave the machine
+// (BL-113). The debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug profile:
+// npm run debug-profile -- --fakes).
+// Forward slashes, on Windows too: git takes them, and the address reads as GitHub's.
+const REMOTE = path.join(dir, '.git', 'origin', 'github.com', 'playground', 'app.git').split(path.sep).join('/');
 const reset = process.argv.includes('--reset');
 const exists = fs.existsSync(path.join(dir, '.git'));
 // Set once the old playground has been renamed, so a later failure can say where it is.
@@ -38,13 +40,6 @@ let movedTo = null;
 
 const gitIn = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const git = (...args) => gitIn(dir, ...args);
-const configured = (key) => {
-  try {
-    return git('config', key) !== '';
-  } catch {
-    return false;
-  }
-};
 const recordedVersion = () => {
   try {
     return Number(git('config', 'flotilla.playgroundVersion'));
@@ -93,8 +88,10 @@ const moveAside = () => {
 };
 
 // The playground looks like a GitHub repository to the CI/CD view: origin is REMOTE, and the checked-out branch is
-// "published" there (a remote-tracking ref of its own commit, and its upstream), so its runs can be read.
+// published there (its commit pushed, and its upstream), so its runs can be read. A playground made before REMOTE was
+// local (it was https://github.com/playground/app.git) gets it too, with what it had marked as pushed.
 const asGitHubRepository = () => {
+  if (!fs.existsSync(REMOTE)) gitIn(dir, 'init', '-q', '--bare', REMOTE);
   const remotes = git('remote').split('\n');
   if (!remotes.includes('origin')) git('remote', 'add', 'origin', REMOTE);
   else if (git('remote', 'get-url', 'origin') !== REMOTE) git('remote', 'set-url', 'origin', REMOTE);
@@ -105,6 +102,8 @@ const asGitHubRepository = () => {
     git('update-ref', `refs/remotes/origin/${branch}`, `refs/heads/${branch}`);
   }
   git('branch', `--set-upstream-to=origin/${branch}`, branch);
+  // The seed marks branches as pushed with remote-tracking refs alone: origin gets their commits.
+  git('push', '-q', '--force', 'origin', 'refs/remotes/origin/*:refs/heads/*');
 };
 
 const create = () => {
@@ -112,8 +111,9 @@ const create = () => {
   git('init', '-q');
   git('symbolic-ref', 'HEAD', 'refs/heads/main');
   git('config', 'core.autocrlf', 'false');
-  if (!configured('user.name')) git('config', 'user.name', 'Flotilla Playground');
-  if (!configured('user.email')) git('config', 'user.email', 'playground@flotilla.invalid');
+  // Its own identity, always: the demo window's home has no git config, so its merges need one here (BL-65).
+  git('config', 'user.name', 'Flotilla Playground');
+  git('config', 'user.email', 'playground@flotilla.invalid');
   fs.writeFileSync(path.join(dir, '.gitattributes'), '* text=auto eol=lf\n');
   git('add', '.');
   git('commit', '-q', '-m', 'Initial playground commit');

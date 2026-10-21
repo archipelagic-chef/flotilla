@@ -1,0 +1,33 @@
+{
+  "title": "Formatting a comment, and previewing it",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 2000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "caption": "The comment box has a toolbar: each button wraps the selection" },
+    { "click": ".comment-box textarea" },
+    { "type": "Looks good, but check the docs" },
+    { "press": "Control+Shift+ArrowLeft" },
+    { "press": "Control+Shift+ArrowLeft" },
+    { "click": ".comment-box .md-formats [aria-label=\"Bold\"]" },
+    { "wait": 800 },
+    { "caption": "Ctrl+K makes a link, with its address selected to type" },
+    { "press": "Control+K" },
+    { "type": "https://example.com/docs" },
+    { "press": "End" },
+    { "press": "Enter" },
+    { "click": ".comment-box .md-formats [aria-label=\"Bulleted list\"]" },
+    { "type": "one thing" },
+    { "wait": 800 },
+    { "caption": "Preview shows it as the activity will" },
+    { "click": ".comment-box .md-tab:has-text(\"Preview\")" },
+    { "waitFor": ".comment-box .md-preview strong" },
+    { "wait": 1800 },
+    { "click": ".comment-box .md-tab:has-text(\"Write\")" },
+    { "wait": 800 },
+    { "caption": "" }
+  ]
+}

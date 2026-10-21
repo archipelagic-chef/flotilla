@@ -73,3 +73,13 @@ export function planTerminal(state: TerminalState): TerminalPlan {
   if (state === 'idle') return { action: 'reuse' };
   return { action: 'ask', known: state === 'running' };
 }
+
+/**
+ * Where a demo runs when the ticket has no worktree any more (BL-111: merged and cleaned up): main (`main`, its place),
+ * when the demo is there (`inMain`), else why it can't. Undefined while the ticket has a worktree: it runs there.
+ */
+export function demoPlace(found: RunPlaces, demo: string, inMain: boolean, main: RunPlace): RunPlace | { why: string } | undefined {
+  if (found.reachable.length || found.unreachable.length) return undefined;
+  if (inMain) return main;
+  return { why: `its worktree is gone, and ${main.label} doesn't have ${demo} (the work wasn't merged), so there's no demo to run` };
+}

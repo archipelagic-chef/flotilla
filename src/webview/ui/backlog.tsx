@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { agentCountLabel } from './agentCount';
 import { branchMatches, laneOf, readyToMerge, type BacklogLane } from '../../features/backlog/backlog';
+import { CARD_AGENT_LABEL, cardAgents, type CardAgent } from '../../features/backlog/cardAgents';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { oldestFirst, type NeedKind } from '../../features/backlog/needs';
+import { agentOf, hasActiveAgent } from '../../features/backlog/activeAgent';
 import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { menuContext, send } from './api';
+import { shortTime } from '../shortTime';
+import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
 import './priority.css';
 
@@ -28,6 +33,8 @@ const EMPTY_LANE: Record<BacklogLane, string> = {
 };
 
 const DRAG_TYPE = 'application/x-flotilla-backlog';
+/** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
+const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
 
 interface Props {
   items: BacklogItem[] | undefined;
@@ -36,8 +43,12 @@ interface Props {
   /** How many integrations are connected. */
   integrations: number;
   autopilot?: AutopilotState;
+  mergeQueue?: MergeQueueView;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
+  /** The board shows only the tickets an agent works on (kept in the view's state). */
+  workingOnly: boolean;
+  setWorkingOnly(on: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -45,15 +56,20 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
   const [dropAt, setDropAt] = useState<{ status: BacklogStatus; before?: string }>();
-  // Agents' proposals wait above the lanes until they're accepted.
-  const proposed = (items ?? []).filter((i) => i.proposed);
   const worktreesOf = (item: BacklogItem) => workstreams.filter((w) => !w.isMain && branchMatches(item, w.branch));
+  // Agents' proposals wait above the lanes until they're accepted.
+  const proposed = workingOnly ? [] : (items ?? []).filter((i) => i.proposed);
+  const agentCount = agentCountLabel(autopilot);
+  const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
+  // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
+  const chats = workstreams.flatMap((w) => w.chats);
+  const agentsOf = (item: BacklogItem) => (item.source ? [] : cardAgents(item, chats));
 
   // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
   const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
@@ -78,12 +94,10 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         <span>Backlog</span>
         <span class="title-actions">
           {integrations > 0 && (
-            <button class="icon" aria-label="Refresh Issues" onClick={() => send({ type: 'backlog', op: 'refresh' })}>
-              <i class="codicon codicon-refresh" />
-            </button>
+            <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
           )}
           {autopilot && (
-            <button
+            <BusyButton
               class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
               aria-pressed={autopilot.enabled}
               aria-label={
@@ -91,14 +105,19 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                   ? 'Autopilot is on: agents take To Do tickets and work on them. Click to turn it off.'
                   : 'Autopilot: let agents take To Do tickets and work on them, without you starting each one'
               }
-              onClick={() => send({ type: 'backlog', op: 'autopilot' })}
-            >
-              <i class="codicon codicon-rocket" />
-            </button>
+              message={{ type: 'backlog', op: 'autopilot' }}
+              icon="rocket"
+            />
           )}
-          <button class="icon" aria-label="Plan the Backlog with Claude" onClick={() => send({ type: 'backlog', op: 'plan' })}>
-            <i class="codicon codicon-sparkle" />
+          <button
+            class={`icon working-filter${workingOnly ? ' on' : ''}`}
+            aria-pressed={workingOnly}
+            aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
+            onClick={() => setWorkingOnly(!workingOnly)}
+          >
+            <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
           </button>
+          <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
           <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
             <i class="codicon codicon-plug" />
           </button>
@@ -107,18 +126,54 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           </button>
         </span>
       </div>
+      {agentCount && (
+        <button
+          class={`agent-count${workingOnly ? ' on' : ''}`}
+          onClick={() => setWorkingOnly(!workingOnly)}
+          title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
+        >
+          <i class="codicon codicon-hubot" />
+          <span>{agentCount}</span>
+        </button>
+      )}
       {autopilot?.enabled && (
-        <button class="autopilot-bar" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
-          <i class="codicon codicon-rocket" />
+        <div class="autopilot-bar">
+          <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
+            <i class="codicon codicon-rocket" />
+            <span>
+              <strong>Autopilot</strong>{' '}
+              {autopilot.elsewhere
+                ? 'runs in another window.'
+                : autopilot.waitingUntil
+                  ? autopilot.triedAt
+                    ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
+                    : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
+                  : autopilot.waitingForMemory
+                    ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                    : autopilot.idle && !autopilot.running
+                      ? `· Idle: ${autopilot.idle}.`
+                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+              {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
+            </span>
+          </button>
+          {autopilot.waitingUntil && !autopilot.elsewhere && (
+            <BusyButton
+              class="try-now"
+              message={{ type: 'backlog', op: 'tryNow' }}
+              title="Asks Claude whether it takes work again: if it does, the paused agents go on now (top of the backlog first) and the autopilot takes To Do tickets again"
+            >
+              Try Now
+            </BusyButton>
+          )}
+        </div>
+      )}
+      {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
+      {workingOnly && items && items.length > 0 && (
+        <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
+          <i class="codicon codicon-filter-filled" />
           <span>
-            <strong>Autopilot</strong>{' '}
-            {autopilot.elsewhere
-              ? 'runs in another window.'
-              : autopilot.waitingUntil
-                ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
-                : autopilot.waitingForMemory
-                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                  : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. It takes To Do tickets from the top.`}
+            {working === 0 ? 'No ticket is being worked on' : `${working} ${working === 1 ? 'ticket' : 'tickets'} being worked on`} · {items.filter((i) => !i.proposed).length - working} hidden.{' '}
+            <span class="link">Show all</span>
           </span>
         </button>
       )}
@@ -144,9 +199,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         <div class="group lane proposed-lane">
           <div class="row group-head">
             <span class="name">Proposed by Agents</span>
-            <button class="icon" aria-label="Accept All" onClick={() => send({ type: 'backlog', op: 'acceptAll' })}>
-              <i class="codicon codicon-check-all" />
-            </button>
+            <BusyButton class="icon" aria-label="Accept All" message={{ type: 'backlog', op: 'acceptAll' }} icon="check-all" />
             <span class="badge">{proposed.length}</span>
           </div>
           <div class="lane-body">
@@ -156,6 +209,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                 item={item}
                 icon="lightbulb"
                 worktrees={worktreesOf(item)}
+                agents={agentsOf(item)}
                 color={(ws) => colors.get(ws.key)}
                 renaming={renaming === item.id}
                 setRenaming={(on) => setRenaming(on ? item.id : undefined)}
@@ -172,7 +226,9 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
         items.length > 0 &&
         LANES.map((lane) => {
           const filtered = lane.lane === 'review' && mineOnly;
-          const laneItems = items.filter((i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)));
+          const laneItems = items.filter(
+            (i) => laneOf(i) === lane.lane && !i.proposed && (!filtered || (!i.source && turnOf(i)?.mine)) && (!workingOnly || hasActiveAgent(i, worktreesOf(i))),
+          );
           const open = lane.lane !== 'done' || doneOpen;
           return (
             <div key={lane.lane} class={`group lane${dropAt?.status === lane.lane && !dropAt.before ? ' drop-end' : ''}`}>
@@ -206,16 +262,18 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       item={item}
                       icon={lane.icon}
                       worktrees={worktreesOf(item)}
+                      agents={agentsOf(item)}
                       color={(ws) => colors.get(ws.key)}
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
+                      queuedBehind={(mergeQueue?.entries.findIndex((e) => e.id === item.id) ?? -1) > 0}
                       dropBefore={dropAt?.before === item.id}
                       onDragOver={(e) => dragOver(e, lane.lane, item.id)}
                       onDrop={(e) => drop(e, lane.lane, item.id)}
                       openWorktree={openWorktree}
                     />
                   ))}
-                  {!laneItems.length && <div class="row group-empty">{filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
+                  {!laneItems.length && <div class="row group-empty">{workingOnly ? 'No agent works on these' : filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}
                 </div>
               )}
             </div>
@@ -304,25 +362,25 @@ function NeedRow({ item }: { item: BacklogItem }) {
             <button class="button secondary" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: write what should change">
               <i class="codicon codicon-request-changes" /> Request Changes
             </button>
-            <button class="button" onClick={() => send({ type: 'backlog', op: 'approve', id: item.id })}>
-              <i class="codicon codicon-check" /> Approve
-            </button>
+            <BusyButton class="button" message={{ type: 'backlog', op: 'approve', id: item.id }} icon="check">
+              {' '}Approve
+            </BusyButton>
           </>
         )}
         {need.kind === 'stopped' && fix && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'fix', id: item.id, fix })}>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'fix', id: item.id, fix }}>
             {fixLabel(fix, r?.stop?.kind)}
-          </button>
+          </BusyButton>
         )}
         {need.kind === 'queued' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'prioritize', id: item.id })} title="Starts it now, above the limit, or pauses a running agent to make room">
-            <i class="codicon codicon-arrow-up" /> Prioritize
-          </button>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'prioritize', id: item.id }} icon="arrow-up" title="Starts it now, above the limit, or pauses a running agent to make room">
+            {' '}Prioritize
+          </BusyButton>
         )}
         {need.kind === 'failed' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'start', id: item.id })} title="Creates its worktree if needed and starts an agent there">
-            <i class="codicon codicon-play" /> Run
-          </button>
+          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket">
+            {' '}Run
+          </BusyButton>
         )}
         <button class="button secondary" onClick={open}>
           Open
@@ -337,31 +395,25 @@ interface RowProps {
   icon: string;
   /** The worktrees working on it: one, or several for an epic. */
   worktrees: WorkstreamView[];
+  /** The agents on it, with what each is doing (BL-96). */
+  agents: CardAgent[];
   color(ws: WorkstreamView): string | undefined;
   renaming: boolean;
   setRenaming(on: boolean): void;
+  /** In the merge queue, behind other tickets: its menu has Merge Next (BL-144). */
+  queuedBehind?: boolean;
   dropBefore: boolean;
   onDragOver(e: DragEvent): void;
   onDrop(e: DragEvent): void;
   openWorktree(key: string): void;
 }
 
-/**
- * Where its agent is, for the card's menu: running (in the review loop, or busy in one of its worktrees), paused, or
- * stopped by the user (it can be resumed).
- */
-function agentOf(item: BacklogItem, worktrees: WorkstreamView[]): 'running' | 'paused' | 'stopped' | undefined {
-  const state = item.review?.state;
-  if (state === 'paused') return 'paused';
-  if (state === 'stopped' && item.review?.stop?.kind === 'user' && item.review.stop.agent) return 'stopped';
-  if (state === 'working' || state === 'reviewing' || state === 'revising') return 'running';
-  return worktrees.some((w) => w.attention === 'working' || w.attention === 'waiting-for-input') ? 'running' : undefined;
-}
-
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
-function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+  // A card whose button is working keeps its hover buttons shown (BL-117).
+  const busy = useBusy();
   const done = item.status === 'done';
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
@@ -374,7 +426,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item) })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item), backlogQueued: !!queuedBehind })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -387,7 +439,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
         if (renaming) return;
         if (e.key === 'F2' && !remote) setRenaming(true);
         else if (e.key === 'Enter') send({ type: 'backlog', op: 'open', id: item.id });
-        else if (e.key === 'Delete' && !remote) send({ type: 'backlog', op: 'delete', id: item.id });
+        else if (e.key === 'Delete' && !remote) act({ type: 'backlog', op: 'delete', id: item.id });
         else return;
         e.preventDefault();
       }}
@@ -434,6 +486,27 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           {turn.kind === 'paused' ? 'Paused' : turn.who}
         </span>
       )}
+      {!renaming && item.demo && (
+        <button
+          class="demo-mark"
+          data-tip="It has a recorded demo: click to see it in the ticket"
+          aria-label="Show its demo"
+          onClick={(e) => {
+            e.stopPropagation();
+            send({ type: 'backlog', op: 'demo', id: item.id });
+          }}
+        >
+          <i class="codicon codicon-device-camera-video" />
+          demo
+        </button>
+      )}
+      {!renaming &&
+        agents.map((a) => (
+          <span key={a.name} class={`agent-chip ${a.state}`} data-tip={`Agent ${a.name}: ${CARD_AGENT_LABEL[a.state]}`}>
+            {a.state === 'paused' ? <i class="codicon codicon-debug-pause" /> : <span class={`dot ${a.state}`} />}
+            {a.name}
+          </span>
+        ))}
       {!renaming && !item.proposed && item.activity > 0 && (
         <span class="activity-count" aria-label={`${item.activity} activity entries`}>
           <i class="codicon codicon-comment" />
@@ -529,50 +602,42 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
       )}
       {!renaming && item.proposed && (
         <span class="proposal-actions" onClick={(e) => e.stopPropagation()}>
-          <button class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} onClick={() => send({ type: 'backlog', op: 'accept', id: item.id })}>
-            <i class="codicon codicon-check" />
-          </button>
-          <button
+          <BusyButton class="icon" aria-label={`Accept${item.proposed.by ? ` (Proposed by ${item.proposed.by})` : ''}`} message={{ type: 'backlog', op: 'accept', id: item.id }} icon="check" />
+          <BusyButton
             class="icon"
             aria-label="Discuss It with an Agent"
             title="An agent talks it through with you in the ticket, and writes what's agreed into it"
-            onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
-          >
-            <i class="codicon codicon-comment-discussion" />
-          </button>
-          <button class="icon" aria-label="Dismiss" onClick={() => send({ type: 'backlog', op: 'dismiss', id: item.id })}>
-            <i class="codicon codicon-close" />
-          </button>
+            message={{ type: 'backlog', op: 'discuss', id: item.id }}
+            icon="comment-discussion"
+          />
+          <BusyButton class="icon" aria-label="Dismiss" message={{ type: 'backlog', op: 'dismiss', id: item.id }} icon="close" />
         </span>
       )}
       {!renaming && item.run && (
-        <button
+        <BusyButton
           class="icon run-button"
           aria-label={`Run ${item.id}`}
           data-tip={runLabel(item.run)}
-          onClick={(e) => {
-            e.stopPropagation();
-            send({ type: 'backlog', op: 'run', id: item.id });
-          }}
-        >
-          <i class="codicon codicon-play" />
-        </button>
+          onClick={(e) => e.stopPropagation()}
+          message={{ type: 'backlog', op: 'run', id: item.id }}
+          icon="play"
+        />
       )}
       {!renaming && !item.proposed && (
-        <span class={`hover-actions${item.creating ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <span class={`hover-actions${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
           {!done && item.creating && (
             <span class="icon" role="status" aria-label="Creating its worktree…" title="Creating its worktree…">
               <i class="codicon codicon-loading codicon-modifier-spin" />
             </span>
           )}
           {!done && !item.creating && (
-            <button
+            <BusyButton
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
-              onClick={() => send({ type: 'backlog', op: 'start', id: item.id })}
-            >
-              <i class="codicon codicon-play" />
-            </button>
+              title={`${worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}: it runs in the background and reports in the ticket`}
+              message={{ type: 'backlog', op: 'start', id: item.id }}
+              icon="play"
+            />
           )}
           {!done && !item.creating && <CreateWorktreeIcons id={item.id} another={worktrees.length > 0} />}
           {remote ? (
@@ -582,14 +647,13 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
           ) : (
             <>
               {item.status === 'todo' && (
-                <button
+                <BusyButton
                   class="icon"
                   aria-label="Discuss It with an Agent"
                   title="An agent talks it through with you in the ticket, and writes what's agreed into it"
-                  onClick={() => send({ type: 'backlog', op: 'discuss', id: item.id })}
-                >
-                  <i class="codicon codicon-comment-discussion" />
-                </button>
+                  message={{ type: 'backlog', op: 'discuss', id: item.id }}
+                  icon="comment-discussion"
+                />
               )}
               <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
                 <i class="codicon codicon-link" />
@@ -597,9 +661,7 @@ function ItemRow({ item, icon, worktrees, color, renaming, setRenaming, dropBefo
               <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                 <i class="codicon codicon-edit" />
               </button>
-              <button class="icon" aria-label="Delete…" onClick={() => send({ type: 'backlog', op: 'delete', id: item.id })}>
-                <i class="codicon codicon-trash" />
-              </button>
+              <BusyButton class="icon" aria-label="Delete…" message={{ type: 'backlog', op: 'delete', id: item.id }} icon="trash" />
             </>
           )}
         </span>
@@ -680,3 +742,80 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
     />
   );
 }
+
+/**
+ * The merge queue (BL-140), above the board: the tickets waiting to land, first to land first, each opening its ticket
+ * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
+ * Its tickets are dragged to change the order they land in (BL-144).
+ */
+function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
+  // Where a dragged ticket would go: before this one, or at the end (null).
+  const [dropBefore, setDropBefore] = useState<string | null>();
+  const ids = queue.entries.map((e) => e.id);
+  const dragOver = (e: DragEvent, before: string | null) => {
+    if (!e.dataTransfer?.types.includes(QUEUE_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropBefore(before);
+  };
+  const drop = (e: DragEvent) => {
+    const id = e.dataTransfer?.getData(QUEUE_DRAG_TYPE);
+    const before = dropBefore;
+    setDropBefore(undefined);
+    if (!id || before === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const order = moveBefore(ids, id, before);
+    if (order.join() !== ids.join()) send({ type: 'backlog', op: 'queueOrder', ids: order });
+  };
+  return (
+    <div class="merge-queue-bar">
+      <i class="codicon codicon-git-merge" />
+      <span>
+        <strong>Merge queue</strong>
+        {queue.working ? ` · ${capitalizeFirst(queue.working)}` : ''}
+        {' · '}
+        <span class="queue-entries" onDragOver={(e) => dragOver(e, null)} onDragLeave={() => setDropBefore(undefined)} onDrop={drop}>
+          {queue.entries.map((e, i) => (
+            <span key={e.id} onDragOver={(ev) => dragOver(ev, e.id)}>
+              {i > 0 && ', '}
+              <a
+                href="#"
+                draggable
+                onDragStart={(ev) => {
+                  ev.dataTransfer?.setData(QUEUE_DRAG_TYPE, e.id);
+                  if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => setDropBefore(undefined)}
+                class={[e.state === 'conflicts' ? 'conflicts' : '', dropBefore === e.id ? 'drop-before' : ''].filter(Boolean).join(' ') || undefined}
+                title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  send({ type: 'backlog', op: 'open', id: e.id });
+                }}
+              >
+                {e.id}
+                {e.state === 'conflicts' && ' (conflicts)'}
+              </a>
+            </span>
+          ))}
+          {dropBefore === null && <span class="drop-end" />}
+        </span>
+      </span>
+      <button class="land-all" disabled={!!queue.working} onClick={() => send({ type: 'backlog', op: 'landAll' })} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
+        Land All
+      </button>
+    </div>
+  );
+}
+
+/** The ids with one moved before another (null: to the end). */
+function moveBefore(ids: readonly string[], id: string, before: string | null): string[] {
+  if (id === before) return [...ids];
+  const rest = ids.filter((x) => x !== id);
+  const at = before === null ? rest.length : rest.indexOf(before);
+  return at < 0 ? [...ids] : [...rest.slice(0, at), id, ...rest.slice(at)];
+}
+
+const capitalizeFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

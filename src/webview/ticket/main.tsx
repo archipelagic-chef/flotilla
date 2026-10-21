@@ -3,23 +3,32 @@ import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import { mergeActions } from '../../features/backlog/mergeStates';
 import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
-import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
+import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import type { AgentChatView, QueuedView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
+import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
+import { Attachments, Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
+import { DEMO_SECTION, DemoSection } from './demo';
+import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
+import { activeAgents, lastReport, runningFor } from '../activeAgents';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import { ticketStatus, type Ask } from '../ticketStatus';
 import './ticket.css';
+import { TicketCi } from './ci';
+import { ciWord } from '../../features/ci/summary';
+import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -61,11 +70,19 @@ const sendingListeners = new Set<() => void>();
 let shownEntries = 0;
 
 /** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
-function sendComment(text: string) {
+function sendComment(text: string, replyTo?: string) {
   sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
   sendingListeners.forEach((f) => f());
-  act({ type: 'comment', text }, 'Sending…');
+  act({ type: 'comment', text, ...(replyTo ? { replyTo } : {}) }, 'Sending…');
 }
+
+type ActivityEntry = TicketView['activity'][number];
+
+/** The window event a Reply button sends (BL-126): the comment box replies to that entry (its detail). */
+const REPLY_TO = 'flotilla-reply-to';
+
+/** Who an entry is by, as the ticket names it: an agent by its name. */
+const byName = (e: Pick<ActivityEntry, 'author'>) => entryAgent(e.author) ?? (e.author || 'Note');
 
 function useSending(): SentComment[] {
   const [, refresh] = useState(0);
@@ -192,6 +209,9 @@ const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = 
 /** Replies to pasted or dropped images, by request id. */
 const imageReplies = new Map<number, (markdown: string) => void>();
 let nextImage = 1;
+/** Replies to a Markdown box's Preview, by request id. */
+const previewReplies = new Map<number, (html: string) => void>();
+let nextPreview = 1;
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -235,7 +255,42 @@ async function attachImages(files: FileList | File[], area: HTMLTextAreaElement,
   return images.length > 0;
 }
 
-/** A Markdown box that grows with its text and takes pasted or dropped images. */
+/** What the Mention button inserts: the prefix of this ticket's id (BL-, or a tracker's PROJ-). */
+const mentionPrefix = (id: string) => /^(.*?-)\d+$/.exec(id)?.[1] ?? '';
+
+/** The formatting toolbar's buttons (BL-129), with their keys. */
+const FORMATS: Array<{ format: Format; icon: string; label: string; key?: string }> = [
+  { format: 'bold', icon: 'bold', label: 'Bold', key: 'b' },
+  { format: 'italic', icon: 'italic', label: 'Italic', key: 'i' },
+  { format: 'code', icon: 'code', label: 'Code' },
+  { format: 'codeBlock', icon: 'file-code', label: 'Code block' },
+  { format: 'link', icon: 'link', label: 'Link', key: 'k' },
+  { format: 'bullets', icon: 'list-unordered', label: 'Bulleted list' },
+  { format: 'numbers', icon: 'list-ordered', label: 'Numbered list' },
+  { format: 'quote', icon: 'quote', label: 'Quote' },
+  { format: 'mention', icon: 'mention', label: 'Mention a ticket or comment' },
+];
+
+/**
+ * Makes an edit in the textarea as typing would, so Ctrl+Z undoes it; where the browser won't, the value is set.
+ * The textarea's input event updates the box's state.
+ */
+function editArea(el: HTMLTextAreaElement, edit: TextEdit, setValue: (text: string) => void): void {
+  const expected = el.value.slice(0, edit.from) + edit.insert + el.value.slice(edit.to);
+  el.focus();
+  el.setSelectionRange(edit.from, edit.to);
+  const typed = edit.insert ? document.execCommand('insertText', false, edit.insert) : edit.from === edit.to || document.execCommand('delete');
+  if (!typed || el.value !== expected) {
+    el.value = expected;
+    setValue(expected);
+  }
+  el.setSelectionRange(edit.selStart, edit.selEnd);
+}
+
+/**
+ * A Markdown box that grows with its text and takes pasted or dropped images. With format, it has a toolbar (in that
+ * markup) and, for Markdown, Write and Preview tabs: Preview renders the text as the activity shows it.
+ */
 function MarkdownBox({
   value,
   setValue,
@@ -245,6 +300,8 @@ function MarkdownBox({
   autoFocus,
   minRows = 3,
   images = true,
+  format,
+  mention = '',
 }: {
   value: string;
   setValue(text: string): void;
@@ -255,21 +312,41 @@ function MarkdownBox({
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
   images?: boolean;
+  /** The toolbar, writing this markup (none without). */
+  format?: Markup;
+  /** What the Mention button inserts: the ticket ids' prefix. */
+  mention?: string;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
+  const [preview, setPreview] = useState<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight + 2}px`;
-  }, [value]);
+  }, [value, preview === undefined]);
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
-  return (
+  const apply = (f: Format) => {
+    const el = area.current;
+    if (el) editArea(el, formatEdit(el.value, el.selectionStart, el.selectionEnd, f, format, mention), setValue);
+  };
+  const showPreview = () => {
+    const requestId = nextPreview++;
+    setPreview('');
+    previewReplies.set(requestId, (html) => setPreview((shown) => (shown === undefined ? undefined : html)));
+    send({ type: 'preview', requestId, text: value });
+  };
+  const write = () => {
+    setPreview(undefined);
+    setTimeout(() => area.current?.focus());
+  };
+  const box = (
     <textarea
       ref={area}
       class="md-box"
+      hidden={preview !== undefined}
       rows={minRows}
       value={value}
       placeholder={placeholder}
@@ -279,6 +356,14 @@ function MarkdownBox({
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           onSubmit();
+          return;
+        }
+        const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());
+        if (key) {
+          // Not on to VS Code, where Ctrl+B toggles the sidebar and Ctrl+K starts a chord.
+          e.preventDefault();
+          e.stopPropagation();
+          apply(key.format);
         }
       }}
       onPaste={(e) => {
@@ -286,6 +371,13 @@ function MarkdownBox({
         if (images && files?.length && [...files].some((f) => fileKind(f))) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
+          return;
+        }
+        const el = area.current!;
+        const link = format && pasteLink(el.value, el.selectionStart, el.selectionEnd, e.clipboardData?.getData('text/plain') ?? '', format);
+        if (link) {
+          e.preventDefault();
+          editArea(el, link, setValue);
         }
       }}
       onDragOver={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
@@ -298,6 +390,47 @@ function MarkdownBox({
       }}
     />
   );
+  if (!format) return box;
+  const key = (k?: string) => (k ? ` (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}${k.toUpperCase()})` : '');
+  return (
+    <div class="md-editor">
+      <div class="md-toolbar">
+        {format === 'markdown' && (
+          <span class="md-tabs" role="tablist">
+            <button role="tab" class="md-tab" aria-selected={preview === undefined} onClick={write}>
+              Write
+            </button>
+            <button role="tab" class="md-tab" aria-selected={preview !== undefined} onClick={showPreview}>
+              Preview
+            </button>
+          </span>
+        )}
+        {preview === undefined && (
+          <span class="md-formats" role="toolbar" aria-label="Formatting">
+            {FORMATS.map((f) => (
+              <button
+                key={f.format}
+                class="icon-button"
+                title={f.label + key(f.key)}
+                aria-label={f.label}
+                // The textarea keeps its focus and selection.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => apply(f.format)}
+              >
+                <i class={`codicon codicon-${f.icon}`} />
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
+      {box}
+      {preview !== undefined && (
+        <div class="md-preview" style={{ minHeight: `${minRows * 1.5 + 1}em` }}>
+          {preview || !value.trim() ? <Rendered html={preview} empty="Nothing to preview." /> : <div class="rendered empty-text">Rendering…</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). */
@@ -306,6 +439,17 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
   // Mermaid blocks become diagrams, again whenever the html is new.
   useEffect(() => {
     if (el.current) void drawDiagrams(el.current);
+  }, [html]);
+  // A demo's video says how long it plays once it knows (a GIF's length comes with the html, BL-111).
+  useEffect(() => {
+    el.current?.querySelectorAll<HTMLVideoElement>('.demo-inline video').forEach((v) => {
+      const show = () => {
+        const label = v.closest('.demo-inline')?.querySelector('.demo-length');
+        if (label && Number.isFinite(v.duration)) label.textContent = `Recorded demo · ${demoLength(v.duration)}`;
+      };
+      if (v.readyState >= 1) show();
+      else v.addEventListener('loadedmetadata', show, { once: true });
+    });
   }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
@@ -316,7 +460,7 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
       // The button is in the host's html: its working state is set here, and cleared when the host is done.
       run.dataset.busy = 'Running…';
       (run as HTMLButtonElement).disabled = true;
-      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -429,6 +573,8 @@ function Description({ ticket }: { ticket: TicketView }) {
             autoFocus
             minRows={8}
             images={!ticket.remote}
+            format={jira ? 'jira' : 'markdown'}
+            mention={mentionPrefix(ticket.item.id)}
           />
           {jira && <div class="hint">Jira's own formatting: this is the description as Jira stores it.</div>}
           <div class="actions-row">
@@ -807,9 +953,11 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   // The agent the user paused or stopped: it can be resumed in its chat.
   const held = heldBy(r);
   const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
-  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot && !turn);
+  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
   const [icon, cls, label, text, todo] = autopilot
-    ? ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
+    ? r.byHand
+      ? ['play', 'working', 'Working', pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`, undefined]
+      : ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
     : turn && said
       ? [
           r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
@@ -824,114 +972,303 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   // A reviewer agent's approval waits for the user's: they approve it too, or ask for changes.
   const yours = r.state === 'yours' || (r.state === 'approved' && !r.byUser);
   return (
-    <div class={`review-panel ${cls}`}>
-      <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>{label}</strong> {text}
-        {todo && <span class="muted review-todo"> {todo}</span>}
-      </span>
-      {r.state === 'paused' &&
-        (r.paused?.byUser ? (
-          <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
-            <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
-          </ActionButton>
-        ) : (
-          <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
-            <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
-          </ActionButton>
-        ))}
-      {running && !yours && (
-        <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
-          <i class="codicon codicon-debug-pause" /> Pause
-        </ActionButton>
-      )}
-      {yours ? (
-        <>
-          <button
-            class="button secondary"
-            onClick={() => {
-              // What should change is written in the comment box: Request Changes sends it.
-              const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
-              box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              box?.focus();
-            }}
-            title="Write what should change below, then Request Changes"
-          >
-            <i class="codicon codicon-request-changes" /> Request Changes…
-          </button>
-          <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
-            <i class="codicon codicon-check" /> Approve
-          </ActionButton>
-        </>
-      ) : active ? (
-        <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
-          <i class="codicon codicon-debug-stop" /> Stop
-        </ActionButton>
-      ) : r.state === 'stopped' ? (
-        // Fixes for why it stopped, the first one first.
-        fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
-          <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
-            <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
-          </ActionButton>
-        ))
-      ) : (
-        <>
-          {ticket.canReview && (
-            <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
-              <i class="codicon codicon-eye" /> Review Again
+    <>
+      <div class={`review-panel ${cls}`}>
+        <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>{label}</strong> {text}
+          {todo && <span class="muted review-todo"> {todo}</span>}
+        </span>
+        {r.state === 'paused' &&
+          (r.paused?.byUser ? (
+            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
+              <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
             </ActionButton>
-          )}
-          {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} />}
-        </>
-      )}
+          ) : (
+            <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
+              <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+            </ActionButton>
+          ))}
+        {running && !yours && (
+          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+        )}
+        {yours ? (
+          <>
+            <button
+              class="button secondary"
+              onClick={() => {
+                // What should change is written in the comment box: Request Changes sends it.
+                const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                box?.focus();
+              }}
+              title="Write what should change below, then Request Changes"
+            >
+              <i class="codicon codicon-request-changes" /> Request Changes…
+            </button>
+            <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
+              <i class="codicon codicon-check" /> Approve
+            </ActionButton>
+          </>
+        ) : active ? (
+          <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
+            <i class="codicon codicon-debug-stop" /> Stop
+          </ActionButton>
+        ) : r.state === 'stopped' ? (
+          // Fixes for why it stopped, the first one first.
+          fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
+            <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
+              <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
+            </ActionButton>
+          ))
+        ) : (
+          <>
+            {ticket.canReview && (
+              <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
+                <i class="codicon codicon-eye" /> Review Again
+              </ActionButton>
+            )}
+            {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
+          </>
+        )}
+      </div>
+      {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
+      {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
+    </>
+  );
+}
+
+/** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
+function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {
+  const stop = ticket.mergeStop;
+  const view = stop && ci?.worktrees.find((w) => w.branch === stop.branch)?.view;
+  return stop && view?.kind === 'runs' && ciMovedPast(stop, view.runs) ? { ...ticket, mergeStop: undefined } : ticket;
+}
+
+/** A link the host opens (job logs, runs on GitHub). */
+function HostLink({ href, children }: { href: string; children: ComponentChildren }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        send({ type: 'openHref', href });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
+ * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs and Fix with Agent, or
+ * the base moved on with Update from Main. It holds until the branch's tip or its CI changes.
+ */
+function MergeStop({ stop }: { stop: CiStop }) {
+  if (stop.kind === 'moved')
+    return (
+      <div class="merge-stop">
+        <i class="codicon codicon-warning" />
+        <span class="review-text">
+          <strong>Not merged:</strong> {stop.base} has moved on since <code>{stop.branch}</code> took it in, so CI checked another tree than the merge's. Update
+          from {capitalize(stop.base)}, then merge when CI passes.
+        </span>
+        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Merges ${stop.base} into the branch, which is pushed, and CI runs again`}>
+          <i class="codicon codicon-sync" /> Update from {capitalize(stop.base)}
+        </ActionButton>
+      </div>
+    );
+  const cancelled = stop.runs.every((r) => r.status === 'cancelled');
+  const runLink = (r: Extract<CiStop, { kind: 'failed' }>['runs'][number]) => <HostLink href={r.url}>{`${r.workflow} #${r.number}`}</HostLink>;
+  const word = (status: string) => (status === 'cancelled' ? 'Cancelled' : 'Failed');
+  return (
+    <div class="merge-stop">
+      <i class="codicon codicon-error" />
+      <span class="review-text">
+        <strong>Not merged:</strong> CI {cancelled ? 'was cancelled' : 'failed'} on <code>{stop.branch}</code> at <code>{stop.tip.slice(0, 7)}</code>. There's no
+        merging past red CI.
+        <ul class="merge-stop-jobs">
+          {stop.jobs.length
+            ? stop.jobs.map((j) => {
+                const run = stop.runs.find((r) => r.id === j.runId);
+                return (
+                  <li key={j.jobId}>
+                    {word(j.status)}: <HostLink href={j.url}>{j.name}</HostLink>
+                    {run && <> in {runLink(run)}</>}
+                  </li>
+                );
+              })
+            : stop.runs.map((r) => (
+                <li key={r.id}>
+                  {word(r.status)}: {runLink(r)}
+                </li>
+              ))}
+        </ul>
+      </span>
+      <ActionButton class="button" message={{ type: 'mergeCiFix' }} working="Starting…" title="An agent reads the failed job's log, fixes it on the branch and pushes; CI runs again">
+        <i class="codicon codicon-hubot" /> Fix with Agent
+      </ActionButton>
     </div>
   );
 }
 
-function MergeButton({ into }: { into: string }) {
+/**
+ * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
+ * and the tickets ahead, or conflicts with them), and Remove from Queue.
+ */
+function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
+  const conflicts = !!queue.state?.startsWith('Conflicts');
+  return (
+    <div class={`merge-queue${conflicts ? ' conflicts' : ''}`}>
+      <i class={`codicon ${conflicts ? 'codicon-warning' : 'codicon-list-ordered'}`} />
+      <span class="review-text">
+        <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
+        {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
+        {conflicts && <> It waits: Resolve with Agent resolves them in its merge in the train (its branch isn't changed), or Merge to main merges it onto main as it is.</>}
+      </span>
+      {conflicts && (
+        <ActionButton
+          class="button"
+          message={{ type: 'mergeQueueResolve' }}
+          working="Starting…"
+          title="An agent resolves the conflicts in its merge in the train, onto main and the tickets ahead; approved, the resolution is recorded and reused"
+        >
+          <i class="codicon codicon-hubot" /> Resolve with Agent
+        </ActionButton>
+      )}
+      {queue.ahead.length > 0 && (
+        <ActionButton class="button secondary" message={{ type: 'mergeNext' }} working="Moving…" title="Moves it to the front of the merge queue: the train is rebuilt in the new order">
+          Merge Next
+        </ActionButton>
+      )}
+      <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
+        Remove from Queue
+      </ActionButton>
+    </div>
+  );
+}
+
+/** A text with `code` spans. */
+function Code({ text }: { text: string }) {
+  return <>{text.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</>;
+}
+
+/** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
+function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
+  const message: TicketWebviewMessage = { type: 'merge' };
+  const clicked = useWorking(message);
+  // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
+  const label = (progress && (progress.ci ? 'Merges when CI passes' : progress.waitsFor ? `Waiting for ${progress.waitsFor}…` : 'Merging…')) ?? clicked;
+  if (progress?.ci) return <CiWait into={into} runs={progress.ci} />;
   return (
     <button
       class="button"
-      onClick={() => send({ type: 'merge' })}
+      disabled={!!label}
+      aria-busy={!!label}
+      onClick={() => act(message, 'Merging…')}
       title="Merges its branch in a temporary worktree (git merge --no-ff), runs the checks there, then moves the base branch to the merge. Nothing is pushed."
     >
       <i class="codicon codicon-git-merge" /> Merge to {into}
+      {label && <WorkingTag label={label} />}
     </button>
   );
 }
 
-/** A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve. */
+/**
+ * Merge to main waiting for CI to pass (BL-105), and Cancel. It merges once the runs are green; their progress is in
+ * its tooltip, and live in the ticket's CI below.
+ */
+function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<TicketView['mergeProgress']>['ci']> }) {
+  const progress = runs.length ? runs.map((r) => `${r.workflow} #${r.number} ${ciWord(r.status)}`).join(', ') : "GitHub hasn't started CI yet";
+  return (
+    <>
+      <button class="button merge-ci-wait" disabled aria-busy title={`Merges into ${into} once every run on the branch's pushed tip has passed; nothing runs locally.\n${progress}`}>
+        <i class="codicon codicon-git-merge" /> Merge to {into}
+        <WorkingTag label="Merges when CI passes" />
+      </button>
+      <ActionButton class="button secondary" message={{ type: 'mergeCiCancel' }} working="Cancelling…" title="Stop waiting for CI: nothing is merged">
+        Cancel
+      </ActionButton>
+    </>
+  );
+}
+
+/** When the checks failed: "Oct 19, 20:16". */
+const failedAt = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/**
+ * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
+ * or its checks failing (BL-65), with their output, to fix with an agent.
+ */
 function MergingPanel({ ticket }: { ticket: TicketView }) {
   const m = ticket.merging!;
   const agent = m.agent ?? 'An agent';
   const resolving = m.state === 'resolving' && m.running;
+  const checks = m.checks;
+  const { actions } = mergeActions(m, m.running);
+  // With failing checks the agent fixes them; with conflicts, it resolves them.
+  const work = checks ? 'fixing the checks that fail on the merge' : 'resolving the conflicts';
   const [icon, cls, text] = resolving
-    ? ['git-merge', 'working', `${agent} is resolving the conflicts, in a temporary worktree; it reports below.`]
+    ? ['git-merge', 'working', `${agent} is ${work}, in a temporary worktree; it reports below.`]
     : m.state === 'resolved'
-      ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      ? checks
+        ? ['pass', 'waiting', `${agent} fixed the checks (its report is below). Approve the fix: the checks run again, then ${m.base} moves to the merge.`]
+        : m.train
+          ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
+          : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
       : m.state === 'resolving'
-        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the conflicts aren't resolved.`]
-        : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
+        ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
+        : checks && m.reason?.startsWith('the checks failed')
+          ? ['error', 'stopped', `The checks (${checks.command}) fail on the merge, though each side passed alone. Nothing changed; the merge is kept in a temporary worktree.`]
+          : ['warning', 'stopped', `Stopped: ${m.reason ?? 'the merge needs you.'}`];
   return (
-    <div class={`review-panel ${cls}`}>
-      <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
-      <span class="review-text">
-        <strong>Merging into {m.base}</strong> {text}
-      </span>
-      <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
-        <i class="codicon codicon-close" /> Cancel
-      </button>
-      {!resolving && m.state !== 'resolved' && (
-        <button class="button" onClick={() => send({ type: 'mergeResolve' })} title="An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve">
-          <i class="codicon codicon-hubot" /> Resolve with Agent
+    <>
+      <div class={`review-panel ${cls}`}>
+        <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>Merging into {m.train ? `${[m.base, ...m.train.ahead].join(' + ')} (the merge train)` : m.base}</strong> {text}
+          {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
+        </span>
+        <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
+          <i class="codicon codicon-close" /> Cancel
         </button>
+        {actions.includes('resolve') && (
+          <button
+            class="button"
+            onClick={() => send({ type: 'mergeResolve' })}
+            title={
+              checks
+                ? 'An agent fixes the merge, given the failing output and the tickets of both sides: it keeps both intents (or asks you here), and reports here for you to approve'
+                : "An agent resolves the conflicts, keeping both sides' intent, and reports here for you to approve"
+            }
+          >
+            <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {actions.includes('recheck') && (
+          <button
+            class="button secondary"
+            onClick={() => send({ type: 'mergeRecheck' })}
+            title="Runs the checks again on the merge as it is (a failure that was only a loaded machine's goes away): passing, the base branch moves to the merge"
+          >
+            <i class="codicon codicon-refresh" /> Run the Checks Again
+          </button>
+        )}
+        {actions.includes('approve') && (
+          <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the merge, then moves the base branch to it">
+            <i class="codicon codicon-check" /> {checks ? 'Approve Fix' : 'Approve Resolution'}
+          </button>
+        )}
+      </div>
+      {checks && (
+        <details class="merge-output" open={m.state === 'failed'}>
+          <summary>The checks' output (its end; all of it is in the terminal)</summary>
+          <pre>{checks.output.trim() || '(no output)'}</pre>
+        </details>
       )}
-      {m.state !== 'resolving' && (
-        <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the resolved merge, then moves the base branch to it">
-          <i class="codicon codicon-check" /> Approve Resolution
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -1285,6 +1622,58 @@ function modelName(model: string): string {
   return m[2] ? `${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : family;
 }
 
+/** Every agent on the ticket now, in full: its state, how long it has run, its worktree, what it last reported. */
+function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: TicketView['agents'] }) {
+  // How long each has run goes on counting between updates.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <section class="block active-agents">
+      <div class="block-head">
+        <h2>Active agents</h2>
+      </div>
+      <div class="agents">
+        {agents.map((a) => {
+          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : a.state === 'waiting-for-input' ? CHAT_STATE['waiting-for-input'] : CHAT_STATE.working;
+          const report = lastReport(ticket.activity, a.id);
+          return (
+            <div key={a.id} class={`active-agent ${state.cls}`}>
+              <div class="active-agent-head">
+                <span class="chat-icon small">
+                  <i class="codicon codicon-hubot" />
+                  <span class={`dot ${state.cls}`} />
+                </span>
+                <span class="agent-name">{a.agent}</span>
+                <span class={`state ${state.cls}`}>{state.label}</span>
+                <span class="muted agent-meta" title={`Started ${new Date(a.started).toLocaleString()}`}>
+                  <i class="codicon codicon-watch" /> running {runningFor(a.started)}
+                </span>
+                <span class="muted agent-meta active-agent-worktree" title={`Worktree: ${a.key}`}>
+                  <i class="codicon codicon-git-branch" /> {a.branch}
+                </span>
+                <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" aria-label={`Open ${a.agent}'s chat`} title="Open this agent's chat in Claude Code">
+                  <i class="codicon codicon-comment-discussion" /> Open Chat
+                </ActionButton>
+              </div>
+              {report ? (
+                <div class="active-agent-report">
+                  <span class="muted">Last report · {report.date}</span>
+                  <Rendered html={report.html} empty="" />
+                </div>
+              ) : (
+                <div class="active-agent-report muted">No report yet.</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /** Every agent that worked on the ticket: its chat, its state, how much it reported. */
 function Agents({ ticket }: { ticket: TicketView }) {
   // What its agents re-read in all (BL-76): most of what a ticket costs.
@@ -1516,7 +1905,7 @@ const feedRound = (f: FeedRow): RoundInfo => ('commit' in f ? { part: 'round' } 
 const rowKey = (f: FeedRow, ticket: TicketView) => ('commit' in f ? `commit-${f.commit.hash}` : `entry-${ticket.activity.indexOf(f)}`);
 
 /** One row of the feed: a commit, or an entry (a comment, an agent's report, a note). */
-function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; onFold?: () => void }) {
+function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketView; onFold?: () => void; nest?: boolean }) {
   if ('commit' in f) {
     const c = f.commit;
     return (
@@ -1541,8 +1930,11 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
   const e = f;
   const kind = kindOf(e.author);
   const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
+  // Its replies show under it, one level deep (BL-126): a top-level entry's, in the conversation.
+  const replies = nest ? repliesTo(e, ticket) : [];
   return (
-    <li class={`entry kind-${kind}`}>
+    <li class={`entry kind-${kind}${e.reply ? ' reply' : ''}`} data-entry-key={e.key}>
+      {e.reply && <ReplyLine e={e} ticket={ticket} />}
       <div class="entry-head">
         <i class={`codicon codicon-${kind === 'agent' ? 'hubot' : (AUTHOR_ICON[e.author.toLowerCase()] ?? 'account')}`} />
         {/* Agents go by their names ("Nova-7"); the robot icon and the tag say what they are. */}
@@ -1570,6 +1962,15 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
           </ActionButton>
         )}
+        {!ticket.remote && e.anchor && kind !== 'history' && (
+          <button
+            class="text-button reply-entry"
+            onClick={() => window.dispatchEvent(new CustomEvent<ActivityEntry>(REPLY_TO, { detail: e }))}
+            title="Reply to this entry: your comment shows under it"
+          >
+            <i class="codicon codicon-reply" /> Reply
+          </button>
+        )}
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
             <i class="codicon codicon-chevron-up" /> Fold
@@ -1579,6 +1980,12 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
       {e.report ? (
         <>
           <Rendered html={e.report.summary} empty="" />
+          {/* Its pictures, videos and diagrams lead it (BL-114): the text they belong to stays in Details. */}
+          {e.report.media && (
+            <div class="report-media">
+              <Rendered html={e.report.media} empty="" />
+            </div>
+          )}
           {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
           {e.report.details && (
             <details class="report-details">
@@ -1591,13 +1998,84 @@ function FeedRowView({ f, ticket, onFold }: { f: FeedRow; ticket: TicketView; on
         <Rendered html={e.html} empty="" />
       )}
       {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
+      {replies.length > 0 && (
+        <ol class="replies">
+          {replies.map((r) => (
+            <FeedRowView key={rowKey(r, ticket)} f={r} ticket={ticket} />
+          ))}
+        </ol>
+      )}
     </li>
+  );
+}
+
+/** The replies grouped under a top-level entry (BL-126): in the conversation, by anyone but Flotilla. */
+function repliesTo(e: ActivityEntry, ticket: TicketView): ActivityEntry[] {
+  const i = ticket.activity.indexOf(e);
+  return ticket.activity.filter((r) => r.root === i && kindOf(r.author) !== 'history');
+}
+
+/** Whether an entry shows under its top-level entry, not on its own: a reply to an entry of the conversation. */
+const nested = (e: ActivityEntry, ticket: TicketView) =>
+  e.root !== undefined && kindOf(e.author) !== 'history' && !!ticket.activity[e.root] && kindOf(ticket.activity[e.root].author) !== 'history';
+
+/** "↩ reply to You, 16:04" above a reply: a click goes to the entry it answers (when it's still there). */
+function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
+  const r = e.reply!;
+  const parent = ticket.activity.find((p) => p.anchor === r.to);
+  const day = r.date.slice(0, 10) === e.date.slice(0, 10) ? r.date.slice(11) : r.date;
+  const label = parent ? `reply to ${byName(parent)}${day ? `, ${day}` : ''}` : r.label.replace(/^Reply/, 'reply') || 'reply';
+  return parent?.key ? (
+    <button class="reply-to" onClick={() => showEntry(parent.key!)} title="Go to the entry it answers">
+      ↩ {label}
+    </button>
+  ) : (
+    <div class="reply-to" title={parent ? undefined : 'The entry it answers is no longer in the ticket'}>
+      ↩ {label}
+    </div>
+  );
+}
+
+/** A folded report's media (BL-114), beside its line: a click opens one in the viewer, and the entry stays folded. */
+function MediaStrip({ e }: { e: ActivityEntry }) {
+  const thumbs = e.thumbs!;
+  const open = (at: number) =>
+    openMedia(
+      thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
+      at,
+    );
+  return (
+    <ul class="media-strip">
+      {thumbs.map((t, i) => (
+        <li key={i}>
+          <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
+            {t.kind === 'diagram' ? (
+              <Diagram code={t.code ?? ''} label={t.alt ?? 'A diagram'} class="media-thumb-diagram" />
+            ) : t.kind === 'video' ? (
+              <>
+                {/* Its first frame; it doesn't play here. */}
+                <video src={t.src} preload="metadata" muted tabIndex={-1} />
+                <i class="codicon codicon-play-circle play-mark" />
+              </>
+            ) : (
+              <img src={t.src} alt={t.alt ?? ''} loading="lazy" />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /** A review's rounds folded into one line ("Reviewed by Flux-3 in 2 rounds → approved"); a click shows them, in order. */
 function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: TicketView }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // "Show in activity" (BL-110) for an entry in it opens it.
+    const show = (e: Event) => fold.items.some((f) => !('commit' in f) && f.key === (e as CustomEvent<string>).detail) && setOpen(true);
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [fold]);
   return (
     <li class="entry kind-review">
       <button
@@ -1608,14 +2086,12 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
       >
         <i class={`codicon codicon-${open ? 'chevron-down' : 'chevron-right'}`} />
         <i class="codicon codicon-eye" />
-        <span>
-          {fold.reviewer ? `Reviewed by ${fold.reviewer}` : 'Reviewed'} in {fold.rounds} round{fold.rounds === 1 ? '' : 's'} → {fold.outcome}
-        </span>
+        <span>{foldTitle(fold)}</span>
       </button>
       {open && (
         <ol class="fold-items">
           {fold.items.map((f) => (
-            <FeedRowView key={rowKey(f, ticket)} f={f} ticket={ticket} />
+            <FeedRowView key={rowKey(f, ticket)} f={f} ticket={ticket} nest />
           ))}
         </ol>
       )}
@@ -1681,6 +2157,8 @@ function Timeline({ ticket }: { ticket: TicketView }) {
 
 function Activity({ ticket }: { ticket: TicketView }) {
   const [comment, setComment] = useState('');
+  // The entry the comment box replies to (BL-126).
+  const [replyTo, setReplyTo] = useState<ActivityEntry | undefined>(undefined);
   const [tab, setTab] = useState<EntryKind | undefined>(undefined);
   const [timeline, setTimeline] = useState(ticket.showActivity);
   // The entries (by their place in the activity) the user opened: all but the latest report fold to a line.
@@ -1697,6 +2175,42 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setTimeline(!timeline);
     send({ type: 'showActivity', shown: !timeline });
   };
+  useEffect(() => {
+    // "Show in activity" (BL-110): the entry opens, with its details, and shows in the middle for a moment.
+    const show = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      const i = ticket.activity.findIndex((e) => e.key === key);
+      if (i < 0) return;
+      setTab(undefined);
+      // A reply's top-level entry opens with it (BL-126).
+      const root = ticket.activity[i].root;
+      setOpened((s) => new Set(s).add(i).add(root ?? i));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
+          if (!li) return;
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video, [data-diagram], code.language-mermaid')) d.open = true;
+          // A diagram's "Show in activity" (BL-136) goes to the diagram in it.
+          const n = shownDiagram(key);
+          ((n !== undefined ? diagramsIn(li)[n] : undefined) ?? li).scrollIntoView({ behavior: 'smooth', block: 'center' });
+          li.classList.add('flash');
+          setTimeout(() => li.classList.remove('flash'), 1600);
+        }),
+      );
+    };
+    window.addEventListener(SHOW_ENTRY, show);
+    return () => window.removeEventListener(SHOW_ENTRY, show);
+  }, [ticket.activity]);
+  useEffect(() => {
+    const reply = (event: Event) => {
+      setReplyTo((event as CustomEvent<ActivityEntry>).detail);
+      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+    };
+    window.addEventListener(REPLY_TO, reply);
+    return () => window.removeEventListener(REPLY_TO, reply);
+  }, []);
+  // The entry replied to, as the ticket has it now (gone when it was removed).
+  const replying = replyTo && ticket.activity.find((e) => e.anchor === replyTo.anchor);
   const sending = useSending();
   useEffect(() => {
     const listener = (m: TicketWebviewMessage, failed: boolean) => {
@@ -1712,8 +2226,9 @@ function Activity({ ticket }: { ticket: TicketView }) {
   const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
   const post = () => {
     if (!comment.trim()) return;
-    sendComment(comment);
+    sendComment(comment, replying?.anchor);
     setComment('');
+    setReplyTo(undefined);
     if (tab && tab !== 'comment') setTab(undefined);
   };
   const review = (verdict: 'approved' | 'changes') => {
@@ -1731,10 +2246,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
-  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's entry is open,
-  // older ones are folded to a line each (opened by a click).
-  const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
-  const inConversation = (e: TicketView['activity'][number]) => kindOf(e.author) !== 'history' && (!tab || kindOf(e.author) === tab);
+  // In All, a reply shows under its top-level entry (BL-126); a tab shows each entry of its kind on its own.
+  const inConversation = (e: ActivityEntry) => kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
   // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
   // which then stay in the timeline: a fold shows the reviews and revisions.
   const groups: Array<FeedGroup<FeedRow>> = tab
@@ -1742,6 +2255,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
     : foldRounds<FeedRow>(ticket.activity, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer })
         .map((g) => ('fold' in g ? { fold: { ...g.fold, items: g.fold.items.filter((f) => !('commit' in f) && inConversation(f)) } } : g))
         .filter((g) => ('fold' in g ? g.fold.items.length > 0 : !('commit' in g.item) && inConversation(g.item)));
+  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's report in the
+  // feed is open (rounds.ts says which), older ones are folded to a line each (opened by a click).
+  const folded = new Set(groups.flatMap((g) => ('fold' in g ? g.fold.items : [])));
+  const latest = openEntry(ticket.activity, (e) => !folded.has(e) && (!nested(e, ticket) || !folded.has(ticket.activity[e.root!])));
   return (
     <section class="block">
       <div class="block-head">
@@ -1764,19 +2281,28 @@ function Activity({ ticket }: { ticket: TicketView }) {
           if ('fold' in g) return <RoundFoldLine key={rowKey(g.fold.items[0], ticket)} fold={g.fold} ticket={ticket} />;
           const e = g.item as TicketView['activity'][number];
           const i = ticket.activity.indexOf(e);
-          if (e !== latest && !opened.has(i)) {
+          const replies = tab ? 0 : repliesTo(e, ticket).length;
+          // The latest agent's entry is open, and so is the entry it replies to.
+          const holdsLatest = !!latest && latest.root === i && nested(latest, ticket);
+          if (e !== latest && !holdsLatest && !opened.has(i)) {
             return (
-              <li key={i} class={`entry folded kind-${kindOf(e.author)}`}>
+              <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
                   <i class="codicon codicon-chevron-right" />
                   <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
                   {e.date && <span class="muted">{e.date}</span>}
                   <span class="fold-first">{summaryOf(e.body) ?? ''}</span>
+                  {replies > 0 && (
+                    <span class="reply-count">
+                      {replies} repl{replies === 1 ? 'y' : 'ies'}
+                    </span>
+                  )}
                 </button>
+                {!!e.thumbs?.length && <MediaStrip e={e} />}
               </li>
             );
           }
-          return <FeedRowView key={i} f={e} ticket={ticket} onFold={e !== latest ? () => toggleOpened(i) : undefined} />;
+          return <FeedRowView key={i} f={e} ticket={ticket} nest={!tab} onFold={e !== latest && !holdsLatest ? () => toggleOpened(i) : undefined} />;
         })}
         {(!tab || tab === 'comment') &&
           unconfirmed.map((p, i) => (
@@ -1796,11 +2322,23 @@ function Activity({ ticket }: { ticket: TicketView }) {
       </button>
       {timeline && <Timeline ticket={ticket} />}
       <div class="comment-box">
+        {replying && (
+          <div class="replying">
+            <i class="codicon codicon-reply" /> Replying to <strong>{byName(replying)}</strong>
+            {replying.date && <span class="muted">{replying.date}</span>}
+            <span class="replying-first">{summaryOf(replying.body) ?? ''}</span>
+            <button class="icon-button" onClick={() => setReplyTo(undefined)} title="Cancel the reply: the comment goes at the end" aria-label="Cancel the reply">
+              <i class="codicon codicon-close" />
+            </button>
+          </div>
+        )}
         <MarkdownBox
           value={comment}
           setValue={setComment}
           placeholder={
-            asking
+            replying
+              ? `Reply to ${byName(replying)} (Markdown; Ctrl+Enter posts the reply)`
+              : asking
               ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
               : ticket.remote
                 ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
@@ -1809,6 +2347,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
           label="Comment"
           onSubmit={post}
           images={!ticket.remote}
+          format="markdown"
+          mention={mentionPrefix(ticket.item.id)}
         />
         <div class="actions-row">
           {reviewable && (
@@ -2215,6 +2755,7 @@ function App() {
   // What was just picked (status, priority) shows at once; the view the host sends after the action is the truth.
   const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   const [ask, setAsk] = useState<AskView>();
+  const [ci, setCi] = useState<TicketCiView>();
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
@@ -2229,11 +2770,16 @@ function App() {
       } else if (m.type === 'done') {
         finished(m.message, !!m.failed);
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
-      } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+      } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
+      else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
+      } else if (m.type === 'previewed') {
+        previewReplies.get(m.requestId)?.(m.html);
+        previewReplies.delete(m.requestId);
       }
     };
     window.addEventListener('message', listener);
@@ -2251,6 +2797,7 @@ function App() {
   };
   shownEntries = ticket.activity.length;
   const worktrees = ticket.worktrees;
+  const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
   return (
     <main class="ticket">
@@ -2330,7 +2877,7 @@ function App() {
             </button>
           )}
         </div>
-        <StateCard ticket={ticket} />
+        <StateCard ticket={withCiStop(ticket, ci)} />
         <div class="toolbar">
           {!done && (
             <ActionButton
@@ -2339,9 +2886,9 @@ function App() {
               working="Starting…"
               disabled={ticket.creating}
               title={
-                ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
-                  ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
-                  : 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                ticket.remote
+                  ? 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                  : 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen. It runs in the background, without a window (in the agent queue, as the autopilot’s agents do), and reports below'
               }
             >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
@@ -2388,8 +2935,12 @@ function App() {
         </div>
       )}
       <MainState ticket={ticket} />
+      <TicketCi ci={ci} send={send} />
+      {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
+      <DemoSection ticket={ticket} Action={ActionButton} />
+      <Attachments ticket={ticket} send={send} Action={ActionButton} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}

@@ -1,6 +1,8 @@
+import type { PushedInfo } from './branchPush';
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
 import type { MergedInfo, MergeState } from './merge';
+import type { MergeTrain } from './mergeTrain';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -72,6 +74,8 @@ export interface BacklogItem {
   /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
   merging?: MergeState;
   merged?: MergedInfo;
+  /** Its branches' last pushes to origin once approved (BL-104): a tip is pushed, and noted, once. */
+  pushed?: PushedInfo[];
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
@@ -110,6 +114,10 @@ export interface BacklogData {
   prefix?: string;
   /** In priority order (first is most important), across statuses. */
   items: BacklogItem[];
+  /** The merge queue (BL-140): the ids of the tickets waiting to land, in the order they land. */
+  mergeQueue?: string[];
+  /** The train built from the queue, as last built. */
+  mergeTrain?: MergeTrain;
 }
 
 export const EMPTY_BACKLOG: BacklogData = { version: 1, next: 1, items: [] };

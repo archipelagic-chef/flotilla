@@ -156,14 +156,15 @@ async function copySymlink(src: string, dest: string, fromRoot: string, toRoot: 
   // Windows reads junctions back with the \\?\ prefix.
   const resolved = path.resolve(path.dirname(src), target.replace(/^\\\\\?\\/, ''));
   const isDir = (await fs.stat(src).catch(() => undefined))?.isDirectory() ?? false;
+  const mapped = isInside(fromRoot, resolved) ? path.join(toRoot, path.relative(fromRoot, resolved)) : resolved;
   if (process.platform === 'win32') {
     // Junctions need an absolute target, and file symlinks need a right most users don't have: copy those instead.
-    const mapped = isInside(fromRoot, resolved) ? path.join(toRoot, path.relative(fromRoot, resolved)) : resolved;
     if (isDir) await fs.symlink(mapped, dest, 'junction');
     else await fs.copyFile(src, dest).catch(() => undefined);
     return;
   }
-  await fs.symlink(target, dest);
+  // Relative targets already resolve the same way inside the copy; absolute ones must be moved into it.
+  await fs.symlink(path.isAbsolute(target) ? mapped : target, dest);
 }
 
 /** Files larger than this are left as they are by shareLinkedFolder (comparing them costs more than they're worth). */

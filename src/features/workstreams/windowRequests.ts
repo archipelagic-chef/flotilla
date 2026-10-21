@@ -10,8 +10,8 @@ import * as path from 'node:path';
 export type WindowRequest = { type: 'openChat'; sessionId: string };
 
 const DIR = path.join('flotilla', 'requests');
-/** Older requests are dropped: whoever asked has given up by then. */
-const MAX_AGE_MS = 30_000;
+/** Older requests are dropped: whoever asked has given up by then (a window that was opened for one takes a while to start). */
+const MAX_AGE_MS = 120_000;
 
 export async function sendWindowRequest(gitDir: string, request: WindowRequest): Promise<void> {
   const dir = path.join(gitDir, DIR);

@@ -1,0 +1,18 @@
+{
+  "title": "Confirm a ticket's run block in a dialog",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1200 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "caption": "A run block in the agent's report…" },
+    { "click": ".run-button" },
+    { "caption": "…asks first, in a dialog the demo records" },
+    { "waitFor": ".monaco-dialog-box" },
+    { "wait": 1500 },
+    { "click": ".monaco-dialog-box .monaco-button:has-text(\"Cancel\")" },
+    { "wait": 800 },
+    { "caption": "" }
+  ]
+}

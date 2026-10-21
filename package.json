@@ -81,6 +81,12 @@
         "icon": "$(git-merge)"
       },
       {
+        "command": "flotilla.mergeNext",
+        "title": "Merge Next",
+        "category": "Flotilla",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "flotilla.pushMerged",
         "title": "Push the Base Branch…",
         "category": "Flotilla",
@@ -102,6 +108,12 @@
         "command": "flotilla.quickSwitch",
         "title": "Switch Workstream…",
         "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.runWorkflow",
+        "title": "Run Workflow…",
+        "category": "Flotilla",
+        "icon": "$(play)"
       },
       {
         "command": "flotilla.openInNewWindow",
@@ -409,6 +421,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.tryPausedNow",
+        "title": "Try Paused Agents Now",
+        "category": "Flotilla",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "flotilla.toggleAutopilot",
         "title": "Toggle Autopilot (Agents Take To Do Tickets)",
         "category": "Flotilla",
@@ -582,6 +600,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.about",
+        "title": "About",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.updateFromMain",
+        "title": "Update from Main Build",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.showNeedsYou",
         "title": "Show Needs You…",
         "category": "Flotilla"
@@ -633,6 +661,10 @@
           "when": "flotilla.state == ready"
         },
         {
+          "command": "flotilla.mergeNext",
+          "when": "false"
+        },
+        {
           "command": "flotilla.pushMerged",
           "when": "flotilla.state == ready"
         },
@@ -662,6 +694,10 @@
         },
         {
           "command": "flotilla.quickSwitch",
+          "when": "flotilla.state == ready"
+        },
+        {
+          "command": "flotilla.runWorkflow",
           "when": "flotilla.state == ready"
         },
         {
@@ -1080,9 +1116,14 @@
           "group": "1_merge@1"
         },
         {
+          "command": "flotilla.mergeNext",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogQueued",
+          "group": "1_merge@2"
+        },
+        {
           "command": "flotilla.mergeAllReady",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
-          "group": "1_merge@2"
+          "group": "1_merge@3"
         },
         {
           "command": "flotilla.runBacklogItem",
@@ -1588,6 +1629,21 @@
           "default": "needsYou",
           "description": "Which notifications Flotilla shows for what needs you."
         },
+        "flotilla.ci.pushOnApproval": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Push when `origin` is on GitHub and a workflow in `.github/workflows` runs on push.",
+            "Push to `origin`, whatever it is.",
+            "Don't push approved tickets' branches."
+          ],
+          "default": "auto",
+          "markdownDescription": "When a ticket is approved, push its branch to `origin` (setting its upstream), and again when it gets new commits while approved, so CI runs on it before Merge to main. Never another remote, never a force push, and only commits authored and committed with the repository's identity (`user.name`, `user.email`): anything else stops the push, and the ticket says why."
+        },
         "flotilla.ci.notify": {
           "type": "string",
           "enum": [
@@ -1657,7 +1713,24 @@
         "flotilla.merge.checkCommand": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. Failing checks stop the merge, and nothing changes. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
+          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. It runs in the system shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows), not the terminal's default one. When they fail, the base branch doesn't move: the merge is kept for an agent to fix (Fix with Agent, in the ticket), or to cancel. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
+        },
+        "flotilla.merge.checks": {
+          "type": "string",
+          "enum": ["ci", "local"],
+          "enumDescriptions": [
+            "When GitHub Actions runs on the branch's pushed tip, Merge to main decides on CI's result (it waits while CI runs, and never merges past red CI); the checks run locally only when there's no CI.",
+            "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
+          ],
+          "default": "ci",
+          "markdownDescription": "What Merge to main decides on: CI's result for the branch's pushed tip, or the local checks."
+        },
+        "flotilla.checks.maxParallel": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 64,
+          "markdownDescription": "How many test runs of the repository's worktrees (agents', merges') go at once; the others wait their turn, a merge's first, and each run gets its share of the cores. `0`: 1 per 16 cores. Read by test scripts that queue (this repository's `npm test`), from `.git/flotilla/checks.json`."
         },
         "flotilla.merge.onApprove": {
           "type": "string",
@@ -1785,8 +1858,8 @@
         },
         "flotilla.autopilot.avoidClashes": {
           "type": "boolean",
-          "default": true,
-          "markdownDescription": "The autopilot holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
+          "default": false,
+          "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
         },
         "flotilla.autopilot.maxAgents": {
           "type": "number",
@@ -1933,9 +2006,9 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
-    "test": "vitest run",
+    "test": "node scripts/test.mjs",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
-    "package": "vsce package",
+    "package": "node scripts/package.mjs",
     "playground": "node scripts/playground.mjs",
     "bench": "node scripts/bench-refresh.mjs",
     "bench:tokens": "node scripts/bench-tokens.mjs",
@@ -1946,6 +2019,7 @@
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.5",
     "@types/picomatch": "4.0.3",
