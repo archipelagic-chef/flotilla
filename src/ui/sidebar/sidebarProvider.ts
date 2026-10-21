@@ -43,6 +43,7 @@ import { CiRuns } from '../ci/ciRuns';
 import { runWorkflowByHand } from '../ci/runWorkflow';
 import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
+import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -111,6 +112,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
       creatingWorktrees.onDidChange(() => void this.postBacklog()),
+      removingWorktrees.onDidChange(() => this.postState()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
       this.ci,
@@ -380,7 +382,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const config = vscode.workspace.getConfiguration('flotilla');
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
-    const views = tabOrder(all).map((ws) => toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()));
+    const views = tabOrder(all).map((ws) => ({
+      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()),
+      ...(removingWorktrees.has(ws.key) ? { removing: true } : {}),
+    }));
     const { changed, keys } = changedViews(views, this.sent);
     const machine: MachineState = {
       freeMB: freeMemoryMB(),
@@ -606,9 +611,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const folder = this.root(m.key);
         if (!folder) throw new Error("This worktree's folder isn't reachable from this environment.");
         // A run shows at once, and again a few seconds on, when GitHub lists it.
-        if (await runWorkflowByHand(folder, this.deps.githubApi)) {
-          await this.ci.refresh();
-          setTimeout(() => void this.ci.refresh(), RUN_LISTED_MS);
+        if (await this.ci.runWorkflow(m.key, () => runWorkflowByHand(folder, this.deps.githubApi))) {
+          setTimeout(() => void this.ci.refresh(true), RUN_LISTED_MS);
         }
         return;
       }

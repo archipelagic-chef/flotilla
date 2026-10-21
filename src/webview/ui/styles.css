@@ -262,6 +262,8 @@ button {
 .row:focus-within .hover-actions,
 /* A card whose worktree is being created shows it without hovering. */
 .hover-actions.creating,
+/* An action that's working (a CI run's, Refresh: BL-119) shows it without hovering. */
+.hover-actions:has([aria-busy='true']),
 .chat:hover .hover-actions,
 .chat:focus-within .hover-actions {
   display: flex;
@@ -516,6 +518,10 @@ textarea:focus {
 }
 .chat.past .title {
   color: var(--muted);
+}
+.tag.removing .codicon {
+  font-size: inherit;
+  vertical-align: middle;
 }
 .tag {
   margin-left: 6px;
