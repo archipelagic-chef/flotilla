@@ -117,6 +117,12 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
           >
             <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
           </button>
+          <BusyButton
+            class="icon"
+            aria-label="Check All: what each ticket says is going on, against what really runs (Clean Up what doesn't)"
+            message={{ type: 'backlog', op: 'checkAll' }}
+            icon="pulse"
+          />
           <BusyButton class="icon" aria-label="Plan the Backlog with Claude" message={{ type: 'backlog', op: 'plan' }} icon="sparkle" />
           <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
             <i class="codicon codicon-plug" />

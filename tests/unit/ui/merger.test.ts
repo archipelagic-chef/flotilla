@@ -395,6 +395,17 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it("a Check's Clean Up fails a merge whose agent runs nowhere, and clears one whose worktree is gone (BL-163)", async () => {
+    const merging = { dir: '/nowhere', branch: 'feature/BL-1', base: 'main', baseTip: 'abc', state: 'resolving' as const, agent: 'Nova-1', started: '' };
+    const { merger, item } = await setup([{ ...approved('BL-1'), merging }]);
+    expect(await merger.forCheck('BL-1', 'lost', 'Nova-1 stopped')).toBe(true);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', reason: 'Nova-1 stopped' });
+    expect(await merger.forCheck('BL-1', 'lost', 'again')).toBe(false); // failed already: left as it is
+    expect(await merger.forCheck('BL-1', 'gone', 'gone')).toBe(true);
+    expect((await item('BL-1')).merging).toBeUndefined();
+    merger.dispose();
+  });
+
   it("doesn't move main under uncommitted changes in its worktree", async () => {
     const { repo, merger, worktrees } = await setup([approved('BL-1')]);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-1');

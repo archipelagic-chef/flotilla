@@ -9,9 +9,10 @@ import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedG
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
+import { glitchLine } from '../../features/backlog/ticketCheck';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type { AgentChatView, QueuedView, ReportView, TicketCheckView, TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
@@ -128,6 +129,59 @@ function ActionButton({
       {children}
       {busy && <WorkingTag label={busy} />}
     </button>
+  );
+}
+
+/**
+ * A ticket's Check (BL-163). Clicked: each claim, ✓ with its evidence or ✗ with Clean Up (one, or all). Made on
+ * opening the ticket: only a line, when something isn't what it says, so you're told before a button refuses.
+ */
+function CheckResult({ check }: { check: TicketCheckView }) {
+  const bad = check.claims.filter((c) => !c.ok);
+  if (!check.full) {
+    if (!bad.length) return null;
+    return (
+      <div class="error-note check-note">
+        <i class="codicon codicon-pulse" /> {glitchLine(bad)} ·{' '}
+        <ActionButton class="text-button" message={{ type: 'check' }} working="Checking…" title="Checks what the ticket says is going on, to clean up what isn't">
+          Check
+        </ActionButton>
+      </div>
+    );
+  }
+  return (
+    <div class={`check-result ${bad.length ? 'glitched' : ''}`}>
+      <div class="check-head">
+        <i class="codicon codicon-pulse" /> Checked at {check.at}
+        {check.error
+          ? `: ${check.error}`
+          : !check.claims.length
+            ? ': nothing is said to be going on.'
+            : bad.length
+              ? `: ${bad.length} of ${check.claims.length} ${check.claims.length === 1 ? "isn't" : "aren't"} what ${check.claims.length === 1 ? 'it says' : 'they say'}.`
+              : ': all as it says.'}
+        {bad.length > 1 && (
+          <ActionButton class="button" message={{ type: 'checkCleanUp' }} working="Cleaning up…" title="Cleans up every ✗ below (asks before stopping a process), with a note in the activity">
+            Clean Up All
+          </ActionButton>
+        )}
+      </div>
+      <ul>
+        {check.claims.map((c) => (
+          <li key={c.key} class={c.ok ? 'ok' : 'glitch'}>
+            <span class="check-mark">{c.ok ? '✓' : '✗'}</span> {c.text}
+            {!c.ok && c.fix && (
+              <>
+                {' '}→{' '}
+                <ActionButton class="text-button" message={{ type: 'checkCleanUp', key: c.key }} working="Cleaning up…" title={`Clean Up: ${c.fix}, with a note in the activity`}>
+                  Clean Up
+                </ActionButton>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -2910,6 +2964,14 @@ function App() {
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>
+              <ActionButton
+                class="button secondary"
+                message={{ type: 'check' }}
+                working="Checking…"
+                title="Checks each thing the ticket says is going on (agents working, a review, a merge) against what really runs; nothing changes until you Clean Up"
+              >
+                <i class="codicon codicon-pulse" /> Check
+              </ActionButton>
               {ticket.canReview && !ticket.review && (
                 <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…" title="Another agent reviews the work and gives a verdict here">
                   <i class="codicon codicon-eye" /> Start Review
@@ -2929,6 +2991,7 @@ function App() {
           )}
         </div>
       </header>
+      {ticket.check && <CheckResult check={ticket.check} />}
       {ticket.error && (
         <div class="error-note">
           <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}

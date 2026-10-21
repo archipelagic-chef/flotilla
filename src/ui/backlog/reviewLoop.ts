@@ -711,6 +711,30 @@ export class ReviewLoop implements vscode.Disposable {
     }
   }
 
+  /** Whether this window runs, starts or has queued the agent of an item's review (a Check: BL-163). */
+  runsAgentOf(id: string): boolean {
+    return this.runs.has(id) || [...this.starting.values()].includes(id) || this.waiting.has(id);
+  }
+
+  /**
+   * A Check found the review's agent runs nowhere (lost), or a paused agent's chat gone: the loop stops as recoverLost
+   * stops it, with its way on offered, and no note (the Check leaves its own). Nothing changes if it runs after all.
+   */
+  async stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> {
+    const r = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review;
+    if (!r || this.runsAgentOf(id)) return false;
+    if (what === 'paused-gone') {
+      if (r.state !== 'paused') return false;
+      await this.setReview(id, (now) => ({ ...now!, state: 'stopped', reason, paused: undefined, stop: { kind: 'chat-gone' } }));
+      return true;
+    }
+    if (r.state !== 'working' && r.state !== 'revising' && r.state !== 'reviewing') return false;
+    const review = r.state === 'reviewing';
+    const task: RevisionTask | undefined = review ? undefined : { prompt: 'Go on where you left off, then report in the ticket as asked.', why: reason, aside: true };
+    await this.setReview(id, (now) => ({ ...now!, state: 'stopped', reason, stop: { kind: review ? 'no-verdict' : 'no-report', ...(task ? { task } : {}) } }));
+    return true;
+  }
+
   /**
    * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
    * force) goes on at once.
