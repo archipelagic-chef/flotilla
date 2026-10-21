@@ -3,8 +3,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { gifSeconds } from '../../../src/features/backlog/demo';
-import { FRAME_MS, decodePng, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { DEMO_TAG as READ_TAG, gifSeconds, recordedDemo } from '../../../src/features/backlog/demo';
+import { DEMO_TAG, FRAME_MS, decodePng, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -371,6 +371,17 @@ describe('encodeGif', () => {
       [...red, ...blue, ...black, ...black],
       [...white, ...blue, ...black, ...red],
     ]);
+  });
+
+  it('names its demo in a comment that the ticket reads, and that leaves its frames as they were (BL-111)', () => {
+    const frames = [{ png: solid(255, 0, 0), ms: 500 }, { png: solid(0, 0, 255), ms: 1200 }];
+    const gif = encodeGif(frames, { name: 'try-demo' });
+    expect(DEMO_TAG).toBe(READ_TAG);
+    expect(recordedDemo(gif)).toBe('try-demo');
+    expect(recordedDemo(gif.subarray(-64))).toBe('try-demo');
+    expect(gifSeconds(gif)).toBeCloseTo(1.7);
+    expect(gif[gif.length - 1]).toBe(0x3b);
+    expect(recordedDemo(encodeGif(frames))).toBeUndefined();
   });
 });
 

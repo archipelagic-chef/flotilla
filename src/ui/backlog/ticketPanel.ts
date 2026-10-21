@@ -58,9 +58,10 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
-import { demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
 import { openTarget } from '../../features/backlog/runTarget';
-import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
+import { demoPlace, runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import type { CiRuns } from '../ci/ciRuns';
@@ -218,6 +219,36 @@ export function stripStyles(html: string): string {
 }
 
 /** A file's size; undefined if it isn't a file, or isn't there. */
+/** What recordings are (BL-111), by file, size and time: they're read once. */
+const recordings = new Map<string, { stamp: string; value: Recording }>();
+
+/**
+ * A recording's demo (the name the recorder noted in it) and, for a GIF, how long it plays: read from the file (a GIF
+ * whole, it's at most 2 MB; a video's end, where its metadata is).
+ */
+async function readRecording(file: string): Promise<Recording> {
+  const stat = await fs.promises.stat(file).catch(() => undefined);
+  if (!stat) return {};
+  const stamp = `${stat.size}:${stat.mtimeMs}`;
+  const known = recordings.get(file);
+  if (known?.stamp === stamp) return known.value;
+  const gif = /\.gif$/i.test(file);
+  const handle = await fs.promises.open(file, 'r').catch(() => undefined);
+  if (!handle) return {};
+  try {
+    const length = gif ? Math.min(stat.size, 4 * 1024 * 1024) : Math.min(stat.size, 256 * 1024);
+    const bytes = new Uint8Array(length);
+    await handle.read(bytes, 0, length, stat.size - length);
+    const name = recordedDemo(gif ? bytes.subarray(-1024) : bytes);
+    const seconds = gif ? gifSeconds(bytes) : undefined;
+    const value: Recording = { ...(name ? { name } : {}), ...(seconds ? { seconds } : {}) };
+    recordings.set(file, { stamp, value });
+    return value;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function fileSize(file: string): Promise<number | undefined> {
   try {
     const stat = await fs.promises.stat(file);
@@ -543,7 +574,10 @@ export class TicketPanels implements vscode.Disposable {
    * A ticket's local activity entries, rendered, with their keys, where they were posted, and their agent's chat: for
    * an agent's report, the chat that wrote it; for "Opened a chat for agent …", the chat it opened.
    */
-  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
+  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview, attachments: readonly AttachmentView[] = []): Promise<TicketView['activity']> {
+    // A demo's recording and its block show as one unit (BL-111).
+    const demos = new Map(attachments.filter((a) => a.demo).map((a): [string, Recording] => [a.src, { ...(a.recorded ? { name: a.recorded } : {}), ...(a.seconds ? { seconds: a.seconds } : {}) }]));
+    const units = (html: string) => withDemoUnits(html, (src) => demos.get(src));
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
     const threads = entryThreads(entries);
@@ -560,11 +594,11 @@ export class TicketPanels implements vscode.Disposable {
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
         const chat: AgentChatView | undefined =
           found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
-        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key) : undefined;
+        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key, units) : undefined;
         const html = report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
         return {
           ...e,
-          html: !report && isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
+          html: !report && isReport(e.author) ? units(withRunButtons(html, parseRunBlocks(e.body), key)) : html,
           key,
           anchor: thread.anchor,
           ...(thread.reply ? { reply: thread.reply } : {}),
@@ -578,19 +612,28 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** An agent's report split for the ticket (its summary, what it needs, its details); undefined for an older report. */
-  private async reportView(item: BacklogItem, body: string, later: TicketEntry[], webview: vscode.Webview, key: string): Promise<ReportView | undefined> {
+  private async reportView(
+    item: BacklogItem,
+    body: string,
+    later: TicketEntry[],
+    webview: vscode.Webview,
+    key: string,
+    units: (html: string) => string = (h) => h,
+  ): Promise<ReportView | undefined> {
     const parts = parseReport(body);
     if (parts.summary === undefined) return undefined;
     const roots = this.roots(item);
     const answer = reportAnswer(later);
     return {
       // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
-      summary: withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key),
-      details: withRunButtons(
-        await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
-        parseRunBlocks(parts.details),
-        key,
-        parseRunBlocks(parts.summary).length,
+      summary: units(withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key)),
+      details: units(
+        withRunButtons(
+          await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
+          parseRunBlocks(parts.details),
+          key,
+          parseRunBlocks(parts.summary).length,
+        ),
       ),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
@@ -689,7 +732,16 @@ export class TicketPanels implements vscode.Disposable {
         // An image on the web loads as it is (the page allows https images); a video the same.
         const media = /^https?:|^\/\//i.test(src) ? { src, kind: a.kind } : await resolveMedia(src, webview, dir, roots).catch(() => undefined);
         if (!media || 'note' in media) return undefined;
-        return { ...a, src: media.src, kind: media.kind, ...(entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {}) };
+        const file = path.resolve(dir, src);
+        const r = a.demo && file.startsWith(dir + path.sep) ? await readRecording(file) : {};
+        return {
+          ...a,
+          src: media.src,
+          kind: media.kind,
+          ...(entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {}),
+          ...(r.name ? { recorded: r.name } : {}),
+          ...(r.seconds ? { seconds: r.seconds } : {}),
+        };
       }),
     );
     return views.filter((v): v is AttachmentView => !!v);
@@ -703,9 +755,9 @@ export class TicketPanels implements vscode.Disposable {
     const dir = this.deps.backlog.dir;
     const local = (await this.deps.backlog.readTicket(item)).activity;
     // Entries posted to the issue show as its comments.
-    const localEntries = (await this.localEntries(item, local, webview)).filter((e) => !e.posted);
     // What the agents' reports show, and the ticket's folder; the tracker's own attachments stay in the tracker.
     const attachments = await this.attachments(item, '', local, webview);
+    const localEntries = (await this.localEntries(item, local, webview, attachments)).filter((e) => !e.posted);
     try {
       const { details: d, edit } = await this.remoteDetails(item.id);
       const remoteEntries = await Promise.all(
@@ -887,12 +939,13 @@ export class TicketPanels implements vscode.Disposable {
         send({ ...base, ...content, remote: base.remote && { ...base.remote, edit, priorityName: priorityName ?? base.remote.priorityName } });
       } else {
         const ticket = await this.deps.backlog.readTicketCached(item);
+        const attachments = await this.attachments(item, ticket.description, ticket.activity, panel.webview);
         send({
           ...base,
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
-          activity: await this.localEntries(item, ticket.activity, panel.webview),
-          attachments: await this.attachments(item, ticket.description, ticket.activity, panel.webview),
+          activity: await this.localEntries(item, ticket.activity, panel.webview, attachments),
+          attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
           ...(await this.mainView(plain, ticket.description)),
         });
@@ -1201,7 +1254,7 @@ export class TicketPanels implements vscode.Disposable {
       return;
     }
     const commands = demo ? demo.commands : lines;
-    const place = await this.runPlace(id, item);
+    const place = await this.runPlace(id, item, demo?.file);
     if (!place) return;
     if (demo && !fs.existsSync(path.join(place.dir, demo.file))) {
       void vscode.window.showWarningMessage(`${demo.file} isn't in ${place.dir}.`);
@@ -1264,9 +1317,16 @@ export class TicketPanels implements vscode.Disposable {
    * why: its worktree isn't reachable from this window, or a branch's worktree is gone (then it offers to create one).
    * Undefined when there's nothing to run in.
    */
-  private async runPlace(id: string, item: BacklogItem): Promise<RunPlace | undefined> {
+  private async runPlace(id: string, item: BacklogItem, demo?: string): Promise<RunPlace | undefined> {
     const worktrees = this.worktreesOf(item).map((w) => ({ branch: w.worktree.branch, path: w.worktree.path, adminDir: w.worktree.adminDir }));
     const found = runPlaces(itemBranches(item), worktrees);
+    // A demo of a ticket that's merged and cleaned up runs from main, when it's there (BL-111).
+    const main = demo ? demoPlace(found, demo, fs.existsSync(path.join(this.deps.mainRoot, demo)), { label: 'main', dir: this.deps.mainRoot }) : undefined;
+    if (main && 'why' in main) {
+      void vscode.window.showWarningMessage(`${id}'s demo can't run: ${main.why}.`);
+      return undefined;
+    }
+    if (main) return main;
     if (found.reachable.length === 1) return found.reachable[0];
     if (found.reachable.length > 1) {
       const picked = await vscode.window.showQuickPick(

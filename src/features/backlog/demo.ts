@@ -14,6 +14,8 @@ export interface DemoAttachment {
   date?: string;
   /** The entry that added it. */
   entryKey?: string;
+  /** The demo it was recorded from, as the recorder noted it in the file (BL-111). */
+  recorded?: string;
 }
 
 export interface DemoEntry {
@@ -61,6 +63,16 @@ function demoBlocks(entry: DemoEntry): Array<{ key: string; index: number; name:
   });
 }
 
+/**
+ * The `run demo` block a recording goes with (BL-111): the latest that names the demo it was recorded from, else its
+ * entry's first, else the activity's latest.
+ */
+export function demoRunFor(a: DemoAttachment, entries: readonly DemoEntry[]): { key: string; index: number; name: string } | undefined {
+  const all = entries.flatMap(demoBlocks);
+  const named = a.recorded ? all.filter((b) => b.name === a.recorded).pop() : undefined;
+  return named ?? all.find((b) => b.key === a.entryKey) ?? all.pop();
+}
+
 /** The ticket's demo, or undefined when it has none. `attachments` are newest first, as gatherAttachments gives them. */
 export function ticketDemo<A extends DemoAttachment>(
   attachments: readonly A[],
@@ -76,7 +88,7 @@ export function ticketDemo<A extends DemoAttachment>(
     const reviews = entries.slice(0, at).flatMap((e) => (e.author === 'Flotilla' ? [Number(/^Review round (\d+):/.exec(e.body)?.[1] ?? 0)] : []));
     round = Math.max(0, ...reviews) + 1;
   }
-  const run = (at >= 0 ? demoBlocks(entries[at]) : [])[0] ?? entries.flatMap(demoBlocks).pop();
+  const run = demoRunFor(latest, entries);
   const recorded = latest.date ? minute(latest.date) : NaN;
   const since = Number.isNaN(recorded) ? 0 : commits.filter((c) => !MERGE.test(c.subject) && minute(c.date) > recorded).length;
   return { latest, earlier: demos.filter((a) => a !== latest), ...(round ? { round } : {}), ...(run ? { run } : {}), since };
@@ -109,6 +121,62 @@ export function wantsDemo(entries: readonly Pick<DemoEntry, 'author' | 'body'>[]
   const verdict = latest.find((e) => parseVerdict(e.body));
   const report = latest.find((e) => !parseVerdict(e.body));
   return [report, verdict].some((e) => !!e && speaksOfDemo(e.body));
+}
+
+/** What a recording says it's a recording of (scripts/demo-kit.mjs's DEMO_TAG): in its GIF or MP4 comment. */
+export const DEMO_TAG = 'flotilla-demo:';
+
+/**
+ * The demo a recording was recorded from (BL-111), as the recorder notes it in the file: its name, or undefined. Give it
+ * the file's end (the recorder writes it there in a GIF; ffmpeg's MP4 has its metadata after the frames) or the whole.
+ */
+export function recordedDemo(bytes: Uint8Array): string | undefined {
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 8192) text += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  const at = text.lastIndexOf(DEMO_TAG);
+  return at < 0 ? undefined : /^[\w-]+/.exec(text.slice(at + DEMO_TAG.length))?.[0];
+}
+
+/** What a recording in a ticket is (BL-111): the demo it was recorded from, and how long it plays, when they're known. */
+export interface Recording {
+  name?: string;
+  seconds?: number;
+}
+
+const DEMO_RUN = /<div class="run-block demo-run" data-demo="([\w-]+)">[\s\S]*?<\/div><\/div><!--\/demo-run-->/g;
+const MEDIA = /<p\b[^>]*>\s*(<img\b[^>]*>|<video\b[^>]*><\/video>)\s*<\/p>/g;
+const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
+
+/**
+ * An entry's rendered html with each demo block (withRunButtons made it Try it yourself and Watch it live) put on the
+ * recording it goes with, as one unit: "Recorded demo · 0:12" and the buttons over it, the block not shown again. A
+ * recording goes with the block that names the demo it was recorded from; one that doesn't say, with the entry's only
+ * block. `recording`: what a source (a recording of the ticket's) is; undefined for anything else.
+ */
+export function withDemoUnits(html: string, recording: (src: string) => Recording | undefined): string {
+  const blocks = [...html.matchAll(DEMO_RUN)].map((m) => ({ whole: m[0], name: m[1], actions: /<span class="demo-actions">([\s\S]*?)<\/span><\/div>/.exec(m[0])?.[1] ?? '' }));
+  if (!blocks.length) return html;
+  const media = [...html.matchAll(MEDIA)].flatMap((m) => {
+    const src = srcOf(m[1]);
+    const r = src === undefined ? undefined : recording(src);
+    return r ? [{ whole: m[0], tag: m[1], ...r }] : [];
+  });
+  let out = html;
+  const used = new Set<string>();
+  for (const block of blocks) {
+    const paired = media.find((m) => !used.has(m.whole) && m.name === block.name) ?? (blocks.length === 1 ? media.find((m) => !used.has(m.whole) && !m.name) : undefined);
+    if (!paired) continue;
+    used.add(paired.whole);
+    // A video plays as a GIF does: muted, looping, at once.
+    const shown = paired.tag.startsWith('<video') ? paired.tag.replace(/^<video\b/, '<video autoplay muted loop playsinline') : paired.tag;
+    const label = `Recorded demo${paired.seconds ? ` · ${demoLength(paired.seconds)}` : ''}`;
+    const unit =
+      `<figure class="demo-unit demo-inline" data-demo="${block.name}"><div class="demo-bar">` +
+      `<span class="demo-label"><i class="codicon codicon-device-camera-video"></i> <span class="demo-length">${label}</span></span>` +
+      `${block.actions}</div>${shown}</figure>`;
+    out = out.replace(paired.whole, () => unit).replace(block.whole, '');
+  }
+  return out;
 }
 
 /** "Recorded before the last 2 commits". */

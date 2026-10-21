@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { demoLength, gifSeconds, staleNote, ticketDemo, wantsDemo } from '../../../src/features/backlog/demo';
+import { demoLength, demoRunFor, gifSeconds, staleNote, ticketDemo, wantsDemo, withDemoUnits } from '../../../src/features/backlog/demo';
+import { parseRunBlocks, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 const report = (key: string, date: string, body: string) => ({ key, date, author: 'Agent Iris-3', body });
 const flotilla = (key: string, date: string, body: string) => ({ key, date, author: 'Flotilla', body });
@@ -95,5 +96,60 @@ describe('the labels', () => {
 describe('gifSeconds', () => {
   it("isn't a GIF's length for other bytes", () => {
     expect(gifSeconds(new Uint8Array([1, 2, 3]))).toBeUndefined();
+  });
+});
+
+describe('demoRunFor (BL-111)', () => {
+  const entries = [
+    report('a', '2026-10-20 07:00', '```run demo open-ticket\nnpm run demo -- play open-ticket\n```'),
+    report('b', '2026-10-20 08:00', '```run demo try-demo\nnpm run demo -- play try-demo\n```'),
+  ];
+
+  it('pairs a recording with the block of the demo it was recorded from, wherever the report put them', () => {
+    expect(demoRunFor({ demo: true, entryKey: 'b', recorded: 'open-ticket' }, entries)).toEqual({ key: 'a', index: 0, name: 'open-ticket' });
+  });
+
+  it("else with its entry's block, else the latest", () => {
+    expect(demoRunFor({ demo: true, entryKey: 'a' }, entries)?.name).toBe('open-ticket');
+    expect(demoRunFor({ demo: true, recorded: 'gone' }, entries)?.name).toBe('try-demo');
+  });
+});
+
+describe('withDemoUnits (BL-111)', () => {
+  const html = (body: string, md: string) => withRunButtons(body, parseRunBlocks(md), 'k');
+  const block = '<pre><code class="language-run demo try-demo">npm run demo -- play try-demo\n</code></pre>';
+  const md = '```run demo try-demo\nnpm run demo -- play try-demo\n```';
+  const gif = '<p><img src="vs://BL-1/demo.gif" alt="Trying"></p>';
+
+  it("puts the demo's buttons on its recording, as one unit, and doesn't show the block again", () => {
+    const out = withDemoUnits(html(`<p>Done.</p>${gif}${block}`, md), (src) => (src.endsWith('demo.gif') ? { name: 'try-demo', seconds: 12 } : undefined));
+    expect(out).toContain('<figure class="demo-unit demo-inline" data-demo="try-demo">');
+    expect(out).toContain('Recorded demo · 0:12');
+    expect(out).toContain('Try it yourself');
+    expect(out).toContain('data-run-try="1"');
+    expect(out).toContain('Watch it live');
+    expect(out).toContain('<img src="vs://BL-1/demo.gif" alt="Trying">');
+    expect(out).not.toContain('run-block');
+    expect(out).not.toContain('<p><img');
+  });
+
+  it("pairs a recording that doesn't name its demo with the entry's only block", () => {
+    expect(withDemoUnits(html(`${block}${gif}`, md), () => ({}))).toContain('demo-inline');
+    // As VS Code's renderer gives it: its paragraphs have their lines.
+    const vscode = `<p data-line="30" class="code-line" dir="auto"><img src="vs://BL-1/demo.gif" alt="Trying" data-line="30"></p>`;
+    expect(withDemoUnits(html(`${vscode}${block}`, md), () => ({}))).not.toContain('<p data-line');
+  });
+
+  it("leaves the block, with its buttons, when its recording isn't there or is another demo's", () => {
+    const out = withDemoUnits(html(`${gif}${block}`, md), () => ({ name: 'other' }));
+    expect(out).not.toContain('demo-inline');
+    expect(out).toContain('class="run-block demo-run"');
+    expect(out).toContain('Try it yourself');
+    expect(withDemoUnits(html(`${gif}${block}`, md), () => undefined)).not.toContain('demo-inline');
+  });
+
+  it('plays a video as a GIF plays: muted, looping', () => {
+    const video = '<p><video class="media" src="vs://BL-1/demo.mp4" controls preload="metadata"></video></p>';
+    expect(withDemoUnits(html(`${video}${block}`, md), () => ({ name: 'try-demo' }))).toContain('<video autoplay muted loop playsinline class="media"');
   });
 });

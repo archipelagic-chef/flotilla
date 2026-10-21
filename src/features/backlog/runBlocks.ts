@@ -161,6 +161,8 @@ export function withRunButtons(html: string, blocks: readonly RunBlock[], key: s
   return html.replace(RENDERED_RUN, (_m, code: string) => {
     const at = index++;
     const block = blocks[at];
+    const demo = block.kind === 'demo' ? demoRun(block) : undefined;
+    if (demo) return demoButtons(demo.name, key, first + at, `demo · ${block.title}`);
     const label = `${block.kind === 'shell' ? 'commands' : block.kind}${block.title ? ` · ${block.title}` : ''}`;
     const commands = block.lines.length ? `<pre><code>${code}</code></pre>` : '';
     return (
@@ -171,6 +173,23 @@ export function withRunButtons(html: string, blocks: readonly RunBlock[], key: s
       `${commands}</div>`
     );
   });
+}
+
+/**
+ * A demo block's buttons (BL-111): Try it yourself (its window as the demo starts, left to you) and Watch it live (it
+ * plays). DEMO_RUN finds it again, to put on the recording it goes with (withDemoUnits).
+ */
+function demoButtons(name: string, key: string, index: number, label: string): string {
+  const ref = `data-run-key="${escapeHtml(key)}" data-run-index="${index}"`;
+  return (
+    `<div class="run-block demo-run" data-demo="${name}">` +
+    `<div class="run-head"><span class="run-label">${escapeHtml(label)}</span><span class="demo-actions">` +
+    `<button class="button run-button" ${ref} data-run-try="1" title="Opens the demo's window as it starts, in the ticket's worktree, and leaves it to you (${demoCommand(name, 'try')})">` +
+    `<i class="codicon codicon-debug-start"></i> Try it yourself</button>` +
+    `<button class="button secondary run-button" ${ref} title="Plays the demo live, in the ticket's worktree (${demoCommand(name)})">` +
+    `<i class="codicon codicon-play"></i> Watch it live</button>` +
+    `</span></div></div><!--/demo-run-->`
+  );
 }
 
 function escapeHtml(text: string): string {

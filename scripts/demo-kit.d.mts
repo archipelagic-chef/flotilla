@@ -28,4 +28,6 @@ export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
 export function frameGate<F>(check: () => Promise<string | undefined>): { readonly kept: F[]; readonly unsafe: string | undefined; add(frame: F): void; check(): Promise<string | undefined> };
 export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; at: number; ms: number }[];
 export function gapStats(ats: number[], moves: [number, number][]): { median: number; p90: number; count: number } | undefined;
-export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number }): Buffer;
+export const DEMO_TAG: string;
+export function tagGif(gif: Buffer, name: string): Buffer;
+export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number; name?: string }): Buffer;
