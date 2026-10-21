@@ -86,7 +86,8 @@ const settings = () => vscode.workspace.getConfiguration('flotilla');
  * Merges tickets' branches into the base branch from the ticket (see merge.ts): checks the branch, merges it in a
  * temporary worktree, runs the checks there (in a terminal), and fast-forwards the base to the merge. Conflicts are
  * resolved by an agent (the user approves its resolution in the ticket), or the merge is cancelled. One merge at a
- * time.
+ * time. Its states, and what moves each on, are in the table of features/backlog/mergeStates.ts; a new path goes there
+ * and into the scenarios of tests/integration/merge/ together (BL-150).
  */
 export class Merger implements vscode.Disposable {
   private queue: Promise<unknown> = Promise.resolve();
