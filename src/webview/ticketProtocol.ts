@@ -9,6 +9,7 @@ import type { MergeInfo } from '../features/backlog/merged';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
+import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
@@ -92,10 +93,13 @@ export interface MediaThumb {
 export interface AttachmentView {
   /** What the webview loads: the resolved source. */
   src: string;
-  kind: MediaKind;
+  kind: AttachmentKind;
   name: string;
-  /** Its caption: the reference's alt text. */
+  /** Its caption: the reference's alt text (a diagram's: the line before it). */
   alt?: string;
+  /** A diagram's Mermaid code (BL-136), and its place among its entry's diagrams. */
+  code?: string;
+  diagram?: number;
   /** Who added it (the entry's author), and when ("YYYY-MM-DD HH:MM"). */
   author?: string;
   date?: string;

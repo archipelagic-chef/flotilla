@@ -1561,6 +1561,27 @@ button.timeline-item:hover .timeline-text {
   object-fit: cover;
   pointer-events: none;
 }
+/* A diagram's thumbnail (BL-136): the whole diagram, small. */
+.attachment-thumb .attachment-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  background: var(--vscode-editor-background);
+  pointer-events: none;
+}
+.attachment-thumb .attachment-diagram svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+.attachment-thumb .media-note {
+  padding: 4px;
+  font-size: 11px;
+  white-space: normal;
+}
 .attachment-thumb .play-mark {
   position: absolute;
   top: 50%;
@@ -1626,6 +1647,32 @@ button.timeline-item:hover .timeline-text {
   object-fit: contain;
   border-radius: 3px;
   background: var(--vscode-editor-background);
+}
+/* A diagram, large: it fits the window; a click zooms in to twice that, to scroll around in. */
+.viewer-diagram {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+  cursor: zoom-in;
+}
+.viewer-diagram.zoomed {
+  cursor: zoom-out;
+}
+.viewer-diagram .attachment-diagram {
+  padding: 12px;
+}
+.viewer-diagram svg {
+  display: block;
+  width: calc(100vw - 160px);
+  max-width: none !important;
+  height: auto;
+  max-height: calc(100vh - 164px);
+}
+.viewer-diagram.zoomed svg {
+  width: calc(2 * (100vw - 160px));
+  max-height: none;
 }
 .viewer-figure figcaption {
   display: flex;
@@ -1745,21 +1792,9 @@ button.timeline-item:hover .timeline-text {
   width: 100%;
   height: 100%;
 }
-.media-thumb-diagram .media-note {
+.media-thumb-diagram .media-note,
+.media-thumb > .media-note {
   display: none;
-}
-.viewer-diagram {
-  min-width: min(640px, 80vw);
-  max-width: 90vw;
-  max-height: calc(100vh - 140px);
-  overflow: auto;
-  padding: 12px;
-  border-radius: 3px;
-  background: var(--vscode-editor-background);
-}
-.viewer-diagram svg {
-  max-width: 100%;
-  height: auto;
 }
 .feed .entry.flash {
   outline: 2px solid var(--focus);

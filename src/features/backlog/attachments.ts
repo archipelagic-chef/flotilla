@@ -1,5 +1,5 @@
 /**
- * A ticket's attachments (BL-110): every image, GIF and video it shows, wherever it's referenced (its description or
+ * A ticket's attachments (BL-110): every image, GIF, video and Mermaid diagram (BL-136) it shows, wherever it's referenced (its description or
  * an activity entry), and the files in its folder (`<backlog>/<id>/`) nothing references. Each once, newest first.
  * Pure: the host lists the folder and resolves each source as it does the ticket's inline media.
  */
@@ -10,9 +10,13 @@ export interface Attachment {
   /** As referenced (or the folder's file, from the backlog's folder: "BL-3/shot.png"). */
   src: string;
   name: string;
-  kind: MediaKind;
-  /** The reference's alt text: its caption. */
+  kind: AttachmentKind;
+  /** The reference's alt text (a diagram's: the line before it): its caption. */
   alt?: string;
+  /** A diagram's Mermaid code. */
+  code?: string;
+  /** A diagram's place among the diagrams of its text (its entry's, or the description's): "Show in activity" goes there. */
+  diagram?: number;
   /** Who added it (the entry's author); undefined in the description, or for a file nothing references. */
   author?: string;
   /** When: its entry's date, or the file's ("YYYY-MM-DD HH:MM"). */
@@ -24,6 +28,9 @@ export interface Attachment {
   /** A recorded demo (BL-78): demo.gif or demo.mp4, or shown by an entry with a `run demo` block. */
   demo: boolean;
 }
+
+/** What an attachment is: a picture or a video (a file), or a ```mermaid block drawn (BL-136). */
+export type AttachmentKind = MediaKind | 'diagram';
 
 /** A file in the ticket's folder: its path from the backlog's folder ("BL-3/shot.png") and when it was written. */
 export interface FolderFile {
@@ -56,6 +63,32 @@ export function mediaRefs(markdown: string): Array<{ src: string; alt?: string; 
     .filter((f) => !/^data:/i.test(f.src))
     .sort((a, b) => a.at - b.at)
     .map(({ at: _at, ...f }) => f);
+}
+
+/** The line before a diagram, as its caption: its text, without the Markdown around it ("#### The flow:" → "The flow"). */
+function captionBefore(text: string): string | undefined {
+  const line = text.replace(/\s+$/, '').split('\n').pop()?.trim() ?? '';
+  if (!line || /^(?:`{3,}|~{3,}|\||<)/.test(line)) return undefined;
+  const caption = line
+    .replace(/^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/[:：]$/, '')
+    .trim();
+  return caption || undefined;
+}
+
+/** The Mermaid diagrams a Markdown text draws, in order: their code and caption (the line before). Other code isn't read. */
+export function diagramRefs(markdown: string): Array<{ code: string; alt?: string }> {
+  const found: Array<{ code: string; alt?: string }> = [];
+  for (const m of markdown.matchAll(FENCE)) {
+    const [head, ...rest] = m[0].split('\n');
+    if (!/^\s*(?:`{3,}|~{3,})\s*mermaid\b/i.test(head)) continue;
+    const body = rest.join('\n').replace(new RegExp(`(?:^|\\n) {0,3}${m[1]}[ \\t]*$`), '');
+    if (!body.trim()) continue;
+    const alt = captionBefore(markdown.slice(0, m.index));
+    found.push({ code: body, ...(alt ? { alt } : {}) });
+  }
+  return found;
 }
 
 /** What makes two references one file: a local path from the backlog's folder, normalized; a URL as it is. */
@@ -93,13 +126,24 @@ export function gatherAttachments(
     seen.add(key);
     found.push(a);
   };
+  // A diagram is where it's drawn: its src only names it ("diagram:2:0", the first of entry 2's).
+  const diagram = (d: { code: string; alt?: string }, at: string, n: number): Omit<Attachment, 'from'> => ({
+    ...d,
+    src: `diagram:${at}:${n}`,
+    name: `Diagram ${n + 1}`,
+    kind: 'diagram',
+    diagram: n,
+    demo: false,
+  });
   for (const r of mediaRefs(description)) add({ ...r, name: baseName(r.src), from: 'description', demo: isDemoFile(r.src) });
+  diagramRefs(description).forEach((d, n) => add({ ...diagram(d, 'description', n), from: 'description' }));
   entries.forEach((e, entry) => {
     const playsDemo = parseRunBlocks(e.body).some((b) => b.kind === 'demo');
     for (const r of mediaRefs(e.body)) {
       const demo = isDemoFile(r.src) || (playsDemo && (r.kind === 'video' || /\.gif$/i.test(attachmentKey(r.src))));
       add({ ...r, name: baseName(r.src), author: e.author, date: e.date, entry, from: 'activity', demo });
     }
+    diagramRefs(e.body).forEach((d, n) => add({ ...diagram(d, String(entry), n), author: e.author, date: e.date, entry, from: 'activity' }));
   });
   for (const f of folder) {
     const type = mediaType(f.path);
