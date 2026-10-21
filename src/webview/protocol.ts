@@ -290,6 +290,8 @@ export interface AutopilotState {
   idle?: string;
   /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
   away?: string;
+  /** Pause All holds every agent (BL-160): how many it paused. */
+  pausedAll?: number;
 }
 
 /** A repository on a slow drive: what the Overview says, and how to fix it. */
@@ -360,6 +362,8 @@ export type WebviewMessage =
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
   | { type: 'backlog'; op: 'tryNow' }
+  /** Pause All Agents, Resume All Agents (BL-160). */
+  | { type: 'backlog'; op: 'pauseAll' | 'resumeAll' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */

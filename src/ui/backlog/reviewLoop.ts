@@ -86,6 +86,8 @@ export interface ReviewDeps {
   output: vscode.OutputChannel;
   /** An item was approved: by the reviewer agent (its name), or by the user (undefined). */
   onApproved?(id: string, by: string | undefined): void;
+  /** Whether Pause All holds every agent (BL-160): nothing starts on its own, starts wait in the queue. */
+  pausedAll?(): boolean;
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
@@ -106,6 +108,8 @@ interface Admitted {
  */
 interface StartOptions {
   manual?: boolean;
+  /** Resume All's (BL-160): it runs while Pause All still holds, ahead of the queue, but within the limit. */
+  all?: boolean;
   dispatched?: boolean;
   reply?: boolean;
 }
@@ -330,11 +334,12 @@ export class ReviewLoop implements vscode.Disposable {
    */
   private roomFor(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): boolean {
     const prioritized = this.priority === item.id;
-    const may = mayStartNow({
+    // While Pause All holds, only the user's own starts run (BL-160).
+    const may = (!!o.manual || !!o.all || !this.deps.pausedAll?.()) && mayStartNow({
       manual: !!o.manual,
       running: this.running,
       limit: prioritized ? Number.POSITIVE_INFINITY : this.limit,
-      ahead: o.dispatched || prioritized ? 0 : this.waiting.size,
+      ahead: o.dispatched || prioritized || o.all ? 0 : this.waiting.size,
       memoryShort: !!memoryShortage(),
     });
     if (!may) void this.wait(item, kind, o, start).catch((e: unknown) => this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`));
@@ -417,6 +422,7 @@ export class ReviewLoop implements vscode.Disposable {
    * one needs a free slot. Nothing starts while memory is short (the admitted starts count, see take).
    */
   private async dispatch(): Promise<void> {
+    if (this.deps.pausedAll?.()) return;
     for (const w of this.waiting.ordered()) {
       if (memoryShortage()) break;
       if (!w.manual && this.running >= this.limit) continue;
@@ -454,6 +460,11 @@ export class ReviewLoop implements vscode.Disposable {
     if (this.runs.has(w.id)) await this.note(w.id, 'An agent is on it.');
   }
 
+  /** Pause All's hold is lifted (here, or in another window): the queued starts go on (BL-160). */
+  dispatchQueued(): void {
+    this.scheduleDispatch();
+  }
+
   /** Starts the queue (after the scan or the run that ended, in the scans' order: they read and write backlog.json). */
   private scheduleDispatch(): void {
     if (this.waiting.size)
@@ -479,7 +490,7 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Whether an automatic start may begin now: a slot is free, and nothing waits ahead of it. */
   canStartNew(): boolean {
-    return this.running < this.limit && this.waiting.size === 0;
+    return this.running < this.limit && this.waiting.size === 0 && !this.deps.pausedAll?.();
   }
 
   /**
@@ -1116,6 +1127,36 @@ export class ReviewLoop implements vscode.Disposable {
   }
 
   /**
+   * Pause All's pause of an item's agent (BL-160): as Pause (see control), without asking. One in Claude Code's panel
+   * can't be: it's returned, for the list of those. Undefined: no agent works on it (one the user paused stays as it is).
+   */
+  async pauseForAll(id: string): Promise<{ paused: string } | { panel: { agent: string; key?: string; chatId: string } } | undefined> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (!item || heldBy(item.review)) return undefined;
+    const target = this.target(item, undefined, (await this.deps.backlog.readTicket(item)).activity);
+    if (!target) return undefined;
+    if (target.where === 'panel') {
+      const chat = this.chatById(target.session);
+      return { panel: { agent: target.agent, chatId: target.session, ...(chat ? { key: chat.ws.key } : {}) } };
+    }
+    await this.halt(item, target, 'pause');
+    return { paused: target.session };
+  }
+
+  /**
+   * Resume All's resume of an agent Pause All paused (BL-160): while the item is still paused in that chat, it goes on
+   * as Resume does, but within the limit: without a slot free, it waits in the queue. Undefined: it isn't paused there
+   * any more (the user resumed or stopped it meanwhile).
+   */
+  async resumeForAll(id: string, session: string | undefined): Promise<'running' | 'waiting' | undefined> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    const held = item?.review?.state === 'paused' ? heldBy(item.review) : undefined;
+    if (!item || !held || this.runs.has(id) || (session && held.session !== session)) return undefined;
+    await this.resumeHeld(item, held, { all: true });
+    return this.waiting.has(id) ? 'waiting' : 'running';
+  }
+
+  /**
    * The agent working on an item now (or the one with that session), and where it runs: the loop's own (running, or
    * paused on a limit or for another ticket), else a busy chat started for the item by hand (in a terminal, or in
    * Claude Code's panel; the ticket's notes say which, entries).
@@ -1188,7 +1229,7 @@ export class ReviewLoop implements vscode.Disposable {
    * Resumes an agent the user paused or stopped, in its chat, where it ran: without a window (a start of the user's,
    * admitted at once, see admitStart), or in a new terminal.
    */
-  private async resumeHeld(item: BacklogItem, held: HeldAgent): Promise<void> {
+  private async resumeHeld(item: BacklogItem, held: HeldAgent, o: StartOptions = { manual: true }): Promise<void> {
     if (!validSession(held.session)) {
       await this.stopLoop(item.id, `its chat isn't a valid session (${held.session.slice(0, 40)}).`, { kind: 'chat-gone' });
       return;
@@ -1215,7 +1256,8 @@ export class ReviewLoop implements vscode.Disposable {
       await this.startNote(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
       return;
     }
-    const admitted = await this.admitStart(item, 'resume', { manual: true }, (fresh) => this.resumeHeld(fresh, held));
+    // The user's Resume runs at once; Resume All's waits for a slot (BL-160).
+    const admitted = await this.admitStart(item, 'resume', o, (fresh) => this.resumeHeld(fresh, held, { ...o, dispatched: true }));
     if (!admitted) return;
     let spawned = false;
     try {

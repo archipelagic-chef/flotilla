@@ -13,6 +13,7 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import type { PauseAll } from './pauseAll';
 import { memoryShortage } from './agentRunner';
 import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
@@ -25,6 +26,8 @@ export interface AutopilotDeps {
   reviews: ReviewLoop;
   leader: Leader;
   output: vscode.OutputChannel;
+  /** Pause All (BL-160): while it holds, the autopilot starts nothing (it stays on). */
+  pauseAll?: Pick<PauseAll, 'pausedCount' | 'onDidChange'>;
   /**
    * The key that signs the switch (from VS Code's secret storage): agents can write the backlog's folder, but can't
    * turn the autopilot on.
@@ -54,6 +57,8 @@ export interface AutopilotView {
   idle?: string;
   /** What it did while the user was away, for a while after they're back: "Overnight: 6 tickets done, 3 waiting for you". */
   away?: string;
+  /** Pause All holds every agent (BL-160): how many it paused. Shown with the autopilot off too. */
+  pausedAll?: number;
 }
 
 /** How long it's idle, with tickets waiting, before a notification says so (once). */
@@ -102,6 +107,13 @@ export class Autopilot implements vscode.Disposable {
     this.subscriptions.push({ dispose: () => watch.dispose() }, { dispose: () => clearInterval(timer) }, this.changed);
     const focus = vscode.window.onDidChangeWindowState((s) => void this.focused(s.focused));
     this.subscriptions.push(focus);
+    if (deps.pauseAll)
+      this.subscriptions.push(
+        deps.pauseAll.onDidChange(() => {
+          this.changed.fire();
+          void this.tick();
+        }),
+      );
     void this.refresh().then(() => this.tick());
   }
 
@@ -166,6 +178,7 @@ export class Autopilot implements vscode.Disposable {
       elsewhere: !this.deps.leader.isLeader,
       ...(this.idle ? { idle: this.idle } : {}),
       ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
+      ...(this.deps.pauseAll?.pausedCount !== undefined ? { pausedAll: this.deps.pauseAll.pausedCount } : {}),
     };
   }
 
@@ -299,7 +312,7 @@ export class Autopilot implements vscode.Disposable {
 
   /** Starts work on the next item, while there's room for another agent. */
   async tick(): Promise<void> {
-    if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
+    if (this.ticking || !this.enabled || !this.deps.leader.isLeader || this.deps.pauseAll?.pausedCount !== undefined) return;
     this.ticking = true;
     let memoryWait = false;
     let idle: string | undefined;

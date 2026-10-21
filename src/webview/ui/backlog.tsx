@@ -126,17 +126,21 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
           </button>
         </span>
       </div>
-      {agentCount && (
-        <button
-          class={`agent-count${workingOnly ? ' on' : ''}`}
-          onClick={() => setWorkingOnly(!workingOnly)}
-          title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
-        >
-          <i class="codicon codicon-hubot" />
-          <span>{agentCount}</span>
-        </button>
+      {autopilot?.pausedAll !== undefined && <PausedAllBar count={autopilot.pausedAll} autopilot={autopilot.enabled} />}
+      {agentCount && autopilot?.pausedAll === undefined && (
+        <div class="agent-count-row">
+          <button
+            class={`agent-count${workingOnly ? ' on' : ''}`}
+            onClick={() => setWorkingOnly(!workingOnly)}
+            title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
+          >
+            <i class="codicon codicon-hubot" />
+            <span>{agentCount}</span>
+          </button>
+          {autopilot!.running > 0 && <PauseAllButton />}
+        </div>
       )}
-      {autopilot?.enabled && (
+      {autopilot?.enabled && autopilot.pausedAll === undefined && (
         <div class="autopilot-bar">
           <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
             <i class="codicon codicon-rocket" />
@@ -165,6 +169,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
               Try Now
             </BusyButton>
           )}
+          {autopilot.running > 0 && <PauseAllButton />}
         </div>
       )}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
@@ -748,6 +753,32 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
  * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
  * Its tickets are dragged to change the order they land in (BL-144).
  */
+/** Pause All (BL-160): every agent working pauses, its chat kept; Resume All goes on with exactly those. */
+function PauseAllButton() {
+  return (
+    <BusyButton class="try-now pause-all" message={{ type: 'backlog', op: 'pauseAll' }} icon="debug-pause" title="Pauses every agent working (their chats are kept), and starts nothing new until Resume All">
+      Pause All
+    </BusyButton>
+  );
+}
+
+/** While Pause All holds (BL-160): how many it paused, and Resume All. Instead of the autopilot's bar and the agent count. */
+function PausedAllBar({ count, autopilot }: { count: number; autopilot: boolean }) {
+  return (
+    <div class="autopilot-bar paused-all-bar">
+      <span class="autopilot-what">
+        <i class="codicon codicon-debug-pause" />
+        <span>
+          <strong>All agents paused</strong> ({count}){autopilot ? '. The autopilot holds until you resume.' : '. Nothing starts on its own until you resume.'}
+        </span>
+      </span>
+      <BusyButton class="try-now" message={{ type: 'backlog', op: 'resumeAll' }} icon="debug-continue" title="Resumes the agents Pause All paused, top of the backlog first, within flotilla.agents.maxRunning">
+        Resume All
+      </BusyButton>
+    </div>
+  );
+}
+
 function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
   // Where a dragged ticket would go: before this one, or at the end (null).
   const [dropBefore, setDropBefore] = useState<string | null>();

@@ -2153,6 +2153,14 @@ ins {
 .autopilot-bar .try-now .codicon {
   color: inherit;
 }
+/* Pause All (BL-160): its bar while every agent is paused, in the colour of a paused agent. */
+.paused-all-bar {
+  border-left-color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
+  background: color-mix(in srgb, var(--vscode-charts-yellow, var(--vscode-descriptionForeground)) 10%, transparent);
+}
+.paused-all-bar .codicon {
+  color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
+}
 /* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
 .merge-queue-bar {
   display: flex;
@@ -2261,6 +2269,28 @@ ins {
   left: auto;
   right: 2px;
   top: 2px;
+}
+/* The agent count's line: the count, and Pause All (BL-160) at its end. */
+.agent-count-row {
+  display: flex;
+  align-items: flex-start;
+  padding-right: 8px;
+}
+.agent-count-row .pause-all {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.agent-count-row .pause-all:hover:not(:disabled) {
+  text-decoration: underline;
 }
 /* The agents working, on a line under the backlog's title while the autopilot is off (its bar says it while on): click to narrow the board to them. */
 .agent-count {

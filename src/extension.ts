@@ -34,6 +34,8 @@ import { agentChatItem } from './features/backlog/backlog';
 import { modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
+import { PauseAll } from './ui/backlog/pauseAll';
+import { PausedAllStore } from './features/backlog/pausedAll';
 import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
@@ -234,11 +236,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   merger.queueChanged();
+  // Pause All's record (BL-160): while it's there, no agent starts on its own, in any window.
+  const pausedAll = new PausedAllStore(location.commonDir);
   const reviews = new ReviewLoop({
     backlog,
     repository,
     mainRoot: location.mainRoot,
     output,
+    pausedAll: () => pausedAll.held,
     isLeader: () => leader.isLeader,
     onApproved: (id, by) => {
       pushes.approved(id);
@@ -302,6 +307,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
+  const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
+  context.subscriptions.push(
+    pauseAll,
+    vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.resumeAllAgents', () => pauseAll.resumeCommand().catch(reportError)),
+  );
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
       if (typeof id !== 'string') return;
@@ -407,6 +418,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviews,
     leader,
     output,
+    pauseAll,
     prepareWorktree: (item) => prepareItemWorktree(ctx, item),
     // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
     key: () =>
