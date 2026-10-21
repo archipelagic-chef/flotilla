@@ -157,7 +157,8 @@ export function registerCommands(ctx: CommandContext): void {
   );
   register('flotilla.openBacklogItem', (id?: unknown, opts?: unknown) => {
     const itemId = backlogIdOf(id);
-    return itemId && ctx.tickets.open(itemId, { focus: (opts as { focus?: unknown } | undefined)?.focus === 'comment' ? 'comment' : undefined });
+    const focus = (opts as { focus?: unknown } | undefined)?.focus;
+    return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
   });
   register('flotilla.quickSwitch', () => quickSwitch(ctx));
   register('flotilla.runWorkflow', () => runWorkflowByHand(ctx.currentRoot, devGitHubApi(ctx.extension.extensionMode)));

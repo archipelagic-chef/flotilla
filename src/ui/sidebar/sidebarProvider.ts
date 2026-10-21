@@ -1,3 +1,4 @@
+import type { Merger } from '../backlog/merge';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -10,6 +11,7 @@ import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
+import { gatherAttachments } from '../../features/backlog/attachments';
 import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
@@ -151,6 +153,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
+  private merger: Merger | undefined;
+
+  /** The merge queue (BL-140), shown as a bar above the board. */
+  useMerger(merger: Merger): void {
+    this.merger = merger;
+    this.subscriptions.push(merger.onDidChange(() => void this.postBacklog()));
+    void this.postBacklog();
+  }
+
   private merges: Merges | undefined;
 
   /** Whether the items' work is merged (shown on the cards; they move to Done by themselves when it is). */
@@ -181,6 +192,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // What it waits for, and how its branches merge with main (BL-55).
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
         const base = item.mainCheck && baseLabel(item.mainCheck.base);
+        // A ticket in review that shows a demo: its card has the demo mark (BL-135).
+        const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
           summary: summaryOf(ticket.description),
@@ -192,6 +205,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(waitsFor.length ? { waitsFor } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
+          ...(demo ? { demo } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
         };
       }),
@@ -210,7 +224,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}) });
+    const queue = this.merger?.queueView();
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -244,6 +259,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'comment':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
+        return;
+      case 'demo':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'demo' });
         return;
       case 'approve':
         await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');
@@ -285,6 +303,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'autopilot':
         await vscode.commands.executeCommand('flotilla.toggleAutopilot');
+        return;
+      case 'landAll':
+        await vscode.commands.executeCommand('flotilla.mergeAllReady');
+        return;
+      case 'queueOrder':
+        await this.merger?.reorderQueue(m.ids);
+        return;
+      case 'mergeNext':
+        await this.merger?.mergeNext(m.id);
         return;
       case 'integrations':
         await this.deps.integrations.manage();

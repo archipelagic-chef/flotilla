@@ -1,6 +1,10 @@
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { seedPlayground } from '../../../scripts/playground-seed.mjs';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import { appendAgentTurn, seedChats, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import { isHeadless, mergeChats, readChatRecords, readTranscripts, readUnlinked } from '../../../src/features/chats/chats';
+import { transcriptMarkdown } from '../../../src/features/chats/transcriptMarkdown';
 import { childrenOf, ID_PATTERN } from '../../../src/features/backlog/backlog';
 import { descriptionHash } from '../../../src/features/backlog/changes';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
@@ -37,6 +41,7 @@ const STATES: Record<string, [status: string, review?: string]> = {
   'BL-11': ['review', 'stopped'],
   'BL-12': ['review', 'paused'],
   'BL-13': ['review', 'approved'],
+  'BL-14': ['done', 'approved'],
 };
 
 /** Each branch's commits ahead of main and behind it, and the status of its worktree, by ticket. */
@@ -55,7 +60,7 @@ describe('playground seed', () => {
     const { backlog } = seeded();
     const data = await backlog.read();
     expect(data.items.map((i) => i.id)).toEqual(Object.keys(STATES));
-    expect(data.counters).toEqual({ BL: 13 });
+    expect(data.counters).toEqual({ BL: 14 });
     for (const item of data.items) {
       const [status, review] = STATES[item.id];
       expect(ID_PATTERN.test(item.id), item.id).toBe(true);
@@ -108,7 +113,8 @@ describe('playground seed', () => {
     expect(several.blocks.map((b) => b.title)).toEqual(['Check the card', 'Run App', 'test', 'http://127.0.0.1:5173', 'src/card.js']);
     expect(several.latest?.kind).toBe('open');
     expect((await runs('BL-2')).blocks).toEqual([]);
-    expect((await runs('BL-10')).blocks.map((b) => b.kind)).toEqual(['shell']);
+    // And a demo (BL-135's Demo section plays it).
+    expect((await runs('BL-10')).blocks.map((b) => b.kind)).toEqual(['shell', 'demo']);
   });
 
   it('stops a review with the fixes for why it stopped, and pauses one on a limit that does not reset soon', async () => {
@@ -161,5 +167,42 @@ describe('playground seed', () => {
     const before = await backlog.read();
     expect(seedPlayground(dir, new Date('2030-01-01T00:00:00'))).toBe(false);
     expect(await backlog.read()).toEqual(before);
+  });
+
+  it("seeds chats in BL-3's worktree that read as an agent's, working, and a panel chat, done", async () => {
+    const { dir } = seeded();
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+    cleanup.push(home);
+    const worktree = path.join(dir, '.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
+    const gitDir = path.resolve(worktree, git(worktree, 'rev-parse', '--git-dir'));
+    const read = async (at: Date) => {
+      const transcripts = await readTranscripts(worktree, home);
+      const chats = mergeChats(await readChatRecords(gitDir), transcripts, await readUnlinked(gitDir), { now: at, openHours: 12, staleMinutes: 10 });
+      return { transcripts, chats };
+    };
+
+    expect(seedChats(dir, home, now)).toHaveLength(2);
+    const { transcripts, chats } = await read(now);
+    const agent = chats.find((c) => c.title === 'Vega-2 · BL-3');
+    expect(agent).toMatchObject({ state: 'working', open: true, agent: 'Vega-2', model: 'claude-opus-5-5' });
+    expect(isHeadless(transcripts.find((t) => t.sessionId === agent?.id))).toBe(true);
+    const panel = chats.find((c) => c.title === 'What chatOf returns without a chat');
+    expect(panel).toMatchObject({ state: 'done' });
+    expect(isHeadless(transcripts.find((t) => t.sessionId === panel?.id))).toBe(false);
+
+    // The agent goes on by one turn (its transcript grows), then has none left.
+    const file = transcripts.find((t) => t.sessionId === agent?.id)!;
+    const later = new Date(now.getTime() + 60_000);
+    const transcript = () => fs.readFileSync(path.join(home, 'projects', fs.readdirSync(path.join(home, 'projects'))[0]!, `${agent!.id}.jsonl`), 'utf8');
+    expect(transcriptMarkdown(transcript(), agent!.title)).toContain('Grep: Find where chats are saved');
+    expect(transcriptMarkdown(transcript(), agent!.title)).not.toContain('Added chatOf');
+    expect(appendAgentTurn(dir, home, later)).toBe(true);
+    expect(transcriptMarkdown(transcript(), agent!.title)).toContain('Added chatOf');
+    expect(appendAgentTurn(dir, home, later)).toBe(false);
+    expect((await read(later)).chats.find((c) => c.id === file.sessionId)).toMatchObject({ state: 'working', open: true });
+
+    // Seeded again (the next demo), it starts over.
+    seedChats(dir, home, later);
+    expect(transcriptMarkdown(transcript(), agent!.title)).not.toContain('Added chatOf');
   });
 });

@@ -1659,6 +1659,108 @@ button.timeline-item:hover .timeline-text {
 .feed .rendered video.media {
   max-height: 270px;
 }
+/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
+.feed .report-media .rendered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+.feed .report-media .rendered > * {
+  margin: 0;
+}
+.feed .report-media .rendered > .diagram {
+  flex: 1 1 100%;
+}
+.feed .report-media .rendered img {
+  max-height: 420px;
+}
+.feed .report-media .rendered video.media {
+  max-height: 420px;
+  margin: 0;
+}
+/* A folded report's media: thumbnails beside its line, each opening in the viewer. */
+.entry.folded:has(.media-strip) {
+  display: flex;
+  align-items: center;
+}
+.entry.folded:has(.media-strip) .entry-fold {
+  flex: 1;
+}
+.media-strip {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  max-width: 50%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 3px 8px 3px 0;
+  list-style: none;
+}
+.media-thumb {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 36px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: zoom-in;
+}
+.media-thumb:hover,
+.media-thumb:focus-visible {
+  border-color: var(--focus);
+}
+.media-thumb img,
+.media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.media-thumb .play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+}
+.media-thumb-diagram {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.media-thumb-diagram pre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 4px;
+}
+.media-thumb-diagram .diagram,
+.media-thumb-diagram svg {
+  width: 100%;
+  height: 100%;
+}
+.media-thumb-diagram .media-note {
+  display: none;
+}
+.viewer-diagram {
+  min-width: min(640px, 80vw);
+  max-width: 90vw;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 12px;
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+.viewer-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
 .feed .entry.flash {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -1799,7 +1901,117 @@ button.timeline-item:hover .timeline-text {
   font-size: 16px;
   color: var(--error);
 }
+.merge-queue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--working);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.merge-queue.conflicts {
+  border-left-color: var(--waiting);
+}
+.merge-queue > .codicon {
+  font-size: 16px;
+}
 .merge-stop-jobs {
   margin: 4px 0 0;
   padding-left: 18px;
+}
+
+/* The Demo section (BL-135): the latest recording, large, as the demo unit. */
+.demo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.demo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.demo-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--vscode-editorWarning-foreground);
+}
+.demo-figure {
+  margin: 0;
+}
+.demo-figure img,
+.demo-figure video {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.demo-figure figcaption,
+.demo-earlier li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.demo-earlier {
+  margin-top: 10px;
+}
+.demo-earlier summary {
+  cursor: pointer;
+}
+.demo-earlier ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.demo-earlier li {
+  width: 240px;
+}
+.demo-earlier img,
+.demo-earlier video {
+  width: 240px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.demo-missing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+/* A demo in a report (BL-111): its recording with the bar over it, as in the Demo section; its run block's buttons. */
+.demo-inline {
+  margin: 8px 0;
+}
+.demo-inline img,
+.demo-inline video {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+}
+.demo-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.viewer-figure .demo-bar {
+  width: 100%;
 }

@@ -1,0 +1,31 @@
+{
+  "title": "Approved tickets join the merge queue, and Land All lands them in order",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")", "timeout": 30000 },
+    { "caption": "Approved, a ticket joins the merge queue: the merge train says it merges cleanly onto main" },
+    { "wait": 2000 },
+    { "caption": "" },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main + BL-10\")", "timeout": 30000 },
+    { "caption": "The next one is merged onto main and the one ahead of it; the backlog shows the queue" },
+    { "wait": 2500 },
+    { "caption": "Land All lands them in order, each after its own checks: BL-10's pass, BL-13's fail (on purpose)" },
+    { "click": ".merge-queue-bar .land-all" },
+    { "waitFor": ".merge-queue-bar:has-text(\"merge\")" },
+    { "waitFor": "button:has-text(\"Fix with Agent\")", "timeout": 30000 },
+    { "caption": "BL-10 is on main; BL-13 stopped with its checks' output, for Fix with Agent. Nothing else moved" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}

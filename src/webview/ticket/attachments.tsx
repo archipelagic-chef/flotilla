@@ -2,9 +2,13 @@
  * The Attachments section (BL-110), between the description and the activity: the ticket's images, GIFs and videos
  * as thumbnails, newest first; a click opens one large, in an overlay, with the next and previous.
  */
-import { useEffect, useState } from 'preact/hooks';
+import type { JSX } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
+import type { MediaKind } from '../../features/backlog/media';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import { drawDiagrams } from './diagrams';
+import { RecordingBar, type Action } from './demo';
 
 /** The window event "Show in activity" sends: the activity opens the entry (its detail: the entry's key) and goes there. */
 export const SHOW_ENTRY = 'flotilla-show-entry';
@@ -13,8 +17,34 @@ export function showEntry(key: string): void {
   window.dispatchEvent(new CustomEvent<string>(SHOW_ENTRY, { detail: key }));
 }
 
+/** What the viewer shows: an attachment, or a report's diagram (BL-114), drawn from its Mermaid code. */
+export type Shown = Omit<AttachmentView, 'kind' | 'src' | 'from' | 'demo'> & {
+  kind: MediaKind | 'diagram';
+  src?: string;
+  code?: string;
+  from?: AttachmentView['from'];
+  demo?: boolean;
+};
+
+/** The window event a folded report's media strip sends (BL-114): the viewer opens its detail's medium. */
+export const OPEN_MEDIA = 'flotilla-open-media';
+
+export function openMedia(list: Shown[], at: number): void {
+  window.dispatchEvent(new CustomEvent<{ list: Shown[]; at: number }>(OPEN_MEDIA, { detail: { list, at } }));
+}
+
+/** A Mermaid diagram drawn from its code (a strip's thumbnail, or the viewer's), as rendered Markdown would hold it. */
+export function Diagram({ code, class: cls }: { code: string; class: string }) {
+  const el = useRef<HTMLDivElement>(null);
+  const html = `<pre><code class="language-mermaid">${code.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</code></pre>`;
+  useEffect(() => {
+    if (el.current) void drawDiagrams(el.current);
+  }, [code]);
+  return <div ref={el} class={cls} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 /** Who added it, and when: "Nova-7 · 2026-10-19 20:10", or where it is when no entry did. */
-function addedBy(a: AttachmentView): string {
+function addedBy(a: Shown): string {
   const who = a.author ? (entryAgent(a.author) ?? a.author) : a.from === 'description' ? 'Description' : 'In the ticket’s folder';
   return a.date ? `${who} · ${a.date}` : who;
 }
@@ -41,7 +71,7 @@ function Thumb({ a, onOpen }: { a: AttachmentView; onOpen: () => void }) {
 }
 
 /** One attachment large, over the ticket: Escape (or the backdrop) closes it, the arrows go to the next and previous. */
-function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; go: (n: number) => void; close: () => void }) {
+function Viewer({ list, at, go, close, demo }: { list: Shown[]; at: number; go: (n: number) => void; close: () => void; demo: (a: AttachmentView) => JSX.Element }) {
   const a = list[at];
   const many = list.length > 1;
   useEffect(() => {
@@ -66,12 +96,20 @@ function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; g
         </button>
       )}
       <figure class="viewer-figure">
-        {a.kind === 'video' ? <video key={a.src} src={a.src} controls autoPlay /> : <img key={a.src} src={a.src} alt={a.alt ?? a.name} />}
+        {a.demo && a.kind !== 'diagram' && demo(a as AttachmentView)}
+        {a.kind === 'diagram' ? (
+          <Diagram key={a.code} code={a.code ?? ''} class="viewer-diagram" />
+        ) : a.kind === 'video' ? (
+          <video key={a.src} src={a.src} controls autoPlay />
+        ) : (
+          <img key={a.src} src={a.src} alt={a.alt ?? a.name} />
+        )}
         <figcaption>
           <span class="viewer-caption">{a.alt ?? a.name}</span>
           {a.demo && <span class="demo-tag">demo</span>}
           <span class="muted">
-            {a.name} · {addedBy(a)}
+            {a.kind === 'diagram' ? '' : `${a.name} · `}
+            {addedBy(a)}
             {many && ` · ${at + 1} of ${list.length}`}
           </span>
           {a.entryKey && (
@@ -96,10 +134,12 @@ function Viewer({ list, at, go, close }: { list: AttachmentView[]; at: number; g
   );
 }
 
-export function Attachments({ ticket, send }: { ticket: TicketView; send: (m: TicketWebviewMessage) => void }) {
+export function Attachments({ ticket, send, Action }: { ticket: TicketView; send: (m: TicketWebviewMessage) => void; Action: Action }) {
   const list = ticket.attachments ?? [];
   const [folded, setFolded] = useState(!!ticket.attachmentsFolded);
   const [open, setOpen] = useState<number | undefined>(undefined);
+  // A report's own media, when what's opened isn't an attachment (a diagram): the viewer goes through them.
+  const [own, setOwn] = useState<Shown[] | undefined>(undefined);
   useEffect(() => setFolded(!!ticket.attachmentsFolded), [ticket.item.id]);
   useEffect(() => {
     // A picture in the activity opens here too, large.
@@ -107,12 +147,34 @@ export function Attachments({ ticket, send }: { ticket: TicketView; send: (m: Ti
       const el = e.target as HTMLElement | null;
       if (!(el instanceof HTMLImageElement) || !el.closest('.feed .rendered, .description .rendered')) return;
       const at = list.findIndex((a) => a.src === el.getAttribute('src'));
-      if (at >= 0) setOpen(at);
+      if (at >= 0) {
+        setOwn(undefined);
+        setOpen(at);
+      }
+    };
+    // A thumbnail of a folded report: an attachment opens among the others; a diagram among its report's media.
+    const strip = (e: Event) => {
+      const { list: media, at } = (e as CustomEvent<{ list: Shown[]; at: number }>).detail;
+      const i = media[at].src === undefined ? -1 : list.findIndex((a) => a.src === media[at].src);
+      setOwn(i >= 0 ? undefined : media);
+      setOpen(i >= 0 ? i : at);
     };
     document.addEventListener('click', click);
-    return () => document.removeEventListener('click', click);
+    window.addEventListener(OPEN_MEDIA, strip);
+    return () => {
+      document.removeEventListener('click', click);
+      window.removeEventListener(OPEN_MEDIA, strip);
+    };
   }, [list]);
-  if (!list.length) return null;
+  const shown: Shown[] = own ?? list;
+  const close = () => {
+    setOpen(undefined);
+    setOwn(undefined);
+  };
+  const viewer = open !== undefined && shown[open] && (
+    <Viewer list={shown} at={open} go={setOpen} close={close} demo={(a) => <RecordingBar a={a} ticket={ticket} Action={Action} />} />
+  );
+  if (!list.length) return viewer || null;
   const toggle = () => {
     setFolded(!folded);
     send({ type: 'foldAttachments', folded: !folded });
@@ -129,11 +191,18 @@ export function Attachments({ ticket, send }: { ticket: TicketView; send: (m: Ti
       {!folded && (
         <ul class="attachment-list">
           {list.map((a, i) => (
-            <Thumb key={a.src} a={a} onOpen={() => setOpen(i)} />
+            <Thumb
+              key={a.src}
+              a={a}
+              onOpen={() => {
+                setOwn(undefined);
+                setOpen(i);
+              }}
+            />
           ))}
         </ul>
       )}
-      {open !== undefined && list[open] && <Viewer list={list} at={open} go={setOpen} close={() => setOpen(undefined)} />}
+      {viewer}
     </section>
   );
 }

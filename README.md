@@ -93,6 +93,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.review.automatic` | `true` | A reviewer agent reviews work that goes to review |
 | `flotilla.review.maxRounds` | `3` | Review rounds before the decision is left to you |
 | `flotilla.merge.checkCommand` | `""` | Checks run on a merge before the base branch moves (default: the `typecheck` and `test` scripts) |
+| `flotilla.checks.maxParallel` | `0` | How many test runs of the worktrees go at once, a merge's first (`0`: 1 per 16 cores); read by queuing test scripts from `.git/flotilla/checks.json` |
 | `flotilla.merge.onApprove` | `ask` | When a ticket is approved: offer to merge it (`ask`), merge it (`auto`), or nothing (`off`) |
 | `flotilla.agents.model` / `.effort` | `""` | Model and effort for agents on tickets (a ticket can choose its own) |
 | `flotilla.agents.lightModel` | `""` | Model for tickets marked Light (small, mechanical work). Reviewed by `flotilla.agents.model`, and moved up to it when the work turns out hard. Empty: no ticket is Light |

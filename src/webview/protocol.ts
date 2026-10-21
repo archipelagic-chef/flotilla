@@ -43,6 +43,8 @@ export interface BacklogItemView extends BacklogItem {
   clash?: { with: string; files: string[] };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
+  /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
+  demo?: boolean;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -233,7 +235,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -263,6 +265,13 @@ export interface MachineState {
 }
 
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
+/** The merge queue (BL-140), first to land first: each ticket's state in the merge train, and what the queue does now. */
+export interface MergeQueueView {
+  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }>;
+  /** "BL-122's merge", "rebuilding the merge train". */
+  working?: string;
+}
+
 export interface AutopilotState {
   enabled: boolean;
   running: number;
@@ -344,8 +353,14 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** Merge All Ready: lands the merge queue (BL-140). */
+  | { type: 'backlog'; op: 'landAll' }
+  /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
+  | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
+  | { type: 'backlog'; op: 'mergeNext'; id: string }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
-  | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
+  /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
+  | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }
   | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** Needs you (queued reply): start it now, above the limit, or pause a running agent for it. */
   | { type: 'backlog'; op: 'prioritize'; id: string }

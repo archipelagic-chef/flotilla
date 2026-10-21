@@ -54,4 +54,59 @@ describe('the backlog notes changes in its tickets', () => {
       removeDir(root);
     }
   });
+
+  it('keeps the description and activity when the ticket is written in place while Flotilla writes it (two writers)', async () => {
+    const fs = await import('node:fs');
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const { makeTempDir, removeDir } = await import('../../helpers/gitRepo');
+    const root = makeTempDir();
+    try {
+      const store = new LocalBacklog(root, `${root}/.git`);
+      await store.change((d) => ({ ...d, items: [item] }));
+      await store.writeTicket('BL-2', { title: item.title, description: 'Limit requests.', activity: [{ date: '2026-10-21 05:50', author: 'Agent Watt-7', body: 'Proposed this ticket.' }] });
+      await store.noteDescriptions();
+      // The agent's editor truncates the file, and writes the new text a moment later (as BL-140's shaping chat did).
+      const text = fs.readFileSync(store.docPath('BL-2'), 'utf8').replace('Limit requests.', 'Limit requests.\n\n## Merge train\n\nOne after another.');
+      fs.writeFileSync(store.docPath('BL-2'), '');
+      const agent = new Promise<void>((resolve) => setTimeout(() => (fs.writeFileSync(store.docPath('BL-2'), text), resolve()), 150));
+      // Meanwhile Flotilla notes the description and the autopilot starts the ticket.
+      await Promise.all([
+        agent,
+        store.noteDescriptions(),
+        store.change((d) => ({ ...d, items: d.items.map((i) => ({ ...i, status: 'doing' as const })) }), { by: 'Flotilla' }),
+      ]);
+      await store.noteDescriptions();
+      const ticket = await store.readTicket(item);
+      expect(ticket.description).toBe('Limit requests.\n\n## Merge train\n\nOne after another.');
+      expect(ticket.activity.map((e) => e.body)).toEqual([
+        'Proposed this ticket.',
+        'Moved it from **To Do** to **In Progress**.',
+        'The description was edited in its file (+2 −0 lines): by an agent, or in an editor.',
+      ]);
+    } finally {
+      removeDir(root);
+    }
+  });
+
+  it('keeps a description that an edit emptied, to restore it from', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const { makeTempDir, removeDir } = await import('../../helpers/gitRepo');
+    const root = makeTempDir();
+    try {
+      const store = new LocalBacklog(root, `${root}/.git`);
+      await store.change((d) => ({ ...d, items: [item] }));
+      await store.writeTicket('BL-2', { title: item.title, description: 'Limit requests.\n\n- [ ] Per API key', activity: [] });
+      await store.noteDescriptions();
+      await store.writeTicket('BL-2', { title: item.title, description: '', activity: [] });
+      await store.noteDescriptions();
+      const note = (await store.readTicket(item)).activity.at(-1)!.body;
+      expect(note).toMatch(/^The description was edited in its file \(\+0 −2 lines\)/);
+      const link = /\]\((BL-2\/description-\d{8}-\d{6}\.md)\)/.exec(note)![1];
+      expect(fs.readFileSync(path.join(store.dir, link), 'utf8')).toBe('Limit requests.\n\n- [ ] Per API key\n');
+    } finally {
+      removeDir(root);
+    }
+  });
 });

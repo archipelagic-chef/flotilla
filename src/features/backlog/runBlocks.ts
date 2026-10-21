@@ -123,9 +123,12 @@ export function demoPath(name: string | undefined): string | undefined {
   return name && /^[\w-]+$/.test(name) ? `demos/${name}.json` : undefined;
 }
 
-/** What a demo block runs in its worktree's terminal: the repository's demo player (npm run demo, scripts/demo.mjs). */
-export function demoCommand(name: string): string {
-  return `npm run demo -- play ${name}`;
+/**
+ * What a demo block runs in its worktree's terminal: the repository's demo player (npm run demo, scripts/demo.mjs). It
+ * plays the demo's steps, or with `try`, only sets its window up as the demo starts and leaves it to you (BL-135).
+ */
+export function demoCommand(name: string, mode: 'play' | 'try' = 'play'): string {
+  return `npm run demo -- ${mode} ${name}`;
 }
 
 /**
@@ -133,10 +136,10 @@ export function demoCommand(name: string): string {
  * the player's command there only so that a Flotilla without the demo kind runs it as shell commands. Undefined when
  * the block doesn't name a demo.
  */
-export function demoRun(block: Pick<RunBlock, 'title'>): { name: string; file: string; commands: string[] } | undefined {
+export function demoRun(block: Pick<RunBlock, 'title'>, mode: 'play' | 'try' = 'play'): { name: string; file: string; commands: string[] } | undefined {
   const name = block.title?.split(/\s+/)[0];
   const file = demoPath(name);
-  return name && file ? { name, file, commands: [demoCommand(name)] } : undefined;
+  return name && file ? { name, file, commands: [demoCommand(name, mode)] } : undefined;
 }
 
 /** The ticket's run: the last run block of its reports (the Run buttons run it), or undefined if none. */
@@ -158,6 +161,8 @@ export function withRunButtons(html: string, blocks: readonly RunBlock[], key: s
   return html.replace(RENDERED_RUN, (_m, code: string) => {
     const at = index++;
     const block = blocks[at];
+    const demo = block.kind === 'demo' ? demoRun(block) : undefined;
+    if (demo) return demoButtons(demo.name, key, first + at, `demo · ${block.title}`);
     const label = `${block.kind === 'shell' ? 'commands' : block.kind}${block.title ? ` · ${block.title}` : ''}`;
     const commands = block.lines.length ? `<pre><code>${code}</code></pre>` : '';
     return (
@@ -168,6 +173,23 @@ export function withRunButtons(html: string, blocks: readonly RunBlock[], key: s
       `${commands}</div>`
     );
   });
+}
+
+/**
+ * A demo block's buttons (BL-111): Try it yourself (its window as the demo starts, left to you) and Watch it live (it
+ * plays). DEMO_RUN finds it again, to put on the recording it goes with (withDemoUnits).
+ */
+function demoButtons(name: string, key: string, index: number, label: string): string {
+  const ref = `data-run-key="${escapeHtml(key)}" data-run-index="${index}"`;
+  return (
+    `<div class="run-block demo-run" data-demo="${name}">` +
+    `<div class="run-head"><span class="run-label">${escapeHtml(label)}</span><span class="demo-actions">` +
+    `<button class="button run-button" ${ref} data-run-try="1" title="Opens the demo's window as it starts, in the ticket's worktree, and leaves it to you (${demoCommand(name, 'try')})">` +
+    `<i class="codicon codicon-debug-start"></i> Try it yourself</button>` +
+    `<button class="button secondary run-button" ${ref} title="Plays the demo live, in the ticket's worktree (${demoCommand(name)})">` +
+    `<i class="codicon codicon-play"></i> Watch it live</button>` +
+    `</span></div></div><!--/demo-run-->`
+  );
 }
 
 function escapeHtml(text: string): string {

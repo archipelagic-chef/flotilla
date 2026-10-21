@@ -24,6 +24,7 @@ import { Leader } from './features/backlog/leader';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
 import { installCommitHook } from './features/backlog/commitHook';
+import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger, readyToMerge } from './ui/backlog/merge';
@@ -187,13 +188,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ciReader: () => sidebar.ci.originActions(location.mainRoot),
     updateFromMain: (id) => mainSync.update(id),
     fixCi: (branch, runId, jobId) => sidebar.ci.fixOnOrigin(location.mainRoot, branch, runId, jobId),
+    // One window rebuilds the merge train (BL-140); the others read it from backlog.json.
+    isLeader: () => leader.isLeader,
   });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
   const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });
   sidebar.useMerges(merges);
+  sidebar.useMerger(merger);
   context.subscriptions.push(
     repository.onDidChange(() => void merges.refresh()),
     backlog.watch(() => void merges.refresh()),
+    // The merge queue's train is rebuilt when main, a queued branch or the queue moves.
+    repository.onDidChange(() => merger.queueChanged()),
+    backlog.watch(() => merger.queueChanged()),
   );
   void merges.refresh();
   const runTerminals = new RunTerminals();
@@ -207,12 +214,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.runBacklogItem', (id?: unknown, block?: unknown) => {
       if (typeof id !== 'string') return;
-      const ref = block as { key?: unknown; index?: unknown } | undefined;
-      return tickets.run(id, typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index } : undefined);
+      const ref = block as { key?: unknown; index?: unknown; try?: unknown } | undefined;
+      return tickets.run(
+        id,
+        typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index, ...(ref.try === true ? { try: true } : {}) } : undefined,
+      );
     }),
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
+  merger.queueChanged();
   const reviews = new ReviewLoop({
     backlog,
     repository,
@@ -244,6 +255,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (id) await merger.merge(id).catch(reportError);
     }),
     vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.mergeNext', async (arg?: unknown) => {
+      const id = backlogIdOf(arg);
+      if (id) await merger.mergeNext(id).catch(reportError);
+    }),
     vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
   );
   // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
@@ -430,9 +445,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(registerTranscriptView());
   const requests = setInterval(() => void chatUi.handleWindowRequests(chatContext(ctx)).catch(() => undefined), 1000);
   context.subscriptions.push({ dispose: () => clearInterval(requests) });
+  // Test scripts that queue for the machine (scripts/test.mjs) read how many runs go at once from .git/flotilla.
+  const updateChecksConfig = () =>
+    void writeChecksConfig(location.commonDir, vscode.workspace.getConfiguration('flotilla').get<number>('checks.maxParallel', 0)).catch(() => undefined);
+  updateChecksConfig();
   // The commit check reads its mode from a file next to the hook: a changed setting goes there (once it's set up).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('flotilla.checks.maxParallel')) updateChecksConfig();
       if (e.affectsConfiguration('flotilla.ci.notify')) updateCiReads();
       if (e.affectsConfiguration('flotilla.backlog.agentTickets')) void inbox.writeGuide();
       if (!e.affectsConfiguration('flotilla.backlog.commitPrefix')) return;

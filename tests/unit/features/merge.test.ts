@@ -20,6 +20,7 @@ import {
   mergeResult,
   mergeRoot,
   outputTail,
+  timeoutsOnly,
   removeMergeWorktree,
   resolvePrompt,
 } from '../../../src/features/backlog/merge';
@@ -246,6 +247,15 @@ describe('a merge whose checks fail (BL-65)', () => {
     expect(tail.split('\n')).toHaveLength(120);
     expect(tail).not.toContain('\x1b');
     expect(outputTail('\x1b[31mred\x1b[0m')).toBe('red');
+  });
+
+  it('tells a check run that failed only with timeouts (BL-124)', () => {
+    const timeouts = ' FAIL  tests/a.test.ts > a\nError: Test timed out in 30000ms.\nIf this is a long-running test, pass a timeout value.\n FAIL  tests/b.test.ts > b\n\x1b[31mError: Hook timed out in 10000ms.\x1b[0m\n Tests  2 failed | 40 passed';
+    expect(timeoutsOnly(timeouts)).toBe(2);
+    expect(timeoutsOnly(`${timeouts}\nAssertionError: expected 1 to be 2`)).toBe(0);
+    expect(timeoutsOnly(`${timeouts}\nsrc/a.ts(1,2): error TS2322: Type 'string' is not assignable`)).toBe(0);
+    expect(timeoutsOnly(`${timeouts}\n  12:3  error  'x' is unused  no-unused-vars`)).toBe(0);
+    expect(timeoutsOnly('FAIL a.test.ts: expected 1, got 2')).toBe(0);
   });
 
   it('gives the agent the failing output, both tickets, and says to keep both intents or ask', () => {

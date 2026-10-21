@@ -9,7 +9,7 @@ import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
@@ -32,6 +32,8 @@ const EMPTY_LANE: Record<BacklogLane, string> = {
 };
 
 const DRAG_TYPE = 'application/x-flotilla-backlog';
+/** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
+const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
 
 interface Props {
   items: BacklogItem[] | undefined;
@@ -40,6 +42,7 @@ interface Props {
   /** How many integrations are connected. */
   integrations: number;
   autopilot?: AutopilotState;
+  mergeQueue?: MergeQueueView;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -52,7 +55,7 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
@@ -147,6 +150,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           </span>
         </button>
       )}
+      {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
           <i class="codicon codicon-filter-filled" />
@@ -245,6 +249,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
                       color={(ws) => colors.get(ws.key)}
                       renaming={renaming === item.id}
                       setRenaming={(on) => setRenaming(on ? item.id : undefined)}
+                      queuedBehind={(mergeQueue?.entries.findIndex((e) => e.id === item.id) ?? -1) > 0}
                       dropBefore={dropAt?.before === item.id}
                       onDragOver={(e) => dragOver(e, lane.lane, item.id)}
                       onDrop={(e) => drop(e, lane.lane, item.id)}
@@ -378,6 +383,8 @@ interface RowProps {
   color(ws: WorkstreamView): string | undefined;
   renaming: boolean;
   setRenaming(on: boolean): void;
+  /** In the merge queue, behind other tickets: its menu has Merge Next (BL-144). */
+  queuedBehind?: boolean;
   dropBefore: boolean;
   onDragOver(e: DragEvent): void;
   onDrop(e: DragEvent): void;
@@ -387,7 +394,7 @@ interface RowProps {
 /** The agent's state on a worktree chip, as on the worktree tabs. */
 const AGENT_DOT: Record<string, string | undefined> = { 'waiting-for-input': 'waiting', error: 'error', working: 'working', done: 'done' };
 
-function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
+function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, dropBefore, onDragOver, onDrop, openWorktree }: RowProps) {
   // A card whose button is working keeps its hover buttons shown (BL-117).
   const busy = useBusy();
   const done = item.status === 'done';
@@ -402,7 +409,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
-      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item) })}
+      data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item), backlogQueued: !!queuedBehind })}
       draggable={!renaming && !remote}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
@@ -461,6 +468,20 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
           <i class={`codicon codicon-${TURN_ICON[turn.kind]}`} />
           {turn.kind === 'paused' ? 'Paused' : turn.who}
         </span>
+      )}
+      {!renaming && item.demo && (
+        <button
+          class="demo-mark"
+          data-tip="It has a recorded demo: click to see it in the ticket"
+          aria-label="Show its demo"
+          onClick={(e) => {
+            e.stopPropagation();
+            send({ type: 'backlog', op: 'demo', id: item.id });
+          }}
+        >
+          <i class="codicon codicon-device-camera-video" />
+          demo
+        </button>
       )}
       {!renaming &&
         agents.map((a) => (
@@ -703,3 +724,80 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
     />
   );
 }
+
+/**
+ * The merge queue (BL-140), above the board: the tickets waiting to land, first to land first, each opening its ticket
+ * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
+ * Its tickets are dragged to change the order they land in (BL-144).
+ */
+function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
+  // Where a dragged ticket would go: before this one, or at the end (null).
+  const [dropBefore, setDropBefore] = useState<string | null>();
+  const ids = queue.entries.map((e) => e.id);
+  const dragOver = (e: DragEvent, before: string | null) => {
+    if (!e.dataTransfer?.types.includes(QUEUE_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropBefore(before);
+  };
+  const drop = (e: DragEvent) => {
+    const id = e.dataTransfer?.getData(QUEUE_DRAG_TYPE);
+    const before = dropBefore;
+    setDropBefore(undefined);
+    if (!id || before === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const order = moveBefore(ids, id, before);
+    if (order.join() !== ids.join()) send({ type: 'backlog', op: 'queueOrder', ids: order });
+  };
+  return (
+    <div class="merge-queue-bar">
+      <i class="codicon codicon-git-merge" />
+      <span>
+        <strong>Merge queue</strong>
+        {queue.working ? ` · ${capitalizeFirst(queue.working)}` : ''}
+        {' · '}
+        <span class="queue-entries" onDragOver={(e) => dragOver(e, null)} onDragLeave={() => setDropBefore(undefined)} onDrop={drop}>
+          {queue.entries.map((e, i) => (
+            <span key={e.id} onDragOver={(ev) => dragOver(ev, e.id)}>
+              {i > 0 && ', '}
+              <a
+                href="#"
+                draggable
+                onDragStart={(ev) => {
+                  ev.dataTransfer?.setData(QUEUE_DRAG_TYPE, e.id);
+                  if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => setDropBefore(undefined)}
+                class={[e.state === 'conflicts' ? 'conflicts' : '', dropBefore === e.id ? 'drop-before' : ''].filter(Boolean).join(' ') || undefined}
+                title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  send({ type: 'backlog', op: 'open', id: e.id });
+                }}
+              >
+                {e.id}
+                {e.state === 'conflicts' && ' (conflicts)'}
+              </a>
+            </span>
+          ))}
+          {dropBefore === null && <span class="drop-end" />}
+        </span>
+      </span>
+      <button class="land-all" disabled={!!queue.working} onClick={() => send({ type: 'backlog', op: 'landAll' })} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
+        Land All
+      </button>
+    </div>
+  );
+}
+
+/** The ids with one moved before another (null: to the end). */
+function moveBefore(ids: readonly string[], id: string, before: string | null): string[] {
+  if (id === before) return [...ids];
+  const rest = ids.filter((x) => x !== id);
+  const at = before === null ? rest.length : rest.indexOf(before);
+  return at < 0 ? [...ids] : [...rest.slice(0, at), id, ...rest.slice(at)];
+}
+
+const capitalizeFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

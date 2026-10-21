@@ -41,8 +41,10 @@ export interface ReportParts {
   asks: boolean;
   /** The questions the user answers by clicking (their blocks are taken out of the details). */
   questions: Question[];
-  /** The rest of the report, after the summary. */
+  /** The rest of the report, after the summary (without its media). */
   details: string;
+  /** Its pictures, videos and diagrams (BL-114): the Markdown of each, taken out of the details to lead them. */
+  media: string[];
   /** The report waits for the user (asks, or ends with "Waiting for you."). */
   waiting: boolean;
 }
@@ -73,29 +75,77 @@ export function parseReport(body: string): ReportParts {
     const needs = NEEDS.exec(lines[at])![1];
     const { questions, rest } = takeQuestions(lines.slice(at + 1).join('\n'));
     const asks = (!!needs && !isNothing(needs)) || questions.length > 0;
+    const { media, text: details } = takeMedia(rest);
     return {
       summary: lines.slice(0, at).join('\n').trim(),
       needs,
       asks,
       questions,
-      details: rest.trim(),
+      details,
+      media,
       waiting: asks || lastLineWaits(lines),
     };
   }
   const first = lines.findIndex((l) => l.trim() !== '');
   if (first >= 0 && VERDICT.test(lines[first])) {
-    // A verdict starts the report: its summary is that line and the lines down to the next blank one.
+    // A verdict starts the report: its summary is that line and the lines down to the next blank one, and its checklist
+    // (what must change), which shows with it; the rest is the details.
     const end = lines.findIndex((l, i) => i > first && l.trim() === '');
     const cut = end < 0 ? lines.length : end;
+    const { checklist, rest } = takeChecklist(lines.slice(cut));
+    const { media, text: details } = takeMedia(rest);
     return {
-      summary: lines.slice(first, cut).join('\n').trim(),
+      summary: [lines.slice(first, cut).join('\n').trim(), checklist].filter(Boolean).join('\n\n'),
       asks: false,
       questions: [],
-      details: lines.slice(cut).join('\n').trim(),
+      details,
+      media,
       waiting: lastLineWaits(lines),
     };
   }
-  return { asks: false, questions: [], details: text.trim(), waiting: lastLineWaits(lines) };
+  return { asks: false, questions: [], details: text.trim(), media: [], waiting: lastLineWaits(lines) };
+}
+
+// A line of pictures only ("![The demo](BL-1/demo.gif)", a few in a row, each perhaps a link), and a fence's start.
+const PICTURES = /^ {0,3}(?:(?:\[\s*)?!\[[^\]]*\]\([^)]*\)(?:\s*\]\([^)]*\))?\s*)+$/;
+const PICTURE = /!\[[^\]]*\]\([^)]*\)/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)/;
+
+/**
+ * A report's media (BL-114): its lines of pictures (each picture apart) and its ```mermaid blocks, in their order, and
+ * the text without them. A picture in a sentence, a list or another code block stays where it is: it's the text's.
+ */
+export function takeMedia(markdown: string): { media: string[]; text: string } {
+  const media: string[] = [];
+  const text: string[] = [];
+  const lines = markdown.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const fence = FENCE.exec(lines[i]);
+    if (fence) {
+      const close = new RegExp(`^ {0,3}${fence[1][0]}{${fence[1].length},}\\s*$`);
+      let end = lines.findIndex((l, j) => j > i && close.test(l));
+      if (end < 0) end = lines.length - 1;
+      (fence[2].toLowerCase() === 'mermaid' ? media : text).push(lines.slice(i, end + 1).join('\n'));
+      i = end;
+    } else if (PICTURES.test(lines[i])) media.push(...lines[i].match(PICTURE)!);
+    else text.push(lines[i]);
+  }
+  return { media, text: text.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
+}
+
+const TASK = /^\s*[-*+] \[[ xX]\]\s/;
+
+/** A verdict's checklist: its task items ("- [ ] add the test"), with the lines that go on each; the rest stays. */
+function takeChecklist(lines: string[]): { checklist: string; rest: string } {
+  const items: string[] = [];
+  const rest: string[] = [];
+  let inItem = false;
+  for (const l of lines) {
+    if (TASK.test(l)) inItem = true;
+    else if (inItem && !/^\s+\S/.test(l)) inItem = false;
+    (inItem ? items : rest).push(l);
+  }
+  return { checklist: items.join('\n').trim(), rest: rest.join('\n').replace(/\n{3,}/g, '\n\n') };
 }
 
 const isNothing = (text: string) => /^nothing\.?$/i.test(text.trim());

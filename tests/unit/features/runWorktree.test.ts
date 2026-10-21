@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RunBlock } from '../../../src/features/backlog/runBlocks';
-import { planTerminal, runFingerprint, runPlaces, unknownNameMessage } from '../../../src/features/backlog/runWorktree';
+import { demoPlace, planTerminal, runFingerprint, runPlaces, unknownNameMessage } from '../../../src/features/backlog/runWorktree';
 
 const wt = (branch: string | undefined, path: string | undefined) => ({ branch, path, adminDir: `/repo/.git/worktrees/${branch ?? 'x'}` });
 
@@ -98,5 +98,23 @@ describe('the terminal of a run', () => {
 
   it('asks when shell integration is missing, and says it cannot tell', () => {
     expect(planTerminal('unknown')).toEqual({ action: 'ask', known: false });
+  });
+});
+
+describe('demoPlace (BL-111)', () => {
+  const main = { label: 'main', dir: '/repo' };
+  const gone = { reachable: [], unreachable: [], missing: ['feature/x'] };
+
+  it('runs a demo from main once its worktree is gone, when main has it', () => {
+    expect(demoPlace(gone, 'demos/x.json', true, main)).toBe(main);
+  });
+
+  it("says why when main hasn't it", () => {
+    expect(demoPlace(gone, 'demos/x.json', false, main)).toEqual({ why: expect.stringContaining("main doesn't have demos/x.json") });
+  });
+
+  it('leaves it to the worktree while there is one, here or elsewhere', () => {
+    expect(demoPlace({ ...gone, reachable: [{ label: 'feature/x', dir: '/wt' }] }, 'demos/x.json', true, main)).toBeUndefined();
+    expect(demoPlace({ ...gone, unreachable: ['feature/x'] }, 'demos/x.json', true, main)).toBeUndefined();
   });
 });

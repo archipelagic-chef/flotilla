@@ -6,8 +6,13 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as gifencModule from 'gifenc';
+import { tagGif } from './demo-kit.mjs';
 // The app's own code (src/features/backlog/seedKit.ts, built by npm run build), so the seed writes what the app reads.
 import { actionable, descriptionHash, entryDate, entryKey, formatTicket } from '../dist/playground-seed-kit.mjs';
+
+// Node loads gifenc's CommonJS build (its functions on the default export), as demo-kit.mjs does.
+const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
@@ -293,6 +298,11 @@ const TICKETS = [
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Pip-3' },
     activity: [
       {
+        ago: 150,
+        author: 'Agent Pip-3',
+        body: 'A first try: the ticket opens again, but on every refresh.\n\n![It opens on every refresh](BL-10/demo-first.gif)',
+      },
+      {
         ago: 90,
         author: 'Agent Pip-3',
         body: [
@@ -316,6 +326,14 @@ const TICKETS = [
           'node --check src/last.js',
           '```',
           '',
+          'It working (the Demo section shows it, BL-135):',
+          '',
+          '![The last ticket opens again on start](BL-10/demo.gif)',
+          '',
+          '```run demo open-ticket',
+          'npm run demo -- play open-ticket',
+          '```',
+          '',
           'Ready for review.',
         ].join('\n'),
       },
@@ -328,7 +346,15 @@ const TICKETS = [
       },
     ],
     // Its folder (BL-110's Attachments): the report's pictures, and a sketch nothing references.
-    files: { 'before.svg': picture('#3a6ea5', 'Backlog'), 'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'), 'sketch.svg': picture('#a5763a', 'Sketch') },
+    files: {
+      'before.svg': picture('#3a6ea5', 'Backlog'),
+      'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'),
+      'sketch.svg': picture('#a5763a', 'Sketch'),
+      // Its demos (BL-135's Demo section): the latest, and the first try's.
+      // Recorded from open-ticket, as the recorder notes it (BL-111): it goes with that block, as one unit.
+      'demo.gif': tagGif(recording('#4c9a52', 12), 'open-ticket'),
+      'demo-first.gif': recording('#a5763a', 8),
+    },
   },
   {
     id: 'BL-11',
@@ -457,6 +483,85 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-14',
+    title: 'Show the backlog as a board',
+    status: 'done',
+    daysAgo: 4,
+    description: "The backlog shows as a board: a column per status, cards moved by dragging.\n\n- [ ] Dragging a card moves it.\n- [ ] The board remembers its scroll.",
+    review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Nova-7' },
+    // Reports that lead with their pictures and diagrams (BL-114's demo): the older ones fold, each with its strip.
+    activity: [
+      {
+        ago: 300,
+        author: 'Agent Nova-7',
+        body: [
+          'Plan: a column per status, drawn from backlog.json; dragging writes the new status through the inbox.',
+          'Needs from you: nothing',
+          '',
+          '```mermaid',
+          'flowchart LR',
+          '  B[backlog.json] --> C[columns] --> D[drag a card] --> I[inbox] --> B',
+          '```',
+        ].join('\n'),
+      },
+      {
+        ago: 200,
+        author: 'Agent Nova-7',
+        body: [
+          'The board shows the columns; dragging a card moves it.',
+          'Needs from you: nothing',
+          '',
+          '#### How to review',
+          '',
+          'The list before, and the board now:',
+          '',
+          '![The list, before](BL-14/list.svg) ![The board, after](BL-14/board.svg)',
+          '',
+          'Ready for review.',
+        ].join('\n'),
+      },
+      {
+        ago: 120,
+        author: 'Agent Iris-4',
+        body: [
+          'Verdict: approved',
+          'The board does what the ticket asks; its scroll stays.',
+          '',
+          '![The board, scrolled and refreshed](BL-14/scrolled.svg)',
+          '',
+          'Ran the tests: all pass.',
+        ].join('\n'),
+      },
+      {
+        ago: 60,
+        author: 'Agent Nova-7',
+        body: [
+          'Done: the board is merged, and the list stays a click away.',
+          'Needs from you: nothing',
+          '',
+          '#### What changed',
+          '',
+          '```mermaid',
+          'flowchart TB',
+          '  V[Backlog view] --> L[List]',
+          '  V --> Bo[Board]',
+          '```',
+          '',
+          '![The toggle between them](BL-14/toggle.svg)',
+          '',
+          'Nothing left open.',
+        ].join('\n'),
+      },
+      { ago: 30, author: 'Flotilla', body: 'You moved it from **In Review** to **Done**.' },
+    ],
+    files: {
+      'list.svg': picture('#3a6ea5', 'Backlog: a list'),
+      'board.svg': picture('#4c9a52', 'Backlog: To Do · In Progress · Done'),
+      'scrolled.svg': picture('#7a4ca5', 'The board, scrolled'),
+      'toggle.svg': picture('#a5763a', 'List | Board'),
+    },
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */
@@ -536,6 +641,28 @@ function picture(colour, label) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240"><rect width="480" height="240" rx="8" fill="#1e1e1e"/><rect width="480" height="40" rx="8" fill="${colour}"/><text x="20" y="26" font-family="sans-serif" font-size="16" fill="#fff">${label}</text>${lines}</svg>\n`;
 }
 
+/**
+ * A small recording: a window whose bar fills up, a frame each half second (`frames` of them), as a demo GIF looks
+ * like in a ticket (BL-135).
+ */
+function recording(colour, frames) {
+  const [w, h] = [320, 180];
+  const rgb = [1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16));
+  const gif = GIFEncoder();
+  for (let f = 0; f < frames; f++) {
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const bar = y < 28 || (y > 80 && y < 100 && x > 20 && x < 20 + ((w - 40) * (f + 1)) / frames);
+        data.set(bar ? [...rgb, 255] : [30, 30, 30, 255], (y * w + x) * 4);
+      }
+    const palette = quantize(data, 16);
+    gif.writeFrame(applyPalette(data, palette), w, h, { palette, delay: 500 });
+  }
+  gif.finish();
+  return Buffer.from(gif.bytes());
+}
+
 /** backlog.json and the tickets: each ticket's file, its review's handled reports, and its description's fingerprint. */
 function writeBacklog(backlog, now) {
   fs.mkdirSync(backlog, { recursive: true });
@@ -558,4 +685,109 @@ function writeBacklog(backlog, now) {
   // Last: the backlog's presence says the playground is seeded.
   const data = { version: 1, next: TICKETS.length + 1, counters: { BL: TICKETS.length }, items };
   fs.writeFileSync(path.join(backlog, 'backlog.json'), `${JSON.stringify(data, null, 1)}\n`);
+}
+
+// ---- chats (BL-123) ----
+
+/** The seeded chats' session ids: fixed, so seeding again rewrites the same chats. */
+const AGENT_CHAT = '7a3e5b21-4c6d-4f80-9b1a-2d3c4e5f6a70';
+const PANEL_CHAT = '8b4f6c32-5d7e-4a91-8c2b-3e4d5f6a7b81';
+const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
+const MODEL = 'claude-opus-5-5';
+
+/**
+ * The turns of a chat, as Claude Code writes its transcript: `say` is the user's prompt, `reply` Claude's text, `tools`
+ * the calls it makes (each with its result).
+ */
+const AGENT_TURNS = [
+  {
+    say: 'You are agent Vega-2, working on backlog item BL-3: "Keep chats when a window reloads". Read its ticket, then go on.',
+    tools: [
+      { name: 'Read', input: { file_path: '.flotilla/backlog/BL-3.md' }, result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again." },
+      { name: 'Grep', input: { pattern: 'saveChat', description: 'Find where chats are saved' }, result: 'src/chats.js:1:export function saveChat(store, worktree, id) {' },
+    ],
+    reply: "The chat's id is saved with its worktree in `src/chats.js`, but nothing reads it back after a reload.",
+  },
+];
+/** What the agent goes on with: appended one at a time by a demo's `agentTurn` step, so the transcript view follows it. */
+const AGENT_NEXT = [
+  {
+    tools: [{ name: 'Edit', input: { file_path: 'src/chats.js', description: 'Add chatOf' }, result: 'The file src/chats.js has been updated.' }],
+    reply: 'Added chatOf, which finds the chat of a worktree again. Next: read the store on start.',
+  },
+];
+const PANEL_TURNS = [
+  {
+    say: 'What does chatOf return for a worktree that has no chat yet?',
+    tools: [{ name: 'Read', input: { file_path: 'src/chats.js' }, result: 'export function chatOf(store, worktree) {\n  return store[worktree];\n}' }],
+    reply: "`undefined`: `chatOf` reads the store's key for the worktree, and there's none until `saveChat` writes it.",
+  },
+];
+
+/** A turn's transcript lines, from `at` on, a second apart. */
+function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
+  let t = at.getTime();
+  const base = () => ({ sessionId, cwd, entrypoint, version: '2.1.0', isSidechain: false, timestamp: new Date((t += 1000)).toISOString() });
+  const id = (kind, i = 0) => `${sessionId.slice(0, 8)}-${n}-${kind}-${i}`;
+  const lines = [];
+  if (turn.say) lines.push({ type: 'user', ...base(), uuid: id('u'), message: { role: 'user', content: turn.say } });
+  const usage = { input_tokens: 4, cache_read_input_tokens: 18000 + n * 900, cache_creation_input_tokens: 600, output_tokens: 180 };
+  for (const [i, tool] of (turn.tools ?? []).entries()) {
+    const call = { type: 'tool_use', id: `toolu_${id('t', i).replace(/-/g, '')}`, name: tool.name, input: tool.input };
+    lines.push({ type: 'assistant', ...base(), uuid: id('a', i), message: { id: id('m', i), role: 'assistant', model: MODEL, content: [call], usage } });
+    lines.push({ type: 'user', ...base(), uuid: id('r', i), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] } });
+  }
+  lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
+  return lines.map((l) => `${JSON.stringify(l)}\n`).join('');
+}
+
+/** Where Claude Code keeps a chat's transcript: <home>/projects/<cwd, every non-alphanumeric character a '-'>/<id>.jsonl. */
+const transcriptFile = (home, cwd, sessionId) => path.join(home, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`);
+
+/**
+ * Seeds the playground's chats: an agent's (claude -p, so it opens read-only, BL-121) in BL-3's worktree, working,
+ * and a panel chat there, done. Their records go to the worktree's git folder (as Flotilla's hook writes them), their
+ * transcripts to `claudeHome`'s projects (the demo window's own home: never the user's). Written again on every call,
+ * so the agent's chat is fresh and open whenever a demo starts. Returns the transcripts' paths.
+ */
+export function seedChats(dir, claudeHome, now = new Date()) {
+  const cwd = path.join(dir, BL3_WORKTREE);
+  if (!fs.existsSync(cwd)) return [];
+  const records = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats');
+  fs.mkdirSync(records, { recursive: true });
+  const chats = [
+    { sessionId: AGENT_CHAT, entrypoint: 'sdk-cli', turns: AGENT_TURNS, title: 'Vega-2 · BL-3', state: 'working', agent: 'Vega-2', ago: 6 },
+    { sessionId: PANEL_CHAT, entrypoint: 'claude-vscode', turns: PANEL_TURNS, title: 'What chatOf returns without a chat', state: 'done', ago: 50 },
+  ];
+  return chats.map((c) => {
+    const startedAt = new Date(now.getTime() - c.ago * 60_000);
+    const lines = c.turns.map((turn, n) => turnLines(turn, { ...c, cwd, n }, new Date(startedAt.getTime() + n * 60_000))).join('');
+    const file = transcriptFile(claudeHome, cwd, c.sessionId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${lines}${JSON.stringify({ type: 'custom-title', sessionId: c.sessionId, customTitle: c.title })}\n`);
+    const record = { sessionId: c.sessionId, state: c.state, cwd, linkedBy: 'cwd', firstPrompt: c.turns[0].say.slice(0, 200), startedAt: startedAt.toISOString(), updatedAt: now.toISOString() };
+    if (c.agent) record.agent = c.agent;
+    fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
+    return file;
+  });
+}
+
+/**
+ * The agent's chat goes on: its next turn (of AGENT_NEXT) is appended to its transcript, and its record says it's
+ * still working. Returns false when it has no turn left (or wasn't seeded).
+ */
+export function appendAgentTurn(dir, claudeHome, now = new Date()) {
+  const cwd = path.join(dir, BL3_WORKTREE);
+  const file = transcriptFile(claudeHome, cwd, AGENT_CHAT);
+  if (!fs.existsSync(file)) return false;
+  const done = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.includes('-a-end"')).length;
+  const next = AGENT_NEXT[done - AGENT_TURNS.length];
+  if (!next) return false;
+  fs.appendFileSync(file, turnLines(next, { sessionId: AGENT_CHAT, cwd, entrypoint: 'sdk-cli', n: done }, now));
+  const recordFile = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats', `${AGENT_CHAT}.json`);
+  if (fs.existsSync(recordFile)) {
+    const record = JSON.parse(fs.readFileSync(recordFile, 'utf8'));
+    fs.writeFileSync(recordFile, `${JSON.stringify({ ...record, state: 'working', updatedAt: now.toISOString() }, null, 1)}\n`);
+  }
+  return true;
 }

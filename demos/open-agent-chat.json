@@ -1,0 +1,21 @@
+{
+  "title": "Open an agent's chat from the Chats view",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Chats\"]" },
+    { "caption": "An agent's chat (claude -p): Claude Code's panel would open it empty" },
+    { "waitFor": ".chat:has-text(\"Vega-2\")" },
+    { "wait": 1200 },
+    { "click": ".chat:has-text(\"Vega-2\")" },
+    { "caption": "It opens read-only here, and follows the agent as it works" },
+    { "waitFor": "text=Find where chats are saved", "timeout": 20000 },
+    { "wait": 1500 },
+    { "click": "summary:has-text(\"Find where chats are saved\")" },
+    { "wait": 2000 },
+    { "caption": "As the agent goes on, its new turns show here" },
+    { "agentTurn": "Vega-2" },
+    { "waitFor": "text=Added chatOf", "timeout": 20000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

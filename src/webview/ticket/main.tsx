@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
-import { entryRound, foldRounds, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
+import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
 import { entryDate, summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
@@ -15,7 +15,9 @@ import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
-import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
+import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
+import { DEMO_SECTION, DemoSection } from './demo';
+import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -437,6 +439,17 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
   useEffect(() => {
     if (el.current) void drawDiagrams(el.current);
   }, [html]);
+  // A demo's video says how long it plays once it knows (a GIF's length comes with the html, BL-111).
+  useEffect(() => {
+    el.current?.querySelectorAll<HTMLVideoElement>('.demo-inline video').forEach((v) => {
+      const show = () => {
+        const label = v.closest('.demo-inline')?.querySelector('.demo-length');
+        if (label && Number.isFinite(v.duration)) label.textContent = `Recorded demo · ${demoLength(v.duration)}`;
+      };
+      if (v.readyState >= 1) show();
+      else v.addEventListener('loadedmetadata', show, { once: true });
+    });
+  }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
@@ -446,7 +459,7 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
       // The button is in the host's html: its working state is set here, and cleared when the host is done.
       run.dataset.busy = 'Running…';
       (run as HTMLButtonElement).disabled = true;
-      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -1019,6 +1032,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         )}
       </div>
       {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
+      {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
     </>
   );
 }
@@ -1097,6 +1111,37 @@ function MergeStop({ stop }: { stop: CiStop }) {
   );
 }
 
+/**
+ * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
+ * and the tickets ahead, or conflicts with them), and Remove from Queue.
+ */
+function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
+  const conflicts = !!queue.state?.startsWith('Conflicts');
+  return (
+    <div class={`merge-queue${conflicts ? ' conflicts' : ''}`}>
+      <i class={`codicon ${conflicts ? 'codicon-warning' : 'codicon-list-ordered'}`} />
+      <span class="review-text">
+        <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
+        {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
+        {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
+      </span>
+      {queue.ahead.length > 0 && (
+        <ActionButton class="button secondary" message={{ type: 'mergeNext' }} working="Moving…" title="Moves it to the front of the merge queue: the train is rebuilt in the new order">
+          Merge Next
+        </ActionButton>
+      )}
+      <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
+        Remove from Queue
+      </ActionButton>
+    </div>
+  );
+}
+
+/** A text with `code` spans. */
+function Code({ text }: { text: string }) {
+  return <>{text.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</>;
+}
+
 /** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
 function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
   const message: TicketWebviewMessage = { type: 'merge' };
@@ -1137,6 +1182,9 @@ function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<Ti
   );
 }
 
+/** When the checks failed: "Oct 19, 20:16". */
+const failedAt = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
 /**
  * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
  * or its checks failing (BL-65), with their output, to fix with an agent.
@@ -1165,6 +1213,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
         <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
         <span class="review-text">
           <strong>Merging into {m.base}</strong> {text}
+          {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
@@ -1180,6 +1229,15 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
             }
           >
             <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {checks && m.state === 'failed' && !resolving && (
+          <button
+            class="button secondary"
+            onClick={() => send({ type: 'mergeRecheck' })}
+            title="Runs the checks again on the merge as it is (a failure that was only a loaded machine's goes away): passing, the base branch moves to the merge"
+          >
+            <i class="codicon codicon-refresh" /> Run the Checks Again
           </button>
         )}
         {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (
@@ -1906,6 +1964,12 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
       {e.report ? (
         <>
           <Rendered html={e.report.summary} empty="" />
+          {/* Its pictures, videos and diagrams lead it (BL-114): the text they belong to stays in Details. */}
+          {e.report.media && (
+            <div class="report-media">
+              <Rendered html={e.report.media} empty="" />
+            </div>
+          )}
           {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
           {e.report.details && (
             <details class="report-details">
@@ -1956,6 +2020,37 @@ function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
   );
 }
 
+/** A folded report's media (BL-114), beside its line: a click opens one in the viewer, and the entry stays folded. */
+function MediaStrip({ e }: { e: ActivityEntry }) {
+  const thumbs = e.thumbs!;
+  const open = (at: number) =>
+    openMedia(
+      thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
+      at,
+    );
+  return (
+    <ul class="media-strip">
+      {thumbs.map((t, i) => (
+        <li key={i}>
+          <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
+            {t.kind === 'diagram' ? (
+              <Diagram code={t.code ?? ''} class="media-thumb-diagram" />
+            ) : t.kind === 'video' ? (
+              <>
+                {/* Its first frame; it doesn't play here. */}
+                <video src={t.src} preload="metadata" muted tabIndex={-1} />
+                <i class="codicon codicon-play-circle play-mark" />
+              </>
+            ) : (
+              <img src={t.src} alt={t.alt ?? ''} loading="lazy" />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** A review's rounds folded into one line ("Reviewed by Flux-3 in 2 rounds → approved"); a click shows them, in order. */
 function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: TicketView }) {
   const [open, setOpen] = useState(false);
@@ -1975,9 +2070,7 @@ function RoundFoldLine({ fold, ticket }: { fold: RoundFold<FeedRow>; ticket: Tic
       >
         <i class={`codicon codicon-${open ? 'chevron-down' : 'chevron-right'}`} />
         <i class="codicon codicon-eye" />
-        <span>
-          {fold.reviewer ? `Reviewed by ${fold.reviewer}` : 'Reviewed'} in {fold.rounds} round{fold.rounds === 1 ? '' : 's'} → {fold.outcome}
-        </span>
+        <span>{foldTitle(fold)}</span>
       </button>
       {open && (
         <ol class="fold-items">
@@ -2135,9 +2228,6 @@ function Activity({ ticket }: { ticket: TicketView }) {
     setComment((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${ASK_FOR_RUN}` : ASK_FOR_RUN));
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
-  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's entry is open,
-  // older ones are folded to a line each (opened by a click).
-  const latest = [...ticket.activity].reverse().find((e) => kindOf(e.author) === 'agent');
   // In All, a reply shows under its top-level entry (BL-126); a tab shows each entry of its kind on its own.
   const inConversation = (e: ActivityEntry) => kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
   // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
@@ -2147,6 +2237,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
     : foldRounds<FeedRow>(ticket.activity, feedRound, ticket.review && { state: ticket.review.state, reviewer: ticket.review.reviewer })
         .map((g) => ('fold' in g ? { fold: { ...g.fold, items: g.fold.items.filter((f) => !('commit' in f) && inConversation(f)) } } : g))
         .filter((g) => ('fold' in g ? g.fold.items.length > 0 : !('commit' in g.item) && inConversation(g.item)));
+  // Notes and commits are the timeline; comments and reports are the conversation. The latest agent's report in the
+  // feed is open (rounds.ts says which), older ones are folded to a line each (opened by a click).
+  const folded = new Set(groups.flatMap((g) => ('fold' in g ? g.fold.items : [])));
+  const latest = openEntry(ticket.activity, (e) => !folded.has(e) && (!nested(e, ticket) || !folded.has(ticket.activity[e.root!])));
   return (
     <section class="block">
       <div class="block-head">
@@ -2186,6 +2280,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     </span>
                   )}
                 </button>
+                {!!e.thumbs?.length && <MediaStrip e={e} />}
               </li>
             );
           }
@@ -2657,7 +2752,8 @@ function App() {
       } else if (m.type === 'done') {
         finished(m.message, !!m.failed);
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
-      } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+      } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
       else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
@@ -2825,7 +2921,8 @@ function App() {
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
-      <Attachments ticket={ticket} send={send} />
+      <DemoSection ticket={ticket} Action={ActionButton} />
+      <Attachments ticket={ticket} send={send} Action={ActionButton} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
