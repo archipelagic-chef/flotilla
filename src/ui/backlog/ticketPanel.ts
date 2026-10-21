@@ -1389,12 +1389,6 @@ export class TicketPanels implements vscode.Disposable {
     if (!item) return;
     const backlog = this.deps.backlog;
     switch (m.type) {
-      case 'discuss':
-        if (!item.remote) await this.shaping?.discuss(id, true);
-        break;
-      case 'keepDiscussing':
-        await this.shaping?.keepDiscussing(id);
-        break;
       case 'cleanUp':
         await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
         return;
@@ -1445,24 +1439,6 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'dismissUnmerged':
         await this.dismissUnmerged(item);
-        return;
-      case 'startReview':
-        await this.reviews?.start(id, true);
-        return;
-      case 'userReview':
-        await this.reviews?.userReview(id, m.verdict, m.text);
-        break;
-      case 'reviewFix':
-        await this.reviews?.fix(id, m.fix);
-        return;
-      case 'updateFromMain':
-        await this.mainSync?.update(id);
-        return;
-      case 'prioritize':
-        await this.reviews?.prioritize(id);
-        return;
-      case 'stopReview':
-        await this.reviews?.stop(id);
         return;
       default:
         await handleMessage({ id, panel, item, backlog, panels: this }, m);
