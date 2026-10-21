@@ -14,7 +14,6 @@ import {
   sameAgent,
   linkedItem,
   readyToMerge,
-  type AgentChoice,
   type BacklogItem,
 } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -43,7 +42,7 @@ import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
@@ -339,18 +338,6 @@ export function replaceImages(html: string, src: (current: string) => Promise<st
     const next = await src(s);
     return next ? { src: next, kind: 'image' } : undefined;
   });
-}
-
-/** An item with its agent choice (none, when all are the defaults). A model chosen replaces Light, and Light a model. */
-function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
-  const { agent: _old, ...rest } = item;
-  const clean: AgentChoice = {
-    ...(agent.model ? { model: agent.model } : {}),
-    ...(agent.effort ? { effort: agent.effort } : {}),
-    ...(agent.light && !agent.model ? { light: true } : {}),
-    ...(agent.movedUp ? { movedUp: agent.movedUp } : {}),
-  };
-  return Object.keys(clean).length ? { ...rest, agent: clean } : rest;
 }
 
 /** Markdown (as comments and reports are written here) in a tracker's markup. */
@@ -1402,42 +1389,11 @@ export class TicketPanels implements vscode.Disposable {
     if (!item) return;
     const backlog = this.deps.backlog;
     switch (m.type) {
-      case 'start':
-        await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
-        return;
       case 'discuss':
         if (!item.remote) await this.shaping?.discuss(id, true);
         break;
       case 'keepDiscussing':
         await this.shaping?.keepDiscussing(id);
-        break;
-      case 'agentModel': {
-        if (item.remote) return;
-        let model = m.model?.trim() || undefined;
-        if (model === 'other') {
-          model = (
-            await vscode.window.showInputBox({
-              title: `The model for agents on ${id}`,
-              prompt: "An alias (opus, sonnet, haiku, fable) or a model's full name (claude-opus-5-5)",
-              value: item.agent?.model ?? '',
-            })
-          )?.trim();
-          if (model === undefined) return;
-        }
-        if (model === 'light') {
-          await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: undefined, light: true }) : i)) }));
-          break;
-        }
-        if (model && !validModel(model)) {
-          void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
-          return;
-        }
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
-        break;
-      }
-      case 'agentEffort':
-        if (item.remote) return;
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, effort: m.effort ?? undefined }) : i)) }));
         break;
       case 'cleanUp':
         await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
@@ -1507,12 +1463,6 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'stopReview':
         await this.reviews?.stop(id);
-        return;
-      case 'agent':
-        await this.controlAgent(id, m.action, m.session);
-        return;
-      case 'openChat':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
         return;
       default:
         await handleMessage({ id, panel, item, backlog, panels: this }, m);
