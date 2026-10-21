@@ -421,6 +421,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.tryPausedNow",
+        "title": "Try Paused Agents Now",
+        "category": "Flotilla",
+        "icon": "$(debug-restart)"
+      },
+      {
         "command": "flotilla.toggleAutopilot",
         "title": "Toggle Autopilot (Agents Take To Do Tickets)",
         "category": "Flotilla",

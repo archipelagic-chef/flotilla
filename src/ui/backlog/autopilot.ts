@@ -43,6 +43,8 @@ export interface AutopilotView {
   waiting: number;
   /** Waiting for Claude's usage limit to reset (ISO 8601). */
   waitingUntil?: string;
+  /** When Try Now last found the limit still there (ISO 8601), while it waits on. */
+  triedAt?: string;
   /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
   waitingForMemory?: boolean;
   /** Another window runs it. */
@@ -74,6 +76,8 @@ export class Autopilot implements vscode.Disposable {
   private ticking = false;
   private waitingUntil: Date | undefined;
   private waitingForMemory = false;
+  /** When Try Now last found the limit still there: shown while it waits on. */
+  private triedAt: Date | undefined;
 
   constructor(private readonly deps: AutopilotDeps) {
     const watch = deps.backlog.watch(() => void this.refresh().then(() => this.tick()));
@@ -136,7 +140,9 @@ export class Autopilot implements vscode.Disposable {
       running: this.deps.reviews.running,
       max: this.deps.reviews.limit,
       waiting: this.deps.reviews.waitingCount,
-      ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now() ? { waitingUntil: this.waitingUntil.toISOString() } : {}),
+      ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now()
+        ? { waitingUntil: this.waitingUntil.toISOString(), ...(this.triedAt ? { triedAt: this.triedAt.toISOString() } : {}) }
+        : {}),
       ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
       elsewhere: !this.deps.leader.isLeader,
     };
@@ -223,6 +229,20 @@ export class Autopilot implements vscode.Disposable {
     return todo.filter((_, n) => waits[n]).map((i) => i.id);
   }
 
+  /**
+   * Try Now (BL-132): the agents paused on a usage limit go on now if Claude takes work again (see
+   * ReviewLoop.tryPausedNow), and the autopilot takes To Do tickets again; if it doesn't, it waits on, and says when it
+   * tried. Its switch stays as it is.
+   */
+  async tryNow(): Promise<Awaited<ReturnType<ReviewLoop['tryPausedNow']>>> {
+    const result = await this.deps.reviews.tryPausedNow();
+    this.triedAt = result?.limited ? result.tried : undefined;
+    this.waitingUntil = await this.deps.reviews.pausedUntil();
+    this.changed.fire();
+    await this.tick();
+    return result;
+  }
+
   /** Starts work on the next item, while there's room for another agent. */
   async tick(): Promise<void> {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader) return;
@@ -231,6 +251,7 @@ export class Autopilot implements vscode.Disposable {
     try {
       const was = this.waitingUntil?.getTime();
       this.waitingUntil = await this.deps.reviews.pausedUntil();
+      if (!this.waitingUntil) this.triedAt = undefined;
       if (this.waitingUntil?.getTime() !== was) this.changed.fire();
       if (this.waitingUntil) return;
       while (this.enabled && this.deps.reviews.canStartNew()) {

@@ -355,3 +355,51 @@ describe('the autopilot and tickets whose files clash with work in progress', ()
     }
   });
 });
+
+describe('the autopilot and Try Now (BL-132)', () => {
+  it('waits on, saying when it tried, while the limit is still there; takes To Do tickets again once it lifted', async () => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const at = '2026-10-11T00:00:00Z';
+    const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
+    const reset = new Date(Date.now() + 3600_000);
+    let until: Date | undefined = reset;
+    const tried = new Date();
+    const tryPausedNow = vi.fn(async () => ({ tried, resumed: 0, limited: reset }) as { tried: Date; resumed: number; limited?: Date });
+    const prepareWorktree = vi.fn(async () => undefined);
+    const pilot = new Autopilot({
+      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity: async () => undefined, change: async () => data },
+      reviews: { running: 0, limit: 2, waitingCount: 0, canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => until, startWork: async () => undefined, tryPausedNow },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree,
+    } as never);
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(pilot.view()).toMatchObject({ waitingUntil: reset.toISOString() });
+    expect(pilot.view().triedAt).toBeUndefined();
+
+    await pilot.tryNow();
+    expect(pilot.enabled).toBe(true);
+    expect(pilot.view()).toMatchObject({ waitingUntil: reset.toISOString(), triedAt: tried.toISOString() });
+    expect(prepareWorktree).not.toHaveBeenCalled();
+
+    tryPausedNow.mockResolvedValue({ tried: new Date(), resumed: 1 });
+    until = undefined;
+    await pilot.tryNow();
+    expect(pilot.view().waitingUntil).toBeUndefined();
+    expect(pilot.view().triedAt).toBeUndefined();
+    expect(prepareWorktree).toHaveBeenCalledTimes(1);
+    pilot.dispose();
+  });
+});

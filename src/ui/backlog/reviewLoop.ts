@@ -643,18 +643,49 @@ export class ReviewLoop implements vscode.Disposable {
     });
   }
 
-  /** The earliest time paused agents go on (for the autopilot: no new work starts before). */
+  /**
+   * The earliest time paused agents go on (for the autopilot: no new work starts before). One whose resume is queued
+   * (Try Now, BL-132) waits for a slot, not for the limit.
+   */
   async pausedUntil(): Promise<Date | undefined> {
     const d = await this.deps.backlog.read();
-    const times = d.items.flatMap((i) => (i.review?.state === 'paused' && i.review.paused?.until && i.review.paused.known !== undefined ? [Date.parse(i.review.paused.until)] : []));
+    const times = d.items.flatMap((i) =>
+      i.review?.state === 'paused' && i.review.paused?.until && i.review.paused.known !== undefined && !this.waiting.has(i.id) ? [Date.parse(i.review.paused.until)] : [],
+    );
     const next = times.filter((t) => t > Date.now()).sort((a, b) => a - b)[0];
     return next === undefined ? undefined : new Date(next);
   }
 
   /**
-   * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
-   * force) goes on at once.
+   * Try Now (BL-132): whether Claude takes work again, asked once outside the chats (see limitLifted). When it does, the
+   * agents paused on a limit go on, top of the backlog first, as queued starts (within flotilla.agents.maxRunning);
+   * when it doesn't, none is started, the top one's wait follows the reset Claude says now, and `limited` says when
+   * they go on by themselves. Undefined when no agent waits for a limit.
    */
+  async tryPausedNow(): Promise<{ tried: Date; resumed: number; limited?: Date } | undefined> {
+    const limitPaused = (i: BacklogItem) => i.review?.state === 'paused' && !!i.review.paused && !i.review.paused.byUser && !i.review.paused.for;
+    const paused = (await this.deps.backlog.read()).items.filter(limitPaused);
+    const first = paused[0]?.review?.paused;
+    if (!first) return undefined;
+    const tried = new Date();
+    const limit = await probeLimit({ choice: agentChoice(paused[0], first.phase === 'review' ? 'review' : 'work'), output: this.deps.output });
+    if (limit) {
+      // A reset said now replaces the top one's; a guessed-at one keeps its wait (the user's try doesn't lengthen it).
+      if (limit.known) await this.setReview(paused[0].id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: limit.until.toISOString() } } : r!));
+      this.scheduleResume();
+      return { tried, resumed: 0, limited: await this.pausedUntil() };
+    }
+    let resumed = 0;
+    // Read again: the probe took a while, and one may have gone on (or been stopped) meanwhile.
+    for (const item of (await this.deps.backlog.read()).items.filter(limitPaused)) {
+      if (this.runs.has(item.id) || this.waiting.has(item.id)) continue;
+      await this.resumeOne(item, {});
+      resumed++;
+    }
+    this.scheduleResume();
+    return { tried, resumed };
+  }
+
   /**
    * Once a minute (the leading window): a ticket whose agent should be at work, but runs in no window, is stopped with
    * a way on (BL-87). That's an agent the window ended when it reloaded or closed: nothing else would move it on. Its
@@ -679,6 +710,10 @@ export class ReviewLoop implements vscode.Disposable {
     }
   }
 
+  /**
+   * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
+   * force) goes on at once.
+   */
   async resumePaused(force?: string): Promise<void> {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();

@@ -61,6 +61,7 @@ import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
+import { shortTime } from './webview/shortTime';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -428,6 +429,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           `Autopilot on: up to ${autopilot.view().max} agents take To Do tickets from the top of the backlog and work on them without a window. They report in the tickets; their work goes on to review.`,
         );
       }
+    }),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.tryPausedNow', async () => {
+      // With the autopilot off too: it resumes the paused agents, and starts no new tickets.
+      const result = await autopilot.tryNow();
+      if (!result) void vscode.window.showInformationMessage('No agent waits for a usage limit.');
+      else if (result.limited) void vscode.window.showInformationMessage(`Claude is still limited: no agent was started. They go on by themselves at ${shortTime(result.limited)}.`);
+      else void vscode.window.showInformationMessage(`Claude takes work again: ${result.resumed === 1 ? 'the paused agent goes on' : `${result.resumed} paused agents go on, top of the backlog first`}.`);
     }),
   );
   ctx.clashOf = (id) => autopilot.clashOf(id);
