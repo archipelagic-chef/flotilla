@@ -952,9 +952,11 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
   // The agent the user paused or stopped: it can be resumed in its chat.
   const held = heldBy(r);
   const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
-  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && r.autopilot && !turn);
+  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
   const [icon, cls, label, text, todo] = autopilot
-    ? ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
+    ? r.byHand
+      ? ['play', 'working', 'Working', pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`, undefined]
+      : ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
     : turn && said
       ? [
           r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
@@ -2868,9 +2870,9 @@ function App() {
               working="Starting…"
               disabled={ticket.creating}
               title={
-                ticket.item.agent?.model || ticket.item.agent?.effort || ticket.agentDefaults.model || ticket.agentDefaults.effort
-                  ? 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen (in a terminal: Claude Code’s panel can’t be started with them); it reports below'
-                  : 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                ticket.remote
+                  ? 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                  : 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen. It runs in the background, without a window (in the agent queue, as the autopilot’s agents do), and reports below'
               }
             >
               <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}

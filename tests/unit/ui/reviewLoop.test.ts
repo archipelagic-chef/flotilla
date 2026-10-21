@@ -13,6 +13,7 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+const terminal = vi.hoisted(() => vi.fn(() => ({ sessionId: 'terminal-session' })));
 /** Is Claude still limited? (undefined: it takes work again.) */
 const probe = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
 /** The token use agents' transcripts show (see watchRunaways); none: no transcript. */
@@ -36,12 +37,12 @@ vi.mock('vscode', () => ({
   env: { clipboard: { writeText: async () => undefined } },
 }));
 vi.mock('../../../src/ui/backlog/agentRunner', () => ({
-  agentChoice: () => ({}),
+  agentChoice: (item?: { agent?: unknown }) => item?.agent ?? {},
   confirmMemory: async () => false,
   describeChoice: () => '',
   isRunningHeadless: () => false,
   isRunningInTerminal: () => false,
-  runAgentInTerminal: () => ({ sessionId: 'terminal-session' }),
+  runAgentInTerminal: terminal,
   stopTerminalAgent: async () => false,
   modelLevels: () => levels.now,
   probeLimit: probe,
@@ -306,7 +307,7 @@ describe('the agent limit', () => {
   let finish: Array<(result: { code: number }) => void>;
   let loop: {
     start(id: string, manual?: boolean): Promise<void>;
-    startWork(item: unknown, ws: unknown): Promise<void>;
+    startWork(item: unknown, ws: unknown, o?: { byHand?: boolean }): Promise<void>;
     stop(id: string): Promise<void>;
     resumePaused(): Promise<void>;
     dispose(): void;
@@ -397,6 +398,27 @@ describe('the agent limit', () => {
     await settle();
     expect(started()).toHaveLength(4);
     expect(started()[3]).toContain('BL-3');
+    loop.dispose();
+  });
+
+  it('runs an agent started by hand from its ticket without a window, with its choice, and queues it at the limit (BL-122)', async () => {
+    terminal.mockClear();
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    data.items[4] = { ...data.items[4], status: 'doing', agent: { model: 'opus', effort: 'high' } };
+    await loop.startWork(structuredClone(data.items[4]), worktrees[4], { byHand: true });
+    expect(started()).toHaveLength(2);
+    expect(notes).toContain('BL-5: Queued: an agent takes this up when one is free (1st in line).');
+
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started()).toHaveLength(3);
+    const call = spawn.mock.calls[2][0] as { name: string; cwd: string; choice: unknown; prompt: string };
+    expect(call).toMatchObject({ name: expect.stringContaining('BL-5'), cwd: '/wt/5', choice: { model: 'opus', effort: 'high' } });
+    expect(call.prompt).toContain('You were started from your ticket and run without a window');
+    expect(terminal).not.toHaveBeenCalled();
+    expect(data.items[4].review).toMatchObject({ state: 'working', autopilot: false, byHand: true, implementerSession: 'session-3' });
+    expect(notes.some((n) => /^BL-5: Opened a chat for agent .* It works without a window and reports here\.$/.test(n))).toBe(true);
     loop.dispose();
   });
 

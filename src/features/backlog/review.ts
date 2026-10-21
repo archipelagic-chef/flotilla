@@ -38,6 +38,8 @@ export interface ReviewState {
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;
+  /** The user started the work's agent from the ticket (Start an Agent): it runs without a window, as the autopilot's do. */
+  byHand?: boolean;
   /** The reviewer agent ('' when there has been none yet). */
   reviewer: string;
   /** The user gave the last verdict (approved, or changes requested), not the reviewer agent. */
@@ -362,6 +364,10 @@ export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
     ? "Claude's usage limit stopped you before you finished; it has reset. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked."
     : 'Claude\'s usage limit stopped you before you finished; it has reset. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or, if you need the user, with a "Needs from you:" line and the question).';
 }
+
+/** What an agent started by hand from its ticket is told, after the usual start: it runs without a window too (BL-122). */
+export const HAND_START_NOTE =
+  'You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
 
 /** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
 export const AUTOPILOT_NOTE =

@@ -361,7 +361,7 @@ function NeedRow({ item }: { item: BacklogItem }) {
           </BusyButton>
         )}
         {need.kind === 'failed' && (
-          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there">
+          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket">
             {' '}Run
           </BusyButton>
         )}
@@ -617,6 +617,7 @@ function ItemRow({ item, icon, worktrees, agents, color, renaming, setRenaming, 
             <BusyButton
               class="icon"
               aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
+              title={`${worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}: it runs in the background and reports in the ticket`}
               message={{ type: 'backlog', op: 'start', id: item.id }}
               icon="play"
             />
