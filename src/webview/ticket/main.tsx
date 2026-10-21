@@ -94,17 +94,25 @@ function useSending(): SentComment[] {
   return sendingComments;
 }
 
+/** The host is done with a comment: it no longer shows as sending. */
+function commentSent(text: string) {
+  const i = sendingComments.findIndex((c) => c.text === text);
+  if (i >= 0) {
+    sendingComments = sendingComments.filter((_, j) => j !== i);
+    sendingListeners.forEach((f) => f());
+  }
+}
+
+/** Notes how many entries the view shows. */
+function showingEntries(count: number) {
+  shownEntries = count;
+}
+
 /** Called when the host is done with an action: failed if it threw. */
 function finished(message: TicketWebviewMessage, failed: boolean) {
   working.delete(actionKey(message));
   notifyWorking();
-  if (message.type === 'comment') {
-    const i = sendingComments.findIndex((c) => c.text === message.text);
-    if (i >= 0) {
-      sendingComments = sendingComments.filter((_, j) => j !== i);
-      sendingListeners.forEach((f) => f());
-    }
-  }
+  if (message.type === 'comment') commentSent(message.text);
   if (message.type === 'run') {
     // The Run button of a run block (set on click, in Rendered): its working state ends.
     document.querySelectorAll<HTMLElement>(`[data-run-key="${CSS.escape(message.key)}"][data-run-index="${message.index}"]`).forEach((run) => {
@@ -2793,7 +2801,7 @@ function App() {
     setPicked((p) => ({ ...p, ...change }));
     send(message);
   };
-  shownEntries = ticket.activity.length;
+  showingEntries(ticket.activity.length);
   const worktrees = ticket.worktrees;
   const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
