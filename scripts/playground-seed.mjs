@@ -483,6 +483,35 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-14',
+    title: 'Remember the last open tab',
+    status: 'review',
+    daysAgo: 2,
+    branch: 'feature/BL-14-remember-the-last-open-tab',
+    // It writes src/last.js as BL-10 does: queued behind it, it conflicts with it in the merge train (BL-146's demo).
+    description: [
+      'A window remembers which tab of a ticket was open last, and opens it again.',
+      '',
+      '- [ ] The last tab is kept per ticket.',
+      '',
+      'fake: wait 60s',
+    ].join('\n'),
+    review: { round: 1, state: 'yours', implementer: 'Pip-3', reviewer: '' },
+    activity: [
+      {
+        ago: 40,
+        author: 'Agent Pip-3',
+        body: 'Done: the last open tab is kept per ticket.\n\n#### How to review\n\n1. [src/last.js:2-4](src/last.js#L2-L4): where it is kept.\n\nReady for review.',
+      },
+    ],
+    commits: [
+      {
+        message: 'BL-14: Remember the last open tab',
+        files: { 'src/last.js': '// The last tab opened per ticket.\nexport function rememberTab(state, id, tab) {\n  return { ...state, tabs: { ...state.tabs, [id]: tab } };\n}\n' },
+      },
+    ],
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */
