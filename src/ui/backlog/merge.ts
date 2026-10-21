@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogItem } from '../../features/backlog/backlog';
+import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { ciStop, type CiStop } from '../../features/backlog/ciStop';
 import { decideCi, failedNote, passedNote, waitingNote, type CiDecision, type CiReader, type MergeChecks } from '../../features/backlog/mergeCi';
@@ -33,6 +34,7 @@ import {
   resolvePrompt,
   type MergeState,
 } from '../../features/backlog/merge';
+import { buildTrain, dequeue, enqueue, landing, ordinal, queuedItems, trainIsCurrent, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -96,12 +98,16 @@ export class Merger implements vscode.Disposable {
   private readonly ciWaits = new Map<string, CiWait>();
   /** Why each ticket's last Merge to main stopped on CI (BL-112): red CI, or the base moved on. In memory. */
   private readonly ciStops = new Map<string, CiStop>();
+  /** The merge queue and its train as last read (BL-140), for the views. */
+  private queueSeen: { queue: string[]; train?: MergeTrain } = { queue: [] };
+  private trainTimer?: ReturnType<typeof setTimeout>;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: MergeDeps) {}
 
   dispose(): void {
+    clearTimeout(this.trainTimer);
     this.runs.forEach((r) => r.stop());
     this.ciWaits.forEach((w) => clearTimeout(w.timer));
     this.ciWaits.clear();
@@ -127,6 +133,182 @@ export class Merger implements vscode.Disposable {
     if (!this.merging.has(id)) return undefined;
     const first = this.tasks[0];
     return first && first.id !== id ? { waitsFor: first.what } : {};
+  }
+
+  /** The ticket's place in the merge queue (BL-140), and what its train says of it; undefined if it isn't queued. */
+  queuePlace(id: string): { place: string; state?: string; ahead: string[] } | undefined {
+    const at = this.queueSeen.queue.indexOf(id);
+    if (at < 0) return undefined;
+    const train = this.queueSeen.train;
+    const state = train && trainState(train, id);
+    return { place: `${ordinal(at + 1)} of ${this.queueSeen.queue.length}`, ...(state ? { state } : {}), ahead: this.queueSeen.queue.slice(0, at) };
+  }
+
+  /** The merge queue, first to land first, with each ticket's train state (for the backlog's queue bar). */
+  queueView(): Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }> {
+    const train = this.queueSeen.train;
+    return this.queueSeen.queue.map((id) => {
+      const e = train?.entries.find((x) => x.id === id);
+      return { id, state: e?.commit ? 'clean' : e?.conflicts ? 'conflicts' : 'unknown' };
+    });
+  }
+
+  /** Reads the queue again, and rebuilds the train a moment later if it's out of date (main, a branch or the queue moved). */
+  queueChanged(): void {
+    void this.readQueue().then(() => {
+      clearTimeout(this.trainTimer);
+      if (!this.queueSeen.queue.length) return;
+      this.trainTimer = setTimeout(() => void this.refreshTrain().catch((e: unknown) => this.deps.output.appendLine(`Merge train: ${String(e)}`)), 3000);
+    });
+  }
+
+  private async readQueue(): Promise<BacklogData> {
+    const data = await this.deps.backlog.read();
+    const seen = { queue: queuedItems(data).map((i) => i.id), train: data.mergeTrain };
+    if (JSON.stringify(seen) !== JSON.stringify(this.queueSeen)) {
+      this.queueSeen = seen;
+      this.changed.fire();
+    }
+    return data;
+  }
+
+  /** The train rebuilt if it's out of date: one task in line with the merges. */
+  refreshTrain(): Promise<MergeTrain | undefined> {
+    return this.serial({ what: 'rebuilding the merge train' }, () => this.currentTrain());
+  }
+
+  /** Takes a ticket out of the merge queue: the train is rebuilt without it; nothing is reverted. */
+  removeFromQueue(id: string): Promise<void> {
+    return this.serial({ id, what: `taking ${id} out of the merge queue` }, async () => {
+      if (!(await this.changeQueue((q) => dequeue(q, [id])))) return;
+      await this.note(id, 'You took it out of the merge queue. Merge to main puts it back, at the end.');
+      await this.currentTrain();
+    });
+  }
+
+  /** Changes the saved queue; whether it changed. */
+  private async changeQueue(change: (queue: string[]) => string[]): Promise<boolean> {
+    let changed = false;
+    await this.deps.backlog.change(
+      (d) => {
+        const queue = change(d.mergeQueue ?? []);
+        changed = JSON.stringify(queue) !== JSON.stringify(d.mergeQueue ?? []);
+        return changed ? { ...d, mergeQueue: queue } : d;
+      },
+      { by: 'Flotilla' },
+    );
+    if (changed) await this.readQueue();
+    return changed;
+  }
+
+  /**
+   * The train for the queue as it is now: the saved one if it was built on the same tips, else built again (in a
+   * temporary worktree) and saved. The queue drops tickets that aren't ready to merge any more. Runs inside a task.
+   */
+  private async currentTrain(): Promise<MergeTrain | undefined> {
+    const root = this.deps.mainRoot;
+    const base = await this.baseBranch();
+    if (!base) return undefined;
+    const data = await this.deps.backlog.read();
+    const queued = queuedItems(data);
+    const entries: Array<{ id: string; branch: string; tip: string; message: string }> = [];
+    for (const item of queued) {
+      const branch = await this.branchOf(item, base, true).catch(() => undefined);
+      const tip = branch && (await runGit(['rev-parse', `refs/heads/${branch}`], { cwd: root }).catch(() => '')).trim();
+      if (branch && tip) entries.push({ id: item.id, branch, tip, message: mergeMessage(item) });
+    }
+    const baseTip = (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root })).trim();
+    const ids = queued.map((i) => i.id);
+    if (trainIsCurrent(data.mergeTrain, baseTip, entries) && JSON.stringify(ids) === JSON.stringify(data.mergeQueue ?? [])) {
+      await this.readQueue();
+      return data.mergeTrain;
+    }
+    const train = entries.length ? await buildTrain(root, { dir: this.mergeDir('train'), base, baseTip, entries }) : undefined;
+    await this.deps.backlog.change(
+      (d) => {
+        const { mergeTrain: _old, ...rest } = d;
+        // Tickets queued meanwhile stay, at the end.
+        const queue = [...ids, ...dequeue(queuedItems(d).map((i) => i.id), ids)];
+        return { ...rest, mergeQueue: queue, ...(train ? { mergeTrain: train } : {}) };
+      },
+      { by: 'Flotilla' },
+    );
+    this.deps.output.appendLine(`Merge train: ${train ? train.entries.map((e) => `${e.id} ${e.commit ? 'in' : 'conflicts'}`).join(', ') : 'empty'} (on ${base} ${baseTip.slice(0, 7)}).`);
+    await this.readQueue();
+    return train;
+  }
+
+  /**
+   * Whether landing goes by the train: its merge commits are what's checked and landed (BL-140). Not when CI decides
+   * the merge (flotilla.merge.checks ci, with GitHub readable): CI ran on the branch's own tip, so tickets land one by one.
+   */
+  private async landsByTrain(): Promise<{ localWhy?: string } | undefined> {
+    if (settings().get<MergeChecks>('merge.checks', 'ci') === 'local') return {};
+    const reader = this.deps.ciReader ? await this.deps.ciReader().catch((e: unknown) => `GitHub couldn't be read: ${e instanceof Error ? e.message : String(e)}`) : "this window doesn't read GitHub's runs.";
+    return typeof reader === 'string' ? { localWhy: reader } : undefined;
+  }
+
+  /**
+   * Lands a ticket by the train: the ticket joins the queue, and main moves to its merge commit in the train, one
+   * ticket at a time (each one's checks on its own merge commit), with those ahead of it first. Undefined: it isn't in
+   * the train (it conflicts with what's ahead of it), or you chose to merge it alone: it's merged onto main as it is.
+   */
+  private async landByTrain(item: BacklogItem, base: string, batch: boolean, localWhy: string | undefined): Promise<MergeEnd | undefined> {
+    const root = this.deps.mainRoot;
+    await this.changeQueue((q) => enqueue(q, [item.id]));
+    const train = await this.currentTrain();
+    const target = train && landing(train, item.id);
+    if (!target) return undefined;
+    const ahead = target.lands.slice(0, -1).map((e) => e.id);
+    if (ahead.length && !batch) {
+      const all = `Land ${target.lands.length}`;
+      const choice = await vscode.window.showWarningMessage(
+        `Merging ${item.id} lands ${ahead.join(', ')} too: ${ahead.length === 1 ? "it's" : "they're"} ahead of it in the merge queue.`,
+        {
+          modal: true,
+          detail: `${all}: ${base} moves to each one's merge commit in the merge train, in order, after its checks. Merge ${item.id} Alone: it's merged onto ${base} as it is now, ahead of the queue.`,
+        },
+        all,
+        `Merge ${item.id} Alone`,
+      );
+      if (!choice) return 'stopped';
+      if (choice !== all) return undefined;
+    }
+    for (const e of target.lands) {
+      const it = e.id === item.id ? item : await this.item(e.id);
+      if (!it || (e.id !== item.id && !readyToMerge(it))) {
+        void vscode.window.showWarningMessage(`${e.id} isn't ready to merge any more: the merge queue stopped before it.`);
+        await this.currentTrain();
+        return 'stopped';
+      }
+      if (e.contained) {
+        // Its commits came in with a ticket ahead of it: nothing of its own to merge.
+        await this.finish(it, { base, branch: e.branch, commit: e.commit!, already: true });
+        continue;
+      }
+      const baseTip = (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root })).trim();
+      const dir = this.mergeDir(e.id);
+      await fs.promises.mkdir(path.dirname(dir), { recursive: true });
+      await runGit(['worktree', 'add', '--detach', dir, e.commit!], { cwd: root, timeoutMs: 120_000 });
+      this.deps.output.appendLine(`Merge: ${e.id} lands from the merge train (${e.commit!.slice(0, 7)} onto ${base} ${baseTip.slice(0, 7)}).`);
+      const end = await this.complete(it, { dir, branch: e.branch, base, baseTip, commit: e.commit!, localWhy }, batch);
+      if (end !== 'merged') {
+        await this.currentTrain().catch(() => undefined);
+        return end;
+      }
+    }
+    // What's left of the train sits on the new main already: it's kept, without the landed tickets.
+    const landed = target.lands.map((e) => e.id);
+    await this.deps.backlog.change(
+      (d) => ({
+        ...d,
+        mergeQueue: dequeue(d.mergeQueue, landed),
+        ...(d.mergeTrain ? { mergeTrain: { ...d.mergeTrain, baseTip: target.commit, entries: d.mergeTrain.entries.filter((e) => !landed.includes(e.id)) } } : {}),
+      }),
+      { by: 'Flotilla' },
+    );
+    await this.readQueue();
+    return 'merged';
   }
 
   /** Why the ticket's last Merge to main stopped on CI, while its branch is at the tip it stopped on (BL-112). */
@@ -300,6 +482,11 @@ export class Merger implements vscode.Disposable {
       );
       if (choice === 'Move to Done') await this.finish(item, { base, branch, commit: check.baseTip, already: true });
       if (choice !== 'Merge Anyway') return 'stopped';
+    }
+    const byTrain = await this.landsByTrain();
+    if (byTrain) {
+      const end = await this.landByTrain(item, base, batch, byTrain.localWhy);
+      if (end) return end;
     }
     const ci = await this.decideCi(item, branch, check);
     const stop = ciStop(ci, branch, base);
@@ -598,9 +785,16 @@ export class Merger implements vscode.Disposable {
           ancestor.set(`${a.id} ${b.id}`, await runGit(['merge-base', '--is-ancestor', tb, ta], { cwd: root }).then(() => true, () => false));
         }
       }
-      const order = mergeOrder(ready, (a, b) => !!ancestor.get(`${a.id} ${b.id}`));
+      // The queue's order first (BL-140), then the others, dependencies first; they all join the queue.
+      const queued = queuedItems({ items: ready, mergeQueue: (await this.deps.backlog.read()).mergeQueue });
+      const order = [...queued, ...mergeOrder(ready.filter((i) => !queued.includes(i)), (a, b) => !!ancestor.get(`${a.id} ${b.id}`))];
+      await this.changeQueue((q) => enqueue(q, order.map((i) => i.id)));
       const merged: string[] = [];
+      // By the train, a ticket that conflicts with the ones ahead of it waits, and the others go on (BL-140).
+      const train = (await this.landsByTrain()) ? await this.currentTrain() : undefined;
+      const waiting = order.filter((i) => train?.entries.find((e) => e.id === i.id)?.conflicts).map((i) => i.id);
       for (const item of order) {
+        if (waiting.includes(item.id) || (await this.item(item.id))?.status === 'done') continue;
         job.what = `${item.id}'s merge (Merge All Ready)`;
         this.changed.fire();
         const end = await trackProgress('backlog', `Merging ${item.id}`, () => this.doMerge(item.id, true));
@@ -615,6 +809,11 @@ export class Merger implements vscode.Disposable {
         }
         merged.push(item.id);
       }
+      if (waiting.length)
+        void vscode.window.showWarningMessage(
+          `Merge All Ready ${merged.length ? `merged ${merged.join(', ')}` : 'merged nothing'}. ${waiting.join(', ')} ${waiting.length === 1 ? 'waits: it conflicts' : 'wait: they conflict'} with the tickets ahead in the merge queue. Merge to main merges one onto ${base} as it is, to resolve its conflicts.`,
+          'Open',
+        ).then((c) => c && this.deps.openTicket(waiting[0]));
     });
   }
 
@@ -777,8 +976,20 @@ export class Merger implements vscode.Disposable {
     this.changed.fire();
   }
 
-  /** An item was approved, by the reviewer agent (its name) or the user (undefined): flotilla.merge.onApprove says what follows. */
-  approved(id: string, by: string | undefined): void {
+  /**
+   * An item was approved, by the reviewer agent (its name) or the user (undefined): it joins the merge queue, and
+   * flotilla.merge.onApprove says what follows. Resolves once it's in the queue.
+   */
+  approved(id: string, by: string | undefined): Promise<void> {
+    // It joins the merge queue (BL-140); what follows doesn't wait for it.
+    const queued = this.changeQueue((q) => enqueue(q, [id]))
+      .then(() => this.queueChanged())
+      .catch(showError);
+    this.afterApproval(id, by);
+    return queued;
+  }
+
+  private afterApproval(id: string, by: string | undefined): void {
     const mode = settings().get<string>('merge.onApprove', 'ask');
     if (mode === 'auto') {
       void this.merge(id, { batch: true }).catch(showError);

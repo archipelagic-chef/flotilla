@@ -20,6 +20,8 @@ export interface TrainEntry {
   tip: string;
   commit?: string;
   conflicts?: string[];
+  /** Its commits are in the train already (a ticket ahead of it has them): its commit is that of the one before. */
+  contained?: boolean;
   /** Its conflicts were resolved by a resolution git recorded before (rerere). */
   reused?: boolean;
 }
@@ -89,6 +91,7 @@ export function trainState(train: MergeTrain, id: string): string | undefined {
   if (!entry) return undefined;
   const ahead = train.entries.slice(0, at).filter((e) => e.commit).map((e) => e.id);
   const onto = [train.base, ...ahead].join(' + ');
+  if (entry.contained) return `Its commits come in with ${ahead.at(-1) ?? train.base} ahead of it: nothing of its own to merge.`;
   if (entry.conflicts) return `Conflicts with ${onto} in ${entry.conflicts.map((f) => `\`${f}\``).join(', ')}.`;
   return `Merges cleanly onto ${onto}${entry.reused ? ' (with a resolution recorded before)' : ''}.`;
 }
@@ -112,6 +115,10 @@ export async function buildTrain(
   try {
     for (const e of o.entries) {
       const tip = (await runGit(['rev-parse', `refs/heads/${e.branch}^{commit}`], { cwd })).trim();
+      if (await runGit(['merge-base', '--is-ancestor', tip, 'HEAD'], { cwd: o.dir }).then(() => true, () => false)) {
+        entries.push({ id: e.id, branch: e.branch, tip, commit: await head(o.dir), contained: true });
+        continue;
+      }
       const merged = await runGit([...rerere, 'merge', '--no-ff', '--no-edit', '-m', e.message, tip], { cwd: o.dir, timeoutMs: 120_000, env }).then(
         () => true,
         () => false,
