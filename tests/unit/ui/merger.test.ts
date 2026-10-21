@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
+import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 /** What the mocked VS Code answers and records. */
@@ -10,6 +11,9 @@ const ui = {
   messages: [] as string[],
   settings: {} as Record<string, unknown>,
   checksExit: 0,
+  /** The exit codes of the next check runs, before checksExit. */
+  checksExits: [] as number[],
+  checksOut: '',
   checks: [] as string[],
 };
 
@@ -52,7 +56,8 @@ vi.mock('vscode', () => {
     tasks: {
       executeTask: async (task: { definition: { command: string }; execution: { callback: () => Promise<Pty> } }) => {
         ui.checks.push(task.definition.command);
-        process.env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExit);
+        process.env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExits.shift() ?? ui.checksExit);
+        process.env.FLOTILLA_TEST_CHECKS_OUT = ui.checksOut;
         const pty = await task.execution.callback();
         pty.open(undefined);
         return {};
@@ -69,7 +74,7 @@ vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
 }));
 
 /** The checks: they print a failure and exit with ui.checksExit. */
-const CHECKS = `node -e "console.log('FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
+const CHECKS = `node -e "console.log(process.env.FLOTILLA_TEST_CHECKS_OUT || 'FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -78,6 +83,8 @@ beforeEach(() => {
   ui.messages = [];
   ui.settings = { 'merge.checkCommand': CHECKS };
   ui.checksExit = 0;
+  ui.checksExits = [];
+  ui.checksOut = '';
   ui.checks = [];
 });
 
@@ -95,6 +102,16 @@ const approved = (id: string, extra: Partial<BacklogItem> = {}): BacklogItem => 
   review: { round: 1, state: 'approved', reviewer: 'Rex-1' },
   ...extra,
 });
+
+/** The merger's private side, for what an agent's run ends with. */
+type Private = { runs: Map<string, unknown>; afterResolver(id: string, run: unknown, error: string | undefined): Promise<void> };
+const run = { stop() {} };
+
+/** As if an agent started fixing the checks at HEAD from, and ended. */
+async function agentDone(backlog: LocalBacklog, merger: unknown, id: string, from: string) {
+  await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, merging: { ...i.merging!, state: 'resolving', agent: 'Ace-1', from } } : i)) }));
+  (merger as Private).runs.set(id, run);
+}
 
 async function setup(items: BacklogItem[]) {
   const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
@@ -213,6 +230,83 @@ describe('Merge to main', () => {
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
     expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', reason: expect.stringContaining("doesn't start with BL-1") });
     await merger.cancel('BL-1');
+    merger.dispose();
+  });
+
+  it("merges when the fixing agent commits nothing and the checks pass when run again (BL-124)", async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const m = (await item('BL-1')).merging!;
+    expect(m.checks!.at).toBeTruthy();
+    const merge = git(m.dir, 'rev-parse', 'HEAD');
+    // The agent ran, and committed nothing: the checks passed for it.
+    await agentDone(backlog, merger, 'BL-1', merge);
+    ui.checksExit = 0;
+    await (merger as unknown as Private).afterResolver('BL-1', run, undefined);
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(merge);
+    const done = await item('BL-1');
+    expect(done.status).toBe('done');
+    expect(done.merging).toBeUndefined();
+    const activity = (await backlog.readTicket(done)).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain('committed no fix: running the checks again');
+    expect(activity).toContain('The checks passed when they were run again: the earlier failure was');
+    merger.dispose();
+  });
+
+  it('stays failed when the fixing agent commits nothing and the checks fail again (BL-124)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const m = (await item('BL-1')).merging!;
+    await agentDone(backlog, merger, 'BL-1', git(m.dir, 'rev-parse', 'HEAD'));
+    await (merger as unknown as Private).afterResolver('BL-1', run, undefined);
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    expect(ui.checks).toHaveLength(2);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', checks: { command: CHECKS }, reason: expect.stringContaining('committed no fix, and the checks still fail') });
+    await merger.cancel('BL-1');
+    merger.dispose();
+  });
+
+  it('runs a failure of only timeouts again once, before an agent is started (BL-124)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksOut = ' FAIL  tests/a.test.ts > a\nError: Test timed out in 30000ms.';
+    ui.checksExits = [1, 0];
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect(ui.checks).toHaveLength(2);
+    const activity = (await backlog.readTicket(await item('BL-1'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain('only with timeouts (1 test timed out): running them once more');
+    expect(activity).toContain('the earlier failure was 1 test timing out');
+    merger.dispose();
+  });
+
+  it("doesn't run a failure with assertions again by itself; Run the Checks Again does (BL-124)", async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksOut = 'Error: Test timed out in 30000ms.\nAssertionError: expected 1 to be 2';
+    ui.checksExits = [1, 0];
+
+    expect(await merger.merge('BL-1')).toBe('stopped');
+    expect(ui.checks).toHaveLength(1);
+
+    expect(await merger.recheck('BL-1')).toBe('merged');
+    expect((await item('BL-1')).status).toBe('done');
     merger.dispose();
   });
 
@@ -459,5 +553,29 @@ describe('The merge queue (BL-140)', () => {
       { id: 'BL-1', state: 'clean' },
     ]);
     again.dispose();
+  });
+
+  it('reorders the queue (dragged, or Merge Next) and rebuilds the train in the new order (BL-144)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
+    branches(repo);
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-2', 'BL-3', 'BL-1']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+
+    await merger.reorderQueue(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect((await backlog.read()).mergeTrain?.entries.map((e) => e.id)).toEqual(['BL-3', 'BL-1', 'BL-2']);
+    expect(merger.queueView().entries).toEqual([
+      { id: 'BL-3', state: 'clean' },
+      { id: 'BL-1', state: 'clean' },
+      { id: 'BL-2', state: 'conflicts' },
+    ]);
+
+    await merger.mergeNext('BL-2');
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-2', 'BL-3', 'BL-1']);
+    expect(merger.queuePlace('BL-2')).toMatchObject({ place: '1st of 3', ahead: [] });
+    expect(merger.queuePlace('BL-3')).toMatchObject({ state: 'Conflicts with main + BL-2 in `shared.txt`.' });
+    expect((await backlog.readTicket(await item('BL-2'))).activity.map((e) => e.body)).toContain('You moved it to the front of the merge queue (Merge Next).');
+    merger.dispose();
   });
 });

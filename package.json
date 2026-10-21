@@ -81,6 +81,12 @@
         "icon": "$(git-merge)"
       },
       {
+        "command": "flotilla.mergeNext",
+        "title": "Merge Next",
+        "category": "Flotilla",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "flotilla.pushMerged",
         "title": "Push the Base Branch…",
         "category": "Flotilla",
@@ -639,6 +645,10 @@
           "when": "flotilla.state == ready"
         },
         {
+          "command": "flotilla.mergeNext",
+          "when": "false"
+        },
+        {
           "command": "flotilla.pushMerged",
           "when": "flotilla.state == ready"
         },
@@ -1090,9 +1100,14 @@
           "group": "1_merge@1"
         },
         {
+          "command": "flotilla.mergeNext",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogQueued",
+          "group": "1_merge@2"
+        },
+        {
           "command": "flotilla.mergeAllReady",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
-          "group": "1_merge@2"
+          "group": "1_merge@3"
         },
         {
           "command": "flotilla.runBacklogItem",

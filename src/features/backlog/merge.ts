@@ -23,7 +23,7 @@ export interface MergeState {
   session?: string;
   reason?: string;
   /** The checks failed on the merge (state failed): their command, and the end of their output. */
-  checks?: { command: string; output: string };
+  checks?: { command: string; output: string; /** ISO 8601: when they failed. */ at?: string };
   /** The worktree's HEAD when an agent started fixing the checks: its fix is a commit on top of it. */
   from?: string;
   /**
@@ -43,6 +43,25 @@ export function outputTail(text: string, maxLines = 120, maxChars = 10_000): str
   const lines = plain.split('\n').filter((l, i, all) => l.trim() || (i > 0 && all[i - 1].trim()));
   const tail = lines.slice(-maxLines).join('\n');
   return tail.length > maxChars ? tail.slice(tail.length - maxChars).replace(/^[^\n]*\n/, '') : tail;
+}
+
+/**
+ * How many tests (or hooks) timed out in a check run's output, when that's all that failed (vitest's "Test timed out"
+ * / "Hook timed out", with no other error: no assertion, type or lint failure); 0 otherwise. Such a run is often only a
+ * loaded machine, so it's worth running once more before an agent looks at it (BL-124).
+ */
+export function timeoutsOnly(output: string): number {
+  // eslint-disable-next-line no-control-regex
+  const lines = output.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split(/\r?\n/);
+  const timeout = /\b(?:Test|Hook) timed out\b/;
+  // Error lines: "Error: …", "AssertionError: …", tsc's "error TS2322: …", ESLint's "  12:3  error  …".
+  const error = /^\s*(?:[A-Z]\w*)?Error\b[^:]*:|\berror TS\d+:|^\s*\d+:\d+\s+error\s/;
+  let timeouts = 0;
+  for (const line of lines) {
+    if (timeout.test(line)) timeouts++;
+    else if (error.test(line)) return 0;
+  }
+  return timeouts;
 }
 
 /** Where an item's branch was merged: the base branch, and the merge commit. */

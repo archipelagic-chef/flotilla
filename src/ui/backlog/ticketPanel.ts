@@ -1583,6 +1583,9 @@ export class TicketPanels implements vscode.Disposable {
       case 'mergeApprove':
         await this.merger?.approveResolution(id);
         return;
+      case 'mergeRecheck':
+        await this.merger?.recheck(id);
+        return;
       case 'mergeCancel':
         await this.merger?.cancel(id);
         return;
@@ -1594,6 +1597,9 @@ export class TicketPanels implements vscode.Disposable {
         return;
       case 'mergeQueueResolve':
         await this.merger?.resolveTrainConflict(id);
+        return;
+      case 'mergeNext':
+        await this.merger?.mergeNext(id);
         return;
       case 'mergeCiFix':
         await this.merger?.fixCiStop(id);
