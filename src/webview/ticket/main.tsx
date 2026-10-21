@@ -7,7 +7,7 @@ import { mergeActions } from '../../features/backlog/mergeStates';
 import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
-import { entryDate, summaryOf } from '../../features/backlog/ticket';
+import { summaryOf } from '../../features/backlog/ticket';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
@@ -29,52 +29,12 @@ import { TicketCi } from './ci';
 import { ciWord } from '../../features/ci/summary';
 import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 import { act, ActionButton, doneListeners, Dropdown, finished, send, useWorking, WorkingTag } from './actions';
-
-/** Comments sent and not yet done with: each shows at once as an entry, marked "Sending…". */
-type SentComment = { text: string; date: string; at: number };
-let sendingComments: SentComment[] = [];
-const sendingListeners = new Set<() => void>();
-/** How many entries the view shows: a comment sent now is confirmed by an entry after these. */
-let shownEntries = 0;
-
-/** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
-function sendComment(text: string, replyTo?: string) {
-  sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
-  sendingListeners.forEach((f) => f());
-  act({ type: 'comment', text, ...(replyTo ? { replyTo } : {}) }, 'Sending…');
-}
+import { focusComment, REPLY_TO, sendComment, showingEntries, useSending } from './comments';
 
 type ActivityEntry = TicketView['activity'][number];
 
-/** The window event a Reply button sends (BL-126): the comment box replies to that entry (its detail). */
-const REPLY_TO = 'flotilla-reply-to';
-
 /** Who an entry is by, as the ticket names it: an agent by its name. */
 const byName = (e: Pick<ActivityEntry, 'author'>) => entryAgent(e.author) ?? (e.author || 'Note');
-
-function useSending(): SentComment[] {
-  const [, refresh] = useState(0);
-  useEffect(() => {
-    const listener = () => refresh((n) => n + 1);
-    sendingListeners.add(listener);
-    return () => void sendingListeners.delete(listener);
-  }, []);
-  return sendingComments;
-}
-
-/** The host is done with a comment: it no longer shows as sending. */
-export function commentSent(text: string) {
-  const i = sendingComments.findIndex((c) => c.text === text);
-  if (i >= 0) {
-    sendingComments = sendingComments.filter((_, j) => j !== i);
-    sendingListeners.forEach((f) => f());
-  }
-}
-
-/** Notes how many entries the view shows. */
-function showingEntries(count: number) {
-  shownEntries = count;
-}
 
 /**
  * Create Worktree ▾: a click creates a new worktree at once, its branch named without asking (numbered when the name is
@@ -2487,13 +2447,6 @@ function AgentPicker({ ticket }: { ticket: TicketView }) {
       />
     </>
   );
-}
-
-/** Focuses the comment box (where answers go), scrolled into view. */
-function focusComment() {
-  const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
-  box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  box?.focus();
 }
 
 /**

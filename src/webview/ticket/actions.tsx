@@ -2,7 +2,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
-import { commentSent } from './main';
+import { commentSent } from './comments';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
