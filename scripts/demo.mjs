@@ -9,8 +9,9 @@
 //
 // The window is never the user's: it's VS Code's test download (.vscode-test, as npm run test:vscode uses), with a profile
 // of its own (.vscode-test/demo-profile: no accounts, no secrets), the fake Claude and a fake GitHub started here, and it
-// opens on this worktree's .playground. Frames are screenshots of that window's page through its debugging port, never
-// of the screen, and each is checked to come from that window before it's kept: if one doesn't, nothing is saved.
+// opens on this worktree's .playground. Frames are that window's page as Chromium draws it (its screencast, through its
+// debugging port), never the screen, and each is kept only once a check after it found that window: if one doesn't,
+// nothing is saved.
 import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
@@ -19,7 +20,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
+import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, frameGate, freeDisplay, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -38,8 +39,11 @@ const PLAYGROUND = path.join(root, '.playground');
 const LOCK_FILE = `${PROFILE_DIR}.lock`;
 const WIDTH = 1280;
 const HEIGHT = 800;
-/** Screenshots a second while recording; frames that don't change are merged, so this costs little. */
-const FPS = 8;
+/** How often the window is checked to be the demo window while recording (each check covers the frames before it). */
+const CHECK_MS = 250;
+/** The window is ready once nothing has changed on screen for this long (ms), and waited for at most READY_MS. */
+const QUIET_MS = 1000;
+const READY_MS = 60_000;
 /** The pause after each step, and how long the pointer takes to move: slow enough to follow, live and in the GIF. */
 const PACE_MS = 700;
 const MOVE_MS = 450;
@@ -90,8 +94,12 @@ function usage(message) {
   process.exit(1);
 }
 
+/** When the recording started (Date.now()), and the pointer's moves since then ([from, to] in ms): to measure them. */
+const recorded = { start: 0, moves: [] };
+
 /** A pointer drawn over the workbench, so a viewer sees where each click goes (screenshots have no mouse). */
 async function pointer(page, x, y) {
+  const from = Date.now() - recorded.start;
   await page.evaluate(
     ({ x, y, ms }) => {
       let dot = document.getElementById('flotilla-demo-pointer');
@@ -110,6 +118,7 @@ async function pointer(page, x, y) {
     },
     { x, y, ms: MOVE_MS },
   );
+  recorded.moves.push([from, from + MOVE_MS]);
   await page.waitForTimeout(MOVE_MS + 50);
 }
 
@@ -146,6 +155,43 @@ async function find(page, selector, timeout) {
     }
     if (Date.now() > end) throw new Error(`nothing visible matches ${selector} after ${timeout} ms`);
     await page.waitForTimeout(150);
+  }
+}
+
+/**
+ * The window's frames as Chromium draws them (BL-133): its screencast pushes a PNG whenever the page changes, each with
+ * the time it was drawn, on a session of its own, so capturing neither waits on nor slows the demo's steps. At most
+ * every frame: the timeline keeps 25 a second. Resolves to a function that stops it.
+ */
+async function screencast(page, onFrame) {
+  const cdp = await page.context().newCDPSession(page);
+  cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+    // The next frame comes only once this one is acknowledged.
+    cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => undefined);
+    const now = Date.now();
+    // When it was drawn (seconds since the epoch); the time it came, when that's missing or from another clock.
+    const drawn = metadata.timestamp * 1000;
+    onFrame({ time: Math.abs(drawn - now) < 5000 ? drawn : now, png: Buffer.from(data, 'base64') });
+  });
+  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+  return async () => {
+    await cdp.send('Page.stopScreencast').catch(() => undefined);
+    await cdp.detach().catch(() => undefined);
+  };
+}
+
+/**
+ * Waits until the window is ready for the demo: the workbench shown, Flotilla's view in the activity bar (the extension
+ * loaded), and nothing changed on screen (`drawnAt`: when the last frame came) for QUIET_MS, as extensions and the
+ * first git scan settle. A window that never settles fails the demo, rather than recording one still loading.
+ */
+async function ready(page, drawnAt) {
+  const end = Date.now() + READY_MS;
+  await page.locator('.monaco-workbench').waitFor({ timeout: READY_MS });
+  await page.locator('.activitybar [aria-label^="Flotilla"]').first().waitFor({ timeout: Math.max(1000, end - Date.now()) });
+  while (Date.now() - drawnAt() < QUIET_MS) {
+    if (Date.now() > end) throw new Error(`the window didn't settle (its screen still changing after ${READY_MS / 1000} s)`);
+    await page.waitForTimeout(100);
   }
 }
 
@@ -376,28 +422,29 @@ async function show(mode, demo, out, still, display) {
     const argv = await app.evaluate(() => process.argv);
     const page = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows().forEach((win) => win.setContentSize(w, h)), [WIDTH, HEIGHT]);
-    await page.locator('.monaco-workbench').waitFor({ timeout: 60_000 });
-    // Extensions and the first git scan settle before the demo starts.
-    await page.waitForTimeout(3000);
-
-    const captures = [];
-    let unsafe;
+    // Frames from the moment the window is there: the screen settling is what tells that it's ready.
+    const gate = frameGate(async () => unsafeFrame({ title: await page.title().catch(() => undefined), argv }, { profileDir: PROFILE_DIR }));
+    let drawnAt = Date.now();
+    const stopScreencast = await screencast(page, (frame) => {
+      drawnAt = Date.now();
+      if (mode === 'record') gate.add(frame);
+    });
     let recording = mode === 'record';
-    const start = Date.now();
-    const capturing = (async () => {
-      while (recording) {
-        const at = Date.now() - start;
-        // Checked before every frame, so one from anywhere else is never kept.
-        unsafe = unsafeFrame({ title: await page.title(), argv }, { profileDir: PROFILE_DIR });
-        if (unsafe) return;
-        captures.push({ at, png: await page.screenshot({ type: 'png' }) });
-        await new Promise((r) => setTimeout(r, Math.max(0, 1000 / FPS - (Date.now() - start - at))));
-      }
-    })();
+    let checking;
+    let start;
+    let end;
     try {
+      await ready(page, () => drawnAt);
+      // Every frame is kept only once a check after it found the demo window (frameGate), so one from anywhere else never
+      // is. Checked from now on: the title is the demo window's once it's ready (the first check covers the frames before).
+      checking = (async () => {
+        while (recording && !(await gate.check())) await new Promise((r) => setTimeout(r, CHECK_MS));
+      })();
+      start = Date.now();
+      recorded.start = start;
       // Try it yourself (BL-135): the window as the demo starts, its steps left to you.
       for (const [n, step] of stepsToPlay(demo, mode).entries()) {
-        if (unsafe) break;
+        if (gate.unsafe) break;
         try {
           await play(page, step);
         } catch (error) {
@@ -405,13 +452,21 @@ async function show(mode, demo, out, still, display) {
         }
       }
     } finally {
+      end = Date.now();
       recording = false;
-      await capturing;
+      await checking;
+      await stopScreencast();
     }
+    // The frames drawn up to the end, now that a last check covers them.
+    if (mode === 'record') await gate.check();
+    const unsafe = gate.unsafe;
+    const captures = gate.kept.map(({ time, png }) => ({ at: time - start, png }));
     if (unsafe) throw new Error(`Not recorded: ${unsafe}. Nothing was saved.`);
     if (mode === 'record') {
-      const endMs = Date.now() - start;
+      const endMs = end - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
+      const gaps = gapStats(timeline(captures, endMs).map((f) => f.at), recorded.moves);
+      if (gaps) console.log(`While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`);
       const saved = save(captures, endMs, out);
       console.log(`Saved ${saved.file} (${(endMs / 1000).toFixed(1)} s).${saved.note}`);
       if (still && captures.length) {

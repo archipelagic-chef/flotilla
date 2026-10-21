@@ -202,32 +202,125 @@ export function downscale(image, maxWidth) {
   return { width, height, data: out };
 }
 
+/** The shortest a frame shows (ms): 25 a second, as smooth as a GIF plays in most viewers, and as an MP4 is made. */
+export const FRAME_MS = 40;
+
 /**
- * The frames to show, as they were on screen: each capture (`at`: ms from the start) shows until the next one, and the
- * last for `endMs - at`. Captures the same as the one before (byte for byte) only lengthen it.
+ * Frames, kept only once the window they came from is known to be the demo window (BL-133): `check` answers why it
+ * isn't (unsafeFrame), or undefined. A check that passes keeps the frames that came before it started; one that fails
+ * drops all that wait, and every frame after it.
  */
-export function timeline(captures, endMs) {
-  const shown = [];
-  for (const capture of captures) {
-    const last = shown[shown.length - 1];
-    if (last && last.png.equals(capture.png)) continue;
-    if (last) last.ms = capture.at - last.at;
-    shown.push({ png: capture.png, at: capture.at, ms: 0 });
-  }
-  const last = shown[shown.length - 1];
-  if (last) last.ms = Math.max(0, endMs - last.at);
-  // GIF delays are in hundredths of a second: at least 2 (most viewers slow down faster frames anyway).
-  return shown.map(({ png, ms }) => ({ png, ms: Math.max(20, Math.round(ms / 10) * 10) }));
+export function frameGate(check) {
+  const pending = [];
+  const kept = [];
+  let unsafe;
+  return {
+    kept,
+    get unsafe() {
+      return unsafe;
+    },
+    add(frame) {
+      if (!unsafe) pending.push(frame);
+    },
+    async check() {
+      if (unsafe) return unsafe;
+      const covered = pending.length;
+      unsafe = await check();
+      if (unsafe) pending.length = 0;
+      else kept.push(...pending.splice(0, covered));
+      return unsafe;
+    },
+  };
 }
 
-/** A GIF of the frames (PNG screenshots, each with how long it shows), at most `maxWidth` wide. */
+/**
+ * The frames to show, as they were on screen: each capture (`at`: ms from the start, when it was drawn) shows until
+ * the next one, and the last for `endMs - at`. Of those drawn before the start, only the last is kept, as the first
+ * frame. Captures the same as the one before (byte for byte) only lengthen it, and of those drawn in the same FRAME_MS
+ * (a step of 40 ms from the start), the last shows, from the step's start.
+ */
+export function timeline(captures, endMs) {
+  const sorted = [...captures].sort((a, b) => a.at - b.at);
+  const before = sorted.filter((c) => c.at <= 0).pop();
+  const shown = [];
+  for (const capture of [...(before ? [{ ...before, at: 0 }] : []), ...sorted.filter((c) => c.at > 0)]) {
+    const last = shown[shown.length - 1];
+    // On a grid of FRAME_MS, the last frame drawn in each step: 25 a second, evenly.
+    const at = Math.floor(capture.at / FRAME_MS) * FRAME_MS;
+    if (last && last.png.equals(capture.png)) continue;
+    if (last && last.at === at) last.png = capture.png;
+    else shown.push({ png: capture.png, at });
+  }
+  // Coming in later frames' place may have made one the same as the one before it.
+  const merged = shown.filter((f, n) => n === 0 || !f.png.equals(shown[n - 1].png));
+  return merged.map(({ png, at }, n) => {
+    const ms = (n + 1 < merged.length ? merged[n + 1].at : Math.max(endMs, at)) - at;
+    // GIF delays are in hundredths of a second: at least 2 (most viewers slow down faster frames anyway).
+    return { png, at, ms: Math.max(20, Math.round(ms / 10) * 10) };
+  });
+}
+
+/**
+ * A GIF of the frames (PNG screenshots, each with how long it shows), at most `maxWidth` wide. Each frame after the
+ * first holds only the pixels that changed (the others transparent, so the frame before shows through), with a palette
+ * of their own: a pointer that moves costs a few small patches, not a whole window each time.
+ */
 export function encodeGif(frames, { maxWidth = 960 } = {}) {
   const gif = GIFEncoder();
+  let previous;
+  let pending;
+  const flush = () => pending && gif.writeFrame(pending.index, pending.width, pending.height, pending.options);
   for (const frame of frames) {
     const image = downscale(decodePng(frame.png), maxWidth);
-    const palette = quantize(image.data, 256);
-    gif.writeFrame(applyPalette(image.data, palette), image.width, image.height, { palette, delay: frame.ms });
+    const changed = [];
+    if (previous && previous.width === image.width && previous.height === image.height) {
+      for (let i = 0; i < image.data.length; i += 4) {
+        const d = image.data;
+        const p = previous.data;
+        if (d[i] !== p[i] || d[i + 1] !== p[i + 1] || d[i + 2] !== p[i + 2]) changed.push(i >> 2);
+      }
+      if (!changed.length) {
+        pending.options.delay += frame.ms;
+        continue;
+      }
+    }
+    flush();
+    if (!previous || changed.length === 0) {
+      const palette = quantize(image.data, 256);
+      pending = { index: applyPalette(image.data, palette), width: image.width, height: image.height, options: { palette, delay: frame.ms, dispose: 1 } };
+    } else {
+      const pixels = new Uint8Array(changed.length * 4);
+      changed.forEach((p, n) => pixels.set(image.data.subarray(p * 4, p * 4 + 4), n * 4));
+      const palette = quantize(pixels, 255);
+      const colours = applyPalette(pixels, palette);
+      const transparentIndex = palette.length;
+      const index = new Uint8Array(image.width * image.height).fill(transparentIndex);
+      changed.forEach((p, n) => (index[p] = colours[n]));
+      pending = {
+        index,
+        width: image.width,
+        height: image.height,
+        options: { palette: [...palette, [0, 0, 0]], delay: frame.ms, dispose: 1, transparent: true, transparentIndex },
+      };
+    }
+    previous = image;
   }
+  flush();
   gif.finish();
   return Buffer.from(gif.bytes());
+}
+
+/**
+ * How far apart the frames are while the pointer moves: the gaps (ms) between frames (`ats`, ms from the start) inside
+ * the moves (`moves`, [from, to] in ms), as their median and 90th percentile. Undefined when no move has two frames.
+ */
+export function gapStats(ats, moves) {
+  const gaps = moves.flatMap(([from, to]) => {
+    const inside = ats.filter((at) => at >= from && at <= to).sort((a, b) => a - b);
+    return inside.slice(1).map((at, n) => at - inside[n]);
+  });
+  if (!gaps.length) return undefined;
+  gaps.sort((a, b) => a - b);
+  const at = (p) => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
+  return { median: at(0.5), p90: at(0.9), count: gaps.length };
 }

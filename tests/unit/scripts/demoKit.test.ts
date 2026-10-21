@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { gifSeconds } from '../../../src/features/backlog/demo';
-import { decodePng, demoDisplay, demoFile, freeDisplay, downscale, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { FRAME_MS, decodePng, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -152,20 +152,183 @@ describe('downscale', () => {
   });
 });
 
+/** A 2×2 PNG of the four pixels' colours, left to right, top to bottom. */
+function pixels(...colours: [number, number, number][]): Buffer {
+  return png(2, 2, 3, [
+    { filter: 0, bytes: [...colours[0], ...colours[1]] },
+    { filter: 0, bytes: [...colours[2], ...colours[3]] },
+  ]);
+}
+
+/** The frames a GIF shows, as a viewer draws them (each over the one before), as RGB pixels, with their delays (ms). */
+function playGif(gif: Buffer): { rgb: number[]; ms: number }[] {
+  const width = gif.readUInt16LE(6);
+  const table = (at: number, packed: number) => {
+    const size = 3 * 2 ** ((packed & 7) + 1);
+    return { colours: gif.subarray(at, at + size), end: at + size };
+  };
+  let at = 13;
+  let global: Buffer = Buffer.alloc(0);
+  if (gif[10] & 0x80) ({ colours: global, end: at } = table(13, gif[10]));
+  const canvas: number[] = new Array(width * gif.readUInt16LE(8) * 3).fill(0);
+  const frames: { rgb: number[]; ms: number }[] = [];
+  let control = { transparent: -1, ms: 0 };
+  while (gif[at] !== 0x3b) {
+    if (gif[at] === 0x21) {
+      if (gif[at + 1] === 0xf9) control = { transparent: gif[at + 3] & 1 ? gif[at + 6] : -1, ms: gif.readUInt16LE(at + 4) * 10 };
+      at += 2;
+      while (gif[at]) at += gif[at] + 1;
+      at += 1;
+      continue;
+    }
+    const [left, top, w] = [0, 2, 4].map((o) => gif.readUInt16LE(at + 1 + o));
+    let colours = global;
+    at += 10;
+    if (gif[at - 1] & 0x80) ({ colours, end: at } = table(at, gif[at - 1]));
+    const minSize = gif[at++];
+    const data: number[] = [];
+    while (gif[at]) {
+      data.push(...gif.subarray(at + 1, at + 1 + gif[at]));
+      at += gif[at] + 1;
+    }
+    at += 1;
+    // LZW, as GIF has it: codes from minSize + 1 bits up, a clear code and an end code.
+    const clear = 1 << minSize;
+    const indices: number[] = [];
+    let dict: number[][] = [];
+    let size = minSize + 1;
+    let prev: number[] | undefined;
+    for (let bit = 0; bit + size <= data.length * 8; ) {
+      let code = 0;
+      for (let b = 0; b < size; b++, bit++) code |= ((data[bit >> 3] >> (bit & 7)) & 1) << b;
+      if (code === clear) {
+        dict = Array.from({ length: clear + 2 }, (_, n) => [n]);
+        size = minSize + 1;
+        prev = undefined;
+        continue;
+      }
+      if (code === clear + 1) break;
+      const entry = code < dict.length ? dict[code] : [...prev!, prev![0]];
+      indices.push(...entry);
+      if (prev) dict.push([...prev, entry[0]]);
+      if (dict.length === 1 << size && size < 12) size++;
+      prev = entry;
+    }
+    indices.forEach((index, n) => {
+      if (index === control.transparent) return;
+      const p = ((top + Math.floor(n / w)) * width + left + (n % w)) * 3;
+      canvas.splice(p, 3, ...colours.subarray(index * 3, index * 3 + 3));
+    });
+    frames.push({ rgb: [...canvas], ms: control.ms });
+  }
+  return frames;
+}
+
+describe('frameGate', () => {
+  it('keeps the frames that came before a check that passed', async () => {
+    const answers: (string | undefined)[] = [undefined];
+    const gate = frameGate(async () => answers.shift());
+    gate.add('a');
+    gate.add('b');
+    await gate.check();
+    gate.add('c');
+    expect(gate.kept).toEqual(['a', 'b']);
+    expect(gate.unsafe).toBeUndefined();
+  });
+
+  it('keeps no frame that came while a check ran: the next check covers it', async () => {
+    let answer: (value: string | undefined) => void = () => undefined;
+    const gate = frameGate(() => new Promise((resolve) => (answer = resolve)));
+    gate.add('a');
+    const checking = gate.check();
+    gate.add('b');
+    answer(undefined);
+    await checking;
+    expect(gate.kept).toEqual(['a']);
+  });
+
+  it('drops what waits, and every frame after, once a check fails', async () => {
+    const answers = [undefined, 'not the demo window', undefined];
+    const gate = frameGate(async () => answers.shift());
+    gate.add('a');
+    await gate.check();
+    gate.add('b');
+    expect(await gate.check()).toBe('not the demo window');
+    gate.add('c');
+    expect(await gate.check()).toBe('not the demo window');
+    expect(gate.kept).toEqual(['a']);
+    expect(gate.unsafe).toBe('not the demo window');
+  });
+});
+
+describe('gapStats', () => {
+  it("measures the gaps between the frames inside the pointer's moves", () => {
+    const ats = [0, 100, 140, 180, 260, 1000, 1500, 1540];
+    expect(gapStats(ats, [[100, 260], [1500, 1600]])).toEqual({ median: 40, p90: 80, count: 4 });
+  });
+
+  it('is undefined without two frames in a move', () => {
+    expect(gapStats([0, 500], [[100, 400]])).toBeUndefined();
+  });
+});
+
 describe('timeline', () => {
+  it('times each frame from when it was drawn, not when it came', () => {
+    const red = solid(255, 0, 0);
+    const blue = solid(0, 0, 255);
+    // Out of order, as frames may come: each still shows from when it was drawn.
+    const frames = timeline(
+      [
+        { at: 400, png: red },
+        { at: 0, png: blue },
+      ],
+      1000,
+    );
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 400], [400, 600]]);
+    expect(frames[0].png).toBe(blue);
+  });
+
+  it('starts with the last frame drawn before the start, and leaves out those before it', () => {
+    const red = solid(255, 0, 0);
+    const blue = solid(0, 0, 255);
+    const frames = timeline(
+      [
+        { at: -3000, png: red },
+        { at: -1500, png: blue },
+        { at: 800, png: red },
+      ],
+      1000,
+    );
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 800], [800, 200]]);
+    expect(frames[0].png).toBe(blue);
+  });
+
+  it('keeps 25 frames a second: the last drawn in each 40 ms', () => {
+    const colours = [solid(255, 0, 0), solid(0, 255, 0), solid(0, 0, 255), solid(255, 255, 0)];
+    // Drawn at 60 a second.
+    const frames = timeline(
+      colours.map((png, n) => ({ at: Math.round((n * 1000) / 60), png })),
+      200,
+    );
+    expect(FRAME_MS).toBe(40);
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 40], [40, 160]]);
+    expect(frames.map((f) => f.png)).toEqual([colours[2], colours[3]]);
+  });
+
+
   it('merges frames that did not change, and each lasts until the next', () => {
     const red = solid(255, 0, 0);
     const blue = solid(0, 0, 255);
     const frames = timeline(
       [
         { at: 0, png: red },
-        { at: 125, png: Buffer.from(red) },
-        { at: 250, png: blue },
-        { at: 375, png: red },
+        { at: 120, png: Buffer.from(red) },
+        { at: 240, png: blue },
+        { at: 360, png: red },
       ],
       1000,
     );
-    expect(frames.map((f) => f.ms)).toEqual([250, 130, 630]);
+    expect(frames.map((f) => f.ms)).toEqual([240, 120, 640]);
     expect(frames[1].png).toBe(blue);
   });
 });
@@ -188,6 +351,26 @@ describe('encodeGif', () => {
       { png: solid(0, 0, 255), ms: 1200 },
     ]);
     expect(gifSeconds(gif)).toBeCloseTo(1.7);
+  });
+
+  it('shows each frame as it was, holding only the pixels that changed', () => {
+    const [red, blue, white, black]: [number, number, number][] = [[255, 0, 0], [0, 0, 255], [255, 255, 255], [0, 0, 0]];
+    const first = pixels(red, blue, white, black);
+    const second = pixels(red, blue, black, black);
+    const third = pixels(white, blue, black, red);
+    const shown = playGif(encodeGif([
+      { png: first, ms: 100 },
+      { png: second, ms: 200 },
+      { png: Buffer.from(second), ms: 300 },
+      { png: third, ms: 400 },
+    ]));
+    // The same frame again only lengthens the one before.
+    expect(shown.map((f) => f.ms)).toEqual([100, 500, 400]);
+    expect(shown.map((f) => f.rgb)).toEqual([
+      [...red, ...blue, ...white, ...black],
+      [...red, ...blue, ...black, ...black],
+      [...white, ...blue, ...black, ...red],
+    ]);
   });
 });
 

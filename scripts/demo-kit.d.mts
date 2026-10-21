@@ -2,6 +2,7 @@ export const ACTIONS: string[];
 export const DEMOS_DIR: string;
 export const GIF_MAX_MS: number;
 export const TITLE_MARKER: string;
+export const FRAME_MS: number;
 
 export interface DemoStep {
   action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'agentTurn';
@@ -24,5 +25,7 @@ export function demoDisplay(env: Record<string, string | undefined>): 'virtual' 
 export function freeDisplay(exists: (file: string) => boolean, from?: number): number;
 export function decodePng(buffer: Buffer): RgbaImage;
 export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
-export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; ms: number }[];
+export function frameGate<F>(check: () => Promise<string | undefined>): { readonly kept: F[]; readonly unsafe: string | undefined; add(frame: F): void; check(): Promise<string | undefined> };
+export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; at: number; ms: number }[];
+export function gapStats(ats: number[], moves: [number, number][]): { median: number; p90: number; count: number } | undefined;
 export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number }): Buffer;
