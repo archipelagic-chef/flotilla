@@ -167,12 +167,14 @@ export class MainSync implements vscode.Disposable {
 
   private async handToAgent(item: BacklogItem, base: string, branch: string, files: string[]): Promise<void> {
     const label = baseLabel(base);
-    await this.deps.reviews.handToImplementer(item.id, {
+    const handed = await this.deps.reviews.handToImplementer(item.id, {
       prompt: mergeBasePrompt({ id: item.id, base, branch, files, ticket: this.deps.backlog.docPath(item.id) }),
       why: `merging ${label} into \`${branch}\` conflicts`,
       aside: true,
     });
-    void vscode.window.showInformationMessage(`${item.id}: merging ${label} into ${branch} conflicts (${files.join(', ')}), so its agent is merging it and resolving the conflicts.`);
+    const conflicts = `${item.id}: merging ${label} into ${branch} conflicts (${files.join(', ')})`;
+    if (handed) void vscode.window.showInformationMessage(`${conflicts}, so its agent is merging it and resolving the conflicts.`);
+    else void vscode.window.showWarningMessage(`${conflicts}, and an agent is already working on it: update it from ${label} when it's done.`);
   }
 
   /** The item's worktree: the review's, else its first. */

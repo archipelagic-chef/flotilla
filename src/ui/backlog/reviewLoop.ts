@@ -1411,11 +1411,12 @@ export class ReviewLoop implements vscode.Disposable {
   /**
    * Gives the ticket's agent a task outside the review rounds (merging main into its branch, BL-55): its chat resumed,
    * or a new agent if it has none. Like changes requested, its "Ready for review." sends the work to review again.
+   * False when it wasn't handed: an agent is already running on the ticket, or the ticket is gone.
    */
-  async handToImplementer(id: string, task: RevisionTask): Promise<void> {
-    if (this.runs.has(id)) return;
+  async handToImplementer(id: string, task: RevisionTask): Promise<boolean> {
+    if (this.runs.has(id)) return false;
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
-    if (!item) return;
+    if (!item) return false;
     const ticket = await this.deps.backlog.readTicket(item);
     const reviewer = item.review?.reviewer;
     const implementer =
@@ -1434,6 +1435,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.statuses.set(id, 'doing');
     await this.setReview(id, () => review, 'doing', 'You');
     await this.startRevision({ ...item, status: 'doing', review }, task, { manual: true });
+    return true;
   }
 
   /** The user answered the implementer's question: it's resumed with the answer. */

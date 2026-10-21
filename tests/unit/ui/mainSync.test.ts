@@ -27,6 +27,7 @@ describe('keeping open tickets current with main', () => {
   let store: LocalBacklog;
   let sync: MainSync;
   let handed: Array<{ id: string; prompt: string }>;
+  let agentRunning: boolean;
 
   beforeEach(async () => {
     warnings.length = 0;
@@ -44,11 +45,12 @@ describe('keeping open tickets current with main', () => {
       return updateItem(addBranch(added, 'BL-1', 'feature/BL-1-x'), 'BL-1', { status: 'doing' });
     });
     handed = [];
+    agentRunning = false;
     const ws = { key: 'bl1', worktree: { isMain: false, path: wt, branch: 'feature/BL-1-x' }, chats: [], changes: [] as unknown[], sync: {} };
     sync = new MainSync({
       backlog: store,
       repository: { current: [ws], onDidChange: () => ({ dispose() {} }) } as never,
-      reviews: { isRunning: () => false, handToImplementer: async (id: string, t: { prompt: string }) => void handed.push({ id, prompt: t.prompt }) } as never,
+      reviews: { isRunning: () => false, handToImplementer: async (id: string, t: { prompt: string }) => !agentRunning && handed.push({ id, prompt: t.prompt }) > 0 } as never,
       mainRoot: repo,
       isLeader: () => true,
       output: { appendLine: () => undefined } as never,
@@ -123,5 +125,15 @@ describe('keeping open tickets current with main', () => {
     expect(handed[0].prompt).toContain('a.txt');
     expect(infos).toHaveLength(1);
     expect(infos[0]).toMatch(/^BL-1: merging main into feature\/BL-1-x conflicts \(a\.txt\), so its agent/);
+  });
+
+  it('Update from Main warns, rather than saying it was handed, when an agent already runs on the ticket', async () => {
+    commitIn(wt, 'one\nTWO\nthree\n');
+    commitIn(repo, 'one\n2\nthree\n');
+    agentRunning = true;
+    await sync.update('BL-1');
+    expect(handed).toHaveLength(0);
+    expect(infos).toHaveLength(0);
+    expect(warnings).toEqual(["BL-1: merging main into feature/BL-1-x conflicts (a.txt), and an agent is already working on it: update it from main when it's done."]);
   });
 });
