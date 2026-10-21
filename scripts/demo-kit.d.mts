@@ -25,4 +25,6 @@ export function freeDisplay(exists: (file: string) => boolean, from?: number): n
 export function decodePng(buffer: Buffer): RgbaImage;
 export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
 export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; ms: number }[];
-export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number }): Buffer;
+export const DEMO_TAG: string;
+export function tagGif(gif: Buffer, name: string): Buffer;
+export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number; name?: string }): Buffer;

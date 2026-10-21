@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as gifencModule from 'gifenc';
+import { tagGif } from './demo-kit.mjs';
 // The app's own code (src/features/backlog/seedKit.ts, built by npm run build), so the seed writes what the app reads.
 import { actionable, descriptionHash, entryDate, entryKey, formatTicket } from '../dist/playground-seed-kit.mjs';
 
@@ -350,7 +351,8 @@ const TICKETS = [
       'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'),
       'sketch.svg': picture('#a5763a', 'Sketch'),
       // Its demos (BL-135's Demo section): the latest, and the first try's.
-      'demo.gif': recording('#4c9a52', 12),
+      // Recorded from open-ticket, as the recorder notes it (BL-111): it goes with that block, as one unit.
+      'demo.gif': tagGif(recording('#4c9a52', 12), 'open-ticket'),
       'demo-first.gif': recording('#a5763a', 8),
     },
   },

@@ -1,0 +1,24 @@
+{
+  "title": "A demo comes with Try it yourself",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 500 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .demo-mark" },
+    { "waitFor": ".demo-section .demo-figure img" },
+    { "caption": "A demo is one unit: the recording, labelled, with Try it yourself" },
+    { "wait": 900 },
+    { "hover": ".demo-section button:has-text(\"Try it yourself\")" },
+    { "caption": "Try it yourself opens its window as the demo starts, and leaves it to you" },
+    { "wait": 1400 },
+    { "caption": "The report shows the same unit: the block isn't shown again below it" },
+    { "hover": ".demo-inline .demo-bar" },
+    { "wait": 1400 },
+    { "caption": "And so does the Attachments viewer" },
+    { "click": ".attachment-thumb:has(.demo-tag)" },
+    { "waitFor": ".viewer .demo-bar" },
+    { "wait": 1400 },
+    { "press": "Escape" },
+    { "caption": "" }
+  ]
+}

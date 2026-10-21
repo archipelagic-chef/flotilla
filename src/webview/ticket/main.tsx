@@ -16,6 +16,7 @@ import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
+import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -321,6 +322,17 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
   useEffect(() => {
     if (el.current) void drawDiagrams(el.current);
   }, [html]);
+  // A demo's video says how long it plays once it knows (a GIF's length comes with the html, BL-111).
+  useEffect(() => {
+    el.current?.querySelectorAll<HTMLVideoElement>('.demo-inline video').forEach((v) => {
+      const show = () => {
+        const label = v.closest('.demo-inline')?.querySelector('.demo-length');
+        if (label && Number.isFinite(v.duration)) label.textContent = `Recorded demo · ${demoLength(v.duration)}`;
+      };
+      if (v.readyState >= 1) show();
+      else v.addEventListener('loadedmetadata', show, { once: true });
+    });
+  }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
@@ -330,7 +342,7 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
       // The button is in the host's html: its working state is set here, and cleared when the host is done.
       run.dataset.busy = 'Running…';
       (run as HTMLButtonElement).disabled = true;
-      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -2703,7 +2715,7 @@ function App() {
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
       <DemoSection ticket={ticket} Action={ActionButton} />
-      <Attachments ticket={ticket} send={send} />
+      <Attachments ticket={ticket} send={send} Action={ActionButton} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}

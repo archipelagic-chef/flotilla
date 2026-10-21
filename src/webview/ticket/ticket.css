@@ -1842,3 +1842,22 @@ button.timeline-item:hover .timeline-text {
   gap: 6px;
   margin: 0;
 }
+
+/* A demo in a report (BL-111): its recording with the bar over it, as in the Demo section; its run block's buttons. */
+.demo-inline {
+  margin: 8px 0;
+}
+.demo-inline img,
+.demo-inline video {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 4px;
+}
+.demo-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.viewer-figure .demo-bar {
+  width: 100%;
+}

@@ -80,6 +80,8 @@ npm run demo -- play open-ticket
 
 Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for a Flotilla that doesn't know demo blocks: it runs the line as a shell command, with the same result.
 
+The ticket shows the recording and its block as one demo: "Recorded demo · 0:12" over the recording, with **Try it yourself** (`npm run demo -- try <name>`: the demo's window as it starts, its steps left to you) and **Watch it live** (`play`), in the report, the Demo section and the Attachments viewer alike; the block isn't shown again below it. The recorder notes the demo's name in what it records (`flotilla-demo:<name>`, in the GIF's or MP4's comment), so a recording goes with its block wherever the report puts them. Once the ticket's worktree is gone (merged and cleaned up), they run from the main worktree when the demo is there.
+
 ```sh
 npm run build
 npm run demo -- record open-ticket --out .flotilla/backlog/BL-3/demo.gif --still .vscode-test/last.png

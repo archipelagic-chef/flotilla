@@ -6,13 +6,13 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
-import { demoLength, gifSeconds, staleNote, ticketDemo, wantsDemo } from '../../features/backlog/demo';
+import { demoLength, demoRunFor, gifSeconds, staleNote, ticketDemo, wantsDemo } from '../../features/backlog/demo';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 
 /** The section's id: a review card's demo mark opens the ticket there. */
 export const DEMO_SECTION = 'demo';
 
-type Action = (props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string; children?: ComponentChildren }) => JSX.Element;
+export type Action = (props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string; children?: ComponentChildren }) => JSX.Element;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -84,16 +84,16 @@ export function DemoSection({ ticket, Action }: { ticket: TicketView; Action: Ac
   );
 }
 
-function DemoUnit({ demo, Action }: { demo: NonNullable<ReturnType<typeof ticketDemo<AttachmentView>>>; Action: Action }) {
-  const a = demo.latest;
-  const [seconds, setSeconds] = useLength(a);
-  const run = demo.run;
+/**
+ * The demo unit's bar (BL-111), over a recording: "Recorded demo · 0:12", Try it yourself and Watch it live (with the
+ * `run demo` block it goes with). The Demo section's, and the Attachments viewer's.
+ */
+export function DemoBar({ seconds, run, Action }: { seconds?: number; run?: { key: string; index: number; name: string }; Action: Action }) {
   return (
-    <div class="demo-unit">
-      <div class="demo-bar">
-        <span class="demo-label">
-          <i class="codicon codicon-device-camera-video" /> Recorded demo{seconds ? ` · ${demoLength(seconds)}` : ''}
-        </span>
+    <div class="demo-bar">
+      <span class="demo-label">
+        <i class="codicon codicon-device-camera-video" /> Recorded demo{seconds ? ` · ${demoLength(seconds)}` : ''}
+      </span>
         {run && (
           <>
             <Action
@@ -114,7 +114,23 @@ function DemoUnit({ demo, Action }: { demo: NonNullable<ReturnType<typeof ticket
             </Action>
           </>
         )}
-      </div>
+    </div>
+  );
+}
+
+/** The bar for one of the ticket's recordings, with the run block it goes with. */
+export function RecordingBar({ a, ticket, Action }: { a: AttachmentView; ticket: TicketView; Action: Action }) {
+  const run = useMemo(() => demoRunFor(a, ticket.activity), [a, ticket.activity]);
+  const [seconds] = useLength(a);
+  return <DemoBar seconds={seconds ?? a.seconds} run={run} Action={Action} />;
+}
+
+function DemoUnit({ demo, Action }: { demo: NonNullable<ReturnType<typeof ticketDemo<AttachmentView>>>; Action: Action }) {
+  const a = demo.latest;
+  const [seconds, setSeconds] = useLength(a);
+  return (
+    <div class="demo-unit">
+      <DemoBar seconds={seconds ?? a.seconds} run={demo.run} Action={Action} />
       {demo.since > 0 && (
         <p class="demo-stale">
           <i class="codicon codicon-warning" /> {staleNote(demo.since)}

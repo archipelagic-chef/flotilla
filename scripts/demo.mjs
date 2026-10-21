@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
+import { DEMO_TAG, GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, freeDisplay, encodeGif, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -222,8 +222,11 @@ function findFfmpeg() {
   });
 }
 
-/** Writes the recording: a GIF, or an MP4 (next to it, same name) when it's longer than GIF_MAX_MS and there's an ffmpeg. */
-function save(captures, endMs, out) {
+/**
+ * Writes the recording: a GIF, or an MP4 (next to it, same name) when it's longer than GIF_MAX_MS and there's an ffmpeg.
+ * Either names its demo in its comment (DEMO_TAG), for the ticket's Try it yourself (BL-111).
+ */
+function save(captures, endMs, out, name) {
   const frames = timeline(captures, endMs);
   const ffmpeg = endMs > GIF_MAX_MS ? findFfmpeg() : undefined;
   if (ffmpeg) {
@@ -237,13 +240,13 @@ function save(captures, endMs, out) {
       list.push(`file '${frames.length - 1}.png'`);
       fs.writeFileSync(path.join(dir, 'frames.txt'), `${list.join('\n')}\n`);
       const mp4 = out.replace(/\.[^./\\]+$/, '') + '.mp4';
-      execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
+      execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-metadata', `comment=${DEMO_TAG}${name}`, path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
       return { file: mp4, note: '' };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
-  fs.writeFileSync(out, encodeGif(frames));
+  fs.writeFileSync(out, encodeGif(frames, { name }));
   const note = endMs > GIF_MAX_MS ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.` : '';
   return { file: out, note };
 }
@@ -258,7 +261,7 @@ async function main() {
   if (mode !== 'record' && mode !== 'play' && mode !== 'try') usage();
   const file = demoFile(root, name);
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
-  const demo = parseDemo(fs.readFileSync(file, 'utf8'), name);
+  const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), name), name };
   const outAt = rest.indexOf('--out');
   const out = outAt >= 0 ? rest[outAt + 1] : undefined;
   const stillAt = rest.indexOf('--still');
@@ -412,7 +415,7 @@ async function show(mode, demo, out, still, display) {
     if (mode === 'record') {
       const endMs = Date.now() - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
-      const saved = save(captures, endMs, out);
+      const saved = save(captures, endMs, out, demo.name);
       console.log(`Saved ${saved.file} (${(endMs / 1000).toFixed(1)} s).${saved.note}`);
       if (still && captures.length) {
         fs.writeFileSync(still, captures[captures.length - 1].png);

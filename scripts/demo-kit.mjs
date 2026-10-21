@@ -220,8 +220,21 @@ export function timeline(captures, endMs) {
   return shown.map(({ png, ms }) => ({ png, ms: Math.max(20, Math.round(ms / 10) * 10) }));
 }
 
-/** A GIF of the frames (PNG screenshots, each with how long it shows), at most `maxWidth` wide. */
-export function encodeGif(frames, { maxWidth = 960 } = {}) {
+/**
+ * What a recording says it's a recording of (BL-111): `flotilla-demo:<name>`, in a GIF's comment and an MP4's, so that
+ * the ticket pairs it with its `run demo <name>` block wherever the report puts them.
+ */
+export const DEMO_TAG = 'flotilla-demo:';
+
+/** A GIF with a comment naming its demo, just before the trailer (where readers of the frames don't look). */
+export function tagGif(gif, name) {
+  const text = Buffer.from(DEMO_TAG + name, 'latin1');
+  if (gif[gif.length - 1] !== 0x3b || text.length > 255) return gif;
+  return Buffer.concat([gif.subarray(0, -1), Buffer.from([0x21, 0xfe, text.length]), text, Buffer.from([0x00, 0x3b])]);
+}
+
+/** A GIF of the frames (PNG screenshots, each with how long it shows), at most `maxWidth` wide; `name`: its demo's. */
+export function encodeGif(frames, { maxWidth = 960, name } = {}) {
   const gif = GIFEncoder();
   for (const frame of frames) {
     const image = downscale(decodePng(frame.png), maxWidth);
@@ -229,5 +242,6 @@ export function encodeGif(frames, { maxWidth = 960 } = {}) {
     gif.writeFrame(applyPalette(image.data, palette), image.width, image.height, { palette, delay: frame.ms });
   }
   gif.finish();
-  return Buffer.from(gif.bytes());
+  const bytes = Buffer.from(gif.bytes());
+  return name ? tagGif(bytes, name) : bytes;
 }

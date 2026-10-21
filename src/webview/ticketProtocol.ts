@@ -93,6 +93,9 @@ export interface AttachmentView {
   entryKey?: string;
   from: 'description' | 'activity' | 'folder';
   demo: boolean;
+  /** A demo's recording: the demo it was recorded from, as the recorder noted it in the file, and how long a GIF plays (BL-111). */
+  recorded?: string;
+  seconds?: number;
 }
 
 export interface TicketView {
