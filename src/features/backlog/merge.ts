@@ -222,12 +222,15 @@ export async function mergeInWorktree(
  * Whether a merge in dir is finished (committed, no conflicts left): the commit to move the base to, or what's missing.
  * That's the merge commit on top of baseTip, or fixes committed after it (an agent fixing the checks, BL-65): plain
  * commits whose messages start with the item's id. merge is the merge commit; fixes, the fixes' subjects, oldest first.
+ * With redo, a merge made again onto where the base is now (BL-149) is taken too: a merge commit whose first parent is
+ * on redo.base, after baseTip, and whose second is on redo.branch. onto is the merge's first parent: its base.
  */
 export async function mergeResult(
   dir: string,
   baseTip: string,
   id?: string,
-): Promise<{ commit: string; merge: string; fixes: string[] } | { problem: string }> {
+  redo?: { base: string; branch: string },
+): Promise<{ commit: string; merge: string; onto: string; fixes: string[] } | { problem: string }> {
   const conflicts = await conflictedFiles(dir).catch(() => []);
   if (conflicts.length) return { problem: `${conflicts.length} file${conflicts.length === 1 ? ' still has' : 's still have'} conflicts (${conflicts.slice(0, 5).join(', ')}).` };
   const merging = await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], { cwd: dir }).then(() => true, () => false);
@@ -243,18 +246,30 @@ export async function mergeResult(
     const [hash, ...parents] = hashes.trim().split(/\s+/);
     return { hash, parents, subject };
   });
+  const isFix = (c: (typeof commits)[number]) => c.parents.length === 1 && !!id && startsWithId(c.subject, id);
+  const dirty = async () => !!(await runGit(['status', '--porcelain', '--untracked-files=no'], { cwd: dir })).trim();
+  // Made again onto the base as it is now: the fixes, then that merge; the base's own commits below it don't count.
+  const last = commits.findIndex((c) => !isFix(c));
+  const again = last >= 0 && redo ? commits[last] : undefined;
+  if (again && again.parents.length === 2 && again.parents[0] !== baseTip) {
+    const ancestor = (a: string, b: string) => runGit(['merge-base', '--is-ancestor', a, b], { cwd: dir }).then(() => true, () => false);
+    const [onBase, ofBranch] = await Promise.all([ancestor(again.parents[0], `refs/heads/${redo!.base}`), ancestor(again.parents[1], `refs/heads/${redo!.branch}`)]);
+    if (onBase && ofBranch) {
+      if (await dirty()) return { problem: 'its worktree has uncommitted changes.' };
+      return { commit: head, merge: again.hash, onto: again.parents[0], fixes: commits.slice(0, last).reverse().map((c) => c.subject) };
+    }
+  }
   const merge = commits.at(-1);
   if (!merge || merge.parents.length < 2 || merge.parents[0] !== baseTip) return { problem: 'its worktree has no merge commit on top of the base branch.' };
   const fixes = commits.slice(0, -1).reverse();
-  const stray = fixes.find((c) => c.parents.length !== 1 || !id || !startsWithId(c.subject, id));
+  const stray = fixes.find((c) => !isFix(c));
   if (stray) {
     return {
       problem: `${stray.hash.slice(0, 7)} "${stray.subject}" after the merge commit isn't a fix of it (${stray.parents.length !== 1 ? 'it merges' : `its message doesn't start with ${id ?? "the ticket's id"}`}).`,
     };
   }
-  const dirty = (await runGit(['status', '--porcelain', '--untracked-files=no'], { cwd: dir })).trim();
-  if (dirty) return { problem: 'its worktree has uncommitted changes.' };
-  return { commit: head, merge: merge.hash, fixes: fixes.map((c) => c.subject) };
+  if (await dirty()) return { problem: 'its worktree has uncommitted changes.' };
+  return { commit: head, merge: merge.hash, onto: baseTip, fixes: fixes.map((c) => c.subject) };
 }
 
 const startsWithId = (subject: string, id: string) => subject.toLowerCase().startsWith(id.toLowerCase()) && !/[0-9]/.test(subject.charAt(id.length));
@@ -380,20 +395,24 @@ export function resolvePrompt(o: {
   checks?: string;
   /** Why the merge stopped after its conflicts were resolved (the checks failed): what to fix. */
   problem?: string;
+  /** The base moved since the merge was made (BL-149): it's made again onto it. */
+  moved?: boolean;
 }): string {
   const quote = (s: string) => (s.trim() ? s.trim().replace(/^/gm, '> ') : '> (no description)');
   const list = (lines: readonly string[]) => (lines.length ? lines.map((l) => `- ${l}`).join('\n') : '- (none touching these files)');
   const short = o.start.slice(0, 12);
   const fixing = !o.files.length;
   return [
-    fixing
+    o.moved
+      ? `Your task: merge ${o.item.id}'s branch ${o.branch} again into ${o.base}. This is a temporary git worktree with the merge committed (its conflicts were resolved), but ${o.base} moved since, so it stopped: ${o.problem ?? 'merge again'}. Make the merge again onto ${o.base} as it is now: note the earlier merge (\`git rev-parse HEAD\`), then \`git checkout --detach ${o.base}\` and \`git merge --no-ff --no-edit ${o.branch}\`, and resolve its conflicts as the earlier merge did (\`git checkout <earlier> -- <file>\` where ${o.base}'s new changes don't touch the file). Flotilla takes one merge commit whose first parent is ${o.base}'s tip and whose second is ${o.branch}, with only commits whose messages start with "${o.item.id}: " on top of it.`
+      : fixing
       ? `Your task: finish merging ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached at ${o.base}, with the merge committed (its conflicts were resolved), but it stopped: ${o.problem ?? 'it needs fixing'}. Fix that in the merge (\`git commit --amend --no-edit\` keeps it one merge commit).`
       : `Your task: resolve the conflicts of merging ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached at ${o.base}, in the middle of that merge (\`git merge --no-ff ${o.branch}\`). The conflicted files: ${o.files.map((f) => `\`${f}\``).join(', ')}.`,
     `${o.item.id} "${o.item.title}" (the branch being merged), as its ticket ${o.ticket} describes it:\n\n${quote(o.description)}\n\nIts commits touching those files (\`git log ${short}..${o.branch} -- <file>\`):\n${list(o.theirs)}`,
     `What ${o.base} changed in them since ${o.branch} started (\`git log ${short}..HEAD -- <file>\`):\n${list(o.ours)}`,
     ...(o.others.length ? [`Those changes on ${o.base} are from:\n\n${o.others.map((t) => `${t.id} "${t.title}":\n\n${quote(t.description)}`).join('\n\n')}`] : []),
     fixing
-      ? `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do.${o.checks ? ` Run the checks (\`${o.checks}\`) until they pass.` : ''} Amend the merge commit with your fixes. Don't change any other branch or worktree, don't rebase or reset, and don't push.`
+      ? `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do.${o.checks ? ` Run the checks (\`${o.checks}\`) until they pass.` : ''} ${o.moved ? 'Commit the merge with `git commit --no-edit` (keep its message), and amend it with your fixes.' : 'Amend the merge commit with your fixes.'} Don't change any other branch or worktree, don't rebase or reset, and don't push.`
       : `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop either to make the conflict go away. Resolve every conflict, \`git add\` the files${o.checks ? `, run the checks (\`${o.checks}\`) and fix what they find` : ''}, then commit the merge with \`git commit --no-edit\` (keep its message). Don't change any other branch or worktree, don't rebase or reset, and don't push.`,
     `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time) followed by how you resolved ${fixing ? 'it' : 'each conflict'} and why${o.checks ? ', and whether the checks pass' : ''}. The user reads it and approves the resolution from the ticket; Flotilla then runs the checks and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
   ].join('\n\n');

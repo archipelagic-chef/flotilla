@@ -213,6 +213,32 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it('merges again onto main when it moved before the approval, with no agent (BL-149)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    commit(dir, 'fix.txt', 'fixed\n', 'BL-1: Fix the checks after merging main');
+    // main moves while the fix waits for approval.
+    commit(repo, 'b.txt', 'b\n', 'BL-2: add b');
+    const moved = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 0;
+
+    expect(await merger.approveResolution('BL-1')).toBe('merged');
+
+    expect(git(repo, 'log', '-1', '--format=%s', 'main')).toBe('BL-1: Fix the checks after merging main');
+    expect(git(repo, 'rev-parse', 'main^^1')).toBe(moved);
+    expect(git(repo, 'rev-parse', 'main^^2')).toBe(git(repo, 'rev-parse', 'feature/BL-1'));
+    expect(worktrees()).toBe(1);
+    const done = await item('BL-1');
+    expect(done.status).toBe('done');
+    expect((await backlog.readTicket(done)).activity.map((e) => e.body).join('\n')).toContain('is merged again onto it');
+    merger.dispose();
+  });
+
   it("doesn't take a commit after the merge that isn't the ticket's fix (BL-65)", async () => {
     const { repo, merger, item } = await setup([approved('BL-1')]);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-1');

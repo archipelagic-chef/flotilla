@@ -151,6 +151,51 @@ export async function recordResolution(dir: string, o: { onto: string; tip: stri
 }
 
 /**
+ * Makes a resolved merge again onto a base that moved (BL-149), in its worktree dir: the merge of the same branch commit
+ * (merge^2) onto onto, the base's tip now. Its resolution is kept whole: the base's changes since from (where it was) are
+ * merged into the resolved merge (`git merge-tree --merge-base`), and the result committed with parents onto and the
+ * branch. When that conflicts (or git is older than 2.40), the resolution is recorded (rerere) and the merge made in dir
+ * with it: the conflicts it doesn't cover are left there to resolve. The fixes on top of the merge (commit is the
+ * newest) are picked onto the new one; those that don't apply are left out, their subjects in skipped.
+ */
+export async function mergeAgain(
+  dir: string,
+  o: { from: string; onto: string; merge: string; commit: string; message: string },
+): Promise<{ kind: 'merged'; commit: string; merge: string; skipped: string[] } | { kind: 'conflicts'; files: string[] }> {
+  const git = (args: string[]) => runGit(args, { cwd: dir, timeoutMs: 120_000, env: MERGE_ENV });
+  const fixes = (await git(['rev-list', '--reverse', '--first-parent', `${o.merge}..${o.commit}`])).split('\n').filter(Boolean);
+  const tip = (await git(['rev-parse', `${o.merge}^2`])).trim();
+  const tree = await git(['merge-tree', '--write-tree', '--no-messages', `--merge-base=${o.from}`, o.merge, o.onto]).then(
+    (out) => out.trim().split('\n')[0],
+    () => undefined,
+  );
+  let merge: string;
+  if (tree) {
+    merge = (await git(['commit-tree', tree, '-p', o.onto, '-p', tip, '-m', o.message])).trim();
+    await git(['checkout', '-q', '--detach', '--force', merge]);
+  } else {
+    await recordResolution(dir, { onto: o.from, tip, resolved: o.merge, message: o.message });
+    await git(['checkout', '-q', '--detach', '--force', o.onto]);
+    await git([...RERERE, 'merge', '--no-ff', '--no-edit', '-m', o.message, tip]).catch(() => undefined);
+    const files = await conflictedFiles(dir);
+    if (files.length) return { kind: 'conflicts', files };
+    // rerere resolved them all: the merge is staged, not committed.
+    const merging = await git(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD']).then(() => true, () => false);
+    if (merging) await git(['commit', '--no-edit']);
+    merge = (await git(['rev-parse', 'HEAD'])).trim();
+    if (merge === o.onto) throw new Error(`merging it again onto ${o.onto.slice(0, 7)} failed.`);
+  }
+  const skipped: string[] = [];
+  for (const fix of fixes) {
+    await git(['cherry-pick', '--allow-empty', fix]).catch(async () => {
+      await git(['cherry-pick', '--abort']).catch(() => undefined);
+      skipped.push((await git(['log', '-1', '--format=%s', fix])).trim());
+    });
+  }
+  return { kind: 'merged', commit: (await git(['rev-parse', 'HEAD'])).trim(), merge, skipped };
+}
+
+/**
  * Builds the train in a new temporary worktree at dir, detached at baseTip: each entry's branch merged on in order
  * (`git merge --no-ff`, rerere on for these merges only, so a resolution recorded once is reused). An entry that
  * conflicts is aborted and left out. The train branch is moved to the result, and the worktree removed.
