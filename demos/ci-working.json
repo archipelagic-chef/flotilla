@@ -1,0 +1,24 @@
+{
+  "title": "A CI run's buttons show they're working: Re-run Failed Jobs and Refresh on the fake GitHub",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Version Control\"]" },
+    { "click": "[aria-label=\"Version Control: CI/CD\"]" },
+    { "waitFor": ".ci .ci-repo" },
+    { "caption": "The branch's latest CI run fails in its tests" },
+    { "waitFor": ".ci .ci-run.failure", "timeout": 60000 },
+    { "wait": 1500 },
+    { "caption": "Re-run its failed jobs: the button spins until GitHub answered and the runs are read again" },
+    { "hover": ".ci .ci-run.failure" },
+    { "click": ".ci .ci-run.failure [aria-label=\"Re-run Failed Jobs\"]" },
+    { "waitFor": ".ci .ci-run [aria-busy=\"true\"]" },
+    { "waitFor": ".ci .ci-run.queued, .ci .ci-run.running", "timeout": 15000 },
+    { "caption": "Then the run shows its new attempt" },
+    { "wait": 2500 },
+    { "caption": "Refresh spins too, until the runs are read" },
+    { "hover": ".ci .group-head .name" },
+    { "click": ".ci [aria-label=\"Refresh\"]" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
