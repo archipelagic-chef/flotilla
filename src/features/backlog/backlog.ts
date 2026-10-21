@@ -2,6 +2,7 @@ import type { PushedInfo } from './branchPush';
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
 import type { MergedInfo, MergeState } from './merge';
+import type { MergeTrain } from './mergeTrain';
 import type { ReviewState } from './review';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
@@ -113,6 +114,10 @@ export interface BacklogData {
   prefix?: string;
   /** In priority order (first is most important), across statuses. */
   items: BacklogItem[];
+  /** The merge queue (BL-140): the ids of the tickets waiting to land, in the order they land. */
+  mergeQueue?: string[];
+  /** The train built from the queue, as last built. */
+  mergeTrain?: MergeTrain;
 }
 
 export const EMPTY_BACKLOG: BacklogData = { version: 1, next: 1, items: [] };

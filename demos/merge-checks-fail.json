@@ -36,7 +36,13 @@
       "caption": "Main didn't move: the merge is kept, with the failing output, to fix with an agent"
     },
     {
-      "wait": 2500
+      "caption": "It says when the checks failed, and offers Run the Checks Again: a failure that was only a loaded machine's goes away"
+    },
+    {
+      "waitFor": "button:has-text(\"Run the Checks Again\")"
+    },
+    {
+      "wait": 1500
     },
     {
       "caption": ""

@@ -15,6 +15,8 @@ import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
+import { DEMO_SECTION, DemoSection } from './demo';
+import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
 import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
@@ -320,6 +322,17 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
   useEffect(() => {
     if (el.current) void drawDiagrams(el.current);
   }, [html]);
+  // A demo's video says how long it plays once it knows (a GIF's length comes with the html, BL-111).
+  useEffect(() => {
+    el.current?.querySelectorAll<HTMLVideoElement>('.demo-inline video').forEach((v) => {
+      const show = () => {
+        const label = v.closest('.demo-inline')?.querySelector('.demo-length');
+        if (label && Number.isFinite(v.duration)) label.textContent = `Recorded demo · ${demoLength(v.duration)}`;
+      };
+      if (v.readyState >= 1) show();
+      else v.addEventListener('loadedmetadata', show, { once: true });
+    });
+  }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
@@ -329,7 +342,7 @@ function Rendered({ html, empty }: { html: string; empty: string }) {
       // The button is in the host's html: its working state is set here, and cleared when the host is done.
       run.dataset.busy = 'Running…';
       (run as HTMLButtonElement).disabled = true;
-      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex) }, 'Running…');
+      act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
       return;
     }
     const a = (e.target as HTMLElement).closest('a');
@@ -900,6 +913,7 @@ function ReviewPanel({ ticket }: { ticket: TicketView }) {
         )}
       </div>
       {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
+      {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
     </>
   );
 }
@@ -978,6 +992,32 @@ function MergeStop({ stop }: { stop: CiStop }) {
   );
 }
 
+/**
+ * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
+ * and the tickets ahead, or conflicts with them), and Remove from Queue.
+ */
+function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
+  const conflicts = !!queue.state?.startsWith('Conflicts');
+  return (
+    <div class={`merge-queue${conflicts ? ' conflicts' : ''}`}>
+      <i class={`codicon ${conflicts ? 'codicon-warning' : 'codicon-list-ordered'}`} />
+      <span class="review-text">
+        <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
+        {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
+        {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
+      </span>
+      <ActionButton class="button secondary" message={{ type: 'mergeQueueRemove' }} working="Removing…" title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted">
+        Remove from Queue
+      </ActionButton>
+    </div>
+  );
+}
+
+/** A text with `code` spans. */
+function Code({ text }: { text: string }) {
+  return <>{text.split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}</>;
+}
+
 /** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
 function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
   const message: TicketWebviewMessage = { type: 'merge' };
@@ -1018,6 +1058,9 @@ function CiWait({ into, runs }: { into: string; runs: NonNullable<NonNullable<Ti
   );
 }
 
+/** When the checks failed: "Oct 19, 20:16". */
+const failedAt = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
 /**
  * A merge of the ticket's branch waiting for a decision: its conflicts being resolved, or resolved for you to approve;
  * or its checks failing (BL-65), with their output, to fix with an agent.
@@ -1046,6 +1089,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
         <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
         <span class="review-text">
           <strong>Merging into {m.base}</strong> {text}
+          {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
@@ -1061,6 +1105,15 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
             }
           >
             <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
+          </button>
+        )}
+        {checks && m.state === 'failed' && !resolving && (
+          <button
+            class="button secondary"
+            onClick={() => send({ type: 'mergeRecheck' })}
+            title="Runs the checks again on the merge as it is (a failure that was only a loaded machine's goes away): passing, the base branch moves to the merge"
+          >
+            <i class="codicon codicon-refresh" /> Run the Checks Again
           </button>
         )}
         {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (
@@ -2573,7 +2626,8 @@ function App() {
       } else if (m.type === 'done') {
         finished(m.message, !!m.failed);
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
-      } else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
+      } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
+      else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
       else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
@@ -2738,7 +2792,8 @@ function App() {
       {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
       {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
       <Description ticket={ticket} />
-      <Attachments ticket={ticket} send={send} />
+      <DemoSection ticket={ticket} Action={ActionButton} />
+      <Attachments ticket={ticket} send={send} Action={ActionButton} />
       <AskPane ask={ask} />
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}

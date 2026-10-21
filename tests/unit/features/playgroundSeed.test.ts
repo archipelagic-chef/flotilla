@@ -113,7 +113,8 @@ describe('playground seed', () => {
     expect(several.blocks.map((b) => b.title)).toEqual(['Check the card', 'Run App', 'test', 'http://127.0.0.1:5173', 'src/card.js']);
     expect(several.latest?.kind).toBe('open');
     expect((await runs('BL-2')).blocks).toEqual([]);
-    expect((await runs('BL-10')).blocks.map((b) => b.kind)).toEqual(['shell']);
+    // And a demo (BL-135's Demo section plays it).
+    expect((await runs('BL-10')).blocks.map((b) => b.kind)).toEqual(['shell', 'demo']);
   });
 
   it('stops a review with the fixes for why it stopped, and pauses one on a limit that does not reset soon', async () => {

@@ -6,8 +6,13 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as gifencModule from 'gifenc';
+import { tagGif } from './demo-kit.mjs';
 // The app's own code (src/features/backlog/seedKit.ts, built by npm run build), so the seed writes what the app reads.
 import { actionable, descriptionHash, entryDate, entryKey, formatTicket } from '../dist/playground-seed-kit.mjs';
+
+// Node loads gifenc's CommonJS build (its functions on the default export), as demo-kit.mjs does.
+const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
@@ -293,6 +298,11 @@ const TICKETS = [
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Pip-3' },
     activity: [
       {
+        ago: 150,
+        author: 'Agent Pip-3',
+        body: 'A first try: the ticket opens again, but on every refresh.\n\n![It opens on every refresh](BL-10/demo-first.gif)',
+      },
+      {
         ago: 90,
         author: 'Agent Pip-3',
         body: [
@@ -316,6 +326,14 @@ const TICKETS = [
           'node --check src/last.js',
           '```',
           '',
+          'It working (the Demo section shows it, BL-135):',
+          '',
+          '![The last ticket opens again on start](BL-10/demo.gif)',
+          '',
+          '```run demo open-ticket',
+          'npm run demo -- play open-ticket',
+          '```',
+          '',
           'Ready for review.',
         ].join('\n'),
       },
@@ -328,7 +346,15 @@ const TICKETS = [
       },
     ],
     // Its folder (BL-110's Attachments): the report's pictures, and a sketch nothing references.
-    files: { 'before.svg': picture('#3a6ea5', 'Backlog'), 'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'), 'sketch.svg': picture('#a5763a', 'Sketch') },
+    files: {
+      'before.svg': picture('#3a6ea5', 'Backlog'),
+      'after.svg': picture('#4c9a52', 'BL-10 Remember the last open ticket'),
+      'sketch.svg': picture('#a5763a', 'Sketch'),
+      // Its demos (BL-135's Demo section): the latest, and the first try's.
+      // Recorded from open-ticket, as the recorder notes it (BL-111): it goes with that block, as one unit.
+      'demo.gif': tagGif(recording('#4c9a52', 12), 'open-ticket'),
+      'demo-first.gif': recording('#a5763a', 8),
+    },
   },
   {
     id: 'BL-11',
@@ -613,6 +639,28 @@ export function seedPlayground(dir, now = new Date()) {
 function picture(colour, label) {
   const lines = [0, 1, 2, 3].map((i) => `<rect x="24" y="${70 + i * 26}" width="${280 - i * 40}" height="10" rx="5" fill="#8884"/>`).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240"><rect width="480" height="240" rx="8" fill="#1e1e1e"/><rect width="480" height="40" rx="8" fill="${colour}"/><text x="20" y="26" font-family="sans-serif" font-size="16" fill="#fff">${label}</text>${lines}</svg>\n`;
+}
+
+/**
+ * A small recording: a window whose bar fills up, a frame each half second (`frames` of them), as a demo GIF looks
+ * like in a ticket (BL-135).
+ */
+function recording(colour, frames) {
+  const [w, h] = [320, 180];
+  const rgb = [1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16));
+  const gif = GIFEncoder();
+  for (let f = 0; f < frames; f++) {
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const bar = y < 28 || (y > 80 && y < 100 && x > 20 && x < 20 + ((w - 40) * (f + 1)) / frames);
+        data.set(bar ? [...rgb, 255] : [30, 30, 30, 255], (y * w + x) * 4);
+      }
+    const palette = quantize(data, 16);
+    gif.writeFrame(applyPalette(data, palette), w, h, { palette, delay: 500 });
+  }
+  gif.finish();
+  return Buffer.from(gif.bytes());
 }
 
 /** backlog.json and the tickets: each ticket's file, its review's handled reports, and its description's fingerprint. */

@@ -1948,6 +1948,31 @@ ins {
 .backlog-item .turn-chip.turn-stopped {
   color: var(--error);
 }
+/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
+.backlog-item .demo-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  cursor: pointer;
+}
+.backlog-item .demo-mark .codicon {
+  font-size: 11px;
+}
+.backlog-item .demo-mark:hover,
+.backlog-item .demo-mark:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
 .backlog-item .agent-chip {
   flex: none;
   display: inline-flex;
@@ -2094,6 +2119,40 @@ ins {
 .autopilot-bar .codicon {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
+}
+/* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
+.merge-queue-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--vscode-charts-purple, var(--working));
+  background: color-mix(in srgb, var(--vscode-charts-purple, var(--working)) 10%, transparent);
+  font-size: 12px;
+}
+.merge-queue-bar > span {
+  flex: 1;
+}
+.merge-queue-bar .codicon {
+  margin-top: 1px;
+  color: var(--vscode-charts-purple, var(--working));
+}
+.merge-queue-bar a.conflicts {
+  color: var(--vscode-charts-yellow, #cca700);
+}
+.merge-queue-bar .land-all {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 12px;
+}
+.merge-queue-bar .land-all:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
 .working-filter.on {
