@@ -26,6 +26,11 @@ export interface MergeState {
   checks?: { command: string; output: string; /** ISO 8601: when they failed. */ at?: string };
   /** The worktree's HEAD when an agent started fixing the checks: its fix is a commit on top of it. */
   from?: string;
+  /**
+   * A merge of a ticket in the merge train (BL-146): baseTip is the train's commit before it (onto base and the tickets
+   * ahead, its ids). Approving it records the resolution (rerere) and rebuilds the train, which lands the ticket.
+   */
+  train?: { ahead: string[] };
   /** ISO 8601. */
   started: string;
 }

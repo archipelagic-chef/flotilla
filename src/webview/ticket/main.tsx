@@ -1125,8 +1125,18 @@ function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> })
       <span class="review-text">
         <strong>{queue.place} in the merge queue.</strong> {queue.state ? <Code text={queue.state} /> : 'The merge train is being built.'}
         {!conflicts && queue.ahead.length > 0 && <> Merge to main lands {queue.ahead.join(', ')} first.</>}
-        {conflicts && <> It waits; Merge to main merges it onto main as it is, to resolve them.</>}
+        {conflicts && <> It waits: Resolve with Agent resolves them in its merge in the train (its branch isn't changed), or Merge to main merges it onto main as it is.</>}
       </span>
+      {conflicts && (
+        <ActionButton
+          class="button"
+          message={{ type: 'mergeQueueResolve' }}
+          working="Starting…"
+          title="An agent resolves the conflicts in its merge in the train, onto main and the tickets ahead; approved, the resolution is recorded and reused"
+        >
+          <i class="codicon codicon-hubot" /> Resolve with Agent
+        </ActionButton>
+      )}
       {queue.ahead.length > 0 && (
         <ActionButton class="button secondary" message={{ type: 'mergeNext' }} working="Moving…" title="Moves it to the front of the merge queue: the train is rebuilt in the new order">
           Merge Next
@@ -1203,7 +1213,9 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
     : m.state === 'resolved'
       ? checks
         ? ['pass', 'waiting', `${agent} fixed the checks (its report is below). Approve the fix: the checks run again, then ${m.base} moves to the merge.`]
-        : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+        : m.train
+          ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
+          : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
       : m.state === 'resolving'
         ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
         : checks && m.reason?.startsWith('the checks failed')
@@ -1214,7 +1226,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
       <div class={`review-panel ${cls}`}>
         <i class={`codicon codicon-${icon}${resolving ? ' pulse' : ''}`} />
         <span class="review-text">
-          <strong>Merging into {m.base}</strong> {text}
+          <strong>Merging into {m.train ? `${[m.base, ...m.train.ahead].join(' + ')} (the merge train)` : m.base}</strong> {text}
           {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
