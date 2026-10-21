@@ -159,5 +159,9 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
 
 1. Update `CHANGELOG.md` and bump `version` in `package.json`.
 2. `npm run typecheck && npm test && npm run build`
-3. `npx vsce package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…).
-4. `npx vsce publish` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).
+3. `npm run package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…). It packages a copy of
+   `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository
+   walks every agent worktree under `.worktrees/` and doesn't finish. The build records its commit in
+   `dist/build.json`; in this repository, the status bar counts what main has merged since, and its click ("Flotilla:
+   Update from Main Build") builds main the same way in a throwaway worktree, installs it and reloads.
+4. `npx vsce publish --packagePath flotilla-<version>.vsix` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).

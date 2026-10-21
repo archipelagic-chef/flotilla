@@ -192,8 +192,8 @@ function resultText(stdout: string): string | undefined {
   return resultOf(stdout)?.slice(0, 300);
 }
 
-/** The sessions of agents running without a window now (in this window's extension host). */
-const running = new Set<string>();
+/** The agents running without a window now (in this window's extension host): their names, by session. */
+const running = new Map<string, string>();
 
 /** The agents started in the last minute, not running yet (in this window's extension host). */
 const starting = new StartingAgents();
@@ -234,7 +234,12 @@ export function isRunningHeadless(sessionId: string): boolean {
 
 /** How many agents this window runs now, without a window and in its terminals: reloading it stops them. */
 export function runningAgentCount(): number {
-  return running.size + [...terminals.values()].filter((t) => t.exitStatus === undefined).length;
+  return runningAgentNames().length;
+}
+
+/** The names of the agents running in this window: without one, then in terminals. */
+export function runningAgentNames(): string[] {
+  return [...running.values(), ...[...terminals.values()].filter((t) => t.exitStatus === undefined).map((t) => t.name)];
 }
 
 /** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
@@ -385,7 +390,7 @@ export function runAgentHeadless(o: {
     `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}, ${settingsFile ? `settings ${settingsFile}` : 'no settings file'}).`,
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
-  running.add(sessionId);
+  running.set(sessionId, o.name);
   const start = o.slot ?? starting.begin();
   if (o.slot !== undefined) starting.spawned(o.slot);
   let stderr = '';

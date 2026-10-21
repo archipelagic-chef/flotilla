@@ -600,6 +600,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.about",
+        "title": "About",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.updateFromMain",
+        "title": "Update from Main Build",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.showNeedsYou",
         "title": "Show Needs You…",
         "category": "Flotilla"
@@ -1998,7 +2008,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "node scripts/test.mjs",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
-    "package": "vsce package",
+    "package": "node scripts/package.mjs",
     "playground": "node scripts/playground.mjs",
     "bench": "node scripts/bench-refresh.mjs",
     "bench:tokens": "node scripts/bench-tokens.mjs",
