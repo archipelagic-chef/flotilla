@@ -16,7 +16,7 @@ import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
-import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
+import { Attachments, Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
@@ -2050,7 +2050,7 @@ function MediaStrip({ e }: { e: ActivityEntry }) {
         <li key={i}>
           <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
             {t.kind === 'diagram' ? (
-              <Diagram code={t.code ?? ''} class="media-thumb-diagram" />
+              <Diagram code={t.code ?? ''} label={t.alt ?? 'A diagram'} class="media-thumb-diagram" />
             ) : t.kind === 'video' ? (
               <>
                 {/* Its first frame; it doesn't play here. */}
@@ -2189,8 +2189,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
         requestAnimationFrame(() => {
           const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
           if (!li) return;
-          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video')) d.open = true;
-          li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video, [data-diagram], code.language-mermaid')) d.open = true;
+          // A diagram's "Show in activity" (BL-136) goes to the diagram in it.
+          const n = shownDiagram(key);
+          ((n !== undefined ? diagramsIn(li)[n] : undefined) ?? li).scrollIntoView({ behavior: 'smooth', block: 'center' });
           li.classList.add('flash');
           setTimeout(() => li.classList.remove('flash'), 1600);
         }),

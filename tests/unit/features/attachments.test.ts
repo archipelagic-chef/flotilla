@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentKey, gatherAttachments, mediaRefs } from '../../../src/features/backlog/attachments';
+import { attachmentKey, diagramRefs, gatherAttachments, mediaRefs } from '../../../src/features/backlog/attachments';
 
 describe('mediaRefs', () => {
   it('finds Markdown images and html images and videos, in order, but not in code', () => {
@@ -28,6 +28,35 @@ describe('attachmentKey', () => {
     expect(attachmentKey('./BL-1/a%20b.png')).toBe('BL-1/a b.png');
     expect(attachmentKey('BL-1\\x\\..\\a b.png?raw')).toBe('BL-1/a b.png');
     expect(attachmentKey('https://x/a.png?raw=1')).toBe('https://x/a.png?raw=1');
+  });
+});
+
+describe('diagramRefs', () => {
+  it('finds the Mermaid blocks, with the line before each as its caption, and reads no other code', () => {
+    const text = [
+      '#### The flow:',
+      '```mermaid',
+      'flowchart LR',
+      '  A --> B',
+      '```',
+      '',
+      '```ts',
+      "const x = '![not this](BL-1/code.png)';",
+      '```',
+      '',
+      '~~~~ Mermaid',
+      'sequenceDiagram',
+      '~~~~',
+      '',
+      '```mermaid',
+      '```',
+    ].join('\n');
+    expect(diagramRefs(text)).toEqual([
+      { code: 'flowchart LR\n  A --> B', alt: 'The flow' },
+      // After a blank line, no caption; an empty block isn't a diagram.
+      { code: 'sequenceDiagram' },
+    ]);
+    expect(mediaRefs(text)).toEqual([]);
   });
 });
 
@@ -68,6 +97,17 @@ describe('gatherAttachments', () => {
     const found = gatherAttachments('', entries, [{ path: 'BL-1/demo.mp4', date: '2026-10-04 08:00' }]);
     expect(found.filter((a) => a.demo).map((a) => a.name)).toEqual(['demo.mp4', 'walk.gif']);
     expect(found.find((a) => a.name === 'demo.mp4')?.kind).toBe('video');
+  });
+
+  it('lists the Mermaid diagrams of a report as diagrams, at their place in the entry; not an image in a code block', () => {
+    const report = 'Plan:\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```md\n![example](BL-1/example.png)\n```\n\nThen:\n```mermaid\npie\n```';
+    const found = gatherAttachments('```mermaid\ngraph TD\n```', [{ date: '2026-10-04 08:00', author: 'Agent Nova-7', body: report }]);
+    expect(found.map((a) => [a.kind, a.src, a.alt, a.diagram, a.entry, a.from, a.code])).toEqual([
+      ['diagram', 'diagram:0:0', 'Plan', 0, 0, 'activity', 'flowchart LR\n  A --> B'],
+      ['diagram', 'diagram:0:1', 'Then', 1, 0, 'activity', 'pie'],
+      ['diagram', 'diagram:description:0', undefined, 0, undefined, 'description', 'graph TD'],
+    ]);
+    expect(found[0]).toMatchObject({ author: 'Agent Nova-7', date: '2026-10-04 08:00', demo: false });
   });
 
   it('has none for a ticket that shows nothing', () => {
