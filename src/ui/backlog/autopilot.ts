@@ -296,7 +296,7 @@ export class Autopilot implements vscode.Disposable {
         await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
         return;
       }
-      await this.deps.reviews.startWork(fresh, ws, slot);
+      await this.deps.reviews.startWork(fresh, ws, { slot });
       if (fresh.startFailed) await this.deps.backlog.change((d) => setStartFailed(d, item.id));
     } catch (error) {
       this.deps.reviews.giveBack(slot);

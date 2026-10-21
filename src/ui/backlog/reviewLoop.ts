@@ -18,6 +18,7 @@ import { mayStartNow, ordinal, pauseOrder, prioritizeAction, StartQueue, type St
 import {
   answerPrompt,
   AUTOPILOT_NOTE,
+  HAND_START_NOTE,
   resumeAfterLimitPrompt,
   heldBy,
   resumeAfterPausePrompt,
@@ -801,17 +802,19 @@ export class ReviewLoop implements vscode.Disposable {
   private held = new Set<string>();
 
   /**
-   * Starts an agent on an item's work, without a window (for the autopilot): it reports in the ticket, asks there when
-   * it must ("Waiting for you."), and its "Ready for review." goes on to review. `slot` is the start the autopilot was
-   * admitted with (see admitNew); without one, the start is admitted here, and may wait in the queue.
+   * Starts an agent on an item's work, without a window (for the autopilot, and Start an Agent by hand: BL-122): it
+   * reports in the ticket, asks there when it must ("Waiting for you."), and its "Ready for review." goes on to review.
+   * `slot` is the start the autopilot was admitted with (see admitNew); without one, the start is admitted here, and may
+   * wait in the queue (a start by hand too: it counts toward the limit like any agent).
    */
-  async startWork(item: BacklogItem, ws: Workstream, slot?: number, dispatched = false): Promise<void> {
+  async startWork(item: BacklogItem, ws: Workstream, o: { slot?: number; dispatched?: boolean; byHand?: boolean } = {}): Promise<void> {
+    const { slot, dispatched = false, byHand = false } = o;
     if (!ws.worktree.path || !ws.worktree.branch || this.runs.has(item.id)) {
       if (slot !== undefined) this.release(slot);
       return;
     }
     const admitted =
-      slot !== undefined ? { slot, since: stateOf(item) } : await this.admitStart(item, 'new', { dispatched }, (fresh) => this.startWork(fresh, ws, undefined, true));
+      slot !== undefined ? { slot, since: stateOf(item) } : await this.admitStart(item, 'new', { dispatched }, (fresh) => this.startWork(fresh, ws, { dispatched: true, byHand }));
     if (!admitted) return;
     let spawned = false;
     try {
@@ -826,10 +829,11 @@ export class ReviewLoop implements vscode.Disposable {
       }
       const guide = path.join(this.deps.backlog.dir, GUIDE);
       const choice = agentChoice(item);
-      const task: RevisionTask = { prompt: AUTOPILOT_NOTE, why: 'the autopilot started it' };
+      const note = byHand ? HAND_START_NOTE : AUTOPILOT_NOTE;
+      const task: RevisionTask = { prompt: note, why: byHand ? 'you started it' : 'the autopilot started it' };
       const run = runAgentHeadless({
         cwd: ws.worktree.path,
-        prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), AUTOPILOT_NOTE].join('\n\n'),
+        prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), note].join('\n\n'),
         name: `${agent} · ${item.id}`,
         choice,
         output: this.deps.output,
@@ -838,18 +842,19 @@ export class ReviewLoop implements vscode.Disposable {
       spawned = true;
       this.launched(item.id, admitted.slot, { run, phase: 'work', agent, cwd: ws.worktree.path, since: Date.now() });
       this.tasks.set(item.id, task);
-      void trackProgress('backlog', `${agent} is working on ${item.id} (autopilot)`, () => run.done);
+      void trackProgress('backlog', `${agent} is working on ${item.id}${byHand ? '' : ' (autopilot)'}`, () => run.done);
       await this.setReview(item.id, (r) => ({
         ...(r ?? { round: 0, reviewer: '' }),
         state: 'working',
-        autopilot: true,
+        autopilot: !byHand,
+        byHand: byHand || undefined,
         implementer: agent,
         implementerSession: run.sessionId,
         worktree: ws.key,
         reason: undefined,
         stop: undefined,
       }));
-      await this.startNote(item.id, `Autopilot: opened a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
+      await this.startNote(item.id, `${byHand ? 'Opened' : 'Autopilot: opened'} a chat for agent ${agent}${describeChoice(choice)} in worktree \`${workstreamLabel(ws)}\`. It works without a window and reports here.`);
       void run.done.then((result) => this.afterRevision(item.id, run, result));
     } finally {
       if (!spawned) this.release(admitted.slot);

@@ -301,6 +301,41 @@ h2 {
 .md-box:focus {
   border-color: var(--focus);
 }
+.md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-bottom: 4px;
+}
+.md-tabs {
+  display: inline-flex;
+  border-bottom: 1px solid var(--border);
+}
+.md-tab {
+  padding: 2px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.md-tab[aria-selected='true'] {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--focus);
+}
+.md-formats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+.md-preview {
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px;
+  box-sizing: border-box;
+}
 .md-box::placeholder {
   color: var(--vscode-input-placeholderForeground);
 }
