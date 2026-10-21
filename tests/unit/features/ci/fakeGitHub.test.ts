@@ -125,6 +125,18 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     expect(ci(await actions().runs('main'))[0].status).toBe('queued');
   });
 
+  it('answers actions after its delay, as GitHub takes a moment to (BL-119)', async () => {
+    const slow = await startFakeGitHub({ port: 0, now: () => clock, actionDelayMs: 150 });
+    try {
+      const id = ci(await new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, slow.url).runs('main'))[0].id;
+      const before = Date.now();
+      expect((await fetch(`${slow.url}${REPO}/runs/${id}/cancel`, { method: 'POST' })).status).toBe(202);
+      expect(Date.now() - before).toBeGreaterThanOrEqual(140);
+    } finally {
+      await slow.close();
+    }
+  });
+
   it('dispatches a workflow on a branch, and refuses what GitHub would', async () => {
     expect((await call('POST', '/workflows/deploy.yml/dispatches', { ref: 'main' })).status).toBe(204);
     const deploys = (await actions().runs('main')).filter((r) => r.workflow === 'Deploy');
