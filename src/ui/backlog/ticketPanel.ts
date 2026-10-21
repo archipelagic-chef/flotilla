@@ -1388,61 +1388,7 @@ export class TicketPanels implements vscode.Disposable {
     const item = await this.item(id);
     if (!item) return;
     const backlog = this.deps.backlog;
-    switch (m.type) {
-      case 'cleanUp':
-        await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
-        return;
-      case 'finishCleanUp':
-        await vscode.commands.executeCommand('flotilla.finishCleanUp', id);
-        return;
-      case 'cancelCleanUp':
-        await vscode.commands.executeCommand('flotilla.cancelCleanUp', id);
-        return;
-      case 'compareCleanUp':
-        await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
-        return;
-      case 'merge':
-        await this.merger?.merge(id);
-        return;
-      case 'mergeResolve':
-        await this.merger?.resolveWithAgent(id);
-        return;
-      case 'mergeApprove':
-        await this.merger?.approveResolution(id);
-        return;
-      case 'mergeRecheck':
-        await this.merger?.recheck(id);
-        return;
-      case 'mergeCancel':
-        await this.merger?.cancel(id);
-        return;
-      case 'mergeCiCancel':
-        await this.merger?.cancelCiWait(id);
-        return;
-      case 'mergeQueueRemove':
-        await this.merger?.removeFromQueue(id);
-        return;
-      case 'mergeQueueResolve':
-        await this.merger?.resolveTrainConflict(id);
-        return;
-      case 'mergeNext':
-        await this.merger?.mergeNext(id);
-        return;
-      case 'mergeCiFix':
-        await this.merger?.fixCiStop(id);
-        return;
-      case 'push':
-        await this.merger?.push();
-        return;
-      case 'mergeSibling':
-        await this.mergeSibling(item, m.branch);
-        return;
-      case 'dismissUnmerged':
-        await this.dismissUnmerged(item);
-        return;
-      default:
-        await handleMessage({ id, panel, item, backlog, panels: this }, m);
-    }
+    await handleMessage({ id, panel, item, backlog, panels: this }, m);
   }
 
   /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */
