@@ -56,6 +56,31 @@ describe('wantsDemo', () => {
     expect(wantsDemo([report('a', '', 'Fixed the parser.\n```\ndemo\n```')])).toBe(false);
     expect(wantsDemo([{ author: 'Andreas', body: 'Where is the demo?' }])).toBe(false);
   });
+
+  it("not when it says there's none to see", () => {
+    for (const body of [
+      'Verdict: approved\nNo UI change, no screenshot needed.',
+      "Fixed the parser. It doesn't change the UI.",
+      'Done without a demo: nothing to demo here.',
+      'The UI is unchanged.',
+      'A screenshot is not needed.',
+    ])
+      expect(wantsDemo([report('a', '', body)]), body).toBe(false);
+  });
+
+  it('when a negation is about something else', () => {
+    expect(wantsDemo([report('a', '', 'No crash any more. The UI shows the error.')])).toBe(true);
+    expect(wantsDemo([report('a', '', 'No UI change in the parser; a GIF of the new button is above.')])).toBe(true);
+  });
+
+  it('reads only the latest report and the latest verdict', () => {
+    const plan = report('a', '', 'Plan: I may show the UI.');
+    const done = report('a', '', 'Fixed the parser.\nReady for review.');
+    const verdict = report('b', '', 'Verdict: approved\nNo UI change.');
+    expect(wantsDemo([plan, done, verdict])).toBe(false);
+    expect(wantsDemo([plan, verdict])).toBe(true);
+    expect(wantsDemo([done, report('b', '', 'Verdict: changes requested\nAdd a screenshot.'), done])).toBe(true);
+  });
 });
 
 describe('the labels', () => {

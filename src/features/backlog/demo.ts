@@ -5,6 +5,7 @@
  * gives its attachments, activity and commits.
  */
 import { entryAgent } from './backlog';
+import { parseVerdict } from './review';
 import { parseRunBlocks } from './runBlocks';
 
 export interface DemoAttachment {
@@ -84,13 +85,30 @@ export function ticketDemo<A extends DemoAttachment>(
 // Code isn't read: an instruction quoted in a block isn't the agent saying so.
 const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]))/gm;
 const SEEN = /\b(?:demo|screenshots?|GIF|UI)\b/i;
+// "No UI change", "doesn't change the UI", "without a demo", "UI unchanged", "no screenshot needed": a few words of
+// the same clause apart, so "No crash. The UI is new." still speaks of the UI.
+const WORD = /(?:demo|screenshots?|GIF|UI)\b/.source;
+const NEGATED = new RegExp(
+  String.raw`(?:\b(?:no|not|nothing|without|never|none)|n['’]t)\b(?:[ \t]+[\w'’/-]+){0,3}?[ \t]+${WORD}` +
+    String.raw`|\b${WORD}(?:[ \t]+[\w'’/-]+){0,2}?[ \t]+(?:unchanged|untouched|(?:is[ \t]+)?not[ \t]+needed|isn['’]t[ \t]+needed)\b`,
+  'gi',
+);
+
+/** Whether an entry speaks of a demo, a screenshot, a GIF or the UI: outside code, and not to say there's none. */
+function speaksOfDemo(body: string): boolean {
+  return SEEN.test(body.replace(FENCE, '').replace(NEGATED, ''));
+}
 
 /**
- * Whether a ticket without a demo should have one: the work changes something you see or click, as an agent's entry
- * (its report, or a reviewer's verdict) says when it speaks of a demo, a screenshot, a GIF or the UI.
+ * Whether a ticket without a demo should have one: the work changes something you see or click, as the latest
+ * implementer report or the latest reviewer's verdict says when it speaks of a demo, a screenshot, a GIF or the UI.
+ * Earlier entries aren't read: a plan's or an old round's remark isn't what the work became.
  */
 export function wantsDemo(entries: readonly Pick<DemoEntry, 'author' | 'body'>[]): boolean {
-  return entries.some((e) => !!entryAgent(e.author) && SEEN.test(e.body.replace(FENCE, '')));
+  const latest = entries.filter((e) => !!entryAgent(e.author)).reverse();
+  const verdict = latest.find((e) => parseVerdict(e.body));
+  const report = latest.find((e) => !parseVerdict(e.body));
+  return [report, verdict].some((e) => !!e && speaksOfDemo(e.body));
 }
 
 /** "Recorded before the last 2 commits". */
