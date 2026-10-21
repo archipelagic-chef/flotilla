@@ -96,6 +96,60 @@ export function trainState(train: MergeTrain, id: string): string | undefined {
   return `Merges cleanly onto ${onto}${entry.reused ? ' (with a resolution recorded before)' : ''}.`;
 }
 
+/** The train's commit a ticket merges onto: that of the last one ahead of it in the train, else the base's tip. */
+export function trainOnto(train: MergeTrain, id: string): { commit: string; ahead: string[] } | undefined {
+  const at = train.entries.findIndex((e) => e.id === id);
+  if (at < 0) return undefined;
+  const ahead = train.entries.slice(0, at).filter((e) => e.commit);
+  return { commit: ahead.at(-1)?.commit ?? train.baseTip, ahead: ahead.map((e) => e.id) };
+}
+
+/** git's options that record and reuse resolutions (rerere), for the train's merges only. */
+const RERERE = ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=true'];
+const MERGE_ENV = { GIT_MERGE_AUTOEDIT: 'no', GIT_EDITOR: ':' };
+
+/**
+ * Starts merging a train entry in a new temporary worktree at dir, detached at onto (the train's commit before it),
+ * with rerere on: the conflicted files, left there to resolve (BL-146). Any other outcome removes the worktree.
+ */
+export async function startTrainMerge(cwd: string, o: { dir: string; onto: string; branch: string; message: string }): Promise<string[]> {
+  await runGit(['worktree', 'add', '--detach', o.dir, o.onto], { cwd, timeoutMs: 120_000 });
+  const merged = await runGit([...RERERE, 'merge', '--no-ff', '--no-edit', '-m', o.message, `refs/heads/${o.branch}`], { cwd: o.dir, timeoutMs: 120_000, env: MERGE_ENV }).then(
+    () => true,
+    () => false,
+  );
+  const files = merged ? [] : await conflictedFiles(o.dir).catch(() => []);
+  if (!files.length) await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
+  return files;
+}
+
+/**
+ * Records a resolved train merge for rerere (BL-146): in dir, the merge of tip onto onto is made again, each file it
+ * conflicts on is taken as it is in resolved (the approved merge commit), and rerere records that. A rebuild of the
+ * train then merges the entry with it. The files recorded; dir is left at resolved.
+ */
+export async function recordResolution(dir: string, o: { onto: string; tip: string; resolved: string; message: string }): Promise<string[]> {
+  await runGit(['checkout', '-q', '--detach', '--force', o.onto], { cwd: dir });
+  // Without autoUpdate, a file an older resolution resolves stays unmerged, so it's recorded again.
+  await runGit(['-c', 'rerere.enabled=true', 'merge', '--no-ff', '--no-edit', '-m', o.message, o.tip], { cwd: dir, timeoutMs: 120_000, env: MERGE_ENV }).catch(() => undefined);
+  const files = await conflictedFiles(dir).catch(() => []);
+  try {
+    if (files.length) {
+      // An older resolution of the same conflicts is forgotten: the approved one replaces it.
+      await runGit(['-c', 'rerere.enabled=true', 'rerere', 'forget', '--', ...files], { cwd: dir }).catch(() => undefined);
+      for (const f of files) {
+        const kept = await runGit(['cat-file', '-e', `${o.resolved}:${f}`], { cwd: dir }).then(() => true, () => false);
+        await runGit(kept ? ['checkout', o.resolved, '--', f] : ['rm', '-q', '--force', '--', f], { cwd: dir });
+      }
+      await runGit(['-c', 'rerere.enabled=true', 'rerere'], { cwd: dir });
+    }
+  } finally {
+    await runGit(['merge', '--abort'], { cwd: dir }).catch(() => undefined);
+    await runGit(['checkout', '-q', '--detach', '--force', o.resolved], { cwd: dir }).catch(() => undefined);
+  }
+  return files;
+}
+
 /**
  * Builds the train in a new temporary worktree at dir, detached at baseTip: each entry's branch merged on in order
  * (`git merge --no-ff`, rerere on for these merges only, so a resolution recorded once is reused). An entry that
@@ -106,8 +160,8 @@ export async function buildTrain(
   o: { dir: string; base: string; baseTip: string; entries: ReadonlyArray<{ id: string; branch: string; message: string }>; now?: Date },
 ): Promise<MergeTrain> {
   const entries: TrainEntry[] = [];
-  const env = { GIT_MERGE_AUTOEDIT: 'no', GIT_EDITOR: ':' };
-  const rerere = ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=true'];
+  const env = MERGE_ENV;
+  const rerere = RERERE;
   await runGit(['worktree', 'add', '--detach', o.dir, o.baseTip], { cwd, timeoutMs: 120_000 }).catch(async (e: unknown) => {
     await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
     throw e;
