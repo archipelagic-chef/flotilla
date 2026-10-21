@@ -9,7 +9,7 @@ import { conflictsOf } from '../../features/backlog/mainDrift';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
@@ -40,6 +40,7 @@ interface Props {
   /** How many integrations are connected. */
   integrations: number;
   autopilot?: AutopilotState;
+  mergeQueue?: MergeQueueView;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -52,7 +53,7 @@ interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
@@ -147,6 +148,7 @@ export function BacklogView({ items, problems, integrations, autopilot, workstre
           </span>
         </button>
       )}
+      {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
           <i class="codicon codicon-filter-filled" />
@@ -717,3 +719,42 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
     />
   );
 }
+
+/**
+ * The merge queue (BL-140), above the board: the tickets waiting to land, first to land first, each opening its ticket
+ * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
+ */
+function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
+  return (
+    <div class="merge-queue-bar">
+      <i class="codicon codicon-git-merge" />
+      <span>
+        <strong>Merge queue</strong>
+        {queue.working ? ` · ${capitalizeFirst(queue.working)}` : ''}
+        {' · '}
+        {queue.entries.map((e, i) => (
+          <span key={e.id}>
+            {i > 0 && ', '}
+            <a
+              href="#"
+              class={e.state === 'conflicts' ? 'conflicts' : undefined}
+              title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
+              onClick={(ev) => {
+                ev.preventDefault();
+                send({ type: 'backlog', op: 'open', id: e.id });
+              }}
+            >
+              {e.id}
+              {e.state === 'conflicts' && ' (conflicts)'}
+            </a>
+          </span>
+        ))}
+      </span>
+      <button class="land-all" disabled={!!queue.working} onClick={() => send({ type: 'backlog', op: 'landAll' })} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
+        Land All
+      </button>
+    </div>
+  );
+}
+
+const capitalizeFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

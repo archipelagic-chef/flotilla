@@ -38,6 +38,7 @@ import { buildTrain, dequeue, enqueue, landing, ordinal, queuedItems, trainIsCur
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
+import type { MergeQueueView } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
 import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
@@ -54,6 +55,8 @@ export interface MergeDeps {
   updateFromMain?(id: string): Promise<void>;
   /** Fix with Agent (BL-7) on a failed CI job of the branch. */
   fixCi?(branch: string, runId: number, jobId?: number): Promise<void>;
+  /** Whether this window rebuilds the merge train (BL-140): one window does. None: it does. */
+  isLeader?(): boolean;
   /** How often a merge waiting for CI reads its runs again (the tests' is short). */
   ciPollMs?: number;
 }
@@ -145,19 +148,20 @@ export class Merger implements vscode.Disposable {
   }
 
   /** The merge queue, first to land first, with each ticket's train state (for the backlog's queue bar). */
-  queueView(): Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }> {
+  queueView(): MergeQueueView {
     const train = this.queueSeen.train;
-    return this.queueSeen.queue.map((id) => {
+    const entries = this.queueSeen.queue.map((id) => {
       const e = train?.entries.find((x) => x.id === id);
-      return { id, state: e?.commit ? 'clean' : e?.conflicts ? 'conflicts' : 'unknown' };
+      return { id, state: e?.commit ? ('clean' as const) : e?.conflicts ? ('conflicts' as const) : ('unknown' as const) };
     });
+    return { entries, ...(this.tasks[0] ? { working: this.tasks[0].what } : {}) };
   }
 
   /** Reads the queue again, and rebuilds the train a moment later if it's out of date (main, a branch or the queue moved). */
   queueChanged(): void {
     void this.readQueue().then(() => {
       clearTimeout(this.trainTimer);
-      if (!this.queueSeen.queue.length) return;
+      if (!this.queueSeen.queue.length || this.deps.isLeader?.() === false) return;
       this.trainTimer = setTimeout(() => void this.refreshTrain().catch((e: unknown) => this.deps.output.appendLine(`Merge train: ${String(e)}`)), 3000);
     });
   }

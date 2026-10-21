@@ -235,7 +235,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -265,6 +265,13 @@ export interface MachineState {
 }
 
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
+/** The merge queue (BL-140), first to land first: each ticket's state in the merge train, and what the queue does now. */
+export interface MergeQueueView {
+  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }>;
+  /** "BL-122's merge", "rebuilding the merge train". */
+  working?: string;
+}
+
 export interface AutopilotState {
   enabled: boolean;
   running: number;
@@ -346,6 +353,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** Merge All Ready: lands the merge queue (BL-140). */
+  | { type: 'backlog'; op: 'landAll' }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
   | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }

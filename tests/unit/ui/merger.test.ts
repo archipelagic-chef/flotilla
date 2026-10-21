@@ -393,7 +393,7 @@ describe('The merge queue (BL-140)', () => {
     ui.settings['merge.onApprove'] = 'off';
     for (const id of ['BL-2', 'BL-3', 'BL-1']) await merger.approved(id, 'Rex-1');
     await merger.refreshTrain();
-    expect(merger.queueView()).toEqual([
+    expect(merger.queueView().entries).toEqual([
       { id: 'BL-2', state: 'clean' },
       { id: 'BL-3', state: 'conflicts' },
       { id: 'BL-1', state: 'clean' },
@@ -406,7 +406,7 @@ describe('The merge queue (BL-140)', () => {
     await again.refreshTrain();
     expect(again.queuePlace('BL-3')).toMatchObject({ place: '2nd of 3', state: 'Conflicts with main + BL-2 in `shared.txt`.' });
     await again.removeFromQueue('BL-2');
-    expect(again.queueView()).toEqual([
+    expect(again.queueView().entries).toEqual([
       { id: 'BL-3', state: 'clean' },
       { id: 'BL-1', state: 'clean' },
     ]);

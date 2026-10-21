@@ -188,13 +188,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ciReader: () => sidebar.ci.originActions(location.mainRoot),
     updateFromMain: (id) => mainSync.update(id),
     fixCi: (branch, runId, jobId) => sidebar.ci.fixOnOrigin(location.mainRoot, branch, runId, jobId),
+    // One window rebuilds the merge train (BL-140); the others read it from backlog.json.
+    isLeader: () => leader.isLeader,
   });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
   const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });
   sidebar.useMerges(merges);
+  sidebar.useMerger(merger);
   context.subscriptions.push(
     repository.onDidChange(() => void merges.refresh()),
     backlog.watch(() => void merges.refresh()),
+    // The merge queue's train is rebuilt when main, a queued branch or the queue moves.
+    repository.onDidChange(() => merger.queueChanged()),
+    backlog.watch(() => merger.queueChanged()),
   );
   void merges.refresh();
   const runTerminals = new RunTerminals();
@@ -217,6 +223,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
+  merger.queueChanged();
   const reviews = new ReviewLoop({
     backlog,
     repository,
