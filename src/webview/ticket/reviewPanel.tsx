@@ -5,7 +5,7 @@ import type { QueuedView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton, send } from './actions';
 import { PAUSE_TIP, STOP_TIP } from './agents';
-import { MergeButton, MergeStop, QueuePlace } from './main';
+import { MergeButton, MergeStop, QueuePlace } from './mergePanel';
 
 const FIX_ICON: Record<ReviewFix, string> = {
   retry: 'debug-restart',
