@@ -162,10 +162,10 @@ describe('The merge flow, end to end', () => {
     expectMainEndsWith(w, [/^Merge BL-1\b/, /^Merge BL-2\b/, /^Merge BL-3\b/]);
   });
 
-  // BL-149 isn't merged yet: main moving under a merge that waits for approval ends in "main moved … merge again", and
-  // the agent's merge again is refused. These pass once it is; then they're `it`, not `it.fails`.
+  // Before BL-149, main moving under a merge that waits for approval ended in "main moved … merge again", and the
+  // agent's merge again was refused.
   describe('main moves under a merge (BL-149)', () => {
-    it.fails('a conflict resolved while main moves: Approve merges it again onto the new main', async () => {
+    it('a conflict resolved while main moves: Approve merges it again onto the new main', async () => {
       const w = await conflicting();
       w.agents('later');
       await w.merge('BL-1');
@@ -175,7 +175,7 @@ describe('The merge flow, end to end', () => {
       expectMainEndsWith(w, [/BL-9/, /BL-8/, MERGED_1]);
     });
 
-    it.fails('approval after main moved merges it again onto the new main, with no agent', async () => {
+    it('approval after main moved merges it again onto the new main, with no agent', async () => {
       const w = await conflicting();
       w.agents('resolve');
       await w.merge('BL-1');
@@ -185,7 +185,7 @@ describe('The merge flow, end to end', () => {
       expectMainEndsWith(w, [/BL-9/, /BL-8/, MERGED_1]);
     });
 
-    it.fails('an agent that redoes the merge onto the new main, as main moved while it worked: its merge is accepted', async () => {
+    it('an agent that redoes the merge onto the new main, as main moved while it worked: its merge is accepted', async () => {
       const w = await conflicting();
       w.agents('later');
       await w.merge('BL-1');
@@ -197,7 +197,7 @@ describe('The merge flow, end to end', () => {
 
     // BL-111 on 2026-10-21: resolved at 07:49 against ca9e570; main moved (BL-141); approved at 08:02 and again at
     // 10:44, both "main moved … merge again"; Jet-3 merged again onto the new main at 10:48, which was refused.
-    it.fails('BL-111 as it happened: approved twice into "main moved", then the agent\'s merge again', async () => {
+    it('BL-111 as it happened: approved twice into "main moved", then the agent\'s merge again', async () => {
       const w = await conflicting();
       w.agents('resolve', 'redoMerge');
       expect((await w.merge('BL-1')).state).toBe('resolved');

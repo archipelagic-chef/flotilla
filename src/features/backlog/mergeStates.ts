@@ -11,12 +11,14 @@ import type { MergeState } from './merge';
  * |                               |                                     | resolving; checks fail → failed (checks)                                |
  * | (none), in the train,         | Resolve with Agent (train panel)    | Resolve with Agent → resolving (train); Merge to main merges it alone   |
  * | conflicting                   |                                     |                                                                         |
- * | resolving, agent running      | Cancel                              | the agent ends: resolved; or failed (it stopped short, or committed no  |
- * |                               |                                     | fix and the checks still fail); or merged (no fix, the rerun passed)    |
+ * | resolving, agent running      | Cancel                              | the agent ends: resolved (also a merge it made again onto the moved     |
+ * |                               |                                     | main); or failed (it stopped short, or committed no fix and the checks  |
+ * |                               |                                     | still fail); or merged (no fix, the rerun passed)                       |
  * | resolving, agent not running  | Resolve with Agent, Cancel          | Resolve with Agent → resolving (same agent); Cancel → (none)            |
  * | (a window reload)             |                                     |                                                                         |
  * | resolved                      | Approve, Cancel                     | Approve: checks, then merged; checks fail → failed (checks); main moved |
- * |                               |                                     | → failed (reason); in the train: recorded, the train lands it           |
+ * |                               |                                     | → merged again onto it with the resolution, then checks (conflicts anew |
+ * |                               |                                     | → resolving); in the train: recorded, the train lands it                |
  * | failed, checks                | Fix with Agent, Run the Checks      | Fix with Agent → resolving; Run the Checks Again → merged, or failed    |
  * |                               | Again, Cancel                       | with the new output; Cancel → (none)                                    |
  * | failed, other reason          | Resolve with Agent, Approve, Cancel | Resolve with Agent → resolving; Approve as for resolved; Cancel → (none) |
