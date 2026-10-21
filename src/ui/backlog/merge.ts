@@ -191,6 +191,26 @@ export class Merger implements vscode.Disposable {
     });
   }
 
+  /**
+   * Puts the queue in this order (BL-144: dragged in the backlog's queue bar), and rebuilds the train in it. Queued
+   * tickets the order leaves out keep their places after it; ids that aren't queued are ignored.
+   */
+  reorderQueue(order: readonly string[]): Promise<void> {
+    return this.serial({ what: 'reordering the merge queue' }, async () => {
+      if (!(await this.changeQueue((q) => [...order.filter((id) => q.includes(id)), ...dequeue(q, order)]))) return;
+      await this.currentTrain();
+    });
+  }
+
+  /** Merge Next (BL-144): moves a queued ticket to the front of the queue, and rebuilds the train. */
+  mergeNext(id: string): Promise<void> {
+    return this.serial({ id, what: `moving ${id} to the front of the merge queue` }, async () => {
+      if (!(await this.changeQueue((q) => (q.includes(id) ? [id, ...dequeue(q, [id])] : q)))) return;
+      await this.note(id, 'You moved it to the front of the merge queue (Merge Next).');
+      await this.currentTrain();
+    });
+  }
+
   /** Changes the saved queue; whether it changed. */
   private async changeQueue(change: (queue: string[]) => string[]): Promise<boolean> {
     let changed = false;

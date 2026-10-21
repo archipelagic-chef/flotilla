@@ -222,6 +222,16 @@ async function play(page, step) {
       await target.hover({ timeout });
       break;
     }
+    case 'drag': {
+      const source = await find(page, step.value, timeout);
+      const target = await find(page, step.to, timeout);
+      const from = await source.boundingBox();
+      const to = await target.boundingBox();
+      if (from) await pointer(page, from.x + from.width / 2, from.y + from.height / 2);
+      if (to) await pointer(page, to.x + to.width / 2, to.y + to.height / 2);
+      await source.dragTo(target, { timeout });
+      break;
+    }
     case 'type':
       await page.keyboard.type(step.value, { delay: 45 });
       break;
