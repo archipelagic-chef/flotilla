@@ -1,4 +1,4 @@
-import { Component, render, type ComponentChildren, type JSX } from 'preact';
+import { Component, render, type ComponentChildren } from 'preact';
 import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
@@ -20,7 +20,6 @@ import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attach
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
-import { actionKey } from '../ticketActions';
 import { activeAgents, lastReport, runningFor } from '../activeAgents';
 import { PRIORITY, PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
@@ -29,38 +28,7 @@ import './ticket.css';
 import { TicketCi } from './ci';
 import { ciWord } from '../../features/ci/summary';
 import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
-
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
-const vscode = acquireVsCodeApi();
-const send = (message: TicketWebviewMessage) => vscode.postMessage(message);
-
-/**
- * The actions the host hasn't finished, by actionKey: "working…" shows from the click until the host says it's done
- * (it does so for every action, whether it posted, failed or did nothing).
- */
-const working = new Map<string, string>();
-const workingListeners = new Set<() => void>();
-const doneListeners = new Set<(message: TicketWebviewMessage, failed: boolean) => void>();
-
-const notifyWorking = () => workingListeners.forEach((f) => f());
-
-/** Sends an action, and shows it as working (its label) until the host is done with it. */
-function act(message: TicketWebviewMessage, label = 'Working…') {
-  working.set(actionKey(message), label);
-  notifyWorking();
-  send(message);
-}
-
-/** The label of an action in progress (undefined when it isn't), re-rendered as it starts and ends. */
-function useWorking(message: TicketWebviewMessage): string | undefined {
-  const [, refresh] = useState(0);
-  useEffect(() => {
-    const listener = () => refresh((n) => n + 1);
-    workingListeners.add(listener);
-    return () => void workingListeners.delete(listener);
-  }, []);
-  return working.get(actionKey(message));
-}
+import { act, ActionButton, doneListeners, Dropdown, finished, send, useWorking, WorkingTag } from './actions';
 
 /** Comments sent and not yet done with: each shows at once as an entry, marked "Sending…". */
 type SentComment = { text: string; date: string; at: number };
@@ -95,7 +63,7 @@ function useSending(): SentComment[] {
 }
 
 /** The host is done with a comment: it no longer shows as sending. */
-function commentSent(text: string) {
+export function commentSent(text: string) {
   const i = sendingComments.findIndex((c) => c.text === text);
   if (i >= 0) {
     sendingComments = sendingComments.filter((_, j) => j !== i);
@@ -106,37 +74,6 @@ function commentSent(text: string) {
 /** Notes how many entries the view shows. */
 function showingEntries(count: number) {
   shownEntries = count;
-}
-
-/** Called when the host is done with an action: failed if it threw. */
-function finished(message: TicketWebviewMessage, failed: boolean) {
-  working.delete(actionKey(message));
-  notifyWorking();
-  if (message.type === 'comment') commentSent(message.text);
-  if (message.type === 'run') {
-    // The Run button of a run block (set on click, in Rendered): its working state ends.
-    document.querySelectorAll<HTMLElement>(`[data-run-key="${CSS.escape(message.key)}"][data-run-index="${message.index}"]`).forEach((run) => {
-      run.removeAttribute('data-busy');
-      (run as HTMLButtonElement).disabled = false;
-    });
-  }
-  doneListeners.forEach((f) => f(message, failed));
-}
-
-/** A button for an action: it says "working…" (after its label) from the click until the host is done with it. */
-function ActionButton({
-  message,
-  working: label,
-  children,
-  ...props
-}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string }) {
-  const busy = useWorking(message);
-  return (
-    <button {...props} disabled={props.disabled || !!busy} aria-busy={!!busy} onClick={() => act(message, label)}>
-      {children}
-      {busy && <WorkingTag label={busy} />}
-    </button>
-  );
 }
 
 /**
@@ -194,15 +131,6 @@ function CreateWorktreeButton({ creating, another }: { creating: boolean; anothe
           </button>
         </span>
       )}
-    </span>
-  );
-}
-
-/** "working…" beside an action that's in progress. */
-function WorkingTag({ label }: { label: string }) {
-  return (
-    <span class="action-busy" role="status">
-      <i class="codicon codicon-loading codicon-modifier-spin" /> {label}
     </span>
   );
 }
@@ -2407,70 +2335,6 @@ function Activity({ ticket }: { ticket: TicketView }) {
         </div>
       </div>
     </section>
-  );
-}
-
-interface MenuItem {
-  key: string;
-  label: string;
-  icon: string;
-  /** Classes on the item (colours its icon). */
-  class?: string;
-  detail?: string;
-  checked?: boolean;
-  onSelect(): void;
-}
-
-/** A button that opens a menu below it. */
-function Dropdown({ class: cls, button, label, items, busy }: { class: string; button: ComponentChildren; label: string; items: MenuItem[]; busy?: string }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: Event) => (e instanceof KeyboardEvent ? e.key === 'Escape' : !box.current?.contains(e.target as Node)) && setOpen(false);
-    window.addEventListener('mousedown', close);
-    window.addEventListener('keydown', close);
-    return () => {
-      window.removeEventListener('mousedown', close);
-      window.removeEventListener('keydown', close);
-    };
-  }, [open]);
-  return (
-    <span class={`dropdown ${cls}`} ref={box}>
-      <button
-        class="dropdown-button priority-button"
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={!items.length}
-        onClick={() => setOpen(!open)}
-      >
-        {button}
-        {busy && <WorkingTag label={busy} />}
-        {items.length > 0 && <i class="codicon codicon-chevron-down chev-small" />}
-      </button>
-      {open && (
-        <span class="menu priority-menu" role="menu">
-          {items.map((i) => (
-            <button
-              key={i.key}
-              role={i.checked === undefined ? 'menuitem' : 'menuitemradio'}
-              aria-checked={i.checked}
-              class={i.class}
-              title={i.detail}
-              onClick={() => {
-                setOpen(false);
-                i.onSelect();
-              }}
-            >
-              <i class={`codicon codicon-${i.icon}`} />
-              <span>{i.label}</span>
-              {i.detail && <span class="menu-detail">{i.detail}</span>}
-            </button>
-          ))}
-        </span>
-      )}
-    </span>
   );
 }
 
