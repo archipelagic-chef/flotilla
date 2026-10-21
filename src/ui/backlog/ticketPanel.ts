@@ -1476,6 +1476,11 @@ export class TicketPanels implements vscode.Disposable {
         void panel.webview.postMessage(reply);
         return;
       }
+      case 'preview': {
+        const html = await renderMarkdown(m.text, panel.webview, this.deps.backlog.dir, this.roots(item));
+        void panel.webview.postMessage({ type: 'previewed', requestId: m.requestId, html } satisfies TicketHostMessage);
+        return;
+      }
       case 'mediaRefused':
         void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
         return;

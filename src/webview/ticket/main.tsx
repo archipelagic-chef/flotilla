@@ -14,6 +14,7 @@ import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMes
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
+import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
 import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
@@ -207,6 +208,9 @@ const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = 
 /** Replies to pasted or dropped images, by request id. */
 const imageReplies = new Map<number, (markdown: string) => void>();
 let nextImage = 1;
+/** Replies to a Markdown box's Preview, by request id. */
+const previewReplies = new Map<number, (html: string) => void>();
+let nextPreview = 1;
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -250,7 +254,42 @@ async function attachImages(files: FileList | File[], area: HTMLTextAreaElement,
   return images.length > 0;
 }
 
-/** A Markdown box that grows with its text and takes pasted or dropped images. */
+/** What the Mention button inserts: the prefix of this ticket's id (BL-, or a tracker's PROJ-). */
+const mentionPrefix = (id: string) => /^(.*?-)\d+$/.exec(id)?.[1] ?? '';
+
+/** The formatting toolbar's buttons (BL-129), with their keys. */
+const FORMATS: Array<{ format: Format; icon: string; label: string; key?: string }> = [
+  { format: 'bold', icon: 'bold', label: 'Bold', key: 'b' },
+  { format: 'italic', icon: 'italic', label: 'Italic', key: 'i' },
+  { format: 'code', icon: 'code', label: 'Code' },
+  { format: 'codeBlock', icon: 'file-code', label: 'Code block' },
+  { format: 'link', icon: 'link', label: 'Link', key: 'k' },
+  { format: 'bullets', icon: 'list-unordered', label: 'Bulleted list' },
+  { format: 'numbers', icon: 'list-ordered', label: 'Numbered list' },
+  { format: 'quote', icon: 'quote', label: 'Quote' },
+  { format: 'mention', icon: 'mention', label: 'Mention a ticket or comment' },
+];
+
+/**
+ * Makes an edit in the textarea as typing would, so Ctrl+Z undoes it; where the browser won't, the value is set.
+ * The textarea's input event updates the box's state.
+ */
+function editArea(el: HTMLTextAreaElement, edit: TextEdit, setValue: (text: string) => void): void {
+  const expected = el.value.slice(0, edit.from) + edit.insert + el.value.slice(edit.to);
+  el.focus();
+  el.setSelectionRange(edit.from, edit.to);
+  const typed = edit.insert ? document.execCommand('insertText', false, edit.insert) : edit.from === edit.to || document.execCommand('delete');
+  if (!typed || el.value !== expected) {
+    el.value = expected;
+    setValue(expected);
+  }
+  el.setSelectionRange(edit.selStart, edit.selEnd);
+}
+
+/**
+ * A Markdown box that grows with its text and takes pasted or dropped images. With format, it has a toolbar (in that
+ * markup) and, for Markdown, Write and Preview tabs: Preview renders the text as the activity shows it.
+ */
 function MarkdownBox({
   value,
   setValue,
@@ -260,6 +299,8 @@ function MarkdownBox({
   autoFocus,
   minRows = 3,
   images = true,
+  format,
+  mention = '',
 }: {
   value: string;
   setValue(text: string): void;
@@ -270,21 +311,41 @@ function MarkdownBox({
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
   images?: boolean;
+  /** The toolbar, writing this markup (none without). */
+  format?: Markup;
+  /** What the Mention button inserts: the ticket ids' prefix. */
+  mention?: string;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
+  const [preview, setPreview] = useState<string | undefined>(undefined);
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight + 2}px`;
-  }, [value]);
+  }, [value, preview === undefined]);
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
-  return (
+  const apply = (f: Format) => {
+    const el = area.current;
+    if (el) editArea(el, formatEdit(el.value, el.selectionStart, el.selectionEnd, f, format, mention), setValue);
+  };
+  const showPreview = () => {
+    const requestId = nextPreview++;
+    setPreview('');
+    previewReplies.set(requestId, (html) => setPreview((shown) => (shown === undefined ? undefined : html)));
+    send({ type: 'preview', requestId, text: value });
+  };
+  const write = () => {
+    setPreview(undefined);
+    setTimeout(() => area.current?.focus());
+  };
+  const box = (
     <textarea
       ref={area}
       class="md-box"
+      hidden={preview !== undefined}
       rows={minRows}
       value={value}
       placeholder={placeholder}
@@ -294,6 +355,14 @@ function MarkdownBox({
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           onSubmit();
+          return;
+        }
+        const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());
+        if (key) {
+          // Not on to VS Code, where Ctrl+B toggles the sidebar and Ctrl+K starts a chord.
+          e.preventDefault();
+          e.stopPropagation();
+          apply(key.format);
         }
       }}
       onPaste={(e) => {
@@ -301,6 +370,13 @@ function MarkdownBox({
         if (images && files?.length && [...files].some((f) => fileKind(f))) {
           e.preventDefault();
           void attachImages(files, area.current!, setValue);
+          return;
+        }
+        const el = area.current!;
+        const link = format && pasteLink(el.value, el.selectionStart, el.selectionEnd, e.clipboardData?.getData('text/plain') ?? '', format);
+        if (link) {
+          e.preventDefault();
+          editArea(el, link, setValue);
         }
       }}
       onDragOver={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
@@ -312,6 +388,47 @@ function MarkdownBox({
         }
       }}
     />
+  );
+  if (!format) return box;
+  const key = (k?: string) => (k ? ` (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}${k.toUpperCase()})` : '');
+  return (
+    <div class="md-editor">
+      <div class="md-toolbar">
+        {format === 'markdown' && (
+          <span class="md-tabs" role="tablist">
+            <button role="tab" class="md-tab" aria-selected={preview === undefined} onClick={write}>
+              Write
+            </button>
+            <button role="tab" class="md-tab" aria-selected={preview !== undefined} onClick={showPreview}>
+              Preview
+            </button>
+          </span>
+        )}
+        {preview === undefined && (
+          <span class="md-formats" role="toolbar" aria-label="Formatting">
+            {FORMATS.map((f) => (
+              <button
+                key={f.format}
+                class="icon-button"
+                title={f.label + key(f.key)}
+                aria-label={f.label}
+                // The textarea keeps its focus and selection.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => apply(f.format)}
+              >
+                <i class={`codicon codicon-${f.icon}`} />
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
+      {box}
+      {preview !== undefined && (
+        <div class="md-preview" style={{ minHeight: `${minRows * 1.5 + 1}em` }}>
+          {preview || !value.trim() ? <Rendered html={preview} empty="Nothing to preview." /> : <div class="rendered empty-text">Rendering…</div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -455,6 +572,8 @@ function Description({ ticket }: { ticket: TicketView }) {
             autoFocus
             minRows={8}
             images={!ticket.remote}
+            format={jira ? 'jira' : 'markdown'}
+            mention={mentionPrefix(ticket.item.id)}
           />
           {jira && <div class="hint">Jira's own formatting: this is the description as Jira stores it.</div>}
           <div class="actions-row">
@@ -2210,6 +2329,8 @@ function Activity({ ticket }: { ticket: TicketView }) {
           label="Comment"
           onSubmit={post}
           images={!ticket.remote}
+          format="markdown"
+          mention={mentionPrefix(ticket.item.id)}
         />
         <div class="actions-row">
           {reviewable && (
@@ -2638,6 +2759,9 @@ function App() {
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
+      } else if (m.type === 'previewed') {
+        previewReplies.get(m.requestId)?.(m.html);
+        previewReplies.delete(m.requestId);
       }
     };
     window.addEventListener('message', listener);
