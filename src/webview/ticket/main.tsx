@@ -14,7 +14,7 @@ import type { AgentChatView, QueuedView, ReportView, TicketCiView, TicketHostMes
 import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
-import { Attachments, SHOW_ENTRY, showEntry } from './attachments';
+import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
@@ -1845,6 +1845,12 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
       {e.report ? (
         <>
           <Rendered html={e.report.summary} empty="" />
+          {/* Its pictures, videos and diagrams lead it (BL-114): the text they belong to stays in Details. */}
+          {e.report.media && (
+            <div class="report-media">
+              <Rendered html={e.report.media} empty="" />
+            </div>
+          )}
           {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
           {e.report.details && (
             <details class="report-details">
@@ -1892,6 +1898,37 @@ function ReplyLine({ e, ticket }: { e: ActivityEntry; ticket: TicketView }) {
     <div class="reply-to" title={parent ? undefined : 'The entry it answers is no longer in the ticket'}>
       ↩ {label}
     </div>
+  );
+}
+
+/** A folded report's media (BL-114), beside its line: a click opens one in the viewer, and the entry stays folded. */
+function MediaStrip({ e }: { e: ActivityEntry }) {
+  const thumbs = e.thumbs!;
+  const open = (at: number) =>
+    openMedia(
+      thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
+      at,
+    );
+  return (
+    <ul class="media-strip">
+      {thumbs.map((t, i) => (
+        <li key={i}>
+          <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
+            {t.kind === 'diagram' ? (
+              <Diagram code={t.code ?? ''} class="media-thumb-diagram" />
+            ) : t.kind === 'video' ? (
+              <>
+                {/* Its first frame; it doesn't play here. */}
+                <video src={t.src} preload="metadata" muted tabIndex={-1} />
+                <i class="codicon codicon-play-circle play-mark" />
+              </>
+            ) : (
+              <img src={t.src} alt={t.alt ?? ''} loading="lazy" />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -2124,6 +2161,7 @@ function Activity({ ticket }: { ticket: TicketView }) {
                     </span>
                   )}
                 </button>
+                {!!e.thumbs?.length && <MediaStrip e={e} />}
               </li>
             );
           }
