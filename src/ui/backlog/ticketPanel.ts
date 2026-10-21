@@ -1405,39 +1405,8 @@ export class TicketPanels implements vscode.Disposable {
     if (!item) return;
     const backlog = this.deps.backlog;
     switch (m.type) {
-      case 'comment':
-        if (!m.text.trim()) return;
-        if (item.remote) {
-          await this.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
-          return;
-        } else {
-          await this.addActivity(id, 'You', await this.withReplyLine(item, m.text, m.replyTo));
-          // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
-          await this.shaping?.discuss(id);
-        }
-        break;
       case 'openRemote':
         if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-        return;
-      case 'image': {
-        const bytes = Buffer.from(m.data, 'base64');
-        const kind = mediaType(m.name)?.kind ?? 'image';
-        if (tooLarge(kind, bytes.length)) {
-          void panel.webview.postMessage({ type: 'imageSaved', requestId: m.requestId, markdown: '' } satisfies TicketHostMessage);
-          throw new Error(tooLargeNote(m.name, kind, bytes.length));
-        }
-        const rel = await backlog.saveImage(id, m.name, bytes);
-        const reply: TicketHostMessage = { type: 'imageSaved', requestId: m.requestId, markdown: `![${path.basename(rel)}](${rel})` };
-        void panel.webview.postMessage(reply);
-        return;
-      }
-      case 'preview': {
-        const html = await renderMarkdown(m.text, panel.webview, this.deps.backlog.dir, this.roots(item));
-        void panel.webview.postMessage({ type: 'previewed', requestId: m.requestId, html } satisfies TicketHostMessage);
-        return;
-      }
-      case 'mediaRefused':
-        void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
         return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
@@ -1482,9 +1451,6 @@ export class TicketPanels implements vscode.Disposable {
       }
       case 'remotePriority':
         await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
-        return;
-      case 'postEntry':
-        await this.postEntry(item, m.key);
         return;
       case 'openCommit': {
         // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
