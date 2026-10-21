@@ -15,6 +15,10 @@ docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker ru
 
 `npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
 
+Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
+
+The merge flow (Merge to main, the merge train, Resolve and Fix with Agent, Approve, Cancel) has scenario tests in `tests/integration/merge/`: whole sequences of clicks on a real repository, with scripted agents (resolve, fix, commit nothing, redo the merge, crash, or work later) and checks (pass, fail, time out), and main moved by another merge when a scenario says. Each step records the ticket's merge state and what it offers to click next (`mergeActions`, which the ticket's buttons use too), and fails if a step leaves it where an earlier one did: a loop. The states and what moves each are in the table at the top of `src/features/backlog/mergeStates.ts`. A new path goes into that table and into a scenario together; a sequence that broke becomes a scenario as it happened.
+
 Press F5 ("Run Extension (playground)") to launch an Extension Development Host opened on `.playground/`, a throwaway repo that `npm run playground` creates on first launch.
 
 The playground's backlog and worktrees are seeded with every state Flotilla handles (To Do, an epic, a question from an agent, In Review with run blocks of each kind, approved, stopped, paused on a usage limit, Done; worktrees ahead, behind and with changes), by `scripts/playground-seed.mjs`. It takes the app's own entry keys, fingerprints, ticket format and review tests from `dist/playground-seed-kit.mjs`, which `npm run build` makes (`src/features/backlog/seedKit.ts`), so run that first. To seed it again, delete `.playground/.flotilla` and run `npm run playground`; worktrees that exist are kept.
@@ -67,6 +71,16 @@ Both sides build into the same `dist/`: after a code change, stop both debug ses
 ## Trying agents without usage
 
 `scripts/fake-claude.mjs` stands in for the `claude` CLI, so the autopilot, reviews, usage limits and resumes can be tried in the debug window in seconds and for free. In the debug window's settings, set `flotilla.agents.claudePath` to the absolute path of the script (executable: `chmod +x`). Its behaviour follows `fake:` lines in a ticket's description, such as `fake: wait 0s, changes`, `fake: ask`, `fake: limit 2m` or `fake: crash`; the script's header lists them all. Set the setting back to empty afterwards. An implementer run commits `fake-work/<id>.txt` on the item's branch, so point the fake only at a scratch item or branch, not at one you're keeping.
+
+## Buttons that wait
+
+A button that starts something taking a while (git, GitHub, an agent starting, a file write and the backlog's refresh) says it's working from the click until the host is done, and takes no second click meanwhile (BL-116). The webview marks the action busy when it sends it; the host replies "done" for every such message, in a `finally`, whether the action posted, failed (`failed: true`; the error shows as before), was cancelled at a question or returned early. So nothing sticks, and a button whose action asks first (a confirmation, a quick pick) stays working while the question is up.
+
+- **The ticket view**: use `ActionButton` with the message (`working="Merging…"` for a label of its own; "Working…" by default), or call `act(message, label)` from a button of your own and read `useWorking(message)` ([src/webview/ticket/main.tsx](src/webview/ticket/main.tsx)). The host's `{ type: 'done' }` is posted for every message ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)). Two clicks are the same action when `actionKey` ([src/webview/ticketActions.ts](src/webview/ticketActions.ts)) gives them the same key: give a new message type a case there when it carries a target (a hash, a key, a verdict), so one item's busy button doesn't disable another's.
+- **The sidebar's backlog**: use `BusyButton` with the `backlog` message and its codicon (it spins while working), or `act(message)` and `useBusy().has(message)` ([src/webview/ui/backlogBusy.tsx](src/webview/ui/backlogBusy.tsx)). The sidebar posts `backlogDone` for every `backlog` message ([src/ui/sidebar/sidebarProvider.ts](src/ui/sidebar/sidebarProvider.ts)); `backlogActionKey` ([src/webview/backlogActions.ts](src/webview/backlogActions.ts)) keys them by op and item, and an item's busy actions end when it leaves the backlog.
+- **Other sidebar messages**: a message that has no done reply yet gets one the same way: the host posts it in a `finally` around the handler, with the message as it was sent, and the webview clears the busy state on it. Don't rely on the tool icon's spinner (`trackProgress`): it isn't where the user clicked.
+
+Test it as `tests/unit/webview/backlogActions.test.ts` does (a second start of the same action is refused; finishing, failing and pruning clear it), and show it in the ticket's demo, as `demos/backlog-busy.json` does: a caption right after the click, while the button is still working.
 
 ## Demos
 
@@ -145,5 +159,9 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
 
 1. Update `CHANGELOG.md` and bump `version` in `package.json`.
 2. `npm run typecheck && npm test && npm run build`
-3. `npx vsce package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…).
-4. `npx vsce publish` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).
+3. `npm run package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…). It packages a copy of
+   `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository
+   walks every agent worktree under `.worktrees/` and doesn't finish. The build records its commit in
+   `dist/build.json`; in this repository, the status bar counts what main has merged since, and its click ("Flotilla:
+   Update from Main Build") builds main the same way in a throwaway worktree, installs it and reloads.
+4. `npx vsce publish --packagePath flotilla-<version>.vsix` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).

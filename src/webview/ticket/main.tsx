@@ -3,6 +3,7 @@ import { formatTokens } from '../../features/chats/usage';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, entryAgent, priorityFromName, type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import { mergeActions } from '../../features/backlog/mergeStates';
 import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
 import { entryRound, foldRounds, foldTitle, openEntry, reviewOutcome, type FeedGroup, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
 import { answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer, type Answer } from '../../features/backlog/report';
@@ -15,7 +16,7 @@ import { queuedNeed } from '../../features/backlog/needs';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from './format';
-import { Attachments, Diagram, openMedia, SHOW_ENTRY, showEntry } from './attachments';
+import { Attachments, Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { demoLength } from '../../features/backlog/demo';
 import { applyTicketParts } from '../ticketParts';
@@ -1206,6 +1207,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
   const agent = m.agent ?? 'An agent';
   const resolving = m.state === 'resolving' && m.running;
   const checks = m.checks;
+  const { actions } = mergeActions(m, m.running);
   // With failing checks the agent fixes them; with conflicts, it resolves them.
   const work = checks ? 'fixing the checks that fail on the merge' : 'resolving the conflicts';
   const [icon, cls, text] = resolving
@@ -1232,7 +1234,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
         <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
         </button>
-        {!resolving && m.state !== 'resolved' && (
+        {actions.includes('resolve') && (
           <button
             class="button"
             onClick={() => send({ type: 'mergeResolve' })}
@@ -1245,7 +1247,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
             <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
           </button>
         )}
-        {checks && m.state === 'failed' && !resolving && (
+        {actions.includes('recheck') && (
           <button
             class="button secondary"
             onClick={() => send({ type: 'mergeRecheck' })}
@@ -1254,7 +1256,7 @@ function MergingPanel({ ticket }: { ticket: TicketView }) {
             <i class="codicon codicon-refresh" /> Run the Checks Again
           </button>
         )}
-        {m.state !== 'resolving' && (!checks || m.state === 'resolved') && (
+        {actions.includes('approve') && (
           <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the merge, then moves the base branch to it">
             <i class="codicon codicon-check" /> {checks ? 'Approve Fix' : 'Approve Resolution'}
           </button>
@@ -2048,7 +2050,7 @@ function MediaStrip({ e }: { e: ActivityEntry }) {
         <li key={i}>
           <button class="media-thumb" onClick={() => open(i)} title={`${t.alt ?? (t.kind === 'diagram' ? 'A diagram' : '')}\nClick to open it large`.trim()}>
             {t.kind === 'diagram' ? (
-              <Diagram code={t.code ?? ''} class="media-thumb-diagram" />
+              <Diagram code={t.code ?? ''} label={t.alt ?? 'A diagram'} class="media-thumb-diagram" />
             ) : t.kind === 'video' ? (
               <>
                 {/* Its first frame; it doesn't play here. */}
@@ -2187,8 +2189,10 @@ function Activity({ ticket }: { ticket: TicketView }) {
         requestAnimationFrame(() => {
           const li = document.querySelector<HTMLElement>(`.feed [data-entry-key="${CSS.escape(key)}"]`);
           if (!li) return;
-          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video')) d.open = true;
-          li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          for (const d of li.querySelectorAll('details')) if (d.querySelector('img, video, [data-diagram], code.language-mermaid')) d.open = true;
+          // A diagram's "Show in activity" (BL-136) goes to the diagram in it.
+          const n = shownDiagram(key);
+          ((n !== undefined ? diagramsIn(li)[n] : undefined) ?? li).scrollIntoView({ behavior: 'smooth', block: 'center' });
           li.classList.add('flash');
           setTimeout(() => li.classList.remove('flash'), 1600);
         }),

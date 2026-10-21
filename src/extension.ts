@@ -53,6 +53,8 @@ import { heldBy, type ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
+import { resolveBase } from './features/workstreams/progress';
+import { localBase } from './features/backlog/merge';
 import { hideWorktrees } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { StorageMonitor } from './ui/storage';
@@ -61,6 +63,8 @@ import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
+import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
+import { shortTime } from './webview/shortTime';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -87,6 +91,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel('Flotilla');
   // An update installed while this window runs only applies after a reload: that's said (BL-85).
   watchInstalledVersion(context);
+  // The build's commit, and in Flotilla's own repository what main has merged since (BL-151).
+  registerSelfUpdate(context);
   context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
   // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
   const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));
@@ -156,6 +162,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
+  watchMainBuild(context, location.mainRoot, async () => {
+    const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
+    return base && localBase(location.mainRoot, base);
+  });
   // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
   setAgentDirs([backlog.dir]);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
@@ -428,6 +438,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           `Autopilot on: up to ${autopilot.view().max} agents take To Do tickets from the top of the backlog and work on them without a window. They report in the tickets; their work goes on to review.`,
         );
       }
+    }),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.tryPausedNow', async () => {
+      // With the autopilot off too: it resumes the paused agents, and starts no new tickets.
+      const result = await autopilot.tryNow();
+      if (!result) void vscode.window.showInformationMessage('No agent waits for a usage limit.');
+      else if (result.limited) void vscode.window.showInformationMessage(`Claude is still limited: no agent was started. They go on by themselves at ${shortTime(result.limited)}.`);
+      else void vscode.window.showInformationMessage(`Claude takes work again: ${result.resumed === 1 ? 'the paused agent goes on' : `${result.resumed} paused agents go on, top of the backlog first`}.`);
     }),
   );
   ctx.clashOf = (id) => autopilot.clashOf(id);

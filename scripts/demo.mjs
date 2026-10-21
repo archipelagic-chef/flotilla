@@ -413,6 +413,8 @@ async function show(mode, demo, out, still, display) {
       '--new-window',
       // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
       '--disable-dev-shm-usage',
+      // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
+      '--password-store=basic',
       playground,
     ],
     // The user's VS Code session variables would make this window talk to theirs.

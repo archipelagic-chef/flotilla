@@ -11,6 +11,7 @@ import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { menuContext, send } from './api';
+import { shortTime } from '../shortTime';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
 import './priority.css';
@@ -136,22 +137,35 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
         </button>
       )}
       {autopilot?.enabled && (
-        <button class="autopilot-bar" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
-          <i class="codicon codicon-rocket" />
-          <span>
-            <strong>Autopilot</strong>{' '}
-            {autopilot.elsewhere
-              ? 'runs in another window.'
-              : autopilot.waitingUntil
-                ? `waits for Claude's usage limit to reset (${new Date(autopilot.waitingUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}); paused agents go on then.`
-                : autopilot.waitingForMemory
-                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                  : autopilot.idle && !autopilot.running
-                    ? `· Idle: ${autopilot.idle}.`
-                    : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
-            {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
-          </span>
-        </button>
+        <div class="autopilot-bar">
+          <button class="autopilot-what" onClick={() => send({ type: 'backlog', op: 'autopilot' })} title="Click to turn the autopilot off">
+            <i class="codicon codicon-rocket" />
+            <span>
+              <strong>Autopilot</strong>{' '}
+              {autopilot.elsewhere
+                ? 'runs in another window.'
+                : autopilot.waitingUntil
+                  ? autopilot.triedAt
+                    ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
+                    : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
+                  : autopilot.waitingForMemory
+                    ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                    : autopilot.idle && !autopilot.running
+                      ? `· Idle: ${autopilot.idle}.`
+                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+              {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
+            </span>
+          </button>
+          {autopilot.waitingUntil && !autopilot.elsewhere && (
+            <BusyButton
+              class="try-now"
+              message={{ type: 'backlog', op: 'tryNow' }}
+              title="Asks Claude whether it takes work again: if it does, the paused agents go on now (top of the backlog first) and the autopilot takes To Do tickets again"
+            >
+              Try Now
+            </BusyButton>
+          )}
+        </div>
       )}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (

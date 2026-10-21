@@ -1,0 +1,24 @@
+{
+  "title": "A report's Mermaid diagram, in the Attachments section",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "caption": "The report's diagram is an attachment too" },
+    { "waitFor": ".attachments .attachment-diagram svg" },
+    { "wait": 700 },
+    { "caption": "A click opens it large" },
+    { "click": ".attachment-thumb:has(.attachment-diagram)" },
+    { "waitFor": ".viewer .viewer-diagram svg" },
+    { "wait": 700 },
+    { "caption": "A click on it zooms in" },
+    { "click": ".viewer-diagram" },
+    { "wait": 700 },
+    { "caption": "Show in activity goes to the diagram in the report" },
+    { "click": ".viewer .text-button:has-text(\"Show in activity\")" },
+    { "wait": 700 },
+    { "caption": "" }
+  ]
+}

@@ -2113,7 +2113,6 @@ ins {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  width: 100%;
   margin: 2px 0 6px;
   padding: 5px 8px;
   border-left: 2px solid var(--vscode-charts-green, var(--working));
@@ -2125,6 +2124,40 @@ ins {
 .autopilot-bar .codicon {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
+}
+/* The bar's text turns the autopilot off; Try Now (BL-132), next to it, tries a usage limit's paused agents now. */
+.autopilot-bar .autopilot-what {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.autopilot-bar .try-now {
+  flex: none;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.autopilot-bar .try-now:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.autopilot-bar .try-now .codicon {
+  color: inherit;
 }
 /* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
 .merge-queue-bar {

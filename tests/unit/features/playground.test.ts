@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { git, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 // scripts/playground.mjs, run in a scratch directory: it creates .playground under the working directory.
@@ -9,8 +9,13 @@ const script = path.join(process.cwd(), 'scripts', 'playground.mjs');
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
 
+// An empty home: the script's debug profile finds no Claude Code there to copy (some 300 MB into each scratch
+// directory, which made these tests take minutes when several suites ran at once, BL-139).
+const home = makeTempDir('flotilla-playground-home-');
+afterAll(() => removeDir(home));
+
 function playground(cwd: string, ...args: string[]) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
 }
 
 function scratch(): string {
@@ -31,6 +36,7 @@ describe('scripts/playground.mjs', { timeout: 90_000 }, () => {
     expect(playground(cwd).stdout).toMatch(/Created playground/);
     expect(playground(cwd).stdout).toMatch(/already exists/);
     expect(git(path.join(cwd, '.playground'), 'config', 'flotilla.playgroundVersion')).toBe('2');
+    expect(fs.readdirSync(path.join(cwd, '.vscode-test', 'debug-extensions'))).toEqual([]);
   });
 
   it('says an outdated playground is outdated, and leaves it as it is', () => {

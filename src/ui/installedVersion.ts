@@ -34,12 +34,22 @@ export function watchInstalledVersion(context: vscode.ExtensionContext): void {
     if (!newer) return;
     found = { newer, running };
     clearInterval(timer);
-    void offerReload(newer, running);
+    if (!quiet) void offerReload(newer, running);
   };
   const timer = setInterval(check, CHECK_EVERY_MS);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
   check();
 }
+
+/**
+ * Flotilla installs a build itself and offers the reload (BL-151): the watcher doesn't say so again, but agents started
+ * until the reload are noted as starting the old way.
+ */
+export function expectReinstall(): void {
+  quiet = true;
+}
+
+let quiet = false;
 
 /** What the autopilot adds to its note of an agent it starts or resumes while this window runs an older Flotilla. */
 export function staleVersionNote(): string {
