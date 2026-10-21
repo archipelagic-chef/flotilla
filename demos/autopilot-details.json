@@ -1,0 +1,20 @@
+{
+  "title": "A click on the autopilot's bar shows what it's doing",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "The autopilot is turned on: agents take To Do tickets" },
+    { "click": ".autopilot-toggle" },
+    { "waitFor": ".autopilot-bar:has-text(\"working\")" },
+    { "wait": 1500 },
+    { "caption": "A click on the bar shows what it's doing; the switch turns it off" },
+    { "click": ".autopilot-bar .autopilot-what" },
+    { "waitFor": ".autopilot-details .autopilot-line" },
+    { "wait": 2500 },
+    { "caption": "Each line opens its ticket" },
+    { "click": ".autopilot-details .autopilot-line >> nth=0" },
+    { "waitFor": "h1" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
