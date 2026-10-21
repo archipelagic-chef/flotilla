@@ -702,13 +702,17 @@ export class TicketPanels implements vscode.Disposable {
           if (!agent || seen.has(c.id)) return [];
           if (started?.item !== item.id && !named.has(agent.toLowerCase())) return [];
           seen.add(c.id);
+          // A quiet chat whose process runs in this window is still working: its record and transcript just wait.
+          const alive = isRunningHeadless(c.id) || isRunningInTerminal(c.id);
+          const stalled = c.stalled && !alive ? c.stalled : undefined;
           return [
             {
               key: ws.key,
               id: c.id,
               agent,
               title: agentChatItem(c.title) ? item.title : c.title,
-              state: c.state,
+              state: c.stalled && alive ? ('working' as const) : c.state,
+              ...(stalled ? { stalled: stalled.toISOString() } : {}),
               message: c.message,
               branch: workstreamLabel(ws),
               started: (c.startedAt ?? c.updatedAt).toISOString(),
@@ -1689,9 +1693,13 @@ export class TicketPanels implements vscode.Disposable {
       case 'openTicket':
         await this.open(m.id);
         return;
-      case 'openChat':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
+      case 'openChat': {
+        // Any chat the ticket lists opens, in whichever worktree it ran (BL-131): not only the ticket's own.
+        const listed = this.agentChats(item, (await backlog.readTicket(item)).activity).find((c) => c.key === m.key && c.id === m.id);
+        if (listed) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
+        else void vscode.window.showWarningMessage(`Can't open this chat: it's no longer among ${id}'s chats (its worktree may have been removed).`);
         return;
+      }
       case 'createIssue': {
         if (item.remote) return;
         const ticket = await backlog.readTicket(item);

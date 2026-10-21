@@ -29,6 +29,7 @@ import './ticket.css';
 import { TicketCi } from './ci';
 import { ciWord } from '../../features/ci/summary';
 import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
+import { stoppedLabel } from '../shortTime';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -764,7 +765,7 @@ function ChatCard({ chat }: { chat: AgentChatView }) {
       </div>
     );
   }
-  const state = CHAT_STATE[chat.state] ?? CHAT_STATE.ended;
+  const state = chat.stalled ? { label: stoppedLabel(chat.stalled), cls: 'ended' } : (CHAT_STATE[chat.state] ?? CHAT_STATE.ended);
   return (
     <button class={`chat-card ${state.cls}`} onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
       <span class="chat-icon">
