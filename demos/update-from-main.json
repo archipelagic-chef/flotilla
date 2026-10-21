@@ -1,0 +1,32 @@
+{
+  "title": "Update from Main says what happened when clicked",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Keep the sidebar's scroll on refresh\")"
+    },
+    {
+      "click": ".work-head-action:has-text(\"Update from Main\")"
+    },
+    {
+      "waitFor": ".notification-toast:has-text(\"BL-2:\")"
+    },
+    {
+      "caption": "A notification says what the click did: merged, or already up to date"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
