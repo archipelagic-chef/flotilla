@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXCERPT, failureTask, fenceFor, fixRefusal, logExcerpt, parseFailedJob, type FailedJob } from '../../../../src/features/ci/failureTask';
+import { EXCERPT, failedJob, failureTask, fenceFor, fixRefusal, logExcerpt, parseFailedJob, type FailedJob } from '../../../../src/features/ci/failureTask';
 
 const job = (over: Partial<FailedJob> = {}): FailedJob => ({
   branch: 'feature/BL-7-fix',
@@ -134,5 +134,26 @@ describe('fixRefusal', () => {
 
   it('allows a linked worktree on a branch of its own', () => {
     expect(fixRefusal(branch('feature/BL-7-fix'), { isMain: false })).toBeUndefined();
+  });
+});
+
+describe('failedJob', () => {
+  const run = { id: 7, workflow: 'CI', number: 3, title: 't', event: 'push', status: 'failure' as const, url: 'https://github.com/a/b/actions/runs/7', sha: 'abc1234', attempt: 1, created: '' };
+  const job = (id: number, status: 'failure' | 'success') => ({ id, name: `job ${id}`, status, url: `https://github.com/a/b/job/${id}`, steps: [{ number: 1, name: 'Run tests', status }] });
+  const github = { jobs: async () => [job(1, 'success'), job(2, 'failure'), job(3, 'failure')], log: async (id: number) => `2026-10-12T16:00:00.0000000Z log of ${id}` };
+
+  it("takes the job asked for, or the run's first failed one, with its failed steps and cleaned log", async () => {
+    expect(await failedJob(github, 'feat', run, 3)).toEqual({
+      branch: 'feat',
+      run: { name: 'CI', url: run.url, commit: 'abc1234' },
+      job: { name: 'job 3', url: 'https://github.com/a/b/job/3' },
+      failedSteps: ['Run tests'],
+      log: 'log of 3',
+    });
+    expect((await failedJob(github, 'feat', run))?.job.name).toBe('job 2');
+  });
+
+  it("is undefined for a job that didn't fail", async () => {
+    expect(await failedJob(github, 'feat', run, 1)).toBeUndefined();
   });
 });

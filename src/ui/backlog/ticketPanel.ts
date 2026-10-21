@@ -4,39 +4,34 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import {
-  acceptItem,
   addItem,
   agentChatItem,
   branchMatches,
   childrenOf,
   currentPrefix,
   itemBranches,
-  removeItem,
   entryAgent,
   sameAgent,
-  linkIssue,
   linkedItem,
-  unlinkIssue,
-  updateItem,
   readyToMerge,
-  type AgentChoice,
   type BacklogItem,
 } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
-import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink } from '../../features/backlog/ticket';
 import { compareRewrite } from '../../features/backlog/history';
-import { parseReport, reportAnswer } from '../../features/backlog/report';
+import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
+import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -45,10 +40,9 @@ import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
 import type { MainSync } from './mainSync';
 import { readSettings } from '../settings';
-import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
@@ -57,11 +51,15 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
-import { demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
+import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
 import { openTarget } from '../../features/backlog/runTarget';
-import { runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
+import { demoPlace, runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
+import type { CiRuns } from '../ci/ciRuns';
+import { TicketCi } from './ticketCi';
+import { handleMessage } from './ticketMessages';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -85,6 +83,9 @@ export interface TicketDeps {
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
   output?: vscode.OutputChannel;
+  /** The CI/CD view's reader, and showing a worktree's CI/CD view: for the tickets' CI (BL-106). */
+  ci?: CiRuns;
+  showCi?(key: string): void;
 }
 
 /** The key the "Show activity" choice is kept under in the memento. */
@@ -97,6 +98,33 @@ export function showActivityKept(memento: vscode.Memento): boolean {
 
 export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thenable<void> {
   return memento.update(SHOW_ACTIVITY_KEY, shown);
+}
+
+/** The key the tickets whose Attachments section the user folded are kept under in the memento (BL-110). */
+const FOLDED_ATTACHMENTS_KEY = 'flotilla.ticket.foldedAttachments';
+
+/** Whether the user folded a ticket's Attachments section. */
+export function attachmentsFolded(memento: vscode.Memento, id: string): boolean {
+  return memento.get<string[]>(FOLDED_ATTACHMENTS_KEY, []).includes(id);
+}
+
+export function keepAttachmentsFolded(memento: vscode.Memento, id: string, folded: boolean): Thenable<void> {
+  const others = memento.get<string[]>(FOLDED_ATTACHMENTS_KEY, []).filter((i) => i !== id);
+  return memento.update(FOLDED_ATTACHMENTS_KEY, folded ? [...others, id] : others);
+}
+
+/** The media files in a ticket's folder, by their path from the backlog's folder ("BL-3/shot.png"), with their times. */
+async function folderFiles(dir: string, id: string): Promise<FolderFile[]> {
+  const names = await fs.promises.readdir(path.join(dir, id)).catch(() => [] as string[]);
+  const files = await Promise.all(
+    names
+      .filter((n) => mediaType(n))
+      .map(async (n) => {
+        const stat = await fs.promises.stat(path.join(dir, id, n)).catch(() => undefined);
+        return stat?.isFile() ? [{ path: `${id}/${n}`, date: entryDate(stat.mtime) }] : [];
+      }),
+  );
+  return files.flat();
 }
 
 /** A path's real location (through symlinks), or the path itself when there's no such file. */
@@ -123,43 +151,47 @@ export async function renderMarkdown(text: string, webview: vscode.Webview, dir:
     }
   }
   html = stripStyles(html);
-  // Images next to the tickets (BL-3/shot.png) load through the webview.
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
-  // Others, in the repository (from its root: the ticket's worktrees, then the main one) or anywhere on disk, are
-  // embedded. Videos (MP4, WebM) get a player; a file over its kind's limit, a note instead (BL-79).
-  return replaceMedia(html, async (src) => {
-    const type = mediaType(src);
-    if (/^data:/i.test(src)) return undefined;
-    if (/^https?:/i.test(src) || src.startsWith('//')) return type?.kind === 'video' ? { src, kind: 'video' } : undefined;
-    let rel = src;
-    try {
-      rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
-    } catch {
-      // As written.
+  return replaceMedia(html, (src) => resolveMedia(src, webview, dir, roots));
+}
+
+/**
+ * What an image or video source in a ticket shows (undefined: kept as written): a file next to the tickets loads
+ * through the webview; one elsewhere in the repository (from its root: the ticket's worktrees, then the main one) or
+ * anywhere on disk is embedded. Videos (MP4, WebM) get a player; a file over its kind's limit, a note (BL-79).
+ */
+export async function resolveMedia(src: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<Media | undefined> {
+  const type = mediaType(src);
+  if (/^data:/i.test(src)) return undefined;
+  if (/^https?:/i.test(src) || src.startsWith('//')) return type?.kind === 'video' ? { src, kind: 'video' } : undefined;
+  let rel = src;
+  try {
+    rel = /^file:/i.test(src) ? vscode.Uri.parse(src).fsPath : decodeURIComponent(src);
+  } catch {
+    // As written.
+  }
+  const name = path.basename(rel);
+  const besideTicket = path.resolve(dir, rel);
+  if (besideTicket.startsWith(dir + path.sep)) {
+    const bytes = await fileSize(besideTicket);
+    if (bytes !== undefined) {
+      if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
+      return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
     }
-    const name = path.basename(rel);
-    const besideTicket = path.resolve(dir, rel);
-    if (besideTicket.startsWith(dir + path.sep)) {
-      const bytes = await fileSize(besideTicket);
-      if (bytes !== undefined) {
-        if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
-        return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
-      }
-    }
-    if (!type) return undefined;
-    const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
-    for (const file of candidates) {
-      const bytes = await fileSize(file);
-      if (bytes === undefined) continue;
-      // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
-      if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
-      if (tooLarge('image', bytes)) return { note: tooLargeNote(name, 'image', bytes) };
-      const uri = await imageDataUri(file, type.type);
-      if (uri) return { src: uri, kind: 'image' };
-    }
-    return undefined;
-  });
+  }
+  if (!type) return undefined;
+  const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
+  for (const file of candidates) {
+    const bytes = await fileSize(file);
+    if (bytes === undefined) continue;
+    // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
+    if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
+    if (tooLarge('image', bytes)) return { note: tooLargeNote(name, 'image', bytes) };
+    const uri = await imageDataUri(file, type.type);
+    if (uri) return { src: uri, kind: 'image' };
+  }
+  return undefined;
 }
 
 // A tag, its quoted attribute values may hold ">"; and an attribute in it (its name, and its value if it has one).
@@ -181,6 +213,36 @@ export function stripStyles(html: string): string {
 }
 
 /** A file's size; undefined if it isn't a file, or isn't there. */
+/** What recordings are (BL-111), by file, size and time: they're read once. */
+const recordings = new Map<string, { stamp: string; value: Recording }>();
+
+/**
+ * A recording's demo (the name the recorder noted in it) and, for a GIF, how long it plays: read from the file (a GIF
+ * whole, it's at most 2 MB; a video's end, where its metadata is).
+ */
+async function readRecording(file: string): Promise<Recording> {
+  const stat = await fs.promises.stat(file).catch(() => undefined);
+  if (!stat) return {};
+  const stamp = `${stat.size}:${stat.mtimeMs}`;
+  const known = recordings.get(file);
+  if (known?.stamp === stamp) return known.value;
+  const gif = /\.gif$/i.test(file);
+  const handle = await fs.promises.open(file, 'r').catch(() => undefined);
+  if (!handle) return {};
+  try {
+    const length = gif ? Math.min(stat.size, 4 * 1024 * 1024) : Math.min(stat.size, 256 * 1024);
+    const bytes = new Uint8Array(length);
+    await handle.read(bytes, 0, length, stat.size - length);
+    const name = recordedDemo(gif ? bytes.subarray(-1024) : bytes);
+    const seconds = gif ? gifSeconds(bytes) : undefined;
+    const value: Recording = { ...(name ? { name } : {}), ...(seconds ? { seconds } : {}) };
+    recordings.set(file, { stamp, value });
+    return value;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function fileSize(file: string): Promise<number | undefined> {
   try {
     const stat = await fs.promises.stat(file);
@@ -226,6 +288,32 @@ const IMG = /<img\b[^>]*>/g;
 const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+const MERMAID = /^ {0,3}(`{3,}|~{3,})\s*mermaid[^\n]*\n([\s\S]*?)\n? {0,3}\1[`~]*\s*$/i;
+const PICTURE = /^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)/;
+
+/**
+ * A report's media (parseReport's, BL-114) as thumbnails: a diagram by its code, a picture by what media says it is
+ * (as written when it says nothing); one over its limit has none (its note shows in the open entry).
+ */
+export async function mediaThumbs(media: string[], resolve: (src: string) => Promise<Media | undefined>): Promise<MediaThumb[]> {
+  const thumbs = await Promise.all(
+    media.map(async (m): Promise<MediaThumb | undefined> => {
+      const diagram = MERMAID.exec(m);
+      if (diagram) return { kind: 'diagram', code: diagram[2] };
+      const picture = PICTURE.exec(m);
+      if (!picture) return undefined;
+      const src = picture[2].replace(/^<|>$/g, '');
+      const r = await resolve(src).catch(() => undefined);
+      if (r && 'note' in r) return undefined;
+      return { kind: r?.kind ?? mediaType(src)?.kind ?? 'image', src: r?.src ?? src, ...(picture[1] ? { alt: picture[1] } : {}) };
+    }),
+  );
+  return thumbs.filter((t): t is MediaThumb => !!t);
+}
+
+/** Between a report's media and its details while their demos are paired (a comment: no html has it). */
+const MEDIA_SPLIT = '<!--flotilla-media-split-->';
+
 /** Replaces the images in html with what media says they are (undefined: kept as they are). */
 export async function replaceMedia(html: string, media: (src: string) => Promise<Media | undefined>): Promise<string> {
   const found = [...new Set((html.match(IMG) ?? []).map(srcOf).filter((s): s is string => !!s))];
@@ -252,20 +340,8 @@ export function replaceImages(html: string, src: (current: string) => Promise<st
   });
 }
 
-/** An item with its agent choice (none, when all are the defaults). A model chosen replaces Light, and Light a model. */
-function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
-  const { agent: _old, ...rest } = item;
-  const clean: AgentChoice = {
-    ...(agent.model ? { model: agent.model } : {}),
-    ...(agent.effort ? { effort: agent.effort } : {}),
-    ...(agent.light && !agent.model ? { light: true } : {}),
-    ...(agent.movedUp ? { movedUp: agent.movedUp } : {}),
-  };
-  return Object.keys(clean).length ? { ...rest, agent: clean } : rest;
-}
-
 /** Markdown (as comments and reports are written here) in a tracker's markup. */
-function inMarkup(source: IssueSource, markdown: string): string {
+export function inMarkup(source: IssueSource, markdown: string): string {
   return source.markup === 'jira' ? markdownToJira(markdown.trim()) : markdown.trim();
 }
 
@@ -292,8 +368,8 @@ export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly subscriptions: vscode.Disposable[] = [];
 
-  private reviews: ReviewLoop | undefined;
-  private shaping: Shaping | undefined;
+  reviews: ReviewLoop | undefined;
+  shaping: Shaping | undefined;
 
   /** The review loop, for the tickets' review panel (created after the tickets). */
   useReviews(reviews: ReviewLoop): void {
@@ -301,7 +377,7 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(reviews.onDidChange((id) => this.refresh(new Set([id]))));
   }
 
-  private mainSync: MainSync | undefined;
+  mainSync: MainSync | undefined;
 
   /** Update from Main (BL-55), for the tickets being worked on. */
   useMainSync(mainSync: MainSync): void {
@@ -314,7 +390,7 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(shaping.onDidChange(() => this.refreshAll()));
   }
 
-  private merger: Merger | undefined;
+  merger: Merger | undefined;
 
   /** The merges, for the tickets' Merge button and merge panel. */
   useMerger(merger: Merger): void {
@@ -322,7 +398,12 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(merger.onDidChange(() => this.refreshAll()));
   }
 
-  constructor(private readonly deps: TicketDeps) {
+  /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
+  readonly ci: TicketCi | undefined;
+
+  constructor(readonly deps: TicketDeps) {
+    this.ci = deps.ci && new TicketCi({ ci: deps.ci, showCi: (key) => deps.showCi?.(key), memento: deps.memento, mainRoot: deps.mainRoot });
+    if (this.ci) this.subscriptions.push(this.ci);
     this.subscriptions.push(
       creatingWorktrees.onDidChange(() => this.refreshAll()),
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
@@ -343,16 +424,19 @@ export class TicketPanels implements vscode.Disposable {
     this.asks.clear();
   }
 
-  /** Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes). */
-  private readonly focusOnPost = new WeakSet<vscode.WebviewPanel>();
+  /**
+   * Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes),
+   * or to show their Demo section in (opened from a review card's demo mark, BL-135).
+   */
+  private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, 'comment' | 'demo'>();
 
-  async open(id: string, o: { focus?: 'comment' } = {}): Promise<void> {
+  async open(id: string, o: { focus?: 'comment' | 'demo' } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
     id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
     if (existing) {
       existing.reveal();
-      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
+      if (o.focus) void existing.webview.postMessage({ type: 'focus', target: o.focus } satisfies TicketHostMessage);
       return;
     }
     const item = await this.item(id);
@@ -366,15 +450,23 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
-    if (o.focus) this.focusOnPost.add(panel);
+    if (o.focus) this.focusOnPost.set(panel, o.focus);
+    const ci = this.ci?.open(id, panel);
     panel.onDidDispose(() => {
+      ci?.dispose();
       this.panels.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.
       this.asks.get(id)?.dispose();
       this.asks.delete(id);
     });
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
-      (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost' ? this.onAsk(id, panel, m) : this.onMessage(id, panel, m)).catch(
+      (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost'
+        ? this.onAsk(id, panel, m)
+        : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
+          ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
+            (this.ci?.handle(id, m) ?? Promise.resolve())
+          : this.onMessage(id, panel, m)
+      ).catch(
         (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)),
       ),
     );
@@ -457,7 +549,7 @@ export class TicketPanels implements vscode.Disposable {
   private readonly details = new Map<string, { at: number; settled: boolean; value: Promise<RemoteRead> }>();
 
   /** An issue's details, cached (fresh: read again, e.g. after commenting); refreshes while it's read share the read. */
-  private remoteDetails(id: string, fresh = false): Promise<RemoteRead> {
+  remoteDetails(id: string, fresh = false): Promise<RemoteRead> {
     const cached = this.details.get(id);
     if (cached && !fresh && Date.now() - cached.at < 60_000) return cached.value;
     const entry = {
@@ -490,12 +582,19 @@ export class TicketPanels implements vscode.Disposable {
    * A ticket's local activity entries, rendered, with their keys, where they were posted, and their agent's chat: for
    * an agent's report, the chat that wrote it; for "Opened a chat for agent …", the chat it opened.
    */
-  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview): Promise<TicketView['activity']> {
+  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview, attachments: readonly AttachmentView[] = []): Promise<TicketView['activity']> {
+    // A demo's recording and its block show as one unit (BL-111).
+    const demos = new Map(attachments.filter((a) => a.demo).map((a): [string, Recording] => [a.src, { ...(a.recorded ? { name: a.recorded } : {}), ...(a.seconds ? { seconds: a.seconds } : {}) }]));
+    const units = (html: string) => withDemoUnits(html, (src) => demos.get(src));
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
+    const threads = entryThreads(entries);
     return Promise.all(
-      entries.map(async (e, n) => {
-        const key = Store.entryKey(item.id, e);
+      entries.map(async (whole, n) => {
+        const key = Store.entryKey(item.id, whole);
+        // A reply shows whom it answers above it, not its reply line (BL-126).
+        const thread = threads[n];
+        const e = thread.reply ? { ...whole, body: parseReply(whole.body)?.text ?? whole.body } : whole;
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
@@ -503,35 +602,50 @@ export class TicketPanels implements vscode.Disposable {
         // An agent opened in the last hours whose chat isn't there yet: its first message waits to be sent.
         const chat: AgentChatView | undefined =
           found ?? (opened && Date.now() - at < 12 * 3_600_000 ? { pending: true, agent: opened, headless: /^Review round/.test(e.body) } : undefined);
-        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key) : undefined;
+        const report = entryAgent(e.author) ? await this.reportView(item, e.body, entries.slice(n + 1), webview, key, units) : undefined;
         const html = report ? '' : await renderMarkdown(e.body, webview, this.deps.backlog.dir, this.roots(item));
+        // Any entry's media (a report's, a comment's) show beside its line when it's folded (BL-114).
+        const media = takeMedia(e.body).media;
+        const thumbs = media.length ? await mediaThumbs(media, (src) => resolveMedia(src, webview, this.deps.backlog.dir, this.roots(item))) : [];
         return {
           ...e,
-          html: !report && isReport(e.author) ? withRunButtons(html, parseRunBlocks(e.body), key) : html,
+          html: !report && isReport(e.author) ? units(withRunButtons(html, parseRunBlocks(e.body), key)) : html,
           key,
+          anchor: thread.anchor,
+          ...(thread.reply ? { reply: thread.reply } : {}),
+          ...(thread.root !== undefined ? { root: thread.root } : {}),
           ...(posted[key] ? { posted: posted[key] } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
+          ...(thumbs.length ? { thumbs } : {}),
         };
       }),
     );
   }
 
   /** An agent's report split for the ticket (its summary, what it needs, its details); undefined for an older report. */
-  private async reportView(item: BacklogItem, body: string, later: TicketEntry[], webview: vscode.Webview, key: string): Promise<ReportView | undefined> {
+  private async reportView(
+    item: BacklogItem,
+    body: string,
+    later: TicketEntry[],
+    webview: vscode.Webview,
+    key: string,
+    units: (html: string) => string = (h) => h,
+  ): Promise<ReportView | undefined> {
     const parts = parseReport(body);
     if (parts.summary === undefined) return undefined;
     const roots = this.roots(item);
     const answer = reportAnswer(later);
+    // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
+    const details = withRunButtons(await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.details), key, parseRunBlocks(parts.summary).length);
+    // Its pictures, videos and diagrams lead the details (BL-114). A recording goes with its demo block in the details
+    // (BL-111): they're paired as one, which shows with the media.
+    const media = parts.media.length ? await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots) : '';
+    const [ledBy, rest] = units(`${media}${MEDIA_SPLIT}${details}`).split(MEDIA_SPLIT);
     return {
-      // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
-      summary: withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key),
-      details: withRunButtons(
-        await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
-        parseRunBlocks(parts.details),
-        key,
-        parseRunBlocks(parts.summary).length,
-      ),
+      summary: units(withRunButtons(await renderMarkdown(parts.summary, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.summary), key)),
+      details: rest.trim(),
+      ...(ledBy.trim() ? { media: ledBy.trim() } : {}),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
       questions: parts.questions,
@@ -592,7 +706,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Where a ticket's images and links are looked for: its worktrees, then the main one. */
-  private roots(item: BacklogItem): string[] {
+  roots(item: BacklogItem): string[] {
     return [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot];
   }
 
@@ -616,14 +730,48 @@ export class TicketPanels implements vscode.Disposable {
     });
   }
 
+  /**
+   * A ticket's attachments (BL-110), each resolved as the ticket's inline media are; one that shows nothing there (not
+   * found, or over its limit) isn't listed.
+   */
+  private async attachments(item: BacklogItem, description: string, entries: TicketEntry[], webview: vscode.Webview): Promise<AttachmentView[]> {
+    const dir = this.deps.backlog.dir;
+    const roots = this.roots(item);
+    const found = gatherAttachments(description, entries, await folderFiles(dir, item.id));
+    const views = await Promise.all(
+      found.map(async ({ src, entry, ...a }): Promise<AttachmentView | undefined> => {
+        const entryKey = entry !== undefined ? { entryKey: Store.entryKey(item.id, entries[entry]) } : {};
+        // A diagram (BL-136) is drawn from its code: there's nothing to load.
+        if (a.kind === 'diagram') return { ...a, src, ...entryKey };
+        // An image on the web loads as it is (the page allows https images); a video the same.
+        const media = /^https?:|^\/\//i.test(src) ? { src, kind: a.kind } : await resolveMedia(src, webview, dir, roots).catch(() => undefined);
+        if (!media || 'note' in media) return undefined;
+        const file = path.resolve(dir, src);
+        const r = a.demo && file.startsWith(dir + path.sep) ? await readRecording(file) : {};
+        return {
+          ...a,
+          src: media.src,
+          kind: media.kind,
+          ...entryKey,
+          ...(r.name ? { recorded: r.name } : {}),
+          ...(r.seconds ? { seconds: r.seconds } : {}),
+        };
+      }),
+    );
+    return views.filter((v): v is AttachmentView => !!v);
+  }
+
   /** An issue's description and comments from its tracker, with the local activity (agents' reports) merged in. */
   private async remoteView(
     item: BacklogItem & { remote: RemoteIssue },
     webview: vscode.Webview,
-  ): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'error'> & { edit?: RemoteEditOptions; priorityName?: string }> {
+  ): Promise<Pick<TicketView, 'description' | 'descriptionHtml' | 'activity' | 'attachments' | 'error'> & { edit?: RemoteEditOptions; priorityName?: string }> {
     const dir = this.deps.backlog.dir;
+    const local = (await this.deps.backlog.readTicket(item)).activity;
     // Entries posted to the issue show as its comments.
-    const localEntries = (await this.localEntries(item, (await this.deps.backlog.readTicket(item)).activity, webview)).filter((e) => !e.posted);
+    // What the agents' reports show, and the ticket's folder; the tracker's own attachments stay in the tracker.
+    const attachments = await this.attachments(item, '', local, webview);
+    const localEntries = (await this.localEntries(item, local, webview, attachments)).filter((e) => !e.posted);
     try {
       const { details: d, edit } = await this.remoteDetails(item.id);
       const remoteEntries = await Promise.all(
@@ -639,11 +787,12 @@ export class TicketPanels implements vscode.Disposable {
         descriptionHtml:
           d.format === 'html' ? await this.trackerImages(item.id, d.description) : await renderMarkdown(d.description, webview, dir, this.roots(item)),
         activity: [...remoteEntries, ...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
+        attachments,
         edit,
         priorityName: d.issue.priorityName,
       };
     } catch (error) {
-      return { description: '', descriptionHtml: '', activity: localEntries, error: error instanceof Error ? error.message : String(error) };
+      return { description: '', descriptionHtml: '', activity: localEntries, attachments, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -715,7 +864,7 @@ export class TicketPanels implements vscode.Disposable {
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
 
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
-  private readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
+  readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
 
   /** The posts running per panel. A post superseded by a newer one sends nothing: the newer one carries its change. */
   private readonly running = new WeakMap<vscode.WebviewPanel, Set<Promise<void>>>();
@@ -774,14 +923,16 @@ export class TicketPanels implements vscode.Disposable {
         };
       });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
+      this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
       const showActivity = showActivityKept(this.deps.memento);
-      const next: TicketView = { ...view, agents, showActivity };
+      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id) };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {
         this.sentViews.set(panel, next);
         void panel.webview.postMessage(update);
       }
-      if (this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: 'comment' } satisfies TicketHostMessage);
+      const focus = this.focusOnPost.get(panel);
+      if (focus && this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: focus } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
     try {
@@ -802,11 +953,13 @@ export class TicketPanels implements vscode.Disposable {
         send({ ...base, ...content, remote: base.remote && { ...base.remote, edit, priorityName: priorityName ?? base.remote.priorityName } });
       } else {
         const ticket = await this.deps.backlog.readTicketCached(item);
+        const attachments = await this.attachments(item, ticket.description, ticket.activity, panel.webview);
         send({
           ...base,
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
-          activity: await this.localEntries(item, ticket.activity, panel.webview),
+          activity: await this.localEntries(item, ticket.activity, panel.webview, attachments),
+          attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
           ...(await this.mainView(plain, ticket.description)),
         });
@@ -853,6 +1006,12 @@ export class TicketPanels implements vscode.Disposable {
   /** A ticket's view without its description and activity. */
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
+    const mergeProgress = this.merger?.mergeProgress(plain.id);
+    const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
+    const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
+      const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
+      return ws && (ws.sync.head ?? ws.worktree.head);
+    });
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -896,6 +1055,9 @@ export class TicketPanels implements vscode.Disposable {
       ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canMerge: !remote && !!this.merger && readyToMerge(plain),
+      ...(mergeProgress ? { mergeProgress } : {}),
+      ...(mergeStop ? { mergeStop } : {}),
+      ...(mergeQueue ? { mergeQueue } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
@@ -932,7 +1094,7 @@ export class TicketPanels implements vscode.Disposable {
    * An item's branches without a worktree, its commits, and its history clean-ups: the one in progress, and the
    * histories kept (read from git: quick, and local).
    */
-  private async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp' | 'merge'>> {
+  async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp' | 'merge'>> {
     const cwd = this.deps.mainRoot;
     try {
       const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
@@ -967,7 +1129,7 @@ export class TicketPanels implements vscode.Disposable {
    * from the repository root (in the ticket's worktrees first, then the main one: after a merge it's there) or next to
    * the ticket (its pictures); "path#L10-L20" and "path:10" select lines.
    */
-  private async openHref(item: BacklogItem, href: string): Promise<void> {
+  async openHref(item: BacklogItem, href: string): Promise<void> {
     if (/^(https?|mailto):/i.test(href)) {
       await vscode.env.openExternal(vscode.Uri.parse(href));
       return;
@@ -991,7 +1153,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
-  private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
+  async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
     await this.deps.backlog.editTicket(item, change);
   }
 
@@ -999,7 +1161,7 @@ export class TicketPanels implements vscode.Disposable {
    * A Done item's work that isn't merged: a sibling ticket (same parent) to merge the branch, asking which branch when
    * there are several. The new ticket opens.
    */
-  private async mergeSibling(item: BacklogItem, branch?: string): Promise<void> {
+  async mergeSibling(item: BacklogItem, branch?: string): Promise<void> {
     const merge = this.deps.merges.get(item.id);
     const unmerged = merge?.branches.filter((b) => b.state === 'unmerged') ?? [];
     let pick: string | undefined = branch ?? unmerged[0]?.branch;
@@ -1029,7 +1191,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Done with unmerged work, and it's superseded: which ticket has the work instead. The warning goes. */
-  private async dismissUnmerged(item: BacklogItem): Promise<void> {
+  async dismissUnmerged(item: BacklogItem): Promise<void> {
     const data = await this.deps.backlog.read();
     const by = (
       await vscode.window.showInputBox({
@@ -1052,6 +1214,14 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
+  /** A reply's text, with the line that names the entry it answers first (BL-126); as it is when that entry is gone. */
+  async withReplyLine(item: BacklogItem, text: string, replyTo: string | undefined): Promise<string> {
+    if (!replyTo) return text;
+    const activity = (await this.deps.backlog.readTicket(item)).activity;
+    const parent = activity[entryAnchors(activity).indexOf(replyTo)];
+    return parent ? `${replyLine(parent, replyTo)}\n${text.trim()}` : text;
+  }
+
   async addActivity(id: string, author: string, body: string): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
@@ -1063,9 +1233,10 @@ export class TicketPanels implements vscode.Disposable {
    * the ticket's run (its last block). It runs in the ticket's worktree: shell commands one after the other in that
    * worktree's terminal, `launch` and `task` by name, and `open` a web link or a file of the worktree. The first time
    * (and whenever the block or its worktree changed) it asks, showing what runs. The block is read from the ticket when
-   * it runs: one that's gone (its entry was edited) isn't run.
+   * it runs: one that's gone (its entry was edited) isn't run. A demo block with `try` only sets the demo's window up
+   * (Try it yourself, BL-135).
    */
-  async run(id: string, ref?: { key: string; index: number }): Promise<void> {
+  async run(id: string, ref?: { key: string; index: number; try?: boolean }): Promise<void> {
     const item = await this.item(id);
     if (!item || item.remote) return;
     const ticket = await this.deps.backlog.readTicket(item);
@@ -1091,13 +1262,13 @@ export class TicketPanels implements vscode.Disposable {
       return;
     }
     // A demo (its name, then maybe a title) plays in the worktree's terminal, with the repository's player (BL-78).
-    const demo = kind === 'demo' ? demoRun(picked.block) : undefined;
+    const demo = kind === 'demo' ? demoRun(picked.block, ref?.try ? 'try' : 'play') : undefined;
     if (kind === 'demo' && !demo) {
       void vscode.window.showWarningMessage(`${id}'s demo block doesn't name a demo: write its name after \`demo\` (letters, digits, - and _).`);
       return;
     }
     const commands = demo ? demo.commands : lines;
-    const place = await this.runPlace(id, item);
+    const place = await this.runPlace(id, item, demo?.file);
     if (!place) return;
     if (demo && !fs.existsSync(path.join(place.dir, demo.file))) {
       void vscode.window.showWarningMessage(`${demo.file} isn't in ${place.dir}.`);
@@ -1150,7 +1321,7 @@ export class TicketPanels implements vscode.Disposable {
     }
     // Approved once the run goes ahead: a declined "Stop and Run" leaves the block unapproved.
     if (!approved) await this.deps.approvals.add(fingerprint);
-    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? 'played' : 'ran';
+    const verb = kind === 'open' ? 'opened' : kind === 'launch' ? 'started' : kind === 'demo' ? (ref?.try ? 'tried' : 'played') : 'ran';
     const ran = demo ? `the demo "${demo.name}"` : title ? `"${title}"` : `the ${kind} block`;
     await this.addActivity(id, 'Flotilla', `You ${verb} ${ran} in \`${place.label}\`.`);
   }
@@ -1160,9 +1331,16 @@ export class TicketPanels implements vscode.Disposable {
    * why: its worktree isn't reachable from this window, or a branch's worktree is gone (then it offers to create one).
    * Undefined when there's nothing to run in.
    */
-  private async runPlace(id: string, item: BacklogItem): Promise<RunPlace | undefined> {
+  private async runPlace(id: string, item: BacklogItem, demo?: string): Promise<RunPlace | undefined> {
     const worktrees = this.worktreesOf(item).map((w) => ({ branch: w.worktree.branch, path: w.worktree.path, adminDir: w.worktree.adminDir }));
     const found = runPlaces(itemBranches(item), worktrees);
+    // A demo of a ticket that's merged and cleaned up runs from main, when it's there (BL-111).
+    const main = demo ? demoPlace(found, demo, fs.existsSync(path.join(this.deps.mainRoot, demo)), { label: 'main', dir: this.deps.mainRoot }) : undefined;
+    if (main && 'why' in main) {
+      void vscode.window.showWarningMessage(`${id}'s demo can't run: ${main.why}.`);
+      return undefined;
+    }
+    if (main) return main;
     if (found.reachable.length === 1) return found.reachable[0];
     if (found.reachable.length > 1) {
       const picked = await vscode.window.showQuickPick(
@@ -1212,276 +1390,11 @@ export class TicketPanels implements vscode.Disposable {
   private async handle(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
-    const backlog = this.deps.backlog;
-    switch (m.type) {
-      case 'ready':
-        // The webview has nothing yet (or reloaded): the whole view goes again, and its Ask chat.
-        this.sentViews.delete(panel);
-        if (this.asks.has(id)) this.postAsk(id, panel, 0);
-        break;
-      case 'title': {
-        const title = m.title.trim();
-        if (!title || title === item.title) return;
-        if (item.remote) {
-          await this.writeRemote(id, (s) => s.update(id, { title }));
-          return;
-        }
-        await backlog.change((d) => updateItem(d, id, { title }));
-        await this.changeTicket(item, (t) => ({ ...t, title }));
-        break;
-      }
-      case 'description':
-        if (item.remote) {
-          // As the tracker writes it (Jira: wiki markup), as it was shown for editing.
-          await this.writeRemote(id, (s) => s.update(id, { description: m.text }));
-          return;
-        }
-        {
-          const before = (await backlog.readTicket(item)).description;
-          await this.changeTicket(item, (t) => ({ ...t, title: item.title, description: m.text }));
-          if (before.trim() !== m.text.trim()) await backlog.noteDescriptions({ id, before, by: 'You' });
-        }
-        break;
-      case 'showActivity':
-        // Remembered for the user, and every ticket shows it the same way; no view changes.
-        await keepShowActivity(this.deps.memento, m.shown);
-        return;
-      case 'comment':
-        if (!m.text.trim()) return;
-        if (item.remote) {
-          await this.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
-          return;
-        } else {
-          await this.addActivity(id, 'You', m.text);
-          // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
-          await this.shaping?.discuss(id);
-        }
-        break;
-      case 'openRemote':
-        if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-        return;
-      case 'status':
-        await backlog.change((d) => updateItem(d, id, { status: m.status }));
-        break;
-      case 'priority':
-        await backlog.change((d) => updateItem(d, id, { priority: m.priority }));
-        break;
-      case 'image': {
-        const bytes = Buffer.from(m.data, 'base64');
-        const kind = mediaType(m.name)?.kind ?? 'image';
-        if (tooLarge(kind, bytes.length)) {
-          void panel.webview.postMessage({ type: 'imageSaved', requestId: m.requestId, markdown: '' } satisfies TicketHostMessage);
-          throw new Error(tooLargeNote(m.name, kind, bytes.length));
-        }
-        const rel = await backlog.saveImage(id, m.name, bytes);
-        const reply: TicketHostMessage = { type: 'imageSaved', requestId: m.requestId, markdown: `![${path.basename(rel)}](${rel})` };
-        void panel.webview.postMessage(reply);
-        return;
-      }
-      case 'mediaRefused':
-        void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
-        return;
-      case 'start':
-        await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
-        return;
-      case 'discuss':
-        if (!item.remote) await this.shaping?.discuss(id, true);
-        break;
-      case 'keepDiscussing':
-        await this.shaping?.keepDiscussing(id);
-        break;
-      case 'openFile':
-        await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
-        return;
-      case 'link':
-        await vscode.commands.executeCommand('flotilla.linkBacklogItem', id);
-        return;
-      case 'unlink':
-        await backlog.change((d) => unlinkIssue(d, id, m.id));
-        break;
-      case 'openLink': {
-        const link = item.links?.find((l) => l.id === m.id);
-        if (link) await vscode.env.openExternal(vscode.Uri.parse(link.url));
-        return;
-      }
-      case 'openWorktree':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
-        return;
-      case 'transition': {
-        const move = (await this.remoteDetails(id)).edit?.transitions.find((t) => t.id === m.id);
-        if (!move || !item.remote) return;
-        if (move.needs?.length) {
-          // The workflow asks for more on this move (a resolution, a reviewer): that's done in the tracker.
-          const open = await vscode.window.showWarningMessage(
-            `"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`,
-            'Do It in the Tracker',
-          );
-          if (open) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-          return;
-        }
-        await this.writeRemote(id, (s) => s.transition(id, move.id));
-        return;
-      }
-      case 'remotePriority':
-        await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
-        return;
-      case 'postEntry':
-        await this.postEntry(item, m.key);
-        return;
-      case 'openCommit': {
-        // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
-        const work = await this.work(item);
-        const { commits } = work;
-        const commit = commits.find((c) => c.hash === m.hash);
-        // A commit of a kept history is on no branch: its diff.
-        if (!commit) {
-          if (work.history.some((v) => v.log.some((c) => c.hash === m.hash))) await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-          return;
-        }
-        const candidates = [
-          ...this.worktreesOf(item).filter((w) => w.worktree.branch && commit.branches.includes(w.worktree.branch)),
-          ...this.worktreesOf(item),
-          ...this.deps.repository.current.filter((w) => w.worktree.isMain),
-        ];
-        for (const ws of candidates) {
-          if (!ws.worktree.path) continue;
-          const has = await runGit(['merge-base', '--is-ancestor', m.hash, 'HEAD'], { cwd: ws.worktree.path }).then(
-            () => true,
-            () => false,
-          );
-          if (has) {
-            await this.deps.showCommits(
-              ws.key,
-              id,
-              commits.map((c) => c.hash),
-              m.hash,
-            );
-            return;
-          }
-        }
-        await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-        return;
-      }
-      case 'openHref':
-        await this.openHref(item, m.href);
-        return;
-      case 'agentModel': {
-        if (item.remote) return;
-        let model = m.model?.trim() || undefined;
-        if (model === 'other') {
-          model = (
-            await vscode.window.showInputBox({
-              title: `The model for agents on ${id}`,
-              prompt: "An alias (opus, sonnet, haiku, fable) or a model's full name (claude-opus-5-5)",
-              value: item.agent?.model ?? '',
-            })
-          )?.trim();
-          if (model === undefined) return;
-        }
-        if (model === 'light') {
-          await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: undefined, light: true }) : i)) }));
-          break;
-        }
-        if (model && !validModel(model)) {
-          void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
-          return;
-        }
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
-        break;
-      }
-      case 'agentEffort':
-        if (item.remote) return;
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, effort: m.effort ?? undefined }) : i)) }));
-        break;
-      case 'cleanUp':
-        await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
-        return;
-      case 'finishCleanUp':
-        await vscode.commands.executeCommand('flotilla.finishCleanUp', id);
-        return;
-      case 'cancelCleanUp':
-        await vscode.commands.executeCommand('flotilla.cancelCleanUp', id);
-        return;
-      case 'compareCleanUp':
-        await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
-        return;
-      case 'merge':
-        await this.merger?.merge(id);
-        return;
-      case 'mergeResolve':
-        await this.merger?.resolveWithAgent(id);
-        return;
-      case 'mergeApprove':
-        await this.merger?.approveResolution(id);
-        return;
-      case 'mergeCancel':
-        await this.merger?.cancel(id);
-        return;
-      case 'push':
-        await this.merger?.push();
-        return;
-      case 'run':
-        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index });
-        return;
-      case 'checkout':
-        if ((await this.work(item)).branches.includes(m.branch))
-          await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
-        return;
-      case 'mergeSibling':
-        await this.mergeSibling(item, m.branch);
-        return;
-      case 'dismissUnmerged':
-        await this.dismissUnmerged(item);
-        return;
-      case 'startReview':
-        await this.reviews?.start(id, true);
-        return;
-      case 'userReview':
-        await this.reviews?.userReview(id, m.verdict, m.text);
-        break;
-      case 'reviewFix':
-        await this.reviews?.fix(id, m.fix);
-        return;
-      case 'updateFromMain':
-        await this.mainSync?.update(id);
-        return;
-      case 'prioritize':
-        await this.reviews?.prioritize(id);
-        return;
-      case 'stopReview':
-        await this.reviews?.stop(id);
-        return;
-      case 'agent':
-        await this.controlAgent(id, m.action, m.session);
-        return;
-      case 'accept':
-        await backlog.change((d) => acceptItem(d, id));
-        break;
-      case 'dismiss':
-        if (!item.proposed) return;
-        await backlog.change((d) => removeItem(d, id));
-        await backlog.deleteDocument(id);
-        return;
-      case 'openTicket':
-        await this.open(m.id);
-        return;
-      case 'openChat':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
-        return;
-      case 'createIssue': {
-        if (item.remote) return;
-        const ticket = await backlog.readTicket(item);
-        const link = await this.deps.integrations.createIssue(id, item.title, ticket.description);
-        if (!link) return;
-        await backlog.change((d) => linkIssue(d, id, link));
-        await this.addActivity(id, 'Flotilla', `Created [${link.id}](${link.url}) and linked it.`);
-        break;
-      }
-    }
+    await handleMessage({ id, panel, item, backlog: this.deps.backlog, panels: this }, m);
   }
 
   /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */
-  private readonly asks = new Map<string, AskChat>();
+  readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
@@ -1527,7 +1440,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Sends the Ask chat to its tab, at most every 60 ms while an answer streams in. */
-  private postAsk(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
+  postAsk(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
     if (this.askTimers.has(id)) return;
     this.askTimers.set(
       id,
@@ -1578,7 +1491,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
-  private async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
+  async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
     await write(await this.source(issue));
     this.details.delete(issue);
     // The list has the status and priority the backlog shows; refreshing it refreshes the open tickets too.
@@ -1589,7 +1502,7 @@ export class TicketPanels implements vscode.Disposable {
    * Posts a local activity entry (a comment or an agent's report) to the issue, or to one of a local item's linked
    * issues, after showing what will be posted and asking. Agents never post: they only write the ticket file.
    */
-  private async postEntry(item: BacklogItem & { remote?: RemoteIssue }, key: string): Promise<void> {
+  async postEntry(item: BacklogItem & { remote?: RemoteIssue }, key: string): Promise<void> {
     const entry = (await this.deps.backlog.readTicket(item)).activity.find((e) => Store.entryKey(item.id, e) === key);
     if (!entry) return;
     const targets = item.remote ? [item.remote.id] : (item.links ?? []).map((l) => l.id);
@@ -1617,7 +1530,7 @@ export class TicketPanels implements vscode.Disposable {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; media-src ${webview.cspSource} https:; connect-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${uri('codicons', 'codicon.css')}">
 <link rel="stylesheet" href="${uri('ticket.css')}">

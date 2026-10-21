@@ -1,0 +1,51 @@
+{
+  "title": "A clean merge whose checks fail, kept to fix with an agent",
+  "settings": {
+    "flotilla.merge.checks": "local"
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "caption": "BL-13 is approved, and merges into main without conflicts"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")"
+    },
+    {
+      "caption": "The checks (npm test) run on the merge, and fail"
+    },
+    {
+      "waitFor": "button:has-text(\"Fix with Agent\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "Main didn't move: the merge is kept, with the failing output, to fix with an agent"
+    },
+    {
+      "caption": "It says when the checks failed, and offers Run the Checks Again: a failure that was only a loaded machine's goes away"
+    },
+    {
+      "waitFor": "button:has-text(\"Run the Checks Again\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

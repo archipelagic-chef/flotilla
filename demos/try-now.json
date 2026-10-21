@@ -1,0 +1,21 @@
+{
+  "title": "Try Now: the autopilot's paused agents go on before the usage limit's reset",
+  "settings": { "flotilla.agents.maxRunning": 2 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "An agent is paused on Claude's usage limit; the autopilot is turned on" },
+    { "click": ".autopilot-toggle" },
+    { "waitFor": ".autopilot-bar:has-text(\"usage limit\")" },
+    { "caption": "It waits for the reset, with the day when it isn't today, and offers Try Now" },
+    { "wait": 2500 },
+    { "click": ".autopilot-bar .try-now" },
+    { "caption": "Claude takes work again: the paused agent goes on, and the autopilot with it" },
+    { "waitFor": ".autopilot-bar:has-text(\"2 of 2 working\")" },
+    { "wait": 2500 },
+    { "caption": "A click on the bar turns the autopilot off" },
+    { "click": ".autopilot-bar .autopilot-what" },
+    { "wait": 1200 },
+    { "caption": "" }
+  ]
+}

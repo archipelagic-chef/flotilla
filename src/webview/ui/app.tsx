@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type SlowStorageView } from '../protocol';
+import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type MergeQueueView, type SlowStorageView } from '../protocol';
 import type { ChangeKind } from '../../core/git/porcelain';
 import { menuContext, run, send, vscode } from './api';
 import { ChatsBody, HooksNotice } from './chats';
@@ -13,6 +13,7 @@ import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
+import { finished, pruneBusy } from './backlogBusy';
 import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CommitHighlight, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
@@ -32,6 +33,8 @@ export interface Persisted {
   comparisons: CompareChoice[];
   nextComparison: number;
   search: SearchState;
+  /** The backlog shows only the tickets being worked on. */
+  workingOnly?: boolean;
 }
 
 const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparisons: [], nextComparison: 1, search: INITIAL_SEARCH };
@@ -132,7 +135,7 @@ export function App() {
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
   const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -287,8 +290,12 @@ export function App() {
           setCommitFiles((prev) => new Map(prev).set(`${m.key}\n${m.hash}`, { files: m.files, error: m.error }));
           return;
         case 'backlog':
+          pruneBusy(new Set(m.items.map((i) => i.id)));
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot, mergeQueue: m.mergeQueue });
+          return;
+        case 'backlogDone':
+          finished(m.message);
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
@@ -480,8 +487,11 @@ export function App() {
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
         autopilot={backlogInfo.autopilot}
+        mergeQueue={backlogInfo.mergeQueue}
         workstreams={workstreams}
         colors={colors}
+        workingOnly={!!persisted.workingOnly}
+        setWorkingOnly={(on) => update((p) => ({ ...p, workingOnly: on }))}
         openWorktree={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);
@@ -631,6 +641,7 @@ export function App() {
                     }
                   }}
                 >
+                  {ws.removing && <i class="codicon codicon-loading codicon-modifier-spin" data-tip="Removing…" aria-label="Removing…" />}
                   <span class="nm">{ws.label}</span>
                   {dot && <span class={`dot ${dot}`} />}
                   {open > 0 && <span class="n">{open}</span>}

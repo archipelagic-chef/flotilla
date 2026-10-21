@@ -1,0 +1,21 @@
+{
+  "title": "Start an Agent runs the agent without a window, in the agent queue",
+  "settings": { "flotilla.agents.model": "opus" },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 2000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
+    { "caption": "Start an Agent: no terminal, no panel; it runs in the background" },
+    { "hover": "button:has-text(\"Start with an Agent\")" },
+    { "wait": 1500 },
+    { "click": "button:has-text(\"Start with an Agent\")" },
+    { "caption": "The ticket shows the agent at work, with Pause and Stop" },
+    { "waitFor": "text=you started it, without a window", "timeout": 30000 },
+    { "wait": 1500 },
+    { "caption": "Its report arrives in the ticket" },
+    { "wait": 6000 },
+    { "caption": "" }
+  ]
+}

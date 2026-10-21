@@ -79,6 +79,16 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     }
   });
 
+  it('runs a workflow by hand: the branch head, the workflows, then a dispatch that shows as a run', async () => {
+    const client = actions();
+    const head = await client.branchHead('feat/x');
+    const deploy = (await client.workflows()).find((w) => w.name === 'Deploy')!;
+    await client.dispatch(deploy.id, 'feat/x', { environment: 'staging' });
+
+    const runs = await client.runs('feat/x');
+    expect(runs.find((r) => r.event === 'workflow_dispatch')).toMatchObject({ workflow: 'Deploy', sha: head });
+  });
+
   it('fails the CI run in its tests, with the log of a failing run', async () => {
     const id = ci(await actions().runs('main'))[0].id;
     clock = T0 + QUEUE_MS + RUN_MS;
@@ -113,6 +123,18 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     expect(ci(await actions().runs('main'))[0].status).toBe('failure');
     expect((await call('POST', `/runs/${id}/rerun`, {})).status).toBe(201);
     expect(ci(await actions().runs('main'))[0].status).toBe('queued');
+  });
+
+  it('answers actions after its delay, as GitHub takes a moment to (BL-119)', async () => {
+    const slow = await startFakeGitHub({ port: 0, now: () => clock, actionDelayMs: 150 });
+    try {
+      const id = ci(await new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, slow.url).runs('main'))[0].id;
+      const before = Date.now();
+      expect((await fetch(`${slow.url}${REPO}/runs/${id}/cancel`, { method: 'POST' })).status).toBe(202);
+      expect(Date.now() - before).toBeGreaterThanOrEqual(140);
+    } finally {
+      await slow.close();
+    }
   });
 
   it('dispatches a workflow on a branch, and refuses what GitHub would', async () => {

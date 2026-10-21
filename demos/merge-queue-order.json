@@ -1,0 +1,33 @@
+{
+  "title": "Drag the merge queue into a new order, and Merge Next",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")", "timeout": 30000 },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"2nd of 2\")", "timeout": 30000 },
+    { "caption": "Two tickets in the merge queue, in the order they were approved" },
+    { "wait": 2000 },
+    { "caption": "Drag one in the queue bar to change the order they land in" },
+    { "drag": ".merge-queue-bar a:has-text(\"BL-13\")", "to": ".merge-queue-bar a:has-text(\"BL-10\")" },
+    { "waitFor": ".merge-queue:has-text(\"1st of 2\")", "timeout": 30000 },
+    { "caption": "BL-13 is first now: the merge train is rebuilt in the new order" },
+    { "wait": 2500 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": ".merge-queue:has-text(\"2nd of 2\")", "timeout": 30000 },
+    { "caption": "Merge Next puts a ticket at the front of the queue" },
+    { "click": ".merge-queue button:has-text(\"Merge Next\")" },
+    { "waitFor": ".merge-queue:has-text(\"1st of 2\")", "timeout": 30000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

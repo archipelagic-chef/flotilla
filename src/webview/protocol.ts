@@ -43,6 +43,8 @@ export interface BacklogItemView extends BacklogItem {
   clash?: { with: string; files: string[] };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
+  /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
+  demo?: boolean;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -63,18 +65,40 @@ export interface CiRunView extends CiRun {
   /** The run's jobs, with their steps, once read: only for a run the user expanded. */
   jobs?: CiJob[];
   jobsError?: string;
+  /** Its action on its way (BL-119): from the click until GitHub answered and the runs were read again, or the agent's chat opened. */
+  busy?: RunBusy;
 }
+
+/** What a run can be busy with: one of its actions, or Fix with Agent. */
+export type RunBusy = RunAction | 'fix';
+
+/** What a worktree's CI view can be busy with: a Refresh (of every view), or a Run Workflow… on its branch. */
+export type CiBusy = 'refresh' | 'runWorkflow';
 
 /**
  * A worktree's CI/CD: its branch's latest runs and deployments on GitHub, or why there are none. Deployments are read
  * apart from the runs: when they can't be read, the runs still show and deploymentsError says why.
  */
-export type CiView =
+export type CiView = (
   | { kind: 'signIn' }
   | { kind: 'unpublished' }
   | { kind: 'unsupported' }
   | { kind: 'error'; error: string }
-  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string };
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string }
+) & { busy?: CiBusy[] };
+
+/** What a CI view (the sidebar's CI/CD view, or a ticket's CI) asks of the extension about a worktree's runs (key). */
+export type CiRequest =
+  /** Sign in to GitHub (asks), or read the runs again now. */
+  | { op: 'signIn' | 'refresh' }
+  /** A run expanded or collapsed: its jobs are read while it's expanded. */
+  | { op: 'expand' | 'collapse'; key: string; runId: number }
+  /** Shows a job's log (read-only, cleaned, at its first error). */
+  | { op: 'showLog'; key: string; jobId: number; jobName: string }
+  /** A run's action: a cancel asks first. */
+  | { op: 'act'; key: string; run: number; action: RunAction }
+  /** Fix with Agent on a failed job of a run (BL-7). */
+  | { op: 'fix'; key: string; run: number; job: number };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';
@@ -112,6 +136,8 @@ export interface ChatView {
   age: string;
   /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
   size?: { label: string; tip: string; big: boolean };
+  /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */
+  agent?: { name: string; item: string };
 }
 
 export interface WorkstreamView {
@@ -140,6 +166,8 @@ export interface WorkstreamView {
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
+  /** It's being removed (BL-119): from the confirmation until it's gone, or the removal failed. */
+  removing?: boolean;
   /** `;`-separated tokens for context-menu when-clauses, as in `webviewWorkstream =~ /;linked;/`. */
   context: string;
 }
@@ -218,7 +246,9 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
+  /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
+  | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
   | { type: 'ci'; views: Record<string, CiView> }
   /** What's in progress per tool (titles), for the tool strip's icons. */
@@ -246,6 +276,13 @@ export interface MachineState {
 }
 
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
+/** The merge queue (BL-140), first to land first: each ticket's state in the merge train, and what the queue does now. */
+export interface MergeQueueView {
+  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }>;
+  /** "BL-122's merge", "rebuilding the merge train". */
+  working?: string;
+}
+
 export interface AutopilotState {
   enabled: boolean;
   running: number;
@@ -254,10 +291,16 @@ export interface AutopilotState {
   waiting: number;
   /** ISO 8601. */
   waitingUntil?: string;
+  /** When Try Now last found the limit still there (BL-132). */
+  triedAt?: string;
   /** Too little memory free to start an agent. */
   waitingForMemory?: boolean;
   /** Another window runs it. */
   elsewhere: boolean;
+  /** Why it starts nothing though a slot is free (BL-142). */
+  idle?: string;
+  /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
+  away?: string;
 }
 
 /** A repository on a slow drive: what the Overview says, and how to fix it. */
@@ -305,17 +348,12 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
-  /** The CI/CD view: sign in to GitHub (asks), or read the runs again now. */
-  | { type: 'ci'; op: 'signIn' | 'refresh' }
-  /** A run expanded or collapsed in a worktree's CI/CD view: its jobs are read while it's expanded. */
-  | { type: 'ci'; op: 'expand' | 'collapse'; key: string; runId: number }
-  /** Shows a job's log (read-only, cleaned, at its first error). */
-  | { type: 'ci'; op: 'showLog'; key: string; jobId: number; jobName: string }
-  /** A run's action in the CI/CD view, for a worktree (key): a cancel asks first. */
-  | { type: 'ci'; op: 'act'; key: string; run: number; action: RunAction }
+  | ({ type: 'ci' } & CiRequest)
   /** Opens a link on GitHub (a workflow run). */
   | { type: 'openUrl'; url: string }
   | { type: 'openSite'; url: string }
+  /** The CI/CD view: starts a workflow by hand on the worktree's branch (asks first). */
+  | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
   /** Add an item (VS Code's input box asks for its title). */
@@ -332,8 +370,15 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  | { type: 'backlog'; op: 'tryNow' }
+  /** Merge All Ready: lands the merge queue (BL-140). */
+  | { type: 'backlog'; op: 'landAll' }
+  /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
+  | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
+  | { type: 'backlog'; op: 'mergeNext'; id: string }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
-  | { type: 'backlog'; op: 'comment' | 'approve'; id: string }
+  /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
+  | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }
   | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** Needs you (queued reply): start it now, above the limit, or pause a running agent for it. */
   | { type: 'backlog'; op: 'prioritize'; id: string }

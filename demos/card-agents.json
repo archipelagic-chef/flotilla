@@ -1,0 +1,13 @@
+{
+  "title": "Backlog cards show the agents working on them",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 3000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "A card shows each agent on its ticket, and what it's doing" },
+    { "waitFor": ".backlog-item:has-text(\"Warn on a big diff before review\") .agent-chip" },
+    { "click": ".backlog-item:has-text(\"Warn on a big diff before review\") .agent-chip" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

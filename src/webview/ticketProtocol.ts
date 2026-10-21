@@ -9,11 +9,24 @@ import type { MergeInfo } from '../features/backlog/merged';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
+import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
+import type { CiRequest, CiView } from './protocol';
+import type { CiStatus } from '../features/ci/githubActions';
+import type { CiStop } from '../features/backlog/ciStop';
+
+/**
+ * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
+ * user keeps it open in this ticket.
+ */
+export interface TicketCiView {
+  open: boolean;
+  worktrees: Array<{ key: string; branch: string; view?: CiView }>;
+}
 
 /** An agent's chat, as a ticket entry links it: click to open it in Claude Code. */
 export type AgentChatView =
@@ -57,6 +70,8 @@ export interface ReportView {
   summary: string;
   /** Rendered Markdown, folded under the summary. */
   details: string;
+  /** Its pictures, videos and diagrams (BL-114), rendered: under the summary, out of the details. */
+  media?: string;
   /** The report asks the user something (its questions, or the Needs line's text). */
   asks: boolean;
   /** What the Needs line says it needs from the user: rendered Markdown. */
@@ -66,13 +81,61 @@ export interface ReportView {
   answer?: string;
 }
 
+/** A report's picture, video or diagram (BL-114), as a thumbnail: its resolved source, or a diagram's Mermaid code. */
+export interface MediaThumb {
+  kind: MediaKind | 'diagram';
+  src?: string;
+  code?: string;
+  alt?: string;
+}
+
+/** An attachment as the Attachments section shows it (BL-110). */
+export interface AttachmentView {
+  /** What the webview loads: the resolved source. */
+  src: string;
+  kind: AttachmentKind;
+  name: string;
+  /** Its caption: the reference's alt text (a diagram's: the line before it). */
+  alt?: string;
+  /** A diagram's Mermaid code (BL-136), and its place among its entry's diagrams. */
+  code?: string;
+  diagram?: number;
+  /** Who added it (the entry's author), and when ("YYYY-MM-DD HH:MM"). */
+  author?: string;
+  date?: string;
+  /** The activity entry that added it: "Show in activity" goes there. */
+  entryKey?: string;
+  from: 'description' | 'activity' | 'folder';
+  demo: boolean;
+  /** A demo's recording: the demo it was recorded from, as the recorder noted it in the file, and how long a GIF plays (BL-111). */
+  recorded?: string;
+  seconds?: number;
+}
+
 export interface TicketView {
   item: BacklogItem;
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
-  /** key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. */
-  activity: Array<TicketEntry & { html: string; key?: string; posted?: string; chat?: AgentChatView; report?: ReportView }>;
+  /**
+   * key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. anchor: its
+   * id in the ticket file, to reply to it; reply: whom a reply answers (its body is without the reply line), and root:
+   * the index of the top-level entry it shows under (BL-126).
+   */
+  activity: Array<
+    TicketEntry & {
+      html: string;
+      key?: string;
+      posted?: string;
+      chat?: AgentChatView;
+      report?: ReportView;
+      /** Its pictures, videos and diagrams as thumbnails, beside its folded line (BL-114; those over their limits aside: the open entry says why). */
+      thumbs?: MediaThumb[];
+      anchor?: string;
+      reply?: { to: string; author: string; date: string; label: string };
+      root?: number;
+    }
+  >;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
   remote?: {
     kind: 'jira' | 'github';
@@ -141,6 +204,18 @@ export interface TicketView {
   canMerge: boolean;
   /** The branch it merges into. */
   mergeInto?: string;
+  /**
+   * Its Merge to main is on its way (BL-101): running, or waiting behind what waitsFor says ("BL-3's merge"); or
+   * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
+   */
+  mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
+  /**
+   * Why its last Merge to main stopped on CI (BL-112): red CI, with the failed jobs, or the base moved on. Only while
+   * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
+   */
+  mergeStop?: CiStop;
+  /** Its place in the merge queue (BL-140): "2nd of 3", what the train says of it, and the tickets that land before it. */
+  mergeQueue?: { place: string; state?: string; ahead: string[] };
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */
@@ -151,6 +226,10 @@ export interface TicketView {
   lightModel?: string;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
+  /** Its attachments (BL-110), newest first: the Attachments section above the activity. None: no section. */
+  attachments?: AttachmentView[];
+  /** The user folded its Attachments section (remembered per ticket). */
+  attachmentsFolded?: boolean;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
   /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
@@ -179,11 +258,16 @@ export type TicketHostMessage =
   /** An action (the webview's message, as it was sent) is finished, its view posted: failed if it threw. */
   | { type: 'done'; message: TicketWebviewMessage; failed?: boolean }
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
-  | { type: 'focus'; target: 'comment' }
+  /** The comment box, or the Demo section (BL-135). */
+  | { type: 'focus'; target: 'comment' | 'demo' }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
+  /** A Markdown box's Preview (BL-129): its text rendered as the activity shows it. */
+  | { type: 'previewed'; requestId: number; html: string }
   /** The Ask chat changed (BL-80). */
-  | { type: 'ask'; ask: AskView };
+  | { type: 'ask'; ask: AskView }
+  /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
+  | { type: 'ci'; ci: TicketCiView };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -191,7 +275,8 @@ export type TicketWebviewMessage =
   | { type: 'ready' }
   | { type: 'title'; title: string }
   | { type: 'description'; text: string }
-  | { type: 'comment'; text: string }
+  /** replyTo: the anchor of the entry it answers (BL-126). */
+  | { type: 'comment'; text: string; replyTo?: string }
   | { type: 'status'; status: BacklogStatus }
   /** null clears it. */
   | { type: 'priority'; priority: BacklogPriority | null }
@@ -199,6 +284,8 @@ export type TicketWebviewMessage =
   | { type: 'image'; requestId: number; name: string; data: string }
   /** A pasted or dropped file over its kind's size limit, not sent (the host says so). */
   | { type: 'mediaRefused'; name: string; kind: MediaKind; size: number }
+  /** Renders a Markdown box's text for its Preview tab (BL-129); answered with previewed. */
+  | { type: 'preview'; requestId: number; text: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
   | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
   /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
@@ -228,6 +315,8 @@ export type TicketWebviewMessage =
   | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
   | { type: 'updateFromMain' }
+  /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
+  | { type: 'mergeCiFix' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }
   /** The queued start of this ticket: start it now (see ReviewLoop.prioritize). */
@@ -253,7 +342,15 @@ export type TicketWebviewMessage =
   | { type: 'merge' }
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
+  | { type: 'mergeRecheck' }
   | { type: 'mergeCancel' }
+  /** Stop waiting for CI to pass (BL-105): nothing is merged. */
+  | { type: 'mergeCiCancel' }
+  | { type: 'mergeQueueRemove' }
+  /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
+  | { type: 'mergeQueueResolve' }
+  /** Merge Next (BL-144): to the front of the merge queue. */
+  | { type: 'mergeNext' }
   | { type: 'push' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
@@ -261,11 +358,18 @@ export type TicketWebviewMessage =
   | { type: 'mergeSibling'; branch?: string }
   | { type: 'dismissUnmerged' }
   /** Run a run block of an agent's report (after asking): the Run buttons. */
-  | { type: 'run'; key: string; index: number }
+  /** try: a demo block's window set up as the demo starts, its steps not played (Try it yourself, BL-135). */
+  | { type: 'run'; key: string; index: number; try?: boolean }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
+  /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
+  | { type: 'foldAttachments'; folded: boolean }
   /** The Ask chat (BL-80): a question, stop the answer, start over, post an answer to the ticket as a comment. */
   | { type: 'ask'; text: string }
   | { type: 'askStop' }
   | { type: 'askNew' }
-  | { type: 'askPost'; index: number };
+  | { type: 'askPost'; index: number }
+  /** Its CI (BL-106): the CI/CD view's requests for a worktree of the ticket; open or close it; show the CI/CD view. */
+  | ({ type: 'ci' } & CiRequest)
+  | { type: 'ciOpen'; open: boolean }
+  | { type: 'ciShow'; key: string };

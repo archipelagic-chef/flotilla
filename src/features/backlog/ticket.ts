@@ -14,6 +14,12 @@
  *   A progress report.
  *
  * Everything before "## Activity" is the description; each "### <date> · <author>" heading under it starts an entry.
+ *
+ * A reply (BL-126) is an entry whose first line names the entry it answers, by that entry's anchor:
+ *
+ *   ### 2026-10-10 14:20 · You
+ *   ↩ [Reply to Agent Nova-7, 2026-10-10 14:10](#2026-10-10-1410-agent-nova-7)
+ *   The reply.
  */
 export interface TicketEntry {
   /** As written: "YYYY-MM-DD HH:MM". */
@@ -69,6 +75,82 @@ export function formatTicket(ticket: Ticket): string {
     }
   }
   return `${parts.join('\n').trimEnd()}\n`;
+}
+
+/** An entry's anchor before duplicates are told apart: its date and author ("2026-10-20-1604-you"). */
+function anchorBase(e: Pick<TicketEntry, 'date' | 'author'>): string {
+  const date = e.date.replace(/^(\d{4}-\d{2}-\d{2})[ T]?(\d{2}):?(\d{2})?.*$/, (_, d: string, h?: string, m?: string) => (h ? `${d}-${h}${m ?? ''}` : d));
+  const author = e.author
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return [date, author].filter(Boolean).join('-') || 'entry';
+}
+
+/**
+ * Each entry's anchor, a stable id to link and reply to it: its date and author, and "-2", "-3"… for the second and
+ * later entries of the same minute and author. Entries are only appended, so an anchor stays as other entries and the
+ * description are edited.
+ */
+export function entryAnchors(activity: ReadonlyArray<Pick<TicketEntry, 'date' | 'author'>>): string[] {
+  const seen = new Map<string, number>();
+  return activity.map((e) => {
+    const base = anchorBase(e);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base}-${n}`;
+  });
+}
+
+const REPLY = /^\s*↩\s*\[([^\]]*)\]\(#([^)\s]+)\)\s*$/;
+
+/** The line a reply starts with: it names and links the entry it answers. */
+export function replyLine(parent: Pick<TicketEntry, 'date' | 'author'>, anchor: string): string {
+  return `↩ [Reply to ${parent.author || 'Note'}${parent.date ? `, ${parent.date}` : ''}](#${anchor})`;
+}
+
+/** A reply's parent (the anchor its first line links) and its text without that line; undefined for other entries. */
+export function parseReply(body: string): { to: string; label: string; text: string } | undefined {
+  const lines = body.split(/\r?\n/);
+  const at = lines.findIndex((l) => l.trim() !== '');
+  const m = at >= 0 ? REPLY.exec(lines[at]) : null;
+  if (!m) return undefined;
+  return { to: m[2], label: m[1].trim(), text: lines.slice(at + 1).join('\n').trim() };
+}
+
+/** An entry's place in the threads: its anchor; for a reply, whom it answers and the top-level entry it shows under. */
+export interface EntryThread {
+  anchor: string;
+  /** For a reply: the anchor it links, and that entry's author and date (as the reply line names them). */
+  reply?: { to: string; author: string; date: string; label: string };
+  /** For a reply whose parent is there: the index of the top-level entry it's grouped under (one level deep). */
+  root?: number;
+}
+
+/** The threads of a ticket's activity (BL-126): replies go under their parent's top-level entry. */
+export function entryThreads(activity: ReadonlyArray<TicketEntry>): EntryThread[] {
+  const anchors = entryAnchors(activity);
+  const index = new Map(anchors.map((a, i) => [a, i]));
+  const parents = activity.map((e, i) => {
+    const r = parseReply(e.body);
+    const p = r ? index.get(r.to) : undefined;
+    // Only an earlier entry is a parent: that rules out loops.
+    return { r, p: p !== undefined && p < i ? p : undefined };
+  });
+  const rootOf = (i: number): number => {
+    const p = parents[i].p;
+    return p === undefined ? i : rootOf(p);
+  };
+  return activity.map((_, i) => {
+    const { r, p } = parents[i];
+    if (!r) return { anchor: anchors[i] };
+    const parent = p !== undefined ? activity[p] : undefined;
+    return {
+      anchor: anchors[i],
+      reply: { to: r.to, author: parent?.author ?? '', date: parent?.date ?? '', label: r.label },
+      ...(p !== undefined ? { root: rootOf(p) } : {}),
+    };
+  });
 }
 
 /** "YYYY-MM-DD HH:MM" in local time, as entries are dated. */

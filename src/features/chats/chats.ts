@@ -37,6 +37,8 @@ export interface TranscriptInfo {
   effort?: string;
   /** Its token use so far (its own replies; subagents' aren't counted). */
   usage?: ChatUsage;
+  /** What started it: "claude-vscode" (Claude Code's panel), "cli" (a terminal), "sdk-cli" (`claude -p`: an agent)… */
+  entrypoint?: string;
 }
 
 /**
@@ -282,6 +284,7 @@ interface TranscriptScan {
   /** The shell commands whose results come next (by tool call), and the one failing in a row (see ChatUsage.failStreak). */
   pending?: Map<string, string>;
   failing?: string;
+  entrypoint?: string;
 }
 
 /** A transcript as far as it has been read: the bytes before `offset` are in `scan`, and `head` identifies the file. */
@@ -326,6 +329,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
     aiTitle?: unknown;
     customTitle?: unknown;
     effort?: unknown;
+    entrypoint?: unknown;
     message?: { id?: unknown; model?: unknown; content?: unknown; usage?: Record<string, unknown> };
   };
   try {
@@ -334,6 +338,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
     return;
   }
   scan.startedAt ??= toDate(entry.timestamp);
+  scan.entrypoint ??= text(entry.entrypoint);
   if (entry.type === 'ai-title') scan.aiTitle = text(entry.aiTitle) ?? scan.aiTitle;
   else if (entry.type === 'custom-title') scan.customTitle = text(entry.customTitle) ?? scan.customTitle;
   else if (entry.type === 'user' && !entry.isSidechain) {
@@ -425,6 +430,7 @@ function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): Trans
     ...optional('model', scan.model),
     ...optional('effort', scan.effort),
     ...optional('usage', scan.usage),
+    ...optional('entrypoint', scan.entrypoint),
   };
 }
 
@@ -608,37 +614,6 @@ export async function tagTranscriptTitle(file: string, sessionId: string, label:
   return 'tagged';
 }
 
-export type ImportResult = 'copied' | 'exists' | 'missing';
-
-/**
- * Copies a chat's transcript (and its folder of attachments, if any) from the Claude Code project of one directory to
- * another's, so Claude Code's panel in a window on `toCwd` can open it. An existing copy is never overwritten.
- */
-export async function importTranscript(fromCwd: string, toCwd: string, sessionId: string, home = claudeHome()): Promise<ImportResult> {
-  const from = transcriptPath(fromCwd, sessionId, home);
-  const to = transcriptPath(toCwd, sessionId, home);
-  try {
-    await fs.access(to);
-    return 'exists';
-  } catch {
-    // not there yet
-  }
-  try {
-    await fs.access(from);
-  } catch {
-    return 'missing';
-  }
-  await fs.mkdir(path.dirname(to), { recursive: true });
-  await fs.copyFile(from, to, fs.constants.COPYFILE_EXCL);
-  const extras = from.slice(0, -'.jsonl'.length);
-  try {
-    if ((await fs.stat(extras)).isDirectory()) await fs.cp(extras, to.slice(0, -'.jsonl'.length), { recursive: true, errorOnExist: false, force: false });
-  } catch {
-    // no attachments folder
-  }
-  return 'copied';
-}
-
 /**
  * What an open chat waits for from the user, if anything: an approval (a permission prompt: a command, an edit), or a
  * reply (it finished its turn, and its output waits for the user). A chat that hasn't had a prompt yet waits for
@@ -649,4 +624,59 @@ export function awaiting(chat: Pick<Chat, 'state' | 'message' | 'open' | 'firstP
   if (chat.state === 'waiting-for-input') return /permission|approv|allow/i.test(chat.message ?? '') ? 'approval' : 'reply';
   if (chat.state === 'done' && chat.firstPrompt) return 'reply';
   return undefined;
+}
+
+/**
+ * Whether a chat ran without Claude Code's panel or terminal (`claude -p`, the SDKs): Flotilla's agents. Claude Code's
+ * panel leaves such sessions out of what it lists and loads, so opening one there gives an empty chat.
+ */
+export function isHeadless(t: Pick<TranscriptInfo, 'entrypoint'> | undefined): boolean {
+  return !!t?.entrypoint?.startsWith('sdk-');
+}
+
+/** Whether a copied transcript only holds what its original does: nobody continued the copy (titles and such aside). */
+export function copyIsUnchanged(copy: string, original: string): boolean {
+  const lines = new Set(original.split('\n'));
+  return copy.split('\n').every((line) => !line || lines.has(line) || !(line.includes('"type":"user"') || line.includes('"type":"assistant"')));
+}
+
+/**
+ * Undoes what opening a chat from another worktree did before BL-121: it copied the transcript into this folder's
+ * Claude Code project, and recorded the chat in its worktree as linked by hand, running here. Where the original is
+ * still in its worktree's project and the copy wasn't continued, the copy goes and the worktree's record points back
+ * at the original. Returns the chats put back.
+ */
+export async function removeChatCopies(o: { root: string; gitDir: string; worktrees: readonly { root: string; gitDir: string }[]; home?: string }): Promise<string[]> {
+  const home = o.home ?? claudeHome();
+  const restored: string[] = [];
+  for (const w of o.worktrees) {
+    if (path.resolve(w.gitDir) === path.resolve(o.gitDir)) continue;
+    for (const r of await readChatRecords(w.gitDir)) {
+      if (r.linkedBy !== 'manual' || !r.cwd || path.resolve(r.cwd) !== path.resolve(o.root)) continue;
+      const copy = transcriptPath(o.root, r.sessionId, home);
+      let original: string;
+      let copied: string;
+      try {
+        original = await fs.readFile(transcriptPath(w.root, r.sessionId, home), 'utf8');
+        copied = await fs.readFile(copy, 'utf8');
+      } catch {
+        continue; // started here for that worktree (there's no original), or already put back
+      }
+      if (!copyIsUnchanged(copied, original)) continue;
+      await fs.rm(copy, { force: true });
+      await fs.rm(copy.slice(0, -'.jsonl'.length), { recursive: true, force: true });
+      const file = recordFile(w.gitDir, r.sessionId);
+      const record = await readRaw(file);
+      if (record) {
+        // The title it was linked with stood in for its first prompt; the original's transcript has the real one.
+        const { home: _home, linkedDirs: _dirs, firstPrompt: _prompt, ...rest } = record;
+        await writeRaw(file, { ...rest, linkedBy: 'cwd', cwd: w.root });
+      }
+      const here = recordFile(o.gitDir, r.sessionId);
+      const owner = await readRaw(here);
+      if (owner && typeof owner.home === 'string' && path.resolve(owner.home) === path.resolve(w.gitDir)) await fs.rm(here, { force: true });
+      restored.push(r.sessionId);
+    }
+  }
+  return restored;
 }

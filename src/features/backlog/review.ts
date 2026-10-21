@@ -38,6 +38,8 @@ export interface ReviewState {
   };
   /** The autopilot started the work (no one asked an agent to). */
   autopilot?: boolean;
+  /** The user started the work's agent from the ticket (Start an Agent): it runs without a window, as the autopilot's do. */
+  byHand?: boolean;
   /** The reviewer agent ('' when there has been none yet). */
   reviewer: string;
   /** The user gave the last verdict (approved, or changes requested), not the reviewer agent. */
@@ -260,14 +262,14 @@ export function showNotes(o: { id: string; backlogDir: string }): string {
  */
 export function reviewNotes(o: { id: string; backlogDir: string }): string {
   const folder = `${o.backlogDir}/${o.id}`;
-  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\`, \`open\` or \`demo\`, which read as the kind. \`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree, and \`run demo <name>\` plays a recorded demo again. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. ${showNotes(o)} When the work changes something you see or click (a button, a panel, a flow) and the repository records demos (its package.json has a \`demo\` script; its CONTRIBUTING says how to write one), show it working: write a demo, record it with \`npm run demo -- record <name> --out ${folder}/demo.gif\`, show it with ![What it shows](${o.id}/demo.gif) (or demo.mp4, when it says it saved that), and give its run block: \`run demo <name>\`, with the line \`npm run demo -- play <name>\` in it (a Flotilla that doesn't know demo blocks runs that line instead). A demo that can't be recorded safely isn't: say why in the report.`;
+  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\`, \`open\` or \`demo\`, which read as the kind. \`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree, and \`run demo <name>\` plays a recorded demo again. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. ${showNotes(o)} When the work changes something you see or click (a button, a panel, a flow) and the repository records demos (its package.json has a \`demo\` script; its CONTRIBUTING says how to write one), show it working: write a demo, record it with \`npm run demo -- record <name> --out ${folder}/demo.gif\`, show it with ![What it shows](${o.id}/demo.gif) (or demo.mp4, when it says it saved that), and give its run block: \`run demo <name>\`, with the line \`npm run demo -- play <name>\` in it (a Flotilla that doesn't know demo blocks runs that line instead). The ticket shows the recording and that block as one demo, with Try it yourself and Watch it live: the recorder notes the demo's name in the file, so they go together wherever the report puts them. A demo that can't be recorded safely isn't: say why in the report.`;
 }
 
 /**
  * How an agent keeps its context small (BL-68): what it reads stays in its context and is read again on every turn,
  * which is where most of its tokens go (files and diffs above all, measured with npm run bench:tokens).
  */
-export const CONTEXT_NOTES = `Keep your context small: whatever you read stays in it and is read again on every turn. Find code with grep and read only the lines you change or must check, not whole files. Ask a subagent (the Agent tool) only for broad exploration across many files: it starts with a context of its own, so it costs more than it saves for a lookup. Look at changes with \`git diff --stat\` first, then diff only the files you need. Keep command output short: while you work, run only the tests of the code you change, and the whole suite once at the end.`;
+export const CONTEXT_NOTES = `Keep your context small: whatever you read stays in it and is read again on every turn. Find code with grep and read only the lines you change or must check, not whole files. Ask a subagent (the Agent tool) only for broad exploration across many files: it starts with a context of its own, so it costs more than it saves for a lookup. Look at changes with \`git diff --stat\` first, then diff only the files you need. Keep command output short: while you work, run only the test files of the code you change, and the whole suite once, at the end: full runs share the machine with the other agents' and merges', and wait their turn.`;
 
 /** What the reviewer is told. Its first line names it and the item (that's how the ticket finds its chat). */
 export function reviewerPrompt(o: {
@@ -362,6 +364,10 @@ export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
     ? "Claude's usage limit stopped you before you finished; it has reset. Go on with your review where you left off, and end your entry in the ticket with your verdict, as asked."
     : 'Claude\'s usage limit stopped you before you finished; it has reset. Go on where you left off. When the work is done, report in the ticket as asked, ending with "Ready for review." (or, if you need the user, with a "Needs from you:" line and the question).';
 }
+
+/** What an agent started by hand from its ticket is told, after the usual start: it runs without a window too (BL-122). */
+export const HAND_START_NOTE =
+  'You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
 
 /** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
 export const AUTOPILOT_NOTE =

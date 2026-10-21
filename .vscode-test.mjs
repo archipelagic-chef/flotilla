@@ -1,19 +1,11 @@
-import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { defineConfig } from '@vscode/test-cli';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+import { mainRoot, withDownloadLock } from './scripts/vscode-download.mjs';
 
 // VS Code is downloaded once, into the main worktree's .vscode-test/, and every worktree's test run uses that copy:
 // left to itself, each worktree would download its own (~1 GB) into its own .vscode-test/.
-function mainRoot() {
-  try {
-    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-    return path.dirname(commonDir);
-  } catch {
-    return process.cwd();
-  }
-}
 
 /** Deletes the other versions of this platform's download (VS Code isn't pinned: each release is a new folder). */
 function pruneOlder(cachePath, executable) {
@@ -27,8 +19,11 @@ function pruneOlder(cachePath, executable) {
 }
 
 const cachePath = path.join(mainRoot(), '.vscode-test');
-const executable = await downloadAndUnzipVSCode({ cachePath });
-pruneOlder(cachePath, executable);
+const executable = await withDownloadLock(cachePath, async () => {
+  const downloaded = await downloadAndUnzipVSCode({ cachePath });
+  pruneOlder(cachePath, downloaded);
+  return downloaded;
+});
 
 export default defineConfig({
   files: 'out/tests/vscode/**/*.test.js',

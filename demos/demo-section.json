@@ -1,0 +1,16 @@
+{
+  "title": "A ticket's Demo section, from a review card's demo mark",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 500 },
+    { "caption": "A review card's demo mark opens its ticket at the Demo section" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .demo-mark" },
+    { "waitFor": ".demo-section .demo-figure img" },
+    { "wait": 1500 },
+    { "caption": "The earlier recordings, folded under it" },
+    { "click": ".demo-earlier summary" },
+    { "wait": 1200 },
+    { "caption": "" }
+  ]
+}

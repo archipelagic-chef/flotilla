@@ -4,11 +4,12 @@ import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
 import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
 import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
-import { anyDeploymentActive, anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { anyDeploymentActive, anyRunActive, CI_ACTIVE_INTERVAL_MS, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import { failedJob } from '../../features/ci/failureTask';
 import { finished, type FinishedRun } from '../../features/ci/notify';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { CiRunView, CiView } from '../../webview/protocol';
+import type { CiBusy, CiRunView, CiView, RunBusy } from '../../webview/protocol';
 
 const SCOPES = ['repo'];
 /** How long after a re-run or cancel GitHub is read again, for the state it has settled into. */
@@ -49,17 +50,27 @@ async function readBranch(owner: string, repo: string, branch: string, token: ()
   return { runs: read, ...found };
 }
 
+/** Who expanded a run: the sidebar's CI/CD view, or an open ticket (by its id). */
+const SIDEBAR = 'sidebar';
+
 /**
  * The CI/CD view's data: the latest workflow runs of each worktree's branch on GitHub, read through the user's GitHub
  * sign-in. Read at once when the sidebar shows and when a worktree's commit or upstream moves (a push), then every
  * minute while it's shown (every 10 seconds while a run goes on); nothing while it's hidden.
+ *
+ * Open tickets watch their worktrees (BL-106): those are read when the ticket opens and on a push, then every 10
+ * seconds only while one of their runs is queued or running. Both get the same views and share the reads.
  */
 export class CiRuns implements vscode.Disposable {
   private views = new Map<string, CiView>();
   private workstreams: readonly Workstream[] = [];
   private stamps = new Map<string, string>();
-  /** The runs the user expanded, per worktree: their jobs are read. */
-  private expanded = new Map<string, Set<number>>();
+  /** The runs the user expanded, per worktree, and where (the sidebar, tickets): their jobs are read. */
+  private expanded = new Map<string, Map<number, Set<string>>>();
+  /** The worktrees each open ticket watches, by its id. */
+  private watchers = new Map<string, string[]>();
+  /** Who else gets the views (the open tickets). */
+  private listeners = new Set<(views: Record<string, CiView>) => void>();
   private jobs = new Map<string, Map<number, JobsState>>();
   private visible = false;
   /** Whether it reads while the sidebar is hidden (this window leads and tells the user about finished runs). */
@@ -69,8 +80,15 @@ export class CiRuns implements vscode.Disposable {
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** One read per worktree, a few seconds after its run was acted on (each action has its own). */
   private followUps = new Map<string, ReturnType<typeof setTimeout>>();
-  /** The actions on their way (a click on one already sent or asking is ignored). */
-  private acting = new Set<string>();
+  /**
+   * The runs' actions on their way, by worktree and run (a click on one already sent or asking is ignored): each run
+   * shows its own as working (BL-119), from the click until GitHub answered and the runs were read again.
+   */
+  private acting = new Map<string, RunBusy>();
+  /** Refreshes going on: every view shows it. */
+  private refreshing = 0;
+  /** The worktrees a Run Workflow… goes on for. */
+  private startingWorkflow = new Set<string>();
 
   /**
    * post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then).
@@ -102,8 +120,46 @@ export class CiRuns implements vscode.Disposable {
       this.followUps.delete(key);
       this.lastRuns.delete(key);
     }
-    if (this.reading && moved.length) void this.load(moved.map((ws) => ws.key));
-    else if (gone.length) this.post(this.snapshot());
+    const read = this.broad ? moved : moved.filter((ws) => this.watched.has(ws.key));
+    if (read.length) void this.load(read.map((ws) => ws.key));
+    else if (gone.length) this.publish();
+  }
+
+  /** Gets the views whenever they're sent (as the sidebar gets them). */
+  onDidChange(listener: (views: Record<string, CiView>) => void): vscode.Disposable {
+    this.listeners.add(listener);
+    return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  /**
+   * An open ticket (id) shows the CI of these worktrees: the ones it didn't watch yet are read now (unless the sidebar
+   * keeps them read), and all of them while a run of theirs goes on. No keys: it stops watching (it's closed).
+   */
+  watch(id: string, keys: readonly string[]): void {
+    const before = this.watched;
+    if (keys.length) this.watchers.set(id, [...keys]);
+    else this.watchers.delete(id);
+    const fresh = keys.filter((key) => !before.has(key) && (!this.broad || !this.views.has(key)));
+    if (fresh.length) void this.load(fresh);
+    else this.schedule();
+  }
+
+  /** A ticket was closed: it watches nothing, and the runs it expanded are its own (the sidebar's stay expanded). */
+  unwatch(id: string): void {
+    for (const [key, runs] of [...this.expanded]) for (const runId of [...runs.keys()]) this.setExpanded(key, runId, id, false);
+    this.watch(id, []);
+  }
+
+  /** The worktrees open tickets watch. */
+  private get watched(): Set<string> {
+    return new Set([...this.watchers.values()].flat());
+  }
+
+  /** Sends the views to the sidebar and the tickets. */
+  private publish(): void {
+    const views = this.snapshot();
+    this.post(views);
+    for (const listener of this.listeners) listener(views);
   }
 
   /** The sidebar is shown (reads now, then regularly) or hidden (nothing is read). */
@@ -111,7 +167,7 @@ export class CiRuns implements vscode.Disposable {
     if (visible === this.visible) return;
     this.visible = visible;
     if (visible) void this.load();
-    else if (!this.keepReading) clearTimeout(this.timer);
+    else if (!this.keepReading) this.schedule();
   }
 
   /** Whether it keeps reading while the sidebar is hidden (for the notices of the leading window). */
@@ -119,11 +175,11 @@ export class CiRuns implements vscode.Disposable {
     if (on === this.keepReading) return;
     this.keepReading = on;
     if (on && !this.visible) void this.load();
-    else if (!on && !this.visible) clearTimeout(this.timer);
+    else if (!on && !this.visible) this.schedule();
   }
 
-  /** Runs are read while the sidebar is shown, or while this window keeps reading for notices. */
-  private get reading(): boolean {
+  /** Every worktree's runs are read while the sidebar is shown, or while this window keeps reading for notices. */
+  private get broad(): boolean {
     return this.visible || this.keepReading;
   }
 
@@ -140,7 +196,8 @@ export class CiRuns implements vscode.Disposable {
     }
     const flight = `${key}\n${runId}`;
     if (this.acting.has(flight)) return;
-    this.acting.add(flight);
+    this.acting.set(flight, action);
+    this.publish();
     let asked = false;
     try {
       if (action === 'cancel') {
@@ -158,11 +215,15 @@ export class CiRuns implements vscode.Disposable {
       if (action === 'cancel') await github.cancel(runId);
       else await github.rerun(runId, action === 'rerunFailed');
     } finally {
-      this.acting.delete(flight);
-      // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
-      if (asked) {
-        await this.load([key]);
-        this.followUpRead(key);
+      try {
+        // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
+        if (asked) {
+          await this.load([key]);
+          this.followUpRead(key);
+        }
+      } finally {
+        this.acting.delete(flight);
+        this.publish();
       }
     }
   }
@@ -174,15 +235,42 @@ export class CiRuns implements vscode.Disposable {
       key,
       setTimeout(() => {
         this.followUps.delete(key);
-        // Nothing is read while the sidebar is hidden, and a worktree that was removed has no runs to read.
-        if (this.visible && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
+        // Nothing is read while the sidebar is hidden (unless a ticket shows it), and a removed worktree has no runs to read.
+        if ((this.visible || this.watched.has(key)) && this.workstreams.some((ws) => ws.key === key)) void this.load([key]);
       }, FOLLOW_UP_MS),
     );
   }
 
-  /** Reads every worktree's runs now. */
-  refresh(): Promise<void> {
-    return this.load();
+  /** Reads every worktree's runs now; the views show it until they're read (quiet: they don't, for a read nobody clicked). */
+  async refresh(quiet = false): Promise<void> {
+    if (quiet) return this.load();
+    this.refreshing += 1;
+    this.publish();
+    try {
+      await this.load();
+    } finally {
+      this.refreshing -= 1;
+      this.publish();
+    }
+  }
+
+  /**
+   * Run Workflow… on a worktree (start: its dialogs and GitHub's dispatch; true when a run was started): its view shows
+   * it from the click until the dialogs are done and, when a run was started, the runs are read again. Another click
+   * meanwhile does nothing.
+   */
+  async runWorkflow(key: string, start: () => Promise<boolean>): Promise<boolean> {
+    if (this.startingWorkflow.has(key)) return false;
+    this.startingWorkflow.add(key);
+    this.publish();
+    try {
+      const started = await start();
+      if (started) await this.load();
+      return started;
+    } finally {
+      this.startingWorkflow.delete(key);
+      this.publish();
+    }
   }
 
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
@@ -192,18 +280,95 @@ export class CiRuns implements vscode.Disposable {
     await this.load();
   }
 
-  /** A run was expanded or collapsed: its jobs are read now, and while it's expanded. */
-  async expand(key: string, runId: number, expanded: boolean): Promise<void> {
-    const runs = this.expanded.get(key) ?? new Set<number>();
-    if (expanded) runs.add(runId);
+  /**
+   * A run was expanded or collapsed, in the sidebar or in a ticket (by): its jobs are read now, and while it's expanded
+   * anywhere.
+   */
+  async expand(key: string, runId: number, expanded: boolean, by = SIDEBAR): Promise<void> {
+    this.setExpanded(key, runId, by, expanded);
+    if (expanded) await this.load([key]);
+    else this.publish();
+  }
+
+  /** Marks a run expanded (or not) by one of the views; its jobs are forgotten once no view has it expanded. */
+  private setExpanded(key: string, runId: number, by: string, expanded: boolean): void {
+    const runs = this.expanded.get(key) ?? new Map<number, Set<string>>();
+    const views = runs.get(runId) ?? new Set<string>();
+    if (expanded) views.add(by);
+    else views.delete(by);
+    if (views.size) runs.set(runId, views);
     else {
       runs.delete(runId);
       this.jobs.get(key)?.delete(runId);
     }
     if (runs.size) this.expanded.set(key, runs);
     else this.expanded.delete(key);
-    if (expanded) await this.load([key]);
-    else this.post(this.snapshot());
+  }
+
+  /**
+   * Fix with Agent on a failed job of a run the view shows (BL-7's command, with the job's failed steps and log). No
+   * job: the run's first failed job.
+   */
+  async fix(key: string, runId: number, jobId?: number): Promise<void> {
+    const view = this.views.get(key);
+    const run = view?.kind === 'runs' ? view.runs.find((r) => r.id === runId) : undefined;
+    if (view?.kind !== 'runs' || !run) throw new Error("That run isn't in this worktree's CI any more. Refresh it and try again.");
+    // The run shows it's working from the click until the agent's chat opened (or nothing was started).
+    const flight = `${key}\n${runId}`;
+    if (this.acting.has(flight)) return;
+    this.acting.set(flight, 'fix');
+    this.publish();
+    try {
+      await this.startFix(view, run, jobId);
+    } finally {
+      this.acting.delete(flight);
+      this.publish();
+    }
+  }
+
+  private async startFix(view: Extract<CiView, { kind: 'runs' }>, run: CiRunView, jobId?: number): Promise<void> {
+    const session: Session | undefined = this.api
+      ? { accessToken: FAKE_TOKEN }
+      : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+    if (!session) return;
+    const [owner, repo] = view.repo.split('/');
+    const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
+    const failure = await failedJob(github, view.branch, run, jobId);
+    if (!failure) {
+      void vscode.window.showWarningMessage(`No job of ${run.workflow} #${run.number} failed, so there's nothing for an agent to fix.`);
+      return;
+    }
+    await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
+  }
+
+  /**
+   * GitHub's runs of the repository's origin, for Merge to main to decide on (BL-105), or why they can't be read: no
+   * GitHub origin, or no GitHub sign-in (never asked for here: without one, the checks run locally). interactive: asks
+   * to sign in (for an action the user clicked).
+   */
+  async originActions(cwd: string, interactive = false): Promise<GitHubActions | string> {
+    const url = (await runGit(['remote', 'get-url', 'origin'], { cwd }).catch(() => '')).trim();
+    if (!url) return 'the repository has no `origin`.';
+    const gh = gitHubRepo(url);
+    if (!gh || !gitHubName(gh.owner) || !gitHubName(gh.repo)) return "`origin` isn't a GitHub repository.";
+    const session: Session | undefined = this.api
+      ? { accessToken: FAKE_TOKEN }
+      : await vscode.authentication.getSession('github', SCOPES, interactive ? { createIfNone: true } : { silent: true }).then((s) => s, () => undefined);
+    if (!session) return "you aren't signed in to GitHub in VS Code (the CI/CD view's Sign In).";
+    return new GitHubActions(gh.owner, gh.repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
+  }
+
+  /** Fix with Agent on a failed job of a branch's run on origin (BL-7), from Merge to main's red CI. */
+  async fixOnOrigin(cwd: string, branch: string, runId: number, jobId?: number): Promise<void> {
+    const github = await this.originActions(cwd, true);
+    if (typeof github === 'string') throw new Error(`Can't read the run: ${github}`);
+    const run = (await github.runs(branch, 30)).find((r) => r.id === runId);
+    const failure = run && (await failedJob(github, branch, run, jobId));
+    if (!failure) {
+      void vscode.window.showWarningMessage("That run has no failed job any more, so there's nothing for an agent to fix.");
+      return;
+    }
+    await vscode.commands.executeCommand('flotilla.ci.fixWithAgent', failure);
   }
 
   /** Shows a job's log in an editor, of the repository the worktree's runs are on (the log's command checks the ids). */
@@ -219,8 +384,18 @@ export class CiRuns implements vscode.Disposable {
     return Object.fromEntries(
       [...this.views]
         .filter(([key]) => this.workstreams.some((ws) => ws.key === key))
-        .map(([key, view]): [string, CiView] => [key, view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withJobs(key, run)) } : view]),
+        .map(([key, view]): [string, CiView] => {
+          const shown: CiView = view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withBusy(key, this.withJobs(key, run))) } : view;
+          const busy: CiBusy[] = [...(this.refreshing ? (['refresh'] as const) : []), ...(this.startingWorkflow.has(key) ? (['runWorkflow'] as const) : [])];
+          return [key, busy.length ? { ...shown, busy } : shown];
+        }),
     );
+  }
+
+  /** A run with the action on its way (if one is). */
+  private withBusy(key: string, run: CiRunView): CiRunView {
+    const busy = this.acting.get(`${key}\n${run.id}`);
+    return busy ? { ...run, busy } : run;
   }
 
   /** A run's jobs, for a run the user expanded (until they're read, the run shows it's loading). */
@@ -240,7 +415,7 @@ export class CiRuns implements vscode.Disposable {
     const jobs = this.jobs.get(key) ?? new Map<number, JobsState>();
     this.jobs.set(key, jobs);
     await Promise.all(
-      [...expanded].map(async (runId) => {
+      [...expanded.keys()].map(async (runId) => {
         const run = view.runs.find((r) => r.id === runId);
         const known = jobs.get(runId);
         if (!run || !jobsDue(run.status, known)) return;
@@ -284,19 +459,34 @@ export class CiRuns implements vscode.Disposable {
       }),
     );
     this.reportFinished();
-    this.post(this.snapshot());
+    this.publish();
     // The jobs of the expanded runs come after the runs, so that the runs show at once.
     await Promise.all(targets.map((ws) => this.readJobs(ws.key, session)));
-    this.post(this.snapshot());
+    this.publish();
     // The last load to finish sets the next one (a load that overlapped another doesn't leave a second timer running).
-    // Only the worktrees there are now count: a run or deployment on a removed one doesn't keep the timer short.
-    const views = Object.values(this.snapshot());
+    this.schedule();
+  }
+
+  /**
+   * Sets the next read: of every worktree while the sidebar reads them (see refreshDelay), else of the worktrees
+   * tickets watch, only while a run or deployment of theirs goes on. Only the worktrees there are now count: a run or
+   * deployment on a removed one doesn't keep the timer short.
+   */
+  private schedule(): void {
+    clearTimeout(this.timer);
+    const watched = this.watched;
+    const views = Object.entries(this.snapshot())
+      .filter(([key]) => this.broad || watched.has(key))
+      .map(([, view]) => view);
     const anyActive =
       anyRunActive(views.flatMap((v) => (v.kind === 'runs' ? v.runs : []))) ||
       anyDeploymentActive(views.flatMap((v) => (v.kind === 'runs' ? v.deployments : [])));
-    const delay = refreshDelay(this.reading, anyActive);
-    clearTimeout(this.timer);
-    this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
+    if (this.broad) {
+      const delay = refreshDelay(true, anyActive);
+      this.timer = delay === undefined ? undefined : setTimeout(() => void this.load(), delay);
+    } else {
+      this.timer = watched.size && anyActive ? setTimeout(() => void this.load([...watched]), CI_ACTIVE_INTERVAL_MS) : undefined;
+    }
   }
 
   /** Where a worktree's runs are: its branch on GitHub, or the view that says why there are none. */
