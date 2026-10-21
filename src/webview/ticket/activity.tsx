@@ -8,7 +8,7 @@ import { Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } f
 import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from './actions';
 import { REPLY_TO, sendComment, useSending } from './comments';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
-import { ago, CHAT_STATE, ChatCard } from './agents';
+import { ago, ChatCard, chatState } from './agents';
 
 type ActivityEntry = TicketView['activity'][number];
 
@@ -216,9 +216,9 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
           <button
             class="chat-chip"
             onClick={() => send({ type: 'openChat', key: agentChat.key, id: agentChat.id })}
-            title={`Written in the chat "${agentChat.title}". Click to open it in Claude Code.`}
+            title={`Written in the chat "${agentChat.title}"${agentChat.stalled ? ` (${chatState(agentChat).label})` : ''}. Click to open it in Claude Code.`}
           >
-            <span class={`dot ${CHAT_STATE[agentChat.state]?.cls ?? 'ended'}`} />
+            <span class={`dot ${chatState(agentChat).cls}`} />
             <i class="codicon codicon-comment-discussion" />
             <span class="chat-chip-title">{agentChat.title}</span>
           </button>
