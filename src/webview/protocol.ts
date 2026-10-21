@@ -65,18 +65,27 @@ export interface CiRunView extends CiRun {
   /** The run's jobs, with their steps, once read: only for a run the user expanded. */
   jobs?: CiJob[];
   jobsError?: string;
+  /** Its action on its way (BL-119): from the click until GitHub answered and the runs were read again, or the agent's chat opened. */
+  busy?: RunBusy;
 }
+
+/** What a run can be busy with: one of its actions, or Fix with Agent. */
+export type RunBusy = RunAction | 'fix';
+
+/** What a worktree's CI view can be busy with: a Refresh (of every view), or a Run Workflow… on its branch. */
+export type CiBusy = 'refresh' | 'runWorkflow';
 
 /**
  * A worktree's CI/CD: its branch's latest runs and deployments on GitHub, or why there are none. Deployments are read
  * apart from the runs: when they can't be read, the runs still show and deploymentsError says why.
  */
-export type CiView =
+export type CiView = (
   | { kind: 'signIn' }
   | { kind: 'unpublished' }
   | { kind: 'unsupported' }
   | { kind: 'error'; error: string }
-  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string };
+  | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string }
+) & { busy?: CiBusy[] };
 
 /** What a CI view (the sidebar's CI/CD view, or a ticket's CI) asks of the extension about a worktree's runs (key). */
 export type CiRequest =
@@ -157,6 +166,8 @@ export interface WorkstreamView {
   sync: { kind: 'publish' | 'sync' | 'none'; text: string; ahead: number; behind: number; head?: string };
   chats: ChatView[];
   hasHooks: boolean;
+  /** It's being removed (BL-119): from the confirmation until it's gone, or the removal failed. */
+  removing?: boolean;
   /** `;`-separated tokens for context-menu when-clauses, as in `webviewWorkstream =~ /;linked;/`. */
   context: string;
 }

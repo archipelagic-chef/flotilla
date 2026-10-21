@@ -9,7 +9,7 @@ import { failedJob } from '../../features/ci/failureTask';
 import { finished, type FinishedRun } from '../../features/ci/notify';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { CiRunView, CiView } from '../../webview/protocol';
+import type { CiBusy, CiRunView, CiView, RunBusy } from '../../webview/protocol';
 
 const SCOPES = ['repo'];
 /** How long after a re-run or cancel GitHub is read again, for the state it has settled into. */
@@ -80,8 +80,15 @@ export class CiRuns implements vscode.Disposable {
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** One read per worktree, a few seconds after its run was acted on (each action has its own). */
   private followUps = new Map<string, ReturnType<typeof setTimeout>>();
-  /** The actions on their way (a click on one already sent or asking is ignored). */
-  private acting = new Set<string>();
+  /**
+   * The runs' actions on their way, by worktree and run (a click on one already sent or asking is ignored): each run
+   * shows its own as working (BL-119), from the click until GitHub answered and the runs were read again.
+   */
+  private acting = new Map<string, RunBusy>();
+  /** Refreshes going on: every view shows it. */
+  private refreshing = 0;
+  /** The worktrees a Run Workflow… goes on for. */
+  private startingWorkflow = new Set<string>();
 
   /**
    * post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then).
@@ -189,7 +196,8 @@ export class CiRuns implements vscode.Disposable {
     }
     const flight = `${key}\n${runId}`;
     if (this.acting.has(flight)) return;
-    this.acting.add(flight);
+    this.acting.set(flight, action);
+    this.publish();
     let asked = false;
     try {
       if (action === 'cancel') {
@@ -207,11 +215,15 @@ export class CiRuns implements vscode.Disposable {
       if (action === 'cancel') await github.cancel(runId);
       else await github.rerun(runId, action === 'rerunFailed');
     } finally {
-      this.acting.delete(flight);
-      // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
-      if (asked) {
-        await this.load([key]);
-        this.followUpRead(key);
+      try {
+        // Read the runs again even when GitHub refused: a refusal ("already finished") is when the view is most out of date.
+        if (asked) {
+          await this.load([key]);
+          this.followUpRead(key);
+        }
+      } finally {
+        this.acting.delete(flight);
+        this.publish();
       }
     }
   }
@@ -229,9 +241,36 @@ export class CiRuns implements vscode.Disposable {
     );
   }
 
-  /** Reads every worktree's runs now. */
-  refresh(): Promise<void> {
-    return this.load();
+  /** Reads every worktree's runs now; the views show it until they're read (quiet: they don't, for a read nobody clicked). */
+  async refresh(quiet = false): Promise<void> {
+    if (quiet) return this.load();
+    this.refreshing += 1;
+    this.publish();
+    try {
+      await this.load();
+    } finally {
+      this.refreshing -= 1;
+      this.publish();
+    }
+  }
+
+  /**
+   * Run Workflow… on a worktree (start: its dialogs and GitHub's dispatch; true when a run was started): its view shows
+   * it from the click until the dialogs are done and, when a run was started, the runs are read again. Another click
+   * meanwhile does nothing.
+   */
+  async runWorkflow(key: string, start: () => Promise<boolean>): Promise<boolean> {
+    if (this.startingWorkflow.has(key)) return false;
+    this.startingWorkflow.add(key);
+    this.publish();
+    try {
+      const started = await start();
+      if (started) await this.load();
+      return started;
+    } finally {
+      this.startingWorkflow.delete(key);
+      this.publish();
+    }
   }
 
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
@@ -274,6 +313,20 @@ export class CiRuns implements vscode.Disposable {
     const view = this.views.get(key);
     const run = view?.kind === 'runs' ? view.runs.find((r) => r.id === runId) : undefined;
     if (view?.kind !== 'runs' || !run) throw new Error("That run isn't in this worktree's CI any more. Refresh it and try again.");
+    // The run shows it's working from the click until the agent's chat opened (or nothing was started).
+    const flight = `${key}\n${runId}`;
+    if (this.acting.has(flight)) return;
+    this.acting.set(flight, 'fix');
+    this.publish();
+    try {
+      await this.startFix(view, run, jobId);
+    } finally {
+      this.acting.delete(flight);
+      this.publish();
+    }
+  }
+
+  private async startFix(view: Extract<CiView, { kind: 'runs' }>, run: CiRunView, jobId?: number): Promise<void> {
     const session: Session | undefined = this.api
       ? { accessToken: FAKE_TOKEN }
       : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
@@ -331,8 +384,18 @@ export class CiRuns implements vscode.Disposable {
     return Object.fromEntries(
       [...this.views]
         .filter(([key]) => this.workstreams.some((ws) => ws.key === key))
-        .map(([key, view]): [string, CiView] => [key, view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withJobs(key, run)) } : view]),
+        .map(([key, view]): [string, CiView] => {
+          const shown: CiView = view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withBusy(key, this.withJobs(key, run))) } : view;
+          const busy: CiBusy[] = [...(this.refreshing ? (['refresh'] as const) : []), ...(this.startingWorkflow.has(key) ? (['runWorkflow'] as const) : [])];
+          return [key, busy.length ? { ...shown, busy } : shown];
+        }),
     );
+  }
+
+  /** A run with the action on its way (if one is). */
+  private withBusy(key: string, run: CiRunView): CiRunView {
+    const busy = this.acting.get(`${key}\n${run.id}`);
+    return busy ? { ...run, busy } : run;
   }
 
   /** A run's jobs, for a run the user expanded (until they're read, the run shows it's loading). */

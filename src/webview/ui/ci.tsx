@@ -27,17 +27,27 @@ export function CiBody({ view, worktree }: { view: CiView | undefined; worktree:
   const refresh = () => send({ type: 'ci', op: 'refresh' });
   const deployments = view?.kind === 'runs' ? view.deployments : [];
   const deploymentsError = view?.kind === 'runs' ? view.deploymentsError : undefined;
+  // What the extension is busy with for this view (BL-119): the buttons spin and take no click until it's done.
+  const refreshing = !!view?.busy?.includes('refresh');
+  const starting = !!view?.busy?.includes('runWorkflow');
   return (
     <>
       <div class="group ci">
         <div class="row group-head">
           <span class="name">CI/CD</span>
           <span class="hover-actions">
-            <button class="icon" aria-label="Run Workflow…" data-tip="Run Workflow… on this branch" onClick={() => send({ type: 'runWorkflow', key: worktree })}>
-              <i class="codicon codicon-play" />
+            <button
+              class="icon"
+              aria-label="Run Workflow…"
+              data-tip="Run Workflow… on this branch"
+              disabled={starting}
+              aria-busy={starting}
+              onClick={() => send({ type: 'runWorkflow', key: worktree })}
+            >
+              <i class={`codicon codicon-${starting ? 'loading codicon-modifier-spin' : 'play'}`} />
             </button>
-            <button class="icon" aria-label="Refresh" onClick={refresh}>
-              <i class="codicon codicon-refresh" />
+            <button class="icon" aria-label="Refresh" disabled={refreshing} aria-busy={refreshing} onClick={refresh}>
+              <i class={`codicon codicon-${refreshing ? 'loading codicon-modifier-spin' : 'refresh'}`} />
             </button>
           </span>
           {view?.kind === 'runs' && <span class="desc ci-repo">{view.repo}</span>}

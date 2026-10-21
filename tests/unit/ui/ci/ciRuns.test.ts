@@ -968,3 +968,95 @@ describe('CiRuns: the tickets that show their CI (BL-106)', () => {
     ci.dispose();
   });
 });
+
+describe("CiRuns: what's working (BL-119)", () => {
+  /** A promise and its resolve, to hold a dialog or a read open. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  async function viewed(runs: ApiRun[]) {
+    github({ feat: runs });
+    const controller = setup();
+    controller.ci.update([ws('a')]);
+    controller.ci.setVisible(true);
+    await settle();
+    return controller;
+  }
+
+  it('shows a run working from the click, through its confirmation, until the runs are read again', async () => {
+    const { ci, last } = await viewed([apiRun({ id: 3, status: 'in_progress', conclusion: null })]);
+    const answer = deferred<string | undefined>();
+    win.showWarningMessage.mockReturnValueOnce(answer.promise);
+    const acting = ci.act('a', 3, 'cancel');
+    expect(runsOf(last().a)[0].busy).toBe('cancel');
+
+    answer.resolve('Cancel run');
+    await acting;
+    expect(runsOf(last().a)[0].busy).toBeUndefined();
+    ci.dispose();
+  });
+
+  it('clears a run that was working when its confirmation is cancelled, or GitHub refuses', async () => {
+    const { ci, last } = await viewed([apiRun({ id: 3, status: 'in_progress', conclusion: null })]);
+    win.showWarningMessage.mockResolvedValueOnce(undefined);
+    await ci.act('a', 3, 'cancel');
+    expect(runsOf(last().a)[0].busy).toBeUndefined();
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({}), text: async () => 'no' })));
+    win.showWarningMessage.mockResolvedValueOnce('Cancel run');
+    await expect(ci.act('a', 3, 'cancel')).rejects.toThrow();
+    // The read again is refused too (the view shows the error): nothing in it is left working.
+    expect(JSON.stringify(last())).not.toContain('busy');
+    ci.dispose();
+  });
+
+  it('shows Fix with Agent working while it signs in, and clears it when the sign-in is dismissed', async () => {
+    const { ci, last } = await viewed([apiRun({ id: 1, conclusion: 'failure' })]);
+    const session = deferred<undefined>();
+    auth.getSession.mockReturnValueOnce(session.promise);
+    const fixing = ci.fix('a', 1, 9);
+    expect(runsOf(last().a)[0].busy).toBe('fix');
+    // A second click meanwhile starts nothing more.
+    await ci.fix('a', 1, 9);
+    expect(auth.getSession).toHaveBeenCalledTimes(2);
+
+    session.resolve(undefined);
+    await fixing;
+    expect(runsOf(last().a)[0].busy).toBeUndefined();
+    expect(commands.executeCommand).not.toHaveBeenCalled();
+    ci.dispose();
+  });
+
+  it('shows a Refresh on every view until the runs are read, and not for a quiet read', async () => {
+    const { ci, last } = await viewed([apiRun({ id: 1 })]);
+    const session = deferred<{ accessToken: string }>();
+    auth.getSession.mockReturnValueOnce(session.promise);
+    const refreshing = ci.refresh();
+    expect(last().a.busy).toEqual(['refresh']);
+
+    session.resolve({ accessToken: 'token' });
+    await refreshing;
+    expect(last().a.busy).toBeUndefined();
+
+    auth.getSession.mockReturnValueOnce(new Promise(() => undefined));
+    void ci.refresh(true);
+    expect(last().a.busy).toBeUndefined();
+    ci.dispose();
+  });
+
+  it("shows Run Workflow… on its worktree's view until its dialogs are done, even when they're cancelled", async () => {
+    const { ci, last } = await viewed([apiRun({ id: 1 })]);
+    const started = deferred<boolean>();
+    const running = ci.runWorkflow('a', () => started.promise);
+    expect(last().a.busy).toEqual(['runWorkflow']);
+    expect(await ci.runWorkflow('a', async () => true)).toBe(false);
+
+    started.resolve(false);
+    expect(await running).toBe(false);
+    expect(last().a.busy).toBeUndefined();
+    ci.dispose();
+  });
+});

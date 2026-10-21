@@ -107,6 +107,11 @@ export function Overview({ workstreams, machine, active, colors, closed, ci, mis
                 {ws.branch}
               </span>
               {closed.has(ws.key) && <span class="tag" data-tip="Its tab is closed; double-click to open it">tab closed</span>}
+              {ws.removing && (
+                <span class="tag removing" role="status">
+                  <i class="codicon codicon-loading codicon-modifier-spin" /> Removing…
+                </span>
+              )}
               <span class="actions" onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
                 <button class="icon" aria-label="Open Its Tab" onClick={() => onSelect(ws.key)}>
                   <i class="codicon codicon-arrow-right" />
@@ -116,7 +121,7 @@ export function Overview({ workstreams, machine, active, colors, closed, ci, mis
                     <i class="codicon codicon-comment-discussion" />
                   </button>
                 )}
-                {!ws.isMain && (
+                {!ws.isMain && !ws.removing && (
                   <button class="icon" aria-label="Remove Worktree…" onClick={() => run('flotilla.remove', { key: ws.key })}>
                     <i class="codicon codicon-trash" />
                   </button>

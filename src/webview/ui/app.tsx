@@ -641,6 +641,7 @@ export function App() {
                     }
                   }}
                 >
+                  {ws.removing && <i class="codicon codicon-loading codicon-modifier-spin" data-tip="Removing…" aria-label="Removing…" />}
                   <span class="nm">{ws.label}</span>
                   {dot && <span class={`dot ${dot}`} />}
                   {open > 0 && <span class="n">{open}</span>}
