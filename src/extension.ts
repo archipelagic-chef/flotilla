@@ -63,7 +63,7 @@ import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
-import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
+import { registerSelfUpdate, resumeAfterInstall, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
 
 const BACKGROUND_POLL_SECONDS = 60;
@@ -162,10 +162,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
-  watchMainBuild(context, location.mainRoot, async () => {
+  watchMainBuild(context, location.mainRoot, location.commonDir, async () => {
     const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
     return base && localBase(location.mainRoot, base);
   });
+  // After Install Main's reload (BL-161): the agents it paused go on. Pause All (BL-160) is wired in once it's on main.
+  resumeAfterInstall(context, location.commonDir, undefined);
   // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
   setAgentDirs([backlog.dir]);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
