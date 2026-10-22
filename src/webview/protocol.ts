@@ -134,6 +134,8 @@ export interface ChatView {
   via?: string;
   /** "2m", "3h", "yesterday"-style age. */
   age: string;
+  /** Its record says working, but it went quiet: it shows as stopped (BL-131). */
+  stalled?: boolean;
   /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
   size?: { label: string; tip: string; big: boolean };
   /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */
@@ -301,6 +303,26 @@ export interface AutopilotState {
   idle?: string;
   /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
   away?: string;
+  /** The agents working now, for its details (BL-153). */
+  agents?: AutopilotAgent[];
+  /** The starts waiting, in the order they start in. */
+  queue?: AutopilotQueued[];
+}
+
+/** An agent working for a ticket: what it does (its work, a review, or it's starting), and since when (ISO 8601). */
+export interface AutopilotAgent {
+  id: string;
+  agent?: string;
+  doing: 'work' | 'review' | 'starting';
+  since?: string;
+}
+
+/** A start waiting: for a free slot or for memory; a reply, a review, a resume or a new ticket. */
+export interface AutopilotQueued {
+  id: string;
+  reason: 'slot' | 'memory';
+  kind: 'reply' | 'review' | 'resume' | 'new';
+  since?: string;
 }
 
 /** A repository on a slow drive: what the Overview says, and how to fix it. */
@@ -370,6 +392,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
+  | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }

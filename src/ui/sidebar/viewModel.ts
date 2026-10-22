@@ -38,6 +38,7 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bi
     state: chat.state,
     message: chat.message,
     open: chat.open,
+    ...(chat.stalled ? { stalled: true } : {}),
     ...(awaiting(chat) ? { awaiting: awaiting(chat) } : {}),
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),

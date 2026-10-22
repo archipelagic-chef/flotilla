@@ -74,7 +74,7 @@ export function ChatsBody({ ws, historyOpen, update }: Props) {
 
 function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
   const target = { key: ws.key, chatId: chat.id };
-  const sub = chat.state === 'waiting-for-input' && chat.message ? `“${chat.message}”` : `${STATE_LABEL[chat.state]} · ${chat.age}`;
+  const sub = chat.state === 'waiting-for-input' && chat.message ? `“${chat.message}”` : `${chat.stalled ? 'Stopped' : STATE_LABEL[chat.state]} · ${chat.age}`;
   return (
     <div
       class={`chat${chat.open ? '' : ' past'}`}

@@ -37,6 +37,8 @@ export type AgentChatView =
       agent: string;
       title: string;
       state: 'working' | 'waiting-for-input' | 'done' | 'ended';
+      /** Its record said working, but it went quiet with no process running (ISO 8601: its last activity). BL-131. */
+      stalled?: string;
       /** What it asks, while it waits for you. */
       message?: string;
       branch: string;

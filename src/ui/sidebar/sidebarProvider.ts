@@ -151,7 +151,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
     this.autopilot = autopilot;
-    this.subscriptions.push(autopilot.onDidChange(() => void this.postBacklog()));
+    this.subscriptions.push(
+      autopilot.onDidChange(() => void this.postBacklog()),
+      // The limit, changed in its details or in the settings, shows at once.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('flotilla.agents.maxRunning') || e.affectsConfiguration('flotilla.autopilot.maxAgents')) void this.postBacklog();
+      }),
+    );
     void this.postBacklog();
   }
 
@@ -308,6 +314,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'tryNow':
         await vscode.commands.executeCommand('flotilla.tryPausedNow');
+        return;
+      case 'maxAgents':
+        await setAgentLimit(m.max);
         return;
       case 'landAll':
         await vscode.commands.executeCommand('flotilla.mergeAllReady');
@@ -781,4 +790,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 /** Past this context a chat is marked as big (flotilla.chats.bigContext; 0: never). */
 function bigContext(): number {
   return vscode.workspace.getConfiguration('flotilla').get<number>('chats.bigContext', 200_000);
+}
+
+/**
+ * Sets the agent limit where it's set now: flotilla.autopilot.maxAgents (its older name) if the user set that, else
+ * flotilla.agents.maxRunning; in the workspace if it's set there, else for the user.
+ */
+async function setAgentLimit(max: number): Promise<void> {
+  if (!Number.isInteger(max) || max < 1) return;
+  const config = vscode.workspace.getConfiguration('flotilla');
+  const older = config.inspect<number>('autopilot.maxAgents');
+  const key = (older?.workspaceFolderValue ?? older?.workspaceValue ?? older?.globalValue) !== undefined ? 'autopilot.maxAgents' : 'agents.maxRunning';
+  const set = config.inspect<number>(key);
+  const target =
+    set?.workspaceFolderValue !== undefined
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : set?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+  await config.update(key, max, target);
 }

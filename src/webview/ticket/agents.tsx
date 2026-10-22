@@ -5,6 +5,7 @@ import { lastReport, runningFor } from '../activeAgents';
 import { ActionButton, send } from './actions';
 import { Rendered } from './markdownBox';
 import { FIX_TIP } from './reviewPanel';
+import { stoppedLabel } from '../shortTime';
 
 export const CHAT_STATE: Record<string, { label: string; cls: string }> = {
   working: { label: 'Working', cls: 'working' },
@@ -12,6 +13,11 @@ export const CHAT_STATE: Record<string, { label: string; cls: string }> = {
   done: { label: 'Done', cls: 'done' },
   ended: { label: 'Ended', cls: 'ended' },
 };
+
+/** How a chat's state reads: a chat that went quiet says since when (BL-131), the others their state. */
+export function chatState(chat: { state: string; stalled?: string }): { label: string; cls: string } {
+  return chat.stalled ? { label: stoppedLabel(chat.stalled), cls: 'ended' } : (CHAT_STATE[chat.state] ?? CHAT_STATE.ended);
+}
 
 /** "5 min ago", "3 h ago", "2 d ago". */
 export function ago(iso: string): string {
@@ -41,7 +47,7 @@ export function ChatCard({ chat }: { chat: AgentChatView }) {
       </div>
     );
   }
-  const state = CHAT_STATE[chat.state] ?? CHAT_STATE.ended;
+  const state = chatState(chat);
   return (
     <button class={`chat-card ${state.cls}`} onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
       <span class="chat-icon">
@@ -186,7 +192,7 @@ export function Agents({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="agents">
         {ticket.agents.map((a) => {
-          const state = a.held ? { label: a.held === 'paused' ? 'Paused' : 'Stopped', cls: 'waiting' } : (CHAT_STATE[a.state] ?? CHAT_STATE.ended);
+          const state = a.held ? { label: a.held === 'paused' ? 'Paused' : 'Stopped', cls: 'waiting' } : chatState(a);
           return (
             <div key={a.id} class={`agent-row ${state.cls}`}>
               <button class="agent-open" onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open this chat in Claude Code">
