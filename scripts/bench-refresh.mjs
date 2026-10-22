@@ -1,10 +1,11 @@
 // Benchmark for refreshes with many worktrees (BL-10). Builds a repository with N linked worktrees × M files in a
 // temporary folder, then times the refresh the sidebar runs: buildWorkstreams, bundled from the real source.
 //
-//   npm run bench -- [--worktrees 20] [--files 20000] [--changed 0] [--transcript-mb 0] [--refreshes 3]
+//   npm run bench -- [--worktrees 20] [--files 20000] [--changed 0] [--transcript-mb 0] [--refreshes 3] [--git-on-main-thread 0]
 //
 // --changed: modified files per linked worktree. --transcript-mb: a fake chat transcript of that size in the first
 // linked worktree; a line is appended before each refresh after the first, as a running chat does.
+// --git-on-main-thread 1: start git on the main thread, as before BL-165, to compare what spawning blocks.
 // Everything is removed afterwards, also on Ctrl+C. scripts/ is not in the vsix (.vscodeignore).
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -15,8 +16,8 @@ import * as path from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import * as esbuild from 'esbuild';
 
-const FLAGS = { worktrees: 'worktrees', files: 'files', changed: 'changed', 'transcript-mb': 'transcriptMb', refreshes: 'refreshes' };
-const DEFAULTS = { worktrees: 20, files: 20000, changed: 0, transcriptMb: 0, refreshes: 3 };
+const FLAGS = { worktrees: 'worktrees', files: 'files', changed: 'changed', 'transcript-mb': 'transcriptMb', refreshes: 'refreshes', 'git-on-main-thread': 'gitOnMainThread' };
+const DEFAULTS = { worktrees: 20, files: 20000, changed: 0, transcriptMb: 0, refreshes: 3, gitOnMainThread: 0 };
 const SETTINGS = { activeWindowMinutes: 5, staleAfterDays: 7, agentStatusStaleMinutes: 10, defaultBase: '' };
 const LOREM =
   'Refreshing the workstreams reads every worktree status, the activity of changed files, and the chat transcripts. ';
@@ -105,31 +106,13 @@ function bundleSource(dir) {
       `export { buildWorkstreams } from ${JSON.stringify(path.join(src, 'features/workstreams/workstream'))};`,
       `export { WorktreeService } from ${JSON.stringify(path.join(src, 'features/worktrees/worktreeService'))};`,
       `export { transcriptPath } from ${JSON.stringify(path.join(src, 'features/chats/chats'))};`,
+      `export { gitProcesses } from ${JSON.stringify(path.join(src, 'core/git/gitCli'))};`,
+      `export { setSpawnOnMainThread } from ${JSON.stringify(path.join(src, 'core/git/gitSpawner'))};`,
     ].join('\n'),
   );
   const out = path.join(dir, 'flotilla.cjs');
   esbuild.buildSync({ entryPoints: [entry], bundle: true, platform: 'node', target: 'node22', format: 'cjs', outfile: out, logLevel: 'warning' });
   return createRequire(import.meta.url)(out);
-}
-
-/** Counts the git processes Flotilla runs at once (it spawns git only through child_process.execFile). */
-function countGitProcesses(counter) {
-  const cp = createRequire(import.meta.url)('node:child_process');
-  const original = cp.execFile;
-  cp.execFile = function (file, ...rest) {
-    const callback = rest[rest.length - 1];
-    if (file !== 'git' || typeof callback !== 'function') return original.call(this, file, ...rest);
-    counter.running++;
-    counter.peak = Math.max(counter.peak, counter.running);
-    rest[rest.length - 1] = (...args) => {
-      counter.running--;
-      callback(...args);
-    };
-    return original.call(this, file, ...rest);
-  };
-  return () => {
-    cp.execFile = original;
-  };
 }
 
 const fmt = (n, digits = 0) => n.toFixed(digits).padStart(8);
@@ -139,15 +122,12 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-bench-')));
   const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-bench-bundle-'));
-  const counter = { running: 0, peak: 0 };
-  let restoreExecFile = () => undefined;
   let sampler;
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
     clearInterval(sampler);
-    restoreExecFile();
     fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 });
     fs.rmSync(bundleDir, { recursive: true, force: true });
   };
@@ -157,8 +137,8 @@ async function main() {
   });
 
   try {
-    const { buildWorkstreams, WorktreeService, transcriptPath } = bundleSource(bundleDir);
-    restoreExecFile = countGitProcesses(counter);
+    const { buildWorkstreams, WorktreeService, transcriptPath, gitProcesses, setSpawnOnMainThread } = bundleSource(bundleDir);
+    setSpawnOnMainThread(opts.gitOnMainThread === 1);
     const mainRoot = path.join(root, 'repo');
     const home = path.join(root, 'claude-home');
 
@@ -184,7 +164,7 @@ async function main() {
     sampler = setInterval(sample, 10);
 
     console.log(`Flotilla refresh benchmark: ${worktreeCount} worktrees (main + ${linked.length} linked) × ${opts.files} files`);
-    console.log(`  ${opts.changed} changed files per linked worktree, transcript ${opts.transcriptMb} MB`);
+    console.log(`  ${opts.changed} changed files per linked worktree, transcript ${opts.transcriptMb} MB, git started on the ${opts.gitOnMainThread ? 'main' : 'worker'} thread`);
     console.log(`  node ${process.version}, ${os.cpus()[0]?.model ?? 'unknown CPU'} (${os.cpus().length} cores), ${os.platform()} ${os.release()}`);
     console.log(`  setup ${(setupMs / 1000).toFixed(1)} s (fixture in ${root})`);
     console.log('');
@@ -193,7 +173,7 @@ async function main() {
 
     for (let r = 1; r <= opts.refreshes; r++) {
       if (transcript && r > 1) fs.appendFileSync(transcript, transcriptLine(100000 + r));
-      counter.peak = 0;
+      gitProcesses.peak = 0;
       peaks.rss = 0;
       peaks.heap = 0;
       loop.reset();
@@ -213,7 +193,7 @@ async function main() {
       const chats = items.reduce((n, ws) => n + ws.chats.length, 0);
       const label = r === 1 ? 'cold' : String(r);
       console.log(
-        `${label.padEnd(8)}${fmt(ms)}${fmt(blocked, 1).padStart(11)}${String(counter.peak).padStart(10)}${fmt(mb(peaks.rss))}${fmt(mb(peaks.heap))}${String(items.length).padStart(13)}${String(changed).padStart(9)}${String(chats).padStart(7)}`,
+        `${label.padEnd(8)}${fmt(ms)}${fmt(blocked, 1).padStart(11)}${String(gitProcesses.peak).padStart(10)}${fmt(mb(peaks.rss))}${fmt(mb(peaks.heap))}${String(items.length).padStart(13)}${String(changed).padStart(9)}${String(chats).padStart(7)}`,
       );
     }
     loop.disable();
