@@ -17,9 +17,6 @@
       "click": ".work-head-action:has-text(\"Update from Main\")"
     },
     {
-      "waitFor": ".work-head-action[aria-busy=\"true\"]:has-text(\"Updating…\")"
-    },
-    {
       "caption": "Its arrows spin and it says Updating… until the merge is done"
     },
     {
