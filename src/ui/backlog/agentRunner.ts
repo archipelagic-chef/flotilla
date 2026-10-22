@@ -13,6 +13,8 @@ import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
 import { recordEvent, type AgentRole, type Tokens } from '../../features/metrics/events';
+import { finishChatRecords } from '../../features/chats/chats';
+import { locateRepo } from '../../core/repoLocator';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -435,6 +437,8 @@ export function runAgentHeadless(o: {
     });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
+      // Its chat is done now, even when the hooks' last word was "working" (BL-131).
+      void locateRepo(o.cwd).then((repo) => repo && finishChatRecords(repo.commonDir, sessionId)).catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
       if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
       if (track) {

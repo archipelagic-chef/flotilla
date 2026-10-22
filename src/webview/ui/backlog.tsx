@@ -9,7 +9,7 @@ import { send } from './api';
 import { BusyButton } from './backlogBusy';
 import './priority.css';
 import { TitleBar } from './titleBar';
-import { AutopilotBar } from './autopilotBar';
+import { AgentCount, AutopilotBar } from './autopilotBar';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
@@ -43,6 +43,9 @@ export interface Props {
   /** The board shows only the tickets an agent works on (kept in the view's state). */
   workingOnly: boolean;
   setWorkingOnly(on: boolean): void;
+  /** The autopilot's details are folded out (kept in the view's state: per window). */
+  autopilotOpen: boolean;
+  setAutopilotOpen(open: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -50,7 +53,7 @@ export interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, openWorktree }: Props) {
+export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
@@ -60,6 +63,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
   // Agents' proposals wait above the lanes until they're accepted.
   const proposed = workingOnly ? [] : (items ?? []).filter((i) => i.proposed);
   const agentCount = agentCountLabel(autopilot);
+  const titles = new Map((items ?? []).map((i) => [i.id, i.title]));
   const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
   const chats = workstreams.flatMap((w) => w.chats);
@@ -85,17 +89,8 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
-      {agentCount && (
-        <button
-          class={`agent-count${workingOnly ? ' on' : ''}`}
-          onClick={() => setWorkingOnly(!workingOnly)}
-          title={`${agentCount}: ${workingOnly ? 'show all tickets' : 'show only tickets being worked on'}`}
-        >
-          <i class="codicon codicon-hubot" />
-          <span>{agentCount}</span>
-        </button>
-      )}
-      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} />}
+      {agentCount && autopilot && <AgentCount label={agentCount} autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">

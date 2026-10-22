@@ -659,7 +659,7 @@ export class TicketPanels implements vscode.Disposable {
    * The chats of agents that worked on an item, oldest first: those started for it (their first message names it),
    * and any chat (in any worktree) whose agent signed one of its entries or that an entry says was opened for it.
    */
-  private agentChats(item: BacklogItem, entries: TicketEntry[]): Array<Exclude<AgentChatView, { pending: true }>> {
+  agentChats(item: BacklogItem, entries: TicketEntry[]): Array<Exclude<AgentChatView, { pending: true }>> {
     const named = new Set(
       entries
         .map((e) => entryAgent(e.author) ?? (e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined))
@@ -685,13 +685,17 @@ export class TicketPanels implements vscode.Disposable {
           if (!agent || seen.has(c.id)) return [];
           if (started?.item !== item.id && !named.has(agent.toLowerCase())) return [];
           seen.add(c.id);
+          // A quiet chat whose process runs in this window is still working: its record and transcript just wait.
+          const alive = isRunningHeadless(c.id) || isRunningInTerminal(c.id);
+          const stalled = c.stalled && !alive ? c.stalled : undefined;
           return [
             {
               key: ws.key,
               id: c.id,
               agent,
               title: agentChatItem(c.title) ? item.title : c.title,
-              state: c.state,
+              state: c.stalled && alive ? ('working' as const) : c.state,
+              ...(stalled ? { stalled: stalled.toISOString() } : {}),
               message: c.message,
               branch: workstreamLabel(ws),
               started: (c.startedAt ?? c.updatedAt).toISOString(),

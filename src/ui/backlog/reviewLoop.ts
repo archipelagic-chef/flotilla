@@ -75,6 +75,7 @@ import {
   type AgentRun,
 } from './agentRunner';
 import type { QueuedView } from '../../webview/ticketProtocol';
+import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { recordEvent } from '../../features/metrics/events';
 
@@ -789,6 +790,30 @@ export class ReviewLoop implements vscode.Disposable {
       for (const chat of ws.chats)
         if (chat.state === 'working' && agentChatItem(chat.firstPrompt) && !this.ended.has(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
     return sessions.size + this.starting.size;
+  }
+
+  /** The agents counted in running, each once, for the autopilot's details: this window's runs, the starts admitted, the agent chats. */
+  agentsNow(): AutopilotAgent[] {
+    const agents: AutopilotAgent[] = [];
+    const sessions = new Set<string>();
+    for (const [id, r] of this.runs) {
+      sessions.add(r.run.sessionId);
+      agents.push({ id, agent: r.agent, doing: r.phase, since: new Date(r.since).toISOString() });
+    }
+    for (const ws of this.deps.repository.current)
+      for (const chat of ws.chats) {
+        const of = agentChatItem(chat.firstPrompt);
+        if (chat.state !== 'working' || !of || this.ended.has(chat.id) || this.held.has(chat.id) || sessions.has(chat.id)) continue;
+        sessions.add(chat.id);
+        agents.push({ id: of.item, agent: of.agent, doing: 'work', since: (chat.startedAt ?? chat.updatedAt).toISOString() });
+      }
+    for (const id of this.starting.values()) agents.push({ id, doing: 'starting' });
+    return agents;
+  }
+
+  /** The starts waiting, in the order they start in (for the autopilot's details). */
+  queuedStarts(): AutopilotQueued[] {
+    return this.waiting.ordered().map((w) => ({ id: w.id, reason: w.reason, kind: w.kind, ...(w.at ? { since: new Date(w.at).toISOString() } : {}) }));
   }
 
   /**
