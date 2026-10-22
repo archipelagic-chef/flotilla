@@ -121,7 +121,10 @@ export async function startAgent(ctx: ChatContext, ws: Workstream, task: string,
  */
 export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string, prompt?: string): Promise<void> {
   const chat = ws.chats.find((c) => c.id === chatId);
-  if (!chat) return;
+  if (!chat) {
+    void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in ${workstreamLabel(ws)}.`);
+    return;
+  }
   const dir = chat.cwd ?? ws.worktree.path ?? ctx.currentRoot;
   const here = samePath(dir, ctx.currentRoot);
   const active = chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input');
