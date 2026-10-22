@@ -1,0 +1,42 @@
+{
+  "title": "A chat that went quiet shows as stopped, not working",
+  "settings": {
+    "flotilla.agentStatusStaleMinutes": 1
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "caption": "Vega-2's chat says working; this demo counts a minute without activity as stopped"
+    },
+    {
+      "waitFor": ".agent-row:has-text(\"Stopped: no activity since\")",
+      "timeout": 150000
+    },
+    {
+      "hover": ".agent-row:has-text(\"Stopped: no activity since\")"
+    },
+    {
+      "caption": "Nothing changed for a minute and no process runs it here: it shows as stopped"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

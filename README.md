@@ -89,6 +89,7 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.ci.notify` | `failures` | Notify when a CI run on a worktree's branch finishes: `failures`, `all` or `off` |
 | `flotilla.ci.pushOnApproval` | `auto` | Push an approved ticket's branch to `origin` (and again on its new commits), so CI runs on it: `auto` (a GitHub `origin` with a workflow on push), `on` or `off`. Never forced; only commits with the repository's identity |
 | `flotilla.pollSeconds` | `15` | Refresh interval for worktrees in use while the view is visible; other worktrees every few minutes |
+| `flotilla.changes.limit` | `5000` | Changes listed per worktree before "and N more"; Stage All and Discard All still cover every change |
 | `flotilla.tagChatTitles` | `true` | Rename linked chats to "<branch>: <title>" in Claude Code's session list |
 | `flotilla.tabLabelPattern` | `""` | Regular expression for the id shown on worktree tabs (default: Jira keys and issue numbers) |
 | `flotilla.backlog.commitPrefix` | `agents` | Whose commits in a ticket's worktree must start with its id: `agents`, `everyone` or `off` |
@@ -111,8 +112,22 @@ Other tools can still report a worktree-wide status by writing `workstream.json`
 | `flotilla.autopilot.avoidClashes` | `false` | On, the autopilot also holds back a ticket that would change files a ticket in progress changes, until that one is merged |
 | `flotilla.agents.maxRunning` | `2` | How many agents run at once, in all (the autopilot's, reviews, resumes); the rest wait in a queue |
 | `flotilla.agents.maxPrioritized` | `2` | How many agents Prioritize may run above `maxRunning` at once; at this ceiling it asks which running agent to pause |
+| `flotilla.agents.minFreeMemoryMB` | `2048` | Free memory needed before an agent starts; the autopilot waits, a manual start offers Start Anyway. 0: no check |
 | `flotilla.agents.permissionMode` | `auto` | What agents without a window may do (user settings only) |
 | `flotilla.agents.claudePath` | `""` | The Claude Code CLI agents run with (user settings only) |
+
+## Many worktrees
+
+Flotilla is built to stay responsive with dozens of worktrees, large trees and several agents at once:
+
+- **Refreshes by need.** Worktrees in use (a window open, an agent running, recent changes) refresh every `flotilla.pollSeconds`; the others every few minutes, or as soon as git says they changed. Git runs at most 8 processes at once (fewer on small machines), what you're waiting for ahead of background refreshes, and progress is only recomputed when HEAD, the base or the changes moved.
+- **Reads only what's new.** A running chat's transcript is read from where the last read ended, never in full again; the sidebar gets only the worktrees that changed, and ticket views only the tickets a change concerns.
+- **Long lists stay light.** Each worktree shows at most `flotilla.changes.limit` changes ("and N more"), and long lists render only the rows in view. Stage All and Discard All still cover every change.
+- **Keeps the main window's watcher small.** `.worktrees` is kept out of file watching, search and the Git extension's scan by default; if your settings override that, the Overview says so with a button to fix it.
+- **Doesn't run the machine out of memory.** Each agent's Claude Code process takes about 300 MB, before its builds and tests. Below `flotilla.agents.minFreeMemoryMB` free, no agent starts (a manual start offers Start Anyway); the Overview shows the agents running, the windows open on worktrees and the memory free.
+- **Says when the drive is slow.** A repository on a 9p/drvfs mount (a Windows drive in WSL or a devcontainer) or a network drive is many times slower for git; Flotilla says so once, with the fix (clone into a container volume or the Linux filesystem), and keeps the repository packed in the background.
+
+The settings that matter most: `flotilla.agents.maxRunning` (agents at once), `flotilla.agents.minFreeMemoryMB`, `flotilla.checks.maxParallel` (test runs at once), `flotilla.pollSeconds` and `flotilla.changes.limit`. To measure a refresh at your scale: `npm run bench -- --worktrees 20 --files 20000 --changed 0 --transcript-mb 0` (it builds the repository in a temporary folder and removes it afterwards).
 
 ## Requirements
 

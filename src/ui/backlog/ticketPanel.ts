@@ -4,22 +4,16 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import {
-  acceptItem,
   addItem,
   agentChatItem,
   branchMatches,
   childrenOf,
   currentPrefix,
   itemBranches,
-  removeItem,
   entryAgent,
   sameAgent,
-  linkIssue,
   linkedItem,
-  unlinkIssue,
-  updateItem,
   readyToMerge,
-  type AgentChoice,
   type BacklogItem,
 } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -48,10 +42,9 @@ import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
 import type { Claim } from '../../features/backlog/ticketCheck';
 import { readSettings } from '../settings';
-import { openCommit } from '../openCommit';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, validModel } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
@@ -68,6 +61,7 @@ import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import type { CiRuns } from '../ci/ciRuns';
 import { TicketCi } from './ticketCi';
+import { handleMessage } from './ticketMessages';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -348,20 +342,8 @@ export function replaceImages(html: string, src: (current: string) => Promise<st
   });
 }
 
-/** An item with its agent choice (none, when all are the defaults). A model chosen replaces Light, and Light a model. */
-function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
-  const { agent: _old, ...rest } = item;
-  const clean: AgentChoice = {
-    ...(agent.model ? { model: agent.model } : {}),
-    ...(agent.effort ? { effort: agent.effort } : {}),
-    ...(agent.light && !agent.model ? { light: true } : {}),
-    ...(agent.movedUp ? { movedUp: agent.movedUp } : {}),
-  };
-  return Object.keys(clean).length ? { ...rest, agent: clean } : rest;
-}
-
 /** Markdown (as comments and reports are written here) in a tracker's markup. */
-function inMarkup(source: IssueSource, markdown: string): string {
+export function inMarkup(source: IssueSource, markdown: string): string {
   return source.markup === 'jira' ? markdownToJira(markdown.trim()) : markdown.trim();
 }
 
@@ -388,8 +370,8 @@ export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly subscriptions: vscode.Disposable[] = [];
 
-  private reviews: ReviewLoop | undefined;
-  private shaping: Shaping | undefined;
+  reviews: ReviewLoop | undefined;
+  shaping: Shaping | undefined;
 
   /** The review loop, for the tickets' review panel (created after the tickets). */
   useReviews(reviews: ReviewLoop): void {
@@ -397,7 +379,7 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(reviews.onDidChange((id) => this.refresh(new Set([id]))));
   }
 
-  private mainSync: MainSync | undefined;
+  mainSync: MainSync | undefined;
 
   /** Update from Main (BL-55), for the tickets being worked on. */
   useMainSync(mainSync: MainSync): void {
@@ -450,7 +432,7 @@ export class TicketPanels implements vscode.Disposable {
     await this.check(id, true);
   }
 
-  private merger: Merger | undefined;
+  merger: Merger | undefined;
 
   /** The merges, for the tickets' Merge button and merge panel. */
   useMerger(merger: Merger): void {
@@ -459,9 +441,9 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
-  private readonly ci: TicketCi | undefined;
+  readonly ci: TicketCi | undefined;
 
-  constructor(private readonly deps: TicketDeps) {
+  constructor(readonly deps: TicketDeps) {
     this.ci = deps.ci && new TicketCi({ ci: deps.ci, showCi: (key) => deps.showCi?.(key), memento: deps.memento, mainRoot: deps.mainRoot });
     if (this.ci) this.subscriptions.push(this.ci);
     this.subscriptions.push(
@@ -612,7 +594,7 @@ export class TicketPanels implements vscode.Disposable {
   private readonly details = new Map<string, { at: number; settled: boolean; value: Promise<RemoteRead> }>();
 
   /** An issue's details, cached (fresh: read again, e.g. after commenting); refreshes while it's read share the read. */
-  private remoteDetails(id: string, fresh = false): Promise<RemoteRead> {
+  remoteDetails(id: string, fresh = false): Promise<RemoteRead> {
     const cached = this.details.get(id);
     if (cached && !fresh && Date.now() - cached.at < 60_000) return cached.value;
     const entry = {
@@ -721,7 +703,7 @@ export class TicketPanels implements vscode.Disposable {
    * The chats of agents that worked on an item, oldest first: those started for it (their first message names it),
    * and any chat (in any worktree) whose agent signed one of its entries or that an entry says was opened for it.
    */
-  private agentChats(item: BacklogItem, entries: TicketEntry[]): Array<Exclude<AgentChatView, { pending: true }>> {
+  agentChats(item: BacklogItem, entries: TicketEntry[]): Array<Exclude<AgentChatView, { pending: true }>> {
     const named = new Set(
       entries
         .map((e) => entryAgent(e.author) ?? (e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined))
@@ -747,13 +729,17 @@ export class TicketPanels implements vscode.Disposable {
           if (!agent || seen.has(c.id)) return [];
           if (started?.item !== item.id && !named.has(agent.toLowerCase())) return [];
           seen.add(c.id);
+          // A quiet chat whose process runs in this window is still working: its record and transcript just wait.
+          const alive = isRunningHeadless(c.id) || isRunningInTerminal(c.id);
+          const stalled = c.stalled && !alive ? c.stalled : undefined;
           return [
             {
               key: ws.key,
               id: c.id,
               agent,
               title: agentChatItem(c.title) ? item.title : c.title,
-              state: c.state,
+              state: c.stalled && alive ? ('working' as const) : c.state,
+              ...(stalled ? { stalled: stalled.toISOString() } : {}),
               message: c.message,
               branch: workstreamLabel(ws),
               started: (c.startedAt ?? c.updatedAt).toISOString(),
@@ -769,7 +755,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Where a ticket's images and links are looked for: its worktrees, then the main one. */
-  private roots(item: BacklogItem): string[] {
+  roots(item: BacklogItem): string[] {
     return [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot];
   }
 
@@ -927,7 +913,7 @@ export class TicketPanels implements vscode.Disposable {
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
 
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
-  private readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
+  readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
 
   /** The posts running per panel. A post superseded by a newer one sends nothing: the newer one carries its change. */
   private readonly running = new WeakMap<vscode.WebviewPanel, Set<Promise<void>>>();
@@ -1158,7 +1144,7 @@ export class TicketPanels implements vscode.Disposable {
    * An item's branches without a worktree, its commits, and its history clean-ups: the one in progress, and the
    * histories kept (read from git: quick, and local).
    */
-  private async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp' | 'merge'>> {
+  async work(item: BacklogItem & { remote?: RemoteIssue }): Promise<Pick<TicketView, 'branches' | 'commits' | 'rewrite' | 'history' | 'canCleanUp' | 'merge'>> {
     const cwd = this.deps.mainRoot;
     try {
       const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
@@ -1193,7 +1179,7 @@ export class TicketPanels implements vscode.Disposable {
    * from the repository root (in the ticket's worktrees first, then the main one: after a merge it's there) or next to
    * the ticket (its pictures); "path#L10-L20" and "path:10" select lines.
    */
-  private async openHref(item: BacklogItem, href: string): Promise<void> {
+  async openHref(item: BacklogItem, href: string): Promise<void> {
     if (/^(https?|mailto):/i.test(href)) {
       await vscode.env.openExternal(vscode.Uri.parse(href));
       return;
@@ -1217,7 +1203,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Reads the ticket, changes it and writes it back (the file may have changed since the view showed it). */
-  private async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
+  async changeTicket(item: BacklogItem, change: (t: Ticket) => Ticket): Promise<void> {
     await this.deps.backlog.editTicket(item, change);
   }
 
@@ -1225,7 +1211,7 @@ export class TicketPanels implements vscode.Disposable {
    * A Done item's work that isn't merged: a sibling ticket (same parent) to merge the branch, asking which branch when
    * there are several. The new ticket opens.
    */
-  private async mergeSibling(item: BacklogItem, branch?: string): Promise<void> {
+  async mergeSibling(item: BacklogItem, branch?: string): Promise<void> {
     const merge = this.deps.merges.get(item.id);
     const unmerged = merge?.branches.filter((b) => b.state === 'unmerged') ?? [];
     let pick: string | undefined = branch ?? unmerged[0]?.branch;
@@ -1255,7 +1241,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Done with unmerged work, and it's superseded: which ticket has the work instead. The warning goes. */
-  private async dismissUnmerged(item: BacklogItem): Promise<void> {
+  async dismissUnmerged(item: BacklogItem): Promise<void> {
     const data = await this.deps.backlog.read();
     const by = (
       await vscode.window.showInputBox({
@@ -1279,7 +1265,7 @@ export class TicketPanels implements vscode.Disposable {
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
   /** A reply's text, with the line that names the entry it answers first (BL-126); as it is when that entry is gone. */
-  private async withReplyLine(item: BacklogItem, text: string, replyTo: string | undefined): Promise<string> {
+  async withReplyLine(item: BacklogItem, text: string, replyTo: string | undefined): Promise<string> {
     if (!replyTo) return text;
     const activity = (await this.deps.backlog.readTicket(item)).activity;
     const parent = activity[entryAnchors(activity).indexOf(replyTo)];
@@ -1454,310 +1440,11 @@ export class TicketPanels implements vscode.Disposable {
   private async handle(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     const item = await this.item(id);
     if (!item) return;
-    const backlog = this.deps.backlog;
-    switch (m.type) {
-      case 'ready':
-        // The webview has nothing yet (or reloaded): the whole view goes again, and its Ask chat.
-        this.sentViews.delete(panel);
-        if (this.asks.has(id)) this.postAsk(id, panel, 0);
-        this.ci?.resend(id);
-        break;
-      case 'title': {
-        const title = m.title.trim();
-        if (!title || title === item.title) return;
-        if (item.remote) {
-          await this.writeRemote(id, (s) => s.update(id, { title }));
-          return;
-        }
-        await backlog.change((d) => updateItem(d, id, { title }));
-        await this.changeTicket(item, (t) => ({ ...t, title }));
-        break;
-      }
-      case 'description':
-        if (item.remote) {
-          // As the tracker writes it (Jira: wiki markup), as it was shown for editing.
-          await this.writeRemote(id, (s) => s.update(id, { description: m.text }));
-          return;
-        }
-        {
-          const before = (await backlog.readTicket(item)).description;
-          await this.changeTicket(item, (t) => ({ ...t, title: item.title, description: m.text }));
-          if (before.trim() !== m.text.trim()) await backlog.noteDescriptions({ id, before, by: 'You' });
-        }
-        break;
-      case 'showActivity':
-        // Remembered for the user, and every ticket shows it the same way; no view changes.
-        await keepShowActivity(this.deps.memento, m.shown);
-        return;
-      case 'foldAttachments':
-        // Remembered for this ticket; the tab already shows it.
-        await keepAttachmentsFolded(this.deps.memento, id, m.folded);
-        return;
-      case 'comment':
-        if (!m.text.trim()) return;
-        if (item.remote) {
-          await this.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
-          return;
-        } else {
-          await this.addActivity(id, 'You', await this.withReplyLine(item, m.text, m.replyTo));
-          // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
-          await this.shaping?.discuss(id);
-        }
-        break;
-      case 'openRemote':
-        if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-        return;
-      case 'status':
-        await backlog.change((d) => updateItem(d, id, { status: m.status }));
-        break;
-      case 'priority':
-        await backlog.change((d) => updateItem(d, id, { priority: m.priority }));
-        break;
-      case 'image': {
-        const bytes = Buffer.from(m.data, 'base64');
-        const kind = mediaType(m.name)?.kind ?? 'image';
-        if (tooLarge(kind, bytes.length)) {
-          void panel.webview.postMessage({ type: 'imageSaved', requestId: m.requestId, markdown: '' } satisfies TicketHostMessage);
-          throw new Error(tooLargeNote(m.name, kind, bytes.length));
-        }
-        const rel = await backlog.saveImage(id, m.name, bytes);
-        const reply: TicketHostMessage = { type: 'imageSaved', requestId: m.requestId, markdown: `![${path.basename(rel)}](${rel})` };
-        void panel.webview.postMessage(reply);
-        return;
-      }
-      case 'preview': {
-        const html = await renderMarkdown(m.text, panel.webview, this.deps.backlog.dir, this.roots(item));
-        void panel.webview.postMessage({ type: 'previewed', requestId: m.requestId, html } satisfies TicketHostMessage);
-        return;
-      }
-      case 'mediaRefused':
-        void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
-        return;
-      case 'start':
-        await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
-        return;
-      case 'discuss':
-        if (!item.remote) await this.shaping?.discuss(id, true);
-        break;
-      case 'keepDiscussing':
-        await this.shaping?.keepDiscussing(id);
-        break;
-      case 'openFile':
-        await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
-        return;
-      case 'link':
-        await vscode.commands.executeCommand('flotilla.linkBacklogItem', id);
-        return;
-      case 'unlink':
-        await backlog.change((d) => unlinkIssue(d, id, m.id));
-        break;
-      case 'openLink': {
-        const link = item.links?.find((l) => l.id === m.id);
-        if (link) await vscode.env.openExternal(vscode.Uri.parse(link.url));
-        return;
-      }
-      case 'openWorktree':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) this.deps.revealWorktree(m.key);
-        return;
-      case 'transition': {
-        const move = (await this.remoteDetails(id)).edit?.transitions.find((t) => t.id === m.id);
-        if (!move || !item.remote) return;
-        if (move.needs?.length) {
-          // The workflow asks for more on this move (a resolution, a reviewer): that's done in the tracker.
-          const open = await vscode.window.showWarningMessage(
-            `"${move.name}" needs ${move.needs.join(', ')}, which Flotilla can't fill in.`,
-            'Do It in the Tracker',
-          );
-          if (open) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
-          return;
-        }
-        await this.writeRemote(id, (s) => s.transition(id, move.id));
-        return;
-      }
-      case 'remotePriority':
-        await this.writeRemote(id, (s) => s.update(id, { priority: m.name }));
-        return;
-      case 'postEntry':
-        await this.postEntry(item, m.key);
-        return;
-      case 'openCommit': {
-        // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
-        const work = await this.work(item);
-        const { commits } = work;
-        const commit = commits.find((c) => c.hash === m.hash);
-        // A commit of a kept history is on no branch: its diff.
-        if (!commit) {
-          if (work.history.some((v) => v.log.some((c) => c.hash === m.hash))) await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-          return;
-        }
-        const candidates = [
-          ...this.worktreesOf(item).filter((w) => w.worktree.branch && commit.branches.includes(w.worktree.branch)),
-          ...this.worktreesOf(item),
-          ...this.deps.repository.current.filter((w) => w.worktree.isMain),
-        ];
-        for (const ws of candidates) {
-          if (!ws.worktree.path) continue;
-          const has = await runGit(['merge-base', '--is-ancestor', m.hash, 'HEAD'], { cwd: ws.worktree.path }).then(
-            () => true,
-            () => false,
-          );
-          if (has) {
-            await this.deps.showCommits(
-              ws.key,
-              id,
-              commits.map((c) => c.hash),
-              m.hash,
-            );
-            return;
-          }
-        }
-        await openCommit(this.deps.reference, this.deps.mainRoot, m.hash);
-        return;
-      }
-      case 'openHref':
-        await this.openHref(item, m.href);
-        return;
-      case 'agentModel': {
-        if (item.remote) return;
-        let model = m.model?.trim() || undefined;
-        if (model === 'other') {
-          model = (
-            await vscode.window.showInputBox({
-              title: `The model for agents on ${id}`,
-              prompt: "An alias (opus, sonnet, haiku, fable) or a model's full name (claude-opus-5-5)",
-              value: item.agent?.model ?? '',
-            })
-          )?.trim();
-          if (model === undefined) return;
-        }
-        if (model === 'light') {
-          await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: undefined, light: true }) : i)) }));
-          break;
-        }
-        if (model && !validModel(model)) {
-          void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
-          return;
-        }
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
-        break;
-      }
-      case 'agentEffort':
-        if (item.remote) return;
-        await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, effort: m.effort ?? undefined }) : i)) }));
-        break;
-      case 'cleanUp':
-        await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
-        return;
-      case 'finishCleanUp':
-        await vscode.commands.executeCommand('flotilla.finishCleanUp', id);
-        return;
-      case 'cancelCleanUp':
-        await vscode.commands.executeCommand('flotilla.cancelCleanUp', id);
-        return;
-      case 'compareCleanUp':
-        await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
-        return;
-      case 'merge':
-        await this.merger?.merge(id);
-        return;
-      case 'mergeResolve':
-        await this.merger?.resolveWithAgent(id);
-        return;
-      case 'mergeApprove':
-        await this.merger?.approveResolution(id);
-        return;
-      case 'mergeRecheck':
-        await this.merger?.recheck(id);
-        return;
-      case 'mergeCancel':
-        await this.merger?.cancel(id);
-        return;
-      case 'mergeCiCancel':
-        await this.merger?.cancelCiWait(id);
-        return;
-      case 'mergeQueueRemove':
-        await this.merger?.removeFromQueue(id);
-        return;
-      case 'mergeQueueResolve':
-        await this.merger?.resolveTrainConflict(id);
-        return;
-      case 'mergeNext':
-        await this.merger?.mergeNext(id);
-        return;
-      case 'mergeCiFix':
-        await this.merger?.fixCiStop(id);
-        return;
-      case 'push':
-        await this.merger?.push();
-        return;
-      case 'run':
-        await vscode.commands.executeCommand('flotilla.runBacklogItem', id, { key: m.key, index: m.index, ...(m.try ? { try: true } : {}) });
-        return;
-      case 'checkout':
-        if ((await this.work(item)).branches.includes(m.branch))
-          await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: false, branch: m.branch });
-        return;
-      case 'mergeSibling':
-        await this.mergeSibling(item, m.branch);
-        return;
-      case 'dismissUnmerged':
-        await this.dismissUnmerged(item);
-        return;
-      case 'startReview':
-        await this.reviews?.start(id, true);
-        return;
-      case 'userReview':
-        await this.reviews?.userReview(id, m.verdict, m.text);
-        break;
-      case 'reviewFix':
-        await this.reviews?.fix(id, m.fix);
-        return;
-      case 'check':
-        await this.check(id, true);
-        break;
-      case 'checkCleanUp':
-        await this.cleanUp(id, m.key);
-        break;
-      case 'updateFromMain':
-        await this.mainSync?.update(id);
-        return;
-      case 'prioritize':
-        await this.reviews?.prioritize(id);
-        return;
-      case 'stopReview':
-        await this.reviews?.stop(id);
-        return;
-      case 'agent':
-        await this.controlAgent(id, m.action, m.session);
-        return;
-      case 'accept':
-        await backlog.change((d) => acceptItem(d, id));
-        break;
-      case 'dismiss':
-        if (!item.proposed) return;
-        await backlog.change((d) => removeItem(d, id));
-        await backlog.deleteDocument(id);
-        return;
-      case 'openTicket':
-        await this.open(m.id);
-        return;
-      case 'openChat':
-        if (this.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.openChat', { key: m.key, chatId: m.id });
-        return;
-      case 'createIssue': {
-        if (item.remote) return;
-        const ticket = await backlog.readTicket(item);
-        const link = await this.deps.integrations.createIssue(id, item.title, ticket.description);
-        if (!link) return;
-        await backlog.change((d) => linkIssue(d, id, link));
-        await this.addActivity(id, 'Flotilla', `Created [${link.id}](${link.url}) and linked it.`);
-        break;
-      }
-    }
+    await handleMessage({ id, panel, item, backlog: this.deps.backlog, panels: this }, m);
   }
 
   /** The Ask chats of the open tickets (BL-80): in memory only, one per tab. */
-  private readonly asks = new Map<string, AskChat>();
+  readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
@@ -1803,7 +1490,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Sends the Ask chat to its tab, at most every 60 ms while an answer streams in. */
-  private postAsk(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
+  postAsk(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
     if (this.askTimers.has(id)) return;
     this.askTimers.set(
       id,
@@ -1854,7 +1541,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   /** Writes to an issue's tracker (only ever from a click in its tab), then reads it and the backlog again. */
-  private async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
+  async writeRemote(issue: string, write: (source: IssueSource) => Promise<void>): Promise<void> {
     await write(await this.source(issue));
     this.details.delete(issue);
     // The list has the status and priority the backlog shows; refreshing it refreshes the open tickets too.
@@ -1865,7 +1552,7 @@ export class TicketPanels implements vscode.Disposable {
    * Posts a local activity entry (a comment or an agent's report) to the issue, or to one of a local item's linked
    * issues, after showing what will be posted and asking. Agents never post: they only write the ticket file.
    */
-  private async postEntry(item: BacklogItem & { remote?: RemoteIssue }, key: string): Promise<void> {
+  async postEntry(item: BacklogItem & { remote?: RemoteIssue }, key: string): Promise<void> {
     const entry = (await this.deps.backlog.readTicket(item)).activity.find((e) => Store.entryKey(item.id, e) === key);
     if (!entry) return;
     const targets = item.remote ? [item.remote.id] : (item.links ?? []).map((l) => l.id);

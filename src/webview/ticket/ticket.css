@@ -868,6 +868,11 @@ button.chat-card:hover {
   min-width: 0;
   font-weight: normal;
 }
+/* "Stopped: no activity since Oct 18, 21:46" reads on one line (BL-131): the chat's title gives way first. */
+.agent-row .state {
+  flex: none;
+  white-space: nowrap;
+}
 .agent-name {
   flex: none;
   font-weight: 600;

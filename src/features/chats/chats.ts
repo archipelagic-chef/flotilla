@@ -81,6 +81,11 @@ export interface Chat {
   model?: string;
   effort?: string;
   usage?: ChatUsage;
+  /**
+   * Its record says working, but neither it nor the transcript changed for a while (MergeOptions.staleMinutes): the
+   * chat ended without the hook saying so. Its last activity; it shows as stopped, not working (BL-131).
+   */
+  stalled?: Date;
 }
 
 const URGENCY: Record<ChatState, number> = { 'waiting-for-input': 0, working: 1, done: 2, ended: 3 };
@@ -138,6 +143,38 @@ export function parseChatRecord(raw: string): ChatRecord | undefined {
     startedAt: toDate(data.startedAt),
     updatedAt,
   };
+}
+
+/**
+ * Marks a chat done in every record of it in the repository (the common dir's and each worktree's), when they still
+ * say it works or waits: its process ended, whatever its hooks wrote last (BL-131). The git dirs it changed.
+ */
+export async function finishChatRecords(commonDir: string, sessionId: string, now = new Date()): Promise<string[]> {
+  if (!isSessionId(sessionId)) return [];
+  const worktrees = await fs.readdir(path.join(commonDir, 'worktrees')).catch(() => [] as string[]);
+  const dirs = [commonDir, ...worktrees.map((w) => path.join(commonDir, 'worktrees', w))];
+  const changed = await Promise.all(
+    dirs.map(async (dir) => {
+      const file = path.join(chatsDir(dir), `${sessionId}.json`);
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      } catch {
+        return undefined;
+      }
+      if (data.state !== 'working' && data.state !== 'waiting-for-input') return undefined;
+      const { message: _message, ...rest } = data;
+      const tmp = `${file}.${process.pid}.tmp`;
+      try {
+        await fs.writeFile(tmp, JSON.stringify({ ...rest, state: 'done', updatedAt: now.toISOString() }));
+        await fs.rename(tmp, file);
+        return dir;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return changed.filter((d): d is string => d !== undefined);
 }
 
 export async function readChatRecords(gitDir: string): Promise<ChatRecord[]> {
@@ -541,7 +578,7 @@ export interface MergeOptions {
   now: Date;
   /** A chat that reported nothing for this long is no longer open. */
   openHours: number;
-  /** A 'working' report older than this is shown as done. */
+  /** A 'working' report older than this, with no newer transcript, is shown as done (and stalled). */
   staleMinutes: number;
 }
 
@@ -552,7 +589,10 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
     if (unlinked.has(r.sessionId)) continue;
     const t = transcriptById.get(r.sessionId);
     const age = opts.now.getTime() - r.updatedAt.getTime();
-    const state: ChatState = r.state === 'working' && age > opts.staleMinutes * 60_000 ? 'done' : r.state;
+    const updatedAt = t && t.updatedAt > r.updatedAt ? t.updatedAt : r.updatedAt;
+    // A chat that writes its transcript is alive, even when its last hook was long ago (a long command).
+    const stalled = r.state === 'working' && opts.now.getTime() - updatedAt.getTime() > opts.staleMinutes * 60_000;
+    const state: ChatState = stalled ? 'done' : r.state;
     byId.set(r.sessionId, {
       id: r.sessionId,
       source: r.source,
@@ -561,10 +601,12 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       message: state === 'waiting-for-input' ? r.message : undefined,
       linkedBy: r.linkedBy,
       cwd: r.linkedBy === 'cwd' ? undefined : r.cwd,
-      updatedAt: t && t.updatedAt > r.updatedAt ? t.updatedAt : r.updatedAt,
+      updatedAt,
       open: state !== 'ended' && age <= opts.openHours * 3_600_000,
       ...optional('firstPrompt', r.firstPrompt ?? t?.firstPrompt),
-      ...optional('agent', r.agent),
+      // The chat Flotilla named ("Orbit-2 · review BL-132") is that agent's, whatever name the hook gave it first.
+      ...optional('agent', titleAgent(t?.title) ?? r.agent),
+      ...(stalled ? { stalled: updatedAt } : {}),
       ...optional('startedAt', r.startedAt ?? t?.startedAt),
       ...optional('model', t?.model),
       ...optional('effort', t?.effort),
@@ -591,6 +633,11 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
   return [...byId.values()].sort(
     (a, b) => Number(b.open) - Number(a.open) || (a.open ? URGENCY[a.state] - URGENCY[b.state] : 0) || b.updatedAt.getTime() - a.updatedAt.getTime(),
   );
+}
+
+/** The agent a chat's title names: Flotilla names its agents' chats "<agent> · <what>" ("Orbit-2 · review BL-132"). */
+export function titleAgent(title: string | undefined): string | undefined {
+  return /^([A-Za-z]+-\d+) · /.exec(title ?? '')?.[1];
 }
 
 /** { [key]: value } when there's a value; nothing otherwise (keeps chats free of undefined fields). */

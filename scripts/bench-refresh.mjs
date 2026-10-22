@@ -82,10 +82,18 @@ const transcriptLine = (n) =>
 /** A session transcript of about `bytes`, with a title and a first prompt, as Claude Code writes them. */
 function writeTranscript(file, bytes) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  let text = JSON.stringify({ type: 'user', timestamp: '2026-10-11T08:00:00.000Z', message: { content: 'Benchmark the refresh' } }) + '\n';
-  text += JSON.stringify({ type: 'ai-title', aiTitle: 'Benchmark chat' }) + '\n';
-  for (let n = 0; Buffer.byteLength(text) < bytes; n++) text += transcriptLine(n);
-  fs.writeFileSync(file, text);
+  // Written in chunks, so the benchmark's own memory doesn't hide what the refresh holds of the transcript.
+  const fd = fs.openSync(file, 'w');
+  let written = 0;
+  const write = (text) => (written += fs.writeSync(fd, text));
+  write(JSON.stringify({ type: 'user', timestamp: '2026-10-11T08:00:00.000Z', message: { content: 'Benchmark the refresh' } }) + '\n');
+  write(JSON.stringify({ type: 'ai-title', aiTitle: 'Benchmark chat' }) + '\n');
+  for (let n = 0; written < bytes; ) {
+    let chunk = '';
+    for (let end = n + 1000; n < end; n++) chunk += transcriptLine(n);
+    write(chunk);
+  }
+  fs.closeSync(fd);
 }
 
 function bundleSource(dir) {

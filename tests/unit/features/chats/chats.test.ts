@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   encodeProjectDir,
+  finishChatRecords,
   homedElsewhere,
   linkChat,
   mergeChats,
@@ -14,6 +15,7 @@ import {
   readTranscripts,
   readUnlinked,
   tagTranscriptTitle,
+  titleAgent,
   transcriptPath,
   unlinkChat,
   type ChatRecord,
@@ -149,9 +151,56 @@ describe('mergeChats', () => {
       new Set(),
       opts,
     );
-    expect(chats.find((c) => c.id === 'stuck')).toMatchObject({ state: 'done', open: true });
+    expect(chats.find((c) => c.id === 'stuck')).toMatchObject({ state: 'done', open: true, stalled: ago(30) });
     expect(chats.find((c) => c.id === 'yesterday')).toMatchObject({ open: false });
     expect(mostUrgent([])).toBeUndefined();
+  });
+});
+
+describe('a chat that went quiet (BL-131)', () => {
+  it('shows a stale working record as stalled since its last activity, unless its transcript is still written', () => {
+    const chats = mergeChats(
+      [rec({ sessionId: 'quiet', state: 'working', updatedAt: ago(2 * 24 * 60) }), rec({ sessionId: 'long-command', state: 'working', updatedAt: ago(30) })],
+      [
+        { sessionId: 'quiet', updatedAt: ago(2 * 24 * 60 - 1) },
+        { sessionId: 'long-command', updatedAt: ago(2) },
+      ],
+      new Set(),
+      opts,
+    );
+    expect(chats.find((c) => c.id === 'quiet')).toMatchObject({ state: 'done', stalled: ago(2 * 24 * 60 - 1) });
+    const busy = chats.find((c) => c.id === 'long-command');
+    expect(busy?.state).toBe('working');
+    expect(busy?.stalled).toBeUndefined();
+  });
+
+  it("takes a chat's agent from the title Flotilla gave it, over the hook's name", () => {
+    const [chat] = mergeChats([rec({ sessionId: 's', agent: 'Astro-4' })], [{ sessionId: 's', title: 'Orbit-2 · review BL-132', updatedAt: ago(1) }], new Set(), opts);
+    expect(chat.agent).toBe('Orbit-2');
+    expect(mergeChats([rec({ sessionId: 's', agent: 'Astro-4' })], [{ sessionId: 's', title: 'Fix the login', updatedAt: ago(1) }], new Set(), opts)[0].agent).toBe('Astro-4');
+    expect(titleAgent('Fix CI · feature/x')).toBeUndefined();
+  });
+
+  it('marks every record of a finished headless run done, leaving ended and other chats alone', async () => {
+    const common = makeTempDir();
+    cleanup.push(common);
+    const write = (dir: string, id: string, data: object) => {
+      fs.mkdirSync(path.join(dir, 'flotilla', 'chats'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'flotilla', 'chats', `${id}.json`), JSON.stringify({ sessionId: id, ...data }));
+    };
+    const wt = path.join(common, 'worktrees', 'feature-x');
+    write(common, 'run', { state: 'working', message: 'x', updatedAt: ago(5).toISOString() });
+    write(wt, 'run', { state: 'waiting-for-input', updatedAt: ago(5).toISOString() });
+    write(wt, 'other', { state: 'working', updatedAt: ago(5).toISOString() });
+    write(path.join(common, 'worktrees', 'ended'), 'run', { state: 'ended', updatedAt: ago(5).toISOString() });
+    expect((await finishChatRecords(common, 'run', now)).sort()).toEqual([common, wt].sort());
+    const read = (dir: string, id: string) => parseChatRecord(fs.readFileSync(path.join(dir, 'flotilla', 'chats', `${id}.json`), 'utf8'));
+    expect(read(common, 'run')).toMatchObject({ state: 'done', updatedAt: now });
+    expect(read(common, 'run')?.message).toBeUndefined();
+    expect(read(wt, 'run')?.state).toBe('done');
+    expect(read(wt, 'other')?.state).toBe('working');
+    expect(read(path.join(common, 'worktrees', 'ended'), 'run')?.state).toBe('ended');
+    expect(await finishChatRecords(common, '../x', now)).toEqual([]);
   });
 });
 

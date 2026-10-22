@@ -13,6 +13,7 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
 import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
@@ -54,6 +55,9 @@ export interface AutopilotView {
   idle?: string;
   /** What it did while the user was away, for a while after they're back: "Overnight: 6 tickets done, 3 waiting for you". */
   away?: string;
+  /** The agents working now, and the starts waiting in order (BL-153). */
+  agents?: AutopilotAgent[];
+  queue?: AutopilotQueued[];
 }
 
 /** How long it's idle, with tickets waiting, before a notification says so (once). */
@@ -166,6 +170,8 @@ export class Autopilot implements vscode.Disposable {
       elsewhere: !this.deps.leader.isLeader,
       ...(this.idle ? { idle: this.idle } : {}),
       ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
+      agents: this.deps.reviews.agentsNow(),
+      queue: this.deps.reviews.queuedStarts(),
     };
   }
 

@@ -13,8 +13,9 @@
     { "caption": "Claude takes work again: the paused agent goes on, and the autopilot with it" },
     { "waitFor": ".autopilot-bar:has-text(\"2 of 2 working\")" },
     { "wait": 2500 },
-    { "caption": "A click on the bar turns the autopilot off" },
+    { "caption": "A click on the bar shows what it's doing" },
     { "click": ".autopilot-bar .autopilot-what" },
+    { "waitFor": ".autopilot-details" },
     { "wait": 1200 },
     { "caption": "" }
   ]
