@@ -44,6 +44,7 @@ import { runWorkflowByHand } from '../ci/runWorkflow';
 import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
+import { recordClickWait } from '../../features/metrics/record';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -568,6 +569,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'backlog': {
         // The card's button shows it's working until this says it's done (BL-117), whether it posted, failed or returned early.
         let failed = false;
+        const clicked = Date.now();
         try {
           await this.onBacklog(m);
         } catch (error) {
@@ -575,6 +577,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           throw error;
         } finally {
           this.post({ type: 'backlogDone', message: m, ...(failed ? { failed } : {}) });
+          recordClickWait(`backlog:${m.op}`, clicked, 'id' in m ? m.id : undefined);
         }
         return;
       }

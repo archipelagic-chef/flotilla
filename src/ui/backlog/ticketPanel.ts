@@ -60,6 +60,7 @@ import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import type { CiRuns } from '../ci/ciRuns';
 import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
+import { recordClickWait } from '../../features/metrics/record';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -1375,6 +1376,7 @@ export class TicketPanels implements vscode.Disposable {
    */
   private async onMessage(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     let failed = false;
+    const clicked = Date.now();
     try {
       await this.handle(id, panel, m);
     } catch (error) {
@@ -1387,6 +1389,7 @@ export class TicketPanels implements vscode.Disposable {
         // Done only once the view has the action's change: a post still running (the backlog watcher's) may carry it.
         await this.settled(panel);
         if (m.type !== 'ready') void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+        if (m.type !== 'ready') recordClickWait(m.type, clicked, id);
       }
     }
   }

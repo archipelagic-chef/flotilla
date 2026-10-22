@@ -20,6 +20,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
+import { recordEvent, ticketOfBranch } from './record-event.mjs';
 import { DEMO_TAG, GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, frameGate, freeDisplay, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -39,6 +40,22 @@ const PLAYGROUND = path.join(root, '.playground');
 const LOCK_FILE = `${PROFILE_DIR}.lock`;
 const WIDTH = 1280;
 const HEIGHT = 800;
+/** The repository's git dir and branch here, for the demo's event; undefined outside a repository. */
+function gitCommonDir() {
+  try {
+    return path.resolve(execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
+  } catch {
+    return undefined;
+  }
+}
+function gitBranch() {
+  try {
+    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
 /** How often the window is checked to be the demo window while recording (each check covers the frames before it). */
 const CHECK_MS = 250;
 /** The window is ready once nothing has changed on screen for this long (ms), and waited for at most READY_MS. */
@@ -483,6 +500,10 @@ async function show(mode, demo, out, still, display) {
       const gaps = gapStats(timeline(captures, endMs).map((f) => f.at), recorded.moves);
       if (gaps) console.log(`While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`);
       const saved = save(captures, endMs, out, demo.name);
+      // For the metrics (BL-157, BL-133): how smooth the recording was.
+      const commonDir = gitCommonDir();
+      const data = { name: demo.name, frames: captures.length, ms: endMs, ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}) };
+      recordEvent(commonDir, 'demo-recorded', { ticket: ticketOfBranch(gitBranch()), data });
       console.log(`Saved ${saved.file} (${(endMs / 1000).toFixed(1)} s).${saved.note}`);
       if (still && captures.length) {
         fs.writeFileSync(still, captures[captures.length - 1].png);

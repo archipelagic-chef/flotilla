@@ -65,6 +65,7 @@ import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
+import { startEventLog } from './ui/eventLog';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -233,6 +234,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
+  // What happens to tickets, agents and merges, recorded as events (BL-157).
+  context.subscriptions.push(startEventLog({ commonDir: location.commonDir, mainRoot: location.mainRoot, backlog, isLeader: () => leader.isLeader, output }));
   merger.queueChanged();
   const reviews = new ReviewLoop({
     backlog,
@@ -618,7 +621,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
       // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
-      if (!isHeartbeatPath(uri.path)) void repository.refresh(scopeOf(uri.fsPath));
+      // Nor do the events recorded (BL-157): they're written as things happen.
+      if (!isHeartbeatPath(uri.path) && !uri.path.includes('/flotilla/metrics/')) void repository.refresh(scopeOf(uri.fsPath));
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);
