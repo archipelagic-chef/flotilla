@@ -1,5 +1,5 @@
 {
-  "title": "Update from Main says what happened when clicked",
+  "title": "Update from Main shows it's updating, then says what happened",
   "steps": [
     {
       "command": "Focus on Flotilla View"
@@ -17,10 +17,16 @@
       "click": ".work-head-action:has-text(\"Update from Main\")"
     },
     {
+      "waitFor": ".work-head-action[aria-busy=\"true\"]:has-text(\"Updating…\")"
+    },
+    {
+      "caption": "Its arrows spin and it says Updating… until the merge is done"
+    },
+    {
       "waitFor": ".notification-toast:has-text(\"BL-2:\")"
     },
     {
-      "caption": "A notification says what the click did: merged, or already up to date"
+      "caption": "Then a notification says what the click did: merged, or already up to date"
     },
     {
       "wait": 2000

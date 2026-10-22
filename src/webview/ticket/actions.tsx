@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
 import { commentSent } from './comments';
@@ -63,6 +64,20 @@ export function ActionButton({
     <button {...props} disabled={props.disabled || !!busy} aria-busy={!!busy} onClick={() => act(message, label)}>
       {children}
       {busy && <WorkingTag label={busy} />}
+    </button>
+  );
+}
+
+/**
+ * Update from Main: from the click until the merge (or the hand-off to the agent) is done, its arrows spin, it says
+ * "Updating…" and it takes no second click.
+ */
+export function UpdateFromButton({ base, ...props }: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { base: string }) {
+  const message: TicketWebviewMessage = { type: 'updateFromMain' };
+  const busy = !!useWorking(message);
+  return (
+    <button {...props} disabled={busy} aria-busy={busy} onClick={() => act(message, 'Updating…')}>
+      <i class={`codicon codicon-sync${busy ? ' codicon-modifier-spin' : ''}`} /> {busy ? 'Updating…' : `Update from ${capitalize(base)}`}
     </button>
   );
 }
