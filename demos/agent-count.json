@@ -13,9 +13,9 @@
     { "waitFor": ".agent-count" },
     { "hover": ".agent-count" },
     { "wait": 1500 },
-    { "caption": "A click narrows the board to the tickets being worked on" },
+    { "caption": "A click shows what they're doing, with the autopilot's switch" },
     { "click": ".agent-count" },
-    { "waitFor": ".working-bar" },
+    { "waitFor": ".autopilot-details" },
     { "wait": 1000 },
     { "caption": "" }
   ]

@@ -432,6 +432,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
       const on = !autopilot.enabled;
+      // Turning it off stops no agent: say so first, while any work (BL-153).
+      const working = on ? 0 : autopilot.view().running;
+      if (working) {
+        const off = 'Turn Off';
+        const pick = await vscode.window.showWarningMessage(
+          `Turn the autopilot off? ${working === 1 ? 'The agent working keeps working' : `${working} agents keep working`}; no new tickets start.`,
+          { modal: true },
+          off,
+        );
+        if (pick !== off) return;
+      }
       await autopilot.setEnabled(on);
       if (on) {
         void vscode.window.showInformationMessage(
