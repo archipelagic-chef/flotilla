@@ -93,6 +93,15 @@ describe('playground seed', () => {
     }
   });
 
+  it("has an MP4 in BL-9's report and folder, to click in Attachments and the activity (BL-134)", async () => {
+    const { dir, backlog } = seeded();
+    const item = (await backlog.read()).items.find((i) => i.id === 'BL-9')!;
+    const ticket = await backlog.readTicket(item);
+    expect(ticket.activity.some((e) => e.body.includes('](BL-9/limit.mp4)'))).toBe(true);
+    const mp4 = fs.readFileSync(path.join(dir, '.flotilla', 'backlog', 'BL-9', 'limit.mp4'));
+    expect(mp4.subarray(4, 8).toString()).toBe('ftyp');
+  });
+
   it('has the agent asking a question, and nothing for the user to answer yet', async () => {
     const { backlog } = seeded();
     const item = (await backlog.read()).items.find((i) => i.id === 'BL-3')!;

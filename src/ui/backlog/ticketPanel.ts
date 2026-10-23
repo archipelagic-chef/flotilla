@@ -327,9 +327,10 @@ export async function replaceMedia(html: string, media: (src: string) => Promise
     if (!m) return tag;
     if ('note' in m) return `<span class="media-note"><i class="codicon codicon-file-media"></i> ${escapeHtml(m.note)}</span>`;
     if (m.kind === 'video') {
-      // A player with its controls; it doesn't play until asked (so no sound at once), and loads only its first frame.
+      // A player with its controls; it doesn't play until clicked, and loads only its first frame. It plays muted (BL-134:
+      // demos have no sound, and the webview holds back a video with sound); its controls turn sound on.
       const alt = /\salt="([^"]*)"/.exec(tag)?.[1];
-      return `<video class="media" src="${escapeHtml(m.src)}" controls preload="metadata"${alt ? ` title="${alt}" aria-label="${alt}"` : ''}></video>`;
+      return `<video class="media" src="${escapeHtml(m.src)}" controls muted playsinline preload="metadata"${alt ? ` title="${alt}" aria-label="${alt}"` : ''}></video>`;
     }
     return tag.replace(/(\ssrc=")[^"]*(")/, (_m, a: string, c: string) => `${a}${escapeHtml(m.src)}${c}`);
   });
