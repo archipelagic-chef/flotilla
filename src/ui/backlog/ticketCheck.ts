@@ -10,17 +10,14 @@ import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import {
   checkChat,
   checkMerge,
-  checkOrphan,
-  checkQueue,
-  checkQueueIds,
   checkReview,
-  ORPHAN_MS,
   parsePs,
   processOf,
   type ChatFacts,
   type Claim,
   type ProcessInfo,
 } from '../../features/backlog/ticketCheck';
+import { checkOrphan, checkQueue, checkQueueIds, ORPHAN_MS } from '../../features/backlog/queueCheck';
 import { markChatDone, readChatRecords, readTranscript, transcriptPath } from '../../features/chats/chats';
 import { linkedWorktrees } from './cardMenu';
 
