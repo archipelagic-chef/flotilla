@@ -167,8 +167,8 @@ export function withDemoUnits(html: string, recording: (src: string) => Recordin
     const paired = media.find((m) => !used.has(m.whole) && m.name === block.name) ?? (blocks.length === 1 ? media.find((m) => !used.has(m.whole) && !m.name) : undefined);
     if (!paired) continue;
     used.add(paired.whole);
-    // A video plays as a GIF does: muted, looping, at once.
-    const shown = paired.tag.startsWith('<video') ? paired.tag.replace(/^<video\b/, '<video autoplay muted loop playsinline') : paired.tag;
+    // A video plays as a GIF does: muted (as every video is), looping, at once.
+    const shown = paired.tag.startsWith('<video') ? paired.tag.replace(/^<video\b/, '<video autoplay loop') : paired.tag;
     const label = `Recorded demo${paired.seconds ? ` · ${demoLength(paired.seconds)}` : ''}`;
     const unit =
       `<figure class="demo-unit demo-inline" data-demo="${block.name}"><div class="demo-bar">` +
