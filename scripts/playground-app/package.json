@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/cli.js",
     "serve": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "checks": "node tools/checks.js"
   }
 }

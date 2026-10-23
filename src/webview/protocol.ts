@@ -41,6 +41,8 @@ export interface BacklogItemView extends BacklogItem {
   waitsFor?: string[];
   /** The autopilot holds it back: it would change files this ticket in progress changes (BL-71). */
   clash?: { with: string; files: string[] };
+  /** Its merge's checks are running (BL-169): the step, and how far the tests are. */
+  checks?: { step?: string; percent?: number };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */

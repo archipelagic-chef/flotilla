@@ -29,43 +29,25 @@ vi.mock('vscode', () => {
     ui.messages.push(message);
     return Promise.resolve(ui.answers.shift());
   };
-  type Pty = { open(d: unknown): void; onDidClose: (l: (code: number) => void) => unknown };
   return {
     EventEmitter,
     window: { showInformationMessage: ask, showWarningMessage: ask, showErrorMessage: ask, showQuickPick: async () => undefined },
     workspace: { getConfiguration: () => ({ get: (k: string, d: unknown) => (k in ui.settings ? ui.settings[k] : d) }) },
     commands: { executeCommand: async () => undefined },
-    Task: class {
-      presentationOptions: unknown;
-      constructor(
-        readonly definition: { command: string },
-        _s: unknown,
-        _n: string,
-        _src: string,
-        readonly execution: { callback: () => Promise<Pty> },
-      ) {}
-    },
-    CustomExecution: class {
-      constructor(readonly callback: () => Promise<Pty>) {}
-    },
-    TaskScope: { Workspace: 2 },
-    TaskRevealKind: { Always: 1 },
-    TaskPanelKind: { Dedicated: 2 },
-    // The terminal: the checks command really runs (CHECKS reads ui.checksExit from the environment).
-    tasks: {
-      executeTask: async (task: { definition: { command: string }; execution: { callback: () => Promise<Pty> } }) => {
-        ui.checks.push(task.definition.command);
-        process.env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExit);
-        const pty = await task.execution.callback();
-        pty.open(undefined);
-        return {};
-      },
-    },
   };
 });
 
 /** The checks: they print a failure and exit with ui.checksExit. */
 const CHECKS = `node -e "console.log('FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
+
+
+/** The checks' environment (Merger's checksEnv): the command really runs; CHECKS reads how to end from it. */
+function fakeChecksEnv(command: string): NodeJS.ProcessEnv {
+  ui.checks.push(command);
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExit);
+  return env;
+}
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -131,6 +113,7 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
     updateFromMain: async (id: string) => void updates.push(id),
     fixCi: async (branch: string, run: number, job?: number) => void fixes.push([branch, run, job]),
     ciPollMs: o.ciPollMs ?? 20,
+    checksEnv: fakeChecksEnv,
   } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
   const activity = async (id: string) => (await backlog.readTicket(await item(id))).activity.map((e) => e.body).join('\n');

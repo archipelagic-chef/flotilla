@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { TicketHostMessage } from '../../../webview/ticketProtocol';
 import type { Handlers } from './context';
 
 /** Merging: the merge, its queue and checks, pushing, merging a sibling branch, and cleaning up the history. */
@@ -32,6 +33,16 @@ export const mergeHandlers: Handlers = {
   },
   mergeCiCancel: async ({ id, panels }) => {
     await panels.merger?.cancelCiWait(id);
+  },
+  mergeChecksStop: async ({ id, panels }) => {
+    panels.merger?.stopChecks(id);
+  },
+  mergeChecksLog: async ({ id, panel, panels }, m) => {
+    const text = (await panels.merger?.checksLog(id, m.log)) ?? '';
+    void panel.webview.postMessage({ type: 'checksLog', requestId: m.requestId, text } satisfies TicketHostMessage);
+  },
+  mergeChecksTerminal: async ({ id, panels }, m) => {
+    panels.merger?.followChecksLog(id, m.log);
   },
   mergeQueueRemove: async ({ id, panels }) => {
     await panels.merger?.removeFromQueue(id);

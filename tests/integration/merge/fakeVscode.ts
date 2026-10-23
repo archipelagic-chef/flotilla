@@ -1,5 +1,5 @@
 // The VS Code the merge scenarios run in (BL-150): messages are recorded and answered by rule, settings are a map,
-// and the checks' terminal really runs their command (FAKE_CHECKS in harness.ts, which exits as the scenario says).
+// and the checks really run their command (FAKE_CHECKS in harness.ts, which exits as the scenario says).
 
 /** What the fake VS Code answers and records. */
 export const ui = {
@@ -40,29 +40,8 @@ export const window = { showInformationMessage: ask, showWarningMessage: ask, sh
 export const workspace = { getConfiguration: () => ({ get: (k: string, d: unknown) => (k in ui.settings ? ui.settings[k] : d) }) };
 export const commands = { executeCommand: async () => undefined };
 
-type Pty = { open(d: unknown): void };
-export class Task {
-  presentationOptions: unknown;
-  constructor(
-    readonly definition: { command: string },
-    _s: unknown,
-    _n: string,
-    _src: string,
-    readonly execution: { callback: () => Promise<Pty> },
-  ) {}
+/** The checks' environment (Merger's checksEnv): their command really runs, and exits as the scenario says. */
+export function fakeChecksEnv(): NodeJS.ProcessEnv {
+  ui.checkRuns++;
+  return { ...process.env, FLOTILLA_FAKE_CHECKS: ui.checks.shift() ?? 'pass' };
 }
-export class CustomExecution {
-  constructor(readonly callback: () => Promise<Pty>) {}
-}
-export const TaskScope = { Workspace: 2 };
-export const TaskRevealKind = { Always: 1 };
-export const TaskPanelKind = { Dedicated: 2 };
-export const tasks = {
-  executeTask: async (task: Task) => {
-    ui.checkRuns++;
-    process.env.FLOTILLA_FAKE_CHECKS = ui.checks.shift() ?? 'pass';
-    const pty = await task.execution.callback();
-    pty.open(undefined);
-    return {};
-  },
-};

@@ -5,6 +5,7 @@ import { focusComment, sendComment } from './comments';
 import { AgentStatus, outsideAgents } from './agents';
 import { DiscussPanel, QueuedPanel, ReviewPanel } from './reviewPanel';
 import { CleanUpPanel, MergedPanel, MergingPanel } from './mergePanel';
+import { ChecksRunning } from './checksPanel';
 
 /**
  * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
@@ -119,6 +120,7 @@ export function StateCard({ ticket }: { ticket: TicketView }) {
           </div>
         )
       )}
+      {ticket.mergeChecks && <ChecksRunning checks={ticket.mergeChecks} />}
     </>
   );
 }

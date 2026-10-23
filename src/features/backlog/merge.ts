@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { GitError, runGit } from '../../core/git/gitCli';
 import type { BacklogItem } from './backlog';
+import type { FailedTest } from './checksProgress';
 
 /**
  * Merging a ticket's branch into the base branch, from the ticket. The merge is made in a temporary worktree outside
@@ -23,7 +24,14 @@ export interface MergeState {
   session?: string;
   reason?: string;
   /** The checks failed on the merge (state failed): their command, and the end of their output. */
-  checks?: { command: string; output: string; /** ISO 8601: when they failed. */ at?: string };
+  checks?: {
+    command: string;
+    output: string;
+    /** ISO 8601: when they failed. */
+    at?: string;
+    /** Each run of the checks in this merge (BL-169): BL-124's first, timeouts-only run, then the one that failed. */
+    runs?: ChecksRunRecord[];
+  };
   /** The worktree's HEAD when an agent started fixing the checks: its fix is a commit on top of it. */
   from?: string;
   /**
@@ -33,6 +41,20 @@ export interface MergeState {
   train?: { ahead: string[] };
   /** ISO 8601. */
   started: string;
+}
+
+/** A run of a merge's checks that failed (BL-169): its log (kept until the merge ends), and what failed. */
+export interface ChecksRunRecord {
+  /** The whole output's file. */
+  log: string;
+  /** ISO 8601: when it ended. */
+  at: string;
+  ms: number;
+  /** You stopped it. */
+  stopped?: boolean;
+  /** Tests that timed out, when that's all that failed (BL-124); 0 otherwise. */
+  timeouts: number;
+  failures: FailedTest[];
 }
 
 /** The end of the checks' output, without terminal colours: what the ticket shows and the fixing agent is given. */
