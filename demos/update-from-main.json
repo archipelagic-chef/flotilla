@@ -1,0 +1,18 @@
+{
+  "title": "Update from Main shows it's working until the merge is done",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "caption": "BL-2's branch is behind main" },
+    { "click": ".backlog-item:has-text(\"Keep the sidebar\")" },
+    { "waitFor": "h1:has-text(\"Keep the sidebar\")" },
+    { "wait": 1000 },
+    { "caption": "Update from Main says it's updating from the click until the merge is done" },
+    { "click": ".work-head-action:has-text(\"Update from\")" },
+    { "waitFor": ".work-head-action[aria-busy=\"false\"]" },
+    { "caption": "Done: main is merged into its branch" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
