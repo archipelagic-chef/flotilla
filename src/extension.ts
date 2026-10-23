@@ -311,6 +311,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repository,
     reviews,
     merger,
+    mainRoot: location.mainRoot,
     runsHere: (session) => isRunningHeadless(session) || isRunningInTerminal(session),
     get staleMinutes() {
       return readSettings().agentStatusStaleMinutes;
