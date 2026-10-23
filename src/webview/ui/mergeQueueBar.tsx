@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { MergeQueueView } from '../protocol';
 import { send } from './api';
+import { BusyButton } from './backlogBusy';
 
 /** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
 const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
@@ -65,9 +66,9 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
           {dropBefore === null && <span class="drop-end" />}
         </span>
       </span>
-      <button class="land-all" disabled={!!queue.working} onClick={() => send({ type: 'backlog', op: 'landAll' })} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
+      <BusyButton class="land-all" disabled={!!queue.working} message={{ type: 'backlog', op: 'landAll' }} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
         Land All
-      </button>
+      </BusyButton>
     </div>
   );
 }

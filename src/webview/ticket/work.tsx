@@ -148,13 +148,14 @@ export function Work({ ticket }: { ticket: TicketView }) {
         <div class="work-head">
           <i class="codicon codicon-git-branch" /> Worktrees <span class="count">{ticket.worktrees.length}</span>
           {ticket.updateFromMain && (
-            <button
+            <ActionButton
               class="text-button work-head-action"
-              onClick={() => send({ type: 'updateFromMain' })}
+              message={{ type: 'updateFromMain' }}
+              working="Updating…"
               title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
             >
               <i class="codicon codicon-sync" /> Update from {capitalize(ticket.updateFromMain.base)}
-            </button>
+            </ActionButton>
           )}
         </div>
         {!ticket.worktrees.length && <div class="work-empty muted">None yet. Create one above to work on it.</div>}

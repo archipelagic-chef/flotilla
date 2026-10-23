@@ -103,12 +103,12 @@ function App() {
             <span>
               {ticket.item.proposed.by ? `${ticket.item.proposed.by} (an agent)` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
             </span>
-            <button class="button" onClick={() => send({ type: 'accept' })}>
+            <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
               <i class="codicon codicon-check" /> Accept
-            </button>
-            <button class="button secondary" onClick={() => send({ type: 'dismiss' })}>
+            </ActionButton>
+            <ActionButton class="button secondary" message={{ type: 'dismiss' }} working="Dismissing…">
               Dismiss
-            </button>
+            </ActionButton>
           </div>
         )}
         <Title ticket={ticket} />
@@ -140,15 +140,15 @@ function App() {
                 <span class="link-id">{l.id}</span>
                 {l.statusName && <span class="muted">{l.statusName}</span>}
               </button>
-              <button class="link-remove" onClick={() => send({ type: 'unlink', id: l.id })} title={`Unlink ${l.id}`} aria-label={`Unlink ${l.id}`}>
+              <ActionButton class="link-remove" message={{ type: 'unlink', id: l.id }} working="Unlinking…" title={`Unlink ${l.id}`} aria-label={`Unlink ${l.id}`}>
                 <i class="codicon codicon-close" />
-              </button>
+              </ActionButton>
             </span>
           ))}
           {!ticket.remote && (
-            <button class="add-link" onClick={() => send({ type: 'link' })} title="Link it to an issue in Jira or GitHub Issues">
+            <ActionButton class="add-link" message={{ type: 'link' }} working="Linking…" title="Link it to an issue in Jira or GitHub Issues">
               <i class="codicon codicon-link" /> {ticket.links.length ? 'Link' : 'Link Issue'}
-            </button>
+            </ActionButton>
           )}
         </div>
         <StateCard ticket={withCiStop(ticket, ci)} />

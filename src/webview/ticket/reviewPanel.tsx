@@ -3,7 +3,7 @@ import { reviewOutcome } from '../../features/backlog/rounds';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { QueuedView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
-import { ActionButton, send } from './actions';
+import { ActionButton } from './actions';
 import { PAUSE_TIP, STOP_TIP } from './agents';
 import { MergeButton, MergeStop, QueuePlace } from './mergePanel';
 
@@ -68,9 +68,9 @@ export function DiscussPanel({ ticket }: { ticket: TicketView }) {
       {s.ready && !s.running && (
         <>
           {ticket.item.proposed ? (
-            <button class="button" onClick={() => send({ type: 'accept' })}>
+            <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
               <i class="codicon codicon-check" /> Accept
-            </button>
+            </ActionButton>
           ) : (
             <ActionButton class="button" message={{ type: 'start', agent: true }} working="Starting…">
               <i class="codicon codicon-play" /> Start
@@ -94,9 +94,9 @@ export function QueuedPanel({ queued }: { queued: QueuedView }) {
         {queuedNeed(queued).line}
         {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
       </span>
-      <button class="button secondary" onClick={() => send({ type: 'prioritize' })} title="Starts it now, above the limit, or pauses a running agent to make room">
+      <ActionButton class="button secondary" message={{ type: 'prioritize' }} working="Starting…" title="Starts it now, above the limit, or pauses a running agent to make room">
         <i class="codicon codicon-arrow-up" /> Prioritize
-      </button>
+      </ActionButton>
     </div>
   );
 }
