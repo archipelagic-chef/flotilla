@@ -282,7 +282,21 @@ const TICKETS = [
     priority: 'low',
     daysAgo: 20,
     description: "The status bar shows Claude's usage limit, and when it resets.\n\n- [ ] Shown while the limit is reached.\n- [ ] Hidden when there is no limit.",
-    activity: [{ ago: 1440, author: 'Flotilla', body: 'You moved it from **In Review** to **Done**.' }],
+    activity: [
+      {
+        ago: 1500,
+        author: 'Agent Pip-3',
+        body: [
+          'Done: the status bar shows the limit, and counts down to its reset.',
+          'Needs from you: nothing',
+          '',
+          '![The status bar, counting down to the reset](BL-9/limit.mp4)',
+        ].join('\n'),
+      },
+      { ago: 1440, author: 'Flotilla', body: 'You moved it from **In Review** to **Done**.' },
+    ],
+    // A video (BL-134's demo): it plays when clicked, in Attachments and in the activity.
+    files: { 'limit.mp4': fs.readFileSync(new URL('./playground-media/limit.mp4', import.meta.url)) },
   },
   {
     id: 'BL-10',

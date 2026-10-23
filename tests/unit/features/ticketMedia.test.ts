@@ -70,7 +70,7 @@ describe('media in a ticket', () => {
 
   it('plays videos next to the ticket in a player with controls, which doesn\'t start by itself', async () => {
     const html = await render('<p><img src="BL-1/demo.webm" alt="The demo"></p>');
-    expect(html).toMatch(/<video class="media" src="webview:[^"]*BL-1\/demo\.webm" controls preload="metadata" title="The demo" aria-label="The demo"><\/video>/);
+    expect(html).toMatch(/<video class="media" src="webview:[^"]*BL-1\/demo\.webm" controls muted playsinline preload="metadata" title="The demo" aria-label="The demo"><\/video>/);
     expect(html).not.toMatch(/autoplay/);
   });
 
@@ -102,7 +102,7 @@ describe('media in a ticket', () => {
     const html = await replaceMedia('<img src="a" alt="x">', async () => ({ note: 'a <b>"note"</b>' }));
     expect(html).toContain('a &lt;b&gt;&quot;note&quot;&lt;/b&gt;');
     const video = await replaceMedia('<img src="a.mp4">', async () => ({ src: 'https://x/a.mp4?a=1&b="2"', kind: 'video' }));
-    expect(video).toBe('<video class="media" src="https://x/a.mp4?a=1&amp;b=&quot;2&quot;" controls preload="metadata"></video>');
+    expect(video).toBe('<video class="media" src="https://x/a.mp4?a=1&amp;b=&quot;2&quot;" controls muted playsinline preload="metadata"></video>');
   });
 });
 
