@@ -409,8 +409,9 @@ async function show(mode, demo, out, still, display) {
   prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).
-  const { seedChats } = await import('./playground-seed.mjs');
+  const { seedChats, seedCreating } = await import('./playground-seed.mjs');
   seedChats(playground, CLAUDE_DIR);
+  seedCreating(playground);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 

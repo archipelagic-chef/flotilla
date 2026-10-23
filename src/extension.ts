@@ -67,6 +67,7 @@ import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
+import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
 import { startEventLog } from './ui/eventLog';
 
 const BACKGROUND_POLL_SECONDS = 60;
@@ -215,6 +216,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repository.onDidChange(() => merger.queueChanged()),
     backlog.watch(() => merger.queueChanged()),
   );
+  // Worktrees being created are recorded in the common dir, so every window sees each other's (and doesn't make another).
+  context.subscriptions.push(
+    creatingWorktrees.attach(creatingDir(location.commonDir)),
+    repository.onDidChange(() => creatingWorktrees.reload()),
+  );
   void merges.refresh();
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
@@ -309,6 +315,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     get staleMinutes() {
       return readSettings().agentStatusStaleMinutes;
     },
+    creating: { dir: creatingDir(location.commonDir), cleared: () => creatingWorktrees.reload() },
   });
   tickets.useChecker(checker);
   context.subscriptions.push(

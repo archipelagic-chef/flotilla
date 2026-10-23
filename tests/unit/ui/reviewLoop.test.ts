@@ -1117,7 +1117,7 @@ describe('agents lost to a reload (BL-87)', () => {
   let loop: { dispose(): void };
   let recover: (now?: number) => Promise<void>;
   const now = Date.parse('2026-10-18T12:00:00Z');
-  const review = () => data.items[0].review as { state: string; reason?: string; stop?: { kind: string; task?: { prompt: string } } };
+  const review = () => data.items[0].review as { state: string; reason?: string; worktree?: string; stop?: { kind: string; task?: { prompt: string } } };
 
   beforeEach(async () => {
     vi.resetModules();
@@ -1126,7 +1126,7 @@ describe('agents lost to a reload (BL-87)', () => {
     data = {
       version: 1,
       next: 2,
-      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising' } }],
+      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising', worktree: 'wt' } }],
     };
     chats = [];
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
@@ -1181,6 +1181,14 @@ describe('agents lost to a reload (BL-87)', () => {
     expect(await check.stopForCheck('BL-1', 'lost', "The ticket says Nova is making the changes asked for, but it isn't running")).toBe(true);
     expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'no-report', task: { prompt: expect.stringMatching(/Go on where you left off/) } } });
     expect(await check.stopForCheck('BL-1', 'lost', 'again')).toBe(false); // stopped already: nothing to do
+    loop.dispose();
+  });
+  it("a Check's Clean Up clears the review's worktree only while it still names that one (BL-167)", async () => {
+    const check = loop as unknown as { clearWorktreeForCheck(id: string, worktree: string): Promise<boolean> };
+    expect(await check.clearWorktreeForCheck('BL-1', '/other')).toBe(false);
+    expect(await check.clearWorktreeForCheck('BL-1', 'wt')).toBe(true);
+    expect(review().worktree).toBeUndefined();
+    expect(review().state).toBe('revising');
     loop.dispose();
   });
 });

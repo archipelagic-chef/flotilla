@@ -5,6 +5,7 @@
 // reads as, so change the two together.
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as gifencModule from 'gifenc';
 import { tagGif } from './demo-kit.mjs';
@@ -834,6 +835,21 @@ export function seedChats(dir, claudeHome, now = new Date()) {
     fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
     return file;
   });
+}
+
+/** Above any process id (Linux's pid_max is at most 2^22): a window that's gone. */
+const GONE_PID = 4_194_305;
+
+/**
+ * Seeds a "Creating its worktree…" record for BL-5 left by a window that closed mid-creation (BL-167): it blocks
+ * nothing (its process is gone), and a Check finds it and clears it. Written again on every call; returns its path.
+ */
+export function seedCreating(dir, now = new Date()) {
+  const records = path.join(path.resolve(dir, git(dir, 'rev-parse', '--git-common-dir')), 'flotilla', 'creating');
+  fs.mkdirSync(records, { recursive: true });
+  const file = path.join(records, 'BL-5.json');
+  fs.writeFileSync(file, JSON.stringify({ id: 'BL-5', pid: GONE_PID, host: os.hostname(), at: now.getTime() - 3 * 60_000 }));
+  return file;
 }
 
 /**

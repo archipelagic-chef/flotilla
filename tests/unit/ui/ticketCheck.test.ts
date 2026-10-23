@@ -28,6 +28,7 @@ beforeEach(() => {
 });
 afterEach(() => removeDir(root));
 
+const creating = () => path.join(root, 'repo', '.git', 'flotilla', 'creating');
 const recordFile = () => path.join(gitDir, 'flotilla', 'chats', `${S}.json`);
 const record = () => JSON.parse(fs.readFileSync(recordFile(), 'utf8')) as { state: string };
 
@@ -41,10 +42,10 @@ function chat(msAgo: number, state = 'working'): void {
   fs.utimesSync(t, ago(msAgo), ago(msAgo));
 }
 
-function checker(o: { item?: Partial<BacklogItem>; ps?: ProcessInfo[]; here?: boolean } = {}) {
+function checker(o: { item?: Partial<BacklogItem>; ps?: ProcessInfo[]; here?: boolean; alive?: boolean } = {}) {
   const item = { id: 'BL-1', title: 'One', status: 'doing', priority: 'medium', branch: 'feature/BL-1-one', ...o.item } as BacklogItem;
   const data = { items: [item, { id: 'BL-2', title: 'Two', status: 'todo', priority: 'medium' } as BacklogItem] } as BacklogData;
-  const reviews = { runsAgentOf: vi.fn(() => false), stopForCheck: vi.fn(async () => true) };
+  const reviews = { runsAgentOf: vi.fn(() => false), stopForCheck: vi.fn(async () => true), clearWorktreeForCheck: vi.fn(async () => true) };
   const merger = { runsMergeOf: vi.fn(() => false), forCheck: vi.fn(async () => true) };
   const kill = vi.fn();
   const c = new TicketChecker({
@@ -58,6 +59,7 @@ function checker(o: { item?: Partial<BacklogItem>; ps?: ProcessInfo[]; here?: bo
     staleMinutes: 10,
     claudeHome: home,
     now: () => now,
+    creating: { dir: creating(), host: 'box', alive: () => !!o.alive },
   });
   return { c, reviews, merger, kill };
 }
@@ -163,5 +165,34 @@ describe("a ticket's Check (BL-163)", () => {
     chat(6 * 60_000);
     const all = await checker().c.checkAll();
     expect([...all.keys()]).toEqual(['BL-1']);
+  });
+
+  it('clears a review naming a worktree that is gone (BL-167)', async () => {
+    const { c, reviews } = checker({ item: { review: { state: 'approved', worktree: '/gone/.git/worktrees/x' } as BacklogItem['review'] } });
+    const [claim] = await c.check('BL-1');
+    expect(claim).toMatchObject({ key: 'worktree:review', ok: false });
+    expect(await c.cleanUp('BL-1', { confirm: yes })).toEqual([expect.stringContaining('was gone; cleared it')]);
+    expect(reviews.clearWorktreeForCheck).toHaveBeenCalledWith('BL-1', '/gone/.git/worktrees/x');
+  });
+
+  it('leaves a review whose worktree is there, on the ticket’s branch', async () => {
+    const { c } = checker({ item: { review: { state: 'approved', worktree: gitDir } as BacklogItem['review'] } });
+    expect(await c.check('BL-1')).toEqual([expect.objectContaining({ key: 'worktree:review', ok: true })]);
+  });
+
+  it('clears "Creating its worktree…" when its window is gone, and leaves it while that runs (BL-167)', async () => {
+    fs.mkdirSync(creating(), { recursive: true });
+    const file = path.join(creating(), 'BL-1.json');
+    fs.writeFileSync(file, JSON.stringify({ id: 'BL-1', pid: 4812, host: 'box', at: now.getTime() - 5_000 }));
+
+    expect(await checker({ alive: true }).c.check('BL-1')).toEqual([expect.objectContaining({ key: 'creating:BL-1', ok: true })]);
+    expect(await checker({ alive: true }).c.cleanUp('BL-1', { confirm: yes })).toEqual([]);
+    expect(fs.existsSync(file)).toBe(true);
+
+    const { c } = checker({ alive: false });
+    expect((await c.check('BL-1'))[0]).toMatchObject({ key: 'creating:BL-1', ok: false });
+    await c.cleanUp('BL-1', { confirm: yes });
+    expect(fs.existsSync(file)).toBe(false);
+    expect(notes[0].body).toContain('process 4812) was gone');
   });
 });
