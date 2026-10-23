@@ -1,0 +1,21 @@
+{
+  "title": "A video plays when clicked, in Attachments and in the activity",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 500 },
+    { "click": "[aria-label=\"Show done items\"]" },
+    { "wait": 500 },
+    { "click": ".backlog-item:has-text(\"Show the usage limit in the status bar\")" },
+    { "waitFor": "h1:has-text(\"Show the usage limit in the status bar\")" },
+    { "caption": "A click on a video in Attachments opens it, playing" },
+    { "click": ".attachment-thumb:has(video)" },
+    { "waitFor": ".viewer .viewer-video video" },
+    { "wait": 2500 },
+    { "caption": "Escape stops it; in the activity, a click plays it in place" },
+    { "press": "Escape" },
+    { "click": ".feed .rendered video.media" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

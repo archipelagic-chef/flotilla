@@ -77,6 +77,7 @@ import {
 import type { QueuedView } from '../../webview/ticketProtocol';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { trackProgress } from '../progress';
+import { recordEvent } from '../../features/metrics/events';
 
 export interface ReviewDeps {
   /** Whether this window acts on its own (agents going on after a usage limit): one window does. */
@@ -712,6 +713,30 @@ export class ReviewLoop implements vscode.Disposable {
     }
   }
 
+  /** Whether this window runs, starts or has queued the agent of an item's review (a Check: BL-163). */
+  runsAgentOf(id: string): boolean {
+    return this.runs.has(id) || [...this.starting.values()].includes(id) || this.waiting.has(id);
+  }
+
+  /**
+   * A Check found the review's agent runs nowhere (lost), or a paused agent's chat gone: the loop stops as recoverLost
+   * stops it, with its way on offered, and no note (the Check leaves its own). Nothing changes if it runs after all.
+   */
+  async stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> {
+    const r = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review;
+    if (!r || this.runsAgentOf(id)) return false;
+    if (what === 'paused-gone') {
+      if (r.state !== 'paused') return false;
+      await this.setReview(id, (now) => ({ ...now!, state: 'stopped', reason, paused: undefined, stop: { kind: 'chat-gone' } }));
+      return true;
+    }
+    if (r.state !== 'working' && r.state !== 'revising' && r.state !== 'reviewing') return false;
+    const review = r.state === 'reviewing';
+    const task: RevisionTask | undefined = review ? undefined : { prompt: 'Go on where you left off, then report in the ticket as asked.', why: reason, aside: true };
+    await this.setReview(id, (now) => ({ ...now!, state: 'stopped', reason, stop: { kind: review ? 'no-verdict' : 'no-report', ...(task ? { task } : {}) } }));
+    return true;
+  }
+
   /**
    * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
    * force) goes on at once.
@@ -748,6 +773,7 @@ export class ReviewLoop implements vscode.Disposable {
         resume: p.session,
         prompt: p.for ? resumeAfterPausePrompt(p.phase) : resumeAfterLimitPrompt(p.phase),
         name: `${p.agent} · ${p.phase === 'review' ? `review ${item.id}` : item.id}`,
+        track: { ticket: item.id, agent: p.agent, role: p.phase === 'review' ? 'review' : 'work' },
         choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'),
         output: this.deps.output,
         slot: admitted.slot,
@@ -756,6 +782,10 @@ export class ReviewLoop implements vscode.Disposable {
       this.launched(item.id, admitted.slot, { run, phase: p.phase, agent: p.agent, cwd, since: Date.now() });
       void trackProgress('backlog', `${p.agent} goes on with ${item.id}`, () => run.done);
       await this.setReview(item.id, (r) => ({ ...r!, state: p.resume, paused: undefined }));
+      if (!p.for) {
+        const minutes = p.since ? Math.round((Date.now() - Date.parse(p.since)) / 600) / 100 : undefined;
+        recordEvent('limit-lifted', { ticket: item.id, agent: p.agent, data: { ...(minutes !== undefined ? { minutes } : {}), ...(p.tries ? { tries: p.tries } : {}) } });
+      }
       // "chat for agent <name>": the ticket links the note to the chat.
       if (!p.known && !p.for) this.retrying.set(item.id, { tries: p.tries ?? 0, since: p.since ?? new Date().toISOString() });
       const since = p.since ? new Date(p.since).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -860,6 +890,7 @@ export class ReviewLoop implements vscode.Disposable {
         cwd: ws.worktree.path,
         prompt: [agentLead(item, agent), agentPrompt(item, ticket, ws.worktree.branch, agent, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), note].join('\n\n'),
         name: `${agent} · ${item.id}`,
+        track: { ticket: item.id, agent, role: 'work' },
         choice,
         output: this.deps.output,
         slot: admitted.slot,
@@ -997,6 +1028,7 @@ export class ReviewLoop implements vscode.Disposable {
       paused: { until: new Date().toISOString(), known: true, phase: live.phase, session: live.run.sessionId, agent: live.agent, resume, for: forId },
     };
     await this.setReview(victim, () => review);
+    recordEvent('agent-paused', { ticket: victim, agent: live.agent, data: { role: live.phase === 'review' ? 'review' : 'work', session: live.run.sessionId, reason: 'slot' } });
     this.waiting.add({
       id: victim,
       kind: 'resume',
@@ -1188,6 +1220,7 @@ export class ReviewLoop implements vscode.Disposable {
     // The review's state says so first: the window running it ends it when it sees that (this one, at once).
     if (action === 'pause') {
       await this.setReview(item.id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'paused', paused: { ...held, byUser: at }, reason: undefined, stop: undefined }));
+      recordEvent('agent-paused', { ticket: item.id, agent: held.agent, data: { role: held.phase === 'review' ? 'review' : 'work', session: held.session, reason: 'user' } });
     } else {
       const task: RevisionTask | undefined =
         held.phase === 'work' ? { prompt: takeOverPrompt({ stopped: held.agent, ticket: this.deps.backlog.docPath(item.id) }), why: `you stopped ${held.agent}` } : undefined;
@@ -1245,7 +1278,16 @@ export class ReviewLoop implements vscode.Disposable {
     let spawned = false;
     try {
       await restore();
-      const run = runAgentHeadless({ cwd, resume: held.session, prompt, name, choice, output: this.deps.output, slot: admitted.slot });
+      const run = runAgentHeadless({
+        cwd,
+        resume: held.session,
+        prompt,
+        name,
+        choice,
+        output: this.deps.output,
+        slot: admitted.slot,
+        track: { ticket: item.id, agent: held.agent, role: held.phase === 'review' ? 'review' : 'work' },
+      });
       spawned = true;
       this.launched(item.id, admitted.slot, { run, phase: held.phase, agent: held.agent, cwd, since: Date.now() });
       void trackProgress('backlog', `${held.agent} goes on with ${item.id}`, () => run.done);
@@ -1310,6 +1352,7 @@ export class ReviewLoop implements vscode.Disposable {
         prompt: round === 1 || !validSession(item.review?.reviewerSession) ? prompt : prompt.split('\n\n').slice(1).join('\n\n'),
         resume: round > 1 ? validSession(item.review?.reviewerSession) : undefined,
         name: `${reviewer} · review ${item.id}`,
+        track: { ticket: item.id, agent: reviewer, role: 'review' },
         choice: agentChoice(item, 'review'),
         output: this.deps.output,
         slot: admitted.slot,
@@ -1359,6 +1402,7 @@ export class ReviewLoop implements vscode.Disposable {
       return;
     }
     const handled = [...(item.review.handled ?? []), this.key(id)(verdict.entry)];
+    recordEvent('review-verdict', { ticket: id, agent: item.review.reviewer, data: { verdict: verdict.verdict, round: item.review.round, by: item.review.reviewer } });
     if (verdict.verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
       this.deps.onApproved?.(id, item.review.reviewer);
@@ -1401,6 +1445,7 @@ export class ReviewLoop implements vscode.Disposable {
     const entry = { date: entryDate(new Date()), author: 'You', body: userReviewBody(verdict, text) };
     await this.deps.backlog.appendActivity(item, entry);
     const handled = [...(item.review?.handled ?? []), this.key(id)(entry)];
+    recordEvent('review-verdict', { ticket: id, data: { verdict, round: item.review?.round ?? 0, by: 'You' } });
     if (verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...(r ?? { round: 0, reviewer: '' }), state: 'approved', byUser: true, reason: undefined, handled }));
       this.deps.onApproved?.(id, undefined);
@@ -1521,6 +1566,7 @@ export class ReviewLoop implements vscode.Disposable {
           resume: chat.id,
           prompt: task.prompt,
           name: `${implementer} · ${item.id}`,
+          track: { ticket: item.id, agent: implementer ?? 'The agent', role: 'work' },
           choice: agentChoice(item),
           output: this.deps.output,
           slot: admitted.slot,
@@ -1536,6 +1582,7 @@ export class ReviewLoop implements vscode.Disposable {
           cwd: ws.worktree.path,
           prompt: [agentLead(item, implementer), agentPrompt(item, ticket, ws.worktree.branch, implementer, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)), task.prompt].join('\n\n'),
           name: `${implementer} · ${item.id}`,
+          track: { ticket: item.id, agent: implementer ?? 'The agent', role: 'work' },
           choice: agentChoice(item),
           output: this.deps.output,
           slot: admitted.slot,

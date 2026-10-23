@@ -123,6 +123,37 @@ function Thumb({ a, onOpen }: { a: AttachmentView; onOpen: () => void }) {
   );
 }
 
+/**
+ * A video large (BL-134): it plays at once, from the start, muted (demos have no sound; its controls turn sound on), as
+ * the webview holds back a video that plays with sound. If it still doesn't play, a big play button says it's a video.
+ * It stops when it goes (the next one, or the viewer closed).
+ */
+function ViewerVideo({ a }: { a: Shown }) {
+  const el = useRef<HTMLVideoElement>(null);
+  const [held, setHeld] = useState(false);
+  const play = () => {
+    const v = el.current;
+    if (!v) return;
+    setHeld(false);
+    v.play()?.catch(() => el.current === v && v.paused && setHeld(true));
+  };
+  useEffect(() => {
+    const v = el.current;
+    play();
+    return () => v?.pause();
+  }, []);
+  return (
+    <div class="viewer-video">
+      <video ref={el} src={a.src} controls autoPlay muted playsInline aria-label={caption(a)} onPlay={() => setHeld(false)} />
+      {held && (
+        <button class="viewer-play" onClick={play} title="Play" aria-label="Play">
+          <i class="codicon codicon-play-circle" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** One attachment large, over the ticket: Escape (or the backdrop) closes it, the arrows go to the next and previous. */
 function Viewer({ list, at, go, close, demo }: { list: Shown[]; at: number; go: (n: number) => void; close: () => void; demo: (a: AttachmentView) => JSX.Element }) {
   const a = list[at];
@@ -153,7 +184,7 @@ function Viewer({ list, at, go, close, demo }: { list: Shown[]; at: number; go: 
         {a.kind === 'diagram' ? (
           <LargeDiagram key={a.code} code={a.code ?? ''} label={caption(a)} />
         ) : a.kind === 'video' ? (
-          <video key={a.src} src={a.src} controls autoPlay />
+          <ViewerVideo key={a.src} a={a} />
         ) : (
           <img key={a.src} src={a.src} alt={a.alt ?? a.name} />
         )}
@@ -187,6 +218,9 @@ function Viewer({ list, at, go, close, demo }: { list: Shown[]; at: number; go: 
   );
 }
 
+// How high a video's controls bar is, at its bottom: a click there is the controls'.
+const CONTROLS = 48;
+
 export function Attachments({ ticket, send, Action }: { ticket: TicketView; send: (m: TicketWebviewMessage) => void; Action: Action }) {
   const list = ticket.attachments ?? [];
   const [folded, setFolded] = useState(!!ticket.attachmentsFolded);
@@ -199,6 +233,15 @@ export function Attachments({ ticket, send, Action }: { ticket: TicketView; send
     const click = (e: MouseEvent) => {
       const el = e.target as HTMLElement | null;
       if (!el?.closest('.feed .rendered, .description .rendered')) return;
+      // A video plays where it is, muted (BL-134): the webview's player doesn't start on a click on the picture itself.
+      // Its controls (the bar at the bottom) do what they do.
+      if (el instanceof HTMLVideoElement) {
+        if (el.paused && e.offsetY < el.clientHeight - CONTROLS) {
+          e.preventDefault();
+          void el.play().catch(() => undefined);
+        }
+        return;
+      }
       if (el instanceof HTMLImageElement) {
         const at = list.findIndex((a) => a.src === el.getAttribute('src'));
         if (at >= 0) {

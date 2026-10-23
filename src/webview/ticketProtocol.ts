@@ -240,6 +240,20 @@ export interface TicketView {
   updateFromMain?: { base: string };
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
   shaping?: { agent: string; running: boolean; ready: boolean; /** The user paused or stopped it: Resume goes on in its chat. */ held?: 'paused' | 'stopped' };
+  /**
+   * Its last Check (BL-163): each thing it says is going on, ✓ (ok, with its evidence) or ✗ (with what Clean Up does).
+   * full: the user clicked Check (all claims shown); else the check made on opening it, which shows only glitches.
+   */
+  check?: TicketCheckView;
+}
+
+export interface TicketCheckView {
+  full: boolean;
+  /** When it checked (HH:MM). */
+  at: string;
+  claims: Array<{ key: string; ok: boolean; text: string; fix?: string }>;
+  /** It couldn't check (no process list, say). */
+  error?: string;
 }
 
 /** The top-level parts of a view that a change sends on their own (the activity has its own: see TicketPartsMessage). */
@@ -317,6 +331,9 @@ export type TicketWebviewMessage =
   | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
   | { type: 'updateFromMain' }
+  /** Check what the ticket says is going on (BL-163); Clean Up its glitches (one, by key, or all). */
+  | { type: 'check' }
+  | { type: 'checkCleanUp'; key?: string }
   /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
   | { type: 'mergeCiFix' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */

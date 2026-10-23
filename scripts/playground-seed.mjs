@@ -281,7 +281,21 @@ const TICKETS = [
     priority: 'low',
     daysAgo: 20,
     description: "The status bar shows Claude's usage limit, and when it resets.\n\n- [ ] Shown while the limit is reached.\n- [ ] Hidden when there is no limit.",
-    activity: [{ ago: 1440, author: 'Flotilla', body: 'You moved it from **In Review** to **Done**.' }],
+    activity: [
+      {
+        ago: 1500,
+        author: 'Agent Pip-3',
+        body: [
+          'Done: the status bar shows the limit, and counts down to its reset.',
+          'Needs from you: nothing',
+          '',
+          '![The status bar, counting down to the reset](BL-9/limit.mp4)',
+        ].join('\n'),
+      },
+      { ago: 1440, author: 'Flotilla', body: 'You moved it from **In Review** to **Done**.' },
+    ],
+    // A video (BL-134's demo): it plays when clicked, in Attachments and in the activity.
+    files: { 'limit.mp4': fs.readFileSync(new URL('./playground-media/limit.mp4', import.meta.url)) },
   },
   {
     id: 'BL-10',
@@ -729,6 +743,8 @@ function writeBacklog(backlog, now) {
 /** The seeded chats' session ids: fixed, so seeding again rewrites the same chats. */
 const AGENT_CHAT = '7a3e5b21-4c6d-4f80-9b1a-2d3c4e5f6a70';
 const PANEL_CHAT = '8b4f6c32-5d7e-4a91-8c2b-3e4d5f6a7b81';
+/** An agent's chat whose process ended without its record saying so: it shows as working, for a Check to find (BL-163). */
+const STALE_CHAT = '9c5a7d43-6e8f-4ba2-9d3c-4f5e6a7b8c92';
 const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
 const MODEL = 'claude-opus-5-5';
 
@@ -751,6 +767,13 @@ const AGENT_NEXT = [
   {
     tools: [{ name: 'Edit', input: { file_path: 'src/chats.js', description: 'Add chatOf' }, result: 'The file src/chats.js has been updated.' }],
     reply: 'Added chatOf, which finds the chat of a worktree again. Next: read the store on start.',
+  },
+];
+const STALE_TURNS = [
+  {
+    say: 'You are agent Orbit-2, working on backlog item BL-3: "Keep chats when a window reloads". Check the tests of src/chats.js, then report.',
+    tools: [{ name: 'Bash', input: { command: 'npm test -- chats', description: 'Run the chat tests' }, result: '2 passed' }],
+    reply: 'The chat tests pass. Reporting in the ticket next.',
   },
 ];
 const PANEL_TURNS = [
@@ -783,7 +806,7 @@ const transcriptFile = (home, cwd, sessionId) => path.join(home, 'projects', cwd
 
 /**
  * Seeds the playground's chats: an agent's (claude -p, so it opens read-only, BL-121) in BL-3's worktree, working,
- * and a panel chat there, done. Their records go to the worktree's git folder (as Flotilla's hook writes them), their
+ * a panel chat there, done, and an agent's that shows as working though nothing runs it (for a Check, BL-163). Their records go to the worktree's git folder (as Flotilla's hook writes them), their
  * transcripts to `claudeHome`'s projects (the demo window's own home: never the user's). Written again on every call,
  * so the agent's chat is fresh and open whenever a demo starts. Returns the transcripts' paths.
  */
@@ -795,6 +818,8 @@ export function seedChats(dir, claudeHome, now = new Date()) {
   const chats = [
     { sessionId: AGENT_CHAT, entrypoint: 'sdk-cli', turns: AGENT_TURNS, title: 'Vega-2 · BL-3', state: 'working', agent: 'Vega-2', ago: 6 },
     { sessionId: PANEL_CHAT, entrypoint: 'claude-vscode', turns: PANEL_TURNS, title: 'What chatOf returns without a chat', state: 'done', ago: 50 },
+    // Last written 7 minutes ago, and nothing runs it: it shows as working until a Check cleans it up.
+    { sessionId: STALE_CHAT, entrypoint: 'sdk-cli', turns: STALE_TURNS, title: 'Orbit-2 · BL-3', state: 'working', agent: 'Orbit-2', ago: 8, quietFor: 7 },
   ];
   return chats.map((c) => {
     const startedAt = new Date(now.getTime() - c.ago * 60_000);
@@ -802,7 +827,9 @@ export function seedChats(dir, claudeHome, now = new Date()) {
     const file = transcriptFile(claudeHome, cwd, c.sessionId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${lines}${JSON.stringify({ type: 'custom-title', sessionId: c.sessionId, customTitle: c.title })}\n`);
-    const record = { sessionId: c.sessionId, state: c.state, cwd, linkedBy: 'cwd', firstPrompt: c.turns[0].say.slice(0, 200), startedAt: startedAt.toISOString(), updatedAt: now.toISOString() };
+    const updatedAt = c.quietFor ? new Date(now.getTime() - c.quietFor * 60_000) : now;
+    if (c.quietFor) fs.utimesSync(file, updatedAt, updatedAt);
+    const record = { sessionId: c.sessionId, state: c.state, cwd, linkedBy: 'cwd', firstPrompt: c.turns[0].say.slice(0, 200), startedAt: startedAt.toISOString(), updatedAt: updatedAt.toISOString() };
     if (c.agent) record.agent = c.agent;
     fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
     return file;

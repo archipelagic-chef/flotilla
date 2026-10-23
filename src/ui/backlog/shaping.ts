@@ -122,6 +122,7 @@ export class Shaping implements vscode.Disposable {
       prompt: resume ? followUpPrompt({ ticket, opened }) : shapingPrompt({ item, agent, ticket }),
       resume,
       name: `${agent} · discussing ${id}`,
+      track: { ticket: id, agent, role: 'discuss' },
       choice: agentChoice(item),
       output: this.deps.output,
       tools: shapingTools(ticket),

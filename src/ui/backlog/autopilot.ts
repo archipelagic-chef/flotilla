@@ -15,6 +15,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
+import { recordEvent } from '../../features/metrics/events';
 import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
@@ -203,6 +204,7 @@ export class Autopilot implements vscode.Disposable {
       void vscode.window.showInformationMessage(`The autopilot has been idle for ${Math.round((now - this.idleSince) / 60_000)} minutes: ${reason}.`);
     }
     if (reason !== this.idle) {
+      if (reason !== undefined) recordEvent('autopilot-idle', { data: { reason } });
       this.idle = reason;
       this.changed.fire();
     }

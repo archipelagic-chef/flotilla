@@ -4,6 +4,7 @@ import { mergeConflicts } from '../../core/git/mergeCheck';
 import type { Repository } from '../../core/repository';
 import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { recordEvent } from '../../features/metrics/events';
 import { baseLabel, branchesToCheck, capitalize, conflictsOf, driftNotes, isOpen, mergeBasePrompt, reusable, type BranchCheck, type MainCheck } from '../../features/backlog/mainDrift';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase, resolveCommit } from '../../features/workstreams/progress';
@@ -113,6 +114,10 @@ export class MainSync implements vscode.Disposable {
     for (const [id, next] of checks) {
       const item = open.find((i) => i.id === id)!;
       const notes = driftNotes(before.get(id), next);
+      for (const b of next.branches) {
+        const was = before.get(id)?.branches.find((w) => w.branch === b.branch)?.conflicts ?? [];
+        if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0')) recordEvent('branch-conflicts', { ticket: id, data: { branch: b.branch, files: b.conflicts } });
+      }
       if (notes.length) await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: notes.join('\n\n') });
     }
   }

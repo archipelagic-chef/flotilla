@@ -2,7 +2,8 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { EMPTY_BACKLOG, ID_PATTERN, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
+import { recordEvent } from '../metrics/events';
+import { EMPTY_BACKLOG, entryAgent, ID_PATTERN, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
 import { describeChanges, descriptionHash, lineDelta } from './changes';
 import { entryDate, formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
 
@@ -148,6 +149,9 @@ export class LocalBacklog {
     for (const item of next.items) {
       const old = was.get(item.id);
       const lines = old ? describeChanges(old, item, opts.by ?? 'You') : [];
+      if (old && old.status !== item.status) {
+        recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(opts.by ?? ''), data: { from: old.status, to: item.status, by: opts.by ?? 'You' } });
+      }
       if (lines.length) await this.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: lines.join('\n\n') });
     }
     return next;
