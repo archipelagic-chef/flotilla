@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
 import { commentSent } from './comments';
@@ -63,6 +64,31 @@ export function ActionButton({
     <button {...props} disabled={props.disabled || !!busy} aria-busy={!!busy} onClick={() => act(message, label)}>
       {children}
       {busy && <WorkingTag label={busy} />}
+    </button>
+  );
+}
+
+const UPDATE_SPIN_MS = 1500;
+
+/**
+ * Update from Main: from the click until the merge (or the hand-off to the agent) is done, its arrows spin, it says
+ * "Updating…" and it takes no second click. It spins for at least UPDATE_SPIN_MS, so that a merge done at once is seen too.
+ */
+export function UpdateFromButton({ base, ...props }: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { base: string }) {
+  const message: TicketWebviewMessage = { type: 'updateFromMain' };
+  const working = !!useWorking(message);
+  const [spinning, setSpinning] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const click = () => {
+    setSpinning(true);
+    timer.current = setTimeout(() => setSpinning(false), UPDATE_SPIN_MS);
+    act(message, 'Updating…');
+  };
+  const busy = working || spinning;
+  return (
+    <button {...props} disabled={busy} aria-busy={busy} onClick={click}>
+      <i class={`codicon codicon-sync${busy ? ' codicon-modifier-spin' : ''}`} /> {busy ? 'Updating…' : `Update from ${capitalize(base)}`}
     </button>
   );
 }

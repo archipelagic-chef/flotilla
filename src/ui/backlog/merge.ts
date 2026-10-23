@@ -1290,6 +1290,23 @@ export class Merger implements vscode.Disposable {
     });
   }
 
+  /**
+   * A Check found the merge queue or train out of step (BL-166): a ticket that's gone, done or no longer approved, or
+   * a branch that moved since the train was built. Both are rebuilt as they should be; no note (the Check leaves its own).
+   */
+  rebuildQueue(): Promise<boolean> {
+    return this.serial({ what: 'rebuilding the merge queue and train' }, async () => {
+      if (!(await this.baseBranch())) return false;
+      await this.currentTrain({ rebuild: true });
+      return true;
+    });
+  }
+
+  /** Whether this window runs any merge task now (BL-166: a merge's temporary worktree isn't named by its ticket until it stops). */
+  busy(): boolean {
+    return this.tasks.length > 0 || this.runs.size > 0 || this.ciWaits.size > 0 || this.finishing.size > 0;
+  }
+
   /** Cancels a merge waiting for a decision: its agent stops, its worktree goes; nothing changes. */
   cancel(id: string): Promise<void> {
     return this.serial({ id, what: `cancelling ${id}'s merge` }, async () => {

@@ -433,6 +433,18 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.pauseAllAgents",
+        "title": "Pause All Agents",
+        "category": "Flotilla",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "flotilla.resumeAllAgents",
+        "title": "Resume All Agents",
+        "category": "Flotilla",
+        "icon": "$(debug-continue)"
+      },
+      {
         "command": "flotilla.pauseAgent",
         "title": "Pause the Agent (Keeps Its Chat)",
         "category": "Flotilla",

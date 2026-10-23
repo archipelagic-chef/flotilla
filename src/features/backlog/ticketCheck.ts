@@ -58,7 +58,12 @@ export type Cleanup =
   /** A review naming a worktree that's gone or on another branch (BL-167): its `worktree` is cleared. */
   | { kind: 'review-worktree'; worktree: string }
   /** A "Creating its worktree…" record no window still creates (BL-167): removed. */
-  | { kind: 'creating-stale'; dir: string; id: string };
+  | { kind: 'creating-stale'; dir: string; id: string }
+
+  /** The merge queue or train names a ticket wrongly (gone, done, its branch moved): both are rebuilt (BL-166). */
+  | { kind: 'queue-rebuild' }
+  /** A temporary merge worktree no ticket's merge names: removed with `git worktree remove` (BL-166). */
+  | { kind: 'orphan-remove'; dir: string };
 
 export interface Claim {
   /** Unique within a ticket: Clean Up of one claim names it. */
@@ -225,3 +230,4 @@ export function glitchLine(claims: readonly Pick<Claim, 'ok' | 'text'>[]): strin
   if (!bad.length) return undefined;
   return bad.length === 1 ? bad[0].text : `${bad[0].text}, and ${bad.length - 1} more`;
 }
+
