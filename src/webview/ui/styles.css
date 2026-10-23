@@ -2297,6 +2297,43 @@ ins {
   color: var(--vscode-textLink-foreground);
   cursor: pointer;
 }
+/* Pause All and Resume All (BL-160): links on the bar, the agent count's line and in the details; while Pause All
+   holds, the box takes the colour of a paused agent. */
+.agent-count-line .try-now,
+.autopilot-details .pause-all-row .try-now {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  white-space: nowrap;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.agent-count-line .try-now {
+  font-size: 12px;
+  padding: 2px 0;
+}
+.agent-count-line .try-now:hover:not(:disabled),
+.autopilot-details .pause-all-row .try-now:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.autopilot-details .pause-all-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-box.paused-all > .autopilot-bar,
+.autopilot-box.paused-all.off {
+  border-left-color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
+  background: color-mix(in srgb, var(--vscode-charts-yellow, var(--vscode-descriptionForeground)) 10%, transparent);
+}
 /* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
 .merge-queue-bar {
   display: flex;

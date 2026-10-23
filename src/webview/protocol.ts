@@ -303,6 +303,8 @@ export interface AutopilotState {
   idle?: string;
   /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
   away?: string;
+  /** Pause All holds every agent (BL-160): how many it paused. */
+  pausedAll?: number;
   /** The agents working now, for its details (BL-153). */
   agents?: AutopilotAgent[];
   /** The starts waiting, in the order they start in. */
@@ -395,6 +397,8 @@ export type WebviewMessage =
   /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
   | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
+  /** Pause All Agents, Resume All Agents (BL-160). */
+  | { type: 'backlog'; op: 'pauseAll' | 'resumeAll' }
   /** Check All: every ticket's Check (BL-163). */
   | { type: 'backlog'; op: 'checkAll' }
   /** Merge All Ready: lands the merge queue (BL-140). */

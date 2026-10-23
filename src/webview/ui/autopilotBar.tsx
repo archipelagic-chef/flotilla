@@ -4,6 +4,7 @@ import { send } from './api';
 import { shortTime } from '../shortTime';
 import { autopilotDetails, type DetailLine } from '../autopilotDetails';
 import { act, BusyButton, useBusy } from './backlogBusy';
+import { PauseOrResume, pausedAllLabel } from './pauseAll';
 
 interface FoldProps {
   autopilot: AutopilotState;
@@ -19,7 +20,7 @@ interface FoldProps {
  */
 export function AutopilotBar({ autopilot, titles, open, setOpen }: FoldProps) {
   return (
-    <div class="autopilot-box">
+    <div class={`autopilot-box${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="autopilot-bar">
         <button
           class="autopilot-what"
@@ -31,7 +32,9 @@ export function AutopilotBar({ autopilot, titles, open, setOpen }: FoldProps) {
           <i class="codicon codicon-rocket" />
           <span>
             <strong>Autopilot</strong>{' '}
-            {autopilot.elsewhere
+            {autopilot.pausedAll !== undefined
+              ? `· ${pausedAllLabel(autopilot.pausedAll)}: it holds until you resume.`
+              : autopilot.elsewhere
               ? 'runs in another window.'
               : autopilot.waitingUntil
                 ? autopilot.triedAt
@@ -46,6 +49,7 @@ export function AutopilotBar({ autopilot, titles, open, setOpen }: FoldProps) {
           </span>
         </button>
         {!open && autopilot.waitingUntil && !autopilot.elsewhere && <TryNow />}
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
         <Switch on />
       </div>
       {open && <Details autopilot={autopilot} titles={titles} />}
@@ -92,7 +96,7 @@ function Switch({ on }: { on: boolean }) {
 /** The agent count, with the autopilot off (BL-107): a click folds out the same details, with the switch to turn it on. */
 export function AgentCount({ label, autopilot, titles, open, setOpen }: FoldProps & { label: string }) {
   return (
-    <div class="autopilot-box off">
+    <div class={`autopilot-box off${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="agent-count-line">
         <button
           class="agent-count"
@@ -104,6 +108,7 @@ export function AgentCount({ label, autopilot, titles, open, setOpen }: FoldProp
           <i class="codicon codicon-hubot" />
           <span>{label}</span>
         </button>
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
         {open && <Switch on={false} />}
       </div>
       {open && <Details autopilot={autopilot} titles={titles} />}
@@ -176,6 +181,12 @@ function Details({ autopilot, titles }: { autopilot: AutopilotState; titles: Rea
         />
         {d.tryNow && <TryNow />}
       </div>
+      {(autopilot.pausedAll !== undefined || autopilot.running > 0) && (
+        <div class="pause-all-row">
+          <span>{autopilot.pausedAll !== undefined ? `${pausedAllLabel(autopilot.pausedAll)}: nothing starts until you resume.` : 'Pause every agent working, their chats kept:'}</span>
+          <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketView } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
-import { act, ActionButton, send } from './actions';
+import { act, ActionButton, send, UpdateFromButton } from './actions';
 import { LANE_ICON } from './header';
 import { ago } from './agents';
 
@@ -148,14 +147,11 @@ export function Work({ ticket }: { ticket: TicketView }) {
         <div class="work-head">
           <i class="codicon codicon-git-branch" /> Worktrees <span class="count">{ticket.worktrees.length}</span>
           {ticket.updateFromMain && (
-            <ActionButton
+            <UpdateFromButton
               class="text-button work-head-action"
-              message={{ type: 'updateFromMain' }}
-              working="Updating…"
+              base={ticket.updateFromMain.base}
               title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
-            >
-              <i class="codicon codicon-sync" /> Update from {capitalize(ticket.updateFromMain.base)}
-            </ActionButton>
+            />
           )}
         </div>
         {!ticket.worktrees.length && <div class="work-empty muted">None yet. Create one above to work on it.</div>}

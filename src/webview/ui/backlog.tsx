@@ -11,6 +11,7 @@ import { withMoves } from '../backlogActions';
 import './priority.css';
 import { TitleBar } from './titleBar';
 import { AgentCount, AutopilotBar } from './autopilotBar';
+import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
@@ -67,6 +68,8 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
   // Agents' proposals wait above the lanes until they're accepted.
   const proposed = workingOnly ? [] : (items ?? []).filter((i) => i.proposed);
   const agentCount = agentCountLabel(autopilot);
+  // While Pause All holds (BL-160), the count says so (with the autopilot off: on, its bar does).
+  const countLabel = autopilot?.pausedAll !== undefined && !autopilot.enabled ? pausedAllLabel(autopilot.pausedAll) : agentCount;
   const titles = new Map((items ?? []).map((i) => [i.id, i.title]));
   const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
@@ -93,7 +96,7 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
-      {agentCount && autopilot && <AgentCount label={agentCount} autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (

@@ -1,0 +1,26 @@
+{
+  "title": "Pause All Agents, then Resume All: the agents it paused go on in their chats",
+  "settings": { "flotilla.agents.maxRunning": 4 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 2000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\")" },
+    { "caption": "Sending work back starts its agent" },
+    { "click": ".comment-box textarea" },
+    { "type": "Test an empty list." },
+    { "click": ".actions-row button:has-text(\"Request Changes\")" },
+    { "waitFor": ".agent-count-line .pause-all" },
+    { "caption": "Pause All, next to the agent count: every agent working pauses, its chat kept" },
+    { "click": ".agent-count-line .pause-all" },
+    { "caption": "Nothing new starts until Resume All, in any window, after a reload too" },
+    { "waitFor": ".autopilot-box.paused-all" },
+    { "wait": 2500 },
+    { "caption": "Resume All: the agents it paused go on, top of the backlog first, within the limit" },
+    { "click": ".agent-count-line .resume-all" },
+    { "waitFor": ".agent-count-line .pause-all" },
+    { "wait": 2000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

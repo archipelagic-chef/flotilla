@@ -6,7 +6,7 @@ import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import type { TicketCiView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { ciWord } from '../../features/ci/summary';
 import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
-import { act, ActionButton, send, useWorking, WorkingTag } from './actions';
+import { act, ActionButton, send, UpdateFromButton, useWorking, WorkingTag } from './actions';
 import { STATUSES } from './header';
 
 /** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
@@ -373,14 +373,11 @@ export function MainState({ ticket }: { ticket: TicketView }) {
         <div key={b.branch} class="error-note main-note">
           <i class="codicon codicon-git-merge" /> <code>{b.branch}</code> conflicts with {update?.base ?? 'main'} ({b.conflicts.join(', ')}).
           {update && (
-            <ActionButton
+            <UpdateFromButton
               class="text-button main-note-action"
-              message={{ type: 'updateFromMain' }}
-              working="Updating…"
+              base={update.base}
               title={`Hands merging ${update.base} into the branch to its agent, which resolves the conflicts and runs the checks`}
-            >
-              <i class="codicon codicon-sync" /> Update from {capitalize(update.base)}
-            </ActionButton>
+            />
           )}
         </div>
       ))}
