@@ -1175,6 +1175,14 @@ describe('agents lost to a reload (BL-87)', () => {
     expect(review().state).toBe('revising');
     loop.dispose();
   });
+  it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
+    const check = loop as unknown as { stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> };
+    expect(await check.stopForCheck('BL-1', 'paused-gone', 'gone')).toBe(false); // it isn't paused
+    expect(await check.stopForCheck('BL-1', 'lost', "The ticket says Nova is making the changes asked for, but it isn't running")).toBe(true);
+    expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'no-report', task: { prompt: expect.stringMatching(/Go on where you left off/) } } });
+    expect(await check.stopForCheck('BL-1', 'lost', 'again')).toBe(false); // stopped already: nothing to do
+    loop.dispose();
+  });
 });
 
 describe('Pause All and Resume All (BL-160)', () => {
@@ -1267,6 +1275,21 @@ describe('Pause All and Resume All (BL-160)', () => {
     expect(state('BL-4')).toBe('paused');
     expect(store.read()).toBeUndefined();
     expect(loop.waitingCount).toBe(2);
+    all.dispose();
+    loop.dispose();
+  });
+
+  it('leaves an agent paused on a usage limit as it is', async () => {
+    data.items[4].review = {
+      round: 1,
+      reviewer: '',
+      implementer: 'Ada-5',
+      state: 'paused',
+      paused: { until: '2099-01-01T00:00:00Z', known: true, phase: 'work', session: 'session-5', agent: 'Ada-5', resume: 'revising' },
+    };
+    const { paused } = await all.pause();
+    expect(paused.map((p) => p.id)).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect((data.items[4].review as { paused: { byUser?: string } }).paused.byUser).toBeUndefined();
     all.dispose();
     loop.dispose();
   });

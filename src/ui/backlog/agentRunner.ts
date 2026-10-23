@@ -12,6 +12,9 @@ import { askArgs } from '../../features/backlog/ask';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
+import { recordEvent, type AgentRole, type Tokens } from '../../features/metrics/events';
+import { finishChatRecords } from '../../features/chats/chats';
+import { locateRepo } from '../../core/repoLocator';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
 export type AgentPermissionMode = 'auto' | 'acceptEdits' | 'dontAsk' | 'bypassPermissions';
@@ -184,6 +187,21 @@ export function resultOf(stdout: string): string | undefined {
     return typeof r.result === 'string' ? r.result : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** What a run's JSON result says it used: its tokens and cost. */
+export function runUsage(stdout: string): { tokens?: Tokens; costUsd?: number } {
+  try {
+    const r = JSON.parse(stdout.trim()) as { total_cost_usd?: unknown; usage?: Record<string, unknown> };
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    const u = r.usage;
+    return {
+      ...(u ? { tokens: { input: n(u.input_tokens), output: n(u.output_tokens), cacheRead: n(u.cache_read_input_tokens), cacheCreation: n(u.cache_creation_input_tokens) } } : {}),
+      ...(typeof r.total_cost_usd === 'number' ? { costUsd: r.total_cost_usd } : {}),
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -371,6 +389,8 @@ export function runAgentHeadless(o: {
   slot?: number;
   /** Only these tools, and no other: the run asks no one, so anything else is refused (see headlessArgs). */
   tools?: string[];
+  /** What the run is, for its events (BL-157): its ticket, agent and role. */
+  track?: { ticket?: string; agent: string; role: AgentRole };
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
   if (o.resume !== undefined && !validSession(o.resume)) {
@@ -391,6 +411,13 @@ export function runAgentHeadless(o: {
   );
   const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
   running.set(sessionId, o.name);
+  const spawnedAt = Date.now();
+  const track = o.track;
+  const who = { ticket: track?.ticket, agent: track?.agent };
+  if (track) {
+    const data = { role: track.role, session: sessionId, ...(o.choice?.model ? { model: o.choice.model } : {}), ...(o.choice?.effort ? { effort: o.choice.effort } : {}) };
+    recordEvent(o.resume ? 'agent-resumed' : 'agent-started', { ...who, data });
+  }
   const start = o.slot ?? starting.begin();
   if (o.slot !== undefined) starting.spawned(o.slot);
   let stderr = '';
@@ -410,8 +437,21 @@ export function runAgentHeadless(o: {
     });
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
+      // Its chat is done now, even when the hooks' last word was "working" (BL-131).
+      void locateRepo(o.cwd).then((repo) => repo && finishChatRecords(repo.commonDir, sessionId)).catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
       if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
+      if (track) {
+        const role = track.role;
+        if (result.limit) {
+          const until = result.limit.until.toISOString();
+          recordEvent('limit-hit', { ...who, data: { limit: result.limit.kind, until, known: result.limit.known } });
+          recordEvent('agent-paused', { ...who, data: { role, session: sessionId, reason: 'limit', until } });
+        } else {
+          const minutes = Math.round((Date.now() - spawnedAt) / 600) / 100;
+          recordEvent('agent-ended', { ...who, data: { role, session: sessionId, code, ok: !result.error, minutes, ...runUsage(stdout), ...(o.choice?.model ? { model: o.choice.model } : {}) } });
+        }
+      }
       resolve(result);
     });
   });

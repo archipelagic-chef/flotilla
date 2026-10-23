@@ -1,0 +1,23 @@
+{
+  "title": "Check what a ticket says is running, and clean up what isn't",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "BL-3 says two agents are working: Vega-2, and Orbit-2, whose process ended 7 minutes ago" },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "waitFor": ".check-note", "timeout": 20000 },
+    { "caption": "Opening it checks quietly: what isn't true shows as a line" },
+    { "wait": 2500 },
+    { "click": ".toolbar button:has-text(\"Check\")" },
+    { "caption": "Check: each claim, ✓ with its evidence, or ✗ with why" },
+    { "waitFor": ".check-result" },
+    { "wait": 3000 },
+    { "click": ".check-result li.glitch button:has-text(\"Clean Up\")" },
+    { "caption": "Clean Up marks Orbit-2's chat done (its transcript stays), and notes it in the activity" },
+    { "waitFor": ".check-result:not(.glitched)", "timeout": 20000 },
+    { "caption": "Checked again: only what really runs is left" },
+    { "wait": 3500 },
+    { "caption": "" }
+  ]
+}

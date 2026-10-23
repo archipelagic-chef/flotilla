@@ -44,6 +44,7 @@ import { runWorkflowByHand } from '../ci/runWorkflow';
 import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
+import { recordClickWait } from '../../features/metrics/record';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -151,7 +152,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
   useAutopilot(autopilot: Autopilot): void {
     this.autopilot = autopilot;
-    this.subscriptions.push(autopilot.onDidChange(() => void this.postBacklog()));
+    this.subscriptions.push(
+      autopilot.onDidChange(() => void this.postBacklog()),
+      // The limit, changed in its details or in the settings, shows at once.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('flotilla.agents.maxRunning') || e.affectsConfiguration('flotilla.autopilot.maxAgents')) void this.postBacklog();
+      }),
+    );
     void this.postBacklog();
   }
 
@@ -306,6 +313,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'autopilot':
         await vscode.commands.executeCommand('flotilla.toggleAutopilot');
         return;
+      case 'checkAll':
+        await vscode.commands.executeCommand('flotilla.checkAll');
+        return;
       case 'tryNow':
         await vscode.commands.executeCommand('flotilla.tryPausedNow');
         return;
@@ -314,6 +324,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'resumeAll':
         await vscode.commands.executeCommand('flotilla.resumeAllAgents');
+        return;
+      case 'maxAgents':
+        await setAgentLimit(m.max);
         return;
       case 'landAll':
         await vscode.commands.executeCommand('flotilla.mergeAllReady');
@@ -565,6 +578,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'backlog': {
         // The card's button shows it's working until this says it's done (BL-117), whether it posted, failed or returned early.
         let failed = false;
+        const clicked = Date.now();
         try {
           await this.onBacklog(m);
         } catch (error) {
@@ -572,6 +586,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           throw error;
         } finally {
           this.post({ type: 'backlogDone', message: m, ...(failed ? { failed } : {}) });
+          recordClickWait(`backlog:${m.op}`, clicked, 'id' in m ? m.id : undefined);
         }
         return;
       }
@@ -787,4 +802,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 /** Past this context a chat is marked as big (flotilla.chats.bigContext; 0: never). */
 function bigContext(): number {
   return vscode.workspace.getConfiguration('flotilla').get<number>('chats.bigContext', 200_000);
+}
+
+/**
+ * Sets the agent limit where it's set now: flotilla.autopilot.maxAgents (its older name) if the user set that, else
+ * flotilla.agents.maxRunning; in the workspace if it's set there, else for the user.
+ */
+async function setAgentLimit(max: number): Promise<void> {
+  if (!Number.isInteger(max) || max < 1) return;
+  const config = vscode.workspace.getConfiguration('flotilla');
+  const older = config.inspect<number>('autopilot.maxAgents');
+  const key = (older?.workspaceFolderValue ?? older?.workspaceValue ?? older?.globalValue) !== undefined ? 'autopilot.maxAgents' : 'agents.maxRunning';
+  const set = config.inspect<number>(key);
+  const target =
+    set?.workspaceFolderValue !== undefined
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : set?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+  await config.update(key, max, target);
 }

@@ -23,6 +23,8 @@ import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
+import { TicketChecker } from './ui/backlog/ticketCheck';
+import { checkAllTickets } from './ui/backlog/checkAll';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
@@ -31,7 +33,7 @@ import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
-import { modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
+import { isRunningHeadless, isRunningInTerminal, modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
 import { PauseAll } from './ui/backlog/pauseAll';
@@ -67,6 +69,7 @@ import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
+import { startEventLog } from './ui/eventLog';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -235,6 +238,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
+  // What happens to tickets, agents and merges, recorded as events (BL-157).
+  context.subscriptions.push(startEventLog({ commonDir: location.commonDir, mainRoot: location.mainRoot, backlog, isLeader: () => leader.isLeader, output }));
   merger.queueChanged();
   // Pause All's record (BL-160): while it's there, no agent starts on its own, in any window.
   const pausedAll = new PausedAllStore(location.commonDir);
@@ -299,6 +304,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   noteDescriptions();
   tickets.useReviews(reviews);
   tickets.useMerger(merger);
+  // Check (BL-163): what a ticket says is going on, against what runs; Clean Up of what doesn't.
+  const checker = new TicketChecker({
+    backlog,
+    repository,
+    reviews,
+    merger,
+    runsHere: (session) => isRunningHeadless(session) || isRunningInTerminal(session),
+    get staleMinutes() {
+      return readSettings().agentStatusStaleMinutes;
+    },
+  });
+  tickets.useChecker(checker);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.checkTicket', async (card?: unknown) => {
+      const id =
+        backlogIdOf(card) ??
+        (await vscode.window.showQuickPick(
+          (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
+          { title: 'Check the ticket…' },
+        ))?.label;
+      if (!id) return;
+      await tickets.open(id);
+      await tickets.check(id).catch(reportError);
+    }),
+    vscode.commands.registerCommand('flotilla.checkAll', () => checkAllTickets(checker, tickets).catch(reportError)),
+  );
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);
@@ -444,6 +475,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
     vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
       const on = !autopilot.enabled;
+      // Turning it off stops no agent: say so first, while any work (BL-153).
+      const working = on ? 0 : autopilot.view().running;
+      if (working) {
+        const off = 'Turn Off';
+        const pick = await vscode.window.showWarningMessage(
+          `Turn the autopilot off? ${working === 1 ? 'The agent working keeps working' : `${working} agents keep working`}; no new tickets start.`,
+          { modal: true },
+          off,
+        );
+        if (pick !== off) return;
+      }
       await autopilot.setEnabled(on);
       if (on) {
         void vscode.window.showInformationMessage(
@@ -619,7 +661,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
       // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
-      if (!isHeartbeatPath(uri.path)) void repository.refresh(scopeOf(uri.fsPath));
+      // Nor do the events recorded (BL-157): they're written as things happen.
+      if (!isHeartbeatPath(uri.path) && !uri.path.includes('/flotilla/metrics/')) void repository.refresh(scopeOf(uri.fsPath));
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);

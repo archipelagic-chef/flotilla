@@ -35,6 +35,8 @@ export interface Persisted {
   search: SearchState;
   /** The backlog shows only the tickets being worked on. */
   workingOnly?: boolean;
+  /** The autopilot's details are folded out (BL-153). */
+  autopilotOpen?: boolean;
 }
 
 const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparisons: [], nextComparison: 1, search: INITIAL_SEARCH };
@@ -492,6 +494,8 @@ export function App() {
         colors={colors}
         workingOnly={!!persisted.workingOnly}
         setWorkingOnly={(on) => update((p) => ({ ...p, workingOnly: on }))}
+        autopilotOpen={!!persisted.autopilotOpen}
+        setAutopilotOpen={(open) => update((p) => ({ ...p, autopilotOpen: open }))}
         openWorktree={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);

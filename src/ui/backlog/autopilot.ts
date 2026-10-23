@@ -14,7 +14,9 @@ import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import type { PauseAll } from './pauseAll';
+import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
+import { recordEvent } from '../../features/metrics/events';
 import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
@@ -59,6 +61,9 @@ export interface AutopilotView {
   away?: string;
   /** Pause All holds every agent (BL-160): how many it paused. Shown with the autopilot off too. */
   pausedAll?: number;
+  /** The agents working now, and the starts waiting in order (BL-153). */
+  agents?: AutopilotAgent[];
+  queue?: AutopilotQueued[];
 }
 
 /** How long it's idle, with tickets waiting, before a notification says so (once). */
@@ -179,6 +184,8 @@ export class Autopilot implements vscode.Disposable {
       ...(this.idle ? { idle: this.idle } : {}),
       ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
       ...(this.deps.pauseAll?.pausedCount !== undefined ? { pausedAll: this.deps.pauseAll.pausedCount } : {}),
+      agents: this.deps.reviews.agentsNow(),
+      queue: this.deps.reviews.queuedStarts(),
     };
   }
 
@@ -210,6 +217,7 @@ export class Autopilot implements vscode.Disposable {
       void vscode.window.showInformationMessage(`The autopilot has been idle for ${Math.round((now - this.idleSince) / 60_000)} minutes: ${reason}.`);
     }
     if (reason !== this.idle) {
+      if (reason !== undefined) recordEvent('autopilot-idle', { data: { reason } });
       this.idle = reason;
       this.changed.fire();
     }

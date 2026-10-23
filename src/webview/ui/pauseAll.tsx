@@ -9,19 +9,19 @@ export function PauseAllButton() {
   );
 }
 
-/** While Pause All holds (BL-160): how many it paused, and Resume All. Instead of the autopilot's bar and the agent count. */
-export function PausedAllBar({ count, autopilot }: { count: number; autopilot: boolean }) {
+/** Resume All (BL-160): the agents Pause All paused go on, top of the backlog first, within the limit. */
+export function ResumeAllButton() {
   return (
-    <div class="autopilot-bar paused-all-bar">
-      <span class="autopilot-what">
-        <i class="codicon codicon-debug-pause" />
-        <span>
-          <strong>All agents paused</strong> ({count}){autopilot ? '. The autopilot holds until you resume.' : '. Nothing starts on its own until you resume.'}
-        </span>
-      </span>
-      <BusyButton class="try-now" message={{ type: 'backlog', op: 'resumeAll' }} icon="debug-continue" title="Resumes the agents Pause All paused, top of the backlog first, within flotilla.agents.maxRunning">
-        Resume All
-      </BusyButton>
-    </div>
+    <BusyButton class="try-now resume-all" message={{ type: 'backlog', op: 'resumeAll' }} icon="debug-continue" title="Resumes the agents Pause All paused, top of the backlog first, within flotilla.agents.maxRunning">
+      Resume All
+    </BusyButton>
   );
 }
+
+/** Pause All or Resume All, whichever applies now: Resume All while Pause All holds, Pause All while agents work. */
+export function PauseOrResume({ pausedAll, running }: { pausedAll?: number; running: number }) {
+  return pausedAll !== undefined ? <ResumeAllButton /> : running > 0 ? <PauseAllButton /> : null;
+}
+
+/** What the bar and the agent count say while Pause All holds: "All agents paused (5)". */
+export const pausedAllLabel = (n: number) => `All agents paused (${n})`;

@@ -463,6 +463,18 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "flotilla.checkTicket",
+        "title": "Check",
+        "category": "Flotilla",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "flotilla.checkAll",
+        "title": "Check All Tickets",
+        "category": "Flotilla",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "flotilla.cleanUpHistory",
         "title": "Clean Up Ticket History…",
         "category": "Flotilla"
@@ -1206,6 +1218,11 @@
           "command": "flotilla.stopAgent",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogAgent =~ /^(running|paused)$/",
           "group": "3_agent@2"
+        },
+        {
+          "command": "flotilla.checkTicket",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem'",
+          "group": "3_agent@3"
         },
         {
           "command": "flotilla.openInNewWindow",

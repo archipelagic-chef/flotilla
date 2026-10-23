@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
 import { currentGitPriority, gitQueue } from './gitQueue';
+import { type SpawnResult, spawnProcess } from './gitSpawner';
 
 export class GitError extends Error {
   constructor(
@@ -30,30 +30,26 @@ export function runGit(args: readonly string[], opts: RunGitOptions): Promise<st
   return gitQueue.run(currentGitPriority(), () => execGit(args, opts));
 }
 
-function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      'git',
-      [...args],
-      {
-        cwd: opts.cwd,
-        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxBuffer: 64 * 1024 * 1024,
-        encoding: 'utf8',
-        windowsHide: true,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...opts.env },
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          const code = (error as { code?: unknown }).code;
-          reject(new GitError(args, typeof code === 'number' ? code : null, stderr || error.message, stdout));
-        } else {
-          resolve(stdout);
-        }
-      },
-    );
-    if (opts.input !== undefined) child.stdin?.end(opts.input);
-  });
+/** Git processes running now, and the most at once since `peak` was last reset (the benchmark reads it). */
+export const gitProcesses = { running: 0, peak: 0 };
+
+const gitEnv = (env: Record<string, string> | undefined) => ({ ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...env });
+
+async function spawnGit<T extends string | Buffer>(args: readonly string[], opts: RunGitOptions, encoding: 'utf8' | 'buffer', maxBuffer: number) {
+  gitProcesses.running++;
+  gitProcesses.peak = Math.max(gitProcesses.peak, gitProcesses.running);
+  try {
+    const options = { cwd: opts.cwd, timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, maxBuffer, encoding, windowsHide: true, env: gitEnv(opts.env) };
+    return (await spawnProcess({ file: 'git', args: [...args], options, input: opts.input })) as SpawnResult<T>;
+  } finally {
+    gitProcesses.running--;
+  }
+}
+
+async function execGit(args: readonly string[], opts: RunGitOptions): Promise<string> {
+  const { error, stdout, stderr } = await spawnGit<string>(args, opts, 'utf8', 64 * 1024 * 1024);
+  if (error) throw new GitError(args, typeof error.code === 'number' ? error.code : null, stderr || error.message, stdout);
+  return stdout;
 }
 
 /** runGit, for output that may not be text (a file's bytes). */
@@ -61,29 +57,10 @@ export function runGitBytes(args: readonly string[], opts: RunGitOptions): Promi
   return gitQueue.run(currentGitPriority(), () => execGitBytes(args, opts));
 }
 
-function execGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'git',
-      [...args],
-      {
-        cwd: opts.cwd,
-        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxBuffer: 256 * 1024 * 1024,
-        encoding: 'buffer',
-        windowsHide: true,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...opts.env },
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          const code = (error as { code?: unknown }).code;
-          reject(new GitError(args, typeof code === 'number' ? code : null, stderr.toString() || error.message));
-        } else {
-          resolve(stdout);
-        }
-      },
-    );
-  });
+async function execGitBytes(args: readonly string[], opts: RunGitOptions): Promise<Buffer> {
+  const { error, stdout, stderr } = await spawnGit<Buffer>(args, opts, 'buffer', 256 * 1024 * 1024);
+  if (error) throw new GitError(args, typeof error.code === 'number' ? error.code : null, stderr.toString() || error.message);
+  return stdout;
 }
 
 export type GitVersion = readonly [number, number, number];

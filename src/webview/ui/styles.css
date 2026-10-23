@@ -2125,7 +2125,7 @@ ins {
   margin-top: 1px;
   color: var(--vscode-charts-green, var(--working));
 }
-/* The bar's text turns the autopilot off; Try Now (BL-132), next to it, tries a usage limit's paused agents now. */
+/* The bar's text folds its details out (BL-153); Try Now (BL-132), next to it, tries a usage limit's paused agents now. */
 .autopilot-bar .autopilot-what {
   display: flex;
   flex: 1;
@@ -2159,13 +2159,172 @@ ins {
 .autopilot-bar .try-now .codicon {
   color: inherit;
 }
-/* Pause All (BL-160): its bar while every agent is paused, in the colour of a paused agent. */
-.paused-all-bar {
+/* The autopilot's switch on its bar (or the agent count's line): a control of its own, so the bar's click only folds (BL-153). */
+.autopilot-switch {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-panel-border));
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+.autopilot-switch.on {
+  border-color: var(--vscode-charts-green, var(--working));
+  color: var(--vscode-foreground);
+}
+.autopilot-switch .codicon {
+  font-size: 10px;
+  margin: 0;
+}
+.autopilot-switch:focus-visible,
+.autopilot-line:focus-visible,
+.autopilot-bar .autopilot-what:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+.autopilot-box > .autopilot-bar {
+  margin-bottom: 0;
+}
+.autopilot-box {
+  margin-bottom: 6px;
+}
+.agent-count-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-right: 8px;
+}
+.agent-count-line .agent-count {
+  flex: 1;
+  min-width: 0;
+}
+/* Its details: the agents working, the starts waiting (in order), why it's idle, the limit. Each line opens its ticket. */
+.autopilot-details {
+  padding: 4px 8px 6px 22px;
+  border-left: 2px solid var(--vscode-charts-green, var(--working));
+  background: color-mix(in srgb, var(--vscode-charts-green, var(--working)) 5%, transparent);
+  font-size: 12px;
+}
+.autopilot-box.off .autopilot-details {
+  border-left-color: var(--vscode-panel-border);
+}
+.autopilot-details .heading {
+  margin: 4px 0 2px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-details ul,
+.autopilot-details ol {
+  margin: 0;
+  padding: 0 0 0 2px;
+  list-style-position: inside;
+}
+.autopilot-details ul {
+  list-style: none;
+}
+.autopilot-details .none,
+.autopilot-details .idle {
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  max-width: 100%;
+  padding: 1px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.autopilot-line .id {
+  color: var(--vscode-textLink-foreground);
+}
+.autopilot-line .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.autopilot-line .what {
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-line:hover .title {
+  text-decoration: underline;
+}
+.autopilot-details .limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-details .limit .step {
+  display: flex;
+  padding: 1px;
+  border: none;
+  background: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+.autopilot-details .limit .step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.autopilot-details .limit .try-now {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+/* Pause All and Resume All (BL-160): links on the bar, the agent count's line and in the details; while Pause All
+   holds, the box takes the colour of a paused agent. */
+.agent-count-line .try-now,
+.autopilot-details .pause-all-row .try-now {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  white-space: nowrap;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.agent-count-line .try-now {
+  font-size: 12px;
+  padding: 2px 0;
+}
+.agent-count-line .try-now:hover:not(:disabled),
+.autopilot-details .pause-all-row .try-now:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.autopilot-details .pause-all-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-box.paused-all > .autopilot-bar,
+.autopilot-box.paused-all.off {
   border-left-color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
   background: color-mix(in srgb, var(--vscode-charts-yellow, var(--vscode-descriptionForeground)) 10%, transparent);
-}
-.paused-all-bar .codicon {
-  color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
 }
 /* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
 .merge-queue-bar {
@@ -2276,29 +2435,7 @@ ins {
   right: 2px;
   top: 2px;
 }
-/* The agent count's line: the count, and Pause All (BL-160) at its end. */
-.agent-count-row {
-  display: flex;
-  align-items: flex-start;
-  padding-right: 8px;
-}
-.agent-count-row .pause-all {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 12px;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-}
-.agent-count-row .pause-all:hover:not(:disabled) {
-  text-decoration: underline;
-}
-/* The agents working, on a line under the backlog's title while the autopilot is off (its bar says it while on): click to narrow the board to them. */
+/* The agents working, on a line under the backlog's title while the autopilot is off (its bar says it while on): click to fold out the autopilot's details. */
 .agent-count {
   display: flex;
   align-items: flex-start;

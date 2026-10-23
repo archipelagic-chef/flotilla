@@ -43,6 +43,8 @@ import type { MergeQueueView } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
 import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
+import { recordEvent } from '../../features/metrics/events';
+import { failedTests, recordConflicts } from '../../features/metrics/record';
 
 export interface MergeDeps {
   backlog: LocalBacklog;
@@ -93,6 +95,8 @@ export class Merger implements vscode.Disposable {
   private queue: Promise<unknown> = Promise.resolve();
   /** Agents resolving conflicts, by item. */
   private readonly runs = new Map<string, AgentRun>();
+  /** When each merge's resolving agent started, for its event (BL-157). */
+  private readonly resolverStarted = new Map<string, number>();
   /** Items whose merge is moving the base and the ticket now: the merge watcher leaves them to it. */
   private readonly finishing = new Set<string>();
   /** The queue's tasks, in order, the first one running: what each does ("BL-3's merge"), and for which ticket. */
@@ -552,8 +556,10 @@ export class Merger implements vscode.Disposable {
     const dir = this.mergeDir(id);
     const message = mergeMessage(item);
     this.deps.output.appendLine(`Merge: ${branch} into ${base} in ${dir}.`);
+    recordEvent('merge-started', { ticket: id, data: { into: base, branch } });
     const outcome = await mergeInWorktree(root, { dir, baseTip: check.baseTip, branch, message });
     if (outcome.kind === 'conflicts') {
+      recordConflicts(id, root, check.baseTip, branch, outcome.files);
       const state: MergeState = { dir, branch, base, baseTip: check.baseTip, state: 'failed', reason: conflictsReason(outcome.files), started: new Date().toISOString() };
       if (batch) {
         await this.setMerge(id, state);
@@ -697,6 +703,7 @@ export class Merger implements vscode.Disposable {
           checks: { command, output: checks.output, at: new Date().toISOString() },
         };
         await this.setMerge(item.id, state);
+        recordEvent('merge-checks-failed', { ticket: item.id, data: { failure: checks.timeouts ? 'timeout' : 'assertion', tests: failedTests(checks.output) } });
         const again = m.resolved || earlier ? ' again' : '';
         await this.note(
           item.id,
@@ -793,6 +800,7 @@ export class Merger implements vscode.Disposable {
       { by: 'Flotilla' },
     );
     this.changed.fire();
+    if (!m.already) recordEvent('merge-landed', { ticket: item.id, data: { into: m.base, commit: m.commit } });
     await this.note(
       item.id,
       m.already
@@ -947,7 +955,8 @@ export class Merger implements vscode.Disposable {
     // The tip it starts from: a fix is a commit on top of it.
     const from = failedChecks ? (await runGit(['rev-parse', 'HEAD'], { cwd: m.dir })).trim() : undefined;
     const choice = agentChoice(item);
-    const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice, output: this.deps.output });
+    this.resolverStarted.set(id, Date.now());
+    const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice, output: this.deps.output, track: { ticket: id, agent, role: 'merge' } });
     this.runs.set(id, run);
     await this.setMerge(id, { ...m, state: 'resolving', agent, session: run.sessionId, reason: undefined, ...(from ? { from } : {}) });
     const task = files.length
@@ -989,6 +998,8 @@ export class Merger implements vscode.Disposable {
     }
     // A merge the agent made again onto the base as it is now: its base is that (BL-149).
     await this.setMerge(id, { ...m, baseTip: result.onto, state: 'resolved', reason: undefined });
+    const since = this.resolverStarted.get(id);
+    recordEvent('merge-resolved', { ticket: id, agent: m.agent, data: { minutes: since ? Math.round((Date.now() - since) / 600) / 100 : 0, by: agent } });
     void vscode.window
       .showInformationMessage(
         m.checks
@@ -1013,6 +1024,7 @@ export class Merger implements vscode.Disposable {
           void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
           return 'stopped';
         }
+        recordEvent('merge-approved', { ticket: id, data: { by: 'You' } });
         if (m.train) return this.landResolved(item, m, result.merge);
         await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
         const now = await this.tip(m.base);
@@ -1110,6 +1122,26 @@ export class Merger implements vscode.Disposable {
     );
   }
 
+  /** Whether this window runs anything of an item's merge: its agent, the merge itself (queued, checks, CI wait). */
+  runsMergeOf(id: string): boolean {
+    return this.runs.has(id) || this.merging.has(id) || this.finishing.has(id) || this.ciWaits.has(id);
+  }
+
+  /**
+   * A Check found the merge's agent runs nowhere (lost: the merge fails where it is, for Resolve with Agent again), or
+   * its temporary worktree gone (gone: its state is cleared). No note: the Check leaves its own.
+   */
+  forCheck(id: string, what: 'lost' | 'gone', reason: string): Promise<boolean> {
+    return this.serial({ id, what: `checking ${id}'s merge` }, async () => {
+      const m = (await this.item(id))?.merging;
+      if (!m || this.runsMergeOf(id)) return false;
+      if (what === 'gone') await this.setMerge(id, undefined);
+      else if (m.state === 'resolving') await this.setMerge(id, { ...m, state: 'failed', reason });
+      else return false;
+      return true;
+    });
+  }
+
   /** Cancels a merge waiting for a decision: its agent stops, its worktree goes; nothing changes. */
   cancel(id: string): Promise<void> {
     return this.serial({ id, what: `cancelling ${id}'s merge` }, async () => {
@@ -1119,6 +1151,7 @@ export class Merger implements vscode.Disposable {
       if (!m) return;
       await this.removeDir(m.dir);
       await this.setMerge(id, undefined);
+      recordEvent('merge-cancelled', { ticket: id, data: { reason: 'by you' } });
       await this.note(id, `You cancelled the merge of \`${m.branch}\` into \`${m.base}\`. Nothing changed.`);
     });
   }
