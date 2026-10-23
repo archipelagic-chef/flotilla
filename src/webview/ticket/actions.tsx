@@ -68,7 +68,7 @@ export function ActionButton({
   );
 }
 
-const UPDATE_SPIN_MS = 800;
+const UPDATE_SPIN_MS = 1500;
 
 /**
  * Update from Main: from the click until the merge (or the hand-off to the agent) is done, its arrows spin, it says
