@@ -1122,6 +1122,26 @@ export class Merger implements vscode.Disposable {
     );
   }
 
+  /** Whether this window runs anything of an item's merge: its agent, the merge itself (queued, checks, CI wait). */
+  runsMergeOf(id: string): boolean {
+    return this.runs.has(id) || this.merging.has(id) || this.finishing.has(id) || this.ciWaits.has(id);
+  }
+
+  /**
+   * A Check found the merge's agent runs nowhere (lost: the merge fails where it is, for Resolve with Agent again), or
+   * its temporary worktree gone (gone: its state is cleared). No note: the Check leaves its own.
+   */
+  forCheck(id: string, what: 'lost' | 'gone', reason: string): Promise<boolean> {
+    return this.serial({ id, what: `checking ${id}'s merge` }, async () => {
+      const m = (await this.item(id))?.merging;
+      if (!m || this.runsMergeOf(id)) return false;
+      if (what === 'gone') await this.setMerge(id, undefined);
+      else if (m.state === 'resolving') await this.setMerge(id, { ...m, state: 'failed', reason });
+      else return false;
+      return true;
+    });
+  }
+
   /** Cancels a merge waiting for a decision: its agent stops, its worktree goes; nothing changes. */
   cancel(id: string): Promise<void> {
     return this.serial({ id, what: `cancelling ${id}'s merge` }, async () => {

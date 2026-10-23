@@ -1175,4 +1175,12 @@ describe('agents lost to a reload (BL-87)', () => {
     expect(review().state).toBe('revising');
     loop.dispose();
   });
+  it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
+    const check = loop as unknown as { stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> };
+    expect(await check.stopForCheck('BL-1', 'paused-gone', 'gone')).toBe(false); // it isn't paused
+    expect(await check.stopForCheck('BL-1', 'lost', "The ticket says Nova is making the changes asked for, but it isn't running")).toBe(true);
+    expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'no-report', task: { prompt: expect.stringMatching(/Go on where you left off/) } } });
+    expect(await check.stopForCheck('BL-1', 'lost', 'again')).toBe(false); // stopped already: nothing to do
+    loop.dispose();
+  });
 });

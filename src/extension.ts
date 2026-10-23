@@ -23,6 +23,8 @@ import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
+import { TicketChecker } from './ui/backlog/ticketCheck';
+import { checkAllTickets } from './ui/backlog/checkAll';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
@@ -31,7 +33,7 @@ import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
-import { modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
+import { isRunningHeadless, isRunningInTerminal, modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
 import { discussable } from './features/backlog/shaping';
@@ -297,6 +299,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   noteDescriptions();
   tickets.useReviews(reviews);
   tickets.useMerger(merger);
+  // Check (BL-163): what a ticket says is going on, against what runs; Clean Up of what doesn't.
+  const checker = new TicketChecker({
+    backlog,
+    repository,
+    reviews,
+    merger,
+    runsHere: (session) => isRunningHeadless(session) || isRunningInTerminal(session),
+    get staleMinutes() {
+      return readSettings().agentStatusStaleMinutes;
+    },
+  });
+  tickets.useChecker(checker);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.checkTicket', async (card?: unknown) => {
+      const id =
+        backlogIdOf(card) ??
+        (await vscode.window.showQuickPick(
+          (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
+          { title: 'Check the ticket…' },
+        ))?.label;
+      if (!id) return;
+      await tickets.open(id);
+      await tickets.check(id).catch(reportError);
+    }),
+    vscode.commands.registerCommand('flotilla.checkAll', () => checkAllTickets(checker, tickets).catch(reportError)),
+  );
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);

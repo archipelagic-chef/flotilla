@@ -187,7 +187,7 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
 
 A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
 
-The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows) and a panel chat (done). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
+The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows), a panel chat (done), and an agent's that shows as working though nothing runs it (Orbit-2, its process ended 7 minutes before: a Check finds it, as [demos/check-ticket.json](demos/check-ticket.json) shows). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
 
 Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). When you run it, the window pops up on your screen while it records or plays.
 

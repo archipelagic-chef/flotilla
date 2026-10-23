@@ -395,6 +395,8 @@ export type WebviewMessage =
   /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
   | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
+  /** Check All: every ticket's Check (BL-163). */
+  | { type: 'backlog'; op: 'checkAll' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */

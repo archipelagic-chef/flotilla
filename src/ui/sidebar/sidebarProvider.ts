@@ -313,6 +313,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'autopilot':
         await vscode.commands.executeCommand('flotilla.toggleAutopilot');
         return;
+      case 'checkAll':
+        await vscode.commands.executeCommand('flotilla.checkAll');
+        return;
       case 'tryNow':
         await vscode.commands.executeCommand('flotilla.tryPausedNow');
         return;
