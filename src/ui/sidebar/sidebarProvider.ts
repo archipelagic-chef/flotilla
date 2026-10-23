@@ -12,6 +12,7 @@ import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
+import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
@@ -168,6 +169,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   useMerger(merger: Merger): void {
     this.merger = merger;
     this.subscriptions.push(merger.onDidChange(() => void this.postBacklog()));
+    // The cards' "checks 58%" (BL-169): every few seconds at most, the board being the larger post.
+    let checksTimer: ReturnType<typeof setTimeout> | undefined;
+    this.subscriptions.push(
+      merger.onDidChecks(() => {
+        checksTimer ??= setTimeout(() => {
+          checksTimer = undefined;
+          void this.postBacklog();
+        }, 3000);
+      }),
+      { dispose: () => clearTimeout(checksTimer) },
+    );
     void this.postBacklog();
   }
 
@@ -202,6 +214,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
         const base = item.mainCheck && baseLabel(item.mainCheck.base);
         // A ticket in review that shows a demo: its card has the demo mark (BL-135).
+        const checks = this.merger?.checksView(item.id);
+        const part = checks && fraction(checks.progress);
+        const percent = part === undefined ? undefined : Math.round(part * 100);
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
@@ -216,6 +231,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
+          ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };
       }),
     );

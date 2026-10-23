@@ -196,6 +196,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     repository,
     mainRoot: location.mainRoot,
+    // The checks' logs go to .git/flotilla/merges/<id>/ (BL-169).
+    commonDir: location.commonDir,
     output,
     openTicket: (id) => void tickets.open(id),
     // Merge to main decides on CI's result when there is one (BL-105).

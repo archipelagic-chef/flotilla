@@ -440,6 +440,18 @@ export class TicketPanels implements vscode.Disposable {
   useMerger(merger: Merger): void {
     this.merger = merger;
     this.subscriptions.push(merger.onDidChange(() => this.refreshAll()));
+    // A merge's checks as they go (BL-169): only that part of the open ticket is sent.
+    this.subscriptions.push(merger.onDidChecks((id) => this.postMergeChecks(id)));
+  }
+
+  private postMergeChecks(id: string): void {
+    const panel = this.panels.get(id);
+    const sent = panel && this.sentViews.get(panel);
+    if (!panel || !sent) return;
+    const mergeChecks = this.merger?.checksView(id);
+    const { mergeChecks: _old, ...rest } = sent;
+    this.sentViews.set(panel, mergeChecks ? { ...rest, mergeChecks } : rest);
+    void panel.webview.postMessage({ type: 'ticketParts', parts: mergeChecks ? { mergeChecks } : {}, removed: mergeChecks ? [] : ['mergeChecks'] } satisfies TicketHostMessage);
   }
 
   /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
@@ -488,6 +500,8 @@ export class TicketPanels implements vscode.Disposable {
     const dist = vscode.Uri.joinPath(this.deps.extensionUri, 'dist');
     const panel = vscode.window.createWebviewPanel('flotilla.ticket', `${item.id} ${item.title}`, vscode.ViewColumn.Active, {
       enableScripts: true,
+      // Ctrl+F: a merge's checks' whole log is searched in the ticket (BL-169).
+      enableFindWidget: true,
       retainContextWhenHidden: true,
       localResourceRoots: [dist, vscode.Uri.file(this.deps.backlog.dir)],
     });
@@ -1059,6 +1073,7 @@ export class TicketPanels implements vscode.Disposable {
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
     const mergeProgress = this.merger?.mergeProgress(plain.id);
+    const mergeChecks = this.merger?.checksView(plain.id);
     const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
     const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
       const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
@@ -1108,6 +1123,7 @@ export class TicketPanels implements vscode.Disposable {
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canMerge: !remote && !!this.merger && readyToMerge(plain),
       ...(mergeProgress ? { mergeProgress } : {}),
+      ...(mergeChecks ? { mergeChecks } : {}),
       ...(mergeStop ? { mergeStop } : {}),
       ...(mergeQueue ? { mergeQueue } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
