@@ -13,7 +13,9 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
+import { recordEvent } from '../../features/metrics/events';
 import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
@@ -54,6 +56,9 @@ export interface AutopilotView {
   idle?: string;
   /** What it did while the user was away, for a while after they're back: "Overnight: 6 tickets done, 3 waiting for you". */
   away?: string;
+  /** The agents working now, and the starts waiting in order (BL-153). */
+  agents?: AutopilotAgent[];
+  queue?: AutopilotQueued[];
 }
 
 /** How long it's idle, with tickets waiting, before a notification says so (once). */
@@ -166,6 +171,8 @@ export class Autopilot implements vscode.Disposable {
       elsewhere: !this.deps.leader.isLeader,
       ...(this.idle ? { idle: this.idle } : {}),
       ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
+      agents: this.deps.reviews.agentsNow(),
+      queue: this.deps.reviews.queuedStarts(),
     };
   }
 
@@ -197,6 +204,7 @@ export class Autopilot implements vscode.Disposable {
       void vscode.window.showInformationMessage(`The autopilot has been idle for ${Math.round((now - this.idleSince) / 60_000)} minutes: ${reason}.`);
     }
     if (reason !== this.idle) {
+      if (reason !== undefined) recordEvent('autopilot-idle', { data: { reason } });
       this.idle = reason;
       this.changed.fire();
     }

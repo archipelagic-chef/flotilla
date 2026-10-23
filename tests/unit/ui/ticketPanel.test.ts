@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('vscode', () => ({}));
+const vscode = vi.hoisted(() => ({ commands: { executeCommand: vi.fn(async () => undefined) }, window: { showWarningMessage: vi.fn(async () => undefined) } }));
+vi.mock('vscode', () => vscode);
 const { attachmentsFolded, keepAttachmentsFolded, keepShowActivity, showActivityKept, TicketPanels } = await import('../../../src/ui/backlog/ticketPanel');
 
 /** A memento as VS Code's global state is: values kept by key, read synchronously. */
@@ -45,17 +46,18 @@ function tab() {
 }
 
 /** Ticket panels over a backlog whose one item's writes fail (or not): only what onMessage needs is there. */
-function panelsWith(change: () => Promise<unknown>) {
+function panelsWith(change: () => Promise<unknown>, o: { workstreams?: unknown[]; activity?: unknown[] } = {}) {
   const none = { dispose: () => undefined };
   const backlog = {
     dir: '/nonexistent/backlog',
     read: async () => ({ items: [{ id: 'BL-1', title: 'A ticket', status: 'doing', created: '' }] }),
     change,
     watch: () => none,
+    readTicket: async () => ({ description: '', activity: o.activity ?? [] }),
   };
   const deps = {
     backlog,
-    repository: { current: [], onDidChange: () => none },
+    repository: { current: o.workstreams ?? [], onDidChange: () => none },
     integrations: { current: [], issues: () => [], onDidChange: () => none },
     merges: { watch: () => none, get: () => undefined },
     memento: { get: (_key: string, fallback: unknown) => fallback, update: async () => undefined },
@@ -139,5 +141,32 @@ describe("the host's done for an action", () => {
     await expect(panels.onMessage('BL-1', t, { type: 'status', status: 'done' })).rejects.toThrow('disk full');
     expect(panels.post).not.toHaveBeenCalled();
     expect(t.webview.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('Open Chat (BL-131)', () => {
+  const at = new Date('2026-10-18T21:46:00Z');
+  /** A worktree whose branch doesn't name the ticket, with the chat of an agent that signed one of its entries. */
+  const elsewhere = {
+    key: '/repo/.git/worktrees/feedback',
+    worktree: { branch: 'feature/update-from-main-feedback', path: '/repo/.worktrees/feedback', isMain: false },
+    chats: [{ id: 'f545f4ca', title: 'Update from main', state: 'done', agent: 'Byte-2', updatedAt: at, startedAt: at }],
+  };
+  const signed = [{ date: '2026-10-18 21:40', author: 'Agent Byte-2', body: 'Fixed it.' }];
+
+  it('opens a chat the ticket lists, in a worktree whose branch does not name the ticket', async () => {
+    vscode.commands.executeCommand.mockClear();
+    const panels = panelsWith(async () => undefined, { workstreams: [elsewhere], activity: signed });
+    await panels.onMessage('BL-1', tab(), { type: 'openChat', key: elsewhere.key, id: 'f545f4ca' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('flotilla.openChat', { key: elsewhere.key, chatId: 'f545f4ca' });
+  });
+
+  it("says why it can't open a chat the ticket doesn't list, instead of doing nothing", async () => {
+    vscode.commands.executeCommand.mockClear();
+    vscode.window.showWarningMessage.mockClear();
+    const panels = panelsWith(async () => undefined, { workstreams: [elsewhere], activity: [] });
+    await panels.onMessage('BL-1', tab(), { type: 'openChat', key: elsewhere.key, id: 'f545f4ca' });
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("Can't open this chat"));
   });
 });

@@ -114,6 +114,14 @@ A button that starts something taking a while (git, GitHub, an agent starting, a
 
 Test it as `tests/unit/webview/backlogActions.test.ts` does (a second start of the same action is refused; finishing, failing and pruning clear it), and show it in the ticket's demo, as `demos/backlog-busy.json` does: a caption right after the click, while the button is still working.
 
+## Events
+
+What happens to tickets, agents and merges is recorded as events (BL-157), one JSON object per line in `.git/flotilla/metrics/events-YYYY-MM.jsonl` of the main repository (never committed): `at`, `kind`, `ticket`, `agent`, `data`. The metrics are counted from them, so a question about how Flotilla works ("how often do merges conflict, and where?") is a count, not a replay script.
+
+- **To record something**, call `recordEvent(kind, { ticket, agent, data })` ([src/features/metrics/events.ts](src/features/metrics/events.ts)) where it happens. It isn't awaited and never throws: recording doesn't slow or break the step it records. A new kind goes into `EventData` there, with the shape of its `data`, and gets a sample in `tests/unit/features/metrics/events.test.ts` (it doesn't compile without one). Scripts record with `recordEvent(commonDir, kind, …)` of `scripts/record-event.mjs`.
+- **The history** before the log (the tickets' activity notes and the merges replayed from git) is read in once by the leading window, marked `imported` ([src/features/metrics/import.ts](src/features/metrics/import.ts)). A note whose wording changes should still be read there.
+- **After 12 months** a month's events are rolled up into `totals-YYYY-MM.json` ([src/features/metrics/rollup.ts](src/features/metrics/rollup.ts)).
+
 ## Demos
 
 When a change is something you see or click (a button, a panel, a flow), its ticket shows it working: a demo is a short script of steps in `demos/<name>.json`, which `npm run demo` plays in an isolated VS Code and records as a GIF. The ticket's Run button plays the same steps again live, at the same pace, so you see what the GIF shows. The report's run block names the demo, with the player's command as its line:
@@ -179,7 +187,7 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
 
 A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
 
-The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows) and a panel chat (done). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
+The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows), a panel chat (done), and an agent's that shows as working though nothing runs it (Orbit-2, its process ended 7 minutes before: a Check finds it, as [demos/check-ticket.json](demos/check-ticket.json) shows). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
 
 Keep a demo short, and safe to play again: a demo that changes the playground (creates a worktree, say) finds it changed the next time, so prefer selectors that still match, or reset the playground first (`npm run playground -- --reset`). When you run it, the window pops up on your screen while it records or plays.
 

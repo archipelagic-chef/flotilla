@@ -11,6 +11,8 @@ export function actionKey(m: TicketWebviewMessage): string {
       return `openCommit:${m.hash}`;
     case 'start':
       return m.agent ? 'start:agent' : 'start:worktree';
+    case 'checkCleanUp':
+      return `checkCleanUp:${m.key ?? 'all'}`;
     case 'reviewFix':
       return `reviewFix:${m.fix}`;
     case 'userReview':

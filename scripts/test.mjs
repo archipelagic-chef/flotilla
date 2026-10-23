@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { recordEvent, ticketOfBranch } from './record-event.mjs';
 
 /** Entries of other hosts (a container sharing the repository) can't be checked: they're dropped after this long. */
 const FOREIGN_MAX_AGE_MS = 2 * 60 * 60_000;
@@ -161,14 +162,24 @@ async function main(args) {
   // Stopped while waiting: leave the queue ('exit' frees the slot). Once vitest runs, it's stopped too.
   let child;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => (child ? child.kill(signal) : process.exit(130)));
-  if (commonDir && !namesFiles(args)) {
+  const queued = Date.now();
+  const full = !namesFiles(args);
+  if (commonDir && full) {
     const { label, first } = describeRun(toplevel, branch);
     await takeSlot({ dir: path.join(path.resolve(cwd, commonDir), 'flotilla-slots'), n, label, first, onWait: (_, line) => console.log(line) });
   }
+  const started = Date.now();
   const workers = args.some((a) => a.startsWith('--maxWorkers')) ? [] : [`--maxWorkers=${workersFor(cores, n)}`];
   const vitest = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'vitest', 'vitest.mjs');
   child = spawn(process.execPath, [vitest, 'run', ...workers, ...args], { stdio: 'inherit' });
-  child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+  child.on('exit', (code, signal) => {
+    // A full run's time and its wait for a slot, for the metrics (BL-157, BL-138).
+    if (full && commonDir) {
+      const data = { ms: Date.now() - started, waitMs: started - queued, full, ok: code === 0, slots: n };
+      recordEvent(path.resolve(cwd, commonDir), 'test-run', { ticket: ticketOfBranch(branch), data });
+    }
+    process.exit(code ?? (signal ? 1 : 0));
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
