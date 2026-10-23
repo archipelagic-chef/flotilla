@@ -156,8 +156,10 @@ export class MainSync implements vscode.Disposable {
     }
     try {
       const out = await runGit(['merge', '--no-edit', '-m', `${id}: Merge ${label} into ${branch}`, base], { cwd, timeoutMs: 300_000 });
-      const note = /Already up to date/i.test(out) ? `\`${branch}\` is already up to date with ${label}.` : `Merged ${label} into \`${branch}\` (Update from ${capitalize(label)}).`;
+      const upToDate = /Already up to date/i.test(out);
+      const note = upToDate ? `\`${branch}\` is already up to date with ${label}.` : `Merged ${label} into \`${branch}\` (Update from ${capitalize(label)}).`;
       await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
+      void vscode.window.showInformationMessage(`${id}: ${upToDate ? `${branch} is already up to date with ${label}.` : `Merged ${label} into ${branch}.`}`);
       this.schedule(0);
     } catch (e) {
       // Conflicts: back to where it was, and the agent takes it. Anything else (a hook refusing it): the user sees why.
@@ -170,11 +172,14 @@ export class MainSync implements vscode.Disposable {
 
   private async handToAgent(item: BacklogItem, base: string, branch: string, files: string[]): Promise<void> {
     const label = baseLabel(base);
-    await this.deps.reviews.handToImplementer(item.id, {
+    const handed = await this.deps.reviews.handToImplementer(item.id, {
       prompt: mergeBasePrompt({ id: item.id, base, branch, files, ticket: this.deps.backlog.docPath(item.id) }),
       why: `merging ${label} into \`${branch}\` conflicts`,
       aside: true,
     });
+    const conflicts = `${item.id}: merging ${label} into ${branch} conflicts (${files.join(', ')})`;
+    if (handed) void vscode.window.showInformationMessage(`${conflicts}, so its agent is merging it and resolving the conflicts.`);
+    else void vscode.window.showWarningMessage(`${conflicts}, and an agent is already working on it: update it from ${label} when it's done.`);
   }
 
   /** The item's worktree: the review's, else its first. */
