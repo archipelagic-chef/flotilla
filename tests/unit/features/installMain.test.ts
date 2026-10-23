@@ -9,11 +9,12 @@ function memoryNotes(note?: InstallNote): NoteStore & { note?: InstallNote } {
 }
 
 /** A fake world: agents running, Pause All that pauses them (after `pauseMs`), an installer and a reload. */
-function world(o: { running?: string[]; pauseMs?: number; build?: 'ok' | 'fail'; install?: 'ok' | 'fail'; answers?: Array<string | undefined>; hold?: boolean } = {}) {
+function world(o: { running?: string[]; pauseMs?: number; build?: 'ok' | 'fail'; install?: 'ok' | 'fail'; answers?: Array<string | undefined>; hold?: boolean; held?: number } = {}) {
   const log: string[] = [];
   let running = [...(o.running ?? ['Byte-7', 'Nova-2'])];
   const abort = new AbortController();
   const hold: AgentHold = {
+    pausedCount: o.held,
     pause: async () => {
       log.push('pause');
       await new Promise((r) => setTimeout(r, o.pauseMs ?? 0));
@@ -123,11 +124,18 @@ describe('installMain', () => {
     expect(w.notes.note).toBeUndefined();
   });
 
-  it('with no agents running (or no Pause All), notes nothing to resume', async () => {
+  it('with no agents running here, still pauses (other windows run agents too) and lifts that hold after the reload', async () => {
     const idle = world({ running: [] });
     await installMain(idle.deps);
-    expect(idle.log).not.toContain('pause');
-    expect(idle.notes.note?.resume).toBe(false);
+    expect(idle.log).toContain('step: Pausing the agents…');
+    expect(idle.notes.note?.resume).toBe(true);
+  });
+
+  it("with the user's Pause All already on, or without Pause All, pauses nothing and notes nothing to resume", async () => {
+    const held = world({ held: 3 });
+    await installMain(held.deps);
+    expect(held.log).not.toContain('pause');
+    expect(held.notes.note?.resume).toBe(false);
     const without = world({ hold: false });
     await installMain(without.deps);
     expect(without.log).not.toContain('pause');
@@ -138,6 +146,7 @@ describe('installMain', () => {
 describe('after the reload', () => {
   const note: InstallNote = { commit: COMMIT, at: '2026-10-22T06:00:00.000Z', paused: 2, resume: true };
   const hold = (log: string[]): AgentHold => ({
+    pausedCount: 2,
     pause: async () => ({ paused: [], inChats: [] }),
     resume: async () => (log.push('resume'), { resumed: 2, waiting: 1 }),
   });

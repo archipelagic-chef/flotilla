@@ -8,6 +8,8 @@
 export interface AgentHold {
   pause(): Promise<{ paused: readonly unknown[]; inChats: readonly unknown[] }>;
   resume(): Promise<{ resumed: number; waiting: number }>;
+  /** How many agents it holds paused already (the user's Pause All); undefined when it doesn't hold. */
+  readonly pausedCount: number | undefined;
 }
 
 /** The note saved before the reload (.git/flotilla/install-main.json): the build installed, and whether to resume. */
@@ -18,7 +20,7 @@ export interface InstallNote {
   at: string;
   /** How many agents Pause All paused for it; the window that takes the note resumes them. */
   paused: number;
-  /** Resume All is still to run (the first window to activate takes it). */
+  /** Resume All is still to run, lifting Install Main's hold (the first window to activate takes it). */
   resume: boolean;
 }
 
@@ -33,7 +35,7 @@ export interface InstallMainDeps {
   build(signal: AbortSignal): Promise<{ vsix: string; commit: string } | undefined>;
   /** Pause All, when it's there (BL-160). Without it, running agents are stopped by the reload. */
   hold?: AgentHold;
-  /** Names of the agents running now. */
+  /** Names of the agents running now (in this window; Pause All pauses those of other windows too). */
   running(): readonly string[];
   install(vsix: string): Promise<void>;
   reload(): Promise<void>;
@@ -76,10 +78,11 @@ export async function installMain(d: InstallMainDeps): Promise<InstallMainResult
   d.step(`Built main (${short}).`);
 
   let paused = 0;
-  const hold = d.hold;
+  // Already paused by the user's Pause All: they stay paused across the reload, and it's the user's to lift.
+  const hold = d.hold?.pausedCount === undefined ? d.hold : undefined;
   const running = d.running().length;
-  if (hold && running > 0) {
-    d.step(`Pausing ${agentsCount(running)}…`);
+  if (hold) {
+    d.step(running ? `Pausing ${agentsCount(running)}…` : 'Pausing the agents…');
     const pausing = hold.pause().then((r) => (paused = r.paused.length));
     const outcome = await settle(pausing, d);
     if (outcome === 'cancel') {
@@ -94,19 +97,19 @@ export async function installMain(d: InstallMainDeps): Promise<InstallMainResult
     }
   }
   if (d.signal.aborted) {
-    if (paused) await hold?.resume().catch(() => undefined);
-    return { kind: 'cancelled', resumed: paused > 0 };
+    await hold?.resume().catch(() => undefined);
+    return { kind: 'cancelled', resumed: !!hold };
   }
 
   d.step(`Installing main (${short})…`);
   try {
     await d.install(built.vsix);
   } catch (e) {
-    if (paused) await hold?.resume().catch(() => undefined);
-    return { kind: 'failed', error: `Installing failed: ${e instanceof Error ? e.message : String(e)}`, resumed: paused > 0 };
+    await hold?.resume().catch(() => undefined);
+    return { kind: 'failed', error: `Installing failed: ${e instanceof Error ? e.message : String(e)}`, resumed: !!hold };
   }
   // Saved before the reload, with the agents still paused: the window that activates first resumes them.
-  d.notes.write({ commit: built.commit, at: (d.now?.() ?? new Date()).toISOString(), paused, resume: !!hold && paused > 0 });
+  d.notes.write({ commit: built.commit, at: (d.now?.() ?? new Date()).toISOString(), paused, resume: !!hold });
   d.step('Reloading…');
   await d.reload();
   return { kind: 'reloading', commit: built.commit, paused };
@@ -170,8 +173,8 @@ export async function resumeFromNote(notes: NoteStore, commit: string | undefine
   const short = note.commit.slice(0, 7);
   const expected = note.commit === commit;
   const r = hold ? await hold.resume() : { resumed: 0, waiting: 0 };
-  const agents = `Resumed ${agentsCount(r.resumed)}${r.waiting ? `; ${r.waiting} wait${r.waiting === 1 ? 's' : ''} for a slot` : ''}`;
+  const agents = r.resumed || r.waiting ? `Resumed ${agentsCount(r.resumed)}${r.waiting ? `; ${r.waiting} wait${r.waiting === 1 ? 's' : ''} for a slot` : ''}` : 'No agents were paused';
   return expected
-    ? `${agents} on the new build (${short}).`
+    ? r.resumed || r.waiting ? `${agents} on the new build (${short}).` : `Flotilla runs the new build (${short}).`
     : `The new build (${short}) isn't the one running: the install may have failed (this is ${commit?.slice(0, 7) ?? 'a build without a commit'}). ${agents}.`;
 }

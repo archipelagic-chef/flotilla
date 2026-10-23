@@ -172,8 +172,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
     return base && localBase(location.mainRoot, base);
   });
-  // After Install Main's reload (BL-161): the agents it paused go on. Pause All (BL-160) is wired in once it's on main.
-  resumeAfterInstall(context, location.commonDir, undefined);
   // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
   setAgentDirs([backlog.dir]);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
@@ -356,6 +354,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),
     vscode.commands.registerCommand('flotilla.resumeAllAgents', () => pauseAll.resumeCommand().catch(reportError)),
   );
+  // After Install Main's reload (BL-161): the agents it paused go on.
+  resumeAfterInstall(context, location.commonDir, pauseAll);
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
       if (typeof id !== 'string') return;
