@@ -12,7 +12,7 @@ import { mergeActions, type MergeAction } from '../../../src/features/backlog/me
 import type { AgentRun } from '../../../src/ui/backlog/agentRunner';
 import type { Merger } from '../../../src/ui/backlog/merge';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
-import { resetUi, ui } from './fakeVscode';
+import { fakeChecksEnv, resetUi, ui } from './fakeVscode';
 
 /** The checks: they print what the scenario's next result says, and exit with it. */
 export const FAKE_CHECKS = `node -e "const r = process.env.FLOTILLA_FAKE_CHECKS; console.log(r === 'timeout' ? ' FAIL  a.test.ts > slow\\n Test timed out in 30000ms.' : r === 'fail' ? 'FAIL a.test.ts: expected 1, got 2' : 'all passed'); process.exit(r === 'pass' ? 0 : 1)"`;
@@ -139,7 +139,7 @@ export class World {
     this.merger?.dispose();
     const { Merger } = await import('../../../src/ui/backlog/merge');
     const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: this.repo, isMain: true }, chats: [] }] };
-    const merger = new Merger({ backlog: this.backlog, repository, mainRoot: this.repo, output: { appendLine() {} }, openTicket() {} } as never);
+    const merger = new Merger({ backlog: this.backlog, repository, mainRoot: this.repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv } as never);
     // An agent's end runs on its own (not in the merger's queue): the scenario waits for it.
     const own = merger as unknown as { afterResolver(...a: unknown[]): Promise<void> };
     const original = own.afterResolver.bind(merger);

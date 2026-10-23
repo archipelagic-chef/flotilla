@@ -2,7 +2,8 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { appendAgentTurn, seedChats, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import { appendAgentTurn, seedChats, seedCreating, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import { CreatingWorktrees, creatingDir, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
 import { isHeadless, mergeChats, readChatRecords, readTranscripts, readUnlinked } from '../../../src/features/chats/chats';
 import { transcriptMarkdown } from '../../../src/features/chats/transcriptMarkdown';
 import { childrenOf, ID_PATTERN } from '../../../src/features/backlog/backlog';
@@ -93,6 +94,15 @@ describe('playground seed', () => {
     }
   });
 
+  it("has an MP4 in BL-9's report and folder, to click in Attachments and the activity (BL-134)", async () => {
+    const { dir, backlog } = seeded();
+    const item = (await backlog.read()).items.find((i) => i.id === 'BL-9')!;
+    const ticket = await backlog.readTicket(item);
+    expect(ticket.activity.some((e) => e.body.includes('](BL-9/limit.mp4)'))).toBe(true);
+    const mp4 = fs.readFileSync(path.join(dir, '.flotilla', 'backlog', 'BL-9', 'limit.mp4'));
+    expect(mp4.subarray(4, 8).toString()).toBe('ftyp');
+  });
+
   it('has the agent asking a question, and nothing for the user to answer yet', async () => {
     const { backlog } = seeded();
     const item = (await backlog.read()).items.find((i) => i.id === 'BL-3')!;
@@ -171,7 +181,19 @@ describe('playground seed', () => {
     expect(await backlog.read()).toEqual(before);
   });
 
-  it("seeds chats in BL-3's worktree that read as an agent's, working, and a panel chat, done", async () => {
+  it("seeds a record of BL-5's worktree being created by a window that's gone: it blocks nothing, for a Check to clear", () => {
+    const { dir } = seeded();
+    const file = seedCreating(dir, now);
+    const records = creatingDir(path.join(dir, '.git'));
+    expect(path.dirname(file)).toBe(records);
+    expect(readCreatingRecords(records)).toEqual([expect.objectContaining({ id: 'BL-5', host: os.hostname(), at: now.getTime() - 3 * 60_000 })]);
+    const creating = new CreatingWorktrees();
+    const attached = creating.attach(records);
+    expect(creating.has('BL-5')).toBe(false);
+    attached.dispose();
+  });
+
+  it("seeds chats in BL-3's worktree that read as an agent's, working, a panel chat, done, and a stale agent's", async () => {
     const { dir } = seeded();
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
     cleanup.push(home);
@@ -183,7 +205,7 @@ describe('playground seed', () => {
       return { transcripts, chats };
     };
 
-    expect(seedChats(dir, home, now)).toHaveLength(2);
+    expect(seedChats(dir, home, now)).toHaveLength(3);
     const { transcripts, chats } = await read(now);
     const agent = chats.find((c) => c.title === 'Vega-2 · BL-3');
     expect(agent).toMatchObject({ state: 'working', open: true, agent: 'Vega-2', model: 'claude-opus-5-5' });
@@ -191,6 +213,10 @@ describe('playground seed', () => {
     const panel = chats.find((c) => c.title === 'What chatOf returns without a chat');
     expect(panel).toMatchObject({ state: 'done' });
     expect(isHeadless(transcripts.find((t) => t.sessionId === panel?.id))).toBe(false);
+    // Its process ended 7 minutes ago (nothing runs it), yet it still shows as working: a Check finds it (BL-163).
+    const stale = chats.find((c) => c.title === 'Orbit-2 · BL-3');
+    expect(stale).toMatchObject({ state: 'working', agent: 'Orbit-2' });
+    expect(now.getTime() - stale!.updatedAt.getTime()).toBe(7 * 60_000);
 
     // The agent goes on by one turn (its transcript grows), then has none left.
     const file = transcripts.find((t) => t.sessionId === agent?.id)!;

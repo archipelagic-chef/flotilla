@@ -433,6 +433,18 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.pauseAllAgents",
+        "title": "Pause All Agents",
+        "category": "Flotilla",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "flotilla.resumeAllAgents",
+        "title": "Resume All Agents",
+        "category": "Flotilla",
+        "icon": "$(debug-continue)"
+      },
+      {
         "command": "flotilla.pauseAgent",
         "title": "Pause the Agent (Keeps Its Chat)",
         "category": "Flotilla",
@@ -449,6 +461,18 @@
         "title": "Stop the Agent",
         "category": "Flotilla",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "flotilla.checkTicket",
+        "title": "Check",
+        "category": "Flotilla",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "flotilla.checkAll",
+        "title": "Check All Tickets",
+        "category": "Flotilla",
+        "icon": "$(pulse)"
       },
       {
         "command": "flotilla.cleanUpHistory",
@@ -1194,6 +1218,11 @@
           "command": "flotilla.stopAgent",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogAgent =~ /^(running|paused)$/",
           "group": "3_agent@2"
+        },
+        {
+          "command": "flotilla.checkTicket",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem'",
+          "group": "3_agent@3"
         },
         {
           "command": "flotilla.openInNewWindow",

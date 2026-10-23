@@ -291,6 +291,18 @@ export async function unlinkChat(gitDir: string, sessionId: string, ownerGitDir?
   await writeRaw(ownerFile, owner);
 }
 
+/**
+ * Marks a chat's record done (a Check found it says working, but nothing runs it: BL-163). The record stays, and so
+ * does its transcript; the hook moves it on again if the chat goes on. False if it has no record there.
+ */
+export async function markChatDone(gitDir: string, sessionId: string, now = new Date()): Promise<boolean> {
+  const file = recordFile(gitDir, sessionId);
+  const record = await readRaw(file);
+  if (!record) return false;
+  await writeRaw(file, { ...record, state: 'done', updatedAt: now.toISOString() });
+  return true;
+}
+
 /** Ids of chats recorded here that belong to another worktree (linked away from this one). */
 export function homedElsewhere(records: readonly ChatRecord[], gitDir: string): Set<string> {
   return new Set(records.filter((r) => r.home && path.resolve(r.home) !== path.resolve(gitDir)).map((r) => r.sessionId));

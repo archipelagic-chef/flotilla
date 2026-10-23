@@ -23,6 +23,8 @@ import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
+import { TicketChecker } from './ui/backlog/ticketCheck';
+import { checkAllTickets } from './ui/backlog/checkAll';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
@@ -31,9 +33,11 @@ import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
 import { BigChats } from './ui/bigChats';
 import { agentChatItem } from './features/backlog/backlog';
-import { modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
+import { isRunningHeadless, isRunningInTerminal, modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { backlogIdOf } from './ui/backlog/cardMenu';
 import { Shaping } from './ui/backlog/shaping';
+import { PauseAll } from './ui/backlog/pauseAll';
+import { PausedAllStore } from './features/backlog/pausedAll';
 import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
@@ -65,6 +69,8 @@ import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, resumeAfterInstall, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
+import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
+import { startEventLog } from './ui/eventLog';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -194,6 +200,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     repository,
     mainRoot: location.mainRoot,
+    // The checks' logs go to .git/flotilla/merges/<id>/ (BL-169).
+    commonDir: location.commonDir,
     output,
     openTicket: (id) => void tickets.open(id),
     // Merge to main decides on CI's result when there is one (BL-105).
@@ -213,6 +221,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // The merge queue's train is rebuilt when main, a queued branch or the queue moves.
     repository.onDidChange(() => merger.queueChanged()),
     backlog.watch(() => merger.queueChanged()),
+  );
+  // Worktrees being created are recorded in the common dir, so every window sees each other's (and doesn't make another).
+  context.subscriptions.push(
+    creatingWorktrees.attach(creatingDir(location.commonDir)),
+    repository.onDidChange(() => creatingWorktrees.reload()),
   );
   void merges.refresh();
   const runTerminals = new RunTerminals();
@@ -235,12 +248,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
+  // What happens to tickets, agents and merges, recorded as events (BL-157).
+  context.subscriptions.push(startEventLog({ commonDir: location.commonDir, mainRoot: location.mainRoot, backlog, isLeader: () => leader.isLeader, output }));
   merger.queueChanged();
+  // Pause All's record (BL-160): while it's there, no agent starts on its own, in any window.
+  const pausedAll = new PausedAllStore(location.commonDir);
   const reviews = new ReviewLoop({
     backlog,
     repository,
     mainRoot: location.mainRoot,
     output,
+    pausedAll: () => pausedAll.held,
     isLeader: () => leader.isLeader,
     onApproved: (id, by) => {
       pushes.approved(id);
@@ -296,6 +314,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   noteDescriptions();
   tickets.useReviews(reviews);
   tickets.useMerger(merger);
+  // Check (BL-163): what a ticket says is going on, against what runs; Clean Up of what doesn't.
+  const checker = new TicketChecker({
+    backlog,
+    repository,
+    reviews,
+    merger,
+    mainRoot: location.mainRoot,
+    runsHere: (session) => isRunningHeadless(session) || isRunningInTerminal(session),
+    get staleMinutes() {
+      return readSettings().agentStatusStaleMinutes;
+    },
+    creating: { dir: creatingDir(location.commonDir), cleared: () => creatingWorktrees.reload() },
+  });
+  tickets.useChecker(checker);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flotilla.checkTicket', async (card?: unknown) => {
+      const id =
+        backlogIdOf(card) ??
+        (await vscode.window.showQuickPick(
+          (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
+          { title: 'Check the ticket…' },
+        ))?.label;
+      if (!id) return;
+      await tickets.open(id);
+      await tickets.check(id).catch(reportError);
+    }),
+    vscode.commands.registerCommand('flotilla.checkAll', () => checkAllTickets(checker, tickets).catch(reportError)),
+  );
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);
@@ -304,6 +350,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
+  const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
+  context.subscriptions.push(
+    pauseAll,
+    vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.resumeAllAgents', () => pauseAll.resumeCommand().catch(reportError)),
+  );
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
       if (typeof id !== 'string') return;
@@ -409,6 +461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviews,
     leader,
     output,
+    pauseAll,
     prepareWorktree: (item) => prepareItemWorktree(ctx, item),
     // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
     key: () =>
@@ -620,7 +673,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(toWorkspaceUri(folder.uri, base), glob));
     const onEvent = (uri: vscode.Uri) => {
       // Heartbeats (and their temp files) change every 30 s in every window; they must not trigger refreshes.
-      if (!isHeartbeatPath(uri.path)) void repository.refresh(scopeOf(uri.fsPath));
+      // Nor do the events recorded (BL-157): they're written as things happen.
+      if (!isHeartbeatPath(uri.path) && !uri.path.includes('/flotilla/metrics/')) void repository.refresh(scopeOf(uri.fsPath));
     };
     watcher.onDidCreate(onEvent);
     watcher.onDidChange(onEvent);

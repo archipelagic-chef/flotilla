@@ -12,6 +12,7 @@ import { compareRefs, listRefs } from '../../features/diffs/compare';
 import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
+import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
 import { summaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
@@ -44,6 +45,7 @@ import { runWorkflowByHand } from '../ci/runWorkflow';
 import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
+import { recordClickWait } from '../../features/metrics/record';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -167,6 +169,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   useMerger(merger: Merger): void {
     this.merger = merger;
     this.subscriptions.push(merger.onDidChange(() => void this.postBacklog()));
+    // The cards' "checks 58%" (BL-169): every few seconds at most, the board being the larger post.
+    let checksTimer: ReturnType<typeof setTimeout> | undefined;
+    this.subscriptions.push(
+      merger.onDidChecks(() => {
+        checksTimer ??= setTimeout(() => {
+          checksTimer = undefined;
+          void this.postBacklog();
+        }, 3000);
+      }),
+      { dispose: () => clearTimeout(checksTimer) },
+    );
     void this.postBacklog();
   }
 
@@ -201,6 +214,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
         const base = item.mainCheck && baseLabel(item.mainCheck.base);
         // A ticket in review that shows a demo: its card has the demo mark (BL-135).
+        const checks = this.merger?.checksView(item.id);
+        const part = checks && fraction(checks.progress);
+        const percent = part === undefined ? undefined : Math.round(part * 100);
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
@@ -215,6 +231,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
+          ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };
       }),
     );
@@ -312,8 +329,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'autopilot':
         await vscode.commands.executeCommand('flotilla.toggleAutopilot');
         return;
+      case 'checkAll':
+        await vscode.commands.executeCommand('flotilla.checkAll');
+        return;
       case 'tryNow':
         await vscode.commands.executeCommand('flotilla.tryPausedNow');
+        return;
+      case 'pauseAll':
+        await vscode.commands.executeCommand('flotilla.pauseAllAgents');
+        return;
+      case 'resumeAll':
+        await vscode.commands.executeCommand('flotilla.resumeAllAgents');
         return;
       case 'maxAgents':
         await setAgentLimit(m.max);
@@ -568,6 +594,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'backlog': {
         // The card's button shows it's working until this says it's done (BL-117), whether it posted, failed or returned early.
         let failed = false;
+        const clicked = Date.now();
         try {
           await this.onBacklog(m);
         } catch (error) {
@@ -575,6 +602,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           throw error;
         } finally {
           this.post({ type: 'backlogDone', message: m, ...(failed ? { failed } : {}) });
+          recordClickWait(`backlog:${m.op}`, clicked, 'id' in m ? m.id : undefined);
         }
         return;
       }

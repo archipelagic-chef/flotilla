@@ -1117,7 +1117,7 @@ describe('agents lost to a reload (BL-87)', () => {
   let loop: { dispose(): void };
   let recover: (now?: number) => Promise<void>;
   const now = Date.parse('2026-10-18T12:00:00Z');
-  const review = () => data.items[0].review as { state: string; reason?: string; stop?: { kind: string; task?: { prompt: string } } };
+  const review = () => data.items[0].review as { state: string; reason?: string; worktree?: string; stop?: { kind: string; task?: { prompt: string } } };
 
   beforeEach(async () => {
     vi.resetModules();
@@ -1126,7 +1126,7 @@ describe('agents lost to a reload (BL-87)', () => {
     data = {
       version: 1,
       next: 2,
-      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising' } }],
+      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising', worktree: 'wt' } }],
     };
     chats = [];
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
@@ -1174,5 +1174,167 @@ describe('agents lost to a reload (BL-87)', () => {
     await recover(now);
     expect(review().state).toBe('revising');
     loop.dispose();
+  });
+  it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
+    const check = loop as unknown as { stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> };
+    expect(await check.stopForCheck('BL-1', 'paused-gone', 'gone')).toBe(false); // it isn't paused
+    expect(await check.stopForCheck('BL-1', 'lost', "The ticket says Nova is making the changes asked for, but it isn't running")).toBe(true);
+    expect(review()).toMatchObject({ state: 'stopped', stop: { kind: 'no-report', task: { prompt: expect.stringMatching(/Go on where you left off/) } } });
+    expect(await check.stopForCheck('BL-1', 'lost', 'again')).toBe(false); // stopped already: nothing to do
+    loop.dispose();
+  });
+  it("a Check's Clean Up clears the review's worktree only while it still names that one (BL-167)", async () => {
+    const check = loop as unknown as { clearWorktreeForCheck(id: string, worktree: string): Promise<boolean> };
+    expect(await check.clearWorktreeForCheck('BL-1', '/other')).toBe(false);
+    expect(await check.clearWorktreeForCheck('BL-1', 'wt')).toBe(true);
+    expect(review().worktree).toBeUndefined();
+    expect(review().state).toBe('revising');
+    loop.dispose();
+  });
+});
+
+describe('Pause All and Resume All (BL-160)', () => {
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  type Loop = {
+    start(id: string, manual?: boolean): Promise<void>;
+    control(id: string, action: 'pause' | 'stop' | 'resume', session?: string): Promise<void>;
+    readonly running: number;
+    readonly waitingCount: number;
+    canStartNew(): boolean;
+    dispose(): void;
+  };
+  let loop: Loop;
+  let store: import('../../../src/features/backlog/pausedAll').PausedAllStore;
+  let all: import('../../../src/ui/backlog/pauseAll').PauseAll;
+  let dir: string;
+  let backlog: Record<string, unknown>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    let n = 0;
+    spawn.mockImplementation((o: { resume?: string }) => ({ sessionId: o.resume ?? `a1b2c3d4-0000-4000-8000-00000000000${++n}`, done: new Promise(() => undefined), stop() {} }));
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    data = { version: 1, next: 6, items: [1, 2, 3, 4, 5].map((i) => ({ id: `BL-${i}`, title: `Review ${i}`, status: 'review', created: at })) };
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paused-all-'));
+    const { PausedAllStore } = await import('../../../src/features/backlog/pausedAll');
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    store = new PausedAllStore(dir);
+    backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Review me', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/BL-1.md',
+      docPath: () => '/unused/BL-1.md',
+      appendActivity: async () => undefined,
+    };
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      current: [1, 2, 3, 4, 5].map((i) => ({ key: `wt${i}`, worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` }, chats: [] })),
+    };
+    const created = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {}, pausedAll: () => store.held } as never);
+    loop = created as unknown as Loop;
+    all = new PauseAll({ backlog: backlog as never, reviews: created, store, lifted: () => created.dispatchQueued() });
+    await tick();
+    // Three agents at work (started by hand: above the limit of 2), and one the user paused before.
+    for (const id of ['BL-3', 'BL-1', 'BL-2', 'BL-4']) await loop.start(id, true);
+    await loop.control('BL-4', 'pause');
+    expect(loop.running).toBe(3);
+  });
+
+  const state = (id: string) => (data.items.find((i) => i.id === id)!.review as { state: string }).state;
+
+  it('pauses every working agent, saves the set, holds the starts, and resumes exactly that set within the limit', async () => {
+    const { paused, inChats } = await all.pause();
+    expect(paused.map((p) => p.id)).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect(inChats).toEqual([]);
+    expect(loop.running).toBe(0);
+    expect(['BL-1', 'BL-2', 'BL-3', 'BL-4'].map(state)).toEqual(['paused', 'paused', 'paused', 'paused']);
+    expect(store.read()?.agents.map((a) => a.id)).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect(all.pausedCount).toBe(3);
+
+    // Nothing starts on its own meanwhile: the start waits in the queue.
+    expect(loop.canStartNew()).toBe(false);
+    await loop.start('BL-5');
+    await tick();
+    expect(spawn).toHaveBeenCalledTimes(4);
+    expect(loop.waitingCount).toBe(1);
+
+    spawn.mockClear();
+    const result = await all.resume();
+    await tick();
+    // Top of the backlog first, within the limit of 2; the third waits for a slot. BL-4, paused by hand, stays paused.
+    expect(result).toEqual({ resumed: 2, waiting: 1 });
+    expect(spawn.mock.calls.map((c) => (c[0] as { name: string }).name)).toEqual([expect.stringContaining('BL-1'), expect.stringContaining('BL-2')]);
+    expect(state('BL-1')).toBe('reviewing');
+    expect(state('BL-2')).toBe('reviewing');
+    expect(state('BL-3')).toBe('paused');
+    expect(state('BL-4')).toBe('paused');
+    expect(store.read()).toBeUndefined();
+    expect(loop.waitingCount).toBe(2);
+    all.dispose();
+    loop.dispose();
+  });
+
+  it('leaves an agent paused on a usage limit as it is', async () => {
+    data.items[4].review = {
+      round: 1,
+      reviewer: '',
+      implementer: 'Ada-5',
+      state: 'paused',
+      paused: { until: '2099-01-01T00:00:00Z', known: true, phase: 'work', session: 'session-5', agent: 'Ada-5', resume: 'revising' },
+    };
+    const { paused } = await all.pause();
+    expect(paused.map((p) => p.id)).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect((data.items[4].review as { paused: { byUser?: string } }).paused.byUser).toBeUndefined();
+    all.dispose();
+    loop.dispose();
+  });
+
+  it('leaves an agent the user resumed or stopped since', async () => {
+    await all.pause();
+    await loop.control('BL-1', 'stop');
+    spawn.mockClear();
+    const result = await all.resume();
+    expect(result).toEqual({ resumed: 2, waiting: 0 });
+    expect(state('BL-1')).toBe('stopped');
+    expect(spawn.mock.calls.map((c) => (c[0] as { name: string }).name)).toEqual([expect.stringContaining('BL-2'), expect.stringContaining('BL-3')]);
+    all.dispose();
+    loop.dispose();
+  });
+
+  it('holds and resumes after a restart: the set is read from the repository', async () => {
+    await all.pause();
+    all.dispose();
+    loop.dispose();
+    const { PausedAllStore } = await import('../../../src/features/backlog/pausedAll');
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const again = new PausedAllStore(dir);
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      current: [1, 2, 3, 4, 5].map((i) => ({ key: `wt${i}`, worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` }, chats: [] })),
+    };
+    const fresh = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {}, pausedAll: () => again.held } as never);
+    const pauseAll = new PauseAll({ backlog: backlog as never, reviews: fresh, store: again });
+    await tick();
+    expect(pauseAll.pausedCount).toBe(3);
+    expect(fresh.canStartNew()).toBe(false);
+    spawn.mockClear();
+    expect(await pauseAll.resume()).toEqual({ resumed: 2, waiting: 1 });
+    expect(fresh.canStartNew()).toBe(false);
+    pauseAll.dispose();
+    fresh.dispose();
   });
 });

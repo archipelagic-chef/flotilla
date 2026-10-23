@@ -41,6 +41,8 @@ export interface BacklogItemView extends BacklogItem {
   waitsFor?: string[];
   /** The autopilot holds it back: it would change files this ticket in progress changes (BL-71). */
   clash?: { with: string; files: string[] };
+  /** Its merge's checks are running (BL-169): the step, and how far the tests are. */
+  checks?: { step?: string; percent?: number };
   /** Main's name, as its branches' conflicts with it are told ("main"). */
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
@@ -303,6 +305,8 @@ export interface AutopilotState {
   idle?: string;
   /** What it did while the user was away ("Overnight: 6 tickets done, 3 waiting for you"). */
   away?: string;
+  /** Pause All holds every agent (BL-160): how many it paused. */
+  pausedAll?: number;
   /** The agents working now, for its details (BL-153). */
   agents?: AutopilotAgent[];
   /** The starts waiting, in the order they start in. */
@@ -395,6 +399,10 @@ export type WebviewMessage =
   /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
   | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
+  /** Pause All Agents, Resume All Agents (BL-160). */
+  | { type: 'backlog'; op: 'pauseAll' | 'resumeAll' }
+  /** Check All: every ticket's Check (BL-163). */
+  | { type: 'backlog'; op: 'checkAll' }
   /** Merge All Ready: lands the merge queue (BL-140). */
   | { type: 'backlog'; op: 'landAll' }
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */

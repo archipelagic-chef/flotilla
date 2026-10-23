@@ -30,39 +30,11 @@ vi.mock('vscode', () => {
     ui.messages.push(message);
     return Promise.resolve(ui.answers.shift());
   };
-  type Pty = { open(d: unknown): void; onDidClose: (l: (code: number) => void) => unknown };
   return {
     EventEmitter,
     window: { showInformationMessage: ask, showWarningMessage: ask, showErrorMessage: ask, showQuickPick: async () => undefined },
     workspace: { getConfiguration: () => ({ get: (k: string, d: unknown) => (k in ui.settings ? ui.settings[k] : d) }) },
     commands: { executeCommand: async () => undefined },
-    Task: class {
-      presentationOptions: unknown;
-      constructor(
-        readonly definition: { command: string },
-        _s: unknown,
-        _n: string,
-        _src: string,
-        readonly execution: { callback: () => Promise<Pty> },
-      ) {}
-    },
-    CustomExecution: class {
-      constructor(readonly callback: () => Promise<Pty>) {}
-    },
-    TaskScope: { Workspace: 2 },
-    TaskRevealKind: { Always: 1 },
-    TaskPanelKind: { Dedicated: 2 },
-    // The terminal: the checks command really runs (CHECKS reads ui.checksExit from the environment).
-    tasks: {
-      executeTask: async (task: { definition: { command: string }; execution: { callback: () => Promise<Pty> } }) => {
-        ui.checks.push(task.definition.command);
-        process.env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExits.shift() ?? ui.checksExit);
-        process.env.FLOTILLA_TEST_CHECKS_OUT = ui.checksOut;
-        const pty = await task.execution.callback();
-        pty.open(undefined);
-        return {};
-      },
-    },
   };
 });
 
@@ -75,6 +47,16 @@ vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
 
 /** The checks: they print a failure and exit with ui.checksExit. */
 const CHECKS = `node -e "console.log(process.env.FLOTILLA_TEST_CHECKS_OUT || 'FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
+
+
+/** The checks' environment (Merger's checksEnv): the command really runs; CHECKS reads how to end from it. */
+function fakeChecksEnv(command: string): NodeJS.ProcessEnv {
+  ui.checks.push(command);
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.FLOTILLA_TEST_CHECKS_EXIT = String(ui.checksExits.shift() ?? ui.checksExit);
+  env.FLOTILLA_TEST_CHECKS_OUT = ui.checksOut;
+  return env;
+}
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -122,7 +104,7 @@ async function setup(items: BacklogItem[]) {
   const backlog = new LocalBacklog(home, path.join(repo, '.git'));
   await backlog.change(() => ({ version: 1, next: 1, items }));
   const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: repo, isMain: true }, chats: [] }] };
-  const merger = new Merger({ backlog, repository, mainRoot: repo, output: { appendLine() {} }, openTicket() {} } as never);
+  const merger = new Merger({ backlog, repository, mainRoot: repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
   const worktrees = () => git(repo, 'worktree', 'list').split('\n').length;
   return { repo, backlog, merger, item, worktrees };
@@ -180,6 +162,57 @@ describe('Merge to main', () => {
     expect(worktrees()).toBe(1);
     expect((await item('BL-1')).merging).toBeUndefined();
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    merger.dispose();
+  });
+
+  it('runs the checks in the background with their progress; Stop stops the merge, its log kept until it ends (BL-169)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    // vitest's start and a test file done; then it runs on.
+    const slow = `node -e "console.log(' RUN  v5.0.3 /r'); console.log(' ✓ tests/a.test.ts (2 tests) 5ms'); setInterval(() => {}, 1000)"`;
+    ui.settings['merge.checkCommand'] = slow;
+    const updates: string[] = [];
+    merger.onDidChecks((id) => updates.push(id));
+    const merging = merger.merge('BL-1');
+    for (let i = 0; i < 200 && !updates.length; i++) await new Promise((r) => setTimeout(r, 25));
+    const view = merger.checksView('BL-1')!;
+    expect(updates).toContain('BL-1');
+    expect(view).toMatchObject({ command: slow, progress: { step: 'Tests', files: 1, failedFiles: 0 }, earlier: [] });
+    expect(view.tail.at(-1)).toBe(' ✓ tests/a.test.ts (2 tests) 5ms');
+    expect(view.log).toBe(path.join(repo, '.git', 'flotilla', 'merges', 'BL-1', 'checks.log'));
+
+    merger.stopChecks('BL-1');
+    expect(await merging).toBe('stopped');
+    expect(merger.checksView('BL-1')).toBeUndefined();
+    const kept = await item('BL-1');
+    expect(kept.merging).toMatchObject({ state: 'failed', reason: `you stopped the checks (\`${slow}\`).`, checks: { runs: [{ log: view.log, stopped: true, timeouts: 0, failures: [] }] } });
+    expect((await backlog.readTicket(kept)).activity.map((e) => e.body).join('\n')).toContain('you stopped its checks');
+    // Show All reads its log; nothing outside the merge's logs is read.
+    expect(await merger.checksLog('BL-1', view.log)).toContain('✓ tests/a.test.ts (2 tests)');
+    expect(await merger.checksLog('BL-1', path.join(repo, 'a.txt'))).toBeUndefined();
+
+    // The merge ends: its logs go with it.
+    await merger.cancel('BL-1');
+    expect(fs.existsSync(path.dirname(view.log))).toBe(false);
+    merger.dispose();
+  });
+
+  it("records a failed run's failing tests, with their errors (BL-169)", async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksExit = 1;
+    ui.checksOut = ' FAIL  tests/a.test.ts > a > adds\nAssertionError: expected 3 to be 4\n Test Files  1 failed (12)';
+    expect(await merger.merge('BL-1')).toBe('stopped');
+    const runs = (await item('BL-1')).merging!.checks!.runs!;
+    expect(runs).toEqual([
+      { log: path.join(repo, '.git', 'flotilla', 'merges', 'BL-1', 'checks.log'), at: expect.any(String), ms: expect.any(Number), timeouts: 0, failures: [{ test: 'tests/a.test.ts › a › adds', error: ['AssertionError: expected 3 to be 4'] }] },
+    ]);
+    // The next run counts its test files of the 12 this one had.
+    expect(JSON.parse(fs.readFileSync(path.join(repo, '.git', 'flotilla', 'checks-stats.json'), 'utf8'))).toEqual({ [CHECKS]: { files: 12 } });
     merger.dispose();
   });
 
@@ -395,6 +428,17 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it("a Check's Clean Up fails a merge whose agent runs nowhere, and clears one whose worktree is gone (BL-163)", async () => {
+    const merging = { dir: '/nowhere', branch: 'feature/BL-1', base: 'main', baseTip: 'abc', state: 'resolving' as const, agent: 'Nova-1', started: '' };
+    const { merger, item } = await setup([{ ...approved('BL-1'), merging }]);
+    expect(await merger.forCheck('BL-1', 'lost', 'Nova-1 stopped')).toBe(true);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', reason: 'Nova-1 stopped' });
+    expect(await merger.forCheck('BL-1', 'lost', 'again')).toBe(false); // failed already: left as it is
+    expect(await merger.forCheck('BL-1', 'gone', 'gone')).toBe(true);
+    expect((await item('BL-1')).merging).toBeUndefined();
+    merger.dispose();
+  });
+
   it("doesn't move main under uncommitted changes in its worktree", async () => {
     const { repo, merger, worktrees } = await setup([approved('BL-1')]);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
@@ -570,7 +614,7 @@ describe('The merge queue (BL-140)', () => {
 
     // Another window (or a reload) reads the same queue.
     const { Merger } = await import('../../../src/ui/backlog/merge');
-    const again = new Merger({ backlog, repository: { current: [] }, mainRoot: repo, output: { appendLine() {} }, openTicket() {} } as never);
+    const again = new Merger({ backlog, repository: { current: [] }, mainRoot: repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv } as never);
     await again.refreshTrain();
     expect(again.queuePlace('BL-3')).toMatchObject({ place: '2nd of 3', state: 'Conflicts with main + BL-2 in `shared.txt`.' });
     await again.removeFromQueue('BL-2');

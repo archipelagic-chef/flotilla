@@ -18,6 +18,22 @@ import type { TicketCommit } from '../features/history/log';
 import type { CiRequest, CiView } from './protocol';
 import type { CiStatus } from '../features/ci/githubActions';
 import type { CiStop } from '../features/backlog/ciStop';
+import type { ChecksProgress } from '../features/backlog/checksProgress';
+import type { ChecksRunRecord } from '../features/backlog/merge';
+
+/** A merge's checks running in the background (BL-169). */
+export interface MergeChecksView {
+  command: string;
+  /** When this run started (ms since the epoch): the ticket counts the time. */
+  started: number;
+  /** Its log, the whole output so far. */
+  log: string;
+  progress: Omit<ChecksProgress, 'tail'>;
+  /** The last lines. */
+  tail: string[];
+  /** This merge's earlier runs (BL-124's first, timeouts-only run). */
+  earlier: ChecksRunRecord[];
+}
 
 /**
  * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
@@ -211,6 +227,8 @@ export interface TicketView {
    * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
    */
   mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
+  /** Its merge's checks, running in the background now (BL-169): sent on its own as they go, about once a second. */
+  mergeChecks?: MergeChecksView;
   /**
    * Why its last Merge to main stopped on CI (BL-112): red CI, with the failed jobs, or the base moved on. Only while
    * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
@@ -240,6 +258,20 @@ export interface TicketView {
   updateFromMain?: { base: string };
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
   shaping?: { agent: string; running: boolean; ready: boolean; /** The user paused or stopped it: Resume goes on in its chat. */ held?: 'paused' | 'stopped' };
+  /**
+   * Its last Check (BL-163): each thing it says is going on, ✓ (ok, with its evidence) or ✗ (with what Clean Up does).
+   * full: the user clicked Check (all claims shown); else the check made on opening it, which shows only glitches.
+   */
+  check?: TicketCheckView;
+}
+
+export interface TicketCheckView {
+  full: boolean;
+  /** When it checked (HH:MM). */
+  at: string;
+  claims: Array<{ key: string; ok: boolean; text: string; fix?: string }>;
+  /** It couldn't check (no process list, say). */
+  error?: string;
 }
 
 /** The top-level parts of a view that a change sends on their own (the activity has its own: see TicketPartsMessage). */
@@ -269,7 +301,9 @@ export type TicketHostMessage =
   /** The Ask chat changed (BL-80). */
   | { type: 'ask'; ask: AskView }
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
-  | { type: 'ci'; ci: TicketCiView };
+  | { type: 'ci'; ci: TicketCiView }
+  /** A run's whole log, for Show All (BL-169). */
+  | { type: 'checksLog'; requestId: number; text: string };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -317,6 +351,9 @@ export type TicketWebviewMessage =
   | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
   /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
   | { type: 'updateFromMain' }
+  /** Check what the ticket says is going on (BL-163); Clean Up its glitches (one, by key, or all). */
+  | { type: 'check' }
+  | { type: 'checkCleanUp'; key?: string }
   /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
   | { type: 'mergeCiFix' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
@@ -348,6 +385,10 @@ export type TicketWebviewMessage =
   | { type: 'mergeCancel' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
+  /** A merge's checks (BL-169): Stop them; the whole log of a run (Show All); the log, followed, in a terminal. */
+  | { type: 'mergeChecksStop' }
+  | { type: 'mergeChecksLog'; requestId: number; log: string }
+  | { type: 'mergeChecksTerminal'; log: string }
   | { type: 'mergeQueueRemove' }
   /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
   | { type: 'mergeQueueResolve' }

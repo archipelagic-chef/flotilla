@@ -1,0 +1,80 @@
+{
+  "title": "A merge's checks run in the background, with their progress in the ticket",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.checkCommand": "npm run checks"
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "caption": "BL-13 is approved: Merge to main runs its checks in the background, with no terminal"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")"
+    },
+    {
+      "waitFor": ".merge-checks"
+    },
+    {
+      "caption": "The ticket shows the step, the test files done and the time; the last lines fold under it"
+    },
+    {
+      "click": ".merge-checks .merge-output > summary"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "They fail: the failing test, with its error, and the whole log a click away"
+    },
+    {
+      "waitFor": ".checks-run",
+      "timeout": 60000
+    },
+    {
+      "click": ".checks-run button:has-text(\"Show All\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Run the Checks Again: now it knows how many files there are"
+    },
+    {
+      "click": "button:has-text(\"Run the Checks Again\")"
+    },
+    {
+      "waitFor": ".checks-bar"
+    },
+    {
+      "caption": "Stop stops them: the merge is kept, to run them again or cancel"
+    },
+    {
+      "click": ".merge-checks button:has-text(\"Stop\")"
+    },
+    {
+      "waitFor": ".checks-run .codicon-debug-stop",
+      "timeout": 30000
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

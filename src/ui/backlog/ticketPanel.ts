@@ -23,7 +23,7 @@ import type { BacklogIntegrations } from './integrations';
 import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -39,6 +39,8 @@ import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
 import type { MainSync } from './mainSync';
+import type { TicketChecker } from './ticketCheck';
+import type { Claim } from '../../features/backlog/ticketCheck';
 import { readSettings } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
@@ -60,6 +62,7 @@ import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import type { CiRuns } from '../ci/ciRuns';
 import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
+import { recordClickWait } from '../../features/metrics/record';
 
 export interface TicketDeps {
   extensionUri: vscode.Uri;
@@ -324,9 +327,10 @@ export async function replaceMedia(html: string, media: (src: string) => Promise
     if (!m) return tag;
     if ('note' in m) return `<span class="media-note"><i class="codicon codicon-file-media"></i> ${escapeHtml(m.note)}</span>`;
     if (m.kind === 'video') {
-      // A player with its controls; it doesn't play until asked (so no sound at once), and loads only its first frame.
+      // A player with its controls; it doesn't play until clicked, and loads only its first frame. It plays muted (BL-134:
+      // demos have no sound, and the webview holds back a video with sound); its controls turn sound on.
       const alt = /\salt="([^"]*)"/.exec(tag)?.[1];
-      return `<video class="media" src="${escapeHtml(m.src)}" controls preload="metadata"${alt ? ` title="${alt}" aria-label="${alt}"` : ''}></video>`;
+      return `<video class="media" src="${escapeHtml(m.src)}" controls muted playsinline preload="metadata"${alt ? ` title="${alt}" aria-label="${alt}"` : ''}></video>`;
     }
     return tag.replace(/(\ssrc=")[^"]*(")/, (_m, a: string, c: string) => `${a}${escapeHtml(m.src)}${c}`);
   });
@@ -390,12 +394,64 @@ export class TicketPanels implements vscode.Disposable {
     this.subscriptions.push(shaping.onDidChange(() => this.refreshAll()));
   }
 
+  private checker: TicketChecker | undefined;
+  /** Each open ticket's last Check (BL-163). */
+  private readonly checks = new Map<string, TicketCheckView>();
+
+  /** A ticket's Check: its button, the card menu's, and a quiet one on opening it. */
+  useChecker(checker: TicketChecker): void {
+    this.checker = checker;
+  }
+
+  /**
+   * Checks a ticket (BL-163) and shows the result in its tab. full: the user asked (every claim shows); else the check
+   * on opening it, which shows only glitches, and stays quiet when it can't check.
+   */
+  async check(id: string, full = true): Promise<Claim[]> {
+    if (!this.checker) return [];
+    const at = new Date().toTimeString().slice(0, 5);
+    try {
+      const claims = await this.checker.check(id);
+      // A quiet check doesn't hide what the user asked for.
+      if (this.panels.has(id) && (full || !this.checks.get(id)?.full)) this.checks.set(id, { full, at, claims: claims.map((c) => ({ key: c.key, ok: c.ok, text: c.text, ...(c.fix ? { fix: c.fix } : {}) })) });
+      return claims;
+    } catch (e) {
+      if (full && this.panels.has(id)) this.checks.set(id, { full, at, claims: [], error: e instanceof Error ? e.message : String(e) });
+      return [];
+    } finally {
+      this.refresh(new Set([id]));
+    }
+  }
+
+  /** Clean Up of a ticket's glitches (one, by key, or all), then a Check again to show where it stands. */
+  async cleanUp(id: string, key?: string): Promise<void> {
+    if (!this.checker) return;
+    const notes = await this.checker.cleanUp(id, {
+      keys: key ? [key] : undefined,
+      confirm: async (question) => (await vscode.window.showWarningMessage(question, { modal: true }, 'Stop It')) === 'Stop It',
+    });
+    if (!notes.length) void vscode.window.showInformationMessage(`${id}: nothing was cleaned up (what was checked runs now, or was left as it was).`);
+    await this.check(id, true);
+  }
+
   merger: Merger | undefined;
 
   /** The merges, for the tickets' Merge button and merge panel. */
   useMerger(merger: Merger): void {
     this.merger = merger;
     this.subscriptions.push(merger.onDidChange(() => this.refreshAll()));
+    // A merge's checks as they go (BL-169): only that part of the open ticket is sent.
+    this.subscriptions.push(merger.onDidChecks((id) => this.postMergeChecks(id)));
+  }
+
+  private postMergeChecks(id: string): void {
+    const panel = this.panels.get(id);
+    const sent = panel && this.sentViews.get(panel);
+    if (!panel || !sent) return;
+    const mergeChecks = this.merger?.checksView(id);
+    const { mergeChecks: _old, ...rest } = sent;
+    this.sentViews.set(panel, mergeChecks ? { ...rest, mergeChecks } : rest);
+    void panel.webview.postMessage({ type: 'ticketParts', parts: mergeChecks ? { mergeChecks } : {}, removed: mergeChecks ? [] : ['mergeChecks'] } satisfies TicketHostMessage);
   }
 
   /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
@@ -444,6 +500,8 @@ export class TicketPanels implements vscode.Disposable {
     const dist = vscode.Uri.joinPath(this.deps.extensionUri, 'dist');
     const panel = vscode.window.createWebviewPanel('flotilla.ticket', `${item.id} ${item.title}`, vscode.ViewColumn.Active, {
       enableScripts: true,
+      // Ctrl+F: a merge's checks' whole log is searched in the ticket (BL-169).
+      enableFindWidget: true,
       retainContextWhenHidden: true,
       localResourceRoots: [dist, vscode.Uri.file(this.deps.backlog.dir)],
     });
@@ -452,9 +510,12 @@ export class TicketPanels implements vscode.Disposable {
     this.panels.set(id, panel);
     if (o.focus) this.focusOnPost.set(panel, o.focus);
     const ci = this.ci?.open(id, panel);
+    // Told before a button refuses: a glitch found on opening it shows as a line (BL-163).
+    void this.check(id, false);
     panel.onDidDispose(() => {
       ci?.dispose();
       this.panels.delete(id);
+      this.checks.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.
       this.asks.get(id)?.dispose();
       this.asks.delete(id);
@@ -929,7 +990,8 @@ export class TicketPanels implements vscode.Disposable {
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
       const showActivity = showActivityKept(this.deps.memento);
-      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id) };
+      const check = this.checks.get(id);
+      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id), ...(check ? { check } : {}) };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {
         this.sentViews.set(panel, next);
@@ -1011,6 +1073,7 @@ export class TicketPanels implements vscode.Disposable {
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
     const mergeProgress = this.merger?.mergeProgress(plain.id);
+    const mergeChecks = this.merger?.checksView(plain.id);
     const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
     const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
       const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
@@ -1060,6 +1123,7 @@ export class TicketPanels implements vscode.Disposable {
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canMerge: !remote && !!this.merger && readyToMerge(plain),
       ...(mergeProgress ? { mergeProgress } : {}),
+      ...(mergeChecks ? { mergeChecks } : {}),
       ...(mergeStop ? { mergeStop } : {}),
       ...(mergeQueue ? { mergeQueue } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
@@ -1375,6 +1439,7 @@ export class TicketPanels implements vscode.Disposable {
    */
   private async onMessage(id: string, panel: vscode.WebviewPanel, m: TicketWebviewMessage): Promise<void> {
     let failed = false;
+    const clicked = Date.now();
     try {
       await this.handle(id, panel, m);
     } catch (error) {
@@ -1387,6 +1452,7 @@ export class TicketPanels implements vscode.Disposable {
         // Done only once the view has the action's change: a post still running (the backlog watcher's) may carry it.
         await this.settled(panel);
         if (m.type !== 'ready') void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+        if (m.type !== 'ready') recordClickWait(m.type, clicked, id);
       }
     }
   }

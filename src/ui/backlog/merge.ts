@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -33,6 +32,7 @@ import {
   removeMergeWorktree,
   resolvePrompt,
   timeoutsOnly,
+  type ChecksRunRecord,
   type MergeState,
 } from '../../features/backlog/merge';
 import { buildTrain, dequeue, enqueue, landing, mergeAgain, ordinal, queuedItems, recordResolution, startTrainMerge, trainIsCurrent, trainOnto, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
@@ -43,6 +43,11 @@ import type { MergeQueueView } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
 import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
+import { recordEvent } from '../../features/metrics/events';
+import { failedTests, recordConflicts } from '../../features/metrics/record';
+import { ChecksReader, failureSummary } from '../../features/backlog/checksProgress';
+import { runInBackground } from '../../features/backlog/checksRun';
+import type { MergeChecksView } from '../../webview/ticketProtocol';
 
 export interface MergeDeps {
   backlog: LocalBacklog;
@@ -60,6 +65,22 @@ export interface MergeDeps {
   isLeader?(): boolean;
   /** How often a merge waiting for CI reads its runs again (the tests' is short). */
   ciPollMs?: number;
+  /** The repository's git folder (the main worktree's .git, where the checks' logs go); none: mainRoot's .git. */
+  commonDir?: string;
+  /** The environment of a run of the checks (the tests' tells their fake checks how to end); none: the extension's. */
+  checksEnv?(command: string): NodeJS.ProcessEnv;
+}
+
+/** A merge's checks running in the background (BL-169). */
+interface LiveChecks {
+  command: string;
+  started: number;
+  log: string;
+  reader: ChecksReader;
+  earlier: ChecksRunRecord[];
+  stop(): void;
+  /** The next update of the ticket, once a second at most. */
+  tick?: ReturnType<typeof setTimeout>;
 }
 
 /** How a merge ended: merged, stopped (it needs a decision, failed, or was cancelled), or waiting for CI to pass. */
@@ -93,6 +114,8 @@ export class Merger implements vscode.Disposable {
   private queue: Promise<unknown> = Promise.resolve();
   /** Agents resolving conflicts, by item. */
   private readonly runs = new Map<string, AgentRun>();
+  /** When each merge's resolving agent started, for its event (BL-157). */
+  private readonly resolverStarted = new Map<string, number>();
   /** Items whose merge is moving the base and the ticket now: the merge watcher leaves them to it. */
   private readonly finishing = new Set<string>();
   /** The queue's tasks, in order, the first one running: what each does ("BL-3's merge"), and for which ticket. */
@@ -108,6 +131,11 @@ export class Merger implements vscode.Disposable {
   private trainTimer?: ReturnType<typeof setTimeout>;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
+  /** Merges' checks running now, by ticket (BL-169). */
+  private readonly liveChecks = new Map<string, LiveChecks>();
+  private readonly checksChanged = new vscode.EventEmitter<string>();
+  /** A ticket's checks made progress (about once a second while they run): checksView has it. */
+  readonly onDidChecks = this.checksChanged.event;
 
   constructor(private readonly deps: MergeDeps) {}
 
@@ -116,7 +144,115 @@ export class Merger implements vscode.Disposable {
     this.runs.forEach((r) => r.stop());
     this.ciWaits.forEach((w) => clearTimeout(w.timer));
     this.ciWaits.clear();
+    this.liveChecks.forEach((l) => (clearTimeout(l.tick), l.stop()));
     this.changed.dispose();
+    this.checksChanged.dispose();
+  }
+
+  /** Its merge's checks running now (BL-169): how far they are, and their last lines. */
+  checksView(id: string): MergeChecksView | undefined {
+    const l = this.liveChecks.get(id);
+    if (!l) return undefined;
+    const { tail: _tail, ...progress } = l.reader.progress;
+    return { command: l.command, started: l.started, log: l.log, progress: { ...progress }, tail: l.reader.tail(), earlier: l.earlier };
+  }
+
+  /** Stops its merge's checks (BL-169): the merge stops as when they fail. */
+  stopChecks(id: string): void {
+    this.liveChecks.get(id)?.stop();
+  }
+
+  /** A log of its merge's checks (one in its folder; others aren't read), without colours: Show All (BL-169). */
+  async checksLog(id: string, log: string): Promise<string | undefined> {
+    const file = this.ownLog(id, log);
+    if (!file) return undefined;
+    const text = await fs.promises.readFile(file, 'utf8').catch(() => undefined);
+    if (text === undefined) return undefined;
+    // A very long log: its end, where the failures are.
+    const MAX = 4_000_000;
+    return plainOutput(text.length > MAX ? `…\n${text.slice(-MAX)}` : text);
+  }
+
+  /** Open in Terminal (BL-169): the log, followed, in a terminal named after the ticket ("BL-151 · merge checks"). */
+  followChecksLog(id: string, log: string): void {
+    const file = this.ownLog(id, log);
+    if (!file) return;
+    const name = `${id} · merge checks`;
+    vscode.window.terminals.find((t) => t.name === name)?.dispose();
+    const terminal =
+      process.platform === 'win32'
+        ? vscode.window.createTerminal({ name, shellPath: 'powershell.exe', shellArgs: ['-NoProfile', '-Command', `Get-Content -Wait -Path '${file.replace(/'/g, "''")}'`] })
+        : vscode.window.createTerminal({ name, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', file] });
+    terminal.show();
+  }
+
+  private ownLog(id: string, log: string): string | undefined {
+    const dir = path.resolve(this.checksDir(id));
+    const file = path.resolve(log);
+    return path.dirname(file) === dir && /^checks(-\d+)?\.log$/.test(path.basename(file)) ? file : undefined;
+  }
+
+  /** The folder of a ticket's merge's checks' logs: kept until the merge ends. */
+  checksDir(id: string): string {
+    return path.join(this.deps.commonDir ?? path.join(this.deps.mainRoot, '.git'), 'flotilla', 'merges', id);
+  }
+
+  private removeChecksLogs(id: string): Promise<void> {
+    return fs.promises.rm(this.checksDir(id), { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  /** The test files the command's last run had (its summary's count), for "84 of 145 files". */
+  private checksStats(): string {
+    return path.join(this.deps.commonDir ?? path.join(this.deps.mainRoot, '.git'), 'flotilla', 'checks-stats.json');
+  }
+
+  private async lastTotal(command: string): Promise<number | undefined> {
+    const stats = await fs.promises.readFile(this.checksStats(), 'utf8').then((t) => JSON.parse(t) as Record<string, { files?: number }>, () => undefined);
+    const files = stats?.[command]?.files;
+    return typeof files === 'number' && files > 0 ? files : undefined;
+  }
+
+  private async saveTotal(command: string, files: number): Promise<void> {
+    const file = this.checksStats();
+    const stats = await fs.promises.readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>, () => ({}));
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, JSON.stringify({ ...stats, [command]: { files } }, null, 2));
+  }
+
+  /**
+   * Runs the checks in the background, in dir (BL-169): no terminal. Their whole output goes to a log next to the
+   * merge, their progress to the ticket. Whether they passed, the end of their output (kept, so a failure can be
+   * shown in the ticket and given to an agent), and a failed run's record. Stop stops them (a failure).
+   */
+  private async runChecks(id: string, dir: string, command: string, earlier: readonly ChecksRunRecord[]): Promise<{ passed: boolean; output: string; timeouts: number; record?: ChecksRunRecord }> {
+    const n = earlier.length + 1;
+    const log = path.join(this.checksDir(id), n === 1 ? 'checks.log' : `checks-${n}.log`);
+    const reader = new ChecksReader();
+    reader.progress.total = await this.lastTotal(command).catch(() => undefined);
+    const live: LiveChecks = { command, started: Date.now(), log, reader, earlier: [...earlier], stop: () => undefined };
+    const run = runInBackground(dir, command, log, (text) => {
+      reader.push(text);
+      live.tick ??= setTimeout(() => {
+        live.tick = undefined;
+        if (this.liveChecks.get(id) === live) this.checksChanged.fire(id);
+      }, 1000);
+    }, this.deps.checksEnv?.(command));
+    live.stop = run.stop;
+    this.liveChecks.set(id, live);
+    this.changed.fire();
+    try {
+      const end = await run.done;
+      const total = reader.progress.total;
+      if (total && !end.stopped) await this.saveTotal(command, total).catch(() => undefined);
+      if (end.code === 0) return { passed: true, output: outputTail(end.output), timeouts: 0 };
+      const timeouts = end.stopped ? 0 : timeoutsOnly(end.output);
+      const record: ChecksRunRecord = { log, at: new Date().toISOString(), ms: end.ms, ...(end.stopped ? { stopped: true } : {}), timeouts, failures: failureSummary(end.output) };
+      return { passed: false, output: outputTail(end.output), timeouts, record };
+    } finally {
+      clearTimeout(live.tick);
+      if (this.liveChecks.get(id) === live) this.liveChecks.delete(id);
+      this.changed.fire();
+    }
   }
 
   isRunning(id: string): boolean {
@@ -380,6 +516,8 @@ export class Merger implements vscode.Disposable {
   }
 
   private async setMerge(id: string, merge: MergeState | undefined): Promise<void> {
+    // The merge ended: its checks' logs go with it (BL-169).
+    if (!merge) await this.removeChecksLogs(id);
     await this.deps.backlog.change(
       (d) => ({
         ...d,
@@ -552,8 +690,10 @@ export class Merger implements vscode.Disposable {
     const dir = this.mergeDir(id);
     const message = mergeMessage(item);
     this.deps.output.appendLine(`Merge: ${branch} into ${base} in ${dir}.`);
+    recordEvent('merge-started', { ticket: id, data: { into: base, branch } });
     const outcome = await mergeInWorktree(root, { dir, baseTip: check.baseTip, branch, message });
     if (outcome.kind === 'conflicts') {
+      recordConflicts(id, root, check.baseTip, branch, outcome.files);
       const state: MergeState = { dir, branch, base, baseTip: check.baseTip, state: 'failed', reason: conflictsReason(outcome.files), started: new Date().toISOString() };
       if (batch) {
         await this.setMerge(id, state);
@@ -674,13 +814,23 @@ export class Merger implements vscode.Disposable {
     if (command) {
       const source = this.worktreeOn(m.base)?.worktree.path ?? this.deps.mainRoot;
       await linkDependencies(m.dir, source).catch((e: unknown) => this.deps.output.appendLine(`Merge: no node_modules link: ${String(e)}`));
-      const title = `Checks: merge ${item.id} into ${m.base}`;
-      const run = () => runChecks(m.dir, command, title).catch((e: unknown) => ({ passed: false, output: e instanceof Error ? e.message : String(e), timeouts: 0 }));
+      // Each failed run's record: its log is kept until the merge ends (BL-169).
+      const runs: ChecksRunRecord[] = [...(m.earlier?.runs ?? [])];
+      const run = async () => {
+        const checks = await this.runChecks(item.id, m.dir, command, runs).catch((e: unknown) => ({
+          passed: false,
+          output: e instanceof Error ? e.message : String(e),
+          timeouts: 0,
+          record: undefined,
+        }));
+        if (checks.record) runs.push(checks.record);
+        return checks;
+      };
       let checks = await run();
       let earlier = m.earlier;
       if (!checks.passed && checks.timeouts && !earlier) {
         // Only timeouts: often a loaded machine, not the merge. Once more, before an agent looks at it (BL-124).
-        earlier = { command, output: checks.output, at: new Date().toISOString() };
+        earlier = { command, output: checks.output, at: new Date().toISOString(), runs: [...runs] };
         await this.note(item.id, `The checks failed on the merge only with timeouts (${plural(checks.timeouts, 'test')} timed out): running them once more before stopping.`);
         checks = await run();
       }
@@ -689,20 +839,24 @@ export class Merger implements vscode.Disposable {
       }
       if (!checks.passed) {
         // Kept: each side passed alone, so it's the two together; an agent can fix that on the merge.
+        const stopped = !!checks.record?.stopped;
         const current = (await this.item(item.id))?.merging;
         const state: MergeState = {
           ...(current ?? { dir: m.dir, branch: m.branch, base: m.base, baseTip: m.baseTip, started: new Date().toISOString() }),
           state: 'failed',
-          reason: `the checks failed (\`${command}\`).`,
-          checks: { command, output: checks.output, at: new Date().toISOString() },
+          reason: stopped ? `you stopped the checks (\`${command}\`).` : `the checks failed (\`${command}\`).`,
+          checks: { command, output: checks.output, at: new Date().toISOString(), runs },
         };
         await this.setMerge(item.id, state);
+        if (!stopped) recordEvent('merge-checks-failed', { ticket: item.id, data: { failure: checks.timeouts ? 'timeout' : 'assertion', tests: failedTests(checks.output) } });
         const again = m.resolved || earlier ? ' again' : '';
         await this.note(
           item.id,
-          `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed${again} on the merge (\`${command}\`; their output is in the terminal "${title}"). Nothing changed: the merge is kept in a temporary worktree. Fix with Agent, or cancel it.${noCi}`,
+          stopped
+            ? `Merging \`${m.branch}\` into \`${m.base}\` stopped: you stopped its checks (\`${command}\`). Nothing changed: the merge is kept in a temporary worktree. Run the checks again, or cancel it.${noCi}`
+            : `Merging \`${m.branch}\` into \`${m.base}\` stopped: the checks failed${again} on the merge (\`${command}\`; the ticket shows what failed, and their whole log). Nothing changed: the merge is kept in a temporary worktree. Fix with Agent, or cancel it.${noCi}`,
         );
-        if (!batch) {
+        if (!batch && !stopped) {
           this.deps.openTicket(item.id);
           void vscode.window.showWarningMessage(`The checks failed${again} on the merge of ${item.id}: nothing changed. Fix with Agent from its ticket, or cancel.`, 'Fix with Agent').then(
             (c) => c && void this.resolveWithAgent(item.id).catch(showError),
@@ -747,6 +901,7 @@ export class Merger implements vscode.Disposable {
         return 'stopped';
       }
       await this.removeDir(m.dir);
+      await this.removeChecksLogs(item.id);
       await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command, ci: m.ci, localWhy: m.localWhy });
       return 'merged';
     } finally {
@@ -793,6 +948,7 @@ export class Merger implements vscode.Disposable {
       { by: 'Flotilla' },
     );
     this.changed.fire();
+    if (!m.already) recordEvent('merge-landed', { ticket: item.id, data: { into: m.base, commit: m.commit } });
     await this.note(
       item.id,
       m.already
@@ -947,7 +1103,8 @@ export class Merger implements vscode.Disposable {
     // The tip it starts from: a fix is a commit on top of it.
     const from = failedChecks ? (await runGit(['rev-parse', 'HEAD'], { cwd: m.dir })).trim() : undefined;
     const choice = agentChoice(item);
-    const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice, output: this.deps.output });
+    this.resolverStarted.set(id, Date.now());
+    const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice, output: this.deps.output, track: { ticket: id, agent, role: 'merge' } });
     this.runs.set(id, run);
     await this.setMerge(id, { ...m, state: 'resolving', agent, session: run.sessionId, reason: undefined, ...(from ? { from } : {}) });
     const task = files.length
@@ -989,6 +1146,8 @@ export class Merger implements vscode.Disposable {
     }
     // A merge the agent made again onto the base as it is now: its base is that (BL-149).
     await this.setMerge(id, { ...m, baseTip: result.onto, state: 'resolved', reason: undefined });
+    const since = this.resolverStarted.get(id);
+    recordEvent('merge-resolved', { ticket: id, agent: m.agent, data: { minutes: since ? Math.round((Date.now() - since) / 600) / 100 : 0, by: agent } });
     void vscode.window
       .showInformationMessage(
         m.checks
@@ -1013,6 +1172,7 @@ export class Merger implements vscode.Disposable {
           void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
           return 'stopped';
         }
+        recordEvent('merge-approved', { ticket: id, data: { by: 'You' } });
         if (m.train) return this.landResolved(item, m, result.merge);
         await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
         const now = await this.tip(m.base);
@@ -1110,6 +1270,43 @@ export class Merger implements vscode.Disposable {
     );
   }
 
+  /** Whether this window runs anything of an item's merge: its agent, the merge itself (queued, checks, CI wait). */
+  runsMergeOf(id: string): boolean {
+    return this.runs.has(id) || this.merging.has(id) || this.finishing.has(id) || this.ciWaits.has(id);
+  }
+
+  /**
+   * A Check found the merge's agent runs nowhere (lost: the merge fails where it is, for Resolve with Agent again), or
+   * its temporary worktree gone (gone: its state is cleared). No note: the Check leaves its own.
+   */
+  forCheck(id: string, what: 'lost' | 'gone', reason: string): Promise<boolean> {
+    return this.serial({ id, what: `checking ${id}'s merge` }, async () => {
+      const m = (await this.item(id))?.merging;
+      if (!m || this.runsMergeOf(id)) return false;
+      if (what === 'gone') await this.setMerge(id, undefined);
+      else if (m.state === 'resolving') await this.setMerge(id, { ...m, state: 'failed', reason });
+      else return false;
+      return true;
+    });
+  }
+
+  /**
+   * A Check found the merge queue or train out of step (BL-166): a ticket that's gone, done or no longer approved, or
+   * a branch that moved since the train was built. Both are rebuilt as they should be; no note (the Check leaves its own).
+   */
+  rebuildQueue(): Promise<boolean> {
+    return this.serial({ what: 'rebuilding the merge queue and train' }, async () => {
+      if (!(await this.baseBranch())) return false;
+      await this.currentTrain({ rebuild: true });
+      return true;
+    });
+  }
+
+  /** Whether this window runs any merge task now (BL-166: a merge's temporary worktree isn't named by its ticket until it stops). */
+  busy(): boolean {
+    return this.tasks.length > 0 || this.runs.size > 0 || this.ciWaits.size > 0 || this.finishing.size > 0;
+  }
+
   /** Cancels a merge waiting for a decision: its agent stops, its worktree goes; nothing changes. */
   cancel(id: string): Promise<void> {
     return this.serial({ id, what: `cancelling ${id}'s merge` }, async () => {
@@ -1119,6 +1316,7 @@ export class Merger implements vscode.Disposable {
       if (!m) return;
       await this.removeDir(m.dir);
       await this.setMerge(id, undefined);
+      recordEvent('merge-cancelled', { ticket: id, data: { reason: 'by you' } });
       await this.note(id, `You cancelled the merge of \`${m.branch}\` into \`${m.base}\`. Nothing changed.`);
     });
   }
@@ -1197,6 +1395,12 @@ export class Merger implements vscode.Disposable {
   }
 }
 
+/** Output without terminal colours, its lines as written last (a carriage return writes over one). */
+function plainOutput(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g, '').replace(/\r\n/g, '\n').replace(/^.*\r/gm, '');
+}
+
 const showError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
 
 function plural(n: number, what: string): string {
@@ -1217,67 +1421,4 @@ function redoOf(m: MergeState): { base: string; branch: string } | undefined {
 
 function conflictsReason(files: readonly string[]): string {
   return `conflicts in ${files.slice(0, 5).join(', ')}${files.length > 5 ? ` and ${files.length - 5} more` : ''}.`;
-}
-
-/**
- * Runs the checks in a terminal (a task), in dir: whether they passed, and their output (kept, so a failure can be
- * shown in the ticket and given to an agent). The command runs in a shell of its own, its output written to the
- * task's terminal as it comes; closing the terminal stops it (a failure).
- */
-async function runChecks(dir: string, command: string, title: string): Promise<{ passed: boolean; output: string; timeouts: number }> {
-  let output = '';
-  let settle: (code: number | undefined) => void = () => undefined;
-  const done = new Promise<number | undefined>((resolve) => (settle = resolve));
-  const execution = new vscode.CustomExecution(async () => {
-    const write = new vscode.EventEmitter<string>();
-    const close = new vscode.EventEmitter<number>();
-    let child: ChildProcess | undefined;
-    const end = (code: number | undefined) => {
-      settle(code);
-      close.fire(code ?? 1);
-    };
-    return {
-      onDidWrite: write.event,
-      onDidClose: close.event,
-      open: () => {
-        write.fire(`\x1b[2m${dir}> ${command}\x1b[0m\r\n`);
-        // Its own process group (not on Windows), so stopping it stops what the shell started too.
-        child = spawn(command, { cwd: dir, shell: true, env: { ...process.env, FORCE_COLOR: '1' }, windowsHide: true, detached: process.platform !== 'win32' });
-        const take = (b: Buffer) => {
-          const text = b.toString('utf8');
-          // Only the end is kept: that's where the failures are summed up.
-          output = (output + text).slice(-200_000);
-          write.fire(text.replace(/\r?\n/g, '\r\n'));
-        };
-        child.stdout?.on('data', take);
-        child.stderr?.on('data', take);
-        child.on('error', (e) => {
-          take(Buffer.from(`\n${e.message}\n`));
-          end(undefined);
-        });
-        child.on('close', (code) => end(code ?? undefined));
-      },
-      close: () => {
-        if (child?.pid && child.exitCode === null) stopTree(child.pid);
-        settle(undefined);
-      },
-    };
-  });
-  const task = new vscode.Task({ type: 'flotilla-merge', command }, vscode.TaskScope.Workspace, title, 'Flotilla', execution);
-  task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true, showReuseMessage: false };
-  await vscode.tasks.executeTask(task);
-  const code = await done;
-  return { passed: code === 0, output: outputTail(output), timeouts: code === 0 ? 0 : timeoutsOnly(output) };
-}
-
-/** Stops a process and the ones it started (the shell's command). */
-function stopTree(pid: number): void {
-  if (process.platform === 'win32') spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }).on('error', () => undefined);
-  else {
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      // gone already
-    }
-  }
 }

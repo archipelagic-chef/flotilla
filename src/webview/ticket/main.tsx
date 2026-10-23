@@ -14,6 +14,7 @@ import { TicketCi } from './ci';
 import { ActionButton, finished, send } from './actions';
 import { showingEntries } from './comments';
 import { imageReplies, previewReplies } from './markdownBox';
+import { checksLogReplies } from './checksPanel';
 import { AgentPicker, RemotePriority, STATUSES, StatusMenu, Title } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
@@ -22,6 +23,7 @@ import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
+import { CheckResult } from './checkResult';
 
 function App() {
   const [received, setTicket] = useState<TicketView>();
@@ -50,6 +52,9 @@ function App() {
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
+      } else if (m.type === 'checksLog') {
+        checksLogReplies.get(m.requestId)?.(m.text);
+        checksLogReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
         previewReplies.delete(m.requestId);
@@ -183,6 +188,14 @@ function App() {
               <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
                 <i class="codicon codicon-go-to-file" /> Open as Markdown
               </button>
+              <ActionButton
+                class="button secondary"
+                message={{ type: 'check' }}
+                working="Checking…"
+                title="Checks each thing the ticket says is going on (agents working, a review, a merge) against what really runs; nothing changes until you Clean Up"
+              >
+                <i class="codicon codicon-pulse" /> Check
+              </ActionButton>
               {ticket.canReview && !ticket.review && (
                 <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…" title="Another agent reviews the work and gives a verdict here">
                   <i class="codicon codicon-eye" /> Start Review
@@ -202,6 +215,7 @@ function App() {
           )}
         </div>
       </header>
+      {ticket.check && <CheckResult check={ticket.check} />}
       {ticket.error && (
         <div class="error-note">
           <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}
