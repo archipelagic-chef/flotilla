@@ -29,6 +29,8 @@ export interface EventData {
   'merge-approved': { by: string };
   'merge-landed': { into: string; commit: string };
   'merge-cancelled': { reason?: string };
+  /** Merge to main stopped on CI: it failed on the branch (its failed jobs), or main moved since the branch took it in. */
+  'merge-ci-stopped': { reason: 'failed' | 'moved'; branch: string; jobs?: string[] };
   'branch-conflicts': { branch: string; files: string[] };
   'limit-hit': { limit: string; until?: string; known?: boolean };
   'limit-lifted': { minutes?: number; tries?: number };

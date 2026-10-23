@@ -13,7 +13,8 @@ import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
 import { recordEvent, type AgentRole, type Tokens } from '../../features/metrics/events';
-import { finishChatRecords } from '../../features/chats/chats';
+import { finishChatRecords, transcriptPath } from '../../features/chats/chats';
+import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
@@ -260,6 +261,13 @@ export function runningAgentNames(): string[] {
   return [...running.values(), ...[...terminals.values()].filter((t) => t.exitStatus === undefined).map((t) => t.name)];
 }
 
+/** Whose run an agent's is, for its events: its ticket, its agent name and its role. */
+export interface AgentTrack {
+  ticket?: string;
+  agent: string;
+  role: AgentRole;
+}
+
 /** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
 const terminals = new Map<string, vscode.Terminal>();
 
@@ -267,7 +275,15 @@ const terminals = new Map<string, vscode.Terminal>();
  * Starts an interactive Claude Code session in a terminal (in cwd): a new chat with prompt (its session chosen here, so
  * it's known at once), or a chat resumed with it.
  */
-export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: string; name: string; choice?: AgentChoice }): { sessionId: string; terminal: vscode.Terminal } {
+export function runAgentInTerminal(o: {
+  cwd: string;
+  prompt: string;
+  resume?: string;
+  name: string;
+  choice?: AgentChoice;
+  /** Records its start and end as events (BL-168), as a run without a window does. */
+  track?: AgentTrack;
+}): { sessionId: string; terminal: vscode.Terminal } {
   if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
   const sessionId = o.resume ?? crypto.randomUUID();
   // A lean start's tool list takes several values: the --name after it ends it, before the prompt.
@@ -288,14 +304,41 @@ export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: st
     iconPath: new vscode.ThemeIcon('hubot'),
   });
   terminals.set(sessionId, terminal);
+  if (o.track) {
+    const data = { role: o.track.role, session: sessionId, ...(o.choice?.model ? { model: o.choice.model } : {}), ...(o.choice?.effort ? { effort: o.choice.effort } : {}) };
+    recordEvent(o.resume ? 'agent-resumed' : 'agent-started', { ticket: o.track.ticket, agent: o.track.agent, data });
+    terminalRuns.set(sessionId, { track: o.track, cwd: o.cwd, started: new Date(), terminal, model: o.choice?.model });
+  }
   terminal.show();
   return { sessionId, terminal };
 }
 
-/** Forgets terminals that were closed. */
+/** The tracked runs in terminals (BL-168), by session, until their end is recorded. */
+const terminalRuns = new Map<string, { track: AgentTrack; cwd: string; started: Date; terminal: vscode.Terminal; model?: string }>();
+
+/**
+ * Records a tracked terminal run's end, once: its exit code (none when it's unknown), and its tokens and model from its
+ * transcript (a terminal gives no JSON result, and no cost). home: Claude's, for tests.
+ */
+export async function endTerminalRun(sessionId: string, code: number | null, home?: string): Promise<void> {
+  const run = terminalRuns.get(sessionId);
+  if (!run) return;
+  terminalRuns.delete(sessionId);
+  const minutes = Math.round((Date.now() - run.started.getTime()) / 600) / 100;
+  const usage = await transcriptUsage(transcriptPath(run.cwd, sessionId, home), run.started).catch(() => ({}) as { tokens?: Tokens; model?: string });
+  const model = run.model ?? usage.model;
+  recordEvent('agent-ended', {
+    ticket: run.track.ticket,
+    agent: run.track.agent,
+    data: { role: run.track.role, session: sessionId, code, ok: code === 0, minutes, ...(usage.tokens ? { tokens: usage.tokens } : {}), ...(model ? { model } : {}) },
+  });
+}
+
+/** Forgets terminals that were closed, and records the end of the tracked runs in them. */
 export function trackTerminals(): vscode.Disposable {
   return vscode.window.onDidCloseTerminal((t) => {
     for (const [session, terminal] of terminals) if (terminal === t) terminals.delete(session);
+    for (const [session, run] of terminalRuns) if (run.terminal === t) void endTerminalRun(session, t.exitStatus?.code ?? null);
   });
 }
 
@@ -312,6 +355,8 @@ export function isRunningInTerminal(sessionId: string): boolean {
 export async function stopTerminalAgent(sessionId: string): Promise<boolean> {
   const t = terminals.get(sessionId);
   terminals.delete(sessionId);
+  // Stopped: its terminal may stay open, so its end is recorded now.
+  void endTerminalRun(sessionId, t?.exitStatus?.code ?? null);
   if (!t || t.exitStatus !== undefined) return false;
   const pid = await t.processId;
   try {
@@ -390,7 +435,7 @@ export function runAgentHeadless(o: {
   /** Only these tools, and no other: the run asks no one, so anything else is refused (see headlessArgs). */
   tools?: string[];
   /** What the run is, for its events (BL-157): its ticket, agent and role. */
-  track?: { ticket?: string; agent: string; role: AgentRole };
+  track?: AgentTrack;
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
   if (o.resume !== undefined && !validSession(o.resume)) {
@@ -509,7 +554,7 @@ export function askModel(): string {
  * recorded as a chat. It isn't one of the running agents (flotilla.agents.maxRunning), but its memory counts against
  * the free memory for its first minute, like an agent's.
  */
-export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.OutputChannel }): ChildProcessWithoutNullStreams {
+export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.OutputChannel; ticket?: string }): ChildProcessWithoutNullStreams {
   let plugins: string[] = [];
   try {
     plugins = userPlugins(cwd, process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
@@ -522,5 +567,33 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));
+  trackAsk(child, { ticket: o.ticket, model });
   return child;
+}
+
+/**
+ * Records an Ask process's start and end (BL-168), as the agent "Ask" in the role reply. Its tokens and cost are its
+ * last result's: a result counts the whole process so far. It keeps no session: the event's is made up here.
+ */
+export function trackAsk(child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 'on'>, o: { ticket?: string; model?: string }): void {
+  const who = { ticket: o.ticket, agent: 'Ask' };
+  const session = crypto.randomUUID();
+  const startedAt = Date.now();
+  recordEvent('agent-started', { ...who, data: { role: 'reply', session, ...(o.model ? { model: o.model } : {}) } });
+  let rest = '';
+  let last = '';
+  child.stdout.on('data', (d: Buffer) => {
+    const lines = (rest + d.toString()).split('\n');
+    rest = lines.pop() ?? '';
+    for (const line of lines) if (line.includes('"type":"result"')) last = line;
+  });
+  let ended = false;
+  const end = (code: number | null) => {
+    if (ended) return;
+    ended = true;
+    const minutes = Math.round((Date.now() - startedAt) / 600) / 100;
+    recordEvent('agent-ended', { ...who, data: { role: 'reply', session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) } });
+  };
+  child.on('error', () => end(null));
+  child.on('close', (code: number | null) => end(code));
 }
