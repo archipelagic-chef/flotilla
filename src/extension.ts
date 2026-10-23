@@ -348,7 +348,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
-  const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
+  const pauseAll = new PauseAll({ backlog, reviews, shaping, merges: merger, store: pausedAll, lifted: () => reviews.dispatchQueued() });
   context.subscriptions.push(
     pauseAll,
     vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),

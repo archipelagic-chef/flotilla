@@ -188,6 +188,8 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
         : m.train
           ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
           : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      : m.state === 'resolving' && m.paused
+        ? ['debug-pause', 'waiting', `${agent} is paused ${work} (Pause All); its chat is kept. Resume All goes on with it (so does ${checks ? 'Fix' : 'Resolve'} with Agent).`]
       : m.state === 'resolving'
         ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
         : checks && m.reason?.startsWith('the checks failed')

@@ -4,10 +4,10 @@ import * as path from 'node:path';
 /** Pause All's record (BL-160), in the repository's .git/flotilla/: every window sees it, and it survives a restart. */
 export const PAUSED_ALL_FILE = 'paused-all.json';
 
-/** An agent Pause All paused: a ticket's agent (its chat), or its discussion (BL-45). */
+/** An agent Pause All paused: a ticket's agent (its chat), its discussion (BL-45), or its merge's agent (BL-164). */
 export interface PausedAgent {
   id: string;
-  kind: 'agent' | 'discussion';
+  kind: 'agent' | 'discussion' | 'merge';
   /** The chat it goes on in: Resume All resumes it only while the ticket is still paused in that chat. */
   session?: string;
 }
@@ -76,7 +76,7 @@ export function parsePausedAll(text: string): PausedAll {
   const r = (raw ?? {}) as { at?: unknown; agents?: unknown };
   const agents = Array.isArray(r.agents)
     ? r.agents.flatMap((a: { id?: unknown; kind?: unknown; session?: unknown }): PausedAgent[] =>
-        typeof a?.id === 'string' && (a.kind === 'agent' || a.kind === 'discussion')
+        typeof a?.id === 'string' && (a.kind === 'agent' || a.kind === 'discussion' || a.kind === 'merge')
           ? [{ id: a.id, kind: a.kind, ...(typeof a.session === 'string' ? { session: a.session } : {}) }]
           : [],
       )
@@ -110,4 +110,17 @@ export function pausedMessage(paused: number, inChats: number): string {
 export function resumedMessage(resumed: number, waiting: number): string {
   if (!resumed && !waiting) return 'Resumed: no agent was left to resume. Agents start again.';
   return `Resumed ${resumed}${waiting ? `; ${waiting} wait${waiting === 1 ? 's' : ''} for a slot` : ''}.`;
+}
+
+const list = (ids: string[]) => (ids.length === 1 ? ids[0] : `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`);
+
+/** Pause All's question while merges' checks run (BL-164): "BL-122's merge checks are running." */
+export function checksQuestion(ids: string[]): string {
+  return `${list(ids.map((id) => `${id}'s`))} merge checks are running.`;
+}
+
+/** What each answer does. */
+export function checksDetail(ids: string[]): string {
+  const one = ids.length === 1;
+  return `Let Them Finish: the agents are paused, and the checks go on (the merge${one ? '' : 's'} with them). Stop Them: the checks stop; ${one ? 'it' : 'each ticket'} can merge again after (Run the Checks Again).`;
 }

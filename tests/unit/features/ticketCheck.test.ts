@@ -106,6 +106,8 @@ describe('checking a merge in progress', () => {
 
   it('is a glitch when its agent runs nowhere: Resolve with Agent offered', () => {
     expect(checkMerge(merging, { runs: false, dirExists: true })).toMatchObject({ ok: false, cleanup: { kind: 'merge-lost' } });
+    // Paused by Pause All (BL-164): it isn't lost.
+    expect(checkMerge({ ...merging, paused: 'x' }, { runs: false, dirExists: true })?.ok).toBe(true);
   });
 
   it('waits for the user when resolved, and is fine without an agent', () => {

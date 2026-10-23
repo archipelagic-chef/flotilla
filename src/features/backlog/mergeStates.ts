@@ -16,6 +16,8 @@ import type { MergeState } from './merge';
  * |                               |                                     | still fail); or merged (no fix, the rerun passed)                       |
  * | resolving, agent not running  | Resolve with Agent, Cancel          | Resolve with Agent → resolving (same agent); Cancel → (none)            |
  * | (a window reload)             |                                     |                                                                         |
+ * | resolving, paused (Pause All, | Resolve with Agent, Cancel          | Resume All, or Resolve with Agent → resolving (its chat resumed)        |
+ * | BL-164)                       |                                     |                                                                         |
  * | resolved                      | Approve, Cancel                     | Approve: checks, then merged; checks fail → failed (checks); main moved |
  * |                               |                                     | → merged again onto it with the resolution, then checks (conflicts anew |
  * |                               |                                     | → resolving); in the train: recorded, the train lands it                |

@@ -22,6 +22,8 @@ export interface MergeState {
   state: 'resolving' | 'resolved' | 'failed';
   agent?: string;
   session?: string;
+  /** ISO 8601: Pause All paused its agent (state resolving, BL-164); Resume All, or Resolve with Agent, resumes its chat. */
+  paused?: string;
   reason?: string;
   /** The checks failed on the merge (state failed): their command, and the end of their output. */
   checks?: {

@@ -1065,6 +1065,8 @@ export class Merger implements vscode.Disposable {
     const m = item?.merging;
     if (!item || !m || this.runs.has(id)) return;
     if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
+    // Paused by Pause All (BL-164): it goes on in its chat.
+    if (m.paused && m.session) return this.resumeResolver(item, { ...m, session: m.session });
     const root = this.deps.mainRoot;
     const files = await conflictedFiles(m.dir);
     const start = (await runGit(['merge-base', m.baseTip, `refs/heads/${m.branch}`], { cwd: root })).trim();
@@ -1114,6 +1116,51 @@ export class Merger implements vscode.Disposable {
         : `fix the merge (${m.reason ?? 'it stopped'})`;
     await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. It reports here for you to approve.`);
     void run.done.then((result) => this.afterResolver(id, run, result.error));
+  }
+
+  /** A merge's agent Pause All paused, resumed in its chat in the merge's worktree (BL-164). */
+  private async resumeResolver(item: BacklogItem, m: MergeState & { session: string }): Promise<void> {
+    const id = item.id;
+    const agent = m.agent ?? 'The agent';
+    const prompt = 'You were paused, and are resumed now. Go on where you left off, then report in the ticket as asked.';
+    if (!this.resolverStarted.has(id)) this.resolverStarted.set(id, Date.now());
+    const run = runAgentHeadless({ cwd: m.dir, prompt, name: `${id} merge`, choice: agentChoice(item), resume: m.session, output: this.deps.output, track: { ticket: id, agent, role: 'merge' } });
+    this.runs.set(id, run);
+    const { paused: _paused, ...rest } = m;
+    await this.setMerge(id, { ...rest, state: 'resolving', session: run.sessionId });
+    await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: resumed ${agent} in its chat, where it was paused.`);
+    void run.done.then((result) => this.afterResolver(id, run, result.error));
+  }
+
+  /**
+   * Pause All (BL-164): the agent this window runs on its merge stops, its chat kept (the merge shows it paused), for
+   * Resume All. Its session; undefined when no agent of this window resolves it. Outside the queue: a merge's checks
+   * running there don't hold it up.
+   */
+  async pauseForAll(id: string): Promise<string | undefined> {
+    const run = this.runs.get(id);
+    const m = (await this.item(id))?.merging;
+    if (!run || m?.state !== 'resolving') return undefined;
+    this.runs.delete(id);
+    run.stop();
+    await this.setMerge(id, { ...m, session: run.sessionId, paused: new Date().toISOString() });
+    await this.note(id, `Pause All paused ${m.agent ?? 'the agent'} resolving the merge: its chat is kept, and Resume All goes on with it.`);
+    return run.sessionId;
+  }
+
+  /** Resume All (BL-164): a merge's agent Pause All paused goes on in that chat; undefined when it isn't paused there any more. */
+  async resumeForAll(id: string, session: string | undefined): Promise<'running' | undefined> {
+    const item = await this.item(id);
+    const m = item?.merging;
+    if (!item || !m?.paused || !m.session || this.runs.has(id) || (session && m.session !== session)) return undefined;
+    if (!isMergeDir(m.dir, os.tmpdir())) return undefined;
+    await this.resumeResolver(item, { ...m, session: m.session });
+    return 'running';
+  }
+
+  /** The tickets whose merge's checks run now (BL-164: Pause All asks about them). */
+  checksRunning(): string[] {
+    return [...this.liveChecks.keys()];
   }
 
   private async afterResolver(id: string, run: AgentRun, error: string | undefined): Promise<void> {
