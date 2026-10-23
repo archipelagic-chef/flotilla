@@ -1,12 +1,20 @@
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { runGit } from '../../core/git/gitCli';
 import type { BacklogData, BacklogItem } from '../../features/backlog/backlog';
 import { transcriptBusy } from '../../features/backlog/busy';
+import { isMergeDir, removeMergeWorktree } from '../../features/backlog/merge';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import {
   checkChat,
   checkMerge,
+  checkOrphan,
+  checkQueue,
+  checkQueueIds,
   checkReview,
+  ORPHAN_MS,
   parsePs,
   processOf,
   type ChatFacts,
@@ -30,7 +38,15 @@ export interface TicketCheckDeps {
   merger?: {
     runsMergeOf(id: string): boolean;
     forCheck(id: string, what: 'lost' | 'gone', reason: string): Promise<boolean>;
+    /** Rebuilds the merge queue and train as they should be (BL-166); whether it could. */
+    rebuildQueue(): Promise<boolean>;
+    /** Whether this window runs any merge task now (one may be in a temporary worktree no ticket names yet). */
+    busy(): boolean;
   };
+  /** The main worktree: where branch tips and the temporary merge worktrees are read (BL-166). None: neither is checked. */
+  mainRoot?: string;
+  /** The OS's temp folder, the temporary merge worktrees' (tests point it elsewhere). */
+  tmpdir?: string;
   /** Whether this window runs a chat (headless, or in a terminal). */
   runsHere(session: string): boolean;
   /** The processes running now (`ps`). */
@@ -64,8 +80,9 @@ export class TicketChecker {
   async checkAll(): Promise<Map<string, Claim[]>> {
     const ps = await this.processes();
     const found = new Map<string, Claim[]>();
-    for (const item of (await this.deps.backlog.read()).items) {
-      if (item.status === 'done' && !item.merging && !item.review) continue;
+    const data = await this.deps.backlog.read();
+    for (const item of data.items) {
+      if (item.status === 'done' && !item.merging && !item.review && !inQueue(data, item.id)) continue;
       const claims = await this.checkItem(item, ps);
       if (claims.length) found.set(item.id, claims);
     }
@@ -92,6 +109,33 @@ export class TicketChecker {
     return notes;
   }
 
+  /**
+   * What no ticket's Check covers (BL-166, for Check All): merge queue and train entries of tickets that don't exist,
+   * and temporary merge worktrees no ticket's merge names (left by a merge that ended without removing it).
+   */
+  async checkRepo(): Promise<Claim[]> {
+    const data = await this.deps.backlog.read();
+    return [...checkQueueIds(data), ...(await this.orphans(data))];
+  }
+
+  /** Cleans up what checkRepo finds (checked again first); asks before removing a worktree with uncommitted changes. */
+  async cleanUpRepo(o: { confirm: (question: string) => Promise<boolean> }): Promise<string[]> {
+    const notes: string[] = [];
+    let rebuilt = false;
+    for (const g of await this.checkRepo()) {
+      if (g.cleanup?.kind === 'queue-rebuild' && rebuilt) {
+        notes.push(g.note ?? g.text);
+        continue;
+      }
+      if (g.ask && !(await o.confirm(g.ask))) continue;
+      if (await this.apply('', g)) {
+        notes.push(g.note ?? g.text);
+        rebuilt ||= g.cleanup?.kind === 'queue-rebuild';
+      }
+    }
+    return notes;
+  }
+
   private async apply(id: string, g: Claim): Promise<boolean> {
     const c = g.cleanup!;
     switch (c.kind) {
@@ -112,6 +156,14 @@ export class TicketChecker {
         return !!(await this.deps.merger?.forCheck(id, 'lost', `${g.text}. Resolve with Agent again, or cancel the merge.`));
       case 'merge-gone':
         return !!(await this.deps.merger?.forCheck(id, 'gone', g.text));
+      case 'queue-rebuild':
+        return !!(await this.deps.merger?.rebuildQueue());
+      case 'orphan-remove':
+        if (!this.deps.mainRoot || !isMergeDir(c.dir, this.tmp())) return false;
+        return removeMergeWorktree(this.deps.mainRoot, c.dir).then(
+          () => true,
+          () => false,
+        );
     }
   }
 
@@ -137,6 +189,47 @@ export class TicketChecker {
     const m = item.merging;
     const merge = m && checkMerge(m, { runs: !!this.deps.merger?.runsMergeOf(item.id), dirExists: fs.existsSync(m.dir), process: m.session ? processOf(ps, m.session) : undefined });
     if (merge) claims.push(merge);
+
+    const data = await this.deps.backlog.read();
+    if (inQueue(data, item.id)) {
+      const entry = data.mergeTrain?.entries.find((e) => e.id === item.id);
+      const queue = checkQueue(item, data, entry ? await this.tipOf(entry.branch) : undefined);
+      if (queue) claims.push(queue);
+    }
+    return claims;
+  }
+
+  /** A branch's tip now, in the main worktree; undefined if it's gone (or there's no main worktree to ask). */
+  private async tipOf(branch: string): Promise<string | undefined> {
+    if (!this.deps.mainRoot) return undefined;
+    const tip = await runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`], { cwd: this.deps.mainRoot }).catch(() => '');
+    return tip.trim() || undefined;
+  }
+
+  private tmp(): string {
+    return this.deps.tmpdir ?? os.tmpdir();
+  }
+
+  /**
+   * The repository's temporary merge worktrees (its own: `git worktree list`, under mergeRoot()) that no ticket's merge
+   * names, and that no merge may be running in: none runs in this window, and each was last changed an hour ago or more.
+   */
+  private async orphans(data: BacklogData): Promise<Claim[]> {
+    const root = this.deps.mainRoot;
+    if (!root || this.deps.merger?.busy()) return [];
+    const out = await runGit(['worktree', 'list', '--porcelain'], { cwd: root }).catch(() => '');
+    const named = new Set(data.items.flatMap((i) => (i.merging ? [path.resolve(i.merging.dir)] : [])));
+    const now = this.now();
+    const claims: Claim[] = [];
+    for (const line of out.split('\n')) {
+      const dir = line.startsWith('worktree ') ? line.slice('worktree '.length).trim() : '';
+      if (!dir || !isMergeDir(dir, this.tmp()) || named.has(path.resolve(dir))) continue;
+      const stat = await fs.promises.stat(dir).catch(() => undefined);
+      if (!stat || now.getTime() - stat.mtime.getTime() < ORPHAN_MS) continue;
+      const status = await runGit(['status', '--porcelain'], { cwd: dir }).catch(() => '?');
+      const dirty = status.split('\n').some((l) => l.trim() && !/^\?\? node_modules\/?$/.test(l));
+      claims.push(checkOrphan(dir, { dirty, modified: stat.mtime }, now));
+    }
     return claims;
   }
 
@@ -196,4 +289,9 @@ export function listProcesses(): Promise<ProcessInfo[]> {
       err ? reject(new Error(`Couldn't list the processes running (${cmd}): ${err.message}`)) : resolve(parsePs(stdout)),
     );
   });
+}
+
+/** Whether the merge queue or train names a ticket. */
+function inQueue(data: Pick<BacklogData, 'mergeQueue' | 'mergeTrain'>, id: string): boolean {
+  return !!data.mergeQueue?.includes(id) || !!data.mergeTrain?.entries.some((e) => e.id === id);
 }
