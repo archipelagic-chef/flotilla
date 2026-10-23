@@ -54,7 +54,11 @@ export type Cleanup =
   /** A merge being resolved by an agent that runs nowhere: failed, with Resolve with Agent offered. */
   | { kind: 'merge-lost' }
   /** A merge whose temporary worktree is gone: its state is cleared. */
-  | { kind: 'merge-gone' };
+  | { kind: 'merge-gone' }
+  /** A review naming a worktree that's gone or on another branch (BL-167): its `worktree` is cleared. */
+  | { kind: 'review-worktree'; worktree: string }
+  /** A "Creating its worktree…" record no window still creates (BL-167): removed. */
+  | { kind: 'creating-stale'; dir: string; id: string };
 
 export interface Claim {
   /** Unique within a ticket: Clean Up of one claim names it. */

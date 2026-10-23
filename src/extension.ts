@@ -315,6 +315,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     get staleMinutes() {
       return readSettings().agentStatusStaleMinutes;
     },
+    creating: { dir: creatingDir(location.commonDir), cleared: () => creatingWorktrees.reload() },
   });
   tickets.useChecker(checker);
   context.subscriptions.push(

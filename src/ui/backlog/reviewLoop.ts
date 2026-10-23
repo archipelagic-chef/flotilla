@@ -737,6 +737,14 @@ export class ReviewLoop implements vscode.Disposable {
     return true;
   }
 
+  /** Check's Clean Up of a review whose `worktree` is gone or on another branch (BL-167): it then works in the item's. */
+  async clearWorktreeForCheck(id: string, worktree: string): Promise<boolean> {
+    const r = (await this.deps.backlog.read()).items.find((i) => i.id === id)?.review;
+    if (!r || r.worktree !== worktree) return false;
+    await this.setReview(id, (now) => ({ ...now!, worktree: undefined }));
+    return true;
+  }
+
   /**
    * Paused agents whose limit has reset go on, as queued starts (see admitStart): the leading window only. Resume now (a
    * force) goes on at once.

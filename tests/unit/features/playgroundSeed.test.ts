@@ -2,7 +2,8 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { appendAgentTurn, seedChats, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import { appendAgentTurn, seedChats, seedCreating, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import { CreatingWorktrees, creatingDir, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
 import { isHeadless, mergeChats, readChatRecords, readTranscripts, readUnlinked } from '../../../src/features/chats/chats';
 import { transcriptMarkdown } from '../../../src/features/chats/transcriptMarkdown';
 import { childrenOf, ID_PATTERN } from '../../../src/features/backlog/backlog';
@@ -169,6 +170,18 @@ describe('playground seed', () => {
     const before = await backlog.read();
     expect(seedPlayground(dir, new Date('2030-01-01T00:00:00'))).toBe(false);
     expect(await backlog.read()).toEqual(before);
+  });
+
+  it("seeds a record of BL-5's worktree being created by a window that's gone: it blocks nothing, for a Check to clear", () => {
+    const { dir } = seeded();
+    const file = seedCreating(dir, now);
+    const records = creatingDir(path.join(dir, '.git'));
+    expect(path.dirname(file)).toBe(records);
+    expect(readCreatingRecords(records)).toEqual([expect.objectContaining({ id: 'BL-5', host: os.hostname(), at: now.getTime() - 3 * 60_000 })]);
+    const creating = new CreatingWorktrees();
+    const attached = creating.attach(records);
+    expect(creating.has('BL-5')).toBe(false);
+    attached.dispose();
   });
 
   it("seeds chats in BL-3's worktree that read as an agent's, working, a panel chat, done, and a stale agent's", async () => {

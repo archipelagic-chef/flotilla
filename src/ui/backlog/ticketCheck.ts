@@ -1,7 +1,9 @@
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import type { BacklogData, BacklogItem } from '../../features/backlog/backlog';
 import { transcriptBusy } from '../../features/backlog/busy';
+import { clearCreatingRecord, creatingDir, pidAlive, readCreatingRecords } from '../../features/backlog/creatingWorktrees';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import {
   checkChat,
@@ -13,7 +15,9 @@ import {
   type Claim,
   type ProcessInfo,
 } from '../../features/backlog/ticketCheck';
+import { checkBranchWorktrees, checkCreating, checkReviewWorktree } from '../../features/backlog/worktreeClaims';
 import { markChatDone, readChatRecords, readTranscript, transcriptPath } from '../../features/chats/chats';
+import { branchMatches } from '../../features/backlog/backlog';
 import { linkedWorktrees } from './cardMenu';
 
 /** What a Check reads and changes (the review loop and the merger, narrowed to what it uses: tests fake them). */
@@ -26,6 +30,8 @@ export interface TicketCheckDeps {
   reviews?: {
     runsAgentOf(id: string): boolean;
     stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean>;
+    /** Clears the review's `worktree`, if it still names this one. */
+    clearWorktreeForCheck?(id: string, worktree: string): Promise<boolean>;
   };
   merger?: {
     runsMergeOf(id: string): boolean;
@@ -39,6 +45,8 @@ export interface TicketCheckDeps {
   kill?: (pid: number) => void;
   /** How long a record that says working is believed (flotilla.agentStatusStaleMinutes): older ones show as done. */
   staleMinutes: number;
+  /** "Creating its worktree…" records (BL-167): where they are (by default in the main worktree's git dir), whose. */
+  creating?: { dir?: string; host?: string; alive?: (pid: number) => boolean; cleared?: () => void };
   claudeHome?: string;
   now?: () => Date;
 }
@@ -112,6 +120,12 @@ export class TicketChecker {
         return !!(await this.deps.merger?.forCheck(id, 'lost', `${g.text}. Resolve with Agent again, or cancel the merge.`));
       case 'merge-gone':
         return !!(await this.deps.merger?.forCheck(id, 'gone', g.text));
+      case 'review-worktree':
+        return !!(await this.deps.reviews?.clearWorktreeForCheck?.(id, c.worktree));
+      case 'creating-stale':
+        clearCreatingRecord(c.dir, c.id);
+        this.deps.creating?.cleared?.();
+        return true;
     }
   }
 
@@ -137,6 +151,16 @@ export class TicketChecker {
     const m = item.merging;
     const merge = m && checkMerge(m, { runs: !!this.deps.merger?.runsMergeOf(item.id), dirExists: fs.existsSync(m.dir), process: m.session ? processOf(ps, m.session) : undefined });
     if (merge) claims.push(merge);
+
+    claims.push(...checkBranchWorktrees(worktrees.map((w) => w.worktree), (p) => fs.existsSync(p)));
+    const all = this.deps.repository.current.map((w) => w.worktree);
+    const named = checkReviewWorktree(r?.worktree, all, (b) => branchMatches(item, b));
+    if (named) claims.push(named);
+    const creating = this.creatingRecords().find((rec) => rec.record.id === item.id);
+    if (creating) {
+      const host = this.deps.creating?.host ?? os.hostname();
+      claims.push(checkCreating(creating.record, { dir: creating.dir, host, now: now.getTime(), alive: this.deps.creating?.alive ?? pidAlive }));
+    }
     return claims;
   }
 
@@ -175,6 +199,12 @@ export class TicketChecker {
       runsHere: this.deps.runsHere(session),
       busy: transcript ? await transcriptBusy(transcriptPath(cwd, session, this.deps.claudeHome)) : false,
     };
+  }
+
+  private creatingRecords() {
+    const main = this.deps.repository.current.find((w) => w.worktree.isMain);
+    const dir = this.deps.creating?.dir ?? (main ? creatingDir(main.worktree.adminDir) : undefined);
+    return dir ? readCreatingRecords(dir).map((record) => ({ dir, record })) : [];
   }
 
   private processes(): Promise<ProcessInfo[]> {
