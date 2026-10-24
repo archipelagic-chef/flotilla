@@ -20,6 +20,7 @@ const INSTANT = new Set([
   'openUrl',
   'openView',
   'openWorktree',
+  'mergeChecksTerminal',
   'ciShow',
   'backlog:open',
   'backlog:comment',
