@@ -220,7 +220,3 @@
 .feed .rendered video.media {
   max-height: 270px;
 }
-.media-thumb-diagram .media-note,
-.media-thumb > .media-note {
-  display: none;
-}
