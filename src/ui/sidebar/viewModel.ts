@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import { samePath } from '../../core/paths';
 import { agentChatItem } from '../../features/backlog/backlog';
 import { awaiting, type Chat } from '../../features/chats/chats';
+import { DEFAULT_STUCK_RULES, health, type StuckRules } from '../../features/chats/activity';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { FileChange } from '../../core/git/porcelain';
 import { BIG_CHAT_HINT, formatTokens, usageTip } from '../../features/chats/usage';
@@ -28,8 +29,10 @@ function chatVia(chat: Chat, all: readonly Workstream[]): string | undefined {
   return ws ? workstreamLabel(ws) : path.basename(chat.cwd);
 }
 
-export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000): ChatView {
+export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000, rules: StuckRules = DEFAULT_STUCK_RULES): ChatView {
   const u = chat.usage;
+  const live = chat.state === 'working' && !chat.stalled ? chat.activity : undefined;
+  const h = live && health(live, chat.updatedAt.toISOString(), rules, true, now.getTime());
   const big = !!u && bigContext > 0 && u.context >= bigContext;
   const agent = agentChatItem(chat.firstPrompt);
   return {
@@ -45,6 +48,8 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bi
     age: chatAge(chat, now),
     ...(agent ? { agent: { name: agent.agent, item: agent.item } } : {}),
     ...(u?.context ? { size: { label: formatTokens(u.context), tip: big ? `${usageTip(u)} ${BIG_CHAT_HINT}` : usageTip(u), big } } : {}),
+    ...(live ? { activity: live } : {}),
+    ...(h?.stuck ? { stuck: h.text } : {}),
   };
 }
 
@@ -70,7 +75,7 @@ export function changedViews(views: readonly WorkstreamView[], sent: Map<string,
   return { changed, keys: views.map((v) => v.key) };
 }
 
-export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number, bigContext = 200_000): WorkstreamView {
+export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number, bigContext = 200_000, rules: StuckRules = DEFAULT_STUCK_RULES): WorkstreamView {
   // The limit is per worktree, across both lists: staged changes first (they're what a commit takes).
   const staged = capChanges(ws.staged, changesLimit);
   const unstaged = capChanges(ws.unstaged, changesLimit - staged.items.length);
@@ -97,7 +102,7 @@ export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now
     unstaged: unstaged.items,
     totals: { staged: staged.total, unstaged: unstaged.total },
     sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind, head: ws.sync.head },
-    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext)),
+    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext, rules)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),
   };

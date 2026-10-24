@@ -3,6 +3,7 @@ import type { AutopilotState } from '../protocol';
 import { send } from './api';
 import { shortTime } from '../shortTime';
 import { autopilotDetails, type DetailLine } from '../autopilotDetails';
+import type { CardAgent } from '../../features/backlog/cardAgents';
 import { BusyButton } from './backlogBusy';
 import { PauseOrResume, pausedAllLabel } from './pauseAll';
 
@@ -10,6 +11,8 @@ interface FoldProps {
   autopilot: AutopilotState;
   /** Ticket titles by id, for the details' lines. */
   titles: ReadonlyMap<string, string>;
+  /** The agents on each ticket, with what they're doing (BL-175). */
+  live?: ReadonlyMap<string, readonly CardAgent[]>;
   open: boolean;
   setOpen: (open: boolean) => void;
 }
@@ -18,7 +21,7 @@ interface FoldProps {
  * The autopilot's bar, while it's on: what it does now. A click folds its details out (BL-153); its switch turns it off
  * (asking first while agents work). Try Now sits on the bar while it waits for the usage limit, in the details when open.
  */
-export function AutopilotBar({ autopilot, titles, open, setOpen }: FoldProps) {
+export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldProps) {
   return (
     <div class={`autopilot-box${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="autopilot-bar">
@@ -52,7 +55,7 @@ export function AutopilotBar({ autopilot, titles, open, setOpen }: FoldProps) {
         {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
         <Switch on />
       </div>
-      {open && <Details autopilot={autopilot} titles={titles} />}
+      {open && <Details autopilot={autopilot} titles={titles} live={live} />}
     </div>
   );
 }
@@ -90,7 +93,7 @@ function Switch({ on }: { on: boolean }) {
 }
 
 /** The agent count, with the autopilot off (BL-107): a click folds out the same details, with the switch to turn it on. */
-export function AgentCount({ label, autopilot, titles, open, setOpen }: FoldProps & { label: string }) {
+export function AgentCount({ label, autopilot, titles, live, open, setOpen }: FoldProps & { label: string }) {
   return (
     <div class={`autopilot-box off${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="agent-count-line">
@@ -107,7 +110,7 @@ export function AgentCount({ label, autopilot, titles, open, setOpen }: FoldProp
         {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
         {open && <Switch on={false} />}
       </div>
-      {open && <Details autopilot={autopilot} titles={titles} />}
+      {open && <Details autopilot={autopilot} titles={titles} live={live} />}
     </div>
   );
 }
@@ -120,19 +123,25 @@ function Line({ line }: { line: DetailLine }) {
         <span class="id">{line.id}</span>
         {line.title && <span class="title">{line.title}</span>}
         <span class="what">{line.text}</span>
+        {line.status && (
+          <span class={`status${line.stuck ? ' stuck' : ''}`}>
+            <i class={`codicon codicon-${line.stuck ? 'warning' : 'tools'}`} /> {line.status.replace(/`/g, '')}
+          </span>
+        )}
       </button>
     </li>
   );
 }
 
-/** What the autopilot is doing (BL-153): live, as the bar is; the durations tick each half minute. */
-function Details({ autopilot, titles }: { autopilot: AutopilotState; titles: ReadonlyMap<string, string> }) {
+/** What the autopilot is doing (BL-153): live, as the bar is; the durations tick each half minute, each second with agents' statuses. */
+function Details({ autopilot, titles, live }: { autopilot: AutopilotState; titles: ReadonlyMap<string, string>; live?: ReadonlyMap<string, readonly CardAgent[]> }) {
   const [now, setNow] = useState(() => new Date());
+  const statuses = (autopilot.agents ?? []).some((g) => live?.get(g.id)?.some((c) => c.activity));
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30_000);
+    const timer = setInterval(() => document.visibilityState === 'visible' && setNow(new Date()), statuses ? 1000 : 30_000);
     return () => clearInterval(timer);
-  }, []);
-  const d = autopilotDetails(autopilot, titles, now);
+  }, [statuses]);
+  const d = autopilotDetails(autopilot, titles, now, live);
   return (
     <div class="autopilot-details">
       <div class="heading">Working ({d.agents.length})</div>

@@ -1,4 +1,5 @@
 import type { BacklogItem } from './backlog';
+import type { AgentActivity } from '../chats/activity';
 
 /** What an agent on a ticket is doing, as its card shows it. */
 export type CardAgentState = 'working' | 'waiting' | 'paused';
@@ -6,12 +7,17 @@ export type CardAgentState = 'working' | 'waiting' | 'paused';
 export interface CardAgent {
   name: string;
   state: CardAgentState;
+  /** What it's doing, while it works (BL-175); why it looks stuck, when it does. */
+  activity?: AgentActivity;
+  stuck?: string;
 }
 
 /** A chat, as far as the card needs it: its state, and the agent and ticket its first line names (agentChatItem). */
 export interface CardChat {
   state: 'working' | 'waiting-for-input' | 'done' | 'ended';
   agent?: { name: string; item: string };
+  activity?: AgentActivity;
+  stuck?: string;
 }
 
 export const CARD_AGENT_LABEL: Record<CardAgentState, string> = { working: 'working', waiting: 'waiting for input', paused: 'paused' };
@@ -26,6 +32,7 @@ const RANK: Record<CardAgentState, number> = { waiting: 0, working: 1, paused: 2
  */
 export function cardAgents(item: Pick<BacklogItem, 'id' | 'review'>, chats: readonly CardChat[]): CardAgent[] {
   const found = new Map<string, CardAgentState>();
+  const live = new Map<string, Pick<CardAgent, 'activity' | 'stuck'>>();
   const add = (name: string | undefined, state: CardAgentState) => {
     if (!name) return;
     const was = found.get(name);
@@ -35,10 +42,11 @@ export function cardAgents(item: Pick<BacklogItem, 'id' | 'review'>, chats: read
     if (c.agent?.item !== item.id) continue;
     if (c.state === 'working') add(c.agent.name, 'working');
     else if (c.state === 'waiting-for-input') add(c.agent.name, 'waiting');
+    if (c.state === 'working' && c.activity) live.set(c.agent.name, { activity: c.activity, ...(c.stuck ? { stuck: c.stuck } : {}) });
   }
   const r = item.review;
   // A paused agent's chat can still read as working for a moment: the review knows better.
   if (r?.state === 'paused' && r.paused?.agent) found.set(r.paused.agent, 'paused');
   if (r?.state === 'asking') add(r.implementer, 'waiting');
-  return [...found].map(([name, state]) => ({ name, state }));
+  return [...found].map(([name, state]) => ({ name, state, ...(state === 'working' ? live.get(name) : {}) }));
 }
