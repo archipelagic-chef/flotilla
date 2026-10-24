@@ -8,7 +8,7 @@
       "click": "[aria-label=\"Backlog\"]"
     },
     {
-      "click": ".backlog-item:has-text(\"Sort the backlog by priority\")"
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
     },
     {
       "waitFor": ".proposal-banner"
@@ -26,7 +26,7 @@
       "wait": 1000
     },
     {
-      "click": ".backlog-item:has-text(\"Warn on a big diff before review\")"
+      "click": ".backlog-item:has-text(\"Warn on a big diff before review\") .name"
     },
     {
       "waitFor": "h1:has-text(\"Warn on a big diff before review\")"

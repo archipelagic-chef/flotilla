@@ -1,0 +1,77 @@
+{
+  "title": "Compact backlog cards: the title, one status line and the next step; Detailed shows every detail",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "command": "View: Decrease Current View Size"
+    },
+    {
+      "command": "View: Decrease Current View Size"
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": "[aria-label=\"Hide what needs you\"]"
+    },
+    {
+      "caption": "Compact cards: the title, one status line, the next step"
+    },
+    {
+      "waitFor": ".backlog-item.compact:has-text(\"Attach any file to a ticket\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Hovered, the line shows the id, the details and the actions"
+    },
+    {
+      "hover": ".backlog-item.compact:has-text(\"Attach any file to a ticket\") .name"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "⋯ is the card's menu, with everything else"
+    },
+    {
+      "hover": ".backlog-item.compact:has-text(\"Attach any file to a ticket\") [aria-label=\"More Actions…\"]"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Detailed shows today's cards, with every detail"
+    },
+    {
+      "click": ".cards-detail"
+    },
+    {
+      "waitFor": ".backlog-item:not(.compact):has-text(\"Attach any file to a ticket\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Compact again: the choice is kept in flotilla.backlog.cards"
+    },
+    {
+      "click": ".cards-detail"
+    },
+    {
+      "waitFor": ".backlog-item.compact:has-text(\"Attach any file to a ticket\")"
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

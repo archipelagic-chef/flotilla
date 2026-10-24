@@ -320,3 +320,124 @@
   margin-left: auto;
   flex: none;
 }
+/* Compact (BL-183): the title (up to two lines) over one line: the status or, hovered or focused, the details and
+   actions in its place, so the card keeps its height; the next step at its end. */
+.backlog-item.compact {
+  height: auto;
+  min-height: 0;
+  align-items: flex-start;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  white-space: normal;
+}
+.backlog-item.compact .status-toggle {
+  margin-top: -1px;
+}
+.backlog-item.compact .card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.backlog-item.compact .name {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.backlog-item.compact .card-line {
+  display: flex;
+  height: 20px;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.backlog-item.compact .card-status {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item.compact .card-status .codicon {
+  font-size: 12px;
+  flex: none;
+}
+.backlog-item.compact .card-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The one coloured mark: it needs you. */
+.backlog-item.compact .card-status.mark-question .card-mark {
+  color: var(--waiting);
+}
+.backlog-item.compact .card-status.mark-warning .card-mark {
+  color: var(--vscode-editorWarning-foreground);
+}
+.backlog-item.compact .card-status.mark-error .card-mark {
+  color: var(--error);
+}
+.backlog-item.compact .card-status.mark-error,
+.backlog-item.compact .card-status.mark-warning,
+.backlog-item.compact .card-status.mark-question {
+  color: var(--vscode-foreground);
+}
+.backlog-item.compact .card-hover {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+.backlog-item.compact:hover .card-hover,
+.backlog-item.compact:focus-within .card-hover,
+.backlog-item.compact .card-hover.creating,
+.backlog-item.compact .card-hover:has([aria-busy='true']) {
+  display: flex;
+}
+.backlog-item.compact:hover .card-status,
+.backlog-item.compact:focus-within .card-status,
+.backlog-item.compact .card-line:has(.card-hover.creating) .card-status,
+.backlog-item.compact .card-line:has([aria-busy='true']) .card-status {
+  display: none;
+}
+.backlog-item.compact .card-details {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.backlog-item.compact .card-details > * {
+  flex: none;
+}
+.backlog-item.compact .card-details .icon,
+.backlog-item.compact .card-actions .icon {
+  width: 20px;
+  height: 20px;
+}
+.backlog-item.compact .card-light {
+  font-size: 12px;
+  color: var(--muted);
+}
+.backlog-item.compact .card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.backlog-item.compact .card-next {
+  flex: none;
+  margin-left: auto;
+  padding-left: 6px;
+}
+.backlog-item.compact .card-next .button.small {
+  height: 20px;
+  font-size: 11px;
+}

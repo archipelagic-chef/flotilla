@@ -141,6 +141,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       },
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
+        if (e.affectsConfiguration('flotilla.backlog.cards')) void this.postBacklog();
       }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
@@ -285,7 +286,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
     const queue = this.merger?.queueView();
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, detailedCards: vscode.workspace.getConfiguration('flotilla').get<string>('backlog.cards') === 'detailed', ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -387,6 +388,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'mergeNext':
         await this.merger?.mergeNext(m.id);
+        return;
+      case 'merge':
+        await vscode.commands.executeCommand('flotilla.mergeBacklogItem', m.id);
+        return;
+      case 'cards':
+        await vscode.workspace.getConfiguration('flotilla').update('backlog.cards', m.detailed ? 'detailed' : 'compact', vscode.ConfigurationTarget.Global);
         return;
       case 'integrations':
         await this.deps.integrations.manage();

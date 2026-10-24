@@ -7,13 +7,14 @@ Open the folder in the devcontainer (or on the host with Node 22 and git), then:
 ```bash
 npm ci
 npm test               # unit + git integration tests (vitest), queued with the other worktrees' runs
+npm run test:related   # only the tests of what changed since main
 npm run typecheck
 npm run build
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
 
-`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
+`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait. While you work, run `npm run test:related`: `vitest related` on the files changed since the merge base with main (committed, not committed and new), so only the tests that import them run, without waiting; a change to `tests/helpers/`, `vitest.config.ts`, `package.json`, the lockfile or a tsconfig runs the full suite instead (queued). A single file with `npx vitest run <file>` is enough when you know which. Run the full `npm test` once, before "Ready for review" (the merge's checks run it again).
 
 Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
 
@@ -103,6 +104,11 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+  A card is Compact by default (`flotilla.backlog.cards`, BL-183): its title, one status line and its next step, all
+  from `cardStatus()` ([src/features/backlog/cardStatus.ts](src/features/backlog/cardStatus.ts)), with its tests in
+  `tests/unit/features/cardStatus.test.ts`. A new state of a ticket gets its line (and its mark, if it needs you) there;
+  a new detail or action goes in the hover row (`CompactCard`) and in Detailed. A demo that shows a Detailed-only sign
+  sets `"settings": { "flotilla.backlog.cards": "detailed" }`.
 - **Commands** (BL-185): each feature's module exports its commands as a map of handlers by command id
   (`Commands`, [src/ui/commandSet.ts](src/ui/commandSet.ts)), made from the deps it's given:
   `mergeCommands` ([src/ui/backlog/mergeCommands.ts](src/ui/backlog/mergeCommands.ts)), `agentCommands`,

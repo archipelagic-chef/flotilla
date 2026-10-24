@@ -10,6 +10,7 @@ export interface QueueEntry {
 export function slotCount(cores: number, configured: unknown): number;
 export function workersFor(cores: number, n: number): number;
 export function namesFiles(args: readonly string[]): boolean;
+export function relatedPlan(changed: readonly string[]): { full: boolean; reason?: string; files: string[] };
 export function describeRun(toplevel: string, branch: string | undefined): { label: string; first: boolean };
 export function queueOrder(a: QueueEntry, b: QueueEntry): number;
 export function mayStart(entries: readonly QueueEntry[], me: QueueEntry, n: number): { go: boolean; ahead: QueueEntry[] };

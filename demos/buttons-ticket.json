@@ -3,7 +3,7 @@
   "steps": [
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
-    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },
     { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
     { "caption": "The agents' model: Saving… until the ticket is written" },
     { "click": "[aria-label^=\"Agents' model\"]" },
