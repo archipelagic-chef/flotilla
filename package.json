@@ -433,6 +433,11 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.newNote",
+        "title": "New Note",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.reviewImprovementsNow",
         "title": "Review Now: An Agent Reads the Metrics and Proposes Tickets",
         "category": "Flotilla"

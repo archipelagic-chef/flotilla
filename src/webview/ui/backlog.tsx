@@ -4,7 +4,7 @@ import { branchMatches, laneOf, type BacklogLane } from '../../features/backlog/
 import { cardAgents } from '../../features/backlog/cardAgents';
 import { hasActiveAgent } from '../../features/backlog/activeAgent';
 import { turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
+import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView, NoteView } from '../protocol';
 import { send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { withMoves } from '../backlogActions';
@@ -15,6 +15,7 @@ import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
+import { NotesBox, NotesLane } from './notes';
 import './backlog.css';
 
 const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
@@ -41,6 +42,8 @@ export interface Props {
   integrations: number;
   autopilot?: AutopilotState;
   mergeQueue?: MergeQueueView;
+  /** The notes (BL-182): the Notes box and lane at the top. */
+  notes: NoteView[];
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -56,7 +59,7 @@ export interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
+export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, notes, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // A card dropped in a lane shows there at once, marked as saving, until the host has saved it.
   const busy = useBusy();
@@ -122,7 +125,9 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
           </span>
         </button>
       ))}
+      {!workingOnly && <NotesBox />}
       <NeedsYou items={items ?? []} />
+      {!workingOnly && <NotesLane notes={notes} />}
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && (
         <div class="empty">

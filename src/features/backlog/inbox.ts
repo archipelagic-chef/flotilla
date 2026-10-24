@@ -6,6 +6,7 @@ import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
 import { entryDate, parseTicket } from './ticket';
 import { writeAtomic, type LocalBacklog } from './localBacklog';
+import { fromNotesLine, noteIdsOf } from './notes';
 
 /**
  * The backlog's inbox: how agents add tickets. An agent writes a Markdown file into .flotilla/backlog/inbox/ (the
@@ -33,6 +34,8 @@ export interface Proposal {
   agent?: string;
   /** Small and mechanical: its work runs on the light model (level: light, BL-69). */
   light?: boolean;
+  /** The notes it was proposed from (note: NOTE-12, BL-182): they record it, and it links back to them. */
+  notes?: string[];
 }
 
 /** Reads a proposal: "---" front matter (key: value lines), then a ticket ("# Title", description). */
@@ -48,6 +51,7 @@ export function parseProposal(text: string): Proposal | { error: string } {
   const claim = fields.get('claim')?.toUpperCase();
   if (!claim && !ticket.title.trim()) return { error: 'It has no title: start the ticket with "# Title".' };
   const agent = fields.get('agent');
+  const notes = noteIdsOf(fields.get('note') ?? fields.get('notes'));
   return {
     ...(claim ? { claim } : {}),
     title: ticket.title.trim(),
@@ -57,6 +61,7 @@ export function parseProposal(text: string): Proposal | { error: string } {
     start: !!claim || /^(true|yes|1)$/i.test(fields.get('start') ?? ''),
     ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
     ...(/^light$/i.test(fields.get('level') ?? '') ? { light: true } : {}),
+    ...(notes.length ? { notes } : {}),
     ...(agent && entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
   };
 }
@@ -102,7 +107,14 @@ export function addProposal(
  */
 export async function takeInbox(
   store: LocalBacklog,
-  opts: { prefix: string; mode: AgentTicketMode; taken: readonly string[]; onStarted?(item: BacklogItem, branch: string): Promise<void> },
+  opts: {
+    prefix: string;
+    mode: AgentTicketMode;
+    taken: readonly string[];
+    onStarted?(item: BacklogItem, branch: string): Promise<void>;
+    /** A ticket proposed from notes (BL-182): they record what they became. */
+    onFromNotes?(notes: string[], item: BacklogItem): Promise<void>;
+  },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
   await requeueStaleTaking(dir);
@@ -157,11 +169,12 @@ export async function takeInbox(
         } else {
           await store.writeTicket(item.id, {
             title: proposal.title,
-            description: proposal.description,
+            description: proposal.notes ? `${proposal.description.trim()}\n\n${fromNotesLine(proposal.notes)}`.trim() : proposal.description,
             activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
           });
         }
         if (proposal.start && proposal.branch) await opts.onStarted?.(item, proposal.branch);
+        if (proposal.notes && !proposal.claim) await opts.onFromNotes?.(proposal.notes, item).catch(() => undefined);
         // Claims aren't new tickets: their ticket says who started, nobody needs telling.
         if (!proposal.claim) added.push(item);
       }

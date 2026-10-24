@@ -10,6 +10,8 @@ import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/ba
 import type { Need } from '../features/backlog/needs';
 import type { RunKind } from '../features/backlog/runBlocks';
 import type { ReviewFix } from '../features/backlog/review';
+import type { NoteOutcome } from '../features/backlog/notes';
+import type { Question } from '../features/backlog/report';
 import type { ChatState, LinkKind } from '../features/chats/chats';
 import type { CiJob, CiRun } from '../features/ci/githubActions';
 import type { RunAction } from '../features/ci/runActions';
@@ -49,6 +51,24 @@ export interface BacklogItemView extends BacklogItem {
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
   demo?: boolean;
+}
+
+/** A note (BL-182), as the backlog's Notes lane shows it. */
+export interface NoteView {
+  id: string;
+  title: string;
+  /** The note as written. */
+  text: string;
+  created: string;
+  /** Working: an agent handles it now. */
+  status: 'open' | 'working' | 'asking' | 'handled';
+  agent?: string;
+  /** Handled with another note, which leads (its questions and answers are there). */
+  with?: string;
+  /** What its agent asks: its words, and its questions to click. */
+  asks?: { reply: string; questions: Question[] };
+  became: NoteOutcome[];
+  handled?: string;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -259,6 +279,10 @@ export type HostMessage =
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
   | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
+  /** The notes (BL-182), oldest first; sent at start and whenever they change. */
+  | { type: 'notes'; notes: NoteView[] }
+  /** A note's action is finished (as a backlog action's is). */
+  | { type: 'noteDone'; message: Extract<WebviewMessage, { type: 'note' }>; failed?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -391,6 +415,10 @@ export type WebviewMessage =
   | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
+  /** Adds a note (with its pasted images, base64), answers a note's question, or opens its file (BL-182). */
+  | { type: 'note'; op: 'add'; text: string; images?: Array<{ name: string; data: string }> }
+  | { type: 'note'; op: 'answer'; id: string; text: string }
+  | { type: 'note'; op: 'open'; id: string }
   /** Add an item (VS Code's input box asks for its title). */
   | { type: 'backlog'; op: 'new' }
   /** priority null clears it. */

@@ -29,6 +29,8 @@ import { checkAllTickets } from './ui/backlog/checkAll';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
+import { NoteAgents } from './ui/backlog/notes';
+import { NoteStore } from './features/backlog/notes';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger, readyToMerge } from './ui/backlog/merge';
 import { levelReport } from './features/backlog/modelLevel';
@@ -386,8 +388,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
     ),
   );
-  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir });
+  // Notes (BL-182): requests jotted down in the backlog, which an agent turns into ticket proposals.
+  const noteStore = new NoteStore(backlog.dir);
+  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, noteStore);
   context.subscriptions.push(inbox);
+  const notes = new NoteAgents({
+    notes: noteStore,
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    isLeader: () => leader.isLeader,
+    admit: (id) => reviews.admitNew(id),
+    giveBack: (slot) => reviews.giveBack(slot),
+    pausedAll: () => pausedAll.held,
+  });
+  context.subscriptions.push(notes, vscode.commands.registerCommand('flotilla.newNote', () => notes.newNote().catch(reportError)));
+  sidebar.useNotes(notes);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
     extension: context,
@@ -502,6 +519,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     leader.start(() => {
       updateCiReads();
       void autopilot.tick();
+      void notes.tick();
       void improvement.tick().catch(() => undefined);
       void reviews.resumePaused();
       void finished.sweep();

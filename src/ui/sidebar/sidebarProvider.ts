@@ -19,6 +19,7 @@ import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks'
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import type { Merges } from '../backlog/merges';
+import type { NoteAgents } from '../backlog/notes';
 import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
@@ -187,6 +188,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       { dispose: () => clearTimeout(checksTimer) },
     );
     void this.postBacklog();
+  }
+
+  private notes: NoteAgents | undefined;
+
+  /** The notes (BL-182): the Notes box and lane at the top of the backlog. */
+  useNotes(notes: NoteAgents): void {
+    this.notes = notes;
+    this.subscriptions.push(notes.onDidChange(() => void this.postNotes()));
+    void this.postNotes();
+  }
+
+  private async postNotes(): Promise<void> {
+    if (this.notes) this.post({ type: 'notes', notes: await this.notes.views() });
   }
 
   private merges: Merges | undefined;
@@ -556,6 +570,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
+        void this.postNotes();
         this.post({ type: 'progress', tools: progressByTool() });
         this.post({ type: 'ci', views: this.ci.snapshot() });
         this.postStorage();
@@ -633,6 +648,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         } finally {
           this.post({ type: 'backlogDone', message: m, ...(failed ? { failed } : {}) });
           recordClickWait(`backlog:${m.op}`, clicked, 'id' in m ? m.id : undefined);
+        }
+        return;
+      }
+      case 'note': {
+        let failed = false;
+        try {
+          await this.notes?.onMessage(m);
+          await this.postNotes();
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          this.post({ type: 'noteDone', message: m, ...(failed ? { failed } : {}) });
         }
         return;
       }
