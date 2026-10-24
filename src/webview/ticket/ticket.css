@@ -1018,52 +1018,8 @@ button.work-row:hover {
   display: none;
 }
 
-/* The ticket's CI (BL-106): a line per branch with CI, which opens to the CI/CD view's run list (ui/ci.css). */
-.ci-panel {
-  margin-top: 4px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 12px;
-}
-.ci-worktree + .ci-worktree {
-  border-top: 1px solid var(--border);
-}
-.ci-line {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px 2px 4px;
-}
-.ci-summary {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 4px;
-  border-radius: 4px;
-  text-align: left;
-}
-.ci-summary:hover {
-  background: var(--vscode-list-hoverBackground);
-}
-.ci-summary .muted {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ci-line.failure strong {
   color: var(--error);
-}
-.ci-branch {
-  margin-left: auto;
-  font-family: var(--vscode-editor-font-family);
-  color: var(--muted);
-}
-/* The run list's rows, as the sidebar draws them. */
-.ci-runs {
-  padding: 2px 0 4px;
-  border-top: 1px solid var(--border);
 }
 .ci-runs .row {
   display: flex;
@@ -1110,17 +1066,6 @@ button.work-row:hover {
   color: var(--error);
   font-style: normal;
   white-space: normal;
-}
-.ci-runs button.icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-}
-.ci-runs button.icon:hover {
-  background: var(--vscode-toolbar-hoverBackground);
 }
 .ci-runs button.link {
   color: var(--vscode-textLink-foreground);

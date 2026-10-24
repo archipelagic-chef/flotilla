@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { ciWord, latestCi, tookLabel } from '../../features/ci/summary';
 import type { TicketCiView, TicketWebviewMessage } from '../ticketProtocol';
 import { CiRunList, STATUS, type CiActions } from '../ui/ciList';
+import './ci.css';
 
 /**
  * The ticket's CI (BL-106), under its state and Merge to main: a line per worktree whose branch has CI (the latest run,
