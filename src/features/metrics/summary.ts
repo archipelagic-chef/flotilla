@@ -72,6 +72,10 @@ export function metricDefs(all: readonly FlotillaEvent[]): MetricDef[] {
   const regions = (es: readonly FlotillaEvent[]) => conflicted(es).flatMap((e) => e.data.files.flatMap((f) => f.regions));
   const ended = (es: readonly FlotillaEvent[]) => of(es, 'agent-ended');
   const done = (es: readonly FlotillaEvent[]) => of(es, 'ticket-moved').filter((e) => e.data.to === 'done').length;
+  // The tickets whose agents' runs were recorded live: the history read in has no cost, so a ratio of cost per ticket
+  // counts only these (BL-178).
+  const recorded = new Set(of(all, 'agent-ended').filter((e) => !e.imported && e.ticket).map((e) => e.ticket));
+  const doneRecorded = (es: readonly FlotillaEvent[]) => new Set(of(es, 'ticket-moved').filter((e) => e.data.to === 'done' && recorded.has(e.ticket)).map((e) => e.ticket)).size;
   return [
     { id: 'tickets-done', label: 'Tickets done', better: 'higher', value: done },
     { id: 'lead-time-hours', label: 'Median hours from In Progress to Done', better: 'lower', unit: 'h', value: (es) => median(leadTimes(es, all)) },
@@ -97,10 +101,10 @@ export function metricDefs(all: readonly FlotillaEvent[]): MetricDef[] {
     { id: 'cost-usd', label: 'Agent cost', better: 'lower', unit: '$', value: (es) => (ended(es).some((e) => e.data.costUsd !== undefined) ? sum(ended(es).map((e) => e.data.costUsd ?? 0)) : undefined) },
     {
       id: 'cost-per-ticket',
-      label: 'Agent cost per ticket done',
+      label: 'Agent cost per ticket done (of those whose agents were recorded)',
       better: 'lower',
       unit: '$',
-      value: (es) => (ended(es).some((e) => e.data.costUsd !== undefined) ? ratio(sum(ended(es).map((e) => e.data.costUsd ?? 0)), done(es)) : undefined),
+      value: (es) => (ended(es).some((e) => e.data.costUsd !== undefined) ? ratio(sum(ended(es).map((e) => e.data.costUsd ?? 0)), doneRecorded(es)) : undefined),
     },
     { id: 'limit-hits', label: 'Usage limits hit', better: 'lower', value: (es) => of(es, 'limit-hit').length },
     { id: 'limit-hours', label: 'Hours waited for usage limits', better: 'lower', unit: 'h', value: (es) => sum(of(es, 'limit-lifted').map((e) => e.data.minutes ?? 0)) / 60 },

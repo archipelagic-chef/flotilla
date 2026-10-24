@@ -5,7 +5,7 @@ import { runGit } from '../../core/git/gitCli';
 import { entryAgent } from '../backlog/backlog';
 import { parseVerdict } from '../backlog/review';
 import type { Ticket } from '../backlog/ticket';
-import { appendEvents, eventsDir, type EventData, type EventKind, type FlotillaEvent } from './events';
+import { appendEvents, eventsDir, parseEvents, type EventData, type EventKind, type FlotillaEvent } from './events';
 
 /**
  * The history from before the events were recorded, read in once (BL-157) so the metrics aren't empty on the first
@@ -13,6 +13,11 @@ import { appendEvents, eventsDir, type EventData, type EventKind, type FlotillaE
  * replayed from git (as BL-155 measured them). Every event read in is marked `imported`.
  */
 const IMPORTED_MARK = 'imported';
+/**
+ * Which import wrote the mark (its first line, "version N"). A mark of an older one (or of none: just a date) has its
+ * history read in again: version 2 (BL-178) counts each ticket once, where 1 read a ticket with a folder twice.
+ */
+const IMPORT_VERSION = 2;
 
 const LANES: Record<string, string> = { 'To Do': 'todo', 'In Progress': 'doing', 'In Review': 'review', Done: 'done' };
 
@@ -101,32 +106,94 @@ export async function replayMerges(cwd: string, o: { since?: string; ref?: strin
   return out.reverse();
 }
 
-/** Whether the history was read in (or is being read in) already. */
+/** The version of the import that wrote a mark's text: 1 for the first one's (just a date). */
+function markVersion(text: string): number {
+  return Number(/^version (\d+)/.exec(text)?.[1] ?? 1);
+}
+
+/** Whether the history was read in (or is being read in) by this version of the import. */
 export function historyImported(commonDir: string): boolean {
-  return fs.existsSync(path.join(eventsDir(commonDir), IMPORTED_MARK));
+  const text = (() => {
+    try {
+      return fs.readFileSync(path.join(eventsDir(commonDir), IMPORTED_MARK), 'utf8');
+    } catch {
+      return undefined;
+    }
+  })();
+  return text !== undefined && markVersion(text) >= IMPORT_VERSION;
+}
+
+/** Each event once: one per ticket, kind, minute and data (BL-178), the first kept. */
+export function distinctEvents(events: readonly FlotillaEvent[]): FlotillaEvent[] {
+  const seen = new Set<string>();
+  return events.filter((e) => {
+    const key = `${e.ticket ?? ''}\t${e.kind}\t${e.at.slice(0, 16)}\t${JSON.stringify(e.data)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The months' event files. */
+async function eventFiles(commonDir: string): Promise<string[]> {
+  const names = await fs.promises.readdir(eventsDir(commonDir)).catch(() => [] as string[]);
+  return names.filter((n) => /^events-\d{4}-\d{2}\.jsonl$/.test(n)).map((n) => path.join(eventsDir(commonDir), n));
 }
 
 /**
- * Reads the history in, once per repository: the tickets' activity and the merges of the main branch. Later calls
- * do nothing (a mark next to the events says it's done). Returns how many events it read in, or undefined when it was
- * done before. before: when recording started (what happened since isn't read in).
+ * Removes the events an older import read in, keeping the live ones as they are. Each file is rewritten whole (by a
+ * rename); what another window appended while it was being written is taken over before the rename. Returns when the
+ * first live event was recorded, if there is one.
+ */
+async function dropImported(commonDir: string): Promise<string | undefined> {
+  let first: string | undefined;
+  for (const file of await eventFiles(commonDir)) {
+    const text = await fs.promises.readFile(file, 'utf8').catch(() => '');
+    const live = parseEvents(text).filter((e) => !e.imported);
+    for (const e of live) if (!first || e.at < first) first = e.at;
+    const tmp = `${file}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, live.map((e) => `${JSON.stringify(e)}\n`).join(''));
+    const now = await fs.promises.readFile(file, 'utf8').catch(() => text);
+    if (now.length > text.length) await fs.promises.appendFile(tmp, now.slice(text.length));
+    await fs.promises.rename(tmp, file);
+  }
+  return first;
+}
+
+/**
+ * Reads the history in, once per repository and version of the import: the tickets' activity and the merges of the
+ * main branch. Later calls do nothing (a mark next to the events says it's done, and by which version). A history an
+ * older version read in is read in again: its events are replaced, the live ones kept. Returns how many events it read
+ * in, or undefined when it was done before. before: when recording started (what happened since isn't read in); the
+ * first live event recorded, when that's earlier.
  */
 export async function importHistory(o: { commonDir: string; mainRoot: string; tickets: { id: string; ticket: Pick<Ticket, 'activity'> }[]; ref?: string; before?: Date }): Promise<number | undefined> {
   const mark = path.join(eventsDir(o.commonDir), IMPORTED_MARK);
   if (historyImported(o.commonDir)) return undefined;
   await fs.promises.mkdir(eventsDir(o.commonDir), { recursive: true });
+  // An older version's mark is moved aside: only one window manages to, and that one reads the history in again.
+  const again = fs.existsSync(mark);
+  if (again) {
+    try {
+      await fs.promises.rename(mark, `${mark}.${process.pid}.old`);
+    } catch {
+      return undefined;
+    }
+  }
   // Taken first, so two windows don't both read it in: the second finds the mark.
   try {
-    await fs.promises.writeFile(mark, `${new Date().toISOString()}\n`, { flag: 'wx' });
+    await fs.promises.writeFile(mark, `version ${IMPORT_VERSION}\n${new Date().toISOString()}\n`, { flag: 'wx' });
   } catch {
     return undefined;
   }
+  if (again) await fs.promises.rm(`${mark}.${process.pid}.old`, { force: true });
+  const firstLive = again ? await dropImported(o.commonDir) : undefined;
   const events = o.tickets.flatMap((t) => eventsFromTicket(t.id, t.ticket));
   // The merges of the months kept whole (older ones would be rolled up at once).
   events.push(...(await replayMerges(o.mainRoot, { ref: o.ref, since: new Date(Date.now() - 365 * 86_400_000).toISOString() }).catch(() => [])));
   // What happened since recording started is recorded already.
-  const before = o.before?.toISOString();
-  const old = events.filter((e) => !before || e.at < before).sort((a, b) => a.at.localeCompare(b.at));
+  const before = [o.before?.toISOString(), firstLive].filter((t): t is string => !!t).sort()[0];
+  const old = distinctEvents(events.filter((e) => !before || e.at < before).sort((a, b) => a.at.localeCompare(b.at)));
   await appendEvents(o.commonDir, old);
   return old.length;
 }

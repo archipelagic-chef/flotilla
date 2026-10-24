@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { conflictRegions, parseConflictRegions } from '../../../../src/core/git/conflictRegions';
 import { parseTicket } from '../../../../src/features/backlog/ticket';
-import { readEvents } from '../../../../src/features/metrics/events';
+import { LocalBacklog } from '../../../../src/features/backlog/localBacklog';
+import { appendEvents, readEvents, type FlotillaEvent } from '../../../../src/features/metrics/events';
 import { eventsFromTicket, historyImported, importHistory, replayMerges } from '../../../../src/features/metrics/import';
 import { git, initRepo, makeTempDir, writeFile } from '../../../helpers/gitRepo';
 
@@ -133,5 +134,53 @@ describe('the history read in', () => {
     await importHistory({ commonDir, mainRoot: repo, tickets: [] });
     expect((await readEvents(commonDir)).map((e) => e.kind)).toEqual(['merge-conflicted']);
     expect(fs.existsSync(path.join(commonDir, 'flotilla', 'metrics', 'imported'))).toBe(true);
+  });
+
+  it('reads a ticket with an attachments folder once (BL-178)', async () => {
+    const repo = initRepo();
+    const commonDir = path.join(repo, '.git');
+    const store = new LocalBacklog(repo, commonDir);
+    fs.mkdirSync(store.dir, { recursive: true });
+    fs.writeFileSync(path.join(store.dir, 'BL-1.md'), TICKET);
+    fs.mkdirSync(path.join(store.dir, 'BL-1'));
+    fs.writeFileSync(path.join(store.dir, 'BL-1', 'demo.gif'), 'GIF89a');
+    const ids = await store.ticketIds();
+    expect(ids).toEqual(['BL-1']);
+    const tickets = await Promise.all(ids.map(async (id) => ({ id, ticket: await store.readTicket({ id, title: id }) })));
+    await importHistory({ commonDir, mainRoot: repo, tickets });
+    expect((await readEvents(commonDir)).filter((e) => e.kind === 'merge-landed')).toHaveLength(1);
+  });
+
+  it('drops the doubles of a ticket read twice', async () => {
+    const repo = initRepo();
+    const commonDir = path.join(repo, '.git');
+    const t = { id: 'BL-7', ticket: parseTicket(TICKET) };
+    const n = await importHistory({ commonDir, mainRoot: repo, tickets: [t, t] });
+    expect(n).toBe(eventsFromTicket('BL-7', t.ticket).length);
+  });
+
+  it('reads a history the old import doubled in again, once, and keeps the live events', async () => {
+    const repo = initRepo();
+    const commonDir = path.join(repo, '.git');
+    const t = { id: 'BL-7', ticket: parseTicket(TICKET) };
+    const doubled = eventsFromTicket('BL-7', t.ticket).filter((e) => e.at < new Date(2026, 9, 20, 12, 30).toISOString());
+    const live: FlotillaEvent[] = [
+      { at: new Date(2026, 9, 20, 12, 30).toISOString(), kind: 'merge-cancelled', ticket: 'BL-7', data: { reason: 'live' } },
+      { at: new Date(2026, 9, 20, 13, 0).toISOString(), kind: 'merge-landed', ticket: 'BL-7', data: { into: 'main', commit: 'abc1234' } },
+    ];
+    await appendEvents(commonDir, [...doubled, ...doubled, ...live]);
+    // The old import's mark: just a date.
+    fs.writeFileSync(path.join(commonDir, 'flotilla', 'metrics', 'imported'), '2026-10-20T12:00:00.000Z\n');
+    expect(historyImported(commonDir)).toBe(false);
+    // Recording started at the first live event, though this window opened later.
+    const n = await importHistory({ commonDir, mainRoot: repo, tickets: [t, t], before: new Date(2026, 9, 24) });
+    const events = await readEvents(commonDir);
+    expect(n).toBe(doubled.length);
+    expect(events.filter((e) => e.imported)).toEqual(doubled);
+    expect(events.filter((e) => !e.imported)).toEqual(live);
+    expect(historyImported(commonDir)).toBe(true);
+    expect(fs.readFileSync(path.join(commonDir, 'flotilla', 'metrics', 'imported'), 'utf8')).toMatch(/^version 2\n/);
+    expect(await importHistory({ commonDir, mainRoot: repo, tickets: [t] })).toBeUndefined();
+    expect(fs.readdirSync(path.join(commonDir, 'flotilla', 'metrics')).filter((f) => /\.(tmp|old)$/.test(f))).toEqual([]);
   });
 });
