@@ -1,4 +1,5 @@
 import { formatTokens } from '../../features/chats/usage';
+import { DEFAULT_STUCK_RULES, health, nowLine, progress, type StuckRules } from '../../features/chats/activity';
 import { useEffect, useState } from 'preact/hooks';
 import type { AgentChatView, TicketView } from '../ticketProtocol';
 import { lastReport, runningFor } from '../activeAgents';
@@ -124,14 +125,89 @@ export function modelName(model: string): string {
   return m[2] ? `${family} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : family;
 }
 
-/** Every agent on the ticket now, in full: its state, how long it has run, its worktree, what it last reported. */
+/** A line with `code` in it, the code shown as such. */
+export function WithCode({ text }: { text: string }) {
+  return <>{text.split('`').map((part, n) => (n % 2 ? <code key={n}>{part}</code> : part))}</>;
+}
+
+/**
+ * What a working agent is doing (BL-175): now (a click opens its transcript), its latest thought (unfolding to the last
+ * few), its plan's progress (unfolding to the list), and its health: when it last wrote, or why it looks stuck, with
+ * what to do about it.
+ */
+export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][number]; rules: StuckRules }) {
+  const activity = a.activity;
+  if (!activity) return null;
+  const now = nowLine(activity);
+  const plan = progress(activity);
+  const thoughts = activity.thoughts ?? [];
+  const h = health(activity, a.updated, rules, !!a.runs && !a.held && a.state === 'working');
+  return (
+    <div class={`agent-live${h.stuck ? ' stuck' : ''}`}>
+      {now && (
+        <button key="now" class="agent-now" onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open its live transcript">
+          <i class={`codicon ${now.running ? 'codicon-loading codicon-modifier-spin' : 'codicon-tools'}`} /> <WithCode text={now.text} />
+        </button>
+      )}
+      {thoughts.length > 0 &&
+        (thoughts.length > 1 ? (
+          <details key="thoughts" class="agent-thoughts">
+            <summary title="Its latest thought: unfold for the last few">“{thoughts.at(-1)}”</summary>
+            <ol>
+              {thoughts.slice(0, -1).map((t, n) => (
+                <li key={n}>“{t}”</li>
+              ))}
+            </ol>
+          </details>
+        ) : (
+          <div key="thought" class="agent-thoughts">“{thoughts[0]}”</div>
+        ))}
+      {plan && (
+        <details key="plan" class="agent-plan">
+          <summary title="Its plan (its todo list): unfold for the steps">
+            <progress max={plan.total} value={plan.done} /> {plan.done} of {plan.total}
+            {plan.current ? ` · ${plan.current}` : ''}
+          </summary>
+          <ul>
+            {activity.todos!.map((t, n) => (
+              <li key={n} class={`todo ${t.status}`}>
+                <i class={`codicon ${t.status === 'completed' ? 'codicon-pass-filled' : t.status === 'in_progress' ? 'codicon-circle-large-filled' : 'codicon-circle-large-outline'}`} /> {t.text}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <div key="health" class={`agent-health${h.stuck ? ' stuck' : ''}`}>
+        <i class={`codicon ${h.stuck ? 'codicon-warning' : 'codicon-pulse'}`} /> <WithCode text={h.stuck ? `Looks stuck: ${h.text}` : h.text} />
+        {h.stuck && (
+          <span class="agent-health-actions">
+            <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" title="Open its live transcript">
+              <i class="codicon codicon-output" /> Open Transcript
+            </ActionButton>
+            <ActionButton class="button secondary" message={{ type: 'check' }} working="Checking…" title="Check the ticket: its agents, worktree and state">
+              <i class="codicon codicon-checklist" /> Check
+            </ActionButton>
+            {a.runs !== 'panel' && (
+              <ActionButton class="button secondary" message={{ type: 'agent', action: 'stop', session: a.id }} working="Stopping…" title={STOP_TIP}>
+                <i class="codicon codicon-debug-stop" /> Stop
+              </ActionButton>
+            )}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Every agent on the ticket now, in full: its state, how long it has run, its worktree, what it's doing, what it last reported. */
 export function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: TicketView['agents'] }) {
-  // How long each has run goes on counting between updates.
+  // How long each has run goes on counting between updates: every second while one's status shows a clock.
+  const live = agents.some((a) => a.activity);
   const [, tick] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => tick((n) => n + 1), 60_000);
+    const timer = setInterval(() => document.visibilityState === 'visible' && tick((n) => n + 1), live ? 1000 : 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [live]);
   return (
     <section class="block active-agents">
       <div class="block-head">
@@ -160,6 +236,7 @@ export function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: T
                   <i class="codicon codicon-comment-discussion" /> Open Chat
                 </ActionButton>
               </div>
+              <LiveStatus agent={a} rules={ticket.stuckRules ?? DEFAULT_STUCK_RULES} />
               {report ? (
                 <div class="active-agent-report">
                   <span class="muted">Last report · {report.date}</span>

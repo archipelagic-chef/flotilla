@@ -623,6 +623,10 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
 /** How agents keep their branch current with main, and what they do when they need another ticket's work (BL-55). */
 export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
 
+/** Agents keep a todo list, so the ticket shows how far they are (BL-175). */
+export const PLAN_NOTE =
+  'Plan with your todo list (TodoWrite) when you start: a few steps, from reading to the final report. Keep it current as you go (mark a step in progress when you begin it, completed when it is done, and add steps you find): the ticket shows it to the user as your progress.';
+
 /** What an agent is told when it starts on an item. */
 export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
@@ -634,6 +638,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | '
     ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
+    PLAN_NOTE,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
     ...(level ? [level] : []),
     MERGE_NOTES,

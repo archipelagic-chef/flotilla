@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { readyToMerge } from '../../features/backlog/backlog';
 import { CARD_AGENT_LABEL, type CardAgent } from '../../features/backlog/cardAgents';
+import { statusLine } from '../../features/chats/activity';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
 import { agentOf } from '../../features/backlog/activeAgent';
 import { conflictsOf } from '../../features/backlog/mainDrift';
@@ -44,9 +45,12 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
   // Whose turn its review is (local items only: an issue's review is in its tracker).
   const turn = remote || item.proposed ? undefined : turnOf(item);
+  // A working agent's status, on a line of its own (BL-175): the one that did something last.
+  const since = (a: CardAgent) => a.activity?.tool?.since ?? '';
+  const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
   return (
     <div
-      class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}`}
+      class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}${live && !renaming ? ' has-status' : ''}`}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
       data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item), backlogQueued: !!queuedBehind })}
@@ -295,6 +299,7 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
           )}
         </span>
       )}
+      {!renaming && live?.activity && <AgentLine agent={live} />}
     </div>
   );
 }
@@ -369,5 +374,24 @@ function RenameBox({ item, onDone }: { item: BacklogItem; onDone(): void }) {
       }}
       onBlur={save}
     />
+  );
+}
+
+/** A working agent's line on its card (BL-175): what it does now, with its plan's progress; a warning when it looks stuck. */
+function AgentLine({ agent }: { agent: CardAgent }) {
+  const running = !!agent.activity?.tool && !agent.activity.tool.done;
+  // Its command's clock goes on counting between updates.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => document.visibilityState === 'visible' && tick((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+  const line = statusLine(agent.activity!) ?? '';
+  return (
+    <span class={`agent-status${agent.stuck ? ' stuck' : ''}`} data-tip={agent.stuck ? `Agent ${agent.name} looks stuck: ${agent.stuck}` : `Agent ${agent.name}: ${line}`}>
+      <i class={`codicon ${agent.stuck ? 'codicon-warning' : running ? 'codicon-loading codicon-modifier-spin' : 'codicon-tools'}`} />
+      <span class="agent-status-text">{agent.stuck ? `Looks stuck: ${agent.stuck.replace(/`/g, '')}` : line.replace(/`/g, '')}</span>
+    </span>
   );
 }

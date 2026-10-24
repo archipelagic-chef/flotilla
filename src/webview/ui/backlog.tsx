@@ -71,6 +71,11 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
   const chats = workstreams.flatMap((w) => w.chats);
   const agentsOf = (item: BacklogItem) => (item.source ? [] : cardAgents(item, chats));
+  // What the autopilot's agents are doing, for its details (BL-175).
+  const live = new Map((autopilot?.agents ?? []).flatMap((g) => {
+    const item = items?.find((i) => i.id === g.id);
+    return item ? [[g.id, agentsOf(item)] as const] : [];
+  }));
 
   // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
   const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
@@ -92,8 +97,8 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
       <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
-      {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
-      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
