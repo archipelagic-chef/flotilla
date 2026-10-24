@@ -7,6 +7,10 @@
 // overrides it), by default 1 per 16 cores. A merge's runs (its checks, and its fix agent's) go first: they run in a
 // temporary worktree in a `flotilla-merge` folder, and someone is waiting on them. Runs given files
 // (`npm test -- tests/unit/x.test.ts`) don't queue: they're light, and that's how agents work between full runs.
+//
+// `npm run test:related` (`--related`) runs the tests of what changed since the merge base with main (committed, not
+// committed, and new files): vitest's `related` mode on those files, which doesn't queue either. A change that every
+// test may depend on (a shared helper, the vitest config, the packages, a tsconfig) runs the full suite instead.
 import { execFileSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -22,6 +26,21 @@ const VALUE_OPTIONS = new Set([
   '-t', '--testNamePattern', '-c', '--config', '-r', '--root', '--dir', '--project', '--reporter', '--outputFile',
   '--pool', '--shard', '--bail', '--retry', '--maxWorkers', '--environment', '--exclude', '--mode', '--testTimeout',
 ]);
+
+/** Changes that every test may depend on: a related run of them is the full suite. */
+const SHARED = [/^tests\/helpers\//, /^vitest\.config\./, /^package(-lock)?\.json$/, /^tsconfig[^/]*\.json$/];
+/** Files vitest can follow imports from (others, as Markdown, change no test). */
+const CODE = /\.(?:[cm]?[jt]sx?|json)$/;
+
+/**
+ * What a related run runs, given the files changed since main (paths from the repository's root): the full suite
+ * when a shared file changed (reason: which), else the changed code files (none: nothing to run).
+ */
+export function relatedPlan(changed) {
+  const shared = changed.find((f) => SHARED.some((r) => r.test(f)));
+  if (shared) return { full: true, reason: shared, files: [] };
+  return { full: false, files: changed.filter((f) => CODE.test(f)) };
+}
 
 /** How many runs go at once: the configured number, or 1 per 16 cores (git-heavy tests time out with two 8-worker runs on 16 cores); at least 1. */
 export function slotCount(cores, configured) {
@@ -154,7 +173,17 @@ function configured(commonDir) {
   }
 }
 
-async function main(args) {
+/** The files changed since the merge base with main (or origin/main), committed or not, that still exist. */
+function changedSinceMain(toplevel) {
+  const base = git(['merge-base', 'HEAD', 'main'], toplevel) ?? git(['merge-base', 'HEAD', 'origin/main'], toplevel);
+  if (!base) return undefined;
+  const files = [...(git(['diff', '--name-only', base[0]], toplevel) ?? []), ...(git(['ls-files', '--others', '--exclude-standard'], toplevel) ?? [])];
+  return [...new Set(files)].filter((f) => f && fs.existsSync(path.join(toplevel, f)));
+}
+
+async function main(argv) {
+  let args = argv.filter((a) => a !== '--related');
+  let mode = 'run';
   const cores = os.availableParallelism?.() ?? os.cpus().length;
   const cwd = process.cwd();
   const [toplevel, commonDir, branch] = git(['rev-parse', '--show-toplevel', '--git-common-dir', '--abbrev-ref', 'HEAD'], cwd) ?? [];
@@ -162,8 +191,24 @@ async function main(args) {
   // Stopped while waiting: leave the queue ('exit' frees the slot). Once vitest runs, it's stopped too.
   let child;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => (child ? child.kill(signal) : process.exit(130)));
+  if (args.length < argv.length) {
+    const changed = toplevel && changedSinceMain(toplevel);
+    if (!changed) console.log('No main branch to compare with: running the full suite.');
+    else {
+      const plan = relatedPlan(changed);
+      if (plan.full) console.log(`${plan.reason} changed: running the full suite.`);
+      else if (!plan.files.length) {
+        console.log('No code changed since main: no tests to run.');
+        process.exit(0);
+      } else {
+        console.log(`Running the tests related to ${plan.files.length} changed file(s).`);
+        mode = 'related';
+        args = [...plan.files.map((f) => path.join(toplevel, f)), ...args];
+      }
+    }
+  }
   const queued = Date.now();
-  const full = !namesFiles(args);
+  const full = mode === 'run' && !namesFiles(args);
   if (commonDir && full) {
     const { label, first } = describeRun(toplevel, branch);
     await takeSlot({ dir: path.join(path.resolve(cwd, commonDir), 'flotilla-slots'), n, label, first, onWait: (_, line) => console.log(line) });
@@ -171,7 +216,7 @@ async function main(args) {
   const started = Date.now();
   const workers = args.some((a) => a.startsWith('--maxWorkers')) ? [] : [`--maxWorkers=${workersFor(cores, n)}`];
   const vitest = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'vitest', 'vitest.mjs');
-  child = spawn(process.execPath, [vitest, 'run', ...workers, ...args], { stdio: 'inherit' });
+  child = spawn(process.execPath, [vitest, mode, ...(mode === 'related' ? ['--run'] : []), ...workers, ...args], { stdio: 'inherit' });
   child.on('exit', (code, signal) => {
     // A full run's time and its wait for a slot, for the metrics (BL-157, BL-138).
     if (full && commonDir) {

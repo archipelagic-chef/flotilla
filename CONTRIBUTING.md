@@ -7,13 +7,14 @@ Open the folder in the devcontainer (or on the host with Node 22 and git), then:
 ```bash
 npm ci
 npm test               # unit + git integration tests (vitest), queued with the other worktrees' runs
+npm run test:related   # only the tests of what changed since main
 npm run typecheck
 npm run build
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
 
-`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
+`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait. While you work, run `npm run test:related`: `vitest related` on the files changed since the merge base with main (committed, not committed and new), so only the tests that import them run, without waiting; a change to `tests/helpers/`, `vitest.config.ts`, `package.json`, the lockfile or a tsconfig runs the full suite instead (queued). A single file with `npx vitest run <file>` is enough when you know which. Run the full `npm test` once, before "Ready for review" (the merge's checks run it again).
 
 Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
 
