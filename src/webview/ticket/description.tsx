@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TicketView } from '../ticketProtocol';
 import { send } from './actions';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
+import './description.css';
 
 export function Description({ ticket }: { ticket: TicketView }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);

@@ -6,6 +6,7 @@ import { AgentStatus, outsideAgents } from './agents';
 import { DiscussPanel, QueuedPanel, ReviewPanel } from './reviewPanel';
 import { CleanUpPanel, MergedPanel, MergingPanel } from './mergePanel';
 import { ChecksRunning } from './checksPanel';
+import './stateCard.css';
 
 /**
  * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.

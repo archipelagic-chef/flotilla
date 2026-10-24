@@ -9,6 +9,7 @@ import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 import { act, ActionButton, send, UpdateFromButton, useWorking, WorkingTag } from './actions';
 import { STATUSES } from './header';
 import { ChecksRuns } from './checksPanel';
+import './mergePanel.css';
 
 /** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
 export function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {

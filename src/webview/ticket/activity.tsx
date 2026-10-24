@@ -9,6 +9,7 @@ import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from '
 import { REPLY_TO, sendComment, useSending } from './comments';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
 import { ago, ChatCard, chatState } from './agents';
+import './activity.css';
 
 type ActivityEntry = TicketView['activity'][number];
 

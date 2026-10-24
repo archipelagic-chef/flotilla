@@ -1,0 +1,322 @@
+/* A card's Create Worktree: the icon and its arrow, close together, the arrow's menu under them (BL-66). */
+.split-icons {
+  position: relative;
+  display: inline-flex;
+}
+.split-icons .icon.more {
+  width: 14px;
+  min-width: 14px;
+}
+.split-icons .icon.more .codicon {
+  font-size: 12px;
+}
+.split-icons .split-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+}
+/* A Review card's Run button: always shown, at the end of the row like the hover actions. */
+.run-button {
+  margin-left: auto;
+  flex: none;
+}
+.button.small {
+  padding: 0 8px;
+  flex: none;
+}
+.backlog-item .rename {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  outline: none;
+}
+.backlog-item .rename:focus {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+.backlog-item .rename {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+.backlog-item {
+  position: relative;
+  padding-left: 6px;
+  gap: 4px;
+  cursor: grab;
+}
+.backlog-item .status-toggle {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.backlog-item .status-toggle .codicon {
+  font-size: 14px;
+  color: var(--muted);
+}
+.backlog-item.st-doing .status-toggle .codicon {
+  color: var(--working);
+}
+.backlog-item.st-done .status-toggle .codicon {
+  color: var(--done);
+}
+.backlog-item .status-toggle:hover .codicon::before {
+  content: '\eab2'; /* check */
+}
+.backlog-item .item-id {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.backlog-item .name {
+  flex: 1 1 auto;
+}
+/* Dropped in a lane: shown there while the host saves it. */
+.backlog-item.saving {
+  opacity: 0.65;
+}
+.backlog-item .item-saving {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.backlog-item.st-done .name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.ws-chip {
+  flex: none;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--ws-color, var(--focus)) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws-color, var(--focus)) 60%, transparent);
+}
+.ws-chip:hover {
+  background: color-mix(in srgb, var(--ws-color, var(--focus)) 45%, transparent);
+}
+.ws-more {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* The title keeps its room; the description's first line gets what's left. */
+.backlog-item .name {
+  flex: 0 1 auto;
+  min-width: 4em;
+}
+.backlog-item .desc {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.backlog-item .activity-count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item .activity-count .codicon {
+  font-size: 12px;
+}
+.backlog-item .link-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.backlog-item .link-badge:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.backlog-item .link-badge .codicon {
+  font-size: 13px;
+}
+/* Whether a ticket's work is merged (from git): green when it is, yellow while some isn't, muted for none yet. */
+.backlog-item .merge-chip {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid currentColor;
+}
+.backlog-item .merge-chip.merged {
+  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+}
+.backlog-item .merge-chip.partly,
+.backlog-item .merge-chip.unmerged {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
+.backlog-item .merge-warning {
+  flex: none;
+  display: inline-flex;
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
+/* How its branches stand against main (BL-55): a conflict, or tickets it waits for. */
+.backlog-item .drift-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.backlog-item .drift-badge.conflict {
+  color: var(--vscode-editorWarning-foreground, var(--waiting));
+  border: 1px solid currentColor;
+}
+.backlog-item .drift-badge .codicon {
+  font-size: 12px;
+}
+.backlog-item .source-icon {
+  display: grid;
+  place-items: center;
+}
+.backlog-item a.icon {
+  color: inherit;
+}
+/* Whose turn a review is: the user's in the waiting color, an agent's muted, a stopped one as an error. */
+.backlog-item .turn-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 9em;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item .turn-chip .codicon {
+  font-size: 12px;
+}
+.backlog-item .turn-chip.mine {
+  color: var(--waiting);
+}
+.backlog-item .turn-chip.turn-stopped {
+  color: var(--error);
+}
+/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
+.backlog-item .demo-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  cursor: pointer;
+}
+.backlog-item .demo-mark .codicon {
+  font-size: 11px;
+}
+.backlog-item .demo-mark:hover,
+.backlog-item .demo-mark:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.backlog-item.has-status {
+  height: auto;
+  min-height: var(--row-height);
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.backlog-item .agent-status {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 0 3px 46px;
+  box-sizing: border-box;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.backlog-item .agent-status .codicon {
+  font-size: 11px;
+  flex: none;
+}
+.backlog-item .agent-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backlog-item .agent-status.stuck {
+  color: var(--vscode-editorWarning-foreground);
+}
+.backlog-item .agent-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 8em;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.backlog-item .agent-chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.backlog-item .agent-chip.waiting {
+  color: var(--waiting);
+}
+.backlog-item .agent-chip .codicon {
+  font-size: 12px;
+}
+.backlog-item .parent-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.backlog-item .parent-chip .codicon {
+  font-size: 11px;
+}
+.proposal-actions {
+  display: flex;
+  margin-left: auto;
+  flex: none;
+}

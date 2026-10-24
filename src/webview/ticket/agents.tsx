@@ -7,6 +7,7 @@ import { ActionButton, send } from './actions';
 import { Rendered } from './markdownBox';
 import { FIX_TIP } from './reviewPanel';
 import { stoppedLabel } from '../shortTime';
+import './agents.css';
 
 export const CHAT_STATE: Record<string, { label: string; cls: string }> = {
   working: { label: 'Working', cls: 'working' },

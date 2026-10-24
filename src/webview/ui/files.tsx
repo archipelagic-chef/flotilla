@@ -6,6 +6,7 @@ import { dirKey, type FilesApi, type Update } from './app';
 import { fileIcon, folderIcon } from './icons';
 import { Virtual } from './virtual';
 import { treeRows, type TreeRow } from './treeRows';
+import './files.css';
 
 export const CHANGE_LETTER: Record<ChangeKind, string> = {
   modified: 'M',

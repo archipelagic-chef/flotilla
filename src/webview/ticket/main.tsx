@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import type { AskView } from '../../features/backlog/ask';
 import type { TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+// The shared rules first: each section's own CSS, imported by its module, comes after them.
+import '../ui/priority.css';
+import './ticket.css';
 import { Attachments } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { applyTicketParts } from '../ticketParts';
 import { activeAgents } from '../activeAgents';
 import { PriorityPicker } from '../ui/priority';
-import '../ui/priority.css';
-import './ticket.css';
 import { TicketCi } from './ci';
 import { ActionButton, finished, send, useWorkingChanges, workingLabel } from './actions';
 import { showingEntries } from './comments';

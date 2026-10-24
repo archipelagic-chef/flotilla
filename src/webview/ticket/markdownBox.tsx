@@ -4,6 +4,7 @@ import { drawDiagrams } from './diagrams';
 import { type Format, formatEdit, type Markup, pasteLink, type TextEdit } from './format';
 import { demoLength } from '../../features/backlog/demo';
 import { act, send } from './actions';
+import './markdownBox.css';
 
 /** Replies to pasted or dropped images, by request id. */
 export const imageReplies = new Map<number, (markdown: string) => void>();

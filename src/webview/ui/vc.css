@@ -1,0 +1,245 @@
+.button.wide {
+  width: 100%;
+}
+/* Commit ▾: the main action and a menu of the other ways to commit, as in VS Code. */
+.split-button {
+  position: relative;
+  display: flex;
+  gap: 1px;
+}
+.split-button > .button:first-child {
+  flex: 1;
+  border-radius: 2px 0 0 2px;
+}
+.split-button > .button.more {
+  flex: none;
+  padding: 2px 4px;
+  border-radius: 0 2px 2px 0;
+  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
+}
+/* ---- commit history ---- */
+.history {
+  margin-top: 2px;
+}
+.badge.outgoing {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.hover-actions + .badge.outgoing {
+  margin-left: 4px;
+}
+.commit-details {
+  padding: 2px 0 6px;
+}
+.commit-body,
+.commit-meta {
+  padding: 0 8px 2px 42px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.commit-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--vscode-foreground);
+}
+.commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  padding-bottom: 4px;
+}
+.commit-meta .link {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.commit-meta .outgoing-note {
+  color: var(--vscode-gitDecoration-addedResourceForeground, var(--done));
+}
+.commit-file {
+  padding-left: 40px;
+}
+.commit-details .row.group-empty {
+  padding-left: 42px;
+}
+.log-row.outgoing > .codicon {
+  color: var(--vscode-gitDecoration-addedResourceForeground, var(--done));
+}
+.ref.tag-ref {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.compare-swap {
+  display: flex;
+  justify-content: center;
+  margin: -4px 0;
+}
+.compare-swap .codicon {
+  transform: rotate(90deg);
+}
+/* ---- comparisons ---- */
+.comparison + .comparison {
+  margin-top: 4px;
+}
+.comparison-head {
+  gap: 4px;
+  padding-left: 2px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+.comparison-head > .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.comparison-head .lane-chev-left {
+  width: 16px;
+  color: var(--muted);
+}
+.comparison-head .close {
+  flex: none;
+  margin-left: 2px;
+  width: 20px;
+  height: 20px;
+  visibility: hidden;
+}
+.comparison-head:hover .close,
+.comparison-head:focus-within .close {
+  visibility: visible;
+}
+.comparison-head .hover-actions + .badge,
+.comparison-head .badge:first-of-type {
+  margin-left: auto;
+}
+.comparison-head .hover-actions {
+  margin-left: auto;
+}
+/* ---- comparison: two branch pickers ---- */
+.compare-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 8px 20px;
+}
+.compare-pick .compare-swap {
+  align-self: center;
+  margin: -2px 0;
+}
+.compare-pick .compare-swap .codicon {
+  transform: rotate(90deg);
+  font-size: 14px;
+}
+.compare-pick .check {
+  margin-top: 6px;
+}
+.ref-picker {
+  position: relative;
+}
+.ref-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+  text-align: left;
+}
+.ref-button:hover {
+  border-color: var(--focus);
+}
+.ref-button[aria-expanded='true'] {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+.ref-button.empty .ref-name {
+  color: var(--vscode-input-placeholderForeground, var(--muted));
+}
+.ref-button .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.ref-button .codicon-chevron-down {
+  color: var(--muted);
+}
+.ref-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-menu {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  overflow: hidden;
+}
+.ref-filter {
+  margin: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--focus);
+  border-radius: 3px;
+  outline: none;
+}
+.ref-options {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.ref-group {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ref-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  text-align: left;
+  line-height: 20px;
+}
+.ref-option span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-option .codicon {
+  flex: none;
+  font-size: 14px;
+}
+.ref-option.active {
+  background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground));
+}
+.ticket-commits-note {
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.ticket-commits-note .name {
+  flex: 1;
+}

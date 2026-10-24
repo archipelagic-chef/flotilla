@@ -5,6 +5,7 @@ import { ciSummary } from '../../features/ci/summary';
 import type { CiView, MachineState, SlowStorageView, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
+import './overview.css';
 
 /** Most urgent first, like the attention order everywhere else in Flotilla. */
 const RANK: Record<AttentionState, number> = {

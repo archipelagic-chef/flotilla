@@ -1,0 +1,277 @@
+.chat-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, transparent);
+  color: var(--vscode-foreground);
+}
+button.chat-card:hover {
+  border-color: var(--focus);
+  background: var(--vscode-list-hoverBackground);
+}
+.chat-card.pending {
+  border-style: dashed;
+  background: none;
+}
+.chat-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.chat-card.pending .chat-icon {
+  background: none;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+.chat-icon .codicon {
+  font-size: 16px;
+}
+.chat-icon .dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  background: var(--muted);
+}
+.chat-icon .dot.working {
+  background: var(--working);
+}
+.chat-icon .dot.waiting {
+  background: var(--waiting);
+}
+.chat-icon .dot.done {
+  background: var(--done);
+}
+.chat-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.chat-title {
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+.chat-meta .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.chat-message {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--vscode-foreground);
+}
+.chat-open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+}
+.chat-card.waiting {
+  border-color: var(--waiting);
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+.agent-row + .agent-row {
+  border-top: 1px solid var(--border);
+}
+/* The row opens its chat; Pause, Stop and Resume sit beside that. */
+.agent-row:has(.agent-open) {
+  padding: 0 8px 0 0;
+  gap: 2px;
+}
+.agent-row .agent-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+}
+.agent-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.agent-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.agent-row .chat-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: normal;
+}
+/* "Stopped: no activity since Oct 18, 21:46" reads on one line (BL-131): the chat's title gives way first. */
+.agent-row .state {
+  flex: none;
+  white-space: nowrap;
+}
+.agent-name {
+  flex: none;
+  font-weight: 600;
+}
+.agent-meta {
+  flex: none;
+  white-space: nowrap;
+}
+.agent-meta .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.chat-icon.small {
+  width: 24px;
+  height: 24px;
+}
+.chat-icon.small .codicon {
+  font-size: 13px;
+}
+.agent-row .chat-icon .dot {
+  width: 9px;
+  height: 9px;
+}
+.agent-row:hover .open-arrow {
+  color: var(--vscode-textLink-foreground);
+}
+.chat-subtitle {
+  font-weight: normal;
+  color: var(--muted);
+}
+/* The agents on the ticket now (BL-98): a head line (name, state, running for, worktree, Open Chat), its last report. */
+.active-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.active-agent + .active-agent {
+  border-top: 1px solid var(--border);
+}
+.active-agent-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.active-agent-head .button {
+  margin-left: auto;
+}
+.active-agent-worktree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-live {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 34px;
+  min-width: 0;
+}
+.agent-now {
+  all: unset;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-now:hover {
+  text-decoration: underline;
+}
+.agent-now:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.agent-thoughts,
+.agent-thoughts summary {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-thoughts ol,
+.agent-plan ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  white-space: normal;
+}
+.agent-plan ul {
+  list-style: none;
+  padding-left: 4px;
+}
+.agent-plan summary,
+.agent-thoughts summary {
+  cursor: pointer;
+}
+.agent-plan progress {
+  width: 80px;
+  height: 6px;
+  vertical-align: middle;
+}
+.todo.completed {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+.todo.in_progress {
+  font-weight: 600;
+}
+.agent-health {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.agent-health.stuck {
+  color: var(--vscode-editorWarning-foreground);
+}
+.agent-health-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.active-agent-report {
+  padding-left: 34px;
+  min-width: 0;
+}
+.active-agent-report .rendered > :first-child {
+  margin-top: 2px;
+}
+.active-agent-report .rendered > :last-child {
+  margin-bottom: 0;
+}

@@ -3,6 +3,7 @@ import type { AttentionState } from '../../features/workstreams/attention';
 import type { Tool, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import { dropTarget } from './files';
+import './section.css';
 
 export const ATTENTION_ICON: Record<AttentionState, string> = {
   'waiting-for-input': 'bell-dot st-waiting',

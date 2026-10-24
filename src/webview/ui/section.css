@@ -1,0 +1,74 @@
+.sec-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 2px 6px 3px 2px;
+  background: var(--vscode-sideBar-background);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.sec-head:hover .actions,
+.sec-head:focus-within .actions {
+  visibility: visible;
+}
+.chip.st-waiting {
+  background: var(--waiting);
+  color: var(--vscode-editor-background);
+}
+/* ---- headers ---- */
+.ws-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 6px 4px 8px;
+  background: var(--vscode-sideBar-background);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 2px 0 var(--ws-color);
+}
+.ws-head:hover .actions,
+.ws-head:focus-within .actions {
+  visibility: visible;
+}
+.ws-head .sec-meta,
+.ws-head .sec-msg {
+  padding-left: 20px;
+}
+.sec-head {
+  padding-left: 8px;
+  background: color-mix(in srgb, var(--ws-color) 12%, var(--vscode-sideBar-background));
+  box-shadow: inset 3px 0 0 var(--ws-color);
+  border-bottom-color: color-mix(in srgb, var(--ws-color) 25%, var(--border));
+}
+.sec-head .actions + .actions {
+  margin-left: 0;
+}
+/* Folding a worktree in the All tab: the button shows on hover, and always while folded. */
+.sec-head .fold {
+  display: flex;
+  flex: none;
+  visibility: hidden;
+}
+.sec-head:hover .fold,
+.sec-head:focus-within .fold,
+.section.collapsed .sec-head .fold {
+  visibility: visible;
+}
+.section.collapsed .sec-head .fold .icon {
+  color: var(--muted);
+}
+.sec-head .sec-meta,
+.sec-head .sec-msg {
+  padding-left: 20px;
+}
+/* Hovering a header deepens its tint: it's clickable (folds the worktree). */
+.sec-head {
+  transition: background-color 0.1s ease-out;
+}
+.sec-head:hover {
+  background: color-mix(in srgb, var(--ws-color) 22%, var(--vscode-sideBar-background));
+}
+@media (prefers-reduced-motion: reduce) {
+  .sec-head {
+    transition: none;
+  }
+}

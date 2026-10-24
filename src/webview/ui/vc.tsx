@@ -6,6 +6,7 @@ import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
 import { Virtual } from './virtual';
 import { ago } from './ago';
+import './vc.css';
 
 export { ago };
 import { historyRows, type HistoryRow } from './rows';
