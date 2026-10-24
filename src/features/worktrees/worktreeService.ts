@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { parseStatusV2 } from '../../core/git/porcelain';
@@ -24,6 +25,11 @@ export interface RemovalRisks {
   changedFiles: number;
   /** Commits only reachable from this worktree's branch. */
   unmergedCommits: number;
+  /**
+   * A removal stopped halfway: tracked files were only deleted, none changed or added, and what's untracked the branch's
+   * own .gitignore ignores (node_modules/, .playground/). Finishing it loses nothing.
+   */
+  halfRemoved: boolean;
 }
 
 const ADD_TIMEOUT_MS = 120_000;
@@ -36,6 +42,49 @@ async function isTopLevelLink(dir: string, rel: string): Promise<boolean> {
   const name = rel.replace(/\/$/, '');
   if (name.includes('/')) return false;
   return (await fs.lstat(path.join(dir, name)).catch(() => undefined))?.isSymbolicLink() ?? false;
+}
+
+/**
+ * Runs fn with git config that adds the ignore rules of the worktree's HEAD when its .gitignore is gone (a removal that
+ * stopped halfway deleted it): node_modules is then still ignored, not untracked work. Nested .gitignore files aren't.
+ */
+async function withBranchIgnores<T>(dir: string, fn: (config: string[]) => Promise<T>): Promise<T> {
+  if (await fs.lstat(path.join(dir, '.gitignore')).catch(() => undefined)) return fn([]);
+  const committed = await runGit(['show', 'HEAD:.gitignore'], { cwd: dir }).catch(() => '');
+  if (!committed) return fn([]);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flotilla-ignore-'));
+  try {
+    const file = path.join(tmp, 'gitignore');
+    await fs.writeFile(file, committed);
+    return await fn(['-c', `core.excludesFile=${file}`]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+}
+
+/** How many of paths (as git status names them, folders with a trailing /) the branch's ignore rules ignore. */
+async function countIgnoredByBranch(dir: string, paths: readonly string[]): Promise<number> {
+  if (!paths.length) return 0;
+  const out = await withBranchIgnores(dir, (config) =>
+    // Exit 1 when none is ignored.
+    runGit([...config, 'check-ignore', '-z', '--stdin'], { cwd: dir, input: paths.map((p) => `${p}\0`).join('') }).catch(() => ''),
+  );
+  return out.split('\0').filter(Boolean).length;
+}
+
+/**
+ * Deletes the ignored folders in dir (node_modules: tens of thousands of files) as folders, with no time limit, links in
+ * them as links. git deletes file by file under its time limit: stopping halfway there left worktrees without their
+ * .gitignore, whose node_modules then counted as untracked work.
+ */
+async function deleteIgnoredFolders(dir: string): Promise<void> {
+  const out = await withBranchIgnores(dir, (config) =>
+    runGit([...config, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], { cwd: dir }),
+  ).catch(() => '');
+  for (const rel of out.split('\0').filter((p) => p.endsWith('/'))) {
+    // Not Electron's fs: it would open a VS Code download's .asar as a folder and keep it open (see rawFs).
+    await rawFs().promises.rm(path.join(dir, rel), { recursive: true, force: true, maxRetries: 3 });
+  }
 }
 
 export interface WorktreeServiceOptions {
@@ -109,12 +158,22 @@ export class WorktreeService {
 
   async removalRisks(wt: ResolvedWorktree): Promise<RemovalRisks> {
     let changedFiles = 0;
+    let halfRemoved = false;
     if (wt.path) {
-      for (const change of parseStatusV2(await runGit(['status', '--porcelain=v2', '-z'], { cwd: wt.path })).changes) {
+      const status = parseStatusV2(await runGit(['status', '--porcelain=v2', '-z'], { cwd: wt.path }));
+      const staged = new Set(status.staged.map((c) => c.path));
+      const untracked: string[] = [];
+      let deleted = 0;
+      let other = 0;
+      for (const change of status.changes) {
         // An untracked link at the top is deleted as a link by remove(): nothing in it is lost.
         if (change.kind === 'untracked' && (await isTopLevelLink(wt.path, change.path))) continue;
         changedFiles++;
+        if (change.kind === 'untracked') untracked.push(change.path);
+        else if (change.kind === 'deleted' && !staged.has(change.path)) deleted++;
+        else other++;
       }
+      halfRemoved = deleted > 0 && other === 0 && (await countIgnoredByBranch(wt.path, untracked)) === untracked.length;
     }
     let unmergedCommits = 0;
     if (wt.branch) {
@@ -122,7 +181,7 @@ export class WorktreeService {
       const out = await runGit(['rev-list', '--count', ref, '--not', `--exclude=${wt.branch}`, '--branches', '--remotes'], { cwd: this.roots.mainRoot });
       unmergedCommits = Number(out.trim());
     }
-    return { changedFiles, unmergedCommits };
+    return { changedFiles, unmergedCommits, halfRemoved };
   }
 
   async remove(wt: ResolvedWorktree, opts: { force: boolean }): Promise<void> {
@@ -133,6 +192,9 @@ export class WorktreeService {
     // handed a worktree it could delete outside files through.
     const tracked = await runGit(['ls-files', '-z', '--', ':(top,glob)*'], { cwd: wt.path }).catch(() => '');
     await removeTopLevelLinks(wt.path, new Set(tracked.split('\0').filter(Boolean)));
+    // Without force, git refuses a worktree with changes: then nothing is deleted.
+    const clean = opts.force || !(await runGit(['status', '--porcelain', '-z'], { cwd: wt.path }).catch(() => '?'));
+    if (clean) await deleteIgnoredFolders(wt.path);
     const previousLock = await readLock(wt.adminDir);
     await unlock(wt.adminDir);
     try {
