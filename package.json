@@ -1807,6 +1807,24 @@
           "default": "",
           "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
         },
+        "flotilla.agents.stuck.silentMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when its transcript hasn't changed for this many minutes while its process runs (not counting a command or a subagent it waits for). Its card then offers Open Transcript, Check and Stop. 0: no such warning."
+        },
+        "flotilla.agents.stuck.repeatedFailures": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when the same command failed this many times in a row, with no edit in between. 0: no such warning."
+        },
+        "flotilla.agents.stuck.commandMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when one command has run longer than this many minutes. 0: no such warning."
+        },
         "flotilla.agents.autoCompactWindow": {
           "type": "number",
           "default": 200000,
