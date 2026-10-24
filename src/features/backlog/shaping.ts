@@ -114,6 +114,9 @@ export function discussionPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; a
   ].join('\n\n');
 }
 
+/** The link in a ticket's note that opens a chat ("flotilla-chat:<session>"; see TicketPanels.openHref). */
+export const CHAT_LINK = 'flotilla-chat:';
+
 /** A chat as a discussion is found among a worktree's chats. */
 export interface DiscussionChatInfo {
   id: string;

@@ -11,6 +11,7 @@ import {
   shapingPrompt,
   shapingTools,
   summarizedSince,
+  CHAT_LINK,
 } from '../../features/backlog/shaping';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate } from '../../features/backlog/ticket';
@@ -35,9 +36,6 @@ export interface DiscussionChat {
   key: string;
   chat: Chat;
 }
-
-/** The link in a ticket's note that opens a chat ("flotilla-chat:<session>"; see TicketPanels.openHref). */
-export const CHAT_LINK = 'flotilla-chat:';
 
 /**
  * Discussions of tickets nobody works on yet. Discuss opens a Claude Code chat with the ticket's discussion agent
