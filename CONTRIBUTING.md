@@ -204,5 +204,7 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
    `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository
    walks every agent worktree under `.worktrees/` and doesn't finish. The build records its commit in
    `dist/build.json`; in this repository, the status bar counts what main has merged since, and its click ("Flotilla:
-   Update from Main Build") builds main the same way in a throwaway worktree, installs it and reloads.
+   Install Main and Reload") builds main the same way in a throwaway worktree, pauses the agents (Pause All), installs
+   it and reloads; the new build resumes them from a note in `.git/flotilla/install-main.json`, and other windows of the
+   repository reload too.
 4. `npx vsce publish --packagePath flotilla-<version>.vsix` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).
