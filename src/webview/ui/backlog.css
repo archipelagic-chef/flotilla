@@ -1,3 +1,32 @@
+.lane .group-head {
+  gap: 4px;
+}
+.lane-chev {
+  margin-left: auto;
+  width: 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.lane .group-head:has(.lane-chev) {
+  cursor: pointer;
+}
+.lane-chev + .badge {
+  margin-left: 2px;
+}
+.backlog-item.drop-before::before,
+.lane.drop-end .lane-body::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -1px;
+  height: 2px;
+  background: var(--focus);
+}
+.lane .lane-body {
+  position: relative;
+  min-height: 4px;
+}
 .lane.drop-end .lane-body::after {
   top: auto;
   bottom: 0;
@@ -28,6 +57,9 @@
 }
 .proposed-lane .group-head .icon {
   margin-left: auto;
+}
+.proposed-lane .backlog-item .status-toggle {
+  color: var(--vscode-editorLightBulb-foreground, #ffcc00);
 }
 .working-bar {
   display: flex;

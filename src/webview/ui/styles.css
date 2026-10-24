@@ -1063,37 +1063,8 @@ ins {
 .backlog-title .icon .codicon {
   font-size: 14px;
 }
-.lane .group-head {
-  gap: 4px;
-}
-.lane-chev {
-  margin-left: auto;
-  width: 16px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.lane .group-head:has(.lane-chev) {
-  cursor: pointer;
-}
-.lane-chev + .badge {
-  margin-left: 2px;
-}
 .backlog-item.st-done .status-toggle:hover .codicon::before {
   content: '\ebb5'; /* circle-large-outline: reopen */
-}
-.backlog-item.drop-before::before,
-.lane.drop-end .lane-body::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: -1px;
-  height: 2px;
-  background: var(--focus);
-}
-.lane .lane-body {
-  position: relative;
-  min-height: 4px;
 }
 
 /* ---- comparisons ---- */
@@ -1141,9 +1112,6 @@ ins {
   opacity: 0.75;
 }
 
-.proposed-lane .backlog-item .status-toggle {
-  color: var(--vscode-editorLightBulb-foreground, #ffcc00);
-}
 /* A ticket's commits, highlighted in a history (clicked on the ticket). */
 .log-row.mark-ticket {
   background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
