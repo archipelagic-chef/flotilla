@@ -92,18 +92,26 @@ const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
 
 export function nextSteps(s: StepState): NextSteps {
   const main = s.base ?? 'main';
-  if (s.merged || s.status === 'done') return { others: [...(s.merged && s.unpushed ? ['push' as const] : []), ...(s.hasWorktree ? ['removeWorktree' as const] : [])] };
-  if (s.chained) return { others: [], status: CHAINED[s.chained] };
-  if (s.agentWorking) return { main: 'openChat', others: ['stop'], status: `${s.agentWorking} is working on it` };
+  if (s.merged || s.status === 'done')
+    return { others: [...(s.merged && s.unpushed ? ['push' as const] : []), ...(s.hasWorktree ? ['removeWorktree' as const] : [])] };
+  // Update from Main and Merge goes on: the part it's at, and what that part needs (an agent's chat, your approval).
+  const chained = s.chained && CHAINED[s.chained];
+  if (s.agentWorking) return { main: 'openChat', others: ['stop'], status: chained || `${s.agentWorking} is working on it` };
+  if (chained && !s.yours) return { others: [], status: chained };
   const run: StepOp[] = s.reviewing ? [s.hasRunBlock ? 'run' : 'askRunBlock'] : [];
   if (s.reviewerWorking)
-    return { main: 'openChat', others: ['reviewMyself', ...run.filter((r) => r === 'run')], status: `${s.reviewerWorking} reviews it: Approve and Request Changes come when it's done` };
+    return {
+      main: 'openChat',
+      others: ['reviewMyself', ...run.filter((r) => r === 'run')],
+      status: `${s.reviewerWorking} reviews it: Approve and Request Changes come when it's done`,
+    };
   const conflicts = s.conflicts?.length ? `Conflicts with ${main} in ${files(s.conflicts.length)}` : undefined;
-  if (s.yours) return { main: 'approve', others: ['requestChanges', ...run], status: conflicts && `${conflicts}: approved, it updates from ${main} and merges` };
+  if (s.yours) return { main: 'approve', others: ['requestChanges', ...run], status: chained ? `${chained} It merges once you approve` : conflicts };
   if (s.canMerge) {
     if (conflicts) return { main: 'updateAndMerge', others: run, status: `${conflicts}: its agent resolves them, then it merges` };
     if (s.ci === 'red') return { main: 'fixCi', others: run, status: 'CI failed on its branch: an agent fixes it, then it can merge' };
-    if (s.ci === 'moved') return { main: 'updateAndMerge', others: run, status: `${capital(main)} moved since CI ran: it updates, CI runs again, then it merges` };
+    if (s.ci === 'moved')
+      return { main: 'updateAndMerge', others: run, status: `${capital(main)} moved since CI ran: it updates, CI runs again, then it merges` };
     // Merge to main lands the tickets ahead first: Merge Next is the step that lands it alone.
     if (s.queue?.ahead) return { main: 'mergeNext', others: ['merge', 'mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };
     if (s.queue) return { main: 'merge', others: ['mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };

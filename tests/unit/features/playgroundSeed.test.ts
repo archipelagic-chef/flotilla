@@ -65,6 +65,7 @@ const STATES: Record<string, [status: string, review?: string]> = {
   'BL-13': ['review', 'approved'],
   'BL-14': ['done', 'approved'],
   'BL-15': ['review', 'yours'],
+  'BL-16': ['review', 'approved'],
 };
 
 /** Each branch's commits ahead of main and behind it, and the status of its worktree, by ticket. */
@@ -77,6 +78,7 @@ const BRANCHES: Record<string, { ahead: number; behind: number; status: string[]
   'BL-12': { ahead: 1, behind: 0, status: [] },
   'BL-13': { ahead: 1, behind: 0, status: [] },
   'BL-15': { ahead: 1, behind: 0, status: [] },
+  'BL-16': { ahead: 1, behind: 1, status: [] },
 };
 
 describe('playground seed', () => {
@@ -84,7 +86,7 @@ describe('playground seed', () => {
     const { backlog } = seeded();
     const data = await backlog.read();
     expect(data.items.map((i) => i.id)).toEqual(Object.keys(STATES));
-    expect(data.counters).toEqual({ BL: 15 });
+    expect(data.counters).toEqual({ BL: 16 });
     for (const item of data.items) {
       const [status, review] = STATES[item.id];
       expect(ID_PATTERN.test(item.id), item.id).toBe(true);

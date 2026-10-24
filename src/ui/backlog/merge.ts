@@ -400,20 +400,26 @@ export class Merger implements vscode.Disposable {
     }
   }
 
-  /** The chains whose agent is resolving: each merges once its agent is done and its branch takes main in cleanly. */
+  /**
+   * The chains whose agent is resolving: each merges once its agent is done, the work approved again (its hand-off goes
+   * through review: an approval waiting for you holds it there) and its branch takes main in cleanly.
+   */
   private async checkChains(): Promise<void> {
     const base = await this.baseBranch().catch(() => undefined);
     for (const [id, chain] of this.chains) {
       if (chain !== 'resolving' || this.deps.agentWorking?.(id)) continue;
       const item = await this.item(id);
+      const going = !!item && item.status !== 'done' && !!item.review && item.review.state !== 'stopped';
+      if (item && going && !readyToMerge(item)) continue;
       const branch = item && base && (await this.branchOf(item, base, true));
       const conflicts = branch ? await mergeConflicts(this.deps.mainRoot, branch, base).catch(() => ['?']) : ['?'];
-      if (item && readyToMerge(item) && !conflicts.length) {
+      if (item && going && !conflicts.length) {
         void this.mergeChained(id).catch(showError);
         continue;
       }
       this.setChain(id);
-      await this.note(id, `Update from Main and Merge stopped: ${!item || !readyToMerge(item) ? "it isn't ready to merge any more" : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``}. Nothing was merged.`);
+      const why = !going ? "its review stopped" : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
+      await this.note(id, `Update from Main and Merge stopped: ${why}. Nothing was merged.`);
     }
     if (![...this.chains.values()].includes('resolving')) {
       clearInterval(this.chainTimer);
