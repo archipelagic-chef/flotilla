@@ -433,6 +433,16 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.reviewImprovementsNow",
+        "title": "Review Now: An Agent Reads the Metrics and Proposes Tickets",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openImprovementReview",
+        "title": "Open the Latest Improvement Review",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.pauseAllAgents",
         "title": "Pause All Agents",
         "category": "Flotilla",
@@ -1859,6 +1869,12 @@
           "minimum": 1,
           "maximum": 10,
           "markdownDescription": "How many agents Flotilla runs at once, in all: the autopilot's tickets, reviews, revisions after a review, and agents going on after a usage limit. Starts Flotilla makes on its own wait in a queue when it's reached: your replies (answers, requested changes) first, then reviews and revisions, then resumes, then new tickets. Starts you make with a ticket's Start or Start Review run at once, and count toward it. Prioritize starts a queued one now, above the limit (see `#flotilla.agents.maxPrioritized#`)."
+        },
+        "flotilla.metrics.reviewEvery": {
+          "type": "number",
+          "default": 7,
+          "minimum": 0,
+          "markdownDescription": "How many days apart the improvement review runs (0: never; **Review Now** still runs one). An agent reads the metrics of that many days (next to the days before them) and the code, writes the three to five biggest problems in how the work flows to `.flotilla/backlog/reviews/YYYY-MM-DD.md`, and proposes a ticket for each one worth fixing, with an `Improves:` line the next review checks. It runs in the leading window only when no agent works or waits, no usage limit or Pause All is on and the autopilot has nothing to start, on `#flotilla.agents.model#`, and counts against `#flotilla.agents.maxRunning#`."
         },
         "flotilla.agents.maxPrioritized": {
           "type": "number",
