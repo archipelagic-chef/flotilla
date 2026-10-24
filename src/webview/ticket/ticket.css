@@ -684,28 +684,6 @@ h2 {
   margin-bottom: 0;
 }
 
-/* An attachment large, over the ticket. */
-.viewer {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 40px 16px 16px;
-  background: rgba(0, 0, 0, 0.8);
-}
-.viewer .icon-button {
-  color: #eee;
-  font-size: 20px;
-}
-
-.media-thumb-diagram .media-note,
-.media-thumb > .media-note {
-  display: none;
-}
-
 .demo-actions {
   display: inline-flex;
   gap: 6px;

@@ -113,6 +113,18 @@
 .attachment-meta {
   font-size: 11px;
 }
+/* An attachment large, over the ticket. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px 16px;
+  background: rgba(0, 0, 0, 0.8);
+}
 .viewer-figure {
   display: flex;
   flex-direction: column;
@@ -191,6 +203,10 @@
 .viewer-figure figcaption .text-button {
   color: var(--vscode-textLink-foreground, #3794ff);
 }
+.viewer .icon-button {
+  color: #eee;
+  font-size: 20px;
+}
 .viewer-close {
   position: absolute;
   top: 8px;
@@ -203,4 +219,8 @@
 }
 .feed .rendered video.media {
   max-height: 270px;
+}
+.media-thumb-diagram .media-note,
+.media-thumb > .media-note {
+  display: none;
 }
