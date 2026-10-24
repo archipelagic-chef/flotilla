@@ -7,18 +7,21 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { modelLevels } from '../backlog/agentRunner';
 import { showError, type Commands } from '../commandSet';
 import type { ImprovementReview } from './improvementReview';
+import type { Metrics } from './metrics';
 
 export interface MetricsCommandDeps {
   backlog: LocalBacklog;
   repository: Repository<Workstream>;
+  metrics: Metrics;
   improvement: ImprovementReview;
   output: vscode.OutputChannel;
 }
 
-/** The metrics' commands: the improvement review (BL-159), and how finished tickets fared per model level (BL-69). */
+/** The metrics' commands: the Metrics view (BL-158), the improvement review (BL-159), and how finished tickets fared per model level (BL-69). */
 export function metricsCommands(deps: MetricsCommandDeps): Commands {
-  const { backlog, repository, improvement, output } = deps;
+  const { backlog, repository, metrics, improvement, output } = deps;
   return {
+    'flotilla.openMetrics': () => metrics.openEditor('week'),
     'flotilla.reviewImprovementsNow': () => improvement.reviewNow().catch(showError),
     'flotilla.openImprovementReview': () => improvement.openLatest().catch(showError),
     'flotilla.modelLevelReport': async () => {

@@ -179,7 +179,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   // The Metrics view (BL-158): the sidebar's tool and its editor tab, counted from the event log.
   const metrics = new Metrics(context.extensionUri, location.commonDir);
-  context.subscriptions.push(metrics, vscode.commands.registerCommand('flotilla.openMetrics', () => metrics.openEditor('week')));
+  context.subscriptions.push(metrics);
   const sidebar = new SidebarProvider({
     metrics,
     extensionUri: context.extensionUri,
@@ -392,7 +392,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
   });
   context.subscriptions.push(improvement);
-  registerAll(context.subscriptions, metricsCommands({ backlog, repository, improvement, output }));
+  registerAll(context.subscriptions, metricsCommands({ backlog, repository, metrics, improvement, output }));
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
