@@ -92,12 +92,18 @@ export function ticketFlow(ticket: string, events: readonly Ev[], until: number)
     switch (e.kind) {
       case 'ticket-moved': {
         const d = (e as Ev<'ticket-moved'>).data;
+        // A ticket taken up again after it landed starts a new way to merged: the one before doesn't count.
+        if (end !== undefined && d.to !== 'done') {
+          start = undefined;
+          end = undefined;
+          for (const p of PHASES) phases[p] = 0;
+        }
         if (start === undefined && d.to !== 'todo') start = e.t;
         status = d.to;
         if (d.to === 'done') {
           setYou(undefined, e.t);
           if (end === undefined && start !== undefined) end = e.t;
-        } else if (d.to === 'todo' || d.to === 'doing') end = undefined;
+        }
         break;
       }
       case 'agent-started':

@@ -69,7 +69,13 @@ export interface MetricsView {
 }
 
 /** From a Metrics webview (the sidebar's tool, or the editor tab). */
-export type MetricsWebviewMessage = { type: 'metrics'; period: MetricsPeriod } | { type: 'metricsOpen'; ticket: string } | { type: 'metricsEditor'; period: MetricsPeriod };
+export type MetricsWebviewMessage =
+  /** Count the view for a period (and again as events come in, until it's closed). */
+  | { type: 'metrics'; period: MetricsPeriod }
+  /** The sidebar left its Metrics tool: no need to count for it any more. */
+  | { type: 'metricsClosed' }
+  | { type: 'metricsOpen'; ticket: string }
+  | { type: 'metricsEditor'; period: MetricsPeriod };
 
 /** To a Metrics webview. */
 export type MetricsHostMessage = { type: 'metricsView'; view: MetricsView } | { type: 'metricsError'; message: string };

@@ -46,6 +46,8 @@ import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
 import { recordClickWait } from '../../features/metrics/record';
+import type { MetricsPeriod } from '../../webview/metricsProtocol';
+import type { Metrics } from '../metrics/metrics';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -71,6 +73,8 @@ export interface SidebarDeps {
   githubApi?: string;
   /** Runs that finished on a worktree's branch while they were read (for the notices). */
   onCiFinished?: (items: FinishedRun[]) => void;
+  /** The Metrics tool's numbers (BL-158). */
+  metrics?: Metrics;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -118,6 +122,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
       this.ci,
+      ...(deps.metrics ? [deps.metrics.onDidChange(() => void this.postMetrics())] : []),
     );
   }
 
@@ -515,8 +520,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     return this.deps.repository.current.find((w) => w.key === key);
   }
 
+  /** The period the Metrics tool shows, while it's shown: it's counted again as events come in. */
+  private metricsPeriod: MetricsPeriod | undefined;
+
+  private async postMetrics(): Promise<void> {
+    const period = this.metricsPeriod;
+    if (!period || !this.deps.metrics) return;
+    const message = await this.deps.metrics.message(period);
+    if (this.metricsPeriod === period) this.post(message);
+  }
+
   private async onMessage(m: WebviewMessage): Promise<void> {
     switch (m.type) {
+      case 'metrics':
+        this.metricsPeriod = m.period;
+        await this.postMetrics();
+        return;
+      case 'metricsClosed':
+        this.metricsPeriod = undefined;
+        return;
+      case 'metricsOpen':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);
+        return;
+      case 'metricsEditor':
+        this.deps.metrics?.openEditor(m.period);
+        return;
       case 'ready':
         void this.postIconTheme();
         // A page that has just loaded has none of the views: send them all.

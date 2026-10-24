@@ -67,6 +67,18 @@ describe('ticketFlow', () => {
     ]);
   });
 
+  it('counts a ticket taken up again after it landed from its new start', () => {
+    const index = new EventIndex();
+    index.add([
+      ...LOG,
+      ev(NOW - D, 'ticket-moved', { from: 'done', to: 'doing', by: 'You' }, 'BL-1'),
+      ev(NOW - D + H, 'merge-landed', { into: 'main', commit: 'c' }, 'BL-1'),
+    ]);
+    const flow = ticketFlow('BL-1', index.ticketEvents('BL-1'), NOW);
+    expect([flow.start, flow.end]).toEqual([NOW - D, NOW - D + H]);
+    expect(flow.phases.working).toBe(H);
+  });
+
   it('reads the same in whatever order the events were added', () => {
     const index = new EventIndex();
     index.add([...LOG].reverse());

@@ -3,6 +3,7 @@
  * so it must not import vscode, node or DOM APIs.
  */
 import type { ChangeKind } from '../core/git/porcelain';
+import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { Need } from '../features/backlog/needs';
@@ -16,7 +17,7 @@ import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
 
 export type { BacklogItem, BacklogPriority, BacklogStatus };
 export type { MergeInfo };
@@ -212,6 +213,7 @@ export interface CommitView {
 }
 
 export type HostMessage =
+  | MetricsHostMessage
   /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
   | { type: 'state'; workstreams: WorkstreamView[]; keys: string[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
@@ -349,6 +351,7 @@ export interface Target {
 }
 
 export type WebviewMessage =
+  | MetricsWebviewMessage
   | { type: 'ready' }
   | { type: 'listDir'; key: string; path: string }
   | { type: 'openFile'; key: string; path: string; preview: boolean; line?: number; range?: [number, number] }
