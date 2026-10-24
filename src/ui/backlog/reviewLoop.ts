@@ -608,7 +608,8 @@ export class ReviewLoop implements vscode.Disposable {
       const when = until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
       await this.note(
         id,
-        `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must, less often the longer it lasts`}.`,
+        `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must, less often the longer it lasts`}.` +
+          (o.limit.said ? `\n\nClaude said: “${o.limit.said}”; reset time not understood, retrying in ${Math.round((until.getTime() - Date.now()) / 60_000)} min.` : ''),
       );
     }
     this.scheduleResume();
@@ -636,11 +637,31 @@ export class ReviewLoop implements vscode.Disposable {
     const now = (await this.deps.backlog.read()).items.find((i) => i.id === item.id)?.review;
     if (this.runs.has(item.id) || now?.state !== 'paused' || now.paused?.session !== p.session) return false;
     if (!limit) return true;
+    if (limit.known) {
+      this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: it resets at ${limit.until.toLocaleString()}.`);
+      await this.knownReset(limit.until);
+      return false;
+    }
     const tries = (p.tries ?? 0) + 1;
-    const until = limit.known ? limit.until : new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
-    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.`);
+    const until = new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
+    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.${limit.said ? ` Claude said: ${limit.said}` : ''}`);
     await this.setReview(item.id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: until.toISOString(), tries } } : r!));
     return false;
+  }
+
+  /**
+   * Claude said when its usage limit resets: every agent paused on a limit whose reset was guessed at waits for that one
+   * (it's the same limit, the account's), and they all go on when it resets.
+   */
+  private async knownReset(until: Date): Promise<void> {
+    for (const item of (await this.deps.backlog.read()).items) {
+      const p = item.review?.state === 'paused' ? item.review.paused : undefined;
+      if (!p || p.byUser || p.for || p.known !== false) continue;
+      await this.setReview(item.id, (r) =>
+        r?.state === 'paused' && r.paused && r.paused.known === false ? { ...r, paused: { ...r.paused, until: until.toISOString(), known: true, kind: 'usage' } } : r!,
+      );
+    }
+    this.scheduleResume();
   }
 
   /** The next resume, timed to the earliest paused agent. */
@@ -685,7 +706,10 @@ export class ReviewLoop implements vscode.Disposable {
     const limit = await probeLimit({ choice: agentChoice(paused[0], first.phase === 'review' ? 'review' : 'work'), output: this.deps.output });
     if (limit) {
       // A reset said now replaces the top one's; a guessed-at one keeps its wait (the user's try doesn't lengthen it).
-      if (limit.known) await this.setReview(paused[0].id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: limit.until.toISOString() } } : r!));
+      if (limit.known) {
+        await this.setReview(paused[0].id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: limit.until.toISOString() } } : r!));
+        await this.knownReset(limit.until);
+      }
       this.scheduleResume();
       return { tried, resumed: 0, limited: await this.pausedUntil() };
     }

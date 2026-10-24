@@ -114,7 +114,7 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
       : r.state === 'paused' && r.paused?.for
       ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
       : r.state === 'paused' && r.paused
-      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
+      ? `${r.paused.agent} stopped on ${r.paused.kind === 'rate' ? "Claude's rate limit" : r.paused.kind === 'overloaded' ? 'Claude being overloaded' : "Claude's usage limit"}; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
       : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
       ? `(${when(r.stop.at)})`
       : undefined;
