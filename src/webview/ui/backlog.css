@@ -1,0 +1,83 @@
+.lane .group-head {
+  gap: 4px;
+}
+.lane-chev {
+  margin-left: auto;
+  width: 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.lane .group-head:has(.lane-chev) {
+  cursor: pointer;
+}
+.lane-chev + .badge {
+  margin-left: 2px;
+}
+.backlog-item.drop-before::before,
+.lane.drop-end .lane-body::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -1px;
+  height: 2px;
+  background: var(--focus);
+}
+.lane .lane-body {
+  position: relative;
+  min-height: 4px;
+}
+.lane.drop-end .lane-body::after {
+  top: auto;
+  bottom: 0;
+}
+.backlog-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: calc(100% - 16px);
+  margin: 0 8px 6px;
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 12px;
+  border-radius: 3px;
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
+}
+.backlog-problem .codicon {
+  font-size: 14px;
+  margin-top: 1px;
+}
+.lane .lane-filter {
+  margin-left: auto;
+}
+.lane .lane-filter.on {
+  color: var(--waiting);
+}
+.proposed-lane .group-head .icon {
+  margin-left: auto;
+}
+.proposed-lane .backlog-item .status-toggle {
+  color: var(--vscode-editorLightBulb-foreground, #ffcc00);
+}
+.working-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--working);
+  background: color-mix(in srgb, var(--working) 10%, transparent);
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+}
+.working-bar .codicon {
+  margin-top: 1px;
+  color: var(--working);
+}
+.working-bar .link {
+  color: var(--vscode-textLink-foreground);
+}

@@ -115,6 +115,11 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   `package.json` entry; a new feature's map also goes in the list of
   [tests/unit/ui/commandSet.test.ts](tests/unit/ui/commandSet.test.ts), which checks that every command of
   `package.json` is registered, once.
+- **A part's CSS** is in its own file next to it (`card.tsx` → `card.css`), which the part imports
+  (`import './card.css';`); esbuild bundles it into `dist/webview.css` or `dist/ticket.css`. Only what parts share
+  (the variables, `body`, buttons, rows, `.rendered`, the layout) stays in the entry CSS, `ui/styles.css` or
+  `ticket/ticket.css`, which the entry imports before the parts, so a part's rules come after the shared ones and win
+  at the same specificity.
 
 ## Buttons that wait
 

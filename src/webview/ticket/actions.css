@@ -1,0 +1,27 @@
+.chev-small {
+  font-size: 12px !important;
+  color: var(--muted);
+}
+.dropdown {
+  position: relative;
+  display: inline-flex;
+}
+.priority-menu .menu-detail {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+/* An action in progress: "working…" beside its button, or its comment sent and not yet confirmed. */
+.action-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-left: 0.5em;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}

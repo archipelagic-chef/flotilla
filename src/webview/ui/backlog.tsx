@@ -15,6 +15,7 @@ import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
+import './backlog.css';
 
 const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
   { lane: 'todo', title: 'To Do', icon: 'circle-large-outline' },

@@ -1,6 +1,7 @@
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
 import type { Props } from './backlog';
+import './titleBar.css';
 
 /** How long something has waited, short: "5m", "3h", "2d". */
 /** The backlog's title bar: its name and the actions on the whole backlog. */

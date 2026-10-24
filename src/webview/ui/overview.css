@@ -1,0 +1,12 @@
+.tag.removing .codicon {
+  font-size: inherit;
+  vertical-align: middle;
+}
+.card:hover .actions,
+.card:focus-within .actions {
+  visibility: visible;
+}
+.card.selected {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}

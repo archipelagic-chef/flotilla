@@ -1,0 +1,49 @@
+/* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
+.merge-queue-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--vscode-charts-purple, var(--working));
+  background: color-mix(in srgb, var(--vscode-charts-purple, var(--working)) 10%, transparent);
+  font-size: 12px;
+}
+.merge-queue-bar > span {
+  flex: 1;
+}
+.merge-queue-bar .codicon {
+  margin-top: 1px;
+  color: var(--vscode-charts-purple, var(--working));
+}
+.merge-queue-bar a[draggable] {
+  cursor: grab;
+}
+/* Where a ticket dragged in the queue would go (BL-144). */
+.merge-queue-bar a.drop-before,
+.merge-queue-bar .drop-end {
+  box-shadow: -2px 0 0 var(--vscode-focusBorder);
+}
+.merge-queue-bar .drop-end {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.merge-queue-bar a.conflicts {
+  color: var(--vscode-charts-yellow, #cca700);
+}
+.merge-queue-bar .land-all {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 12px;
+}
+.merge-queue-bar .land-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

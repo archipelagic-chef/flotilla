@@ -142,15 +142,6 @@ button {
 .section + .section {
   margin-top: 4px;
 }
-.sec-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 2px 6px 3px 2px;
-  background: var(--vscode-sideBar-background);
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
-}
 @media (prefers-reduced-motion: reduce) {
   }
 .sec-line {
@@ -170,10 +161,6 @@ button {
   display: flex;
   flex: none;
   visibility: hidden;
-}
-.sec-head:hover .actions,
-.sec-head:focus-within .actions {
-  visibility: visible;
 }
 .sec-meta,
 .sec-msg {
@@ -205,10 +192,6 @@ button {
   font-size: 11px;
   line-height: 16px;
   flex: none;
-}
-.chip.st-waiting {
-  background: var(--waiting);
-  color: var(--vscode-editor-background);
 }
 .chip .codicon {
   font-size: 12px;
@@ -268,31 +251,9 @@ button {
 .chat:focus-within .hover-actions {
   display: flex;
 }
-/* A card's Create Worktree: the icon and its arrow, close together, the arrow's menu under them (BL-66). */
-.split-icons {
-  position: relative;
-  display: inline-flex;
-}
-.split-icons .icon.more {
-  width: 14px;
-  min-width: 14px;
-}
-.split-icons .icon.more .codicon {
-  font-size: 12px;
-}
-.split-icons .split-menu {
-  left: auto;
-  right: 0;
-  min-width: 220px;
-}
 .hover-actions + .letter,
 .hover-actions + .badge {
   margin-left: 4px;
-}
-/* A Review card's Run button: always shown, at the end of the row like the hover actions. */
-.run-button {
-  margin-left: auto;
-  flex: none;
 }
 .row:hover .dir {
   flex: 0 1 auto;
@@ -393,36 +354,6 @@ textarea:focus {
   opacity: 0.5;
   cursor: default;
 }
-.button.small {
-  padding: 0 8px;
-  flex: none;
-}
-.button.secondary {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-.button.secondary:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
-.button.wide {
-  width: 100%;
-}
-/* Commit ▾: the main action and a menu of the other ways to commit, as in VS Code. */
-.split-button {
-  position: relative;
-  display: flex;
-  gap: 1px;
-}
-.split-button > .button:first-child {
-  flex: 1;
-  border-radius: 2px 0 0 2px;
-}
-.split-button > .button.more {
-  flex: none;
-  padding: 2px 4px;
-  border-radius: 0 2px 2px 0;
-  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
-}
 .menu {
   position: absolute;
   z-index: 5;
@@ -496,33 +427,6 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chat .sub {
-  grid-column: 2 / 4;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chat .sub.st-waiting {
-  color: var(--waiting);
-}
-.chat .chat-size.big {
-  color: var(--vscode-editorWarning-foreground);
-}
-.chat .chat-size .codicon {
-  font-size: 11px;
-  vertical-align: -1px;
-  margin-right: 2px;
-}
-.chat.past .title {
-  color: var(--muted);
-}
-.tag.removing .codicon {
-  font-size: inherit;
-  vertical-align: middle;
-}
 .tag {
   margin-left: 6px;
   padding: 0 4px;
@@ -530,21 +434,6 @@ textarea:focus {
   border-radius: 3px;
   font-size: 10px;
   line-height: 14px;
-  color: var(--muted);
-}
-.new-chat {
-  padding-left: 12px;
-  color: var(--muted);
-}
-.new-chat:hover {
-  color: inherit;
-}
-.subhead {
-  padding-left: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
@@ -560,37 +449,6 @@ textarea:focus {
 }
 .row.edit > .codicon {
   margin-top: 3px;
-}
-.name-box {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.name-box input {
-  font: inherit;
-  height: 20px;
-  margin-top: 1px;
-  padding: 0 4px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--focus);
-  outline: none;
-  min-width: 0;
-}
-.name-box input[aria-invalid] {
-  border-color: var(--vscode-inputValidation-errorBorder);
-}
-.name-error {
-  margin-bottom: 2px;
-  padding: 2px 6px;
-  font-size: 12px;
-  line-height: 16px;
-  white-space: normal;
-  color: var(--vscode-inputValidation-errorForeground, inherit);
-  background: var(--vscode-inputValidation-errorBackground);
-  border: 1px solid var(--vscode-inputValidation-errorBorder);
-  border-top: 0;
 }
 
 /* ---- drag and drop ---- */
@@ -796,36 +654,9 @@ textarea:focus {
   flex: 1;
 }
 
-/* ---- headers ---- */
-.ws-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 4px 6px 4px 8px;
-  background: var(--vscode-sideBar-background);
-  border-bottom: 1px solid var(--border);
-  box-shadow: inset 0 2px 0 var(--ws-color);
-}
-.ws-head:hover .actions,
-.ws-head:focus-within .actions {
-  visibility: visible;
-}
-.ws-head .sec-meta,
-.ws-head .sec-msg {
-  padding-left: 20px;
-}
 /* One color down the whole worktree, header included, so the header reads as part of it. */
 .section {
   box-shadow: inset 3px 0 0 var(--ws-color);
-}
-.sec-head {
-  padding-left: 8px;
-  background: color-mix(in srgb, var(--ws-color) 12%, var(--vscode-sideBar-background));
-  box-shadow: inset 3px 0 0 var(--ws-color);
-  border-bottom-color: color-mix(in srgb, var(--ws-color) 25%, var(--border));
-}
-.sec-head .actions + .actions {
-  margin-left: 0;
 }
 .tool-title {
   padding: 6px 8px 4px 10px;
@@ -851,42 +682,7 @@ textarea:focus {
 .card.current {
   background: color-mix(in srgb, var(--ws-color) 10%, var(--vscode-sideBar-background));
 }
-.card:hover .actions,
-.card:focus-within .actions {
-  visibility: visible;
-}
 
-/* ---- search ---- */
-.search-box {
-  padding: 6px 8px 4px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.search-input {
-  display: flex;
-  align-items: center;
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 2px;
-}
-.search-input:focus-within {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-.search-input input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  padding: 3px 6px;
-  color: var(--vscode-input-foreground);
-  background: transparent;
-  border: 0;
-  outline: none;
-}
-.search-input input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
-}
 .toggle {
   width: 22px;
   height: 20px;
@@ -905,28 +701,9 @@ textarea:focus {
   background: var(--vscode-inputOption-activeBackground);
   border-color: var(--vscode-inputOption-activeBorder, var(--focus));
 }
-.search-summary {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--muted);
-}
-.search-ws {
-  font-weight: 600;
-  padding-left: 10px;
-  cursor: default;
-  box-shadow: inset 3px 0 0 var(--ws-color);
-}
-.search-ws:hover {
-  background: none;
-}
 .row.hit {
   padding-left: 42px;
   font-size: 12px;
-}
-.line-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
 }
 mark {
   color: inherit;
@@ -934,29 +711,6 @@ mark {
   outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
 }
 
-.search-rows {
-  display: flex;
-  gap: 2px;
-  align-items: flex-start;
-}
-.replace-toggle {
-  width: 16px;
-  align-self: stretch;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  border-radius: 2px;
-}
-.replace-toggle:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-.search-fields {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 .toggle:disabled {
   opacity: 0.4;
   cursor: default;
@@ -968,9 +722,6 @@ del {
 ins {
   text-decoration: none;
   background: var(--vscode-diffEditor-insertedTextBackground);
-}
-.search-summary .link {
-  font-size: 12px;
 }
 
 /* ---- file icons (from the user's icon theme) ---- */
@@ -1043,10 +794,6 @@ ins {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
 }
-.card.selected {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
 
 /* An empty change group keeps its place. */
 .row.group-empty {
@@ -1114,47 +861,10 @@ ins {
     animation: none;
   }
 }
-.hover-arrow {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  background: inherit;
-  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
-  transform: rotate(45deg);
-}
-.hover[data-placement='below'] .hover-arrow {
-  top: -5px;
-  left: calc(var(--arrow) - 4px);
-  border-right: 0;
-  border-bottom: 0;
-}
-.hover[data-placement='above'] .hover-arrow {
-  bottom: -5px;
-  left: calc(var(--arrow) - 4px);
-  border-left: 0;
-  border-top: 0;
-}
-.hover[data-placement='right'] .hover-arrow {
-  left: -5px;
-  top: calc(var(--arrow) - 4px);
-  border-right: 0;
-  border-top: 0;
-}
-.hover-plain {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 3px 8px;
-  white-space: pre-line;
-}
 .keys {
   display: inline-flex;
   gap: 6px;
   white-space: nowrap;
-}
-.keys .chord {
-  display: inline-flex;
-  gap: 2px;
 }
 .keys kbd {
   padding: 0 4px;
@@ -1168,122 +878,13 @@ ins {
   font-size: 11px;
   line-height: 16px;
 }
-.hover-ws {
-  min-width: 220px;
-}
-.hover-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 10px 7px;
-  box-shadow: inset 3px 0 0 var(--ws-color);
-  border-radius: 3px 0 0 3px;
-}
-.hover-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-wrap: anywhere;
-}
-.hover-title .tag {
-  margin-left: 0;
-}
-.hover-path {
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-  overflow-wrap: anywhere;
-}
-.hover-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 6px;
-  font-size: 12px;
-}
-.hover-row .codicon {
-  font-size: 14px;
-}
-.hover-row span + .codicon {
-  margin-left: 6px;
-}
-.hover-quote {
-  margin: 2px 0;
-  padding-left: 8px;
-  border-left: 2px solid var(--vscode-textBlockQuote-border, var(--border));
-  font-size: 12px;
-  font-style: italic;
-  overflow-wrap: anywhere;
-}
-.hover-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 10px;
-  border-top: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
-  border-radius: 0 0 3px 3px;
-  background: var(--vscode-editorHoverWidget-statusBarBackground, transparent);
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-}
 
-/* ---- commit history ---- */
-.history {
-  margin-top: 2px;
-}
-.badge.outgoing {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.hover-actions + .badge.outgoing {
-  margin-left: 4px;
-}
 .log-row {
   padding-left: 4px;
-}
-.commit-details {
-  padding: 2px 0 6px;
-}
-.commit-body,
-.commit-meta {
-  padding: 0 8px 2px 42px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.commit-body {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--vscode-foreground);
-}
-.commit-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 8px;
-  padding-bottom: 4px;
-}
-.commit-meta .link {
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 11px;
-}
-.commit-meta .outgoing-note {
-  color: var(--vscode-gitDecoration-addedResourceForeground, var(--done));
-}
-.commit-file {
-  padding-left: 40px;
-}
-.commit-details .row.group-empty {
-  padding-left: 42px;
 }
 .log-row > .codicon {
   flex: none;
   color: var(--muted);
-}
-.log-row.outgoing > .codicon {
-  color: var(--vscode-gitDecoration-addedResourceForeground, var(--done));
 }
 .log-row .name {
   flex: 0 1 auto;
@@ -1323,18 +924,10 @@ ins {
   border: 1px solid var(--border);
   color: var(--muted);
 }
-.ref.tag-ref {
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-}
 .row.group-empty.error {
   color: var(--vscode-errorForeground);
   font-style: normal;
   white-space: normal;
-}
-.hover-status .codicon {
-  font-size: 12px;
-  vertical-align: -2px;
 }
 
 /* Version Control's views, under its icon in the tool strip, indented like a tree. */
@@ -1438,49 +1031,11 @@ ins {
   background: var(--vscode-button-background);
 }
 
-/* Folding a worktree in the All tab: the button shows on hover, and always while folded. */
-.sec-head .fold {
-  display: flex;
-  flex: none;
-  visibility: hidden;
-}
-.sec-head:hover .fold,
-.sec-head:focus-within .fold,
-.section.collapsed .sec-head .fold {
-  visibility: visible;
-}
-.section.collapsed .sec-head .fold .icon {
-  color: var(--muted);
-}
-.sec-head .sec-meta,
-.sec-head .sec-msg {
-  padding-left: 20px;
-}
-/* Hovering a header deepens its tint: it's clickable (folds the worktree). */
-.sec-head {
-  transition: background-color 0.1s ease-out;
-}
-.sec-head:hover {
-  background: color-mix(in srgb, var(--ws-color) 22%, var(--vscode-sideBar-background));
-}
-@media (prefers-reduced-motion: reduce) {
-  .sec-head {
-    transition: none;
-  }
-}
 .compare-label {
   flex: none;
   width: 34px;
   font-size: 11px;
   color: var(--muted);
-}
-.compare-swap {
-  display: flex;
-  justify-content: center;
-  margin: -4px 0;
-}
-.compare-swap .codicon {
-  transform: rotate(90deg);
 }
 .compare-bar .check {
   display: flex;
@@ -1504,164 +1059,10 @@ ins {
 .backlog-title .icon .codicon {
   font-size: 14px;
 }
-.backlog-item .rename {
-  width: 100%;
-  box-sizing: border-box;
-  font: inherit;
-  padding: 3px 6px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 2px;
-  outline: none;
-}
-.backlog-item .rename:focus {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-.backlog-item .rename {
-  flex: 1;
-  min-width: 0;
-  padding: 0 4px;
-}
-.lane .group-head {
-  gap: 4px;
-}
-.lane-chev {
-  margin-left: auto;
-  width: 16px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.lane .group-head:has(.lane-chev) {
-  cursor: pointer;
-}
-.lane-chev + .badge {
-  margin-left: 2px;
-}
-.backlog-item {
-  position: relative;
-  padding-left: 6px;
-  gap: 4px;
-  cursor: grab;
-}
-.backlog-item .status-toggle {
-  width: 20px;
-  height: 20px;
-  flex: none;
-}
-.backlog-item .status-toggle .codicon {
-  font-size: 14px;
-  color: var(--muted);
-}
-.backlog-item.st-doing .status-toggle .codicon {
-  color: var(--working);
-}
-.backlog-item.st-done .status-toggle .codicon {
-  color: var(--done);
-}
-.backlog-item .status-toggle:hover .codicon::before {
-  content: '\eab2'; /* check */
-}
 .backlog-item.st-done .status-toggle:hover .codicon::before {
   content: '\ebb5'; /* circle-large-outline: reopen */
 }
-.backlog-item .item-id {
-  flex: none;
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.backlog-item .name {
-  flex: 1 1 auto;
-}
-/* Dropped in a lane: shown there while the host saves it. */
-.backlog-item.saving {
-  opacity: 0.65;
-}
-.backlog-item .item-saving {
-  font-size: 12px;
-  opacity: 0.8;
-}
-.backlog-item.st-done .name {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-.ws-chip {
-  flex: none;
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--vscode-foreground);
-  background: color-mix(in srgb, var(--ws-color, var(--focus)) 30%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws-color, var(--focus)) 60%, transparent);
-}
-.ws-chip:hover {
-  background: color-mix(in srgb, var(--ws-color, var(--focus)) 45%, transparent);
-}
-.backlog-item.drop-before::before,
-.lane.drop-end .lane-body::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: -1px;
-  height: 2px;
-  background: var(--focus);
-}
-.lane .lane-body {
-  position: relative;
-  min-height: 4px;
-}
-.lane.drop-end .lane-body::after {
-  top: auto;
-  bottom: 0;
-}
 
-/* ---- comparisons ---- */
-.comparison + .comparison {
-  margin-top: 4px;
-}
-.comparison-head {
-  gap: 4px;
-  padding-left: 2px;
-  cursor: pointer;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 600;
-  font-size: 12px;
-}
-.comparison-head > .codicon {
-  flex: none;
-  font-size: 14px;
-}
-.comparison-head .lane-chev-left {
-  width: 16px;
-  color: var(--muted);
-}
-.comparison-head .close {
-  flex: none;
-  margin-left: 2px;
-  width: 20px;
-  height: 20px;
-  visibility: hidden;
-}
-.comparison-head:hover .close,
-.comparison-head:focus-within .close {
-  visibility: visible;
-}
-.comparison-head .hover-actions + .badge,
-.comparison-head .badge:first-of-type {
-  margin-left: auto;
-}
-.comparison-head .hover-actions {
-  margin-left: auto;
-}
 .tools .sub-tool.add .codicon {
   font-size: 14px;
   color: var(--vscode-activityBar-inactiveForeground, var(--muted));
@@ -1703,415 +1104,6 @@ ins {
   opacity: 0.75;
 }
 
-/* ---- comparison: two branch pickers ---- */
-.compare-pick {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  padding: 4px 8px 8px 20px;
-}
-.compare-pick .compare-swap {
-  align-self: center;
-  margin: -2px 0;
-}
-.compare-pick .compare-swap .codicon {
-  transform: rotate(90deg);
-  font-size: 14px;
-}
-.compare-pick .check {
-  margin-top: 6px;
-}
-.ref-picker {
-  position: relative;
-}
-.ref-button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: 1px solid var(--vscode-dropdown-border, var(--border));
-  border-radius: 4px;
-  background: var(--vscode-dropdown-background, var(--vscode-input-background));
-  color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
-  text-align: left;
-}
-.ref-button:hover {
-  border-color: var(--focus);
-}
-.ref-button[aria-expanded='true'] {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-.ref-button.empty .ref-name {
-  color: var(--vscode-input-placeholderForeground, var(--muted));
-}
-.ref-button .codicon {
-  flex: none;
-  font-size: 14px;
-}
-.ref-button .codicon-chevron-down {
-  color: var(--muted);
-}
-.ref-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ref-menu {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 2px);
-  display: flex;
-  flex-direction: column;
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
-  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
-  border: 1px solid var(--vscode-widget-border, var(--border));
-  border-radius: 6px;
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
-  overflow: hidden;
-}
-.ref-filter {
-  margin: 6px;
-  padding: 4px 6px;
-  font: inherit;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--focus);
-  border-radius: 3px;
-  outline: none;
-}
-.ref-options {
-  max-height: 260px;
-  overflow-y: auto;
-  padding-bottom: 4px;
-}
-.ref-group {
-  padding: 6px 10px 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.ref-option {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 10px;
-  text-align: left;
-  line-height: 20px;
-}
-.ref-option span {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ref-option .codicon {
-  flex: none;
-  font-size: 14px;
-}
-.ref-option.active {
-  background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground));
-  color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground));
-}
-.ws-more {
-  flex: none;
-  font-size: 11px;
-  color: var(--muted);
-}
-/* The title keeps its room; the description's first line gets what's left. */
-.backlog-item .name {
-  flex: 0 1 auto;
-  min-width: 4em;
-}
-.backlog-item .desc {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--muted);
-}
-.backlog-item .activity-count {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.backlog-item .activity-count .codicon {
-  font-size: 12px;
-}
-.backlog-item .link-badge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 3px;
-  border-radius: 3px;
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--muted);
-  text-decoration: none;
-}
-.backlog-item .link-badge:hover {
-  color: var(--vscode-foreground);
-  background: var(--vscode-toolbar-hoverBackground);
-}
-.backlog-item .link-badge .codicon {
-  font-size: 13px;
-}
-/* Whether a ticket's work is merged (from git): green when it is, yellow while some isn't, muted for none yet. */
-.backlog-item .merge-chip {
-  flex: none;
-  padding: 0 4px;
-  border-radius: 3px;
-  font-size: 10px;
-  line-height: 14px;
-  white-space: nowrap;
-  color: var(--muted);
-  border: 1px solid currentColor;
-}
-.backlog-item .merge-chip.merged {
-  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
-}
-.backlog-item .merge-chip.partly,
-.backlog-item .merge-chip.unmerged {
-  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
-}
-.backlog-item .merge-warning {
-  flex: none;
-  display: inline-flex;
-  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
-}
-/* How its branches stand against main (BL-55): a conflict, or tickets it waits for. */
-.backlog-item .drift-badge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 3px;
-  border-radius: 3px;
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.backlog-item .drift-badge.conflict {
-  color: var(--vscode-editorWarning-foreground, var(--waiting));
-  border: 1px solid currentColor;
-}
-.backlog-item .drift-badge .codicon {
-  font-size: 12px;
-}
-.backlog-title .title-actions {
-  display: flex;
-  gap: 2px;
-}
-.backlog-problem {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: calc(100% - 16px);
-  margin: 0 8px 6px;
-  padding: 4px 8px;
-  text-align: left;
-  font-size: 12px;
-  border-radius: 3px;
-  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
-  background: var(--vscode-inputValidation-warningBackground, transparent);
-  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
-}
-.backlog-problem .codicon {
-  font-size: 14px;
-  margin-top: 1px;
-}
-.backlog-item .source-icon {
-  display: grid;
-  place-items: center;
-}
-.backlog-item a.icon {
-  color: inherit;
-}
-/* Whose turn a review is: the user's in the waiting color, an agent's muted, a stopped one as an error. */
-.backlog-item .turn-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  max-width: 9em;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--muted);
-}
-.backlog-item .turn-chip .codicon {
-  font-size: 12px;
-}
-.backlog-item .turn-chip.mine {
-  color: var(--waiting);
-}
-.backlog-item .turn-chip.turn-stopped {
-  color: var(--error);
-}
-/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
-.backlog-item .demo-mark {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 4px;
-  border: none;
-  border-radius: 3px;
-  font: inherit;
-  font-size: 10px;
-  line-height: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  cursor: pointer;
-}
-.backlog-item .demo-mark .codicon {
-  font-size: 11px;
-}
-.backlog-item .demo-mark:hover,
-.backlog-item .demo-mark:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-}
-.backlog-item.has-status {
-  height: auto;
-  min-height: var(--row-height);
-  flex-wrap: wrap;
-  row-gap: 0;
-}
-.backlog-item .agent-status {
-  flex: 1 0 100%;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 0 0 3px 46px;
-  box-sizing: border-box;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--muted);
-}
-.backlog-item .agent-status .codicon {
-  font-size: 11px;
-  flex: none;
-}
-.backlog-item .agent-status-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.backlog-item .agent-status.stuck {
-  color: var(--vscode-editorWarning-foreground);
-}
-.backlog-item .agent-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  max-width: 8em;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--muted);
-}
-.backlog-item .agent-chip .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-.backlog-item .agent-chip.waiting {
-  color: var(--waiting);
-}
-.backlog-item .agent-chip .codicon {
-  font-size: 12px;
-}
-.lane .lane-filter {
-  margin-left: auto;
-}
-.lane .lane-filter.on {
-  color: var(--waiting);
-}
-.backlog-item .parent-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 10px;
-  color: var(--muted);
-}
-.backlog-item .parent-chip .codicon {
-  font-size: 11px;
-}
-.proposal-actions {
-  display: flex;
-  margin-left: auto;
-  flex: none;
-}
-.proposed-lane .group-head .icon {
-  margin-left: auto;
-}
-/* Needs you: what waits on the user, above the lanes; a row says the ask, how long it has waited, and its actions. */
-.needs-lane .group-head {
-  color: var(--waiting);
-}
-.needs-lane .backlog-item {
-  height: auto;
-  min-height: var(--row-height);
-  padding-top: 3px;
-  padding-bottom: 3px;
-  flex-wrap: wrap;
-  cursor: pointer;
-}
-.needs-lane .need-icon {
-  flex: none;
-  color: var(--waiting);
-}
-.needs-lane .need-approved .need-icon {
-  color: var(--done);
-}
-.needs-lane .need-stopped .need-icon,
-.needs-lane .need-failed .need-icon {
-  color: var(--error);
-}
-.needs-lane .need-line {
-  flex: 1 1 100%;
-  padding-left: 22px;
-  font-size: 12px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.needs-lane .need-age {
-  flex: none;
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.needs-lane .need-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-  flex: none;
-}
-.proposed-lane .backlog-item .status-toggle {
-  color: var(--vscode-editorLightBulb-foreground, #ffcc00);
-}
 /* A ticket's commits, highlighted in a history (clicked on the ticket). */
 .log-row.mark-ticket {
   background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
@@ -2120,14 +1112,6 @@ ins {
 .log-row.mark-selected {
   background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent));
   box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
-}
-.ticket-commits-note {
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-.ticket-commits-note .name {
-  flex: 1;
 }
 /* Something in progress for a tool (a commit, a review agent, chats working, a search): a badge, above the count when there is one. */
 .tools .b.busy {
@@ -2142,316 +1126,6 @@ ins {
 }
 .tools .b.busy .codicon {
   font-size: 10px;
-}
-/* The autopilot: its switch in the backlog's title (lit while on), and a line saying what it's doing. */
-.autopilot-toggle.on {
-  color: var(--vscode-charts-green, var(--working));
-}
-.autopilot-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 2px 0 6px;
-  padding: 5px 8px;
-  border-left: 2px solid var(--vscode-charts-green, var(--working));
-  background: color-mix(in srgb, var(--vscode-charts-green, var(--working)) 10%, transparent);
-  font-size: 12px;
-  text-align: left;
-  color: var(--vscode-foreground);
-}
-.autopilot-bar .codicon {
-  margin-top: 1px;
-  color: var(--vscode-charts-green, var(--working));
-}
-/* The bar's text folds its details out (BL-153); Try Now (BL-132), next to it, tries a usage limit's paused agents now. */
-.autopilot-bar .autopilot-what {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-}
-.autopilot-bar .try-now {
-  flex: none;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-}
-.autopilot-bar .try-now:hover:not(:disabled) {
-  text-decoration: underline;
-}
-.autopilot-bar .try-now .codicon {
-  color: inherit;
-}
-/* The autopilot's switch on its bar (or the agent count's line): a control of its own, so the bar's click only folds (BL-153). */
-.autopilot-switch {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 6px;
-  border: 1px solid var(--vscode-checkbox-border, var(--vscode-panel-border));
-  border-radius: 9px;
-  background: none;
-  font: inherit;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
-}
-.autopilot-switch.on {
-  border-color: var(--vscode-charts-green, var(--working));
-  color: var(--vscode-foreground);
-}
-.autopilot-switch .codicon {
-  font-size: 10px;
-  margin: 0;
-}
-.autopilot-switch:focus-visible,
-.autopilot-line:focus-visible,
-.autopilot-bar .autopilot-what:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-.autopilot-box > .autopilot-bar {
-  margin-bottom: 0;
-}
-.autopilot-box {
-  margin-bottom: 6px;
-}
-.agent-count-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding-right: 8px;
-}
-.agent-count-line .agent-count {
-  flex: 1;
-  min-width: 0;
-}
-/* Its details: the agents working, the starts waiting (in order), why it's idle, the limit. Each line opens its ticket. */
-.autopilot-details {
-  padding: 4px 8px 6px 22px;
-  border-left: 2px solid var(--vscode-charts-green, var(--working));
-  background: color-mix(in srgb, var(--vscode-charts-green, var(--working)) 5%, transparent);
-  font-size: 12px;
-}
-.autopilot-box.off .autopilot-details {
-  border-left-color: var(--vscode-panel-border);
-}
-.autopilot-details .heading {
-  margin: 4px 0 2px;
-  font-weight: 600;
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-details ul,
-.autopilot-details ol {
-  margin: 0;
-  padding: 0 0 0 2px;
-  list-style-position: inside;
-}
-.autopilot-details ul {
-  list-style: none;
-}
-.autopilot-details .none,
-.autopilot-details .idle {
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-line {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0 6px;
-  max-width: 100%;
-  padding: 1px 0;
-  border: none;
-  background: none;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-}
-.autopilot-line .id {
-  color: var(--vscode-textLink-foreground);
-}
-.autopilot-line .title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-.autopilot-line .what {
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-line .status {
-  flex: 1 0 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-line .status .codicon {
-  font-size: 11px;
-  vertical-align: -1px;
-}
-.autopilot-line .status.stuck {
-  color: var(--vscode-editorWarning-foreground);
-}
-.autopilot-line:hover .title {
-  text-decoration: underline;
-}
-.autopilot-details .limit {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-details .limit .step {
-  display: flex;
-  padding: 1px;
-  border: none;
-  background: none;
-  color: var(--vscode-foreground);
-  cursor: pointer;
-}
-.autopilot-details .limit .step:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.autopilot-details .limit .try-now {
-  margin-left: 8px;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-}
-/* Pause All and Resume All (BL-160): links on the bar, the agent count's line and in the details; while Pause All
-   holds, the box takes the colour of a paused agent. */
-.agent-count-line .try-now,
-.autopilot-details .pause-all-row .try-now {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  white-space: nowrap;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-}
-.agent-count-line .try-now {
-  font-size: 12px;
-  padding: 2px 0;
-}
-.agent-count-line .try-now:hover:not(:disabled),
-.autopilot-details .pause-all-row .try-now:hover:not(:disabled) {
-  text-decoration: underline;
-}
-.autopilot-details .pause-all-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--vscode-descriptionForeground);
-}
-.autopilot-box.paused-all > .autopilot-bar,
-.autopilot-box.paused-all.off {
-  border-left-color: var(--vscode-charts-yellow, var(--vscode-descriptionForeground));
-  background: color-mix(in srgb, var(--vscode-charts-yellow, var(--vscode-descriptionForeground)) 10%, transparent);
-}
-/* The merge queue (BL-140): the tickets waiting to land, in order, and Land All. */
-.merge-queue-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 2px 0 6px;
-  padding: 5px 8px;
-  border-left: 2px solid var(--vscode-charts-purple, var(--working));
-  background: color-mix(in srgb, var(--vscode-charts-purple, var(--working)) 10%, transparent);
-  font-size: 12px;
-}
-.merge-queue-bar > span {
-  flex: 1;
-}
-.merge-queue-bar .codicon {
-  margin-top: 1px;
-  color: var(--vscode-charts-purple, var(--working));
-}
-.merge-queue-bar a[draggable] {
-  cursor: grab;
-}
-/* Where a ticket dragged in the queue would go (BL-144). */
-.merge-queue-bar a.drop-before,
-.merge-queue-bar .drop-end {
-  box-shadow: -2px 0 0 var(--vscode-focusBorder);
-}
-.merge-queue-bar .drop-end {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 4px;
-  vertical-align: middle;
-}
-.merge-queue-bar a.conflicts {
-  color: var(--vscode-charts-yellow, #cca700);
-}
-.merge-queue-bar .land-all {
-  flex: none;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-  font-size: 12px;
-}
-.merge-queue-bar .land-all:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-/* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
-.working-filter.on {
-  color: var(--working);
-}
-.working-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
-  margin: 2px 0 6px;
-  padding: 5px 8px;
-  border-left: 2px solid var(--working);
-  background: color-mix(in srgb, var(--working) 10%, transparent);
-  font-size: 12px;
-  text-align: left;
-  color: var(--vscode-foreground);
-}
-.working-bar .codicon {
-  margin-top: 1px;
-  color: var(--working);
-}
-.working-bar .link {
-  color: var(--vscode-textLink-foreground);
 }
 
 /* CI: a static dot on the Version Control tool for the scope's state (no spinner; its hover names the failed workflows), and a worktree's CI line in the same colors. */
@@ -2474,34 +1148,8 @@ ins {
 .ci-dot.queued {
   background: var(--working);
 }
-.ci-state.success {
-  color: var(--done);
-}
-.ci-state.failure {
-  color: var(--error);
-}
-.ci-state.running,
-.ci-state.queued {
-  color: var(--working);
-}
 .tools .sub-tool .ci-dot {
   left: auto;
   right: 2px;
   top: 2px;
-}
-/* The agents working, on a line under the backlog's title while the autopilot is off (its bar says it while on): click to fold out the autopilot's details. */
-.agent-count {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
-  margin: 0 0 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  text-align: left;
-  color: var(--vscode-descriptionForeground);
-}
-.agent-count:hover,
-.agent-count.on {
-  color: var(--working);
 }

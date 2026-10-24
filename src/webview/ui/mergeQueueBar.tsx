@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import type { MergeQueueView } from '../protocol';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
+import './mergeQueueBar.css';
 
 /** A ticket dragged within the merge queue bar (BL-144): the lanes don't take it. */
 const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';

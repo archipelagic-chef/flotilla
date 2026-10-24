@@ -5,6 +5,7 @@ import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
 import { WORKING_MIN_MS } from '../workingMin';
 import { commentSent } from './comments';
+import './actions.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();

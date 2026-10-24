@@ -1,0 +1,411 @@
+.feed {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.entry {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+}
+.entry.kind-agent {
+  border-left-color: var(--working);
+}
+.entry.kind-comment {
+  border-left-color: var(--focus);
+}
+.entry.kind-history {
+  border-style: dashed;
+  border-left-style: solid;
+}
+/* An agent's report: its summary, what it needs from you (answered by clicking), and its details, folded. */
+.report-details {
+  margin-top: 6px;
+}
+.report-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.needs {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--waiting);
+  border-radius: 3px;
+}
+.needs.answered {
+  border-left-color: var(--border);
+}
+.needs-line {
+  margin-bottom: 2px;
+}
+.needs-line > .codicon {
+  color: var(--waiting);
+}
+.answer-text {
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+.choice .recommended {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.needs .actions-row {
+  margin-top: 8px;
+}
+.entry-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.entry-head .codicon {
+  font-size: 14px;
+}
+.task.checked {
+  background: var(--vscode-checkbox-selectBackground, var(--focus));
+  border-color: var(--vscode-checkbox-selectBorder, var(--focus));
+  box-shadow: inset 0 0 0 2px var(--vscode-checkbox-background, var(--vscode-editor-background));
+}
+.entry-head .posted {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.entry-head .post-entry {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0;
+}
+.entry:hover .post-entry,
+.post-entry:focus-visible {
+  opacity: 1;
+}
+.tabs .count {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}
+.chat-chip:hover {
+  border-color: var(--focus);
+  background: var(--vscode-list-hoverBackground);
+}
+.chat-chip .codicon {
+  font-size: 12px !important;
+}
+.chat-chip-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-chip .dot.working {
+  background: var(--working);
+}
+.chat-chip .dot.waiting {
+  background: var(--waiting);
+}
+.chat-chip .dot.done {
+  background: var(--done);
+}
+.bot-tag {
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+}
+/* Older entries fold to one line each, opened by a click. */
+.entry.folded {
+  padding: 0;
+}
+.entry-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.entry-fold strong {
+  font-weight: 600;
+}
+.entry-fold .fold-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.fold-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+/* Replies (BL-126): under their top-level entry, indented, each with whom it answers. */
+.reply-entry {
+  margin-left: auto;
+  font-size: 11px;
+}
+.reply-entry + .fold-entry {
+  margin-left: 0;
+}
+.replies {
+  list-style: none;
+  margin: 8px 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--vscode-panel-border, var(--muted));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reply-to {
+  display: block;
+  margin-bottom: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+}
+button.reply-to {
+  cursor: pointer;
+}
+button.reply-to:hover {
+  color: var(--vscode-textLink-foreground);
+}
+.entry-fold .reply-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.replying-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.activity-toggle {
+  margin: 4px 0 8px;
+}
+/* Flotilla's notes and the commits: a compact, grey timeline. */
+.timeline {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0 0 0 10px;
+  border-left: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.timeline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+}
+button.timeline-item {
+  cursor: pointer;
+}
+button.timeline-item:hover .timeline-text {
+  text-decoration: underline;
+}
+.timeline-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.commit-line:hover .subject {
+  text-decoration: underline;
+}
+/* A review's rounds, folded into one line (rounds.ts); opened, its entries and commits show in order. */
+.entry.kind-review {
+  padding: 0 12px;
+  border: none;
+}
+.review-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  text-align: left;
+}
+.review-fold > .codicon {
+  font-size: 14px;
+}
+.review-fold:hover span {
+  text-decoration: underline;
+}
+.fold-items {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.entry.sending {
+  opacity: 0.7;
+}
+.sending-body {
+  white-space: pre-wrap;
+}
+/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
+.feed .report-media .rendered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+.feed .report-media .rendered > * {
+  margin: 0;
+}
+.feed .report-media .rendered > .diagram {
+  flex: 1 1 100%;
+}
+.feed .report-media .rendered img {
+  max-height: 420px;
+}
+.feed .report-media .rendered video.media {
+  max-height: 420px;
+  margin: 0;
+}
+/* A folded report's media: thumbnails beside its line, each opening in the viewer. */
+.entry.folded:has(.media-strip) {
+  display: flex;
+  align-items: center;
+}
+.entry.folded:has(.media-strip) .entry-fold {
+  flex: 1;
+}
+.media-strip {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  max-width: 50%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 3px 8px 3px 0;
+  list-style: none;
+}
+.media-thumb {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 36px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background);
+  cursor: zoom-in;
+}
+.media-thumb:hover,
+.media-thumb:focus-visible {
+  border-color: var(--focus);
+}
+.media-thumb img,
+.media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.media-thumb .play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
+}
+.media-thumb-diagram {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.media-thumb-diagram pre {
+  margin: 0;
+  overflow: hidden;
+  font-size: 4px;
+}
+.media-thumb-diagram .diagram,
+.media-thumb-diagram svg {
+  width: 100%;
+  height: 100%;
+}
+.media-thumb-diagram .media-note,
+.media-thumb > .media-note {
+  display: none;
+}
+.feed .entry.flash {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  transition: outline-color 0.4s;
+}
