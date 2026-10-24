@@ -284,61 +284,6 @@ h2 {
   border-left: 3px solid var(--vscode-textBlockQuote-border, var(--border));
   color: var(--muted);
 }
-.md-box {
-  width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-  padding: 6px 8px;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: var(--vscode-editor-font-size, 13px);
-  line-height: 1.5;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--border));
-  border-radius: 2px;
-  outline: none;
-}
-.md-box:focus {
-  border-color: var(--focus);
-}
-.md-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
-  margin-bottom: 4px;
-}
-.md-tabs {
-  display: inline-flex;
-  border-bottom: 1px solid var(--border);
-}
-.md-tab {
-  padding: 2px 8px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-.md-tab[aria-selected='true'] {
-  color: var(--vscode-foreground);
-  border-bottom-color: var(--focus);
-}
-.md-formats {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 1px;
-}
-.md-preview {
-  padding: 6px 8px;
-  border: 1px solid var(--vscode-input-border, var(--border));
-  border-radius: 2px;
-  box-sizing: border-box;
-}
-.md-box::placeholder {
-  color: var(--vscode-input-placeholderForeground);
-}
 .feed {
   list-style: none;
   margin: 0 0 12px;
@@ -955,17 +900,6 @@ h2 {
   display: flex;
 }
 
-/* A demo in a report (BL-111): its recording with the bar over it, as in the Demo section; its run block's buttons. */
-.demo-inline {
-  margin: 8px 0;
-}
-.demo-inline img,
-.demo-inline video {
-  display: block;
-  max-width: 100%;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: 4px;
-}
 .demo-actions {
   display: inline-flex;
   gap: 6px;
