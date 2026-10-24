@@ -272,3 +272,13 @@
   margin-left: auto;
   flex: none;
 }
+.backlog-item .merge-chip.partly,
+.backlog-item .merge-chip.unmerged {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
+.backlog-item a.icon {
+  color: inherit;
+}
+.backlog-item .turn-chip.turn-stopped {
+  color: var(--error);
+}
