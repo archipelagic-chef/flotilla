@@ -1,3 +1,4 @@
+import './attachments.css';
 /**
  * The Attachments section (BL-110), between the description and the activity: the ticket's images, GIFs, videos and
  * Mermaid diagrams (BL-136) as thumbnails, newest first; a click opens one large, in an overlay, with the next and previous.
