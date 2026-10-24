@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
 import { GitHubActions } from '../../../src/features/ci/githubActions';
+import { failedJob, type FailedJob } from '../../../src/features/ci/failureTask';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
@@ -104,6 +105,7 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
   const reader = new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url);
   const updates: string[] = [];
   const fixes: Array<[string, number, number | undefined]> = [];
+  const failures: Array<FailedJob | undefined> = [];
   const kept = new Map<string, unknown>();
   const state = { get: (k: string) => kept.get(k), update: async (k: string, v: unknown) => void kept.set(k, v) };
   const merger = new Merger({
@@ -114,7 +116,13 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
     openTicket() {},
     ciReader: async () => o.reader ?? reader,
     updateFromMain: async (id: string) => void updates.push(id),
-    fixCi: async (branch: string, run: number, job?: number) => void fixes.push([branch, run, job]),
+    // As the CI view's fixOnOrigin does: the run read on the ref it ran on, its failed job for an agent on branch.
+    fixCi: async (branch: string, run: number, job?: number, runBranch = branch) => {
+      fixes.push([branch, run, job]);
+      const found = (await reader.runs(runBranch, 30)).find((r) => r.id === run);
+      // The log's redirect isn't over https from the fake: it isn't read.
+      failures.push(found && (await failedJob({ jobs: (id) => reader.jobs(id), log: async () => '' }, branch, found, job)));
+    },
     ciPollMs: o.ciPollMs ?? 20,
     checksEnv: fakeChecksEnv,
     state,
@@ -136,7 +144,7 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
       .split('\n')
       .filter(Boolean)
       .map((l) => l.split('\t').reverse().join(' '));
-  return { repo, merger, item, activity, branch, runsOf, updates, fixes, queue, trainOnOrigin };
+  return { repo, merger, item, activity, branch, runsOf, updates, fixes, failures, queue, trainOnOrigin };
 }
 
 /** Waits until done, up to 25 s (under the suite's 30 s timeout): a loaded machine polls and merges slowly (BL-120). */
@@ -369,7 +377,7 @@ describe('Landing from the merge train on CI (BL-145)', () => {
   });
 
   it('takes a ticket out of the queue on red CI on its train commit, with the failed jobs, and rebuilds the train without it', async () => {
-    const { repo, merger, item, activity, branch, queue, trainOnOrigin, fixes } = await setup([approved('BL-1'), approved('BL-2')], { ciPollMs: HOUR });
+    const { repo, merger, item, activity, branch, queue, trainOnOrigin, fixes, failures } = await setup([approved('BL-1'), approved('BL-2')], { ciPollMs: HOUR });
     branch('feature/BL-1', 'a.txt', 'BL-1');
     commit(repo, 'm.txt', 'm\n', 'main moves on');
     const before = git(repo, 'rev-parse', 'main');
@@ -392,9 +400,12 @@ describe('Landing from the merge train on CI (BL-145)', () => {
     expect(ui.messages.some((m) => m.startsWith("CI failed on BL-1's commit in the merge train (flotilla/merge-queue/BL-1)"))).toBe(true);
     const tip = git(repo, 'rev-parse', 'feature/BL-1');
     const stop = merger.ciStop('BL-1', () => tip);
-    expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip });
+    expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip, runBranch: 'flotilla/merge-queue/BL-1' });
+    // Fix with Agent finds the run on the train branch (deleted from origin by now: GitHub keeps its runs), and gives
+    // the agent the ticket's branch to fix.
     await merger.fixCiStop('BL-1');
     expect(fixes).toEqual([['feature/BL-1', stop?.kind === 'failed' ? stop.runs[0].id : -1, stop?.kind === 'failed' ? stop.jobs[0].jobId : -1]]);
+    expect(failures).toEqual([expect.objectContaining({ branch: 'feature/BL-1', job: expect.objectContaining({ name: 'test' }), failedSteps: ['Run tests'] })]);
 
     // Another ticket lands by the train the same way: the push isn't asked again.
     branch('feature/BL-2', 'b.txt', 'BL-2');

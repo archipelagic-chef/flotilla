@@ -61,7 +61,7 @@ export interface MergeDeps {
   /** Update from Main (BL-55): main into the ticket's branch, which is then pushed, and CI runs again. */
   updateFromMain?(id: string): Promise<void>;
   /** Fix with Agent (BL-7) on a failed CI job of the branch. */
-  fixCi?(branch: string, runId: number, jobId?: number): Promise<void>;
+  fixCi?(branch: string, runId: number, jobId?: number, runBranch?: string): Promise<void>;
   /** Whether this window rebuilds the merge train (BL-140): one window does. None: it does. */
   isLeader?(): boolean;
   /** How often a merge waiting for CI reads its runs again (the tests' is short). */
@@ -570,14 +570,15 @@ export class Merger implements vscode.Disposable {
     await this.changeQueue((q) => dequeue(q, [e.id]));
     if (ci.kind === 'moved') {
       // Not CI for its commit in the train: the train is rebuilt without it, and Merge to main puts it back.
+      await this.note(e.id, `Not merged: CI's result on \`${ci.tip.slice(0, 7)}\` isn't for ${e.id}'s commit in the merge train, so ${e.id} is out of the merge queue and the train is rebuilt without it. Merge to main puts it back.`);
       await this.currentTrain({ rebuild: true });
       return;
     }
     const ref = ci.tip === e.tip ? e.branch : trainRef(e.id);
     const stop = ciStop(ci, e.branch, base);
     if (stop?.kind === 'failed') {
-      // It holds while the ticket's branch is where it was.
-      const held = { ...stop, tip: e.tip };
+      // It holds while the ticket's branch is where it was; Fix with Agent finds the run on the ref CI ran on.
+      const held = { ...stop, tip: e.tip, ...(ref !== e.branch ? { runBranch: ref } : {}) };
       this.ciStops.set(e.id, held);
       recordCiStop(e.id, held);
     }
@@ -593,7 +594,7 @@ export class Merger implements vscode.Disposable {
             : `CI failed on ${item.id}'s commit in the merge train (${ref}): it wasn't merged, and is out of the merge queue.`,
           ...(this.deps.fixCi ? ['Fix with Agent'] : []),
         )
-        .then((c) => (c ? this.deps.fixCi?.(e.branch, first?.run.id ?? ci.runs[0].id, first?.job.id) : undefined))
+        .then((c) => (c ? this.deps.fixCi?.(e.branch, first?.run.id ?? ci.runs[0].id, first?.job.id, ref) : undefined))
         .then(undefined, showError);
     }
   }
@@ -611,7 +612,7 @@ export class Merger implements vscode.Disposable {
     const stop = this.ciStops.get(id);
     if (stop?.kind !== 'failed') return;
     const first = stop.jobs[0];
-    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId);
+    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId, stop.runBranch);
   }
 
   /** One at a time: merges move the base branch. what: what the task does, for those waiting behind it. */
