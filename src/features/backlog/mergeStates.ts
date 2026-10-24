@@ -11,13 +11,13 @@ import type { MergeState } from './merge';
  * |                               |                                     | resolving; checks fail → failed (checks)                                |
  * | (none), in the train,         | Resolve with Agent (train panel)    | Resolve with Agent → resolving (train); Merge to main merges it alone   |
  * | conflicting                   |                                     |                                                                         |
- * | resolving, agent running      | Cancel                              | the agent ends: resolved (also a merge it made again onto the moved     |
+ * | resolving, agent running      | Pause, Cancel                       | the agent ends: resolved (also a merge it made again onto the moved     |
  * |                               |                                     | main); or failed (it stopped short, or committed no fix and the checks  |
  * |                               |                                     | still fail); or merged (no fix, the rerun passed)                       |
  * | resolving, agent not running  | Resolve with Agent, Cancel          | Resolve with Agent → resolving (same agent); Cancel → (none)            |
  * | (a window reload)             |                                     |                                                                         |
- * | resolving, paused (Pause All, | Resolve with Agent, Cancel          | Resume All, or Resolve with Agent → resolving (its chat resumed)        |
- * | BL-164)                       |                                     |                                                                         |
+ * | resolving, paused (Pause, or  | Resume, Cancel                      | Resume (or Resume All, for those it paused) → resolving, its chat       |
+ * | Pause All; BL-164)            |                                     | resumed                                                                 |
  * | resolved                      | Approve, Cancel                     | Approve: checks, then merged; checks fail → failed (checks); main moved |
  * |                               |                                     | → merged again onto it with the resolution, then checks (conflicts anew |
  * |                               |                                     | → resolving); in the train: recorded, the train lands it                |
@@ -27,14 +27,17 @@ import type { MergeState } from './merge';
  */
 
 /** What the ticket's merging panel offers for a merge waiting for a decision. */
-export type MergeAction = 'cancel' | 'resolve' | 'recheck' | 'approve';
+export type MergeAction = 'cancel' | 'pause' | 'resume' | 'resolve' | 'recheck' | 'approve';
 
 /**
  * The buttons of a merge's state, in the panel's order, and the one to click next (the primary one: undefined while
  * its agent works). `running`: whether its agent is running in this window.
  */
-export function mergeActions(m: Pick<MergeState, 'state' | 'checks'>, running: boolean): { actions: MergeAction[]; next?: MergeAction } {
+export function mergeActions(m: Pick<MergeState, 'state' | 'checks' | 'paused'>, running: boolean): { actions: MergeAction[]; next?: MergeAction } {
   const resolving = m.state === 'resolving' && running;
+  // Its agent paused (BL-164): Resume goes on in its chat.
+  if (m.state === 'resolving' && m.paused && !running) return { actions: ['cancel', 'resume'], next: 'resume' };
+  if (resolving) return { actions: ['cancel', 'pause'], next: undefined };
   const actions: MergeAction[] = ['cancel'];
   if (!resolving && m.state !== 'resolved') actions.push('resolve');
   if (m.checks && m.state === 'failed' && !resolving) actions.push('recheck');

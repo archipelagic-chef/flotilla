@@ -462,6 +462,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     leader,
     output,
     pauseAll,
+    merges: merger,
     prepareWorktree: (item) => prepareItemWorktree(ctx, item),
     // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
     key: () =>

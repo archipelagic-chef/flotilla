@@ -1137,15 +1137,35 @@ export class Merger implements vscode.Disposable {
    * Resume All. Its session; undefined when no agent of this window resolves it. Outside the queue: a merge's checks
    * running there don't hold it up.
    */
-  async pauseForAll(id: string): Promise<string | undefined> {
+  pauseForAll(id: string): Promise<string | undefined> {
+    return this.pauseResolver(id, 'all');
+  }
+
+  /** The merge panel's Pause (BL-164): as Pause All does, for this merge alone; its Resume (Resolve with Agent) goes on. */
+  async pause(id: string): Promise<void> {
+    await this.pauseResolver(id, 'you');
+  }
+
+  private async pauseResolver(id: string, by: 'all' | 'you'): Promise<string | undefined> {
     const run = this.runs.get(id);
     const m = (await this.item(id))?.merging;
     if (!run || m?.state !== 'resolving') return undefined;
     this.runs.delete(id);
     run.stop();
     await this.setMerge(id, { ...m, session: run.sessionId, paused: new Date().toISOString() });
-    await this.note(id, `Pause All paused ${m.agent ?? 'the agent'} resolving the merge: its chat is kept, and Resume All goes on with it.`);
+    const agent = m.agent ?? 'the agent';
+    await this.note(
+      id,
+      by === 'all'
+        ? `Pause All paused ${agent} working on the merge: its chat is kept, and Resume All goes on with it.`
+        : `You paused ${agent} working on the merge: its chat is kept, and Resume goes on with it.`,
+    );
     return run.sessionId;
+  }
+
+  /** Merges' agents and checks this window runs now: Pause All pauses those (BL-164), so the views offer it. */
+  get pausable(): number {
+    return this.runs.size + this.liveChecks.size;
   }
 
   /** Resume All (BL-164): a merge's agent Pause All paused goes on in that chat; undefined when it isn't paused there any more. */

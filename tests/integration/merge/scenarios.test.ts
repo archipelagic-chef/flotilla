@@ -68,10 +68,21 @@ describe('The merge flow, end to end', () => {
     const w = await conflicting();
     const before = w.mainLog();
     w.agents('later');
-    expect(await w.merge('BL-1')).toMatchObject({ state: 'resolving', actions: ['cancel'], next: undefined });
+    expect(await w.merge('BL-1')).toMatchObject({ state: 'resolving', actions: ['cancel', 'pause'], next: undefined });
     expect(await w.cancel('BL-1')).toMatchObject({ status: 'review', next: 'merge' });
     expect(w.mainLog()).toEqual(before);
     w.answer(/has conflicts/, 'Resolve with Agent');
+    w.agents('resolve');
+    expect((await w.next('BL-1')).state).toBe('resolved');
+    expect((await w.next('BL-1')).status).toBe('done');
+    expectMainEndsWith(w, [/BL-9/, MERGED_1]);
+  });
+
+  it('Pause in the middle: its agent stops, its chat kept; Resume goes on with it there (BL-164)', async () => {
+    const w = await conflicting();
+    w.agents('later');
+    await w.merge('BL-1');
+    expect(await w.pause('BL-1')).toMatchObject({ state: 'resolving', actions: ['cancel', 'resume'], next: 'resume' });
     w.agents('resolve');
     expect((await w.next('BL-1')).state).toBe('resolved');
     expect((await w.next('BL-1')).status).toBe('done');

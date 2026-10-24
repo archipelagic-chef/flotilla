@@ -290,6 +290,8 @@ export interface MergeQueueView {
 export interface AutopilotState {
   enabled: boolean;
   running: number;
+  /** Merges' agents and checks running in this window (BL-164): Pause All pauses them too. */
+  merging?: number;
   max: number;
   /** Starts waiting for a free slot (in the queue: reviews and resumes go first). */
   waiting: number;

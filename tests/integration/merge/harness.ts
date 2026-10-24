@@ -262,12 +262,14 @@ export class World {
   approve = (id: string) => this.step(id, `Approve ${id}`, () => this.merger.approveResolution(id));
   recheck = (id: string) => this.step(id, `Run the Checks Again ${id}`, () => this.merger.recheck(id));
   cancel = (id: string) => this.step(id, `Cancel ${id}`, () => this.merger.cancel(id));
+  pause = (id: string) => this.step(id, `Pause ${id}`, () => this.merger.pause(id));
+  resume = (id: string) => this.step(id, `Resume ${id}`, () => this.merger.resolveWithAgent(id));
 
   /** Clicks what the ticket offers next, as a user who follows it would. */
   async next(id: string): Promise<Snapshot> {
     const { next } = await this.snapshot(id);
     expect(next, `${id} offers nothing to click`).toBeDefined();
-    const click = { merge: this.merge, resolve: this.resolve, approve: this.approve, recheck: this.recheck, cancel: this.cancel }[next!];
+    const click = { merge: this.merge, resolve: this.resolve, approve: this.approve, recheck: this.recheck, cancel: this.cancel, pause: this.pause, resume: this.resume }[next!];
     return click(id);
   }
 }
