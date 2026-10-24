@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import { conflictedFiles } from './merge';
+import { conflictedFiles, removeMergeWorktree } from './merge';
 
 export { mergeStyle, type MergeStyle } from './tidyNotes';
 
@@ -53,6 +53,22 @@ export async function rebaseInDir(dir: string, onto: string, o: { rerere?: boole
     throw error;
   }
   return { kind: 'rebased', commit: await head(), rebased: true };
+}
+
+/**
+ * Merge to main with fast-forward (BL-181): in a new temporary worktree at dir, detached at the branch's tip, the
+ * branch rebased onto baseTip when it isn't on top of it (or has fixup! commits to squash). Conflicts are left there,
+ * the rebase stopped on them; any other failure removes the worktree.
+ */
+export async function rebaseInWorktree(cwd: string, o: { dir: string; baseTip: string; branch: string }): Promise<RebaseOutcome> {
+  await fs.promises.mkdir(path.dirname(o.dir), { recursive: true });
+  await runGit(['worktree', 'add', '--detach', o.dir, `refs/heads/${o.branch}`], { cwd, timeoutMs: 120_000 });
+  try {
+    return await rebaseInDir(o.dir, o.baseTip);
+  } catch (error) {
+    await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Goes on with a rebase stopped in dir whose conflicts are all resolved (and staged), until it ends or stops again. */
