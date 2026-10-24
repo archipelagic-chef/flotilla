@@ -520,6 +520,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.openMetrics",
+        "title": "Open Metrics",
+        "category": "Flotilla",
+        "icon": "$(graph)"
+      },
+      {
         "command": "flotilla.fixBacklogReview",
         "title": "Fix a Stopped Review",
         "category": "Flotilla"

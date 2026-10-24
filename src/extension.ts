@@ -53,6 +53,7 @@ import { TicketPanels } from './ui/backlog/ticketPanel';
 import { Merges } from './ui/backlog/merges';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
+import { Metrics } from './ui/metrics/metrics';
 import { devGitHubApi } from './ui/ci/devGitHub';
 import { heldBy, type ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
@@ -180,7 +181,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void integrations.refresh();
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
+  // The Metrics view (BL-158): the sidebar's tool and its editor tab, counted from the event log.
+  const metrics = new Metrics(context.extensionUri, location.commonDir);
+  context.subscriptions.push(metrics, vscode.commands.registerCommand('flotilla.openMetrics', () => metrics.openEditor('week')));
   const sidebar = new SidebarProvider({
+    metrics,
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,

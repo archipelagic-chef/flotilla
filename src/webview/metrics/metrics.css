@@ -1,0 +1,317 @@
+/* The Metrics view (BL-158): the theme's colors and chart palette, and a layout that fits the sidebar's width. */
+.metrics {
+  padding: 6px 10px 16px;
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+}
+
+.metrics button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metrics button:disabled {
+  cursor: default;
+}
+
+.metrics button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.metrics-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.metrics-periods {
+  display: flex;
+  flex: 1;
+  border: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.metrics .metrics-periods button {
+  flex: 1;
+  text-align: center;
+  padding: 2px 6px;
+}
+
+.metrics .metrics-periods button.on {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.metrics .metrics-periods button:not(.on):hover,
+.metrics .metrics-icon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.metrics .metrics-icon {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 3px;
+}
+
+.metrics-section h3 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-section h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.metrics-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.metrics .metrics-number {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+  border: 1px solid transparent;
+}
+
+.metrics .metrics-number:hover,
+.metrics .metrics-number.open {
+  border-color: var(--vscode-focusBorder);
+}
+
+.metrics-number .value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-number .label {
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-number .change {
+  font-size: 11px;
+}
+
+.metrics-number .change.up {
+  color: var(--vscode-charts-green);
+}
+
+.metrics-number .change.down {
+  color: var(--vscode-charts-red);
+}
+
+.metrics-number .change.same,
+.metrics-number .vs {
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-empty {
+  margin: 4px 0;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.metrics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+
+.metrics-columns {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 72px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-descriptionForeground));
+}
+
+.metrics-max {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  pointer-events: none;
+}
+
+.metrics-limit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--vscode-charts-red);
+  pointer-events: none;
+}
+
+.metrics .metrics-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 2px 2px 0 0;
+}
+
+.metrics .metrics-column:hover:not(:disabled),
+.metrics .metrics-column.open {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.metrics-column .stack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 100%;
+  height: 100%;
+  justify-content: flex-start;
+}
+
+.metrics-column .stack span {
+  display: block;
+  min-height: 1px;
+}
+
+.metrics-axis {
+  display: flex;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-axis span {
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.metrics-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metrics .metrics-row {
+  display: grid;
+  grid-template-columns: minmax(0, 40%) 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.metrics .metrics-row:hover:not(:disabled),
+.metrics .metrics-row.open {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.metrics-row .label,
+.metrics-item .label,
+.metrics-item .detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metrics-row .track {
+  height: 8px;
+  border-radius: 2px;
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+}
+
+.metrics-row .fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.metrics-row .value,
+.metrics-item .value {
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-list {
+  margin: 6px 0;
+  padding: 4px 6px;
+  border-left: 2px solid var(--vscode-focusBorder);
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+}
+
+.metrics-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.metrics .metrics-item {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 2px;
+  border-radius: 2px;
+}
+
+.metrics .metrics-item:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.metrics-item .detail {
+  flex: 1;
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-item .value {
+  margin-left: auto;
+}
+
+/* The editor tab has room for the sections side by side. */
+.metrics.wide {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+@media (min-width: 900px) {
+  .metrics.wide .metrics-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 0 24px;
+  }
+
+  .metrics.wide .metrics-columns {
+    height: 120px;
+  }
+}

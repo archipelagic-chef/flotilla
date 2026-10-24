@@ -21,6 +21,7 @@
   ],
   "exclude": [
     "src/webview/ui",
-    "src/webview/ticket"
+    "src/webview/ticket",
+    "src/webview/metrics"
   ]
 }

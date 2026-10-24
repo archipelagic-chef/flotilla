@@ -41,6 +41,7 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'limit-lifted': { minutes: 60, tries: 2 },
   'autopilot-idle': { reason: 'nothing left in To Do' },
   'click-waited': { button: 'merge', ms: 2400 },
+  'review-state': { from: 'working', to: 'asking' },
   'test-run': { ms: 90_000, waitMs: 30_000, full: true, ok: true, slots: 1 },
   'demo-recorded': { name: 'open-agent-chat', frames: 120, ms: 8000, medianGapMs: 40, p90GapMs: 80 },
 };
