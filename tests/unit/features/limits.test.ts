@@ -37,6 +37,14 @@ describe('usage limits', () => {
     expect([0, 1, 2].map((n) => retryDelay('usage', n) / 60_000)).toEqual([30, 60, 60]);
   });
 
+  it('stops growing at 15 minutes once the wait has lasted an hour (BL-179)', () => {
+    const hour = 60 * 60_000;
+    expect([3, 4, 5, 50].map((n) => retryDelay('rate', n, hour) / 60_000)).toEqual([15, 15, 15, 15]);
+    expect(retryDelay('rate', 1, hour) / 60_000).toBe(10);
+    expect(retryDelay('usage', 2, 4 * hour) / 60_000).toBe(15);
+    expect(retryDelay('rate', 3, hour - 1) / 60_000).toBe(40);
+  });
+
   describe("Claude Code's wordings of 2026-10-23 (BL-184)", () => {
     // 2026-10-23 21:00 UTC: before 11:30pm (UTC) that day, after 4am and 4:30am (UTC).
     const at = new Date(Date.UTC(2026, 9, 23, 21, 0));

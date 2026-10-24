@@ -478,7 +478,7 @@ describe('the agent limit', () => {
       round: 1,
       state: 'paused',
       reviewer: '',
-      paused: { until: at, known: false, kind: 'rate', tries: 0, since: at, phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+      paused: { until: at, known: false, kind: 'rate', tries: 0, since: new Date().toISOString(), phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
     };
     probe.mockReset();
     probe.mockResolvedValue(rate);
@@ -509,6 +509,76 @@ describe('the agent limit', () => {
     expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { tries: 3, session: 'session-1' } });
     expect(minutesLeft()).toBe(40);
     expect(notes).toHaveLength(1);
+    loop.dispose();
+  });
+
+  /** Agents paused on one guessed-at rate limit, the n-th since `minutesAgo[n]` minutes, all due for a try now. */
+  const pauseGuessed = (minutesAgo: Record<number, number>) => {
+    for (const [n, ago] of Object.entries(minutesAgo)) {
+      pauseOn(Number(n), new Date(Date.now() - 1000).toISOString());
+      Object.assign((data.items[Number(n)].review as { paused: object }).paused, { known: false, kind: 'rate', tries: 0, since: new Date(Date.now() - ago * 60_000).toISOString() });
+    }
+  };
+
+  it('one probe tries a limit for every agent paused on it, and they all go on together, oldest pause first (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue(undefined);
+    pauseGuessed({ 1: 10, 2: 30, 3: 20 });
+    await loop.resumePaused();
+    await settle();
+    expect(probe).toHaveBeenCalledTimes(1);
+    // Two slots: the oldest two go on, the third is first in line.
+    expect(spawn.mock.calls.map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p2', 'session-p3']);
+    expect(notes).toContain('BL-4: The limit lifted (found while resuming Ada-2): resumed the chat for agent Ada-3 to go on.');
+    expect(notes).toContain('BL-2: Queued: an agent takes this up when one is free (1st in line).');
+    const live = loop as unknown as { canStartNew(): boolean };
+    finish[0]({ code: 0 });
+    // The freed slot goes to the waiting agent, not to a new ticket.
+    expect(live.canStartNew()).toBe(false);
+    await settle();
+    expect((spawn.mock.calls[2][0] as { resume?: string }).resume).toBe('session-p1');
+    expect(notes).toContain('BL-2: The limit lifted (found while resuming Ada-2): resumed the chat for agent Ada-1 to go on.');
+    loop.dispose();
+  });
+
+  it('a limit still there moves every agent paused on it to the same next try, and no new ticket starts meanwhile (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue({ until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate' });
+    pauseGuessed({ 1: 10, 2: 30 });
+    // Due but not tried yet: the autopilot holds now.
+    expect((await loop.pausedUntil())!.getTime()).toBeLessThanOrEqual(Date.now());
+    await loop.resumePaused();
+    expect(probe).toHaveBeenCalledTimes(1);
+    const untils = [1, 2].map((n) => (data.items[n].review as { paused: { until: string; tries: number } }).paused);
+    expect(untils[0].until).toBe(untils[1].until);
+    expect(untils.map((u) => u.tries)).toEqual([1, 1]);
+    expect((await loop.pausedUntil())?.toISOString()).toBe(untils[0].until);
+    expect(started()).toHaveLength(0);
+    loop.dispose();
+  });
+
+  it('the probe of a limit that lasts over an hour tries again every 15 minutes at most (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue({ until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate' });
+    pauseGuessed({ 1: 90 });
+    (data.items[1].review as { paused: { tries: number } }).paused.tries = 5;
+    await loop.resumePaused();
+    const until = Date.parse((data.items[1].review as { paused: { until: string } }).paused.until);
+    expect(Math.round((until - Date.now()) / 60_000)).toBe(15);
+    loop.dispose();
+  });
+
+  it("another agent's run that gets through resumes the agents paused on a guessed-at limit (BL-179)", async () => {
+    probe.mockReset();
+    await loop.start('BL-5');
+    pauseGuessed({ 1: 10, 2: 30 });
+    data.items[1].review = { ...(data.items[1].review as object), paused: { ...(data.items[1].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
+    data.items[2].review = { ...(data.items[2].review as object), paused: { ...(data.items[2].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
+    finish[0]({ code: 0 });
+    await settle();
+    expect(probe).not.toHaveBeenCalled();
+    expect(spawn.mock.calls.slice(1).map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p2', 'session-p1']);
+    expect(notes.some((n) => /^BL-2: The limit lifted \(found by .+'s run\): resumed the chat for agent Ada-1/.test(n))).toBe(true);
     loop.dispose();
   });
 

@@ -136,6 +136,9 @@ type StartFn = (item: BacklogItem) => Promise<void>;
 const LOST_AFTER_MS = 2 * 60_000;
 
 const minutes = (ms: number) => `${Math.max(1, Math.round(ms / 60_000))} min`;
+/** Pauses in the order they began (the oldest first): the order they go on in when their limit lifts (BL-179). */
+const oldestFirst = <T extends { p: { since?: string; until?: string } }>(group: T[]): T[] =>
+  [...group].sort((a, b) => Date.parse(a.p.since ?? a.p.until ?? '') - Date.parse(b.p.since ?? b.p.until ?? ''));
 
 /**
  * Runs the review loop (see review.ts) for local items: an item entering In Review gets a reviewer agent; its verdict
@@ -411,7 +414,8 @@ export class ReviewLoop implements vscode.Disposable {
       reason: short ? 'memory' : 'slot',
       since: stateOf(item),
       at: before?.at ?? Date.now(),
-      front: !!item.review?.paused?.for,
+      // So is one paused on a limit that lifted: those go on before any other work (BL-179).
+      front: !!item.review?.paused?.for || (kind === 'resume' && !!item.review?.paused && !item.review.paused.byUser),
       start,
     });
     this.fireQueue(item.id);
@@ -590,7 +594,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.retrying.delete(id);
     // A resumed agent that hits a guessed-at limit again: one more try, a longer wait, and the note it had still holds.
     const again = before && !o.limit.known ? { tries: before.tries + 1, since: before.since } : undefined;
-    const until = again ? new Date(Date.now() + retryDelay(o.limit.kind, again.tries)) : o.limit.until;
+    const until = again ? new Date(Date.now() + retryDelay(o.limit.kind, again.tries, Date.now() - Date.parse(again.since))) : o.limit.until;
     await this.setReview(id, (r) => ({
       ...(r ?? { round: 0, reviewer: '' }),
       state: 'paused',
@@ -621,33 +625,80 @@ export class ReviewLoop implements vscode.Disposable {
    * without another note.
    */
   private readonly retrying = new Map<string, { tries: number; since: string }>();
-  /** Items whose probe (is Claude taking work again?) is running. */
+  /** The limits (see limitGroup) whose probe (is Claude taking work again?) is running. */
   private readonly probing = new Set<string>();
 
+  /** Which limit a pause whose reset wasn't said waits on: one per model and kind, whichever agents hit it (BL-179). */
+  private limitGroup(item: BacklogItem, p: NonNullable<ReviewState['paused']>): string {
+    return `${agentChoice(item, p.phase === 'review' ? 'review' : 'work').model ?? ''}|${p.kind ?? 'usage'}`;
+  }
+
   /**
-   * Whether Claude takes work again for a paused agent whose reset wasn't said, asked outside its chat: the tries leave
-   * no prompts there and no notes in the ticket. When it doesn't, the next try waits longer.
+   * Whether Claude takes work again for the agents paused on one limit whose reset wasn't said, asked once for them all
+   * (for the oldest pause), outside their chats: the tries leave no prompts there and no notes in the ticket. When it
+   * does, they all go on (see limitLiftedFor); when it doesn't, the next try waits longer, for every one of them.
    */
-  private async limitLifted(item: BacklogItem, p: NonNullable<ReviewState['paused']>): Promise<boolean> {
-    if (this.probing.has(item.id)) return false;
-    this.probing.add(item.id);
+  private async probeGroup(key: string, group: Array<{ item: BacklogItem; p: NonNullable<ReviewState['paused']> }>): Promise<void> {
+    if (this.probing.has(key)) return;
+    this.probing.add(key);
+    const { item, p } = oldestFirst(group)[0];
     const limit = await probeLimit({ choice: agentChoice(item, p.phase === 'review' ? 'review' : 'work'), output: this.deps.output }).finally(() =>
-      this.probing.delete(item.id),
+      this.probing.delete(key),
     );
-    // Meanwhile it may have been resumed (Resume now) or stopped.
-    const now = (await this.deps.backlog.read()).items.find((i) => i.id === item.id)?.review;
-    if (this.runs.has(item.id) || now?.state !== 'paused' || now.paused?.session !== p.session) return false;
-    if (!limit) return true;
+    const agents = group.map((g) => `${g.p.agent} (${g.item.id})`).join(', ');
+    if (!limit) return this.limitLiftedFor(group, `found while resuming ${p.agent}`, p.agent);
     if (limit.known) {
-      this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: it resets at ${limit.until.toLocaleString()}.`);
-      await this.knownReset(limit.until);
-      return false;
+      this.deps.output.appendLine(`${agents} wait for the limit still: it resets at ${limit.until.toLocaleString()}.`);
+      return this.knownReset(limit.until);
     }
     const tries = (p.tries ?? 0) + 1;
-    const until = new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
-    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.${limit.said ? ` Claude said: ${limit.said}` : ''}`);
-    await this.setReview(item.id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: until.toISOString(), tries } } : r!));
-    return false;
+    const until = new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries, Date.now() - Date.parse(p.since ?? new Date().toISOString())));
+    this.deps.output.appendLine(`${agents} wait for the limit still: try ${tries + 1} at ${until.toLocaleString()}.${limit.said ? ` Claude said: ${limit.said}` : ''}`);
+    for (const g of group)
+      await this.setReview(g.item.id, (r) =>
+        r?.state === 'paused' && r.paused && r.paused.session === g.p.session ? { ...r, paused: { ...r.paused, until: until.toISOString(), tries: (r.paused.tries ?? 0) + 1 } } : r!,
+      );
+  }
+
+  /**
+   * The limit these agents wait on lifted (a probe or another agent's run found it): they all go on, oldest pause first,
+   * as queued starts at the head of the queue. `found` says how, in their tickets (not in the one it was found for).
+   */
+  private async limitLiftedFor(group: Array<{ item: BacklogItem; p: NonNullable<ReviewState['paused']> }>, found: string, foundFor?: string): Promise<void> {
+    // Read again: the probe took a while, and one may have gone on (Resume now) or been stopped meanwhile.
+    const items = (await this.deps.backlog.read()).items;
+    for (const { item, p } of oldestFirst(group)) {
+      const fresh = items.find((i) => i.id === item.id);
+      if (!fresh || this.runs.has(item.id) || this.waiting.has(item.id)) continue;
+      if (fresh.review?.state !== 'paused' || fresh.review.paused?.session !== p.session || fresh.review.paused.byUser) continue;
+      await this.resumeOne(fresh, {}, p.agent === foundFor ? undefined : found);
+    }
+  }
+
+  /**
+   * An agent's run ended without a limit: Claude takes work for its model again, so the agents paused on a guessed-at
+   * limit for that model go on now rather than at their next try (BL-179). The leading window only, as resumePaused.
+   */
+  private async liftedByRun(id: string, phase: 'review' | 'work'): Promise<void> {
+    if (this.deps.isLeader && !this.deps.isLeader()) return;
+    try {
+      const d = await this.deps.backlog.read();
+      const item = d.items.find((i) => i.id === id);
+      if (!item) return;
+      const model = agentChoice(item, phase).model ?? '';
+      const group = d.items.flatMap((i) => {
+        const p = i.review?.state === 'paused' ? i.review.paused : undefined;
+        if (!p || p.byUser || p.for || p.known !== false || this.runs.has(i.id) || this.waiting.has(i.id)) return [];
+        return (agentChoice(i, p.phase === 'review' ? 'review' : 'work').model ?? '') === model ? [{ item: i, p }] : [];
+      });
+      if (!group.length) return;
+      const agent = (phase === 'review' ? item.review?.reviewer : item.review?.implementer) || id;
+      this.deps.output.appendLine(`${agent}'s run (${id}) got through: the limit lifted for ${group.map((g) => g.p.agent).join(', ')}.`);
+      await this.limitLiftedFor(group, `found by ${agent}'s run`);
+      this.scheduleResume();
+    } catch (e: unknown) {
+      this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /**
@@ -680,20 +731,22 @@ export class ReviewLoop implements vscode.Disposable {
   }
 
   /**
-   * The earliest time paused agents go on (for the autopilot: no new work starts before). One whose resume is queued
-   * (Try Now, BL-132) waits for a slot, not for the limit.
+   * The earliest time agents paused on a limit go on (for the autopilot: no new work starts before). One whose time has
+   * passed but hasn't gone on yet (its limit not probed yet, BL-179) holds it now. One whose resume is queued (Try Now,
+   * BL-132) waits for a slot, not for the limit: the queue holds new work back for it.
    */
   async pausedUntil(): Promise<Date | undefined> {
     const d = await this.deps.backlog.read();
-    const times = d.items.flatMap((i) =>
-      i.review?.state === 'paused' && i.review.paused?.until && i.review.paused.known !== undefined && !this.waiting.has(i.id) ? [Date.parse(i.review.paused.until)] : [],
-    );
-    const next = times.filter((t) => t > Date.now()).sort((a, b) => a - b)[0];
-    return next === undefined ? undefined : new Date(next);
+    const times = d.items.flatMap((i) => {
+      const p = i.review?.state === 'paused' ? i.review.paused : undefined;
+      return p?.until && p.known !== undefined && !p.for && !p.byUser && !this.waiting.has(i.id) && !this.runs.has(i.id) ? [Date.parse(p.until)] : [];
+    });
+    const next = times.sort((a, b) => a - b)[0];
+    return next === undefined ? undefined : new Date(Math.max(next, Date.now()));
   }
 
   /**
-   * Try Now (BL-132): whether Claude takes work again, asked once outside the chats (see limitLifted). When it does, the
+   * Try Now (BL-132): whether Claude takes work again, asked once outside the chats (see probeGroup). When it does, the
    * agents paused on a limit go on, top of the backlog first, as queued starts (within flotilla.agents.maxRunning);
    * when it doesn't, none is started, the top one's wait follows the reset Claude says now, and `limited` says when
    * they go on by themselves. Undefined when no agent waits for a limit.
@@ -788,26 +841,38 @@ export class ReviewLoop implements vscode.Disposable {
   async resumePaused(force?: string): Promise<void> {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();
+    // The pauses on a limit whose reset wasn't said, by the limit they wait on: one probe asks for them all.
+    const guessed = new Map<string, Array<{ item: BacklogItem; p: NonNullable<ReviewState['paused']> }>>();
     for (const item of d.items) {
       // Paused by the user, it waits for them.
       const p = item.review?.state === 'paused' && !item.review.paused?.byUser ? item.review.paused : undefined;
       if (!p || this.runs.has(item.id) || (!force && this.waiting.has(item.id))) continue;
-      if (force ? force !== item.id : !p.until || Date.parse(p.until) > Date.now()) continue;
-      if (!force && !p.known && !p.for && !(await this.limitLifted(item, p))) continue;
-      await this.resumeOne(item, { manual: !!force });
+      if (force) {
+        if (force === item.id) await this.resumeOne(item, { manual: true });
+        continue;
+      }
+      if (!p.known && !p.for) {
+        const key = this.limitGroup(item, p);
+        guessed.set(key, [...(guessed.get(key) ?? []), { item, p }]);
+        continue;
+      }
+      if (!p.until || Date.parse(p.until) > Date.now()) continue;
+      await this.resumeOne(item, {});
     }
+    // A limit is tried when any of its agents' time has come (they all wait for the same next try, see probeGroup).
+    for (const [key, group] of guessed) if (group.some(({ p }) => !!p.until && Date.parse(p.until) <= Date.now())) await this.probeGroup(key, group);
     this.scheduleResume();
   }
 
   /** Goes on with a paused agent's chat, once it's admitted (see admitStart). */
-  private async resumeOne(item: BacklogItem, o: StartOptions): Promise<void> {
+  private async resumeOne(item: BacklogItem, o: StartOptions, found?: string): Promise<void> {
     const p = item.review?.paused;
     if (!p) return;
     if (!validSession(p.session)) {
       await this.stopLoop(item.id, `its paused chat isn't a valid session (${p.session.slice(0, 40)}).`, { kind: 'chat-gone' });
       return;
     }
-    const admitted = await this.admitStart(item, 'resume', o, (fresh) => this.resumeOne(fresh, { ...o, dispatched: true }));
+    const admitted = await this.admitStart(item, 'resume', o, (fresh) => this.resumeOne(fresh, { ...o, dispatched: true }, found));
     if (!admitted) return;
     let spawned = false;
     try {
@@ -837,7 +902,9 @@ export class ReviewLoop implements vscode.Disposable {
         item.id,
         p.for
           ? `A slot freed: resumed the chat for agent ${p.agent} to go on.`
-          : p.tries
+          : found
+            ? `The limit lifted (${found}): resumed the chat for agent ${p.agent} to go on.`
+            : p.tries
             ? `The limit reset after ${p.tries + 1} tries (since ${since}): resumed the chat for agent ${p.agent} to go on.`
             : `The limit reset: resumed the chat for agent ${p.agent} to go on.`,
       );
@@ -1463,6 +1530,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.runs.delete(id);
     if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
+    if (!result.limit && !result.error) await this.liftedByRun(id, 'review');
     this.scheduleDispatch();
     const error = result.error;
     if (result.limit) {
@@ -1691,6 +1759,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.runs.delete(id);
     if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
+    if (!result.limit && !result.error) await this.liftedByRun(id, 'work');
     this.scheduleDispatch();
     const error = result.error;
     if (result.limit) {
