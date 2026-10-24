@@ -14,6 +14,7 @@ import { TicketCi } from './ci';
 import { ActionButton, finished, send, useWorkingChanges, workingLabel } from './actions';
 import { showingEntries } from './comments';
 import { imageReplies, previewReplies } from './markdownBox';
+import { checksLogReplies } from './checksPanel';
 import { AgentPicker, RemotePriority, STATUSES, StatusMenu, Title } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
@@ -85,6 +86,9 @@ function App() {
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
+      } else if (m.type === 'checksLog') {
+        checksLogReplies.get(m.requestId)?.(m.text);
+        checksLogReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
         previewReplies.delete(m.requestId);

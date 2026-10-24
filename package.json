@@ -630,7 +630,7 @@
       },
       {
         "command": "flotilla.updateFromMain",
-        "title": "Update from Main Build",
+        "title": "Install Main and Reload",
         "category": "Flotilla"
       },
       {

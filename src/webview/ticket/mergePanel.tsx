@@ -8,6 +8,7 @@ import { ciWord } from '../../features/ci/summary';
 import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 import { act, ActionButton, send, UpdateFromButton, useWorking, WorkingTag } from './actions';
 import { STATUSES } from './header';
+import { ChecksRuns } from './checksPanel';
 
 /** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
 export function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {
@@ -238,9 +239,10 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
           </ActionButton>
         )}
       </div>
+      {checks?.runs?.length && !ticket.mergeChecks ? <ChecksRuns runs={checks.runs} /> : null}
       {checks && (
-        <details class="merge-output" open={m.state === 'failed'}>
-          <summary>The checks' output (its end; all of it is in the terminal)</summary>
+        <details class="merge-output" open={m.state === 'failed' && !checks.runs?.some((r) => r.failures.length)}>
+          <summary>The checks' output (its end{checks.runs?.length ? '; Show All has all of it' : ''})</summary>
           <pre>{checks.output.trim() || '(no output)'}</pre>
         </details>
       )}

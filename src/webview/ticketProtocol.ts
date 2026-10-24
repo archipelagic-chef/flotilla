@@ -18,6 +18,22 @@ import type { TicketCommit } from '../features/history/log';
 import type { CiRequest, CiView } from './protocol';
 import type { CiStatus } from '../features/ci/githubActions';
 import type { CiStop } from '../features/backlog/ciStop';
+import type { ChecksProgress } from '../features/backlog/checksProgress';
+import type { ChecksRunRecord } from '../features/backlog/merge';
+
+/** A merge's checks running in the background (BL-169). */
+export interface MergeChecksView {
+  command: string;
+  /** When this run started (ms since the epoch): the ticket counts the time. */
+  started: number;
+  /** Its log, the whole output so far. */
+  log: string;
+  progress: Omit<ChecksProgress, 'tail'>;
+  /** The last lines. */
+  tail: string[];
+  /** This merge's earlier runs (BL-124's first, timeouts-only run). */
+  earlier: ChecksRunRecord[];
+}
 
 /**
  * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
@@ -211,6 +227,8 @@ export interface TicketView {
    * waiting for CI to pass (BL-105), its runs as last read (none yet: GitHub hasn't started them).
    */
   mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
+  /** Its merge's checks, running in the background now (BL-169): sent on its own as they go, about once a second. */
+  mergeChecks?: MergeChecksView;
   /**
    * Why its last Merge to main stopped on CI (BL-112): red CI, with the failed jobs, or the base moved on. Only while
    * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
@@ -283,7 +301,9 @@ export type TicketHostMessage =
   /** The Ask chat changed (BL-80). */
   | { type: 'ask'; ask: AskView }
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
-  | { type: 'ci'; ci: TicketCiView };
+  | { type: 'ci'; ci: TicketCiView }
+  /** A run's whole log, for Show All (BL-169). */
+  | { type: 'checksLog'; requestId: number; text: string };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -365,6 +385,10 @@ export type TicketWebviewMessage =
   | { type: 'mergeCancel' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
+  /** A merge's checks (BL-169): Stop them; the whole log of a run (Show All); the log, followed, in a terminal. */
+  | { type: 'mergeChecksStop' }
+  | { type: 'mergeChecksLog'; requestId: number; log: string }
+  | { type: 'mergeChecksTerminal'; log: string }
   | { type: 'mergeQueueRemove' }
   /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
   | { type: 'mergeQueueResolve' }

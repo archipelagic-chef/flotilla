@@ -180,6 +180,12 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
           {item.agent.movedUp.to}
         </span>
       )}
+      {!renaming && item.checks && (
+        <span class="drift-badge" data-tip={`Its merge's checks are running (${item.checks.step ?? 'Checks'}): the ticket shows them`}>
+          <i class="codicon codicon-loading codicon-modifier-spin" />
+          checks{item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}
+        </span>
+      )}
       {!renaming && item.waitsFor && (
         <span class="drift-badge" data-tip={`Depends on ${item.waitsFor.join(', ')}: waits for ${item.waitsFor.length === 1 ? 'it' : 'them'} to be merged`}>
           <i class="codicon codicon-debug-pause" />
