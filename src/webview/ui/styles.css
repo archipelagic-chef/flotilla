@@ -1078,33 +1078,8 @@ ins {
 .lane-chev + .badge {
   margin-left: 2px;
 }
-.backlog-item {
-  position: relative;
-  padding-left: 6px;
-  gap: 4px;
-  cursor: grab;
-}
-.backlog-item.st-doing .status-toggle .codicon {
-  color: var(--working);
-}
-.backlog-item.st-done .status-toggle .codicon {
-  color: var(--done);
-}
 .backlog-item.st-done .status-toggle:hover .codicon::before {
   content: '\ebb5'; /* circle-large-outline: reopen */
-}
-.backlog-item .item-id {
-  flex: none;
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.backlog-item .name {
-  flex: 1 1 auto;
-}
-.backlog-item.st-done .name {
-  color: var(--muted);
-  text-decoration: line-through;
 }
 .backlog-item.drop-before::before,
 .lane.drop-end .lane-body::after {
@@ -1166,11 +1141,6 @@ ins {
   opacity: 0.75;
 }
 
-/* The title keeps its room; the description's first line gets what's left. */
-.backlog-item .name {
-  flex: 0 1 auto;
-  min-width: 4em;
-}
 .needs-lane .need-approved .need-icon {
   color: var(--done);
 }

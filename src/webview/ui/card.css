@@ -44,6 +44,12 @@
   min-width: 0;
   padding: 0 4px;
 }
+.backlog-item {
+  position: relative;
+  padding-left: 6px;
+  gap: 4px;
+  cursor: grab;
+}
 .backlog-item .status-toggle {
   width: 20px;
   height: 20px;
@@ -53,8 +59,27 @@
   font-size: 14px;
   color: var(--muted);
 }
+.backlog-item.st-doing .status-toggle .codicon {
+  color: var(--working);
+}
+.backlog-item.st-done .status-toggle .codicon {
+  color: var(--done);
+}
 .backlog-item .status-toggle:hover .codicon::before {
   content: '\eab2'; /* check */
+}
+.backlog-item .item-id {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.backlog-item .name {
+  flex: 1 1 auto;
+}
+.backlog-item.st-done .name {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 .ws-chip {
   flex: none;
@@ -77,6 +102,11 @@
   flex: none;
   font-size: 11px;
   color: var(--muted);
+}
+/* The title keeps its room; the description's first line gets what's left. */
+.backlog-item .name {
+  flex: 0 1 auto;
+  min-width: 4em;
 }
 .backlog-item .desc {
   flex: 1 1 0;
@@ -131,6 +161,10 @@
 .backlog-item .merge-chip.merged {
   color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
 }
+.backlog-item .merge-chip.partly,
+.backlog-item .merge-chip.unmerged {
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+}
 .backlog-item .merge-warning {
   flex: none;
   display: inline-flex;
@@ -160,6 +194,9 @@
   display: grid;
   place-items: center;
 }
+.backlog-item a.icon {
+  color: inherit;
+}
 /* Whose turn a review is: the user's in the waiting color, an agent's muted, a stopped one as an error. */
 .backlog-item .turn-chip {
   flex: none;
@@ -177,6 +214,9 @@
 }
 .backlog-item .turn-chip.mine {
   color: var(--waiting);
+}
+.backlog-item .turn-chip.turn-stopped {
+  color: var(--error);
 }
 /* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
 .backlog-item .demo-mark {
@@ -271,14 +311,4 @@
   display: flex;
   margin-left: auto;
   flex: none;
-}
-.backlog-item .merge-chip.partly,
-.backlog-item .merge-chip.unmerged {
-  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
-}
-.backlog-item a.icon {
-  color: inherit;
-}
-.backlog-item .turn-chip.turn-stopped {
-  color: var(--error);
 }
