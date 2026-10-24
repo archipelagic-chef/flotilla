@@ -29,8 +29,3 @@
   border: 1px solid var(--vscode-inputValidation-errorBorder);
   border-top: 0;
 }
-/* ---- drag and drop ---- */
-.drop-target,
-.drop-target > .row {
-  background: var(--vscode-list-dropBackground);
-}

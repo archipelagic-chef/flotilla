@@ -451,6 +451,11 @@ textarea:focus {
   margin-top: 3px;
 }
 
+/* ---- drag and drop ---- */
+.drop-target,
+.drop-target > .row {
+  background: var(--vscode-list-dropBackground);
+}
 .row:focus-visible {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
