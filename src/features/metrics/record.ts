@@ -1,14 +1,38 @@
 import { conflictRegions } from '../../core/git/conflictRegions';
-import { recordEvent } from './events';
+import type { CiStop } from '../backlog/ciStop';
+import type { MergeTrain } from '../backlog/mergeTrain';
+import { trainOnto } from '../backlog/mergeTrain';
+import { recordEvent, recordEventOf } from './events';
 
 /**
  * Records a merge's conflicts (BL-157) with their regions, measured in memory (merge-tree) without holding up the
  * merge: the files git named, with no regions, when that fails.
  */
 export function recordConflicts(ticket: string, cwd: string, ours: string, theirs: string, files: readonly string[]): void {
-  void conflictRegions(cwd, ours, theirs)
+  const data = conflictRegions(cwd, ours, theirs)
     .catch(() => [])
-    .then((found) => recordEvent('merge-conflicted', { ticket, data: { files: found.length ? found : files.map((file) => ({ file, regions: [] })) } }));
+    .then((found) => ({ files: found.length ? found : files.map((file) => ({ file, regions: [] })) }));
+  recordEventOf('merge-conflicted', { ticket, data });
+}
+
+/**
+ * Records the conflicts of a merge train just built (BL-168): its entries that conflict now and didn't, at the same tip,
+ * in the train it replaces. Each is measured onto the train's commit before it.
+ */
+export function recordTrainConflicts(cwd: string, train: MergeTrain, was: MergeTrain | undefined): void {
+  for (const e of train.entries) {
+    if (!e.conflicts) continue;
+    const old = was?.entries.find((o) => o.id === e.id);
+    if (old?.conflicts && old.tip === e.tip) continue;
+    const onto = trainOnto(train, e.id);
+    if (onto) recordConflicts(e.id, cwd, onto.commit, e.tip, e.conflicts);
+  }
+}
+
+/** Records Merge to main stopping on CI (BL-168): failed, with the failed jobs, or main moved on. */
+export function recordCiStop(ticket: string, stop: CiStop): void {
+  const data = stop.kind === 'failed' ? { reason: stop.kind, branch: stop.branch, jobs: stop.jobs.map((j) => j.name) } : { reason: stop.kind, branch: stop.branch };
+  recordEvent('merge-ci-stopped', { ticket, data });
 }
 
 /** The test files the checks' output says failed (vitest's "FAIL" lines), each once. */

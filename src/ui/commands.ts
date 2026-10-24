@@ -682,7 +682,7 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const choice = agentChoice(item);
   const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
   const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
-  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
+  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}`, track: { ticket: item.id, agent, role: 'work' } });
   const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
   await ctx.tickets.addActivity(
     item.id,
@@ -721,6 +721,7 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map), agentLead(item, agent), {
     choice,
     name: `${agent} · ${item.id}`,
+    track: { ticket: item.id, agent, role: 'work' },
   });
   await ctx.tickets.addActivity(
     item.id,

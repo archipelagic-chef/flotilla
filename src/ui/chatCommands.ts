@@ -8,7 +8,7 @@ import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import type { AgentChoice } from '../features/backlog/backlog';
-import { choiceArgs, isRunningHeadless, runAgentInTerminal } from './backlog/agentRunner';
+import { choiceArgs, isRunningHeadless, runAgentInTerminal, type AgentTrack } from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
@@ -100,14 +100,14 @@ export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead 
  * a model or an effort is chosen (which the panel can't be started with), as an interactive Claude Code session in a
  * terminal in the worktree, the task sent at once.
  */
-export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string }): Promise<'panel' | 'terminal'> {
+export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string; track?: AgentTrack }): Promise<'panel' | 'terminal'> {
   const args = choiceArgs(o.choice);
   if (!args.length || !ws.worktree.path) {
     await newChat(ctx, ws, task, lead);
     return 'panel';
   }
   // With a session of its own, known at once: it can be paused, stopped and resumed from its ticket.
-  runAgentInTerminal({ cwd: ws.worktree.path, prompt: [lead, task].filter(Boolean).join('\n\n'), name: o.name, choice: o.choice });
+  runAgentInTerminal({ cwd: ws.worktree.path, prompt: [lead, task].filter(Boolean).join('\n\n'), name: o.name, choice: o.choice, track: o.track });
   return 'terminal';
 }
 

@@ -4,7 +4,7 @@ import { send } from './api';
 import { shortTime } from '../shortTime';
 import { autopilotDetails, type DetailLine } from '../autopilotDetails';
 import type { CardAgent } from '../../features/backlog/cardAgents';
-import { BusyButton } from './backlogBusy';
+import { act, BusyButton, useBusy } from './backlogBusy';
 import { PauseOrResume, pausedAllLabel } from './pauseAll';
 import './autopilotBar.css';
 
@@ -75,20 +75,24 @@ function TryNow() {
 
 /** The autopilot's switch: a control of its own, so a click on the bar can't turn it off. */
 function Switch({ on }: { on: boolean }) {
+  // Shared with the title's button (BL-117): either shows the switch working until the autopilot has turned.
+  const switching = useBusy().has({ type: 'backlog', op: 'autopilot' });
   return (
     <button
       class={`autopilot-switch${on ? ' on' : ''}`}
       role="switch"
       aria-checked={on}
       aria-label="Autopilot"
-      onClick={() => send({ type: 'backlog', op: 'autopilot' })}
+      disabled={switching}
+      aria-busy={switching}
+      onClick={() => act({ type: 'backlog', op: 'autopilot' })}
       title={
         on
           ? 'Autopilot is on: click to turn it off (agents working keep working)'
           : 'Autopilot is off: click to turn it on (agents take To Do tickets from the top)'
       }
     >
-      {on ? 'On' : 'Off'} <i class={`codicon codicon-${on ? 'circle-filled' : 'circle-outline'}`} />
+      {on ? 'On' : 'Off'} <i class={`codicon codicon-${switching ? 'loading codicon-modifier-spin' : on ? 'circle-filled' : 'circle-outline'}`} />
     </button>
   );
 }
@@ -170,23 +174,21 @@ function Details({ autopilot, titles, live }: { autopilot: AutopilotState; title
         <span>
           Up to {d.max} {d.max === 1 ? 'agent' : 'agents'} at once (flotilla.agents.maxRunning)
         </span>
-        <button
+        <BusyButton
           class="step"
           aria-label="One agent fewer"
           title="One agent fewer at once"
           disabled={d.max <= 1}
-          onClick={() => send({ type: 'backlog', op: 'maxAgents', max: d.max - 1 })}
-        >
-          <i class="codicon codicon-remove" />
-        </button>
-        <button
+          message={{ type: 'backlog', op: 'maxAgents', max: d.max - 1 }}
+          icon="remove"
+        />
+        <BusyButton
           class="step"
           aria-label="One agent more"
           title="One agent more at once"
-          onClick={() => send({ type: 'backlog', op: 'maxAgents', max: d.max + 1 })}
-        >
-          <i class="codicon codicon-add" />
-        </button>
+          message={{ type: 'backlog', op: 'maxAgents', max: d.max + 1 }}
+          icon="add"
+        />
         {d.tryNow && <TryNow />}
       </div>
       {(autopilot.pausedAll !== undefined || autopilot.running > 0) && (

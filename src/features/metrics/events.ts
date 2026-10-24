@@ -29,6 +29,8 @@ export interface EventData {
   'merge-approved': { by: string };
   'merge-landed': { into: string; commit: string };
   'merge-cancelled': { reason?: string };
+  /** Merge to main stopped on CI: it failed on the branch (its failed jobs), or main moved since the branch took it in. */
+  'merge-ci-stopped': { reason: 'failed' | 'moved'; branch: string; jobs?: string[] };
   'branch-conflicts': { branch: string; files: string[] };
   'limit-hit': { limit: string; until?: string; known?: boolean };
   'limit-lifted': { minutes?: number; tries?: number };
@@ -84,17 +86,29 @@ export function eventsFile(commonDir: string, at: Date): string {
 
 /** Records an event, without waiting for it: a failed write is logged once (per window) and dropped. */
 export function recordEvent<K extends EventKind>(kind: K, e: { ticket?: string; agent?: string; data: EventData[K]; at?: Date }): void {
+  recordEventOf(kind, { ...e, data: Promise.resolve(e.data) });
+}
+
+/**
+ * Records an event whose data is still being measured (BL-168): in the log, the place and at the time of the call, so
+ * that eventsWritten waits for it too.
+ */
+export function recordEventOf<K extends EventKind>(kind: K, e: { ticket?: string; agent?: string; data: Promise<EventData[K]>; at?: Date }): void {
   const t = target;
   if (!t) return;
   const at = e.at ?? new Date();
-  const event: FlotillaEvent<K> = { at: at.toISOString(), kind, ...(e.ticket ? { ticket: e.ticket } : {}), ...(e.agent ? { agent: e.agent } : {}), data: e.data };
   // One after the other, so this window's events are in the order they happened.
   pending = pending.then(() =>
-    appendEvents(t.commonDir, [event]).catch((err: unknown) => {
-      if (failed) return;
-      failed = true;
-      t.log?.(`Flotilla couldn't record an event (${kind}); the next ones that fail aren't logged: ${err instanceof Error ? err.message : String(err)}`);
-    }),
+    e.data
+      .then((data) => {
+        const event: FlotillaEvent<K> = { at: at.toISOString(), kind, ...(e.ticket ? { ticket: e.ticket } : {}), ...(e.agent ? { agent: e.agent } : {}), data };
+        return appendEvents(t.commonDir, [event]);
+      })
+      .catch((err: unknown) => {
+        if (failed) return;
+        failed = true;
+        t.log?.(`Flotilla couldn't record an event (${kind}); the next ones that fail aren't logged: ${err instanceof Error ? err.message : String(err)}`);
+      }),
   );
 }
 

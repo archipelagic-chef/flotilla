@@ -7,7 +7,7 @@ import { agentOf } from '../../features/backlog/activeAgent';
 import { conflictsOf } from '../../features/backlog/mainDrift';
 import { runLabel } from '../../features/backlog/runBlocks';
 import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, BacklogStatus, WorkstreamView } from '../protocol';
+import type { BacklogItemView as BacklogItem, WorkstreamView } from '../protocol';
 import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
@@ -43,7 +43,8 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
   const worktree = worktrees[0];
-  const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
+  // Dropped in a lane: it shows there while the host saves it.
+  const saving = busy.moves().some((m) => m.id === item.id);
   // Whose turn its review is (local items only: an issue's review is in its tracker).
   const turn = remote || item.proposed ? undefined : turnOf(item);
   // A working agent's status, on a line of its own (BL-175): the one that did something last.
@@ -51,7 +52,8 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
   const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
   return (
     <div
-      class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}${live && !renaming ? ' has-status' : ''}`}
+      class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}${live && !renaming ? ' has-status' : ''}${saving ? ' saving' : ''}`}
+      aria-busy={saving}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
       data-vscode-context={item.proposed || renaming ? undefined : menuContext('backlogItem', { backlogId: item.id, backlogLocal: !remote, backlogDone: done, backlogWorktree: worktrees.length > 0, backlogRunnable: !!item.run, backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''), backlogReadyToMerge: !remote && readyToMerge(item), backlogQueued: !!queuedBehind })}
@@ -77,23 +79,21 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
           <i class={`codicon codicon-${remote.kind === 'github' ? 'github' : 'issues'}`} />
         </span>
       ) : (
-        <button
+        <BusyButton
           class="icon status-toggle"
           aria-label={done ? 'Reopen' : 'Mark Done'}
-          onClick={(e) => {
-            e.stopPropagation();
-            setStatus(done ? 'todo' : 'done');
-          }}
-        >
-          <i class={`codicon codicon-${icon}`} />
-        </button>
+          message={{ type: 'backlog', op: 'update', id: item.id, status: done ? 'todo' : 'done' }}
+          icon={icon}
+          onClick={(e) => e.stopPropagation()}
+        />
       )}
       <PriorityPicker
         compact
         value={item.priority}
-        onChange={remote ? undefined : (priority) => send({ type: 'backlog', op: 'update', id: item.id, priority })}
+        onChange={remote ? undefined : (priority) => act({ type: 'backlog', op: 'update', id: item.id, priority })}
       />
       <span class="item-id">{item.id}</span>
+      {saving && <i class="codicon codicon-loading codicon-modifier-spin item-saving" role="status" aria-label="Saving…" />}
       {item.parent && (
         <span class="parent-chip" data-tip={`Part of ${item.parent}`}>
           <i class="codicon codicon-type-hierarchy-sub" />
@@ -289,9 +289,7 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
                   icon="comment-discussion"
                 />
               )}
-              <button class="icon" aria-label="Link to an Issue (Jira, GitHub)…" onClick={() => send({ type: 'backlog', op: 'link', id: item.id })}>
-                <i class="codicon codicon-link" />
-              </button>
+              <BusyButton class="icon" aria-label="Link to an Issue (Jira, GitHub)…" message={{ type: 'backlog', op: 'link', id: item.id }} icon="link" />
               <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                 <i class="codicon codicon-edit" />
               </button>
@@ -325,9 +323,7 @@ function CreateWorktreeIcons({ id, another }: { id: string; another: boolean }) 
   const label = another ? 'Add a Worktree' : 'Create Worktree';
   return (
     <span class="split-icons" ref={box}>
-      <button class="icon" aria-label={label} data-tip={`${label}: a new worktree and branch for it at once, without an agent`} onClick={() => send({ type: 'backlog', op: 'createWorktree', id })}>
-        <i class="codicon codicon-git-branch" />
-      </button>
+      <BusyButton class="icon" aria-label={label} data-tip={`${label}: a new worktree and branch for it at once, without an agent`} message={{ type: 'backlog', op: 'createWorktree', id }} icon="git-branch" />
       <button class="icon more" aria-label="More Ways to Create a Worktree…" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <i class="codicon codicon-chevron-down" />
       </button>
@@ -337,7 +333,7 @@ function CreateWorktreeIcons({ id, another }: { id: string; another: boolean }) 
             role="menuitem"
             onClick={() => {
               setOpen(false);
-              send({ type: 'backlog', op: 'createWorktree', id, named: true });
+              act({ type: 'backlog', op: 'createWorktree', id, named: true });
             }}
           >
             <i class="codicon codicon-edit" />

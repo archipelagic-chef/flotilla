@@ -1,0 +1,15 @@
+{
+  "title": "A card dropped in a lane moves there at once, marked as saving",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\")" },
+    { "caption": "Drag a card up the To Do lane" },
+    { "wait": 1000 },
+    { "drag": ".backlog-item:has-text(\"List attached files in the activity\")", "to": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "caption": "It moves there at once, dimmed with a spinner until the backlog is saved" },
+    { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\"):not(.saving)" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

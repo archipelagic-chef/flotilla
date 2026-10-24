@@ -44,7 +44,7 @@ import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
 import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
-import { failedTests, recordConflicts } from '../../features/metrics/record';
+import { failedTests, recordCiStop, recordConflicts, recordTrainConflicts } from '../../features/metrics/record';
 import { ChecksReader, failureSummary } from '../../features/backlog/checksProgress';
 import { runInBackground } from '../../features/backlog/checksRun';
 import type { MergeChecksView } from '../../webview/ticketProtocol';
@@ -390,6 +390,7 @@ export class Merger implements vscode.Disposable {
       return data.mergeTrain;
     }
     const train = entries.length ? await buildTrain(root, { dir: this.mergeDir('train'), base, baseTip, entries }) : undefined;
+    if (train) recordTrainConflicts(root, train, data.mergeTrain);
     await this.deps.backlog.change(
       (d) => {
         const { mergeTrain: _old, ...rest } = d;
@@ -657,8 +658,10 @@ export class Merger implements vscode.Disposable {
     }
     const ci = await this.decideCi(item, branch, check);
     const stop = ciStop(ci, branch, base);
-    if (stop) this.ciStops.set(id, stop);
-    else this.ciStops.delete(id);
+    if (stop) {
+      this.ciStops.set(id, stop);
+      recordCiStop(id, stop);
+    } else this.ciStops.delete(id);
     if (ci.kind === 'moved') {
       await this.note(
         id,
@@ -1218,6 +1221,7 @@ export class Merger implements vscode.Disposable {
     this.deps.output.appendLine(`Merge: ${item.id}'s merge again onto ${m.base} ${now.slice(0, 7)} (${was}).`);
     const outcome = await mergeAgain(m.dir, { from: done.onto, onto: now, merge: done.merge, commit: done.commit, message: mergeMessage(item) });
     if (outcome.kind === 'conflicts') {
+      recordConflicts(item.id, this.deps.mainRoot, now, m.branch, outcome.files);
       await this.setMerge(item.id, { ...m, baseTip: now, state: 'failed', reason: conflictsReason(outcome.files), checks: undefined, from: undefined });
       await this.note(
         item.id,
@@ -1326,7 +1330,8 @@ export class Merger implements vscode.Disposable {
     const root = this.deps.mainRoot;
     const remote = (await runGit(['config', `branch.${base}.remote`], { cwd: root }).catch(() => '')).trim();
     if (!remote) return undefined;
-    const count = Number((await runGit(['rev-list', '--count', `refs/heads/${base}@{upstream}..refs/heads/${base}`], { cwd: root }).catch(() => '0')).trim()) || 0;
+    // `<branch>@{upstream}` takes the branch's name: git rejects refs/heads/<branch>@{upstream} ("no such branch").
+    const count = Number((await runGit(['rev-list', '--count', `${base}@{upstream}..refs/heads/${base}`], { cwd: root }).catch(() => '0')).trim()) || 0;
     return { remote, count };
   }
 

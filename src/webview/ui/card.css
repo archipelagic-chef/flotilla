@@ -77,6 +77,14 @@
 .backlog-item .name {
   flex: 1 1 auto;
 }
+/* Dropped in a lane: shown there while the host saves it. */
+.backlog-item.saving {
+  opacity: 0.65;
+}
+.backlog-item .item-saving {
+  font-size: 12px;
+  opacity: 0.8;
+}
 .backlog-item.st-done .name {
   color: var(--muted);
   text-decoration: line-through;

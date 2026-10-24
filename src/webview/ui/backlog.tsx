@@ -6,7 +6,8 @@ import { hasActiveAgent } from '../../features/backlog/activeAgent';
 import { turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { send } from './api';
-import { BusyButton } from './backlogBusy';
+import { act, BusyButton, useBusy } from './backlogBusy';
+import { withMoves } from '../backlogActions';
 import './priority.css';
 import { TitleBar } from './titleBar';
 import { AgentCount, AutopilotBar } from './autopilotBar';
@@ -55,8 +56,11 @@ export interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
+export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // A card dropped in a lane shows there at once, marked as saving, until the host has saved it.
+  const busy = useBusy();
+  const items = posted && withMoves(posted, busy.moves());
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
@@ -85,7 +89,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
     if (!id || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
-    if (id !== before) send({ type: 'backlog', op: 'move', id, status: lane, before });
+    if (id !== before) act({ type: 'backlog', op: 'move', id, status: lane, before });
   };
   const dragOver = (e: DragEvent, lane: BacklogLane, before?: string) => {
     if (!e.dataTransfer?.types.includes(DRAG_TYPE) || lane === 'ready') return;
