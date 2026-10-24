@@ -49,6 +49,9 @@ export interface Props {
   /** The autopilot's details are folded out (kept in the view's state: per window). */
   autopilotOpen: boolean;
   setAutopilotOpen(open: boolean): void;
+  /** Cards show every detail (Detailed), or the title, a status line and the next step (Compact, BL-183). */
+  detailed: boolean;
+  setDetailed(on: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -56,7 +59,7 @@ export interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
+export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, detailed, setDetailed, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   // A card dropped in a lane shows there at once, marked as saving, until the host has saved it.
   const busy = useBusy();
@@ -101,7 +104,7 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
 
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
-      <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
+      <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} detailed={detailed} setDetailed={setDetailed} />
       {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
@@ -154,6 +157,7 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
                 onDragOver={() => undefined}
                 onDrop={() => undefined}
                 openWorktree={openWorktree}
+                compact={!detailed}
               />
             ))}
           </div>
@@ -208,6 +212,7 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
                       onDragOver={(e) => dragOver(e, lane.lane, item.id)}
                       onDrop={(e) => drop(e, lane.lane, item.id)}
                       openWorktree={openWorktree}
+                      compact={!detailed}
                     />
                   ))}
                   {!laneItems.length && <div class="row group-empty">{workingOnly ? 'No agent works on these' : filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}

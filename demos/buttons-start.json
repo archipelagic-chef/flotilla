@@ -8,7 +8,7 @@
       "click": "[aria-label=\"Backlog\"]"
     },
     {
-      "click": ".backlog-item:has-text(\"Sort the backlog by priority\")"
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
     },
     {
       "waitFor": ".proposal-banner"
@@ -26,7 +26,7 @@
       "caption": ""
     },
     {
-      "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")"
+      "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name"
     },
     {
       "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")"

@@ -1,5 +1,6 @@
 {
   "title": "Backlog cards show the agents working on them",
+  "settings": { "flotilla.backlog.cards": "detailed" },
   "steps": [
     { "command": "Focus on Flotilla View" },
     { "wait": 3000 },

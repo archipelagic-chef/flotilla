@@ -5,7 +5,7 @@
     { "command": "Focus on Flotilla View" },
     { "wait": 2000 },
     { "click": "[aria-label=\"Backlog\"]" },
-    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },
     { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
     { "caption": "Start an Agent: no terminal, no panel; it runs in the background" },
     { "hover": "button:has-text(\"Start with an Agent\")" },

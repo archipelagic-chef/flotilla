@@ -12,7 +12,7 @@
       "click": "[aria-label=\"Backlog\"]"
     },
     {
-      "click": ".backlog-item:has-text(\"Remember the last open ticket\")"
+      "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name"
     },
     {
       "waitFor": "h1:has-text(\"Remember the last open ticket\")"
@@ -25,7 +25,7 @@
       "timeout": 30000
     },
     {
-      "click": ".backlog-item:has-text(\"Remember the last open tab\")"
+      "click": ".backlog-item:has-text(\"Remember the last open tab\") .name"
     },
     {
       "waitFor": "h1:has-text(\"Remember the last open tab\")"

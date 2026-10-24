@@ -4,7 +4,7 @@
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
-    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
     { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
     { "caption": "The report's diagram is an attachment too" },
     { "waitFor": ".attachments .attachment-diagram svg" },

@@ -3,7 +3,7 @@
   "steps": [
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
-    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\") .name" },
     { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
     { "caption": "BL-13's branch is pushed, and CI runs on it" },
     { "waitFor": ".ci-panel .ci-line" },

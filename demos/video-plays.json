@@ -6,7 +6,7 @@
     { "wait": 500 },
     { "click": "[aria-label=\"Show done items\"]" },
     { "wait": 500 },
-    { "click": ".backlog-item:has-text(\"Show the usage limit in the status bar\")" },
+    { "click": ".backlog-item:has-text(\"Show the usage limit in the status bar\") .name" },
     { "waitFor": "h1:has-text(\"Show the usage limit in the status bar\")" },
     { "caption": "A click on a video in Attachments opens it, playing" },
     { "click": ".attachment-thumb:has(video)" },

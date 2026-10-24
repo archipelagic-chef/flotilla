@@ -4,7 +4,7 @@
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "A window closed while creating BL-5's worktree: its record of that was left behind" },
-    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },
     { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
     { "waitFor": ".check-note", "timeout": 20000 },
     { "caption": "Opening it checks quietly: the creation that no window runs shows as a line" },

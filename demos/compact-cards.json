@@ -1,0 +1,26 @@
+{
+  "title": "Compact backlog cards: the title, one status line and the next step; Detailed shows every detail",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 3000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "Compact cards: the title, one status line, the next step" },
+    { "waitFor": ".backlog-item.compact:has-text(\"Remember the last open ticket\")" },
+    { "wait": 2500 },
+    { "caption": "Hovered, the line shows the id, the details and the actions" },
+    { "hover": ".backlog-item.compact:has-text(\"Remember the last open ticket\") .name" },
+    { "wait": 2500 },
+    { "caption": "⋯ is the card's menu, with everything else" },
+    { "hover": ".backlog-item.compact:has-text(\"Remember the last open ticket\") [aria-label=\"More Actions…\"]" },
+    { "wait": 1500 },
+    { "caption": "Detailed shows today's cards, with every detail" },
+    { "click": ".cards-detail" },
+    { "waitFor": ".backlog-item:not(.compact):has-text(\"Remember the last open ticket\")" },
+    { "wait": 2500 },
+    { "caption": "Compact again: the choice is kept in flotilla.backlog.cards" },
+    { "click": ".cards-detail" },
+    { "waitFor": ".backlog-item.compact:has-text(\"Remember the last open ticket\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
