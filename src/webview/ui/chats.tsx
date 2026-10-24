@@ -2,6 +2,7 @@ import type { ChatState } from '../../features/chats/chats';
 import type { ChatView, WorkstreamView } from '../protocol';
 import { menuContext, run } from './api';
 import type { Update } from './app';
+import './chats.css';
 
 const STATE_ICON: Record<ChatState, string> = {
   'waiting-for-input': 'bell-dot st-waiting',
