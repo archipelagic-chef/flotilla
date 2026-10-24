@@ -13,8 +13,6 @@ import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
 import { cancelCleanUp, compareCleanUp, finishCleanUp, startCleanUp, type CleanUpDeps } from './backlog/historyCleanup';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
-import * as scm from '../features/scm/operations';
-import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
@@ -32,11 +30,11 @@ import type { ResolvedWorktree } from '../features/worktrees/resolver';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
-import type { ChangeGroup, Target } from '../webview/protocol';
+import type { ChangeGroup } from '../webview/protocol';
 import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
-import { claudeHookConfig } from './claudeHooks';
+import { isTarget, joinCommands, registerAll, type Arg, type Commands, type Handler, type PickFilter, type WithWorkstream } from './commandSet';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
@@ -76,24 +74,6 @@ export interface CommandContext {
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
 
-interface PickFilter {
-  includeUnreachable?: boolean;
-  excludeMain?: boolean;
-}
-
-type Handler = (...args: any[]) => unknown;
-/** Commands get a Target from the sidebar (or its context menus), a folder Uri from the Explorer, or nothing from the palette. */
-type Arg = Target | vscode.Uri | undefined;
-
-export function isTarget(arg: unknown): arg is Target {
-  return typeof arg === 'object' && arg !== null && !(arg instanceof vscode.Uri) && typeof (arg as Target).key === 'string';
-}
-
-/** The files a file command acts on: a multi-selection, or the one clicked file. */
-function targetPaths(arg: unknown): string[] {
-  if (!isTarget(arg)) return [];
-  return arg.paths?.length ? arg.paths : arg.path ? [arg.path] : [];
-}
 
 export async function openWorktree(ctx: CommandContext, dir: string, newWindow: boolean): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', toWorkspaceUri(ctx.reference, dir), { forceNewWindow: newWindow });
@@ -115,63 +95,33 @@ export function chatContext(ctx: CommandContext): chatUi.ChatContext {
 }
 
 export function registerCommands(ctx: CommandContext): void {
-  const register = (id: string, handler: Handler) => ctx.extension.subscriptions.push(vscode.commands.registerCommand(id, guard(ctx, handler)));
-  const withWs =
-    (handler: (ws: Workstream, arg: Arg) => unknown, filter: PickFilter = {}) =>
+  const withWs: WithWorkstream =
+    (handler, filter = {}) =>
     async (arg?: Arg) => {
       const ws = await pickWorkstream(ctx, arg, filter);
       if (ws) await handler(ws, arg);
     };
-  const scmCtx = scmUi.scmContext(ctx.repository);
   const chats = chatContext(ctx);
-
-  register('flotilla.refresh', () => ctx.repository.refresh());
-  register('flotilla.newWorkstream', () => newWorkstream(ctx));
-  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts));
-  register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
-  register('flotilla.planBacklog', () => planBacklog(ctx));
-  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
-  // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
-  register('flotilla.startBacklogItemFromCard', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }));
-  // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
-  register('flotilla.createBacklogWorktree', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }));
-  register('flotilla.createBacklogWorktreeNamed', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }));
-  register('flotilla.renameBacklogItem', (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)));
-  register('flotilla.deleteBacklogItem', (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)));
-  register('flotilla.selectBacklogWorktree', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false));
-  register('flotilla.openBacklogWorktreeInNewWindow', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true));
-  // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
-  register('flotilla.ci.fixWithAgent', (failure?: unknown) => fixWithAgent(ctx, failure));
-  const cleanUp: CleanUpDeps = {
-    ctx,
-    chats,
-    createWorkstream: (request) => createWorkstream(ctx, request),
-    enforceCommitPrefix: (ws, id) => enforceCommitPrefix(ctx, ws, id),
-  };
-  register('flotilla.cleanUpHistory', (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts));
-  register('flotilla.finishCleanUp', (id?: unknown, opts?: unknown) => finishCleanUp(cleanUp, id, opts));
-  register('flotilla.cancelCleanUp', (id?: unknown) => cancelCleanUp(cleanUp, id));
-  register('flotilla.compareCleanUp', (id?: unknown) => compareCleanUp(cleanUp, id));
-  register('flotilla.reviewBacklogItem', (id?: unknown, verdict?: unknown, text?: unknown) =>
-    ctx.tickets.review(
-      typeof id === 'string' ? id : undefined,
-      verdict === 'approved' || verdict === 'changes' ? verdict : undefined,
-      typeof text === 'string' ? text : undefined,
-    ),
+  const commands = joinCommands(
+    worktreeCommands(ctx, withWs),
+    backlogCommands(ctx, chats),
+    ciCommands(ctx),
+    scmUi.scmCommands(scmUi.scmContext(ctx.repository), withWs),
+    chatUi.chatCommands(chats, withWs),
   );
-  register('flotilla.openBacklogItem', (id?: unknown, opts?: unknown) => {
-    const itemId = backlogIdOf(id);
-    const focus = (opts as { focus?: unknown } | undefined)?.focus;
-    return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
-  });
-  register('flotilla.quickSwitch', () => quickSwitch(ctx));
-  register('flotilla.runWorkflow', () => runWorkflowByHand(ctx.currentRoot, devGitHubApi(ctx.extension.extensionMode)));
-  register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
-  register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
-  register('flotilla.remove', withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }));
-  register(
-    'flotilla.adopt',
-    withWs(
+  registerAll(ctx.extension.subscriptions, commands, (handler) => guard(ctx, handler));
+}
+
+/** The worktrees' commands: make, switch, remove, and what's in them. */
+function worktreeCommands(ctx: CommandContext, withWs: WithWorkstream): Commands {
+  return {
+    'flotilla.refresh': () => ctx.repository.refresh(),
+    'flotilla.newWorkstream': () => newWorkstream(ctx),
+    'flotilla.quickSwitch': () => quickSwitch(ctx),
+    'flotilla.openInNewWindow': withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)),
+    'flotilla.switchHere': withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)),
+    'flotilla.remove': withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }),
+    'flotilla.adopt': withWs(
       async (ws) => {
         await ctx.service.adopt(ws.worktree);
         void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
@@ -179,67 +129,73 @@ export function registerCommands(ctx: CommandContext): void {
       },
       { excludeMain: true },
     ),
-  );
-  register('flotilla.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
-  register('flotilla.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
-  register('flotilla.copyPath', withWs((ws, arg) => vscode.env.clipboard.writeText(resolveInside(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))));
-  register('flotilla.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
-  register('flotilla.compareWith', withWs((ws) => compareWith(ctx, ws)));
-  register('flotilla.openFile', withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)));
-  register('flotilla.openFileDiff', withWs((ws, arg) => isTarget(arg) && arg.path && openFileDiff(ctx, ws, arg.path, arg.group ?? 'unstaged')));
-  register('flotilla.openChanges', withWs((ws, arg) => openGroupChanges(ctx, ws, (isTarget(arg) && arg.group) || 'unstaged')));
-  register('flotilla.stage', withWs((ws, arg) => scmUi.stagePaths(scmCtx, ws, targetPaths(arg))));
-  register('flotilla.unstage', withWs((ws, arg) => scmUi.unstagePaths(scmCtx, ws, targetPaths(arg))));
-  register(
-    'flotilla.discard',
-    withWs((ws, arg) => {
-      const paths = new Set(targetPaths(arg));
-      if (paths.size) return scmUi.discardChanges(scmCtx, ws, ws.unstaged.filter((c) => paths.has(c.path)));
-    }),
-  );
-  register('flotilla.stageAll', withWs((ws) => scmUi.stageAll(scmCtx, ws)));
-  register('flotilla.unstageAll', withWs((ws) => scmUi.unstageAll(scmCtx, ws)));
-  register('flotilla.discardAll', withWs((ws) => scmUi.discardChanges(scmCtx, ws)));
-  register('flotilla.commit', withWs((ws) => scmUi.commit(scmCtx, ws)));
-  register('flotilla.publish', withWs((ws) => scmUi.publish(scmCtx, ws)));
-  register('flotilla.sync', withWs((ws) => scmUi.sync(scmCtx, ws)));
-  register('flotilla.push', withWs((ws) => scmUi.network(scmCtx, ws, 'Pushing', scm.push)));
-  register('flotilla.pull', withWs((ws) => scmUi.network(scmCtx, ws, 'Pulling', scm.pull)));
-  register('flotilla.fetch', withWs((ws) => scmUi.network(scmCtx, ws, 'Fetching', scm.fetch)));
-  register(
-    'flotilla.addToWorkspace',
-    withWs(
+    'flotilla.runSetupHere': withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }),
+    'flotilla.openTerminal': withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()),
+    'flotilla.copyPath': withWs((ws, arg) => vscode.env.clipboard.writeText(resolveInside(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))),
+    'flotilla.revealInOS': withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))),
+    'flotilla.compareWith': withWs((ws) => compareWith(ctx, ws)),
+    'flotilla.openFile': withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)),
+    'flotilla.openFileDiff': withWs((ws, arg) => isTarget(arg) && arg.path && openFileDiff(ctx, ws, arg.path, arg.group ?? 'unstaged')),
+    'flotilla.openChanges': withWs((ws, arg) => openGroupChanges(ctx, ws, (isTarget(arg) && arg.group) || 'unstaged')),
+    'flotilla.addToWorkspace': withWs(
       (ws) => {
         if (ws.isCurrent) return vscode.window.showInformationMessage(`'${workstreamLabel(ws)}' is already this window's folder.`);
         addWorkspaceFolder(ctx.reference, ws.worktree.path!, `⎇ ${workstreamLabel(ws)}`);
       },
       { excludeMain: true },
     ),
-  );
-  register('flotilla.removeFromWorkspace', withWs((ws) => removeWorkspaceFolder(ws.worktree.path)));
-  register('flotilla.revealInExplorer', (arg?: Arg) => revealInExplorer(ctx, arg));
-  // Chats
-  register('flotilla.newChat', withWs((ws) => chatUi.newChat(chats, ws)));
-  register('flotilla.openChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.openChat(chats, ws, arg.chatId, arg.prompt)));
-  register('flotilla.unlinkChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.unlink(chats, ws, arg.chatId)));
-  register('flotilla.linkChat', withWs((ws) => chatUi.link(chats, ws)));
-  register('flotilla.installClaudeHooks', (arg?: Arg) => chatUi.installChatHooks(chats, isTarget(arg) ? ctx.repository.current.find((w) => w.key === arg.key) : undefined));
-  register(
-    'flotilla.clearAgentStatus',
-    withWs(
-      async (ws) => {
-        await clearAgentStatus(ws.worktree.adminDir);
-        await ctx.repository.refresh();
-      },
-      { includeUnreachable: true },
-    ),
-  );
-  register('flotilla.copyClaudeHookConfig', async () => {
-    await vscode.env.clipboard.writeText(claudeHookConfig());
-    void vscode.window.showInformationMessage(
-      'Claude Code hook config copied. The hooks also need the hook script, .claude/flotilla-hook.js, in each worktree: run Flotilla: Install Claude Code Hooks to set up both.',
-    );
-  });
+    'flotilla.removeFromWorkspace': withWs((ws) => removeWorkspaceFolder(ws.worktree.path)),
+    'flotilla.revealInExplorer': (arg?: Arg) => revealInExplorer(ctx, arg),
+  };
+}
+
+/** The backlog's commands on a ticket: start it, its worktrees, its review, its history's clean-up. */
+function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Commands {
+  const cleanUp: CleanUpDeps = {
+    ctx,
+    chats,
+    createWorkstream: (request) => createWorkstream(ctx, request),
+    enforceCommitPrefix: (ws, id) => enforceCommitPrefix(ctx, ws, id),
+  };
+  return {
+    'flotilla.startBacklogItem': (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts),
+    'flotilla.backlogIntegrations': () => ctx.integrations.manage(),
+    'flotilla.planBacklog': () => planBacklog(ctx),
+    'flotilla.linkBacklogItem': (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)),
+    // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
+    'flotilla.startBacklogItemFromCard': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }),
+    // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
+    'flotilla.createBacklogWorktree': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }),
+    'flotilla.createBacklogWorktreeNamed': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }),
+    'flotilla.renameBacklogItem': (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.deleteBacklogItem': (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.selectBacklogWorktree': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false),
+    'flotilla.openBacklogWorktreeInNewWindow': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true),
+    'flotilla.cleanUpHistory': (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts),
+    'flotilla.finishCleanUp': (id?: unknown, opts?: unknown) => finishCleanUp(cleanUp, id, opts),
+    'flotilla.cancelCleanUp': (id?: unknown) => cancelCleanUp(cleanUp, id),
+    'flotilla.compareCleanUp': (id?: unknown) => compareCleanUp(cleanUp, id),
+    'flotilla.reviewBacklogItem': (id?: unknown, verdict?: unknown, text?: unknown) =>
+      ctx.tickets.review(
+        typeof id === 'string' ? id : undefined,
+        verdict === 'approved' || verdict === 'changes' ? verdict : undefined,
+        typeof text === 'string' ? text : undefined,
+      ),
+    'flotilla.openBacklogItem': (id?: unknown, opts?: unknown) => {
+      const itemId = backlogIdOf(id);
+      const focus = (opts as { focus?: unknown } | undefined)?.focus;
+      return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
+    },
+  };
+}
+
+/** CI's commands: a workflow run by hand, and an agent on a failed job. */
+function ciCommands(ctx: CommandContext): Commands {
+  return {
+    'flotilla.runWorkflow': () => runWorkflowByHand(ctx.currentRoot, devGitHubApi(ctx.extension.extensionMode)),
+    // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
+    'flotilla.ci.fixWithAgent': (failure?: unknown) => fixWithAgent(ctx, failure),
+  };
 }
 
 export async function resumePendingActions(ctx: CommandContext): Promise<void> {

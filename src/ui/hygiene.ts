@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { pathKey } from '../core/paths';
 import { missingExclusions, WATCHER_GLOB, WORKTREES_FOLDER } from '../features/worktrees/exclusions';
+import { SLOW_STORAGE_DOCS } from '../features/storage/storage';
+import type { Commands } from './commandSet';
+import type { FinishedWorktrees } from './finishedWorktrees';
+import type { SharedFolders } from './sharedFolders';
 
 function valueAt<T>(config: vscode.WorkspaceConfiguration, key: string, target: vscode.ConfigurationTarget): T | undefined {
   const inspected = config.inspect<T>(key);
@@ -52,4 +56,14 @@ export async function maybeOfferHygiene(extension: vscode.ExtensionContext, main
   );
   if (choice === user) await apply(vscode.ConfigurationTarget.Global);
   else if (choice === workspace) await apply(vscode.ConfigurationTarget.Workspace);
+}
+
+/** The repository's upkeep commands: worktrees kept after their ticket, linked folders, hidden worktrees, slow storage. */
+export function hygieneCommands(deps: { finished: FinishedWorktrees; shared: SharedFolders }): Commands {
+  return {
+    'flotilla.keptWorktrees': () => deps.finished.showKept(),
+    'flotilla.shareLinkedFolders': () => deps.shared.shareNow(),
+    'flotilla.hideWorktrees': () => hideWorktrees(),
+    'flotilla.slowStorageHelp': () => vscode.env.openExternal(vscode.Uri.parse(SLOW_STORAGE_DOCS)),
+  };
 }

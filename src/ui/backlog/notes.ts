@@ -20,6 +20,7 @@ import {
 } from '../../features/backlog/notes';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
+import { showError, type Commands } from '../commandSet';
 import { trackProgress } from '../progress';
 import { agentChoice, memoryShortage, runAgentHeadless, validSession, type AgentResult, type AgentRun } from './agentRunner';
 
@@ -272,4 +273,9 @@ export class NoteAgents implements vscode.Disposable {
       ...[...this.runs.values()].map((r) => r.agent),
     ];
   }
+}
+
+/** The notes' commands: Flotilla: New Note. */
+export function noteCommands(notes: NoteAgents): Commands {
+  return { 'flotilla.newNote': () => notes.newNote().catch(showError) };
 }

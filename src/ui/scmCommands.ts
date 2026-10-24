@@ -5,6 +5,7 @@ import * as scm from '../features/scm/operations';
 import type { Repository } from '../core/repository';
 import { withFreshStatus, type Workstream } from '../features/workstreams/workstream';
 import { syncKind, workstreamLabel } from './format';
+import { isTarget, type Commands, type WithWorkstream } from './commandSet';
 
 export interface ScmContext {
   /** Updates ws's git status at once (when given), then refreshes everything in the background. */
@@ -190,4 +191,31 @@ export async function sync(ctx: ScmContext, ws: Workstream): Promise<void> {
 export async function network(ctx: ScmContext, ws: Workstream, verb: string, op: (dir: string) => Promise<void>): Promise<void> {
   await withProgress(`${verb} ${workstreamLabel(ws)}…`, () => op(ws.worktree.path!));
   await ctx.refresh(ws);
+}
+
+/** The files a file command acts on: a multi-selection, or the one clicked file. */
+function targetPaths(arg: unknown): string[] {
+  if (!isTarget(arg)) return [];
+  return arg.paths?.length ? arg.paths : arg.path ? [arg.path] : [];
+}
+
+/** Source control's commands, on the worktree they're given (or picked). */
+export function scmCommands(ctx: ScmContext, withWs: WithWorkstream): Commands {
+  return {
+    'flotilla.stage': withWs((ws, arg) => stagePaths(ctx, ws, targetPaths(arg))),
+    'flotilla.unstage': withWs((ws, arg) => unstagePaths(ctx, ws, targetPaths(arg))),
+    'flotilla.discard': withWs((ws, arg) => {
+      const paths = new Set(targetPaths(arg));
+      if (paths.size) return discardChanges(ctx, ws, ws.unstaged.filter((c) => paths.has(c.path)));
+    }),
+    'flotilla.stageAll': withWs((ws) => stageAll(ctx, ws)),
+    'flotilla.unstageAll': withWs((ws) => unstageAll(ctx, ws)),
+    'flotilla.discardAll': withWs((ws) => discardChanges(ctx, ws)),
+    'flotilla.commit': withWs((ws) => commit(ctx, ws)),
+    'flotilla.publish': withWs((ws) => publish(ctx, ws)),
+    'flotilla.sync': withWs((ws) => sync(ctx, ws)),
+    'flotilla.push': withWs((ws) => network(ctx, ws, 'Pushing', scm.push)),
+    'flotilla.pull': withWs((ws) => network(ctx, ws, 'Pulling', scm.pull)),
+    'flotilla.fetch': withWs((ws) => network(ctx, ws, 'Fetching', scm.fetch)),
+  };
 }

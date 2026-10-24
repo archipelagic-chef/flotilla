@@ -53,7 +53,7 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import { readTranscript } from '../../features/chats/chats';
 import type { Shaping } from './shaping';
-import { discussable } from '../../features/backlog/shaping';
+import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
 import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
 import { openTarget } from '../../features/backlog/runTarget';
@@ -1180,7 +1180,7 @@ export class TicketPanels implements vscode.Disposable {
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
-        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}) } }
+        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}), ...this.discussionChat(plain) } }
         : {}),
     };
   }
@@ -1246,7 +1246,19 @@ export class TicketPanels implements vscode.Disposable {
    * from the repository root (in the ticket's worktrees first, then the main one: after a merge it's there) or next to
    * the ticket (its pictures); "path#L10-L20" and "path:10" select lines.
    */
+  /** Where the ticket's discussion chat is (BL-188), for its view. */
+  private discussionChat(item: BacklogItem): { chat?: 'open' | 'closed' | 'pending' } {
+    if (!item.shaping?.chat || !this.shaping) return {};
+    const found = this.shaping.chatOf(item);
+    return { chat: !found ? 'pending' : found.chat.open ? 'open' : 'closed' };
+  }
+
   async openHref(item: BacklogItem, href: string): Promise<void> {
+    // A note's link to a discussion's chat (BL-188).
+    if (href.startsWith(CHAT_LINK)) {
+      if (!(await this.shaping?.openSession(href.slice(CHAT_LINK.length)))) void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in any worktree.`);
+      return;
+    }
     if (/^(https?|mailto):/i.test(href)) {
       await vscode.env.openExternal(vscode.Uri.parse(href));
       return;

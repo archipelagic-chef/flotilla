@@ -12,6 +12,7 @@ import {
   type BacklogItem,
   type BacklogStatus,
 } from '../../features/backlog/backlog';
+import { isDiscussionChat } from '../../features/backlog/shaping';
 import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import { mayStartNow, ordinal, pauseOrder, prioritizeAction, StartQueue, type StartKind, type WaitingStart } from '../../features/backlog/agentQueue';
@@ -608,7 +609,8 @@ export class ReviewLoop implements vscode.Disposable {
       const when = until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
       await this.note(
         id,
-        `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must, less often the longer it lasts`}.`,
+        `${o.agent} stopped on ${what}. It goes on by itself ${o.limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must, less often the longer it lasts`}.` +
+          (o.limit.said ? `\n\nClaude said: “${o.limit.said}”; reset time not understood, retrying in ${Math.round((until.getTime() - Date.now()) / 60_000)} min.` : ''),
       );
     }
     this.scheduleResume();
@@ -636,11 +638,31 @@ export class ReviewLoop implements vscode.Disposable {
     const now = (await this.deps.backlog.read()).items.find((i) => i.id === item.id)?.review;
     if (this.runs.has(item.id) || now?.state !== 'paused' || now.paused?.session !== p.session) return false;
     if (!limit) return true;
+    if (limit.known) {
+      this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: it resets at ${limit.until.toLocaleString()}.`);
+      await this.knownReset(limit.until);
+      return false;
+    }
     const tries = (p.tries ?? 0) + 1;
-    const until = limit.known ? limit.until : new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
-    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.`);
+    const until = new Date(Date.now() + retryDelay(p.kind ?? limit.kind, tries));
+    this.deps.output.appendLine(`${p.agent} (${item.id}) waits for the limit still: try ${tries + 1} at ${until.toLocaleString()}.${limit.said ? ` Claude said: ${limit.said}` : ''}`);
     await this.setReview(item.id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: until.toISOString(), tries } } : r!));
     return false;
+  }
+
+  /**
+   * Claude said when its usage limit resets: every agent paused on a limit whose reset was guessed at waits for that one
+   * (it's the same limit, the account's), and they all go on when it resets.
+   */
+  private async knownReset(until: Date): Promise<void> {
+    for (const item of (await this.deps.backlog.read()).items) {
+      const p = item.review?.state === 'paused' ? item.review.paused : undefined;
+      if (!p || p.byUser || p.for || p.known !== false) continue;
+      await this.setReview(item.id, (r) =>
+        r?.state === 'paused' && r.paused && r.paused.known === false ? { ...r, paused: { ...r.paused, until: until.toISOString(), known: true, kind: 'usage' } } : r!,
+      );
+    }
+    this.scheduleResume();
   }
 
   /** The next resume, timed to the earliest paused agent. */
@@ -685,7 +707,10 @@ export class ReviewLoop implements vscode.Disposable {
     const limit = await probeLimit({ choice: agentChoice(paused[0], first.phase === 'review' ? 'review' : 'work'), output: this.deps.output });
     if (limit) {
       // A reset said now replaces the top one's; a guessed-at one keeps its wait (the user's try doesn't lengthen it).
-      if (limit.known) await this.setReview(paused[0].id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: limit.until.toISOString() } } : r!));
+      if (limit.known) {
+        await this.setReview(paused[0].id, (r) => (r?.state === 'paused' && r.paused ? { ...r, paused: { ...r.paused, until: limit.until.toISOString() } } : r!));
+        await this.knownReset(limit.until);
+      }
       this.scheduleResume();
       return { tried, resumed: 0, limited: await this.pausedUntil() };
     }
@@ -825,13 +850,13 @@ export class ReviewLoop implements vscode.Disposable {
   /**
    * The agents running now: this window's, the starts it admitted that haven't spawned yet (see take), and the agent
    * chats (for tickets) that work in any window, each session once. The limit counts them all: a start from a ticket
-   * (its chat in Claude Code) takes its slot too.
+   * (its chat in Claude Code) takes its slot too; a discussion's chat doesn't (BL-188: the user is in it).
    */
   get running(): number {
     const sessions = new Set([...this.runs.values()].map((r) => r.run.sessionId));
     for (const ws of this.deps.repository.current)
       for (const chat of ws.chats)
-        if (chat.state === 'working' && agentChatItem(chat.firstPrompt) && !this.ended.has(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
+        if (chat.state === 'working' && countsAsAgent(chat.firstPrompt) && !this.ended.has(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
     return sessions.size + this.starting.size;
   }
 
@@ -846,7 +871,7 @@ export class ReviewLoop implements vscode.Disposable {
     for (const ws of this.deps.repository.current)
       for (const chat of ws.chats) {
         const of = agentChatItem(chat.firstPrompt);
-        if (chat.state !== 'working' || !of || this.ended.has(chat.id) || this.held.has(chat.id) || sessions.has(chat.id)) continue;
+        if (chat.state !== 'working' || !of || !countsAsAgent(chat.firstPrompt) || this.ended.has(chat.id) || this.held.has(chat.id) || sessions.has(chat.id)) continue;
         sessions.add(chat.id);
         agents.push({ id: of.item, agent: of.agent, doing: 'work', since: (chat.startedAt ?? chat.updatedAt).toISOString() });
       }
@@ -1707,4 +1732,9 @@ export type AgentTarget = Omit<HeldAgent, 'where'> & { where: 'headless' | 'term
 function withoutReview(item: BacklogItem): BacklogItem {
   const { review: _review, ...rest } = item;
   return rest;
+}
+
+/** Whether an agent chat counts against the agent limit: one started for a ticket, and not a discussion (BL-188). */
+function countsAsAgent(firstPrompt: string | undefined): boolean {
+  return !!agentChatItem(firstPrompt) && !isDiscussionChat(firstPrompt);
 }

@@ -25,6 +25,7 @@ const INSTANT = new Set([
   'backlog:open',
   'backlog:comment',
   'backlog:demo',
+  'note:open',
   // Opening a prompt or a form of VS Code's: the user goes on there.
   'backlog:new',
   'backlog:integrations',

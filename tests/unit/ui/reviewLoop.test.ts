@@ -439,6 +439,16 @@ describe('the agent limit', () => {
     loop.dispose();
   });
 
+  it("notes what Claude said when it doesn't understand the reset, with the guess (BL-184)", async () => {
+    await loop.start('BL-1');
+    finish[0]({ code: 1, limit: { until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate', said: 'API Error: 429 slow down' } } as never);
+    await settle();
+    expect(data.items[0].review).toMatchObject({ state: 'paused', paused: { known: false, kind: 'rate' } });
+    const note = notes.find((n) => n.includes("Claude's rate limit"));
+    expect(note).toContain('Claude said: “API Error: 429 slow down”; reset time not understood, retrying in 5 min.');
+    loop.dispose();
+  });
+
   it('a resume that waits for a slot after a usage limit starts once one frees', async () => {
     await loop.start('BL-1');
     await loop.start('BL-2');
@@ -564,6 +574,22 @@ describe('the agent limit', () => {
     expect(data.items[1].review).toMatchObject({ state: 'paused', paused: { until: sooner.toISOString() } });
     expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { until: later } });
     expect(notes).toEqual([]);
+    loop.dispose();
+  });
+
+  it('a reset Claude says now holds for every agent waiting on a guessed-at limit, so they all go on then (BL-184)', async () => {
+    const guess = new Date(Date.now() + 10 * 60_000).toISOString();
+    const reset = new Date(Date.now() + 3 * 3600_000);
+    probe.mockReset();
+    probe.mockResolvedValue({ until: reset, known: true, kind: 'usage' });
+    for (const n of [1, 2]) {
+      pauseOn(n, guess);
+      Object.assign((data.items[n].review as { paused: object }).paused, { known: false, kind: 'rate', tries: 3, since: guess });
+    }
+    const result = await loop.tryPausedNow();
+    await settle();
+    expect(result).toMatchObject({ resumed: 0, limited: reset });
+    for (const n of [1, 2]) expect(data.items[n].review).toMatchObject({ state: 'paused', paused: { until: reset.toISOString(), known: true } });
     loop.dispose();
   });
 
