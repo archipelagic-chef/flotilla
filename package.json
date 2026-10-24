@@ -2035,6 +2035,7 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
+    "format": "prettier --write .",
     "test": "node scripts/test.mjs",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "node scripts/package.mjs",
@@ -2045,6 +2046,7 @@
     "debug-profile": "node scripts/debug-profile.mjs",
     "demo": "node scripts/demo.mjs",
     "fake-github": "node scripts/fake-github.mjs",
+    "prepare": "node scripts/install-hooks.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
@@ -2059,6 +2061,7 @@
     "esbuild": "^0.28.2",
     "gifenc": "^1.0.3",
     "playwright-core": "^1.64.1",
+    "prettier": "3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
