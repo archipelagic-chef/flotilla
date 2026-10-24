@@ -84,6 +84,7 @@ export function ItemRow({
               backlogRunnable: !!item.run,
               backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''),
               backlogReadyToMerge: !remote && readyToMerge(item),
+              backlogConflicts: conflictsOf(item).length > 0,
               backlogQueued: !!queuedBehind,
             })
       }

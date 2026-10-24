@@ -33,8 +33,8 @@ export interface StepState {
   conflicts?: readonly string[];
   /** CI on its branch: red, or green on a main that moved since. */
   ci?: 'red' | 'moved';
-  /** Its place in the merge queue, when it waits there. */
-  queue?: { place: string };
+  /** Its place in the merge queue, when it waits there, and how many tickets land before it. */
+  queue?: { place: string; ahead: number };
   /** The implementer works on it now. */
   agentWorking?: string;
   /** An agent reviewer works on it now. */
@@ -78,7 +78,7 @@ export const STEP: Record<StepOp, { label: string; icon: string }> = {
   mergeNext: { label: 'Merge Next', icon: 'git-merge' },
   mergeQueueRemove: { label: 'Remove from Queue', icon: 'close' },
   push: { label: 'Push…', icon: 'cloud-upload' },
-  removeWorktree: { label: 'Remove Its Worktree', icon: 'trash' },
+  removeWorktree: { label: 'Remove Its Worktree…', icon: 'trash' },
 };
 
 const CHAINED: Record<NonNullable<StepState['chained']>, string> = {
@@ -104,7 +104,9 @@ export function nextSteps(s: StepState): NextSteps {
     if (conflicts) return { main: 'updateAndMerge', others: run, status: `${conflicts}: its agent resolves them, then it merges` };
     if (s.ci === 'red') return { main: 'fixCi', others: run, status: 'CI failed on its branch: an agent fixes it, then it can merge' };
     if (s.ci === 'moved') return { main: 'updateAndMerge', others: run, status: `${capital(main)} moved since CI ran: it updates, CI runs again, then it merges` };
-    if (s.queue) return { main: 'mergeNext', others: ['mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };
+    // Merge to main lands the tickets ahead first: Merge Next is the step that lands it alone.
+    if (s.queue?.ahead) return { main: 'mergeNext', others: ['merge', 'mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };
+    if (s.queue) return { main: 'merge', others: ['mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };
     return { main: 'merge', others: run };
   }
   if (s.status === 'todo' || s.status === 'doing') return { main: 'start', others: run };

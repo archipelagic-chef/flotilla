@@ -4,6 +4,7 @@ import { readyToMerge } from './backlog';
 import type { CardAgent } from './cardAgents';
 import { conflictsOf } from './mainDrift';
 import { mergeLabel, unmergedWarning } from './merged';
+import { nextSteps, STEP } from './nextSteps';
 import { turnOf } from './turn';
 
 /**
@@ -22,7 +23,7 @@ export interface CardStatus {
 
 /** A card's next step: a backlog message the card sends, with the button's label. */
 export interface CardStep {
-  op: 'accept' | 'start' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'open';
+  op: 'accept' | 'start' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
   label: string;
   icon: string;
 }
@@ -65,7 +66,14 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   const stuck = agents.find((a) => a.stuck);
   if (stuck) return { text: `${stuck.name} looks stuck: ${strip(stuck.stuck!)}`, mark: 'warning', next: OPEN };
   if (unmergedWarning(item, item.merge)) return { text: "Done, but its work isn't merged", mark: 'warning', next: OPEN };
-  if (conflictsOf(item).length > 0) return { text: `Conflicts with ${main}`, mark: 'error', next: OPEN };
+  const conflicts = conflictsOf(item).flatMap((b) => b.conflicts);
+  if (conflicts.length > 0) {
+    // Approved, Merge can't work: the step that does the job, as the ticket shows it (BL-154).
+    const steps = readyToMerge(item) ? nextSteps({ status: item.status, base: main, canMerge: true, conflicts: [...new Set(conflicts)] }) : undefined;
+    if (steps?.main === 'updateAndMerge')
+      return { text: steps.status!, mark: 'error', next: { op: 'updateAndMerge', label: 'Update and Merge', icon: STEP.updateAndMerge.icon } };
+    return { text: `Conflicts with ${main}`, mark: 'error', next: OPEN };
+  }
   // An agent answered a comment of yours while the ticket wasn't open (BL-127): until it's opened.
   const replies = typeof item.unseenReplies === 'number' && item.unseenReplies > 0 ? Math.floor(item.unseenReplies) : 0;
   if (replies) return { text: `${replies} ${replies === 1 ? 'reply' : 'replies'}`, mark: 'question', next: { op: 'open', label: 'Read', icon: 'comment' } };

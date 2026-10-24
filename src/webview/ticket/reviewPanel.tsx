@@ -11,11 +11,12 @@ import {
   turnOf,
   turnSentence,
 } from '../../features/backlog/turn';
-import type { QueuedView, TicketView } from '../ticketProtocol';
+import type { QueuedView, TicketCiView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton } from './actions';
 import { PAUSE_TIP, STOP_TIP } from './agents';
-import { MergeButton, MergeStop, QueuePlace } from './mergePanel';
+import { MergeStop, QueuePlace } from './mergePanel';
+import { MergeStep, StepStatus, ticketSteps } from './steps';
 
 const FIX_ICON: Record<ReviewFix, string> = {
   retry: 'debug-restart',
@@ -136,8 +137,9 @@ export function QueuedPanel({ queued }: { queued: QueuedView }) {
 }
 
 /** Where the review loop is: who reviews, the verdict; stop it, or start it again. */
-export function ReviewPanel({ ticket }: { ticket: TicketView }) {
+export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiView }) {
   const r = ticket.review!;
+  const steps = ticketSteps(ticket, ci);
   const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
   // Whose turn it is, said in words with the reviewer and the implementer named, and what the user can do now.
   const turn = turnOf({ status: ticket.item.status, review: r });
@@ -192,6 +194,7 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
         <span class="review-text">
           <strong>{label}</strong> {text}
           {todo && <span class="muted review-todo"> {todo}</span>}
+          <StepStatus steps={steps} />
         </span>
         {r.state === 'paused' &&
           (r.paused?.byUser ? (
@@ -227,14 +230,26 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
             </ActionButton>
           </>
         ) : active ? (
-          <ActionButton
-            class="button secondary"
-            message={{ type: 'stopReview' }}
-            working="Stopping…"
-            title={running ? STOP_TIP : 'Stops the review and the handoffs'}
-          >
-            <i class="codicon codicon-debug-stop" /> Stop
-          </ActionButton>
+          // While a reviewer agent works, its Stop is Review It Myself: Approve and Request Changes come back with it (BL-154).
+          steps.others.includes('reviewMyself') ? (
+            <ActionButton
+              class="button secondary"
+              message={{ type: 'stopReview' }}
+              working="Stopping…"
+              title="Stops the reviewer agent: Approve and Request Changes are yours, below"
+            >
+              <i class="codicon codicon-eye" /> Review It Myself
+            </ActionButton>
+          ) : (
+            <ActionButton
+              class="button secondary"
+              message={{ type: 'stopReview' }}
+              working="Stopping…"
+              title={running ? STOP_TIP : 'Stops the review and the handoffs'}
+            >
+              <i class="codicon codicon-debug-stop" /> Stop
+            </ActionButton>
+          )
         ) : r.state === 'stopped' ? (
           // Fixes for why it stopped, the first one first.
           fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
@@ -249,7 +264,7 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
                 <i class="codicon codicon-eye" /> Review Again
               </ActionButton>
             )}
-            {ticket.canMerge && <MergeButton into={ticket.mergeInto ?? 'main'} progress={ticket.mergeProgress} />}
+            {ticket.canMerge && <MergeStep ticket={ticket} ci={ci} steps={steps} />}
           </>
         )}
       </div>
