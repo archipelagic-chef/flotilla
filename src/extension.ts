@@ -210,6 +210,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     fixCi: (branch, runId, jobId) => sidebar.ci.fixOnOrigin(location.mainRoot, branch, runId, jobId),
     // One window rebuilds the merge train (BL-140); the others read it from backlog.json.
     isLeader: () => leader.isLeader,
+    // Whether you let the merge train be pushed for CI (BL-145), asked once.
+    state: context.workspaceState,
   });
   // Whether the items' work is merged, read from git: refreshed with the repository (refs move, polling) and the backlog.
   const merges = new Merges({ backlog, mainRoot: location.mainRoot, merging: (id) => merger.isFinishing(id) });

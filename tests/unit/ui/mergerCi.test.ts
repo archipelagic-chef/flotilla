@@ -104,6 +104,8 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
   const reader = new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url);
   const updates: string[] = [];
   const fixes: Array<[string, number, number | undefined]> = [];
+  const kept = new Map<string, unknown>();
+  const state = { get: (k: string) => kept.get(k), update: async (k: string, v: unknown) => void kept.set(k, v) };
   const merger = new Merger({
     backlog,
     repository,
@@ -115,6 +117,7 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
     fixCi: async (branch: string, run: number, job?: number) => void fixes.push([branch, run, job]),
     ciPollMs: o.ciPollMs ?? 20,
     checksEnv: fakeChecksEnv,
+    state,
   } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
   const activity = async (id: string) => (await backlog.readTicket(await item(id))).activity.map((e) => e.body).join('\n');
@@ -126,7 +129,14 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
     git(repo, 'push', '-q', 'origin', name);
   };
   const runsOf = (name: string) => reader.runs(name);
-  return { repo, merger, item, activity, branch, runsOf, updates, fixes };
+  const queue = async () => (await backlog.read()).mergeQueue ?? [];
+  /** origin's branches of the merge train (BL-145), with their commits. */
+  const trainOnOrigin = () =>
+    git(repo, 'ls-remote', 'origin', 'refs/heads/flotilla/merge-queue/*')
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => l.split('\t').reverse().join(' '));
+  return { repo, merger, item, activity, branch, runsOf, updates, fixes, queue, trainOnOrigin };
 }
 
 /** Waits until done, up to 25 s (under the suite's 30 s timeout): a loaded machine polls and merges slowly (BL-120). */
@@ -152,7 +162,7 @@ describe('Merge to main on CI (BL-105)', () => {
     merger.dispose();
   });
 
-  it("waits while CI runs without holding up another ticket's merge, and then doesn't merge on CI for the tree before it", async () => {
+  it("waits while CI runs without holding up another ticket's merge, and then lands from the train, not on CI for the tree before it", async () => {
     const { repo, merger, item, activity, branch, runsOf } = await setup([approved('BL-1'), approved('BL-2')]);
     branch('feature/BL-1', 'a.txt', 'BL-1');
     const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
@@ -165,18 +175,23 @@ describe('Merge to main on CI (BL-105)', () => {
     git(repo, 'checkout', '-q', '-b', 'feature/BL-2', 'main');
     commit(repo, 'b.txt', 'b\n', 'BL-2: add b');
     git(repo, 'checkout', '-q', 'main');
+    // BL-1 is ahead of it in the merge queue: BL-2 is merged alone.
+    ui.answers = ['Merge BL-2 Alone', "Don't Push"];
     expect(await merger.merge('BL-2')).toBe('merged');
     expect(ui.checks).toEqual([CHECKS]);
     expect(await activity('BL-2')).toContain("CI wasn't used: `feature/BL-2`'s tip");
     expect((await item('BL-1')).status).toBe('review');
 
-    // BL-1's CI fails, is run again, and passes: but main has moved on (BL-2), so it isn't merged on it.
+    // BL-1's CI fails, is run again, and passes: but main has moved on (BL-2), so it isn't what lands. It lands from the
+    // merge train, on BL-2: not pushed (you said no), with the local checks on its merge commit there.
     clock += DONE_MS;
     await fetch(`${fake.url}/repos/playground/app/actions/runs/${ci.id}/rerun`, { method: 'POST' });
     clock += DONE_MS;
-    await until(async () => !merger.mergeProgress('BL-1'));
-    await until(async () => (await activity('BL-1')).includes('has moved on'));
-    expect((await item('BL-1')).status).toBe('review');
+    await until(async () => (await item('BL-1')).status === 'done');
+    expect((await item('BL-1')).status).toBe('done');
+    expect(ui.checks).toEqual([CHECKS, CHECKS]);
+    expect(await activity('BL-1')).toContain("CI wasn't used: the merge train isn't pushed to origin (you chose not to push it).");
+    expect(await activity('BL-1')).not.toContain('has moved on');
     merger.dispose();
   });
 
@@ -210,7 +225,7 @@ describe('Merge to main on CI (BL-105)', () => {
     const notes = await activity('BL-1');
     expect(notes).toContain('Not merged: CI failed on `feature/BL-1`');
     expect(notes).toMatch(new RegExp(`- Failed: \\[test\\]\\(https://github.com/playground/app/actions/runs/${ci.id}/job/\\d+\\) in \\[CI #3\\]`));
-    expect(ui.messages).toContain('CI failed on feature/BL-1: BL-1 wasn\'t merged.');
+    expect(ui.messages).toContain("CI failed on feature/BL-1: BL-1 wasn't merged, and is out of the merge queue.");
     merger.dispose();
   });
 
@@ -237,30 +252,6 @@ describe('Merge to main on CI (BL-105)', () => {
     expect(merger.ciStop('BL-1', () => 'another tip')).toBeUndefined();
     await merger.fixCiStop('BL-1');
     expect(fixes).toEqual([['feature/BL-1', ci.id, stop?.kind === 'failed' ? stop.jobs[0].jobId : -1]]);
-    merger.dispose();
-  });
-
-  it("doesn't merge on CI once main has moved on, and offers Update from Main", async () => {
-    const { repo, merger, activity, branch, updates } = await setup([approved('BL-1')]);
-    branch('feature/BL-1', 'a.txt', 'BL-1');
-    commit(repo, 'm.txt', 'm\n', 'main moves on');
-    const before = git(repo, 'rev-parse', 'main');
-    ui.answers = ['Update from Main'];
-    const log = makeTempDir();
-    setEventLog(log);
-
-    expect(await merger.merge('BL-1')).toBe('stopped');
-    await until(async () => updates.length > 0);
-    await eventsWritten();
-    setEventLog(undefined);
-    expect((await readEvents(log)).filter((e) => e.kind === 'merge-ci-stopped')).toEqual([
-      expect.objectContaining({ ticket: 'BL-1', data: { reason: 'moved', branch: 'feature/BL-1' } }),
-    ]);
-
-    expect(git(repo, 'rev-parse', 'main')).toBe(before);
-    expect(updates).toEqual(['BL-1']);
-    expect(await activity('BL-1')).toContain("Not merged: `main` has moved on since `feature/BL-1` took it in");
-    expect(merger.ciStop('BL-1', () => undefined)).toEqual({ kind: 'moved', branch: 'feature/BL-1', base: 'main', tip: git(repo, 'rev-parse', 'feature/BL-1') });
     merger.dispose();
   });
 
@@ -311,6 +302,121 @@ describe('Merge to main on CI (BL-105)', () => {
     expect(merger.mergeProgress('BL-1')).toBeUndefined();
     expect((await item('BL-1')).status).toBe('review');
     expect((await activity('BL-1')).split('\n').at(-1)).toBe('You cancelled the merge of `feature/BL-1` waiting for CI. Nothing was merged.');
+    merger.dispose();
+  });
+});
+
+describe('Landing from the merge train on CI (BL-145)', () => {
+  const PUSH_QUESTION = 'Push the merge train to origin, for CI to run on it?';
+
+  /** Runs the merge's polls of CI by hand: none runs on its own (an hour apart), however slow the suite is (BL-120). */
+  async function byHand<T>(merger: unknown, run: () => Promise<T>): Promise<{ result: T; poll(): Promise<void> }> {
+    const polls: Array<() => void> = [];
+    const setTimer = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === HOUR) polls.push(fn);
+      return setTimer(fn, ms);
+    }) as typeof setTimeout);
+    try {
+      const result = await run();
+      return {
+        result,
+        poll: async () => {
+          const poll = vi.spyOn(merger as { pollCi(): Promise<void> }, 'pollCi');
+          polls.shift()!();
+          await poll.mock.results.at(-1)!.value;
+          poll.mockRestore();
+        },
+      };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('pushes the train once you let it, waits for CI on its commit there, and lands it when CI passes', async () => {
+    const { repo, merger, item, activity, branch, runsOf, queue, trainOnOrigin, updates } = await setup([approved('BL-1')], { ciPollMs: HOUR });
+    branch('feature/BL-1', 'a.txt', 'BL-1');
+    // main moves on: CI on the branch isn't for what lands, so CI on its commit in the train decides.
+    commit(repo, 'm.txt', 'm\n', 'main moves on');
+    ui.answers = ['Push the Train'];
+
+    const { result, poll } = await byHand(merger, () => merger.merge('BL-1'));
+
+    expect(result).toBe('waiting');
+    const inTrain = git(repo, 'rev-parse', 'flotilla/train');
+    expect(trainOnOrigin()).toEqual([`refs/heads/flotilla/merge-queue/BL-1 ${inTrain}`]);
+    expect(merger.mergeProgress('BL-1')).toEqual({ ci: [expect.objectContaining({ workflow: 'CI', status: 'queued' }), expect.objectContaining({ workflow: 'Deploy' })] });
+    expect(await activity('BL-1')).toContain(`Merges when CI passes: \`flotilla/merge-queue/BL-1\` at \`${inTrain.slice(0, 7)}\``);
+    expect(await queue()).toEqual(['BL-1']);
+
+    // CI on the train commit fails, is run again, and passes.
+    const ci = (await runsOf('flotilla/merge-queue/BL-1')).find((r) => r.workflow === 'CI')!;
+    clock += DONE_MS;
+    await fetch(`${fake.url}/repos/playground/app/actions/runs/${ci.id}/rerun`, { method: 'POST' });
+    clock += DONE_MS;
+    await poll();
+
+    expect((await item('BL-1')).status).toBe('done');
+    expect(git(repo, 'rev-parse', 'main')).toBe(inTrain);
+    expect(ui.checks).toEqual([]);
+    expect(updates).toEqual([]);
+    expect(await activity('BL-1')).toContain(`CI passed on \`${inTrain.slice(0, 7)}\`: [CI #3](${ci.url})`);
+    expect(await queue()).toEqual([]);
+    // Landed: its train branch is gone from origin.
+    expect(trainOnOrigin()).toEqual([]);
+    expect(ui.messages.filter((m) => m === PUSH_QUESTION)).toHaveLength(1);
+    merger.dispose();
+  });
+
+  it('takes a ticket out of the queue on red CI on its train commit, with the failed jobs, and rebuilds the train without it', async () => {
+    const { repo, merger, item, activity, branch, queue, trainOnOrigin, fixes } = await setup([approved('BL-1'), approved('BL-2')], { ciPollMs: HOUR });
+    branch('feature/BL-1', 'a.txt', 'BL-1');
+    commit(repo, 'm.txt', 'm\n', 'main moves on');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.answers = ['Push the Train'];
+    const { result, poll } = await byHand(merger, () => merger.merge('BL-1'));
+    expect(result).toBe('waiting');
+
+    // CI fails on it.
+    clock += DONE_MS;
+    await poll();
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    expect((await item('BL-1')).status).toBe('review');
+    expect(await queue()).toEqual([]);
+    expect(trainOnOrigin()).toEqual([]);
+    const notes = await activity('BL-1');
+    expect(notes).toContain('Not merged: CI failed on `flotilla/merge-queue/BL-1`');
+    expect(notes).toMatch(/- Failed: \[test\]\(https:\/\/github.com\/playground\/app\/actions\/runs\/\d+\/job\/\d+\) in \[CI #3\]/);
+    expect(notes).toContain('BL-1 is out of the merge queue: the train is rebuilt without it.');
+    expect(ui.messages.some((m) => m.startsWith("CI failed on BL-1's commit in the merge train (flotilla/merge-queue/BL-1)"))).toBe(true);
+    const tip = git(repo, 'rev-parse', 'feature/BL-1');
+    const stop = merger.ciStop('BL-1', () => tip);
+    expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip });
+    await merger.fixCiStop('BL-1');
+    expect(fixes).toEqual([['feature/BL-1', stop?.kind === 'failed' ? stop.runs[0].id : -1, stop?.kind === 'failed' ? stop.jobs[0].jobId : -1]]);
+
+    // Another ticket lands by the train the same way: the push isn't asked again.
+    branch('feature/BL-2', 'b.txt', 'BL-2');
+    commit(repo, 'n.txt', 'n\n', 'main moves on again');
+    expect(await merger.merge('BL-2')).toBe('waiting');
+    expect(trainOnOrigin()).toEqual([`refs/heads/flotilla/merge-queue/BL-2 ${git(repo, 'rev-parse', 'flotilla/train')}`]);
+    expect(ui.messages.filter((m) => m === PUSH_QUESTION)).toHaveLength(1);
+    merger.dispose();
+  });
+
+  it("checks the train's commits locally when you don't let it be pushed", async () => {
+    const { repo, merger, item, activity, branch, trainOnOrigin } = await setup([approved('BL-1')]);
+    branch('feature/BL-1', 'a.txt', 'BL-1');
+    commit(repo, 'm.txt', 'm\n', 'main moves on');
+    ui.answers = ["Don't Push"];
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect((await item('BL-1')).status).toBe('done');
+    expect(ui.checks).toEqual([CHECKS]);
+    expect(await activity('BL-1')).toContain("CI wasn't used: the merge train isn't pushed to origin (you chose not to push it).");
+    expect(trainOnOrigin()).toEqual([]);
     merger.dispose();
   });
 });
