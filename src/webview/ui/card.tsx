@@ -45,8 +45,9 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
   const setStatus = (status: BacklogStatus) => send({ type: 'backlog', op: 'update', id: item.id, status });
   // Whose turn its review is (local items only: an issue's review is in its tracker).
   const turn = remote || item.proposed ? undefined : turnOf(item);
-  // A working agent's status, on a line of its own (BL-175).
-  const live = agents.find((a) => a.activity);
+  // A working agent's status, on a line of its own (BL-175): the one that did something last.
+  const since = (a: CardAgent) => a.activity?.tool?.since ?? '';
+  const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
   return (
     <div
       class={`row backlog-item st-${item.status}${dropBefore ? ' drop-before' : ''}${live && !renaming ? ' has-status' : ''}`}

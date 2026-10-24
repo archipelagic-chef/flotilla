@@ -145,13 +145,13 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
   return (
     <div class={`agent-live${h.stuck ? ' stuck' : ''}`}>
       {now && (
-        <button class="agent-now" onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open its live transcript">
+        <button key="now" class="agent-now" onClick={() => send({ type: 'openChat', key: a.key, id: a.id })} title="Open its live transcript">
           <i class={`codicon ${now.running ? 'codicon-loading codicon-modifier-spin' : 'codicon-tools'}`} /> <WithCode text={now.text} />
         </button>
       )}
       {thoughts.length > 0 &&
         (thoughts.length > 1 ? (
-          <details class="agent-thoughts">
+          <details key="thoughts" class="agent-thoughts">
             <summary title="Its latest thought: unfold for the last few">“{thoughts.at(-1)}”</summary>
             <ol>
               {thoughts.slice(0, -1).map((t, n) => (
@@ -160,10 +160,10 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
             </ol>
           </details>
         ) : (
-          <div class="agent-thoughts">“{thoughts[0]}”</div>
+          <div key="thought" class="agent-thoughts">“{thoughts[0]}”</div>
         ))}
       {plan && (
-        <details class="agent-plan">
+        <details key="plan" class="agent-plan">
           <summary title="Its plan (its todo list): unfold for the steps">
             <progress max={plan.total} value={plan.done} /> {plan.done} of {plan.total}
             {plan.current ? ` · ${plan.current}` : ''}
@@ -177,7 +177,7 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
           </ul>
         </details>
       )}
-      <div class={`agent-health${h.stuck ? ' stuck' : ''}`}>
+      <div key="health" class={`agent-health${h.stuck ? ' stuck' : ''}`}>
         <i class={`codicon ${h.stuck ? 'codicon-warning' : 'codicon-pulse'}`} /> <WithCode text={h.stuck ? `Looks stuck: ${h.text}` : h.text} />
         {h.stuck && (
           <span class="agent-health-actions">
