@@ -9,7 +9,8 @@ import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { acceptItem, moveItem, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
@@ -97,6 +98,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** The CI/CD view's runs, read while the sidebar is visible. */
   readonly ci: CiRuns;
 
+  /** The open discussion chats the backlog was last posted with (see openDiscussions). */
+  private discussionsShown = '';
+
+  /** The open discussion chats (BL-188), as a key: when it changes, the cards change. */
+  private openDiscussions(): string {
+    return this.deps.repository.current
+      .flatMap((w) => w.chats.filter((c) => c.open && isDiscussionChat(c.firstPrompt)).map((c) => c.id))
+      .sort()
+      .join(',');
+  }
+
+  /** Whether an item's discussion chat is open now. */
+  private discussing(item: BacklogItem): boolean {
+    const shaping = item.shaping;
+    if (!shaping?.chat || !discussable(item)) return false;
+    return this.deps.repository.current.some((w) => !!findDiscussionChat(w.chats, { id: item.id, agent: shaping.agent, session: shaping.session })?.open);
+  }
+
   constructor(private readonly deps: SidebarDeps) {
     this.ci = new CiRuns(
       (views) => this.post({ type: 'ci', views }),
@@ -111,6 +130,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      // A discussion's chat opened or closed: its card says so (BL-188).
+      {
+        dispose: deps.repository.onDidChange(() => {
+          const open = this.openDiscussions();
+          if (open === this.discussionsShown) return;
+          this.discussionsShown = open;
+          void this.postBacklog();
+        }).dispose,
+      },
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
         if (e.affectsConfiguration('flotilla.backlog.cards')) void this.postBacklog();
@@ -237,6 +265,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
+          ...(this.discussing(item) ? { discussing: true } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
           ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };

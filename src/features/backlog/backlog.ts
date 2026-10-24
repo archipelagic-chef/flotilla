@@ -59,7 +59,10 @@ export interface BacklogItem {
    */
   shaping?: {
     agent: string;
+    /** Its chat's session; "" for a discussion chat whose first message isn't sent yet (found by it, see findDiscussionChat). */
     session: string;
+    /** The discussion is a Claude Code chat the owner talks in (BL-188), not replies in the ticket: when it opened ("YYYY-MM-DD HH:MM"). */
+    chat?: { since: string };
     ready?: boolean;
     /** The user paused (or stopped) it, when (ISO 8601): it goes on in its chat when they resume it, or write again. */
     held?: { kind: 'paused' | 'stopped'; at: string };

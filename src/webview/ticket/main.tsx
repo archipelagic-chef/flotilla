@@ -199,8 +199,12 @@ function App() {
                 <ActionButton
                   class="button secondary"
                   message={{ type: 'discuss' }}
-                  working="Starting…"
-                  title="An agent talks it through with you here, and writes what's agreed into the description"
+                  working="Opening…"
+                  title={
+                    ticket.shaping?.chat && ticket.shaping.chat !== 'pending'
+                      ? "Opens the discussion's chat again: it goes on there"
+                      : "Opens a chat with an agent beside the ticket: it talks it through with you, and writes what's agreed into the description"
+                  }
                 >
                   <i class="codicon codicon-comment-discussion" /> Discuss
                 </ActionButton>

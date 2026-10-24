@@ -83,7 +83,7 @@ export function outsideAgents(ticket: TicketView): TicketView['agents'] {
   const r = ticket.review;
   const own = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
   // The discussion's agent shows in its own panel.
-  return ticket.agents.filter((a) => a.runs && a.id !== own && !(ticket.shaping?.running && a.agent === ticket.shaping.agent));
+  return ticket.agents.filter((a) => a.runs && a.id !== own && !((ticket.shaping?.running || ticket.shaping?.chat === 'open') && a.agent === ticket.shaping.agent));
 }
 
 /**
