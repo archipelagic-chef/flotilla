@@ -2,6 +2,7 @@
  * Messages between the extension host and the sidebar webview. Type-only: imported by both sides,
  * so it must not import vscode, node or DOM APIs.
  */
+import type { AgentActivity } from '../features/chats/activity';
 import type { ChangeKind } from '../core/git/porcelain';
 import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
@@ -122,6 +123,8 @@ export interface FileChangeView {
   path: string;
   origPath?: string;
   kind: ChangeKind;
+  /** A folder of untracked files listed as one entry: how many files it holds. */
+  files?: number;
 }
 
 export interface ChatView {
@@ -143,6 +146,9 @@ export interface ChatView {
   size?: { label: string; tip: string; big: boolean };
   /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */
   agent?: { name: string; item: string };
+  /** What it's doing (BL-175), while it works; and why it looks stuck, when it does (flotilla.agents.stuck.*). */
+  activity?: AgentActivity;
+  stuck?: string;
 }
 
 export interface WorkstreamView {

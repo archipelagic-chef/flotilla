@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { noteReply, noteResults, waitsForResult, type AgentActivity } from './activity';
 
 export type ChatSource = 'claude-code';
 export type ChatState = 'working' | 'waiting-for-input' | 'done' | 'ended';
@@ -39,6 +40,8 @@ export interface TranscriptInfo {
   usage?: ChatUsage;
   /** What started it: "claude-vscode" (Claude Code's panel), "cli" (a terminal), "sdk-cli" (`claude -p`: an agent)… */
   entrypoint?: string;
+  /** What it's doing: its latest tool call, thoughts and todo list (BL-175). */
+  activity?: AgentActivity;
 }
 
 /**
@@ -81,6 +84,7 @@ export interface Chat {
   model?: string;
   effort?: string;
   usage?: ChatUsage;
+  activity?: AgentActivity;
   /**
    * Its record says working, but neither it nor the transcript changed for a while (MergeOptions.staleMinutes): the
    * chat ended without the hook saying so. Its last activity; it shows as stopped, not working (BL-131).
@@ -334,6 +338,7 @@ interface TranscriptScan {
   pending?: Map<string, string>;
   failing?: string;
   entrypoint?: string;
+  activity?: AgentActivity;
 }
 
 /** A transcript as far as it has been read: the bytes before `offset` are in `scan`, and `head` identifies the file. */
@@ -368,11 +373,12 @@ function scanLine(scan: TranscriptScan, line: string): void {
   const isTitle = line.includes('"ai-title"') || line.includes('"custom-title"');
   const isUser = !scan.firstPrompt && line.includes('"type":"user"');
   const isReply = line.includes('"type":"assistant"');
-  const isResult = !!scan.pending?.size && line.includes('"tool_result"');
+  const isResult = (!!scan.pending?.size || waitsForResult(scan.activity)) && line.includes('"tool_result"');
   if (!isTitle && !isUser && !isReply && !isResult && scan.startedAt) return;
   let entry: {
     type?: unknown;
     timestamp?: unknown;
+    cwd?: unknown;
     isSidechain?: unknown;
     isMeta?: unknown;
     aiTitle?: unknown;
@@ -393,6 +399,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
   else if (entry.type === 'user' && !entry.isSidechain) {
     if (!scan.firstPrompt && !entry.isMeta) scan.firstPrompt = promptText(entry.message?.content)?.slice(0, 200);
     if (scan.pending?.size) watchResult(scan, entry.message?.content);
+    scan.activity = noteResults(scan.activity, entry.message?.content);
   } else if (entry.type === 'assistant' && !entry.isSidechain) {
     // The model and effort are the last reply's (not a subagent's). An effort belongs to the reply it came with.
     if (typeof entry.message?.model === 'string' && entry.message.model !== '<synthetic>') {
@@ -402,6 +409,7 @@ function scanLine(scan: TranscriptScan, line: string): void {
     if (typeof entry.effort === 'string') scan.effort = entry.effort;
     countUsage(scan, entry.message);
     watchTools(scan, entry.message?.content);
+    scan.activity = noteReply(scan.activity, entry.message?.content, entry.timestamp, entry.cwd);
   }
 }
 
@@ -466,6 +474,13 @@ function watchResult(scan: TranscriptScan, content: unknown): void {
   }
 }
 
+/** What it's doing, with the command failing in a row (the usage counts it). */
+function activityOf(scan: TranscriptScan): AgentActivity | undefined {
+  const times = scan.usage?.failStreak ?? 0;
+  if (!scan.activity) return undefined;
+  return times > 0 && scan.failing ? { ...scan.activity, failing: { command: scan.failing, times } } : scan.activity;
+}
+
 function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): TranscriptInfo {
   // A title the user set wins; Flotilla's own "<worktree>: <AI title>" tag is shown without the worktree.
   const custom = scan.customTitle;
@@ -480,6 +495,7 @@ function infoOf(sessionId: string, scan: TranscriptScan, updatedAt: Date): Trans
     ...optional('effort', scan.effort),
     ...optional('usage', scan.usage),
     ...optional('entrypoint', scan.entrypoint),
+    ...optional('activity', activityOf(scan)),
   };
 }
 
@@ -611,6 +627,7 @@ export function mergeChats(records: ChatRecord[], transcripts: TranscriptInfo[],
       ...optional('model', t?.model),
       ...optional('effort', t?.effort),
       ...optional('usage', t?.usage),
+      ...optional('activity', t?.activity),
     });
   }
   for (const t of transcripts) {

@@ -37,6 +37,7 @@ import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
 import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
+import { stuckRules } from '../settings';
 import { changeMarks, ListedFolders } from './changeMarks';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
@@ -425,8 +426,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const config = vscode.workspace.getConfiguration('flotilla');
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
+    const rules = stuckRules();
     const views = tabOrder(all).map((ws) => ({
-      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()),
+      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext(), rules),
       ...(removingWorktrees.has(ws.key) ? { removing: true } : {}),
     }));
     const { changed, keys } = changedViews(views, this.sent);

@@ -12,6 +12,7 @@ import type { MediaKind } from '../features/backlog/media';
 import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
+import type { AgentActivity, StuckRules } from '../features/chats/activity';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -66,6 +67,8 @@ export type AgentChatView =
       effort?: string;
       /** Its token use (BL-76): its context now ("84k"), and the totals for the tooltip. */
       tokens?: { label: string; tip: string; reRead: number };
+      /** What it's doing, from its transcript (BL-175); `updated` is when it last wrote it. */
+      activity?: AgentActivity;
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
@@ -244,6 +247,8 @@ export interface TicketView {
   agentDefaults: AgentChoice;
   /** The model Light tickets' work runs on (flotilla.agents.lightModel); unset: no ticket can be Light. */
   lightModel?: string;
+  /** When a working agent looks stuck (flotilla.agents.stuck.*); unset: the defaults. */
+  stuckRules?: StuckRules;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
   /** Its attachments (BL-110), newest first: the Attachments section above the activity. None: no section. */
