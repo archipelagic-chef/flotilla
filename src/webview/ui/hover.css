@@ -1,0 +1,100 @@
+.hover-arrow {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: inherit;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  transform: rotate(45deg);
+}
+.hover[data-placement='below'] .hover-arrow {
+  top: -5px;
+  left: calc(var(--arrow) - 4px);
+  border-right: 0;
+  border-bottom: 0;
+}
+.hover[data-placement='above'] .hover-arrow {
+  bottom: -5px;
+  left: calc(var(--arrow) - 4px);
+  border-left: 0;
+  border-top: 0;
+}
+.hover[data-placement='right'] .hover-arrow {
+  left: -5px;
+  top: calc(var(--arrow) - 4px);
+  border-right: 0;
+  border-top: 0;
+}
+.hover-plain {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  white-space: pre-line;
+}
+.keys .chord {
+  display: inline-flex;
+  gap: 2px;
+}
+.hover-ws {
+  min-width: 220px;
+}
+.hover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 7px;
+  box-shadow: inset 3px 0 0 var(--ws-color);
+  border-radius: 3px 0 0 3px;
+}
+.hover-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.hover-title .tag {
+  margin-left: 0;
+}
+.hover-path {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+  overflow-wrap: anywhere;
+}
+.hover-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  font-size: 12px;
+}
+.hover-row .codicon {
+  font-size: 14px;
+}
+.hover-row span + .codicon {
+  margin-left: 6px;
+}
+.hover-quote {
+  margin: 2px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-textBlockQuote-border, var(--border));
+  font-size: 12px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.hover-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 0 0 3px 3px;
+  background: var(--vscode-editorHoverWidget-statusBarBackground, transparent);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.hover-status .codicon {
+  font-size: 12px;
+  vertical-align: -2px;
+}
