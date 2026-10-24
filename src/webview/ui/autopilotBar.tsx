@@ -6,6 +6,7 @@ import { autopilotDetails, type DetailLine } from '../autopilotDetails';
 import type { CardAgent } from '../../features/backlog/cardAgents';
 import { BusyButton } from './backlogBusy';
 import { PauseOrResume, pausedAllLabel } from './pauseAll';
+import './autopilotBar.css';
 
 interface FoldProps {
   autopilot: AutopilotState;
