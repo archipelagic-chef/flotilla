@@ -42,7 +42,7 @@ import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/bac
 import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
 import type { Claim } from '../../features/backlog/ticketCheck';
-import { readSettings } from '../settings';
+import { readSettings, stuckRules } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
 import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
@@ -52,6 +52,7 @@ import { askContextText, askInstructions, postedAnswer } from '../../features/ba
 import { formatMemory } from '../../features/workstreams/memory';
 import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
+import { readTranscript } from '../../features/chats/chats';
 import type { Shaping } from './shaping';
 import { discussable } from '../../features/backlog/shaping';
 import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
@@ -368,6 +369,9 @@ function workstreamState(w: Workstream) {
   };
 }
 
+/** How often a showing ticket reads its busy agents' transcripts again (BL-175). */
+const LIVE_MS = 3000;
+
 /** Ticket editor tabs: one per backlog item, kept up to date with the ticket file and the item's worktree. */
 export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
@@ -511,10 +515,12 @@ export class TicketPanels implements vscode.Disposable {
     this.panels.set(id, panel);
     if (o.focus) this.focusOnPost.set(panel, o.focus);
     const ci = this.ci?.open(id, panel);
+    const live = setInterval(() => void this.liveActivity(panel), LIVE_MS);
     // Told before a button refuses: a glitch found on opening it shows as a line (BL-163).
     void this.check(id, false);
     panel.onDidDispose(() => {
       ci?.dispose();
+      clearInterval(live);
       this.panels.delete(id);
       this.checks.delete(id);
       this.changeViews.delete(id);
@@ -818,6 +824,7 @@ export class TicketPanels implements vscode.Disposable {
               ...((c.model ?? startedWith.get(agent.toLowerCase())?.model) ? { model: c.model ?? startedWith.get(agent.toLowerCase())?.model } : {}),
               ...((c.effort ?? startedWith.get(agent.toLowerCase())?.effort) ? { effort: c.effort ?? startedWith.get(agent.toLowerCase())?.effort } : {}),
               ...(c.usage?.turns ? { tokens: { label: formatTokens(c.usage.reRead), tip: usageTip(c.usage), reRead: c.usage.reRead } } : {}),
+              ...(c.activity ? { activity: c.activity } : {}),
             },
           ];
         }),
@@ -982,6 +989,47 @@ export class TicketPanels implements vscode.Disposable {
 
   /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
+  /** The panels whose agents' transcripts are being read (liveActivity): one read at a time each. */
+  private readonly liveReads = new WeakSet<vscode.WebviewPanel>();
+
+  /**
+   * What a ticket's busy agents are doing, read again every few seconds while it shows (BL-175): only their
+   * transcripts' new bytes are read (readTranscript keeps the rest), and only the agents' part is sent when it changed.
+   */
+  private async liveActivity(panel: vscode.WebviewPanel): Promise<void> {
+    const sent = this.sentViews.get(panel);
+    if (!panel.visible || !sent || this.liveReads.has(panel)) return;
+    const busy = sent.agents.filter((a) => a.runs && !a.held);
+    if (!busy.length) return;
+    this.liveReads.add(panel);
+    try {
+      const read = new Map(
+        await Promise.all(
+          busy.map(async (a) => {
+            const ws = this.deps.repository.current.find((w) => w.key === a.key);
+            const chat = ws?.chats.find((c) => c.id === a.id);
+            const dir = chat?.cwd ?? ws?.worktree.path;
+            return [a.id, dir ? await readTranscript(dir, a.id).catch(() => undefined) : undefined] as const;
+          }),
+        ),
+      );
+      const now = this.sentViews.get(panel);
+      if (!now) return;
+      const agents = now.agents.map((a) => {
+        const t = read.get(a.id);
+        if (!t?.activity) return a;
+        const updated = t.updatedAt.toISOString() > a.updated ? t.updatedAt.toISOString() : a.updated;
+        return { ...a, activity: t.activity, updated };
+      });
+      const next = { ...now, agents };
+      const update = ticketUpdate(now, next);
+      if (!update) return;
+      this.sentViews.set(panel, next);
+      void panel.webview.postMessage(update);
+    } finally {
+      this.liveReads.delete(panel);
+    }
+  }
 
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
   readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
@@ -1181,6 +1229,7 @@ export class TicketPanels implements vscode.Disposable {
       canCleanUp: false,
       agentDefaults: agentChoice(undefined),
       ...(modelLevels().light ? { lightModel: modelLevels().light } : {}),
+      stuckRules: stuckRules(),
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       ...(queued ? { queued } : {}),

@@ -749,9 +749,20 @@ const STALE_CHAT = '9c5a7d43-6e8f-4ba2-9d3c-4f5e6a7b8c92';
 const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
 const MODEL = 'claude-opus-5-5';
 
+/** Vega-2's todo list (TodoWrite), with its first `done` steps done and the next in progress. */
+const PLAN = [
+  ['Read the ticket and find where chats are saved', 'Reading the ticket'],
+  ['Add chatOf, to find a worktree\'s chat again', 'Adding chatOf'],
+  ['Read the store when the window starts', 'Reading the store on start'],
+  ['Run the chat tests', 'Running the chat tests'],
+  ['Report in the ticket', 'Reporting in the ticket'],
+];
+const plan = (done) =>
+  PLAN.map(([content, activeForm], i) => ({ content, activeForm, status: i < done ? 'completed' : i === done ? 'in_progress' : 'pending' }));
+
 /**
  * The turns of a chat, as Claude Code writes its transcript: `say` is the user's prompt, `reply` Claude's text, `tools`
- * the calls it makes (each with its result).
+ * the calls it makes (each with its result; one without runs on, and ends the turn).
  */
 const AGENT_TURNS = [
   {
@@ -759,6 +770,7 @@ const AGENT_TURNS = [
     tools: [
       { name: 'Read', input: { file_path: '.flotilla/backlog/BL-3.md' }, result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again." },
       { name: 'Grep', input: { pattern: 'saveChat', description: 'Find where chats are saved' }, result: 'src/chats.js:1:export function saveChat(store, worktree, id) {' },
+      { name: 'TodoWrite', input: { todos: plan(1) }, result: 'Todos have been modified successfully.' },
     ],
     reply: "The chat's id is saved with its worktree in `src/chats.js`, but nothing reads it back after a reload.",
   },
@@ -768,6 +780,13 @@ const AGENT_NEXT = [
   {
     tools: [{ name: 'Edit', input: { file_path: 'src/chats.js', description: 'Add chatOf' }, result: 'The file src/chats.js has been updated.' }],
     reply: 'Added chatOf, which finds the chat of a worktree again. Next: read the store on start.',
+  },
+  {
+    // Its tests run on: the call has no result yet (BL-175's status shows it running).
+    tools: [
+      { name: 'TodoWrite', input: { todos: plan(3) }, result: 'Todos have been modified successfully.' },
+      { name: 'Bash', input: { command: 'npm test -- chats', description: 'Run the chat tests' } },
+    ],
   },
 ];
 const STALE_TURNS = [
@@ -796,9 +815,11 @@ function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
   for (const [i, tool] of (turn.tools ?? []).entries()) {
     const call = { type: 'tool_use', id: `toolu_${id('t', i).replace(/-/g, '')}`, name: tool.name, input: tool.input };
     lines.push({ type: 'assistant', ...base(), uuid: id('a', i), message: { id: id('m', i), role: 'assistant', model: MODEL, content: [call], usage } });
+    // A call without a result still runs.
+    if (tool.result === undefined) break;
     lines.push({ type: 'user', ...base(), uuid: id('r', i), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] } });
   }
-  lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
+  if (turn.reply) lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
   return lines.map((l) => `${JSON.stringify(l)}\n`).join('');
 }
 
@@ -860,7 +881,8 @@ export function appendAgentTurn(dir, claudeHome, now = new Date()) {
   const cwd = path.join(dir, BL3_WORKTREE);
   const file = transcriptFile(claudeHome, cwd, AGENT_CHAT);
   if (!fs.existsSync(file)) return false;
-  const done = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.includes('-a-end"')).length;
+  // The turns written so far, by the turn number in their lines' uuids (a turn may end without a reply).
+  const done = new Set([...fs.readFileSync(file, 'utf8').matchAll(/"uuid":"[0-9a-f]{8}-(\d+)-/g)].map((m) => m[1])).size;
   const next = AGENT_NEXT[done - AGENT_TURNS.length];
   if (!next) return false;
   fs.appendFileSync(file, turnLines(next, { sessionId: AGENT_CHAT, cwd, entrypoint: 'sdk-cli', n: done }, now));

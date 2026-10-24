@@ -44,6 +44,8 @@ interface Candidate {
   ws: Workstream;
   item: BacklogItem;
   decision: RemovalDecision;
+  /** An earlier removal stopped halfway (RemovalRisks.halfRemoved): finishing it loses nothing. */
+  halfRemoved: boolean;
 }
 
 /**
@@ -91,9 +93,13 @@ export class FinishedWorktrees implements vscode.Disposable {
     await this.askAboutLeftovers();
     const candidates = await this.candidates();
     for (const c of candidates) if (c.decision.action === 'ask') this.explain(c.item.id, c.ws, c.decision.reason);
-    if (!candidates.length) return;
-    if (!this.deps.workspaceState.get<boolean>(INTRODUCED_KEY)) return this.introduce(candidates);
-    for (const c of candidates) {
+    // A removal that stopped halfway was already chosen: it's finished without asking.
+    const unfinished = candidates.filter((c) => c.halfRemoved && c.decision.action === 'remove');
+    for (const c of unfinished) await this.remove(c);
+    const rest = candidates.filter((c) => !unfinished.includes(c));
+    if (!rest.length) return;
+    if (!this.deps.workspaceState.get<boolean>(INTRODUCED_KEY)) return this.introduce(rest);
+    for (const c of rest) {
       if (c.decision.action === 'remove' && mode === 'auto') await this.remove(c);
       else if (c.decision.action !== 'skip') void this.ask(c, c.decision.action === 'ask' ? c.decision.reason : undefined);
     }
@@ -128,9 +134,15 @@ export class FinishedWorktrees implements vscode.Disposable {
         recentlyActive: ws.activity === 'active',
       };
       let decision = removalDecision(input);
-      // The list can be a little old, and counts what removal doesn't lose (an untracked link): git is asked again.
-      if (decision.action !== 'skip') decision = removalDecision({ ...input, changedFiles: (await this.deps.service.removalRisks(ws.worktree)).changedFiles });
-      if (decision.action !== 'skip') result.push({ ws, item, decision });
+      let halfRemoved = false;
+      // The list can be a little old, and counts what removal doesn't lose (an untracked link, what's left of a removal
+      // that stopped halfway): git is asked again.
+      if (decision.action !== 'skip') {
+        const risks = await this.deps.service.removalRisks(ws.worktree);
+        halfRemoved = risks.halfRemoved;
+        decision = removalDecision({ ...input, changedFiles: halfRemoved ? 0 : risks.changedFiles });
+      }
+      if (decision.action !== 'skip') result.push({ ws, item, decision, halfRemoved });
       else if (decision.reason) this.explain(item.id, ws, decision.reason);
     }
     return result;
@@ -307,18 +319,22 @@ export class FinishedWorktrees implements vscode.Disposable {
     const branch = ws.worktree.branch!;
     const freed = await freedBytes(ws.worktree.path!);
     try {
-      await this.deps.service.remove(ws.worktree, { force: false });
+      // Force: the files git sees as deleted are the ones that removal already took.
+      await this.deps.service.remove(ws.worktree, { force: c.halfRemoved });
     } catch (error) {
       this.deps.output.appendLine(`Couldn't remove the worktree of ${branch}: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     const size = freed === undefined ? '' : `: ${formatBytes(freed)} freed`;
-    this.deps.output.appendLine(`Removed the worktree of ${branch}, whose ticket is done${size}.`);
+    const finished = c.halfRemoved ? ', which an earlier removal had left halfway' : '';
+    this.deps.output.appendLine(`Removed the worktree of ${branch}, whose ticket is done${finished}${size}.`);
     for (const item of (await this.deps.backlog.read()).items.filter((i) => i.status === 'done' && branchMatches(i, branch))) {
       await this.deps.backlog.appendActivity(item, {
         date: entryDate(new Date()),
         author: 'Flotilla',
-        body: `Removed the worktree of \`${branch}\` now that the ticket is done; the branch stays${size}.`,
+        body: c.halfRemoved
+          ? `Finished removing the worktree of \`${branch}\`: an earlier removal had stopped halfway, with part of its tracked files already deleted and nothing changed. The branch stays${size}.`
+          : `Removed the worktree of \`${branch}\` now that the ticket is done; the branch stays${size}.`,
       });
     }
     await this.deps.repository.refresh();

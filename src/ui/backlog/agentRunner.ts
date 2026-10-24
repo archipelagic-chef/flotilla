@@ -349,6 +349,8 @@ export function headlessArgs(o: {
   sessionId: string;
   mode: AgentPermissionMode;
   tools?: string[];
+  /** Tools offered besides the list's, allowed only by its rules (Write, allowed where an Edit(path) rule says). */
+  offer?: string[];
   /** How it starts (agentStart): its flags, and the tools offered when there's no tools list. */
   lean?: { flags: string[]; tools?: string[] };
 }): string[] {
@@ -367,7 +369,7 @@ export function headlessArgs(o: {
     // Last: the lists are variadic, so no flag may follow them. --tools takes the tools' names, so Bash and the rest
     // are not there at all; --allowedTools lets the listed ones run (with a rule's path, when it has one).
     ...(o.tools?.length
-      ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools]
+      ? ['--tools', [...new Set([...o.tools.map((t) => t.replace(/\(.*$/, '')), ...(o.offer ?? [])])].join(','), '--allowedTools', ...o.tools]
       : o.lean?.tools
         ? ['--tools', o.lean.tools.join(',')]
         : []),
@@ -389,6 +391,8 @@ export function runAgentHeadless(o: {
   slot?: number;
   /** Only these tools, and no other: the run asks no one, so anything else is refused (see headlessArgs). */
   tools?: string[];
+  /** Tools offered besides those, allowed only by the tools' rules (see headlessArgs). */
+  offer?: string[];
   /** What the run is, for its events (BL-157): its ticket, agent and role. */
   track?: { ticket?: string; agent: string; role: AgentRole };
 }): AgentRun {
@@ -403,7 +407,7 @@ export function runAgentHeadless(o: {
   // With a tool list, what isn't on it is refused, not asked about: that's the list's whole point.
   const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
   const lean = agentStart(o.cwd, o.choice?.model);
-  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, lean });
+  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, offer: o.offer, lean });
   // A missing one shows: the agent then starts without Flotilla's settings (BL-85).
   const settingsFile = settingsFileOf(lean?.flags ?? []);
   o.output.appendLine(

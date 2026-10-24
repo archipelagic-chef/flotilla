@@ -21,6 +21,7 @@ import { registerTranscriptView } from './ui/transcriptView';
 import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
+import { ImprovementReview } from './ui/metrics/improvementReview';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
 import { TicketChecker } from './ui/backlog/ticketCheck';
@@ -67,7 +68,7 @@ import { SharedFolders } from './ui/sharedFolders';
 import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
-import { registerSelfUpdate, watchMainBuild } from './ui/selfUpdate';
+import { registerSelfUpdate, resumeAfterInstall, watchMainBuild } from './ui/selfUpdate';
 import { shortTime } from './webview/shortTime';
 import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
 import { startEventLog } from './ui/eventLog';
@@ -168,7 +169,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
-  watchMainBuild(context, location.mainRoot, async () => {
+  watchMainBuild(context, location.mainRoot, location.commonDir, async () => {
     const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
     return base && localBase(location.mainRoot, base);
   });
@@ -354,6 +355,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),
     vscode.commands.registerCommand('flotilla.resumeAllAgents', () => pauseAll.resumeCommand().catch(reportError)),
   );
+  // After Install Main's reload (BL-161): the agents it paused go on.
+  resumeAfterInstall(context, location.commonDir, pauseAll);
   context.subscriptions.push(
     vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
       if (typeof id !== 'string') return;
@@ -472,11 +475,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return key;
       })()),
   });
+  // Once a week, an agent reads the metrics and proposes tickets (BL-159).
+  const improvement = new ImprovementReview({
+    backlog,
+    repository,
+    admit: (id) => reviews.admitNew(id),
+    giveBack: (slot) => reviews.giveBack(slot),
+    autopilot: () => autopilot.view(),
+    isLeader: () => leader.isLeader,
+    commonDir: location.commonDir,
+    mainRoot: location.mainRoot,
+    output,
+  });
+  context.subscriptions.push(
+    improvement,
+    vscode.commands.registerCommand('flotilla.reviewImprovementsNow', () => improvement.reviewNow().catch(reportError)),
+    vscode.commands.registerCommand('flotilla.openImprovementReview', () => improvement.openLatest().catch(reportError)),
+  );
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
       updateCiReads();
       void autopilot.tick();
+      void improvement.tick().catch(() => undefined);
       void reviews.resumePaused();
       void finished.sweep();
       void shared.sweep();

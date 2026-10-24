@@ -121,6 +121,7 @@ What happens to tickets, agents and merges is recorded as events (BL-157), one J
 - **To record something**, call `recordEvent(kind, { ticket, agent, data })` ([src/features/metrics/events.ts](src/features/metrics/events.ts)) where it happens. It isn't awaited and never throws: recording doesn't slow or break the step it records. A new kind goes into `EventData` there, with the shape of its `data`, and gets a sample in `tests/unit/features/metrics/events.test.ts` (it doesn't compile without one). Scripts record with `recordEvent(commonDir, kind, …)` of `scripts/record-event.mjs`.
 - **The history** before the log (the tickets' activity notes and the merges replayed from git) is read in once by the leading window, marked `imported` ([src/features/metrics/import.ts](src/features/metrics/import.ts)). A note whose wording changes should still be read there.
 - **After 12 months** a month's events are rolled up into `totals-YYYY-MM.json` ([src/features/metrics/rollup.ts](src/features/metrics/rollup.ts)).
+- **The improvement review** (BL-159) gives its agent the metrics of [src/features/metrics/summary.ts](src/features/metrics/summary.ts), each with a stable id, this period next to the one before. A proposal's `Improves: <id> from X to Y` line names one, and the next review counts it before and after the ticket landed ([src/features/metrics/improves.ts](src/features/metrics/improves.ts)). A new metric is a `metricDefs` entry there (keep the ids: merged tickets name them). The reviews are `.flotilla/backlog/reviews/YYYY-MM-DD.md`.
 
 ## Demos
 
@@ -203,5 +204,7 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
    `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository
    walks every agent worktree under `.worktrees/` and doesn't finish. The build records its commit in
    `dist/build.json`; in this repository, the status bar counts what main has merged since, and its click ("Flotilla:
-   Update from Main Build") builds main the same way in a throwaway worktree, installs it and reloads.
+   Install Main and Reload") builds main the same way in a throwaway worktree, pauses the agents (Pause All), installs
+   it and reloads; the new build resumes them from a note in `.git/flotilla/install-main.json`, and other windows of the
+   repository reload too.
 4. `npx vsce publish --packagePath flotilla-<version>.vsix` (publisher `archipelagic`; `npx vsce login archipelagic` once, with an Azure DevOps token scoped to *Marketplace → Manage* and *All accessible organizations*).
