@@ -927,6 +927,13 @@ export function seedEvents(dir, now = new Date()) {
   const agents = ['Vega-2', 'Nova-7', 'Orbit-2', 'Atlas-8', 'Onyx-4'];
   const files = ['src/greet.js', 'src/server.js', 'README.md', 'src/last.js', 'package.json', 'test/greet.test.js'];
   const tokens = (k) => ({ input: Math.round(k * 300), output: Math.round(k * 120), cacheRead: Math.round(k * 2400), cacheCreation: Math.round(k * 200) });
+  // A run's spend, split by purpose as the transcripts are (BL-189): its turns' context and its tools' output.
+  const spend = (t, minutes, purpose, usd, s, id, agent) => {
+    const turns = Math.max(1, Math.round(minutes / 5));
+    const contextK = Array.from({ length: turns }, (_, i) => Math.round(30 + (i / turns) * between(60, 200)));
+    const tools = { code: Math.round(minutes * between(2000, 5000)), git: Math.round(minutes * between(300, 1500)), tests: Math.round(minutes * between(100, 800)), other: Math.round(minutes * 200) };
+    add(t, 'agent-spend', { session: s, purpose, to: new Date(t + minutes * M).toISOString(), tokens: tokens(minutes), costUsd: Math.round(usd * 100) / 100, contextK, tools }, id, agent);
+  };
   let n = 0;
   let session = 0;
   // A ticket's way, from its start at t: work, review (sent back now and then), your approval, its merge.
@@ -939,6 +946,8 @@ export function seedEvents(dir, now = new Date()) {
       const s = `seed-${session++}`;
       const work = between(30, 140) * M;
       add(t, round === 1 ? 'agent-started' : 'agent-resumed', { role: 'work', session: s, model: 'opus' }, id, worker);
+      spend(t, work / M, round === 1 ? 'first' : 'rework', (work / M) * 0.06, s, id, worker);
+      if (random() < 0.15) spend(t + work / 2, between(3, 15), 'resume', between(0.2, 0.9), s, id, worker);
       t += work;
       add(t, 'agent-ended', { role: 'work', session: s, code: 0, ok: true, minutes: Math.round(work / M), tokens: tokens(work / M), costUsd: Math.round(work / M) * 0.06 }, id, worker);
       add(t, 'ticket-moved', { from: 'doing', to: 'review', by: 'Flotilla' }, id);
@@ -946,6 +955,7 @@ export function seedEvents(dir, now = new Date()) {
       const r = `seed-${session++}`;
       const review = between(10, 35) * M;
       add(t, 'agent-started', { role: 'review', session: r, model: 'opus' }, id, reviewer);
+      spend(t, review / M, 'review', (review / M) * 0.05, r, id, reviewer);
       t += review;
       add(t, 'agent-ended', { role: 'review', session: r, code: 0, ok: true, minutes: Math.round(review / M), tokens: tokens(review / M), costUsd: Math.round(review / M) * 0.05 }, id, reviewer);
       const back = round < 3 && random() < 0.25;
@@ -968,6 +978,7 @@ export function seedEvents(dir, now = new Date()) {
       const m = `seed-${session++}`;
       const resolve = between(4, 20) * M;
       add(t + M, 'agent-started', { role: 'merge', session: m }, id, worker);
+      spend(t + M, resolve / M, 'main', (resolve / M) * 0.04, m, id, worker);
       add(t + M + resolve, 'agent-ended', { role: 'merge', session: m, code: 0, ok: true, minutes: Math.round(resolve / M), tokens: tokens(resolve / M), costUsd: Math.round(resolve / M) * 0.04 }, id, worker);
       add(t + M + resolve, 'merge-resolved', { minutes: Math.round(resolve / M), by: `Agent ${worker}` }, id, worker);
       t += M + resolve + between(2, 40) * M;
@@ -981,13 +992,16 @@ export function seedEvents(dir, now = new Date()) {
     }
     t += between(3, 9) * M;
     add(t, 'merge-landed', { into: 'main', commit: Math.floor(random() * 0xffffff).toString(16).padStart(7, '0') }, id);
-    add(t, 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla' }, id);
+    add(t, 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla', criteria: Math.ceil(between(2, 8)) }, id);
   };
   // Two to four tickets start a day, the last ones still under way now.
   for (let day = 30; day >= 0; day--) {
     const midnight = new Date(end - day * 86_400_000);
     midnight.setHours(0, 0, 0, 0);
     const starts = Math.floor(between(2, 5));
+    // Your own chats with Claude: orchestration, not a ticket's.
+    const chat = between(10, 60);
+    spend(midnight.getTime() + between(8, 11) * 60 * M, chat, 'orchestration', chat * 0.07, `seed-own-${day}`);
     for (let i = 0; i < starts; i++) ticket(midnight.getTime() + between(8, 18) * 60 * M);
     // An idle evening: what waits is held back by what isn't merged yet.
     add(midnight.getTime() + 21 * 60 * M, 'autopilot-idle', { reason: random() < 0.6 ? 'BL-5 waits for BL-2 (In Progress)' : 'nothing left in To Do' });
