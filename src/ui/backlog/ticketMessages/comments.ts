@@ -4,9 +4,10 @@ import { mediaType, tooLarge, tooLargeNote } from '../../../features/backlog/med
 import type { TicketHostMessage } from '../../../webview/ticketProtocol';
 import { inMarkup, renderMarkdown } from '../ticketPanel';
 import type { Handlers } from './context';
+import type { CommentsMessage } from './comments.messages';
 
 /** The activity: comments, the images and videos pasted into them, previews, and posting an entry to the tracker. */
-export const commentsHandlers: Handlers = {
+export const commentsHandlers: Handlers<CommentsMessage> = {
   comment: async ({ id, item, panels }, m) => {
     if (!m.text.trim()) return;
     if (item.remote) {
