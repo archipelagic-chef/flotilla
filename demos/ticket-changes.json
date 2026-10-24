@@ -1,0 +1,26 @@
+{
+  "title": "A ticket's Changes: its files and line counts, and their diffs",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "caption": "Changes: what the ticket's work changes compared with main, with +/− per file" },
+    { "hover": ".changes .block-head" },
+    { "waitFor": ".change-file:has-text(\"chats.js\")" },
+    { "wait": 2000 },
+    { "caption": "Uncommitted changes in its worktree are marked" },
+    { "hover": ".change-file:has-text(\"notes.txt\")" },
+    { "wait": 1800 },
+    { "caption": "A click on a file opens its diff" },
+    { "click": ".change-file:has-text(\"chats.js\")" },
+    { "wait": 2500 },
+    { "caption": "Open All Changes opens them all in the multi-file diff editor" },
+    { "click": ".tabs-container .tab:has-text(\"Keep chats when a window reloads\")" },
+    { "wait": 600 },
+    { "click": "button:has-text(\"Open All Changes\")" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}

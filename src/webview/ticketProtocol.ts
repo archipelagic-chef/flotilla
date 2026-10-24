@@ -11,6 +11,7 @@ import type {
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { MergeInfo } from '../features/backlog/merged';
+import type { FileChange } from '../core/git/porcelain';
 import type { ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
@@ -263,6 +264,8 @@ export interface TicketView {
   mergeProgress?: { waitsFor?: string; ci?: Array<{ workflow: string; number: number; status: CiStatus; url: string }> };
   /** Its merge's checks, running in the background now (BL-169): sent on its own as they go, about once a second. */
   mergeChecks?: MergeChecksView;
+  /** What its work changes compared with main (BL-171): read after the rest, and sent on its own. */
+  changes?: TicketChange;
   /**
    * Why its last Merge to main stopped on CI (BL-112): red CI, with the failed jobs, or the base moved on. Only while
    * its branch is at the tip it stopped on; the ticket also drops a red stop once its CI shows other runs on that tip.
@@ -330,6 +333,47 @@ export interface TicketCheckView {
 
 /** The top-level parts of a view that a change sends on their own (the activity has its own: see TicketPartsMessage). */
 export type TicketPart = Exclude<keyof TicketView, 'activity'>;
+
+/** A file the ticket's work changes, with its lines added and deleted. */
+export interface ChangedFile extends FileChange {
+  added: number;
+  deleted: number;
+  /** No line counts: binary (or too large to count). */
+  binary?: true;
+  /** Changed in the worktree and not committed yet. */
+  uncommitted?: true;
+  /** Its own sides, when they aren't the group's (the commits of a ticket combined). */
+  left?: string;
+  right?: string;
+}
+
+/** The files of one comparison: a branch (with its worktree's uncommitted changes), the merge, or the ticket's commits. */
+export interface ChangeGroup {
+  label: string;
+  branch?: string;
+  /** Where its files are read: a worktree (right is WORKING), or the main one. */
+  dir: string;
+  left: string;
+  right: string;
+  /** What it compared, for people. */
+  compared: string;
+  files: ChangedFile[];
+  added: number;
+  deleted: number;
+  uncommitted: number;
+}
+
+/**
+ * The ticket's change (see ticketChange): its branches' work (in progress, in review), its merge, or its own commits
+ * combined (merged without a merge commit); none when it has no work yet.
+ */
+export interface TicketChange {
+  stage: 'work' | 'merged' | 'commits' | 'none';
+  groups: ChangeGroup[];
+  files: number;
+  added: number;
+  deleted: number;
+}
 
 export type TicketHostMessage =
   | { type: 'ticket'; ticket: TicketView }

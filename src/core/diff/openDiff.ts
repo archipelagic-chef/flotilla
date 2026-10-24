@@ -36,3 +36,18 @@ export async function openChangesEditor(
   });
   await vscode.commands.executeCommand('vscode.changes', title, resources);
 }
+
+/** Opens the multi-file diff editor on changes from several comparisons: each file with its own folder and sides. */
+export async function openChangeEntries(
+  reference: vscode.Uri,
+  entries: ReadonlyArray<{ worktreeDir: string; change: FileChange; leftRef: string; rightRef: string }>,
+  title: string,
+): Promise<void> {
+  const resources = entries.map(({ worktreeDir, change, leftRef, rightRef }) => {
+    const toUri = (side: DiffSide) =>
+      side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
+    const { left, right } = sideRefsFor(change, leftRef, rightRef);
+    return [toWorkspaceUri(reference, path.join(worktreeDir, change.path)), toUri(left), toUri(right)];
+  });
+  await vscode.commands.executeCommand('vscode.changes', title, resources);
+}
