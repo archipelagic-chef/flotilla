@@ -1,5 +1,6 @@
 import { formatTokens } from '../../features/chats/usage';
 import { DEFAULT_STUCK_RULES, health, nowLine, progress, type StuckRules } from '../../features/chats/activity';
+import { SUMMARY_EVERY_MS, summaryWait } from '../../features/chats/summary';
 import { useEffect, useState } from 'preact/hooks';
 import type { AgentChatView, TicketView } from '../ticketProtocol';
 import { lastReport, runningFor } from '../activeAgents';
@@ -196,6 +197,38 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
           </span>
         )}
       </div>
+      <Summary agent={a} />
+    </div>
+  );
+}
+
+/**
+ * Summarize (BL-180): two lines from a small model on where the agent stands, with when they were asked. At most once a
+ * minute per agent: until then the button says when it can run again.
+ */
+export function Summary({ agent: a }: { agent: TicketView['agents'][number] }) {
+  const s = a.summary;
+  const wait = summaryWait(s);
+  const message = { type: 'summarize', session: a.id } as const;
+  return (
+    <div class="agent-summary">
+      {s && !s.running && (
+        <div key="text" class={`agent-summary-text${s.error ? ' failed' : ''}`}>
+          <span class="muted agent-summary-time" title={new Date(s.at).toLocaleString()}>
+            <i class="codicon codicon-sparkle" /> {new Date(s.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {s.error ? <span>Couldn't summarize: {s.error}</span> : s.text!.split('\n').map((line, n) => <div key={n}>{line}</div>)}
+        </div>
+      )}
+      <ActionButton
+        class="button secondary agent-summarize"
+        message={message}
+        working="Summarizing…"
+        disabled={wait > 0}
+        title={wait > 0 ? `Once a minute: again in ${Math.ceil(wait / 1000)} s` : `Two lines on where it stands, from a small model reading its transcript's last part (at most once every ${SUMMARY_EVERY_MS / 60_000} min)`}
+      >
+        <i class="codicon codicon-sparkle" /> {wait > 0 && !s?.running ? `Summarize again in ${Math.ceil(wait / 1000)} s` : 'Summarize'}
+      </ActionButton>
     </div>
   );
 }

@@ -1,0 +1,22 @@
+{
+  "title": "Summarize a working agent's status in two lines, with a small model",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 3000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name", "timeout": 30000 },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "caption": "A working agent's status has a Summarize button" },
+    { "waitFor": ".active-agent:has-text(\"Vega-2\") .agent-summarize", "timeout": 20000 },
+    { "wait": 1500 },
+    { "caption": "It asks a small model for two lines on its transcript's last part" },
+    { "click": ".active-agent:has-text(\"Vega-2\") .agent-summarize" },
+    { "waitFor": ".active-agent:has-text(\"Vega-2\") .agent-summary-text", "timeout": 20000 },
+    { "wait": 2500 },
+    { "caption": "At most once a minute: the button says when it can run again" },
+    { "hover": ".active-agent:has-text(\"Vega-2\") .agent-summarize" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}

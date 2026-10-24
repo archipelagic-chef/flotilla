@@ -265,6 +265,29 @@ button.chat-card:hover {
   gap: 6px;
   margin-left: auto;
 }
+.agent-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.agent-summary-text {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border-left: 2px solid var(--vscode-textLink-foreground);
+}
+.agent-summary-text.failed {
+  border-left-color: var(--vscode-editorWarning-foreground);
+  color: var(--vscode-descriptionForeground);
+}
+.agent-summary-time {
+  float: right;
+  margin-left: 8px;
+}
+.agent-summarize {
+  margin-left: auto;
+  flex: none;
+}
 .active-agent-report {
   padding-left: 34px;
   min-width: 0;

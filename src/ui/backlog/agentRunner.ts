@@ -9,6 +9,7 @@ import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } 
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
 import { LEAN_TOOLS, leanFlags, settingsFileOf, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
 import { askArgs } from '../../features/backlog/ask';
+import { SUMMARY_MODEL, summaryAnswer, summaryArgs, summaryInput } from '../../features/chats/summary';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
@@ -545,6 +546,45 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
       resolve(limit);
     });
+  });
+}
+
+/** The transcript's end read for a summary (BL-180): enough for its last calls and messages. */
+const SUMMARY_TAIL_BYTES = 512 * 1024;
+
+/**
+ * Summarizes a working agent's status (BL-180): its transcript's last part to a small model (flotilla.agents.lightModel,
+ * else Haiku), in one short request that keeps no session and has no tools or hooks. Its two lines, or why it failed.
+ */
+export async function summarizeAgent(transcript: string, o: { output: vscode.OutputChannel }): Promise<{ text: string } | { error: string }> {
+  const handle = await fs.promises.open(transcript, 'r');
+  let tail: string;
+  try {
+    const { size } = await handle.stat();
+    const start = Math.max(0, size - SUMMARY_TAIL_BYTES);
+    const buffer = Buffer.alloc(size - start);
+    await handle.read(buffer, 0, buffer.length, start);
+    tail = buffer.toString('utf8');
+  } finally {
+    await handle.close();
+  }
+  const input = summaryInput(tail.split('\n'));
+  if (!input) return { error: 'Nothing in its transcript to summarize yet.' };
+  const model = modelLevels().light ?? SUMMARY_MODEL;
+  o.output.appendLine(`Summarize: ${transcript} (model ${model}, ${input.length} characters).`);
+  return new Promise((resolve) => {
+    let out = '';
+    const child = spawn(claudeBinary(), summaryArgs(model), { cwd: os.tmpdir(), env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => child.kill(), 120_000);
+    child.stdout.on('data', (d: Buffer) => (out += d.toString()));
+    child.on('error', (e) => (clearTimeout(timer), resolve({ error: e.message })));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const answer = summaryAnswer(out);
+      if ('error' in answer) o.output.appendLine(`Summarize failed (exit code ${code}): ${answer.error}`);
+      resolve(answer);
+    });
+    child.stdin.end(`The agent's transcript, its last part:\n\n${input}`);
   });
 }
 
