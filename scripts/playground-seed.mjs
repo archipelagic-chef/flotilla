@@ -646,6 +646,32 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-16',
+    title: 'Say how to run the playground in its notes',
+    status: 'review',
+    daysAgo: 2,
+    from: 'first',
+    branch: 'feature/BL-16-say-how-to-run-the-playground',
+    // It writes NOTES.md, which main added after it started: it conflicts with main, so its merge step is Update from
+    // Main and Merge (BL-154's demo); its agent resolves the conflict, keeping its side.
+    description: ["The playground's notes say how to run it.", '', '- [ ] NOTES.md has a "How to run it" section.', '', 'fake: wait 2s'].join('\n'),
+    review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Nova-7', byUser: true },
+    activity: [
+      {
+        ago: 50,
+        author: 'Agent Nova-7',
+        body: 'Done: NOTES.md says how to run the playground.\n\n#### How to review\n\n1. [NOTES.md:1-5](NOTES.md#L1-L5): the new section.\n\nReady for review.',
+      },
+      { ago: 30, author: 'Agent Iris-4', body: 'Reviewed it. The notes say how to run it.\n\nVerdict: approved' },
+    ],
+    commits: [
+      {
+        message: 'BL-16: Say how to run the playground',
+        files: { 'NOTES.md': '# Playground notes\n\n## How to run it\n\n`npm start` in the playground starts the app.\n' },
+      },
+    ],
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */

@@ -23,10 +23,32 @@ const table: Array<[string, StepState, string[], string?]> = [
     'Conflicts with main in 3 files: its agent resolves them, then it merges',
   ],
   ['CI red on the branch', { ...approved, ci: 'red' }, ['Fix CI with Agent', 'Run'], 'CI failed on its branch: an agent fixes it, then it can merge'],
-  ['main moved since CI ran', { ...approved, ci: 'moved' }, ['Update from Main and Merge', 'Run'], 'Main moved since CI ran: it updates, CI runs again, then it merges'],
-  ['in the merge queue, behind others', { ...approved, queue: { place: '2nd', ahead: 1 } }, ['Merge Next', 'Merge to main', 'Remove from Queue', 'Run'], '2nd in the merge queue'],
+  [
+    'main moved since CI ran',
+    { ...approved, ci: 'moved' },
+    ['Update from Main and Merge', 'Run'],
+    'Main moved since CI ran: it updates, CI runs again, then it merges',
+  ],
+  [
+    'in the merge queue, behind others',
+    { ...approved, queue: { place: '2nd', ahead: 1 } },
+    ['Merge Next', 'Merge to main', 'Remove from Queue', 'Run'],
+    '2nd in the merge queue',
+  ],
   ['first in the merge queue', { ...approved, queue: { place: '1st', ahead: 0 } }, ['Merge to main', 'Remove from Queue', 'Run'], '1st in the merge queue'],
   ['updating, then merging', { ...approved, chained: 'checks' }, [], 'Checks running…'],
+  [
+    'updating, its agent resolving',
+    { ...approved, chained: 'resolving', agentWorking: 'Rex-3' },
+    ['Open Chat', 'Stop'],
+    'Updating from main: its agent resolves the conflicts…',
+  ],
+  [
+    'updating, its resolution yours to approve',
+    { ...approved, canMerge: false, yours: true, chained: 'resolving' },
+    ['Approve', 'Request Changes', 'Run'],
+    'Updating from main: its agent resolves the conflicts… It merges once you approve',
+  ],
   ['merged and done', { status: 'done', merged: true, unpushed: true, hasWorktree: true }, ['Push…', 'Remove Its Worktree…']],
   ['done, without a worktree', { status: 'done' }, []],
 ];
@@ -46,7 +68,7 @@ describe('nextSteps', () => {
     expect(ops({ ...approved, ci: 'red' })).not.toContain('merge');
   });
 
-  it("names the base it merges into", () => {
+  it('names the base it merges into', () => {
     expect(stepLabel('merge', 'develop')).toBe('Merge to develop');
     expect(stepLabel('updateAndMerge', 'develop')).toBe('Update from Develop and Merge');
   });

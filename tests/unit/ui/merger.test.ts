@@ -929,13 +929,19 @@ describe('Update from Main and Merge (BL-154)', () => {
       updateFromMain: async () => (state.updates++, (state.working = true), 'handed' as const),
     } as never);
     const item = async () => (await backlog.read()).items.find((i) => i.id === 'BL-1')!;
-    return { repo, merger, item, state, resolve };
+    const review = (state: 'revising' | 'approved') =>
+      backlog.change((d) => ({
+        ...d,
+        items: d.items.map((i) => ({ ...i, status: state === 'approved' ? 'review' : 'doing', review: { ...i.review!, state } })),
+      }));
+    return { repo, merger, item, state, resolve, review };
   }
 
   it('hands the conflicts to its agent, then merges once it has resolved them', async () => {
-    const { repo, merger, item, state, resolve } = await conflicting();
+    const { repo, merger, item, state, resolve, review } = await conflicting();
 
     await merger.updateAndMerge('BL-1');
+    await review('revising');
     expect(state.updates).toBe(1);
     expect(merger.chainOf('BL-1')).toBe('resolving');
     // A second click while it goes on does nothing.
@@ -944,13 +950,17 @@ describe('Update from Main and Merge (BL-154)', () => {
 
     resolve();
     state.working = false;
+    // Its hand-off goes through review: it waits until the work is approved again.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(merger.chainOf('BL-1')).toBe('resolving');
+    await review('approved');
     await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
     expect((await item()).status).toBe('done');
     expect(git(repo, 'log', '-1', '--format=%s', 'main')).toBe('Merge BL-1: Item BL-1');
     merger.dispose();
   });
 
-  it("stops, merging nothing, when its agent is done and the branch still conflicts", async () => {
+  it('stops, merging nothing, when its agent is done and the branch still conflicts', async () => {
     const { repo, merger, item, state } = await conflicting();
     const before = git(repo, 'rev-parse', 'main');
 

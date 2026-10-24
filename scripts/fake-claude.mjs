@@ -19,6 +19,8 @@
 //
 // Asked to answer a comment (Ask an Agent), it answers in its final message, quoting the comment, and changes nothing.
 //
+// Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
+//
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
 // word by word over a few seconds, and stops (a second later) when it's interrupted.
 //
@@ -213,6 +215,15 @@ function implement(file, text, hints, id) {
       `Plan: a small change in \`fake-work/${id}.txt\`.\n\nQuestion: is one line per run enough, or should the fake change be bigger?\n\nWaiting for you.`,
     );
     reply('Fake implementer: asked a question in the ticket.');
+    return;
+  }
+  // Update from Main handed it the conflicts (mergeBasePrompt): it rebases onto main, keeping its side of each conflict
+  // (in a rebase, "theirs" is the branch's own commits).
+  const base = /Rebase your branch onto (\S+) \(`git rebase/.exec(prompt)?.[1];
+  if (base) {
+    git('-c', 'core.editor=true', 'rebase', '-X', 'theirs', base);
+    appendEntry(file, `Rebased the branch onto \`${base}\`: its conflicts resolved, keeping this branch's side (a fake agent's way).\n\nReady for review.`);
+    reply('Fake implementer: rebased its branch onto main.');
     return;
   }
   const done = change(id);
