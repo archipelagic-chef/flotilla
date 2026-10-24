@@ -1248,10 +1248,6 @@ ins {
 .backlog-item .merge-chip.unmerged {
   color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
 }
-.backlog-title .title-actions {
-  display: flex;
-  gap: 2px;
-}
 .backlog-problem {
   display: flex;
   align-items: flex-start;
@@ -1317,10 +1313,6 @@ ins {
 }
 .tools .b.busy .codicon {
   font-size: 10px;
-}
-/* The autopilot: its switch in the backlog's title (lit while on), and a line saying what it's doing. */
-.autopilot-toggle.on {
-  color: var(--vscode-charts-green, var(--working));
 }
 .autopilot-bar {
   display: flex;
@@ -1603,10 +1595,6 @@ ins {
 .merge-queue-bar .land-all:disabled {
   opacity: 0.5;
   cursor: default;
-}
-/* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
-.working-filter.on {
-  color: var(--working);
 }
 .working-bar {
   display: flex;
