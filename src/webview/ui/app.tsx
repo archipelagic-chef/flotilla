@@ -13,6 +13,8 @@ import { Overview } from './overview';
 import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
+import { MetricsBody } from '../metrics/view';
+import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
 import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CommitHighlight, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
 
@@ -35,6 +37,8 @@ export interface Persisted {
   search: SearchState;
   /** The backlog shows only the tickets being worked on. */
   workingOnly?: boolean;
+  /** The Metrics tool's period (BL-158). */
+  metricsPeriod?: MetricsPeriod;
   /** The autopilot's details are folded out (BL-153). */
   autopilotOpen?: boolean;
 }
@@ -83,6 +87,7 @@ const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'backlog', label: 'Backlog', icon: 'checklist' },
+  { id: 'metrics', label: 'Metrics', icon: 'graph' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'vc', label: 'Version Control', icon: 'source-control' },
@@ -133,6 +138,7 @@ export function App() {
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
   const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
+  const [metrics, setMetrics] = useState<{ view?: MetricsView; error?: string }>({});
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
@@ -266,6 +272,12 @@ export function App() {
         case 'tool':
           update((prev) => ({ ...prev, tool: m.tool }));
           return;
+        case 'metricsView':
+          setMetrics({ view: m.view });
+          return;
+        case 'metricsError':
+          setMetrics((prev) => ({ ...prev, error: m.message }));
+          return;
         case 'searchResults':
           if (m.id === searchId.current) setResults({ id: m.id, groups: m.groups, truncated: m.truncated, limit: m.limit, error: m.error });
           return;
@@ -377,6 +389,15 @@ export function App() {
     send({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
   }, [onMessage]);
+
+  // The Metrics tool asks for its period's numbers while it's shown (BL-158), and the host sends them again as events
+  // come in; leaving it says so.
+  const metricsShown = persisted.tool === 'metrics' ? (persisted.metricsPeriod ?? 'week') : undefined;
+  useEffect(() => {
+    if (!metricsShown) return;
+    send({ type: 'metrics', period: metricsShown });
+    return () => send({ type: 'metricsClosed' });
+  }, [metricsShown]);
 
   // Keep the active worktree tab visible when there are more tabs than room.
   useEffect(() => {
@@ -517,6 +538,19 @@ export function App() {
         add={addComparison}
         requestRefs={requestRefs}
         compare={compare}
+      />
+    );
+  } else if (tool === 'metrics') {
+    // The repository's, whichever tab is active.
+    const period = persisted.metricsPeriod ?? 'week';
+    content = (
+      <MetricsBody
+        view={metrics.view?.period === period ? metrics.view : undefined}
+        error={metrics.error}
+        period={period}
+        setPeriod={(p) => update((prev) => ({ ...prev, metricsPeriod: p }))}
+        openTicket={(ticket) => send({ type: 'metricsOpen', ticket })}
+        openEditor={() => send({ type: 'metricsEditor', period })}
       />
     );
   } else if (tool === 'overview') {

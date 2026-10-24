@@ -409,9 +409,11 @@ async function show(mode, demo, out, still, display) {
   prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).
-  const { seedChats, seedCreating } = await import('./playground-seed.mjs');
+  const { seedChats, seedCreating, seedEvents } = await import('./playground-seed.mjs');
   seedChats(playground, CLAUDE_DIR);
   seedCreating(playground);
+  // A month of events up to now, for the Metrics view (BL-158).
+  seedEvents(playground);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 

@@ -1,0 +1,29 @@
+{
+  "title": "The Metrics view: how the work flows, where time and money go",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "caption": "Metrics: the playground's last week of events, each number against the week before" },
+    { "click": "[aria-label=\"Metrics\"]" },
+    { "waitFor": ".metrics-number:has-text(\"Tickets done\")" },
+    { "wait": 2500 },
+    { "caption": "A number opens what it's made of" },
+    { "click": ".metrics-number:has-text(\"To Do to merged\")" },
+    { "wait": 2000 },
+    { "caption": "So does a bar: the phases of the time to merged" },
+    { "click": ".metrics-row:has-text(\"Waiting for you\")" },
+    { "wait": 2000 },
+    { "caption": "The period: the last day, week or month" },
+    { "click": ".metrics-periods button:has-text(\"Month\")" },
+    { "wait": 2000 },
+    { "caption": "A row opens its ticket" },
+    { "click": ".metrics-number:has-text(\"Tickets sent back\")" },
+    { "wait": 1200 },
+    { "click": ".metrics-item >> nth=0" },
+    { "waitFor": "h1" },
+    { "wait": 2000 },
+    { "caption": "And it opens larger, in an editor tab" },
+    { "click": "[aria-label=\"Open in an editor tab\"]" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}

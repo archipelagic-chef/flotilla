@@ -20,9 +20,9 @@ const host = await esbuild.context({
   logLevel: 'info',
 });
 
-// Webview bundles (browser): the sidebar (dist/webview.js, .css) and ticket tabs (dist/ticket.js, .css).
+// Webview bundles (browser): the sidebar (dist/webview.js, .css), ticket tabs (dist/ticket.js, .css) and the Metrics tab (dist/metrics.js, .css).
 const webview = await esbuild.context({
-  entryPoints: { webview: 'src/webview/ui/main.tsx', ticket: 'src/webview/ticket/main.tsx' },
+  entryPoints: { webview: 'src/webview/ui/main.tsx', ticket: 'src/webview/ticket/main.tsx', metrics: 'src/webview/metrics/main.tsx' },
   bundle: true,
   platform: 'browser',
   target: 'es2022',
