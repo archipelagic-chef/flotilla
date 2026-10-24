@@ -59,13 +59,13 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
       await tickets.check(id).catch(showError);
     },
     'flotilla.checkAll': () => checkAllTickets(checker, tickets).catch(showError),
-    // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.
+    // Tickets nobody works on yet are talked through with an agent in a chat (BL-188); Discuss opens that.
     'flotilla.discussBacklogItem': async (id?: unknown) => {
       if (typeof id !== 'string') return;
       const item = (await backlog.read()).items.find((i) => i.id === id);
       if (!item || !discussable(item)) return;
       await tickets.open(id);
-      await shaping.discuss(id, true).catch(showError);
+      await shaping.discuss(id).catch(showError);
     },
     // Prioritize: a queued start runs now, above the limit, or pauses a running agent to make room (see reviewLoop).
     'flotilla.prioritizeBacklogItem': (id: unknown) => typeof id === 'string' && reviews.prioritize(id).catch(showError),

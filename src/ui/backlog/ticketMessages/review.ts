@@ -3,7 +3,7 @@ import type { Handlers } from './context';
 /** Shaping and reviewing: discussing the ticket, the review loop, and updating its branch from main. */
 export const reviewHandlers: Handlers = {
   discuss: async ({ id, item, panels }) => {
-    if (!item.remote) await panels.shaping?.discuss(id, true);
+    if (!item.remote) await panels.shaping?.discuss(id);
   },
   keepDiscussing: async ({ id, panels }) => {
     await panels.shaping?.keepDiscussing(id);

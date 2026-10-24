@@ -1,0 +1,19 @@
+{
+  "title": "Discuss opens a chat with the agent, beside the ticket",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1000 },
+    { "caption": "A To Do ticket nobody works on yet" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
+    { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
+    { "wait": 800 },
+    { "caption": "Discuss opens a Claude Code chat beside it, its first message ready to send" },
+    { "click": "button:has-text(\"Discuss\")" },
+    { "wait": 5000 },
+    { "caption": "The ticket says Discussing, with Open Chat, and notes the chat in its activity" },
+    { "waitFor": "text=Discussing", "timeout": 20000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

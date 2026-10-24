@@ -191,6 +191,18 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
           checks{item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}
         </span>
       )}
+      {!renaming && item.discussing && (
+        <BusyButton
+          class="drift-badge discussing"
+          aria-label="Discussing · Open Chat"
+          data-tip="Its discussion's chat is open: click to go to it"
+          onClick={(e) => e.stopPropagation()}
+          message={{ type: 'backlog', op: 'discuss', id: item.id }}
+          icon="comment-discussion"
+        >
+          Discussing · Open Chat
+        </BusyButton>
+      )}
       {!renaming && item.waitsFor && (
         <span class="drift-badge" data-tip={`Depends on ${item.waitsFor.join(', ')}: waits for ${item.waitsFor.length === 1 ? 'it' : 'them'} to be merged`}>
           <i class="codicon codicon-debug-pause" />
@@ -240,7 +252,7 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
           <BusyButton
             class="icon"
             aria-label="Discuss It with an Agent"
-            title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+            title="Opens a chat with an agent: it talks it through with you, and writes what's agreed into the ticket"
             message={{ type: 'backlog', op: 'discuss', id: item.id }}
             icon="comment-discussion"
           />
@@ -284,7 +296,7 @@ export function ItemRow({ item, icon, worktrees, agents, color, renaming, setRen
                 <BusyButton
                   class="icon"
                   aria-label="Discuss It with an Agent"
-                  title="An agent talks it through with you in the ticket, and writes what's agreed into it"
+                  title="Opens a chat with an agent: it talks it through with you, and writes what's agreed into the ticket"
                   message={{ type: 'backlog', op: 'discuss', id: item.id }}
                   icon="comment-discussion"
                 />

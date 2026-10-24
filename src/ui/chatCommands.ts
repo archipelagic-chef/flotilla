@@ -84,18 +84,20 @@ function worktreeLocation(ctx: ChatContext, dir: string): string {
  * Starts a chat in this window. For another worktree, the message box is pre-filled with where to work, and the
  * chat is linked to that worktree as soon as Claude Code creates it (when the first message is sent).
  */
-export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead = ''): Promise<void> {
+export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead = '', o: { beside?: boolean } = {}): Promise<void> {
   if (!claudeAvailable()) return;
   const dir = ws.worktree.path!;
+  // Beside: in the editor group next to the active one (a ticket's tab), rather than where Claude Code puts its chats.
+  const column = o.beside ? vscode.ViewColumn.Beside : undefined;
   if (samePath(dir, ctx.currentRoot)) {
-    await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, task].filter(Boolean).join('\n\n') || undefined);
+    await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, task].filter(Boolean).join('\n\n') || undefined, column);
     return;
   }
   pendingLinks.add(ws.worktree.adminDir, await sessionsHere(ctx), Date.now());
   linkTimer ??= setInterval(() => void linkPendingChats(ctx).catch((e: unknown) => ctx.output.appendLine(`Linking chats failed: ${String(e)}`)), 3000);
   const branch = workstreamLabel(ws);
   const where = `Work in the git worktree at ${worktreeLocation(ctx, dir)} (branch ${branch}): run commands there and only change files under it.`;
-  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, where, task].filter(Boolean).join('\n\n'));
+  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, where, task].filter(Boolean).join('\n\n'), column);
 }
 
 /**
