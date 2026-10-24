@@ -1904,6 +1904,14 @@ ins {
 .backlog-item .drift-badge .codicon {
   font-size: 12px;
 }
+/* An open discussion's chat (BL-188): a button that goes to it. */
+.backlog-item button.drift-badge.discussing {
+  font-family: inherit;
+  color: var(--vscode-textLink-foreground);
+  background: none;
+  border: 1px solid currentColor;
+  cursor: pointer;
+}
 .backlog-title .title-actions {
   display: flex;
   gap: 2px;

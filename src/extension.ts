@@ -345,8 +345,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);
   tickets.useMainSync(mainSync);
-  // Tickets nobody works on yet are talked through with an agent in the ticket (BL-45); Discuss starts that.
-  const shaping = new Shaping({ backlog, repository, mainRoot: location.mainRoot, output });
+  // Tickets nobody works on yet are talked through with an agent in a chat (BL-188); Discuss opens that.
+  const mainWorkstream = () => repository.current.find((w) => w.worktree.isMain);
+  const shaping = new Shaping({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    newChat: async (lead, task) => {
+      const main = mainWorkstream();
+      if (main) await chatUi.newChat(chatContext(ctx), main, task, lead, { beside: true });
+    },
+    openChat: async (key, chatId) => void (await vscode.commands.executeCommand('flotilla.openChat', { key, chatId })),
+  });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
   const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
@@ -363,7 +374,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const item = (await backlog.read()).items.find((i) => i.id === id);
       if (!item || !discussable(item)) return;
       await tickets.open(id);
-      await shaping.discuss(id, true).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
+      await shaping.discuss(id).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
     }),
   );
   // Prioritize: a queued start runs now, above the limit, or pauses a running agent to make room (see reviewLoop).

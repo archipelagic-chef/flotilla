@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BacklogItem } from '../../../src/features/backlog/backlog';
+import { agentChatItem, type BacklogItem } from '../../../src/features/backlog/backlog';
+import { isDiscussionChat } from '../../../src/features/backlog/shaping';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
 type Finished = { code: number | null; error?: string; reply?: string };
@@ -62,10 +63,31 @@ function fakeBacklog(item: Partial<BacklogItem>) {
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
-const shaping = (backlog: ReturnType<typeof fakeBacklog>['backlog']) =>
-  new Shaping({ backlog: backlog as never, repository: { current: [] } as never, mainRoot: '/repo', output: { appendLine: () => undefined } as never });
+/** The worktrees' chats, as the repository lists them; fire() tells Shaping they changed. */
+function fakeRepository() {
+  const listeners: Array<() => void> = [];
+  return {
+    current: [] as Array<{ key: string; chats: Array<{ id: string; firstPrompt?: string; open: boolean; updatedAt: Date }> }>,
+    onDidChange: (l: () => void) => {
+      listeners.push(l);
+      return { dispose: () => undefined };
+    },
+    fire: () => listeners.forEach((l) => l()),
+  };
+}
 
-describe('shaping a ticket with an agent', () => {
+const chats = { started: [] as Array<{ lead: string; task: string }>, opened: [] as Array<{ key: string; chatId: string }> };
+const shaping = (backlog: ReturnType<typeof fakeBacklog>['backlog'], repository = fakeRepository()) =>
+  new Shaping({
+    backlog: backlog as never,
+    repository: repository as never,
+    mainRoot: '/repo',
+    output: { appendLine: () => undefined } as never,
+    newChat: async (lead, task) => void chats.started.push({ lead, task }),
+    openChat: async (key, chatId) => void chats.opened.push({ key, chatId }),
+  });
+
+describe('an agent replying in the ticket (BL-45)', () => {
   beforeEach(() => {
     runs.started.length = 0;
   });
@@ -73,7 +95,7 @@ describe('shaping a ticket with an agent', () => {
   it('starts an agent that may only read and edit the ticket, and says when the ticket is ready', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     expect(runs.started).toHaveLength(1);
     const [first] = runs.started;
     expect(first.resume).toBeUndefined();
@@ -94,7 +116,7 @@ describe('shaping a ticket with an agent', () => {
   it('puts the reply at the end of the ticket, after a comment written while the agent ran', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     // The owner writes in the ticket while the agent is still working.
     fake.activity.push({ date: '2026-10-12 21:59', author: 'You', body: 'Also the tags, please.' });
     runs.started[0].resolve({ code: 0, reply: '  Tags too.\n\nReady to start.\n' });
@@ -109,7 +131,7 @@ describe('shaping a ticket with an agent', () => {
   it('a reply without the ready line leaves the ticket not ready', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     runs.started[0].resolve({ code: 0, reply: 'Shall it match case?' });
     await flush();
     expect(fake.activity.at(-1)?.body).toBe('Shall it match case?');
@@ -119,7 +141,7 @@ describe('shaping a ticket with an agent', () => {
   it('says so in the ticket when the agent finishes with an empty reply', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     runs.started[0].resolve({ code: 0, reply: '  \n' });
     await flush();
     expect(fake.activity.at(-1)?.body).toMatch(/^\S+ stopped without a reply\. /);
@@ -130,17 +152,17 @@ describe('shaping a ticket with an agent', () => {
   it('resumes the same chat on the next comment, and answers a comment that came while it ran', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     const [first] = runs.started;
     first.resolve({ code: 0, reply: 'Noted.' });
     await flush();
 
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     expect(runs.started).toHaveLength(2);
     expect(runs.started[1].resume).toBe(first.sessionId);
     expect(runs.started[1].prompt).toContain('wrote in the ticket since your last reply');
     // Another comment while it replies: no second agent; it goes on once this one stops.
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     expect(runs.started).toHaveLength(2);
     runs.started[1].resolve({ code: 0, reply: 'Noted.' });
     await flush();
@@ -154,17 +176,17 @@ describe('shaping a ticket with an agent', () => {
   it('Discuss without a comment says so to a resumed chat', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     runs.started[0].resolve({ code: 0, reply: 'Noted.' });
     await flush();
-    await s.discuss('BL-1', true);
+    await s.reply('BL-1', true);
     expect(runs.started[1].prompt).toContain('without a comment yet');
   });
 
   it('starts one agent for calls made at once, and drops a Discuss without a comment that comes meanwhile', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await Promise.all([s.discuss('BL-1'), s.discuss('BL-1', true)]);
+    await Promise.all([s.reply('BL-1'), s.reply('BL-1', true)]);
     await flush();
     expect(runs.started).toHaveLength(1);
     runs.started[0].resolve({ code: 0, reply: 'Noted.' });
@@ -175,7 +197,7 @@ describe('shaping a ticket with an agent', () => {
   it('answers a comment that comes while the agent is being started', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await Promise.all([s.discuss('BL-1'), s.discuss('BL-1')]);
+    await Promise.all([s.reply('BL-1'), s.reply('BL-1')]);
     await flush();
     expect(runs.started).toHaveLength(1);
     runs.started[0].resolve({ code: 0, reply: 'Noted.' });
@@ -186,7 +208,7 @@ describe('shaping a ticket with an agent', () => {
 
   it('leaves a ticket that is being worked on alone', async () => {
     const fake = fakeBacklog({ status: 'doing' });
-    await shaping(fake.backlog).discuss('BL-1');
+    await shaping(fake.backlog).reply('BL-1');
     expect(runs.started).toHaveLength(0);
   });
 
@@ -200,10 +222,114 @@ describe('shaping a ticket with an agent', () => {
   it('says so in the ticket when its agent stops without a reply', async () => {
     const fake = fakeBacklog({});
     const s = shaping(fake.backlog);
-    await s.discuss('BL-1');
+    await s.reply('BL-1');
     runs.started[0].resolve({ code: 1, error: 'boom' });
     await flush();
     expect(fake.activity.at(-1)?.body).toMatch(/stopped without a reply \(boom\)/);
     expect(fake.data.items[0].shaping?.ready).toBeUndefined();
+  });
+});
+
+describe('Discuss: a chat with the agent (BL-188)', () => {
+  const SESSION = '11111111-2222-3333-4444-555555555555';
+  beforeEach(() => {
+    runs.started.length = 0;
+    chats.started.length = 0;
+    chats.opened.length = 0;
+  });
+
+  /** Claude Code lists the chat once its first message is sent: what the user sent is the filled-in message. */
+  const sent = (repo: ReturnType<typeof fakeRepository>, open = true) => {
+    const { lead, task } = chats.started.at(-1)!;
+    repo.current = [{ key: 'main', chats: [{ id: SESSION, firstPrompt: `${lead}\n\n${task}`.slice(0, 200), open, updatedAt: new Date() }] }];
+    repo.fire();
+  };
+
+  it('opens a chat whose first message names the ticket and gives the discussion its rules', async () => {
+    const fake = fakeBacklog({});
+    const s = shaping(fake.backlog);
+    await s.discuss('BL-1');
+    expect(runs.started).toHaveLength(0);
+    expect(chats.started).toHaveLength(1);
+    const { lead, task } = chats.started[0];
+    const agent = fake.data.items[0].shaping!.agent;
+    expect(agentChatItem(lead)).toEqual({ agent, item: 'BL-1' });
+    expect(isDiscussionChat(lead)).toBe(true);
+    expect(task).toContain('/t/BL-1.md');
+    expect(task).toContain('Open the conversation now, without waiting');
+    expect(task).toContain('You change no code');
+    expect(task).toContain(`### YYYY-MM-DD HH:MM · Agent ${agent}`);
+    expect(fake.data.items[0].shaping).toMatchObject({ agent, session: '', chat: { since: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/) } });
+    expect(fake.activity[0].body).toMatch(/^Opened a chat for agent/);
+    expect(s.isRunning('BL-1')).toBe(false);
+  });
+
+  it('links the chat to the ticket once its first message is sent, and Discuss again opens that chat', async () => {
+    const fake = fakeBacklog({});
+    const repo = fakeRepository();
+    const s = shaping(fake.backlog, repo);
+    await s.discuss('BL-1');
+    expect(s.chatOf(fake.data.items[0])).toBeUndefined();
+    sent(repo);
+    await flush();
+    expect(fake.data.items[0].shaping?.session).toBe(SESSION);
+    expect(s.chatOf(fake.data.items[0])).toMatchObject({ key: 'main', chat: { id: SESSION, open: true } });
+    await s.discuss('BL-1');
+    expect(chats.started).toHaveLength(1);
+    expect(chats.opened).toEqual([{ key: 'main', chatId: SESSION }]);
+    expect(fake.activity).toHaveLength(1);
+  });
+
+  it('reopens a closed chat rather than starting another', async () => {
+    const fake = fakeBacklog({ shaping: { agent: 'Iris-7', session: SESSION, chat: { since: '2026-10-24 07:00' } } });
+    const repo = fakeRepository();
+    repo.current = [{ key: 'main', chats: [{ id: SESSION, firstPrompt: 'You are agent Iris-7, working on backlog item BL-1, discussing it with its owner: "A ticket".', open: false, updatedAt: new Date() }] }];
+    const s = shaping(fake.backlog, repo);
+    await s.discuss('BL-1');
+    expect(chats.started).toHaveLength(0);
+    expect(chats.opened).toEqual([{ key: 'main', chatId: SESSION }]);
+  });
+
+  it("doesn't take another agent's chat, or a working agent's, for the discussion", async () => {
+    const fake = fakeBacklog({ shaping: { agent: 'Iris-7', session: '', chat: { since: '2026-10-24 07:00' } } });
+    const repo = fakeRepository();
+    repo.current = [
+      {
+        key: 'main',
+        chats: [
+          { id: 'a', firstPrompt: 'You are agent Iris-7, working on backlog item BL-1: "A ticket".', open: true, updatedAt: new Date() },
+          { id: 'b', firstPrompt: 'You are agent Nova-2, working on backlog item BL-1, discussing it with its owner: "A ticket".', open: true, updatedAt: new Date() },
+        ],
+      },
+    ];
+    const s = shaping(fake.backlog, repo);
+    expect(s.chatOf(fake.data.items[0])).toBeUndefined();
+  });
+
+  it('notes a chat closed without a summary, with a link to it', async () => {
+    const fake = fakeBacklog({});
+    const repo = fakeRepository();
+    const s = shaping(fake.backlog, repo);
+    await s.discuss('BL-1');
+    sent(repo);
+    await flush();
+    sent(repo, false);
+    await flush();
+    expect(fake.activity.at(-1)).toMatchObject({ author: 'Flotilla', body: expect.stringContaining(`(flotilla-chat:${SESSION})`) });
+  });
+
+  it('a chat closed after the summary adds no note, and its "Ready to start." says the ticket is ready', async () => {
+    const fake = fakeBacklog({});
+    const repo = fakeRepository();
+    const s = shaping(fake.backlog, repo);
+    await s.discuss('BL-1');
+    sent(repo);
+    await flush();
+    const agent = fake.data.items[0].shaping!.agent;
+    fake.activity.push({ date: '2999-01-01 00:00', author: `Agent ${agent}`, body: 'Discussed with you: agreed X.\n\nReady to start.' });
+    sent(repo, false);
+    await flush();
+    expect(fake.activity.map((e) => e.author)).toEqual(['Flotilla', `Agent ${agent}`]);
+    expect(fake.data.items[0].shaping?.ready).toBe(true);
   });
 });

@@ -48,6 +48,8 @@ export interface BacklogItemView extends BacklogItem {
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
   demo?: boolean;
+  /** Its discussion's chat is open (BL-188): its card says Discussing, and opens that chat. */
+  discussing?: boolean;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */

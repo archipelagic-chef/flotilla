@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   discussable,
+  discussionLead,
+  discussionPrompt,
+  findDiscussionChat,
+  isDiscussionChat,
+  summarizedSince,
   followUpPrompt,
   readyToStart,
   saysReadyToStart,
@@ -8,7 +13,7 @@ import {
   shapingTools,
 } from '../../../src/features/backlog/shaping';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
-import { acceptItem } from '../../../src/features/backlog/backlog';
+import { acceptItem, agentChatItem, agentLead } from '../../../src/features/backlog/backlog';
 
 const entry = (author: string, body: string): TicketEntry => ({ date: '2026-10-12 10:00', author, body });
 
@@ -84,5 +89,36 @@ describe('shaping', () => {
     const accepted = acceptItem(data, 'BL-1').items[0];
     expect(accepted.shaping).toBeUndefined();
     expect(accepted.proposed).toBeUndefined();
+  });
+});
+
+describe('a discussion in a chat (BL-188)', () => {
+  const item = { id: 'BL-7', title: 'Sort the list' };
+
+  it("names the ticket in its first line, as agent chats do, and tells it from a working agent's", () => {
+    const prompt = discussionPrompt({ item, agent: 'Iris-7', ticket: '/b/BL-7.md' });
+    expect(prompt.startsWith(discussionLead(item, 'Iris-7'))).toBe(true);
+    expect(agentChatItem(prompt)).toEqual({ agent: 'Iris-7', item: 'BL-7' });
+    // Flotilla reads the first 200 characters of a chat's first message.
+    expect(isDiscussionChat(prompt.slice(0, 200))).toBe(true);
+    expect(isDiscussionChat(agentLead(item, 'Iris-7'))).toBe(false);
+  });
+
+  it('finds its chat by its session, or before that by its first line (the newest)', () => {
+    const lead = discussionLead(item, 'Iris-7');
+    const chats = [
+      { id: 'old', firstPrompt: lead, open: false, updatedAt: new Date(1) },
+      { id: 'new', firstPrompt: lead, open: true, updatedAt: new Date(2) },
+      { id: 'work', firstPrompt: agentLead(item, 'Iris-7'), open: true, updatedAt: new Date(3) },
+    ];
+    expect(findDiscussionChat(chats, { id: 'BL-7', agent: 'iris-7' })?.id).toBe('new');
+    expect(findDiscussionChat(chats, { id: 'BL-7', agent: 'Iris-7', session: 'old' })?.id).toBe('old');
+    expect(findDiscussionChat(chats, { id: 'BL-8', agent: 'Iris-7' })).toBeUndefined();
+  });
+
+  it('tells whether the agent wrote its summary since the discussion opened', () => {
+    const entries = [{ date: '2026-10-24 07:00', author: 'Agent Iris-7', body: 'Earlier.' }];
+    expect(summarizedSince(entries, 'Iris-7', '2026-10-24 07:01')).toBe(false);
+    expect(summarizedSince([...entries, { date: '2026-10-24 07:30', author: 'Agent Iris-7', body: 'Discussed with you.' }], 'Iris-7', '2026-10-24 07:01')).toBe(true);
   });
 });

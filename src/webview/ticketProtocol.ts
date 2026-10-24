@@ -262,7 +262,15 @@ export interface TicketView {
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
-  shaping?: { agent: string; running: boolean; ready: boolean; /** The user paused or stopped it: Resume goes on in its chat. */ held?: 'paused' | 'stopped' };
+  shaping?: {
+    agent: string;
+    running: boolean;
+    ready: boolean;
+    /** The user paused or stopped it: Resume goes on in its chat. */
+    held?: 'paused' | 'stopped';
+    /** It's a Claude Code chat (BL-188): open (Discussing), or closed, or its first message not sent yet (pending). */
+    chat?: 'open' | 'closed' | 'pending';
+  };
   /**
    * Its last Check (BL-163): each thing it says is going on, ✓ (ok, with its evidence) or ✗ (with what Clean Up does).
    * full: the user clicked Check (all claims shown); else the check made on opening it, which shows only glitches.

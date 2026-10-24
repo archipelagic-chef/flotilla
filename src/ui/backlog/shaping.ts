@@ -1,7 +1,17 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentName, updateItem, type BacklogItem } from '../../features/backlog/backlog';
-import { discussable, followUpPrompt, readyToStart, shapingPrompt, shapingTools } from '../../features/backlog/shaping';
+import type { Chat } from '../../features/chats/chats';
+import {
+  discussable,
+  discussionPrompt,
+  findDiscussionChat,
+  followUpPrompt,
+  readyToStart,
+  shapingPrompt,
+  shapingTools,
+  summarizedSince,
+} from '../../features/backlog/shaping';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -14,13 +24,29 @@ export interface ShapingDeps {
   /** The main worktree: the agent reads the code there (it changes none of it). */
   mainRoot: string;
   output: vscode.OutputChannel;
+  /** Opens a new Claude Code chat in the main worktree, beside the ticket, its first message (lead, then task) filled in. */
+  newChat(lead: string, task: string): Promise<void>;
+  /** Opens a chat of a worktree (its key): focused when it's open, resumed when it was closed. */
+  openChat(key: string, chatId: string): Promise<void>;
 }
 
+/** A ticket's discussion chat, and the worktree it's listed in. */
+export interface DiscussionChat {
+  key: string;
+  chat: Chat;
+}
+
+/** The link in a ticket's note that opens a chat ("flotilla-chat:<session>"; see TicketPanels.openHref). */
+export const CHAT_LINK = 'flotilla-chat:';
+
 /**
- * Discussions of tickets nobody works on yet (BL-45). A comment by the user starts the ticket's shaping agent, or
- * resumes its chat; so does Discuss, without a comment. The agent talks in the ticket and writes what's agreed into
- * its description; it may edit nothing else (see shapingTools). A comment that comes while it runs is answered when it
- * stops.
+ * Discussions of tickets nobody works on yet. Discuss opens a Claude Code chat with the ticket's discussion agent
+ * (BL-188): the user talks with it there, it writes what's agreed into the description and a summary into the activity
+ * when they're done; Discuss again opens that chat. The ticket says "Discussing" while it's open, and notes a chat
+ * closed without a summary.
+ *
+ * Before that, the agent replied in the ticket, one headless run per comment (BL-45): that run is reply, kept for
+ * replying to a comment on request (BL-127) and for the discussions paused that way (Resume goes on with them).
  */
 export class Shaping implements vscode.Disposable {
   private readonly runs = new Map<string, AgentRun>();
@@ -28,18 +54,31 @@ export class Shaping implements vscode.Disposable {
   private readonly starting = new Set<string>();
   /** Tickets with a comment that came while their agent was running: answered when it stops. */
   private readonly again = new Set<string>();
+  /** Tickets whose discussion chat is being opened (see discuss). */
+  private readonly opening = new Set<string>();
+  /** Tickets whose discussion chat this window opened, until it closes: this window links and notes them (once). */
+  private readonly watching = new Set<string>();
+  /** Of those, the ones whose chat was seen open: closing it ends the discussion. */
+  private readonly seenOpen = new Set<string>();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
-  private readonly watcher: vscode.Disposable;
+  private readonly watchers: vscode.Disposable[];
 
   constructor(private readonly deps: ShapingDeps) {
-    // A discussion the user paused or stopped in another window ends here, if it runs here.
-    this.watcher = deps.backlog.watch(() => void this.endHeld().catch(() => undefined));
+    const sync = () => void this.syncChats().catch((e: unknown) => deps.output.appendLine(`Following discussion chats failed: ${String(e)}`));
+    this.watchers = [
+      // A discussion the user paused or stopped in another window ends here, if it runs here.
+      deps.backlog.watch(() => {
+        void this.endHeld().catch(() => undefined);
+        sync();
+      }),
+      deps.repository.onDidChange(sync),
+    ];
   }
 
   dispose(): void {
-    this.watcher.dispose();
+    this.watchers.forEach((w) => w.dispose());
     this.runs.forEach((r) => r.stop());
     this.changed.dispose();
   }
@@ -71,7 +110,7 @@ export class Shaping implements vscode.Disposable {
     const shaping = item?.shaping;
     if (!item || !shaping) return;
     if (action === 'resume') {
-      if (shaping.held) await this.discuss(id, true);
+      if (shaping.held) await this.reply(id, true);
       return;
     }
     await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { ...shaping, held: { kind: action === 'pause' ? 'paused' : 'stopped', at: new Date().toISOString() } } }));
@@ -79,22 +118,136 @@ export class Shaping implements vscode.Disposable {
     await this.say(
       item,
       action === 'pause'
-        ? `You paused ${shaping.agent}. Its chat is kept: Resume, or write a comment, and it goes on there.`
-        : `You stopped ${shaping.agent}. Resume, or write a comment, and it goes on in its chat.`,
+        ? `You paused ${shaping.agent}. Its chat is kept: Resume, and it goes on there.`
+        : `You stopped ${shaping.agent}. Resume, and it goes on in its chat.`,
     );
     this.changed.fire();
   }
 
-  /** Whether an agent is discussing the ticket now (in this window). */
+  /** Whether an agent is replying in the ticket now (in this window; a discussion chat isn't, see chatOf). */
   isRunning(id: string): boolean {
     return this.runs.has(id) || this.starting.has(id);
   }
 
+  /** The chat of a ticket's discussion (BL-188), in whichever worktree it's listed; undefined until its first message is sent. */
+  chatOf(item: Pick<BacklogItem, 'id' | 'shaping'>): DiscussionChat | undefined {
+    const shaping = item.shaping;
+    if (!shaping?.chat) return undefined;
+    for (const ws of this.deps.repository.current) {
+      const chat = findDiscussionChat(ws.chats, { id: item.id, agent: shaping.agent, session: shaping.session });
+      if (chat) return { key: ws.key, chat };
+    }
+    return undefined;
+  }
+
+  /** Opens a chat by its session, in whichever worktree it's listed (a note's link to it, see CHAT_LINK). */
+  async openSession(session: string): Promise<boolean> {
+    const ws = this.deps.repository.current.find((w) => w.chats.some((c) => c.id === session));
+    if (!ws) return false;
+    await this.deps.openChat(ws.key, session);
+    return true;
+  }
+
   /**
-   * Starts the ticket's discussion, or goes on with it: its agent answers what the user wrote (opened: without a
-   * comment yet, from Discuss). Nothing happens to a ticket that's being worked on.
+   * Discuss (BL-188): opens the ticket's discussion chat, or a new one with its first message filled in (the agent
+   * opens the conversation once it's sent). Nothing happens to a ticket that's being worked on.
    */
-  async discuss(id: string, opened = false): Promise<void> {
+  async discuss(id: string): Promise<void> {
+    if (this.opening.has(id)) return;
+    this.opening.add(id);
+    try {
+      const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+      if (!item || !discussable(item)) return;
+      const shaping = item.shaping;
+      const found = this.chatOf(item);
+      if (shaping && found) {
+        if (!shaping.session) await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { ...shaping, session: found.chat.id } }));
+        this.watch(id, found.chat.open);
+        await this.deps.openChat(found.key, found.chat.id);
+        return;
+      }
+      // A reply running in the ticket (the older way) gives way to the chat.
+      const run = this.runs.get(id);
+      if (run) {
+        this.runs.delete(id);
+        run.stop();
+      }
+      const agent = shaping?.agent ?? agentName(this.takenNames());
+      const ticket = await this.deps.backlog.ensureDocument(item);
+      const [lead, ...task] = discussionPrompt({ item, agent, ticket }).split('\n\n');
+      // A chat opened before whose first message wasn't sent keeps its start: its summary is looked for from then.
+      const since = (!shaping?.session && shaping?.chat?.since) || entryDate(new Date());
+      await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { agent, session: '', chat: { since } } }));
+      if (!shaping?.chat) {
+        await this.say(
+          item,
+          `Opened a chat for agent ${agent} to discuss this ticket with you: send its first message, and it starts with what it understood and its questions. It writes what's agreed into the description as you go, and a summary here when you're done.`,
+        );
+      }
+      this.watch(id, false);
+      await this.deps.newChat(lead, task.join('\n\n'));
+    } finally {
+      this.opening.delete(id);
+      this.changed.fire();
+    }
+  }
+
+  private watch(id: string, open: boolean): void {
+    this.watching.add(id);
+    if (open) this.seenOpen.add(id);
+  }
+
+  /**
+   * Follows the discussion chats this window opened: saves a chat's session once its first message is sent, and when
+   * it closes, whether the agent says the ticket is ready, and a note when it closed without a summary.
+   */
+  private async syncChats(): Promise<void> {
+    if (!this.watching.size) return;
+    const items = (await this.deps.backlog.read()).items;
+    let changed = false;
+    for (const id of [...this.watching]) {
+      const item = items.find((i) => i.id === id);
+      const shaping = item?.shaping;
+      if (!item || !shaping?.chat) {
+        this.watching.delete(id);
+        this.seenOpen.delete(id);
+        continue;
+      }
+      const found = this.chatOf(item);
+      if (!found) continue;
+      if (!shaping.session) {
+        await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { ...shaping, session: found.chat.id } }));
+        changed = true;
+      }
+      if (found.chat.open) {
+        if (!this.seenOpen.has(id)) changed = true;
+        this.seenOpen.add(id);
+        continue;
+      }
+      if (!this.seenOpen.has(id)) continue;
+      this.watching.delete(id);
+      this.seenOpen.delete(id);
+      changed = true;
+      const activity = (await this.deps.backlog.readTicket(item)).activity;
+      const ready = readyToStart(activity, shaping.agent);
+      if (ready) {
+        await this.deps.backlog.change((d) => {
+          const now = d.items.find((i) => i.id === id)?.shaping;
+          return now ? updateItem(d, id, { shaping: { ...now, ready: true } }) : d;
+        });
+      }
+      if (!summarizedSince(activity, shaping.agent, shaping.chat.since)) {
+        await this.say(item, `${shaping.agent}'s chat closed without a summary of the discussion. [Open its chat](${CHAT_LINK}${found.chat.id}) to go on, or press Discuss.`);
+      }
+    }
+    if (changed) this.changed.fire();
+  }
+
+  /**
+   * Has an agent reply in the ticket (BL-45's way): a headless run answers what the user wrote (opened: without a
+   * comment yet), in its chat when it has one. A call while it runs is answered when it stops.
+   */
+  async reply(id: string, opened = false): Promise<void> {
     // Checked and claimed before any await: a call that comes meanwhile is a comment during the run (Discuss without one
     // needs nothing more), not a second agent.
     if (this.starting.has(id) || this.runs.has(id)) {
@@ -114,6 +267,8 @@ export class Shaping implements vscode.Disposable {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item || !discussable(item)) return;
     const ticket = await this.deps.backlog.ensureDocument(item);
+    // A discussion chat isn't a headless one: a reply in the ticket starts its own.
+    if (item.shaping?.chat) item.shaping = undefined;
     // The chat is resumed when it's still there; a session id that isn't one (edited by hand) starts a new chat.
     const resume = validSession(item.shaping?.session);
     const agent = item.shaping?.agent ?? agentName(this.takenNames());
@@ -131,7 +286,7 @@ export class Shaping implements vscode.Disposable {
       // Saved before the run is tracked: a run that ends meanwhile can't be followed by a stale state. (No longer held:
       // the user resumed it, or wrote again.)
       await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { agent, session: run.sessionId } }));
-      if (!item.shaping) {
+      if (!item.shaping?.session) {
         await this.say(item, `Opened a chat for agent ${agent} to discuss this ticket with you. It replies here, and writes what's agreed into the description.`);
       }
     } catch (e) {
@@ -166,11 +321,11 @@ export class Shaping implements vscode.Disposable {
       if (!item) return;
       const reply = result.reply?.trim();
       if (result.limit) {
-        await this.say(item, `${agent} stopped on a limit (${result.limit.kind}). Write a comment, or press Discuss, to go on.`);
+        await this.say(item, `${agent} stopped on a limit (${result.limit.kind}). Press Discuss to go on in a chat.`);
       } else if (result.error) {
-        await this.say(item, `${agent} stopped without a reply (${result.error.slice(0, 200)}). Write a comment, or press Discuss, to go on.`);
+        await this.say(item, `${agent} stopped without a reply (${result.error.slice(0, 200)}). Press Discuss to go on in a chat.`);
       } else if (!reply) {
-        await this.say(item, `${agent} stopped without a reply. Write a comment, or press Discuss, to go on.`);
+        await this.say(item, `${agent} stopped without a reply. Press Discuss to go on in a chat.`);
       } else {
         await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: `Agent ${agent}`, body: reply });
         const ready = readyToStart((await this.deps.backlog.readTicket(item)).activity, agent);
@@ -182,7 +337,7 @@ export class Shaping implements vscode.Disposable {
     } finally {
       this.changed.fire();
     }
-    if (this.again.delete(id)) await this.discuss(id);
+    if (this.again.delete(id)) await this.reply(id);
   }
 
   /** A note from Flotilla in the ticket's activity. */

@@ -13,9 +13,8 @@ export const commentsHandlers: Handlers = {
       await panels.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
       return;
     } else {
+      // A comment starts no agent by itself: Discuss opens a chat for that (BL-188).
       await panels.addActivity(id, 'You', await panels.withReplyLine(item, m.text, m.replyTo));
-      // A ticket nobody works on yet is discussed here: its agent answers the comment (BL-45).
-      await panels.shaping?.discuss(id);
     }
   },
   image: async ({ id, panel, backlog }, m) => {
