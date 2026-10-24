@@ -58,11 +58,14 @@ export const mergeHandlers: Handlers<MergeMessage> = {
   mergeQueueResolve: async ({ id, panels }) => {
     await panels.merger?.resolveTrainConflict(id);
   },
+  updateAndMerge: async ({ id, panels }) => {
+    await panels.merger?.updateAndMerge(id);
+  },
   mergeNext: async ({ id, panels }) => {
     await panels.merger?.mergeNext(id);
   },
-  mergeCiFix: async ({ id, panels }) => {
-    await panels.merger?.fixCiStop(id);
+  mergeCiFix: async ({ id, panels }, m) => {
+    await panels.merger?.fixCiStop(id, m.branch && m.run !== undefined ? { branch: m.branch, run: m.run } : undefined);
   },
   push: async ({ panels }) => {
     await panels.merger?.push();

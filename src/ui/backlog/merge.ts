@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
+import { mergeConflicts } from '../../core/git/mergeCheck';
 import {
   agentChatItem,
   agentLead,
@@ -82,6 +83,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { MergeQueueView } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
+import type { UpdateOutcome } from './mainSync';
 import {
   agentChoice,
   type AgentRun,
@@ -99,6 +101,12 @@ import { ChecksReader, failureSummary } from '../../features/backlog/checksProgr
 import { runInBackground } from '../../features/backlog/checksRun';
 import type { MergeChecksView } from '../../webview/ticketProtocol';
 
+/** The part of Update from Main and Merge a ticket is at. */
+export type Chain = 'updating' | 'resolving' | 'merging';
+
+/** How often Update from Main and Merge looks whether its agent is done resolving. */
+const CHAIN_POLL_MS = 15_000;
+
 export interface MergeDeps {
   backlog: LocalBacklog;
   repository: Repository<Workstream>;
@@ -108,7 +116,11 @@ export interface MergeDeps {
   /** GitHub's runs of origin for Merge to main to decide on (BL-105), or why they can't be read. None: local checks. */
   ciReader?(): Promise<CiReader | string>;
   /** Update from Main (BL-55): main into the ticket's branch, which is then pushed, and CI runs again. */
-  updateFromMain?(id: string): Promise<void>;
+  updateFromMain?(id: string): Promise<UpdateOutcome>;
+  /** An agent works on the ticket now (its review loop, a hand-off): Update from Main and Merge waits for it. */
+  agentWorking?(id: string): boolean;
+  /** How often Update from Main and Merge looks whether its agent has resolved the conflicts (the tests' is short). */
+  chainPollMs?: number;
   /** Fix with Agent (BL-7) on a failed CI job of the branch. */
   fixCi?(branch: string, runId: number, jobId?: number, runBranch?: string): Promise<void>;
   /** Whether this window rebuilds the merge train (BL-140): one window does. None: it does. */
@@ -188,6 +200,9 @@ export class Merger implements vscode.Disposable {
   private readonly ciWaits = new Map<string, CiWait>();
   /** Why each ticket's last Merge to main stopped on CI (BL-112): red CI, or the base moved on. In memory. */
   private readonly ciStops = new Map<string, CiStop>();
+  /** Update from Main and Merge under way (BL-154), by ticket: the part it's at. */
+  private readonly chains = new Map<string, Chain>();
+  private chainTimer: NodeJS.Timeout | undefined;
   /** The merge queue and its train as last read (BL-140), for the views. */
   private queueSeen: { queue: string[]; train?: MergeTrain } = { queue: [] };
   private trainTimer?: ReturnType<typeof setTimeout>;
@@ -205,6 +220,7 @@ export class Merger implements vscode.Disposable {
 
   dispose(): void {
     clearTimeout(this.trainTimer);
+    clearInterval(this.chainTimer);
     this.runs.forEach((r) => r.stop());
     this.ciWaits.forEach((w) => clearTimeout(w.timer));
     this.ciWaits.clear();
@@ -349,6 +365,66 @@ export class Merger implements vscode.Disposable {
 
   isRunning(id: string): boolean {
     return this.runs.has(id);
+  }
+
+  /** Where Update from Main and Merge is for the ticket (BL-154); undefined: it isn't under way. */
+  chainOf(id: string): Chain | undefined {
+    return this.chains.get(id);
+  }
+
+  /**
+   * Update from Main and Merge (BL-154): one step for a branch that conflicts with main, or whose CI ran on a main that
+   * moved since. Main is merged into its branch (its agent resolves the conflicts, when there are any), then it merges
+   * as Merge to main does (the checks, or CI, first). Each part shows in the ticket as it goes.
+   */
+  async updateAndMerge(id: string): Promise<void> {
+    if (this.chains.has(id) || !this.deps.updateFromMain) return;
+    this.setChain(id, 'updating');
+    const outcome = await this.deps.updateFromMain(id).catch((e: unknown) => {
+      this.setChain(id);
+      throw e;
+    });
+    if (outcome === 'updated') return this.mergeChained(id);
+    if (outcome !== 'handed') return this.setChain(id);
+    this.setChain(id, 'resolving');
+    await this.note(id, `Update from Main and Merge: its agent resolves the conflicts with main; once they're resolved, it merges.`);
+    this.chainTimer ??= setInterval(() => void this.checkChains().catch(showError), this.deps.chainPollMs ?? CHAIN_POLL_MS);
+  }
+
+  private async mergeChained(id: string): Promise<void> {
+    this.setChain(id, 'merging');
+    try {
+      await this.merge(id);
+    } finally {
+      this.setChain(id);
+    }
+  }
+
+  /** The chains whose agent is resolving: each merges once its agent is done and its branch takes main in cleanly. */
+  private async checkChains(): Promise<void> {
+    const base = await this.baseBranch().catch(() => undefined);
+    for (const [id, chain] of this.chains) {
+      if (chain !== 'resolving' || this.deps.agentWorking?.(id)) continue;
+      const item = await this.item(id);
+      const branch = item && base && (await this.branchOf(item, base, true));
+      const conflicts = branch ? await mergeConflicts(this.deps.mainRoot, branch, base).catch(() => ['?']) : ['?'];
+      if (item && readyToMerge(item) && !conflicts.length) {
+        void this.mergeChained(id).catch(showError);
+        continue;
+      }
+      this.setChain(id);
+      await this.note(id, `Update from Main and Merge stopped: ${!item || !readyToMerge(item) ? "it isn't ready to merge any more" : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``}. Nothing was merged.`);
+    }
+    if (![...this.chains.values()].includes('resolving')) {
+      clearInterval(this.chainTimer);
+      this.chainTimer = undefined;
+    }
+  }
+
+  private setChain(id: string, chain?: Chain): void {
+    if (chain) this.chains.set(id, chain);
+    else this.chains.delete(id);
+    this.changed.fire();
   }
 
   /** Its merge is being finished now (the base moves, then the ticket goes to Done with what was merged). */
@@ -750,10 +826,13 @@ export class Merger implements vscode.Disposable {
     return tip === undefined || tip === stop.tip ? stop : undefined;
   }
 
-  /** Fix with Agent on the red CI Merge to main stopped on: its first failed job. */
-  async fixCiStop(id: string): Promise<void> {
+  /** Fix with Agent on the red CI Merge to main stopped on (its first failed job), else on a red run of its branch (BL-154). */
+  async fixCiStop(id: string, red?: { branch: string; run: number }): Promise<void> {
     const stop = this.ciStops.get(id);
-    if (stop?.kind !== 'failed') return;
+    if (stop?.kind !== 'failed') {
+      if (red) await this.deps.fixCi?.(red.branch, red.run);
+      return;
+    }
     const first = stop.jobs[0];
     await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId, stop.runBranch);
   }
@@ -945,26 +1024,14 @@ export class Merger implements vscode.Disposable {
         id,
         `Not merged: \`${base}\` has moved on since \`${branch}\` took it in, so CI checked another tree than the merge's. Update from Main rebases the branch onto it, which is pushed, and CI runs again; then Merge to main.`,
       );
-      if (!batch)
-        void vscode.window
-          .showWarningMessage(
-            `${base} has moved on since ${branch} took it in: CI's result isn't for the merge. Update from Main, then merge when CI passes.`,
-            'Update from Main',
-          )
-          .then((c) => (c ? this.deps.updateFromMain?.(id) : undefined))
-          .then(undefined, showError);
+      // No dialog that only says no (BL-154): the ticket shows why, with Update from Main and Merge in Merge's place.
+      if (!batch) this.deps.openTicket(id);
       return 'stopped';
     }
     if (ci.kind === 'failed') {
       await this.note(id, failedNote(ci, branch));
-      if (!batch) {
-        this.deps.openTicket(id);
-        const first = ci.jobs[0];
-        void vscode.window
-          .showWarningMessage(`CI failed on ${branch}: ${id} wasn't merged.`, ...(this.deps.fixCi ? ['Fix with Agent'] : []))
-          .then((c) => (c ? this.deps.fixCi?.(branch, first?.run.id ?? ci.runs[0].id, first?.job.id) : undefined))
-          .then(undefined, showError);
-      }
+      // The ticket shows the failed jobs, with Fix CI with Agent in Merge's place (BL-154).
+      if (!batch) this.deps.openTicket(id);
       return 'stopped';
     }
     if (ci.kind === 'running') {

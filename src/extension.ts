@@ -246,6 +246,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Merge to main decides on CI's result when there is one (BL-105).
     ciReader: () => sidebar.ci.originActions(location.mainRoot),
     updateFromMain: (id) => mainSync.update(id),
+    agentWorking: (id) => reviews.isRunning(id),
     fixCi: (branch, runId, jobId, runBranch) => sidebar.ci.fixOnOrigin(location.mainRoot, branch, runId, jobId, runBranch),
     // One window rebuilds the merge train (BL-140); the others read it from backlog.json.
     isLeader: () => leader.isLeader,

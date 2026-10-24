@@ -1402,6 +1402,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(mergeChecks ? { mergeChecks } : {}),
       ...(mergeStop ? { mergeStop } : {}),
       ...(mergeQueue ? { mergeQueue } : {}),
+      ...(this.merger?.chainOf(plain.id) ? { chain: this.merger.chainOf(plain.id) } : {}),
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),

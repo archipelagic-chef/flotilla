@@ -47,6 +47,8 @@ export interface StepState {
   reviewing?: boolean;
   /** The agent gave a run block. */
   hasRunBlock?: boolean;
+  /** Merged, main has commits its upstream doesn't: Push… */
+  unpushed?: boolean;
   /** It has a worktree. */
   hasWorktree?: boolean;
   /** Update from Main and Merge is under way: the part it's at. */
@@ -90,7 +92,7 @@ const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
 
 export function nextSteps(s: StepState): NextSteps {
   const main = s.base ?? 'main';
-  if (s.merged || s.status === 'done') return { others: [...(s.merged ? ['push' as const] : []), ...(s.hasWorktree ? ['removeWorktree' as const] : [])] };
+  if (s.merged || s.status === 'done') return { others: [...(s.merged && s.unpushed ? ['push' as const] : []), ...(s.hasWorktree ? ['removeWorktree' as const] : [])] };
   if (s.chained) return { others: [], status: CHAINED[s.chained] };
   if (s.agentWorking) return { main: 'openChat', others: ['stop'], status: `${s.agentWorking} is working on it` };
   const run: StepOp[] = s.reviewing ? [s.hasRunBlock ? 'run' : 'askRunBlock'] : [];

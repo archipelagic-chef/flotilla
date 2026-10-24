@@ -26,7 +26,7 @@ const table: Array<[string, StepState, string[], string?]> = [
   ['main moved since CI ran', { ...approved, ci: 'moved' }, ['Update from Main and Merge', 'Run'], 'Main moved since CI ran: it updates, CI runs again, then it merges'],
   ['in the merge queue', { ...approved, queue: { place: '2nd' } }, ['Merge Next', 'Remove from Queue', 'Run'], '2nd in the merge queue'],
   ['updating, then merging', { ...approved, chained: 'checks' }, [], 'Checks running…'],
-  ['merged and done', { status: 'done', merged: true, hasWorktree: true }, ['Push…', 'Remove Its Worktree']],
+  ['merged and done', { status: 'done', merged: true, unpushed: true, hasWorktree: true }, ['Push…', 'Remove Its Worktree']],
   ['done, without a worktree', { status: 'done' }, []],
 ];
 
