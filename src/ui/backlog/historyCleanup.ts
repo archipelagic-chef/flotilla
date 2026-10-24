@@ -130,7 +130,7 @@ export async function startCleanUp(d: CleanUpDeps, id: unknown, opts?: unknown):
       ws,
       cleanUpPrompt({ id: item.id, ticket, branch: target.branch, clean, base: target.start, commits: target.commits, agent }),
       agentLead(item, agent),
-      { choice, name: `${agent} · ${item.id} history` },
+      { choice, name: `${agent} · ${item.id} history`, track: { ticket: item.id, agent, role: 'work' } },
     );
     // "chat for agent <name>": the ticket links the note to the chat by it.
     await d.ctx.tickets.addActivity(

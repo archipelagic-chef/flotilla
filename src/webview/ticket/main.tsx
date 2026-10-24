@@ -1,5 +1,5 @@
 import { Component, render, type ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import type { AskView } from '../../features/backlog/ask';
 import type { TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
@@ -11,7 +11,7 @@ import { PriorityPicker } from '../ui/priority';
 import '../ui/priority.css';
 import './ticket.css';
 import { TicketCi } from './ci';
-import { ActionButton, finished, send } from './actions';
+import { ActionButton, finished, send, useWorkingChanges, workingLabel } from './actions';
 import { showingEntries } from './comments';
 import { imageReplies, previewReplies } from './markdownBox';
 import { checksLogReplies } from './checksPanel';
@@ -24,6 +24,40 @@ import { CreateWorktreeButton, Parts, Work } from './work';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { CheckResult } from './checkResult';
+
+/**
+ * The ticket's linked issues. One being unlinked stays until the host is done, so its "Unlinking…" is seen (the
+ * ticket the host sends first has it gone already).
+ */
+function LinkChips({ links }: { links: TicketView['links'] }) {
+  useWorkingChanges();
+  const seen = useRef(new Map<string, TicketView['links'][number]>());
+  for (const l of links) seen.current.set(l.id, l);
+  for (const id of seen.current.keys()) {
+    if (!links.some((l) => l.id === id) && !workingLabel({ type: 'unlink', id })) seen.current.delete(id);
+  }
+  const shown = [...seen.current.values()];
+  return (
+    <>
+      {shown.map((l) => (
+        <span key={l.id} class="link-chip">
+          <button
+            class="link-open"
+            onClick={() => send({ type: 'openLink', id: l.id })}
+            title={`${l.title}\nOpen it in ${l.kind === 'jira' ? 'Jira' : 'GitHub'}`}
+          >
+            <i class={`codicon codicon-${l.kind === 'github' ? 'github' : 'issues'}`} />
+            <span class="link-id">{l.id}</span>
+            {l.statusName && <span class="muted">{l.statusName}</span>}
+          </button>
+          <ActionButton class="link-remove" message={{ type: 'unlink', id: l.id }} working="Unlinking…" title={`Unlink ${l.id}`} aria-label={`Unlink ${l.id}`}>
+            <i class="codicon codicon-close" />
+          </ActionButton>
+        </span>
+      ))}
+    </>
+  );
+}
 
 function App() {
   const [received, setTicket] = useState<TicketView>();
@@ -107,12 +141,12 @@ function App() {
             <span>
               {ticket.item.proposed.by ? `${ticket.item.proposed.by} (an agent)` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
             </span>
-            <button class="button" onClick={() => send({ type: 'accept' })}>
+            <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
               <i class="codicon codicon-check" /> Accept
-            </button>
-            <button class="button secondary" onClick={() => send({ type: 'dismiss' })}>
+            </ActionButton>
+            <ActionButton class="button secondary" message={{ type: 'dismiss' }} working="Dismissing…">
               Dismiss
-            </button>
+            </ActionButton>
           </div>
         )}
         <Title ticket={ticket} />
@@ -133,26 +167,11 @@ function App() {
             <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })} />
           )}
           {!ticket.remote && <AgentPicker ticket={ticket} />}
-          {ticket.links.map((l) => (
-            <span key={l.id} class="link-chip">
-              <button
-                class="link-open"
-                onClick={() => send({ type: 'openLink', id: l.id })}
-                title={`${l.title}\nOpen it in ${l.kind === 'jira' ? 'Jira' : 'GitHub'}`}
-              >
-                <i class={`codicon codicon-${l.kind === 'github' ? 'github' : 'issues'}`} />
-                <span class="link-id">{l.id}</span>
-                {l.statusName && <span class="muted">{l.statusName}</span>}
-              </button>
-              <button class="link-remove" onClick={() => send({ type: 'unlink', id: l.id })} title={`Unlink ${l.id}`} aria-label={`Unlink ${l.id}`}>
-                <i class="codicon codicon-close" />
-              </button>
-            </span>
-          ))}
+          <LinkChips links={ticket.links} />
           {!ticket.remote && (
-            <button class="add-link" onClick={() => send({ type: 'link' })} title="Link it to an issue in Jira or GitHub Issues">
+            <ActionButton class="add-link" message={{ type: 'link' }} working="Linking…" title="Link it to an issue in Jira or GitHub Issues">
               <i class="codicon codicon-link" /> {ticket.links.length ? 'Link' : 'Link Issue'}
-            </button>
+            </ActionButton>
           )}
         </div>
         <StateCard ticket={withCiStop(ticket, ci)} />

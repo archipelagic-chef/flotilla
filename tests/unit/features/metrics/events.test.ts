@@ -35,6 +35,7 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'merge-approved': { by: 'You' },
   'merge-landed': { into: 'main', commit: 'abc1234' },
   'merge-cancelled': { reason: 'by you' },
+  'merge-ci-stopped': { reason: 'failed', branch: 'feature/BL-1-x', jobs: ['test'] },
   'branch-conflicts': { branch: 'feature/x', files: ['a.ts'] },
   'limit-hit': { limit: 'usage', until: '2026-10-21T23:00:00.000Z', known: true },
   'limit-lifted': { minutes: 60, tries: 2 },

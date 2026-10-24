@@ -1321,7 +1321,7 @@ export class ReviewLoop implements vscode.Disposable {
     // "chat for agent <name>": the ticket links the note to the chat; ", in a terminal": where it runs.
     if (held.where === 'terminal') {
       await restore();
-      runAgentInTerminal({ cwd, resume: held.session, prompt, name, choice });
+      runAgentInTerminal({ cwd, resume: held.session, prompt, name, choice, track: { ticket: item.id, agent: held.agent, role: held.phase === 'review' ? 'review' : 'work' } });
       await this.startNote(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
       return;
     }

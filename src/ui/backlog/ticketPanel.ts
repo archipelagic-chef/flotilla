@@ -528,7 +528,7 @@ export class TicketPanels implements vscode.Disposable {
     });
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
       (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost'
-        ? this.onAsk(id, panel, m)
+        ? this.onAskMessage(id, panel, m)
         : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
           ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
             (this.ci?.handle(id, m) ?? Promise.resolve())
@@ -1528,6 +1528,19 @@ export class TicketPanels implements vscode.Disposable {
   readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** An Ask chat's message, then its done (also after a throw): its button's "working…" ends. */
+  private async onAskMessage(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
+    let failed = false;
+    try {
+      await this.onAsk(id, panel, m);
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      if (this.panels.get(id) === panel) void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+    }
+  }
+
   /**
    * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
    * it's sent (or has waited for memory); its answer streams in as it's written.
@@ -1552,7 +1565,7 @@ export class TicketPanels implements vscode.Disposable {
           return short && `Waiting for memory: ${formatMemory(short.freeMB)} free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)}…`;
         },
         context: () => this.askContext(id, panel),
-        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output() }),
+        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output(), ticket: id }),
         render: (markdown) => renderMarkdown(markdown, panel.webview, this.deps.backlog.dir, this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' })),
         changed: () => {
           if (this.asks.get(id) === created) this.postAsk(id, panel);
