@@ -2173,3 +2173,81 @@ button.timeline-item:hover .timeline-text {
   word-break: break-word;
   color: var(--muted);
 }
+
+/* The Changes section (BL-171): a tree of the files, windowed (fixed-height rows, only those in view drawn). */
+.changes-total {
+  margin-left: 6px;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.changes-compared {
+  padding: 6px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.change-rows {
+  overflow-y: auto;
+}
+.change-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 0 12px 0 8px;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.change-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.change-group {
+  font-weight: 600;
+}
+.change-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.change-counts {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+}
+.change-counts .added {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+.change-counts .deleted {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+.change-letter {
+  width: 12px;
+  text-align: center;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  font-weight: 600;
+}
+.change-letter.kind-A {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+.change-letter.kind-M {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+}
+.change-letter.kind-D {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+.change-letter.kind-R {
+  color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
+}
+.change-uncommitted {
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+  border: 1px solid currentColor;
+}

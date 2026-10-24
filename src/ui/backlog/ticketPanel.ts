@@ -23,7 +23,7 @@ import type { BacklogIntegrations } from './integrations';
 import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketChange, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -35,6 +35,7 @@ import { gatherAttachments, type FolderFile } from '../../features/backlog/attac
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
+import { ticketChange } from '../../features/diffs/ticketChange';
 import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
@@ -516,6 +517,7 @@ export class TicketPanels implements vscode.Disposable {
       ci?.dispose();
       this.panels.delete(id);
       this.checks.delete(id);
+      this.changeViews.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.
       this.asks.get(id)?.dispose();
       this.asks.delete(id);
@@ -591,6 +593,59 @@ export class TicketPanels implements vscode.Disposable {
       !!shaping && !!this.shaping && (session ? session === shaping.session : action === 'resume' ? !!shaping.held && !heldBy(item.review) : this.shaping.isRunning(id));
     if (discussing) return this.shaping!.control(id, action);
     await this.reviews?.control(id, action, session);
+  }
+
+  /** Each open ticket's Changes as last read (BL-171). */
+  private readonly changeViews = new Map<string, TicketChange>();
+
+  /** The reads of Changes running, by ticket, with the item to read again once it's done (it changed meanwhile). */
+  private readonly changeReads = new Map<string, { again?: BacklogItem }>();
+
+  /**
+   * Reads the ticket's change again after its view is sent (git, so it doesn't hold the view up), and sends it on its
+   * own when it differs. One read at a time per ticket: a change while one runs reads again after it.
+   */
+  private refreshChanges(item: BacklogItem): void {
+    const running = this.changeReads.get(item.id);
+    if (running) {
+      running.again = item;
+      return;
+    }
+    const state: { again?: BacklogItem } = {};
+    this.changeReads.set(item.id, state);
+    void (async () => {
+      try {
+        for (let next: BacklogItem | undefined = item; next; next = state.again) {
+          state.again = undefined;
+          const changes = await this.readChanges(next).catch(() => undefined);
+          const panel = this.panels.get(item.id);
+          if (!changes || !panel) continue;
+          const sent = this.sentViews.get(panel);
+          if (JSON.stringify(this.changeViews.get(item.id)) === JSON.stringify(changes) && sent?.changes) continue;
+          this.changeViews.set(item.id, changes);
+          if (!sent) continue;
+          this.sentViews.set(panel, { ...sent, changes });
+          void panel.webview.postMessage({ type: 'ticketParts', parts: { changes }, removed: [] } satisfies TicketHostMessage);
+        }
+      } finally {
+        this.changeReads.delete(item.id);
+      }
+    })();
+  }
+
+  /** The ticket's change as its tab shows it (read now if it hasn't been yet). */
+  async changesShown(item: BacklogItem): Promise<TicketChange> {
+    return this.changeViews.get(item.id) ?? (await this.readChanges(item));
+  }
+
+  /** What the ticket's work changes compared with main: its own branches (in their worktrees), else its merge. */
+  async readChanges(item: BacklogItem): Promise<TicketChange> {
+    const cwd = this.deps.mainRoot;
+    const base = await resolveBase(cwd, readSettings().defaultBase);
+    const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
+    const worktrees = new Map(this.worktreesOf(item).flatMap((w) => (w.worktree.branch && w.worktree.path ? [[w.worktree.branch, w.worktree.path] as const] : [])));
+    const branches = base ? local.filter((b) => b !== base && branchMatches(item, b)).map((b) => ({ branch: b, worktree: worktrees.get(b) })) : [];
+    return ticketChange(cwd, { id: item.id, base: base ?? 'HEAD', branches, ...(item.merged ? { merged: item.merged } : {}) });
   }
 
   /** The worktrees working on an item: those started for it, or whose branch carries its id. */
@@ -991,7 +1046,15 @@ export class TicketPanels implements vscode.Disposable {
       this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
       const showActivity = showActivityKept(this.deps.memento);
       const check = this.checks.get(id);
-      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id), ...(check ? { check } : {}) };
+      const changes = this.changeViews.get(id);
+      const next: TicketView = {
+        ...view,
+        agents,
+        showActivity,
+        attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id),
+        ...(check ? { check } : {}),
+        ...(changes ? { changes } : {}),
+      };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {
         this.sentViews.set(panel, next);
@@ -1012,6 +1075,7 @@ export class TicketPanels implements vscode.Disposable {
       const { remote, ...plain } = item;
       base = { ...this.baseView(plain, remote), ...(await this.work(plain)), ...(await this.family(plain)), ...(await this.mergeInfo(plain)) };
       shown = plain;
+      this.refreshChanges(plain);
       if (remote) {
         // What the backlog knows shows at once; the description and comments follow from the tracker.
         if (!this.details.get(id)?.settled) send({ ...base, loading: true });

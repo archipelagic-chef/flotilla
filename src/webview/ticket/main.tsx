@@ -21,6 +21,7 @@ import { AskPane } from './ask';
 import { ActiveAgents, Agents } from './agents';
 import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
+import { Changes } from './changes';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { CheckResult } from './checkResult';
@@ -232,6 +233,7 @@ function App() {
       <Activity ticket={ticket} />
       {ticket.children.length > 0 && <Parts ticket={ticket} />}
       {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
+      <Changes ticket={ticket} />
       {ticket.agents.length > 0 && <Agents ticket={ticket} />}
     </main>
   );

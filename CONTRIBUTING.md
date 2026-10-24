@@ -90,7 +90,7 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 
 - **The ticket view** ([src/webview/ticket/](src/webview/ticket/)): [main.tsx](src/webview/ticket/main.tsx) is the app
   shell (the messages from the host, the layout of the sections) only. Each section is a module: `header.tsx`,
-  `description.tsx`, `stateCard.tsx`, `ask.tsx`, `work.tsx`, `agents.tsx`, `reviewPanel.tsx`, `mergePanel.tsx`,
+  `description.tsx`, `stateCard.tsx`, `ask.tsx`, `work.tsx`, `changes.tsx` (its tree in `changeTree.ts`), `agents.tsx`, `reviewPanel.tsx`, `mergePanel.tsx`,
   `activity.tsx` (the feed and the comment box), `attachments.tsx`, `demo.tsx`, `ci.tsx`. What sections share is in its
   own: `actions.tsx` (`send`, `act`, `useWorking`, `ActionButton`, `Dropdown`), `comments.tsx` (sending a comment,
   replying), `markdownBox.tsx` (the Markdown editor and `Rendered`). A new section is a new module, which `main.tsx`

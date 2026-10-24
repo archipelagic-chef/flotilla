@@ -21,9 +21,10 @@ async function nameStatus(cwd: string, refs: string[], env?: Record<string, stri
 
 /**
  * Porcelain `git diff <commit>` against the working tree refreshes and rewrites the index when tracked files
- * are stat-dirty (normal when host and container share a worktree). Run it against a throwaway copy instead.
+ * are stat-dirty (normal when host and container share a worktree). Run it against a throwaway copy instead: run gets
+ * the environment that points git at the copy.
  */
-async function nameStatusWithWorkingTree(cwd: string, ref: string): Promise<FileChange[]> {
+export async function withTempIndex<T>(cwd: string, run: (env: Record<string, string>) => Promise<T>): Promise<T> {
   const index = path.resolve(cwd, (await runGit(['rev-parse', '--git-path', 'index'], { cwd })).trim());
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'flotilla-index-'));
   try {
@@ -34,10 +35,14 @@ async function nameStatusWithWorkingTree(cwd: string, ref: string): Promise<File
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
       // no index yet: git treats a missing GIT_INDEX_FILE as an empty index
     }
-    return await nameStatus(cwd, [ref], { GIT_INDEX_FILE: tempIndex });
+    return await run({ GIT_INDEX_FILE: tempIndex });
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+function nameStatusWithWorkingTree(cwd: string, ref: string): Promise<FileChange[]> {
+  return withTempIndex(cwd, (env) => nameStatus(cwd, [ref], env));
 }
 
 export async function compareWithBase(worktreeDir: string, base: string, mode: CompareMode): Promise<CompareResult> {

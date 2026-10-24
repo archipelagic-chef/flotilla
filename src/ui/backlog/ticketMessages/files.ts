@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
+import { openChangeDiff, openChangeEntries } from '../../../core/diff/openDiff';
 import type { Handlers } from './context';
 
 /** Opening what the ticket links to: its file, links in it, commits, worktrees, and running its run blocks. */
@@ -43,6 +44,21 @@ export const filesHandlers: Handlers = {
       }
     }
     await openCommit(panels.deps.reference, panels.deps.mainRoot, m.hash);
+  },
+  openChange: async ({ item, panels }, m) => {
+    // The change as the ticket shows it: what it lists is what opens.
+    const g = (await panels.changesShown(item)).groups[m.group];
+    const f = g?.files.find((x) => x.path === m.path);
+    if (g && f) await openChangeDiff(panels.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`);
+  },
+  openAllChanges: async ({ item, panels }) => {
+    const { groups } = await panels.changesShown(item);
+    const entries = groups.flatMap((g) => g.files.map((f) => ({ worktreeDir: g.dir, change: f, leftRef: f.left ?? g.left, rightRef: f.right ?? g.right })));
+    if (!entries.length) {
+      void vscode.window.showInformationMessage(`${item.id} changes no files yet.`);
+      return;
+    }
+    await openChangeEntries(panels.deps.reference, entries, `${item.id}: Changes`);
   },
   openHref: async ({ item, panels }, m) => {
     await panels.openHref(item, m.href);
