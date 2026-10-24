@@ -371,13 +371,6 @@ textarea:focus {
   opacity: 0.5;
   cursor: default;
 }
-.button.secondary {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-.button.secondary:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
 .button.wide {
   width: 100%;
 }
@@ -1783,49 +1776,12 @@ ins {
 .proposed-lane .group-head .icon {
   margin-left: auto;
 }
-/* Needs you: what waits on the user, above the lanes; a row says the ask, how long it has waited, and its actions. */
-.needs-lane .group-head {
-  color: var(--waiting);
-}
-.needs-lane .backlog-item {
-  height: auto;
-  min-height: var(--row-height);
-  padding-top: 3px;
-  padding-bottom: 3px;
-  flex-wrap: wrap;
-  cursor: pointer;
-}
-.needs-lane .need-icon {
-  flex: none;
-  color: var(--waiting);
-}
 .needs-lane .need-approved .need-icon {
   color: var(--done);
 }
 .needs-lane .need-stopped .need-icon,
 .needs-lane .need-failed .need-icon {
   color: var(--error);
-}
-.needs-lane .need-line {
-  flex: 1 1 100%;
-  padding-left: 22px;
-  font-size: 12px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.needs-lane .need-age {
-  flex: none;
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.needs-lane .need-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-  flex: none;
 }
 .proposed-lane .backlog-item .status-toggle {
   color: var(--vscode-editorLightBulb-foreground, #ffcc00);
