@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
 
 /** What the mocked VS Code answers and records. */
 const ui = {
@@ -269,6 +270,31 @@ describe('Merge to main', () => {
     const done = await item('BL-1');
     expect(done.status).toBe('done');
     expect((await backlog.readTicket(done)).activity.map((e) => e.body).join('\n')).toContain('is merged again onto it');
+    merger.dispose();
+  });
+
+  it('records the conflicts of merging again onto main when it moved before the approval (BL-168)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    commit(dir, 'fix.txt', 'fixed\n', 'BL-1: Fix the checks after merging main');
+    // main moves while the fix waits for approval, in the same file.
+    commit(repo, 'a.txt', 'other\n', 'BL-2: add a too');
+    ui.checksExit = 0;
+    const log = makeTempDir();
+    setEventLog(log);
+
+    expect(await merger.approveResolution('BL-1')).toBe('stopped');
+
+    await eventsWritten();
+    setEventLog(undefined);
+    expect((await readEvents(log)).filter((e) => e.kind === 'merge-conflicted')).toEqual([
+      expect.objectContaining({ ticket: 'BL-1', data: { files: [expect.objectContaining({ file: 'a.txt' })] } }),
+    ]);
     merger.dispose();
   });
 
@@ -563,9 +589,17 @@ describe('The merge queue (BL-140)', () => {
     branches(repo);
     const tip3 = git(repo, 'rev-parse', 'feature/BL-3');
     ui.settings['merge.onApprove'] = 'off';
+    const log = makeTempDir();
+    setEventLog(log);
     for (const id of ['BL-1', 'BL-2', 'BL-3']) await merger.approved(id, 'Rex-1');
     await merger.refreshTrain();
+    await merger['currentTrain']({ rebuild: true });
     expect(merger.queuePlace('BL-3')?.state).toBe('Conflicts with main + BL-1 + BL-2 in `shared.txt`.');
+    // Its conflict in the train is recorded once, measured onto the train before it (BL-168): not again as it's rebuilt.
+    await eventsWritten();
+    setEventLog(undefined);
+    const conflicted = (await readEvents(log)).filter((e) => e.kind === 'merge-conflicted');
+    expect(conflicted).toEqual([expect.objectContaining({ ticket: 'BL-3', data: { files: [expect.objectContaining({ file: 'shared.txt', regions: [expect.anything()] })] } })]);
     const before = (await backlog.read()).mergeTrain!;
 
     await merger.resolveTrainConflict('BL-3');

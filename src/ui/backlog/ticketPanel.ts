@@ -1540,7 +1540,7 @@ export class TicketPanels implements vscode.Disposable {
           return short && `Waiting for memory: ${formatMemory(short.freeMB)} free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)}…`;
         },
         context: () => this.askContext(id, panel),
-        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output() }),
+        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output(), ticket: id }),
         render: (markdown) => renderMarkdown(markdown, panel.webview, this.deps.backlog.dir, this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' })),
         changed: () => {
           if (this.asks.get(id) === created) this.postAsk(id, panel);

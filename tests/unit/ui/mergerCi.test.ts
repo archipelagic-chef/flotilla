@@ -6,6 +6,7 @@ import { GitHubActions } from '../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
 
 /** What the mocked VS Code answers and records. */
 const ui = {
@@ -219,9 +220,16 @@ describe('Merge to main on CI (BL-105)', () => {
     const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
     clock += DONE_MS;
     const tip = git(repo, 'rev-parse', 'feature/BL-1');
+    const log = makeTempDir();
+    setEventLog(log);
 
     expect(await merger.merge('BL-1')).toBe('stopped');
 
+    await eventsWritten();
+    setEventLog(undefined);
+    expect((await readEvents(log)).filter((e) => e.kind === 'merge-ci-stopped')).toEqual([
+      expect.objectContaining({ ticket: 'BL-1', data: { reason: 'failed', branch: 'feature/BL-1', jobs: ['test'] } }),
+    ]);
     const stop = merger.ciStop('BL-1', () => tip);
     expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip, runs: [{ id: ci.id, workflow: 'CI', status: 'failure' }] });
     expect(stop?.kind === 'failed' && stop.jobs[0]).toMatchObject({ runId: ci.id, name: 'test', url: expect.stringContaining(`/actions/runs/${ci.id}/job/`) });
@@ -238,9 +246,16 @@ describe('Merge to main on CI (BL-105)', () => {
     commit(repo, 'm.txt', 'm\n', 'main moves on');
     const before = git(repo, 'rev-parse', 'main');
     ui.answers = ['Update from Main'];
+    const log = makeTempDir();
+    setEventLog(log);
 
     expect(await merger.merge('BL-1')).toBe('stopped');
     await until(async () => updates.length > 0);
+    await eventsWritten();
+    setEventLog(undefined);
+    expect((await readEvents(log)).filter((e) => e.kind === 'merge-ci-stopped')).toEqual([
+      expect.objectContaining({ ticket: 'BL-1', data: { reason: 'moved', branch: 'feature/BL-1' } }),
+    ]);
 
     expect(git(repo, 'rev-parse', 'main')).toBe(before);
     expect(updates).toEqual(['BL-1']);
