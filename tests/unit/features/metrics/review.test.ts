@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('vscode', () => ({
+  workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+  extensions: { getExtension: () => undefined },
+}));
+
 import type { EventData, EventKind, FlotillaEvent } from '../../../../src/features/metrics/events';
 import { checkFix, fixesMarkdown, landedAt, readImproves } from '../../../../src/features/metrics/improves';
 import { reviewBlocked, reviewDue, reviewPrompt, reviewTools } from '../../../../src/features/metrics/review';
 import { metricsSummary, summaryMarkdown, trend } from '../../../../src/features/metrics/summary';
+import { headlessArgs } from '../../../../src/ui/backlog/agentRunner';
 
 function ev<K extends EventKind>(at: string, kind: K, data: EventData[K], ticket?: string): FlotillaEvent<K> {
   return { at: new Date(at).toISOString(), kind, ...(ticket ? { ticket } : {}), data };
@@ -130,13 +137,11 @@ describe('the review itself (BL-159)', () => {
   });
 
   it('may only read, and write its page and its proposals', () => {
-    expect(reviewTools({ reviewFile: '/b/reviews/2026-10-15.md', inboxDir: '/b/inbox' })).toEqual([
-      'Read',
-      'Grep',
-      'Glob',
-      'Write(//b/reviews/2026-10-15.md)',
-      'Write(//b/inbox/review-*.md)',
-    ]);
+    const t = reviewTools({ reviewFile: '/b/reviews/2026-10-15.md', inboxDir: '/b/inbox' });
+    expect(t).toEqual({ tools: ['Read', 'Grep', 'Glob', 'Edit(//b/reviews/2026-10-15.md)', 'Edit(//b/inbox/review-*.md)'], offer: ['Write'] });
+    // Write is offered, but allowed only by the Edit rules: not by its name.
+    const args = headlessArgs({ prompt: 'p', name: 'n', sessionId: 's', mode: 'dontAsk', ...t });
+    expect(args.slice(args.indexOf('--tools'))).toEqual(['--tools', 'Read,Grep,Glob,Edit,Write', '--allowedTools', ...t.tools]);
   });
 
   it('gives the summary, the fixes and the open tickets, and the shape of a proposal', () => {

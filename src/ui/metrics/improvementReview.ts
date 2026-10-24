@@ -124,7 +124,7 @@ export class ImprovementReview implements vscode.Disposable {
         choice: agentChoice(undefined),
         output: this.deps.output,
         slot,
-        tools: reviewTools({ reviewFile, inboxDir }),
+        ...reviewTools({ reviewFile, inboxDir }),
       });
       this.run = run;
       void trackProgress('backlog', `${agent} is writing the improvement review`, () => run!.done);

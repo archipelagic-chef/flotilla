@@ -47,10 +47,14 @@ export function reviewBlocked(v: { running: number; waiting: number; waitingUnti
   return undefined;
 }
 
-/** The only tools the review's agent has: reading anything, and writing its review and its proposals. */
-export function reviewTools(o: { reviewFile: string; inboxDir: string }): string[] {
+/**
+ * The only tools the review's agent has: reading anything, and writing its review and its proposals. Claude Code
+ * matches the Write tool against Edit(path) rules (a Write(path) rule allows nothing), so Write is offered and allowed
+ * only where those rules say.
+ */
+export function reviewTools(o: { reviewFile: string; inboxDir: string }): { tools: string[]; offer: string[] } {
   const abs = (p: string) => `//${p.replace(/^\/+/, '')}`;
-  return ['Read', 'Grep', 'Glob', `Write(${abs(o.reviewFile)})`, `Write(${abs(o.inboxDir)}/review-*.md)`];
+  return { tools: ['Read', 'Grep', 'Glob', `Edit(${abs(o.reviewFile)})`, `Edit(${abs(o.inboxDir)}/review-*.md)`], offer: ['Write'] };
 }
 
 export interface ReviewPromptInput {
