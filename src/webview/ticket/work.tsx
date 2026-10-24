@@ -4,6 +4,7 @@ import { PRIORITY } from '../ui/priority';
 import { act, ActionButton, send, UpdateFromButton } from './actions';
 import { LANE_ICON } from './header';
 import { ago } from './agents';
+import './work.css';
 
 /**
  * Create Worktree ▾: a click creates a new worktree at once, its branch named without asking (numbered when the name is
