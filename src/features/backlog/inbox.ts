@@ -236,6 +236,10 @@ Any agent can add tickets. Do it when:
   ticket's id;
 - you find other work that should be done (a bug, a follow-up), but isn't your task.
 
+When you split work into tickets, a ticket that builds the same part as one of its siblings (the same view, panel or
+section) gets a line \`Depends on: <that sibling's id>\` in its description (the id is in that one's \`.added\` file),
+so they're built one after the other instead of conflicting. Siblings that touch separate parts run in parallel.
+
 To add one, write a Markdown file into ${inbox}/ (any name ending in .md, e.g. \`${inbox}/split-login-1.md\`):
 
 \`\`\`markdown
