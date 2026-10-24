@@ -803,19 +803,8 @@ export class Merger implements vscode.Disposable {
     }
     await this.note(e.id, `${failedNote(ci, ref)}\n\n${e.id} is out of the merge queue: the train is rebuilt without it. Merge to main puts it back.`);
     await this.currentTrain({ rebuild: true });
-    if (!batch) {
-      this.deps.openTicket(e.id);
-      const first = ci.jobs[0];
-      void vscode.window
-        .showWarningMessage(
-          ref === e.branch
-            ? `CI failed on ${ref}: ${item.id} wasn't merged, and is out of the merge queue.`
-            : `CI failed on ${item.id}'s commit in the merge train (${ref}): it wasn't merged, and is out of the merge queue.`,
-          ...(this.deps.fixCi ? ['Fix with Agent'] : []),
-        )
-        .then((c) => (c ? this.deps.fixCi?.(e.branch, first?.run.id ?? ci.runs[0].id, first?.job.id, ref) : undefined))
-        .then(undefined, showError);
-    }
+    // No dialog that only says no (BL-154): the ticket shows the failed jobs, with Fix CI with Agent in Merge's place.
+    if (!batch) this.deps.openTicket(e.id);
   }
 
   /** Why the ticket's last Merge to main stopped on CI, while its branch is at the tip it stopped on (BL-112). */

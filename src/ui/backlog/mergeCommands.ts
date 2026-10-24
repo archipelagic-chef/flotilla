@@ -26,6 +26,10 @@ export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): 
       const id = backlogIdOf(arg);
       if (id) await merger.mergeNext(id).catch(showError);
     },
+    'flotilla.updateAndMerge': async (arg?: unknown) => {
+      const id = backlogIdOf(arg);
+      if (id) await merger.updateAndMerge(id).catch(showError);
+    },
     'flotilla.pushMerged': () => merger.push().catch(showError),
     'flotilla.stopPushingTrain': () => merger.stopPushingTrain().catch(showError),
   };

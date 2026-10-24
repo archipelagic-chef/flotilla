@@ -895,3 +895,71 @@ describe('The merge queue (BL-140)', () => {
     merger.dispose();
   });
 });
+
+describe('Update from Main and Merge (BL-154)', () => {
+  async function conflicting() {
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const { Merger } = await import('../../../src/ui/backlog/merge');
+    const repo = initRepo();
+    const home = makeTempDir();
+    cleanup.push(repo, home);
+    const backlog = new LocalBacklog(home, path.join(repo, '.git'));
+    await backlog.change(() => ({ version: 1, next: 1, items: [approved('BL-1')] }));
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1-one');
+    commit(repo, 'a.txt', 'ours\n', 'BL-1: a');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 'a.txt', 'theirs\n', 'main: a');
+    const state = { working: false, updates: 0 };
+    // Its agent: main merged into the branch, the conflict resolved its way.
+    const resolve = () => {
+      git(repo, 'checkout', '-q', 'feature/BL-1-one');
+      git(repo, 'merge', '-q', '-X', 'ours', '-m', 'BL-1: Merge main', 'main');
+      git(repo, 'checkout', '-q', 'main');
+    };
+    const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: repo, isMain: true }, chats: [] }] };
+    const merger = new Merger({
+      backlog,
+      repository,
+      mainRoot: repo,
+      output: { appendLine() {} },
+      openTicket() {},
+      checksEnv: fakeChecksEnv,
+      chainPollMs: 10,
+      agentWorking: () => state.working,
+      updateFromMain: async () => (state.updates++, (state.working = true), 'handed' as const),
+    } as never);
+    const item = async () => (await backlog.read()).items.find((i) => i.id === 'BL-1')!;
+    return { repo, merger, item, state, resolve };
+  }
+
+  it('hands the conflicts to its agent, then merges once it has resolved them', async () => {
+    const { repo, merger, item, state, resolve } = await conflicting();
+
+    await merger.updateAndMerge('BL-1');
+    expect(state.updates).toBe(1);
+    expect(merger.chainOf('BL-1')).toBe('resolving');
+    // A second click while it goes on does nothing.
+    await merger.updateAndMerge('BL-1');
+    expect(state.updates).toBe(1);
+
+    resolve();
+    state.working = false;
+    await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
+    expect((await item()).status).toBe('done');
+    expect(git(repo, 'log', '-1', '--format=%s', 'main')).toBe('Merge BL-1: Item BL-1');
+    merger.dispose();
+  });
+
+  it("stops, merging nothing, when its agent is done and the branch still conflicts", async () => {
+    const { repo, merger, item, state } = await conflicting();
+    const before = git(repo, 'rev-parse', 'main');
+
+    await merger.updateAndMerge('BL-1');
+    state.working = false;
+    await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    expect((await item()).status).toBe('review');
+    merger.dispose();
+  });
+});

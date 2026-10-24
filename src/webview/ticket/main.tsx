@@ -41,6 +41,7 @@ import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
+import { ticketSteps } from './steps';
 import { CheckResult } from './checkResult';
 
 /**
@@ -142,6 +143,7 @@ function App() {
   const worktrees = ticket.worktrees;
   const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
+  const working = ticketSteps(ticket, ci).main === 'openChat';
   return (
     <main class="ticket">
       <header>
@@ -213,9 +215,10 @@ function App() {
             </ActionButton>
           )}
         </div>
-        <StateCard ticket={withCiStop(ticket, ci)} />
+        <StateCard ticket={withCiStop(ticket, ci)} ci={ci} />
         <div class="toolbar">
-          {!done && (
+          {/* Not while an agent works on it (BL-154): its chat opens from the state above, and Stop is there. */}
+          {!done && !working && (
             <ActionButton
               class="button"
               message={{ type: 'start', agent: true }}

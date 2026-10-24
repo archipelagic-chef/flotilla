@@ -37,6 +37,7 @@ import {
   useWorking,
   WorkingTag,
 } from './actions';
+import { ticketSteps } from './steps';
 import { REPLY_TO, sendComment, useSending } from './comments';
 import { AskButton, AskLine } from './askAgent';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
@@ -691,7 +692,8 @@ export function Activity({ ticket }: { ticket: TicketView }) {
   };
   const asking = ticket.review?.state === 'asking' ? (ticket.review.implementer ?? 'The agent') : undefined;
   // A local item with work to review: the user can review it here, as in a pull request.
-  const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done';
+  // Not while an agent works on it, or reviews it (BL-154): its panel has Open Chat, and Review It Myself.
+  const reviewable = !ticket.remote && ticket.canReview && ticket.item.status !== 'done' && ticketSteps(ticket).main !== 'openChat';
   // A ticket in review (or approved) runs its latest run block from here, next to Approve and Request Changes.
   const showRun = !ticket.remote && (ticket.item.status === 'review' || ticket.review?.state === 'approved');
   // It goes in the comment box, after a draft. Request Changes sends it to the agent: a Comment is only a note.
@@ -862,21 +864,16 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 <i class="codicon codicon-play" /> Run
               </ActionButton>
             ) : (
-              <>
-                <button class="button secondary" disabled title="The agent didn't give a run block: there's nothing to run">
-                  <i class="codicon codicon-play" /> Run
+              // No run block, so no Run (BL-154): the step that leads to one.
+              reviewable && (
+                <button
+                  class="button secondary"
+                  onClick={askForRun}
+                  title="The agent didn't give a run block. This puts a request for one in the comment box: Request Changes sends it to the agent; Comment would only leave a note."
+                >
+                  <i class="codicon codicon-comment" /> Ask for a Run Block
                 </button>
-                <span class="muted">The agent didn't give a run block.</span>
-                {reviewable && (
-                  <button
-                    class="text-button"
-                    onClick={askForRun}
-                    title="Puts a request for one in the comment box. Request Changes sends it to the agent; Comment would only leave a note."
-                  >
-                    Ask it for one
-                  </button>
-                )}
-              </>
+              )
             ))}
           {ticket.canAsk && !asking && (
             <button

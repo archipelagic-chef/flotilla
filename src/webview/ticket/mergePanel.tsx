@@ -41,8 +41,9 @@ function HostLink({ href, children }: { href: string; children: ComponentChildre
 }
 
 /**
- * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs and Fix with Agent, or
- * the base moved on with Update from Main. It holds until the branch's tip or its CI changes.
+ * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs, or the base moved on.
+ * Its button is the step that does the job now (Fix CI with Agent, Update from Main and Merge: steps.tsx). It holds
+ * until the branch's tip or its CI changes.
  */
 export function MergeStop({ stop }: { stop: CiStop }) {
   if (stop.kind === 'moved')
@@ -51,16 +52,8 @@ export function MergeStop({ stop }: { stop: CiStop }) {
         <i class="codicon codicon-warning" />
         <span class="review-text">
           <strong>Not merged:</strong> {stop.base} has moved on since <code>{stop.branch}</code> took it in, so CI checked another tree than the merge's. Update
-          from {capitalize(stop.base)}, then merge when CI passes.
+          from {capitalize(stop.base)} and Merge does both: CI runs again, then it merges.
         </span>
-        <ActionButton
-          class="button"
-          message={{ type: 'updateFromMain' }}
-          working="Updating…"
-          title={`Rebases the branch onto ${stop.base}; it's pushed, and CI runs again`}
-        >
-          <i class="codicon codicon-sync" /> Update from {capitalize(stop.base)}
-        </ActionButton>
       </div>
     );
   const cancelled = stop.runs.every((r) => r.status === 'cancelled');
@@ -90,21 +83,13 @@ export function MergeStop({ stop }: { stop: CiStop }) {
               ))}
         </ul>
       </span>
-      <ActionButton
-        class="button"
-        message={{ type: 'mergeCiFix' }}
-        working="Starting…"
-        title="An agent reads the failed job's log, fixes it on the branch and pushes; CI runs again"
-      >
-        <i class="codicon codicon-hubot" /> Fix with Agent
-      </ActionButton>
     </div>
   );
 }
 
 /**
  * Its place in the merge queue (BL-140), under Merge to main: what the train says of it (it merges cleanly onto main
- * and the tickets ahead, or conflicts with them), and Remove from Queue.
+ * and the tickets ahead, or conflicts with them). Merge Next and Remove from Queue are beside Merge to main (steps.tsx).
  */
 export function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueue']> }) {
   const conflicts = !!queue.state?.startsWith('Conflicts');
@@ -128,24 +113,6 @@ export function QueuePlace({ queue }: { queue: NonNullable<TicketView['mergeQueu
           <i class="codicon codicon-hubot" /> Resolve with Agent
         </ActionButton>
       )}
-      {queue.ahead.length > 0 && (
-        <ActionButton
-          class="button secondary"
-          message={{ type: 'mergeNext' }}
-          working="Moving…"
-          title="Moves it to the front of the merge queue: the train is rebuilt in the new order"
-        >
-          Merge Next
-        </ActionButton>
-      )}
-      <ActionButton
-        class="button secondary"
-        message={{ type: 'mergeQueueRemove' }}
-        working="Removing…"
-        title="Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted"
-      >
-        Remove from Queue
-      </ActionButton>
     </div>
   );
 }
@@ -156,7 +123,7 @@ function Code({ text }: { text: string }) {
 }
 
 /** Merge to main: it says it's merging, or what it waits behind (another ticket's merge), until its merge ends (BL-101). */
-export function MergeButton({ into, progress }: { into: string; progress?: TicketView['mergeProgress'] }) {
+export function MergeButton({ into, progress, secondary }: { into: string; progress?: TicketView['mergeProgress']; secondary?: boolean }) {
   const message: TicketWebviewMessage = { type: 'merge' };
   const clicked = useWorking(message);
   // The host's word first (it lasts across reopening the ticket); from the click until then, the click's.
@@ -164,7 +131,7 @@ export function MergeButton({ into, progress }: { into: string; progress?: Ticke
   if (progress?.ci) return <CiWait into={into} runs={progress.ci} />;
   return (
     <button
-      class="button"
+      class={`button${secondary ? ' secondary' : ''}`}
       disabled={!!label}
       aria-busy={!!label}
       onClick={() => act(message, 'Merging…')}
@@ -341,6 +308,18 @@ export function MergedPanel({ ticket }: { ticket: TicketView }) {
           <i class="codicon codicon-cloud-upload" /> Push…
         </ActionButton>
       )}
+      {/* Merged, what's left to do with its worktree is remove it (BL-154). */}
+      {ticket.worktrees.map((w) => (
+        <ActionButton
+          key={w.key}
+          class="button secondary"
+          message={{ type: 'removeWorktree', key: w.key }}
+          working="Removing…"
+          title={`Removes the worktree of ${w.branch} (asks first): its work is merged`}
+        >
+          <i class="codicon codicon-trash" /> {ticket.worktrees.length > 1 ? `Remove ${w.branch}…` : 'Remove Its Worktree…'}
+        </ActionButton>
+      ))}
     </div>
   );
 }

@@ -78,6 +78,13 @@ describe('cardStatus', () => {
     expect(line(item('doing'), working)).toEqual(['Vega-2 looks stuck: no output for 20 min', 'warning', '', 'Open']);
     const conflicts = { mainCheck: { base: 'main', baseHead: 'h', branches: [{ branch: 'feature/x', head: 'h', conflicts: ['a.ts'] }] } };
     expect(line(item('review', { ...conflicts, review: review('reviewing') }))).toEqual(['Conflicts with main', 'error', '', 'Open']);
+    // Approved, Merge can't work on conflicts: Update and Merge does the job.
+    expect(line(item('review', { ...conflicts, review: review('approved', { byUser: true }) }))).toEqual([
+      'Conflicts with main in 1 file: its agent resolves them, then it merges',
+      'error',
+      '',
+      'Update and Merge',
+    ]);
     expect(line(item('done', { merge: { base: 'main', state: 'unmerged', commits: 2, branches: [] } }))).toEqual([
       "Done, but its work isn't merged",
       'warning',

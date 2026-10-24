@@ -1,4 +1,4 @@
-import type { TicketView } from '../ticketProtocol';
+import type { TicketCiView, TicketView } from '../ticketProtocol';
 import { type Ask, ticketStatus } from '../ticketStatus';
 import { ActionButton, send } from './actions';
 import { focusComment, sendComment } from './comments';
@@ -54,7 +54,7 @@ const STATUS_ICON: Record<string, string> = {
  * own panel's sentence, so the question is in one place. Remote tickets show questions too (their local reports are
  * here), but the options only as text.
  */
-export function StateCard({ ticket }: { ticket: TicketView }) {
+export function StateCard({ ticket, ci }: { ticket: TicketView; ci?: TicketCiView }) {
   const status = ticketStatus({
     status: ticket.item.status,
     review: ticket.review,
@@ -81,7 +81,7 @@ export function StateCard({ ticket }: { ticket: TicketView }) {
       ) : ticket.item.merged ? (
         <MergedPanel ticket={ticket} />
       ) : ticket.review && !asking ? (
-        <ReviewPanel ticket={ticket} />
+        <ReviewPanel ticket={ticket} ci={ci} />
       ) : ticket.rewrite ? (
         <CleanUpPanel ticket={ticket} />
       ) : (
@@ -96,6 +96,16 @@ export function StateCard({ ticket }: { ticket: TicketView }) {
               <button class="button secondary" onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">
                 <i class="codicon codicon-comment-discussion" /> Open Chat
               </button>
+            )}
+            {chat?.state === 'working' && !outsideAgents(ticket).length && (
+              <ActionButton
+                class="button secondary"
+                message={{ type: 'agent', action: 'stop' }}
+                working="Stopping…"
+                title="Stops the agent working on it: its chat and its work are kept"
+              >
+                <i class="codicon codicon-debug-stop" /> Stop
+              </ActionButton>
             )}
             {notStarted && (
               <ActionButton

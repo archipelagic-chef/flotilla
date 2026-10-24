@@ -127,7 +127,7 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
     output: { appendLine() {} },
     openTicket() {},
     ciReader: async () => o.reader ?? reader,
-    updateFromMain: async (id: string) => void updates.push(id),
+    updateFromMain: async (id: string) => (updates.push(id), 'stopped'),
     // As the CI view's fixOnOrigin does: the run read on the ref it ran on, its failed job for an agent on branch.
     fixCi: async (branch: string, run: number, job?: number, runBranch = branch) => {
       fixes.push([branch, run, job]);
@@ -249,7 +249,8 @@ describe('Merge to main on CI (BL-105)', () => {
     const notes = await activity('BL-1');
     expect(notes).toContain('Not merged: CI failed on `feature/BL-1`');
     expect(notes).toMatch(new RegExp(`- Failed: \\[test\\]\\(https://github.com/playground/app/actions/runs/${ci.id}/job/\\d+\\) in \\[CI #3\\]`));
-    expect(ui.messages).toContain("CI failed on feature/BL-1: BL-1 wasn't merged, and is out of the merge queue.");
+    // No dialog that only says no (BL-154): the ticket shows it, with Fix CI with Agent in Merge's place.
+    expect(ui.messages.filter((m) => m.includes('CI failed'))).toEqual([]);
     merger.dispose();
   });
 
@@ -417,7 +418,8 @@ describe('Landing from the merge train on CI (BL-145)', () => {
     expect(notes).toContain('Not merged: CI failed on `flotilla/merge-queue/BL-1`');
     expect(notes).toMatch(/- Failed: \[test\]\(https:\/\/github.com\/playground\/app\/actions\/runs\/\d+\/job\/\d+\) in \[CI #3\]/);
     expect(notes).toContain('BL-1 is out of the merge queue: the train is rebuilt without it.');
-    expect(ui.messages.some((m) => m.startsWith("CI failed on BL-1's commit in the merge train (flotilla/merge-queue/BL-1)"))).toBe(true);
+    // No dialog that only says no (BL-154): the ticket shows it, with Fix CI with Agent in Merge's place.
+    expect(ui.messages.filter((m) => m.includes('CI failed'))).toEqual([]);
     const tip = git(repo, 'rev-parse', 'feature/BL-1');
     const stop = merger.ciStop('BL-1', () => tip);
     expect(stop).toMatchObject({ kind: 'failed', branch: 'feature/BL-1', tip, runBranch: 'flotilla/merge-queue/BL-1' });
