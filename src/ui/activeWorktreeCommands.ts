@@ -4,6 +4,8 @@ import type { Workstream } from '../features/workstreams/workstream';
 import { ALL, type ActiveWorktree } from './activeWorktree';
 import { describeWorkstream, workstreamLabel } from './format';
 import { tabOrder } from './sidebar/viewModel';
+import type { Commands } from './commandSet';
+import { quickOpenInWorktree } from './quickOpen';
 
 /**
  * Makes a worktree the active one: by tab number (0 is All, 1… the worktree tabs, as with Ctrl+Alt+0…9),
@@ -155,4 +157,33 @@ export function closeTabs(arg: unknown, repository: Repository<Workstream>, acti
   } else {
     active.close([key], order);
   }
+}
+
+export interface ActiveWorktreeCommandDeps {
+  extension: vscode.ExtensionContext;
+  repository: Repository<Workstream>;
+  active: ActiveWorktree;
+  /** Root of the worktree open in this window: a new terminal's folder when none is active. */
+  currentRoot: string;
+  /** URI of this window's workspace folder; keeps scheme and remote authority. */
+  reference: vscode.Uri;
+}
+
+/** The commands on the active worktree: select it, its tabs, its terminals, Quick Open in it, the activity bar. */
+export function activeWorktreeCommands(deps: ActiveWorktreeCommandDeps): Commands {
+  const { extension, repository, active, currentRoot, reference } = deps;
+  return {
+    'flotilla.selectWorktree': (arg?: unknown) => selectWorktree(arg, repository, active),
+    'flotilla.closeTab': (arg?: unknown) => closeTabs(arg, repository, active, false),
+    'flotilla.closeOtherTabs': (arg?: unknown) => closeTabs(arg, repository, active, true),
+    'flotilla.newTerminal': () => newTerminal(repository, active, currentRoot, false),
+    'flotilla.newTerminalIn': () => newTerminal(repository, active, currentRoot, true),
+    'flotilla.useWorktreeTerminals': () => useWorktreeTerminals(extension, true),
+    'flotilla.quickOpen': () => {
+      const ws = repository.current.find((w) => w.key === active.key);
+      if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');
+      return quickOpenInWorktree(ws, reference);
+    },
+    'flotilla.configureActivityBar': () => offerActivityBar(extension, true),
+  };
 }

@@ -9,7 +9,7 @@ import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
-import { JOB_LOG_SCHEME, JobLogProvider, showJobLog, signedInActions } from './features/ci/jobLog';
+import { JOB_LOG_SCHEME, JobLogProvider, signedInActions } from './features/ci/jobLog';
 import { CiNotifier } from './ui/ci/ciNotifier';
 import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
 import { scopeForChange } from './features/workstreams/refreshPlan';
@@ -25,53 +25,49 @@ import { ImprovementReview } from './ui/metrics/improvementReview';
 import { BranchPush } from './ui/backlog/branchPush';
 import { MainSync } from './ui/backlog/mainSync';
 import { TicketChecker } from './ui/backlog/ticketCheck';
-import { checkAllTickets } from './ui/backlog/checkAll';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
-import { Merger, readyToMerge } from './ui/backlog/merge';
-import { levelReport } from './features/backlog/modelLevel';
+import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
-import { agentChatItem } from './features/backlog/backlog';
-import { isRunningHeadless, isRunningInTerminal, modelLevels, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
-import { backlogIdOf } from './ui/backlog/cardMenu';
+import { isRunningHeadless, isRunningInTerminal, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { PauseAll } from './ui/backlog/pauseAll';
 import { PausedAllStore } from './features/backlog/pausedAll';
-import { discussable } from './features/backlog/shaping';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { closeTabs, offerActivityBar, selectWorktree, newTerminal, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, useWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
+import { activeWorktreeCommands, offerActivityBar, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
-import { quickOpenInWorktree } from './ui/quickOpen';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
-import { newBacklogItem } from './ui/backlog/newItem';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { Merges } from './ui/backlog/merges';
 import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { devGitHubApi } from './ui/ci/devGitHub';
-import { heldBy, type ReviewFix } from './features/backlog/review';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { resolveBase } from './features/workstreams/progress';
 import { localBase } from './features/backlog/merge';
-import { hideWorktrees } from './ui/hygiene';
+import { hygieneCommands } from './ui/hygiene';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { StorageMonitor } from './ui/storage';
 import { FinishedWorktrees } from './ui/finishedWorktrees';
 import { SharedFolders } from './ui/sharedFolders';
-import { SLOW_STORAGE_DOCS } from './features/storage/storage';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
 import { registerSelfUpdate, resumeAfterInstall, watchMainBuild } from './ui/selfUpdate';
-import { shortTime } from './webview/shortTime';
 import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
 import { startEventLog } from './ui/eventLog';
+import { registerAll } from './ui/commandSet';
+import { mergeCommands } from './ui/backlog/mergeCommands';
+import { agentCommands } from './ui/backlog/agentCommands';
+import { autopilotCommands } from './ui/backlog/autopilotCommands';
+import { metricsCommands } from './ui/metrics/metricsCommands';
+import { viewCommands } from './ui/sidebar/viewCommands';
 
 const BACKGROUND_POLL_SECONDS = 60;
 let heartbeatGitDir: string | undefined;
@@ -234,17 +230,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ci: sidebar.ci, showCi: (key) => sidebar.showCi(key),
   });
   context.subscriptions.push(tickets);
-  // A ticket's run block (its Run button names the entry and the block; without one, the ticket's run), after asking.
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.runBacklogItem', (id?: unknown, block?: unknown) => {
-      if (typeof id !== 'string') return;
-      const ref = block as { key?: unknown; index?: unknown; try?: unknown } | undefined;
-      return tickets.run(
-        id,
-        typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index, ...(ref.try === true ? { try: true } : {}) } : undefined,
-      );
-    }),
-  );
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   // What happens to tickets, agents and merges, recorded as events (BL-157).
@@ -273,40 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     localOnly: devGitHubApi(context.extensionMode) !== undefined,
   });
   context.subscriptions.push(reviews, merger, pushes, trackTerminals());
-  const reportError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.mergeBacklogItem', async (arg?: unknown) => {
-      let id = backlogIdOf(arg);
-      if (!id) {
-        const ready = (await backlog.read()).items.filter(readyToMerge);
-        id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;
-      }
-      if (id) await merger.merge(id).catch(reportError);
-    }),
-    vscode.commands.registerCommand('flotilla.mergeAllReady', () => merger.mergeAllReady().catch(reportError)),
-    vscode.commands.registerCommand('flotilla.mergeNext', async (arg?: unknown) => {
-      const id = backlogIdOf(arg);
-      if (id) await merger.mergeNext(id).catch(reportError);
-    }),
-    vscode.commands.registerCommand('flotilla.pushMerged', () => merger.push().catch(reportError)),
-  );
-  // Pause, Resume and Stop on a backlog card's menu (its id in the menu's context), or asking which ticket.
-  const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (card?: unknown) => {
-    let id = backlogIdOf(card);
-    if (!id) {
-      const items = (await backlog.read()).items.filter((i) =>
-        action === 'resume' ? heldBy(i.review) || i.review?.state === 'paused' : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
-      );
-      const title = { pause: 'Pause the agent on…', resume: 'Resume the agent on…', stop: 'Stop the agent on…' }[action];
-      id = (await vscode.window.showQuickPick(items.map((i) => ({ label: i.id, description: i.title })), { title }))?.label;
-    }
-    if (id) await tickets.controlAgent(id, action);
-  };
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.pauseAgent', controlAgent('pause')),
-    vscode.commands.registerCommand('flotilla.resumeAgent', controlAgent('resume')),
-    vscode.commands.registerCommand('flotilla.stopAgent', controlAgent('stop')),
-  );
+  registerAll(context.subscriptions, mergeCommands({ backlog, merger }));
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.
   const noteDescriptions = () => void backlog.noteDescriptions().catch((e: unknown) => output.appendLine(`Noting description edits: ${String(e)}`));
   context.subscriptions.push(backlog.watch(() => noteDescriptions()));
@@ -327,20 +279,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     creating: { dir: creatingDir(location.commonDir), cleared: () => creatingWorktrees.reload() },
   });
   tickets.useChecker(checker);
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.checkTicket', async (card?: unknown) => {
-      const id =
-        backlogIdOf(card) ??
-        (await vscode.window.showQuickPick(
-          (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
-          { title: 'Check the ticket…' },
-        ))?.label;
-      if (!id) return;
-      await tickets.open(id);
-      await tickets.check(id).catch(reportError);
-    }),
-    vscode.commands.registerCommand('flotilla.checkAll', () => checkAllTickets(checker, tickets).catch(reportError)),
-  );
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
   const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
   context.subscriptions.push(mainSync);
@@ -350,37 +288,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
   const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
-  context.subscriptions.push(
-    pauseAll,
-    vscode.commands.registerCommand('flotilla.pauseAllAgents', () => pauseAll.pauseCommand().catch(reportError)),
-    vscode.commands.registerCommand('flotilla.resumeAllAgents', () => pauseAll.resumeCommand().catch(reportError)),
-  );
+  context.subscriptions.push(pauseAll);
   // After Install Main's reload (BL-161): the agents it paused go on.
   resumeAfterInstall(context, location.commonDir, pauseAll);
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.discussBacklogItem', async (id?: unknown) => {
-      if (typeof id !== 'string') return;
-      const item = (await backlog.read()).items.find((i) => i.id === id);
-      if (!item || !discussable(item)) return;
-      await tickets.open(id);
-      await shaping.discuss(id, true).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
-    }),
-  );
-  // Prioritize: a queued start runs now, above the limit, or pauses a running agent to make room (see reviewLoop).
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'flotilla.prioritizeBacklogItem',
-      (id: unknown) => typeof id === 'string' && reviews.prioritize(id).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
-    ),
-  );
-  // The "Needs you" list's fix for a stopped review (the same fixes as the ticket's and the notification's).
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      'flotilla.fixBacklogReview',
-      (id: unknown, fix: unknown) =>
-        typeof id === 'string' && reviews.fix(id, fix as ReviewFix).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
-    ),
-  );
+  registerAll(context.subscriptions, agentCommands({ backlog, tickets, reviews, shaping, checker }));
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir });
   context.subscriptions.push(inbox);
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
@@ -436,25 +347,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     removeAnyway: (ws) => removeWorkstream(ctx, ws),
   });
-  context.subscriptions.push(finished, vscode.commands.registerCommand('flotilla.keptWorktrees', () => finished.showKept()));
+  context.subscriptions.push(finished);
   // Worktrees' copies of flotilla.linkFolders share the main worktree's files, made before the setting or not.
   const shared = new SharedFolders({ repository, leader, mainRoot: location.mainRoot, workspaceState: context.workspaceState, output });
-  context.subscriptions.push(shared, vscode.commands.registerCommand('flotilla.shareLinkedFolders', () => shared.shareNow()));
+  context.subscriptions.push(shared);
+  registerAll(context.subscriptions, hygieneCommands({ finished, shared }));
   // One of the user's chats grew big: once, a word on what that costs (BL-70).
   context.subscriptions.push(new BigChats({ repository, leader, globalState: context.globalState }));
-  // How finished tickets fared per model level: review rounds, and which moved up (BL-69).
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.modelLevelReport', async () => {
-      // What each ticket's agents re-read, from their chats still around.
-      const reRead = new Map<string, number>();
-      for (const c of repository.current.flatMap((w) => w.chats)) {
-        const item = agentChatItem(c.firstPrompt)?.item;
-        if (item && c.usage) reRead.set(item, (reRead.get(item) ?? 0) + c.usage.reRead);
-      }
-      output.appendLine(levelReport((await backlog.read()).items, modelLevels(), reRead).join('\n'));
-      output.show(true);
-    }),
-  );
   let autopilotKey: Promise<string> | undefined;
   const autopilot = new Autopilot({
     backlog,
@@ -487,11 +386,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     mainRoot: location.mainRoot,
     output,
   });
-  context.subscriptions.push(
-    improvement,
-    vscode.commands.registerCommand('flotilla.reviewImprovementsNow', () => improvement.reviewNow().catch(reportError)),
-    vscode.commands.registerCommand('flotilla.openImprovementReview', () => improvement.openLatest().catch(reportError)),
-  );
+  context.subscriptions.push(improvement);
+  registerAll(context.subscriptions, metricsCommands({ backlog, repository, improvement, output }));
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
@@ -503,46 +399,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void shared.sweep();
       void mainSync.check();
     }),
-    vscode.commands.registerCommand('flotilla.hideWorktrees', () => hideWorktrees()),
-    vscode.commands.registerCommand('flotilla.toggleAutopilot', async () => {
-      const on = !autopilot.enabled;
-      // Turning it off stops no agent: say so first, while any work (BL-153).
-      const working = on ? 0 : autopilot.view().running;
-      if (working) {
-        const off = 'Turn Off';
-        const pick = await vscode.window.showWarningMessage(
-          `Turn the autopilot off? ${working === 1 ? 'The agent working keeps working' : `${working} agents keep working`}; no new tickets start.`,
-          { modal: true },
-          off,
-        );
-        if (pick !== off) return;
-      }
-      await autopilot.setEnabled(on);
-      if (on) {
-        void vscode.window.showInformationMessage(
-          `Autopilot on: up to ${autopilot.view().max} agents take To Do tickets from the top of the backlog and work on them without a window. They report in the tickets; their work goes on to review.`,
-        );
-      }
-    }),
   );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.tryPausedNow', async () => {
-      // With the autopilot off too: it resumes the paused agents, and starts no new tickets.
-      const result = await autopilot.tryNow();
-      if (!result) void vscode.window.showInformationMessage('No agent waits for a usage limit.');
-      else if (result.limited) void vscode.window.showInformationMessage(`Claude is still limited: no agent was started. They go on by themselves at ${shortTime(result.limited)}.`);
-      else void vscode.window.showInformationMessage(`Claude takes work again: ${result.resumed === 1 ? 'the paused agent goes on' : `${result.resumed} paused agents go on, top of the backlog first`}.`);
-    }),
-  );
+  registerAll(context.subscriptions, autopilotCommands({ autopilot, pauseAll }));
   ctx.clashOf = (id) => autopilot.clashOf(id);
   ctx.startWork = (item, ws) => reviews.startWork(item, ws, { byHand: true });
   sidebar.useAutopilot(autopilot);
   // A repository on a slow drive is said so once, and packed in the background when it has too many loose objects.
   const storage = new StorageMonitor({ mainRoot: location.mainRoot, commonDir: location.commonDir, backlog, globalState: context.globalState, output });
-  context.subscriptions.push(
-    storage,
-    vscode.commands.registerCommand('flotilla.slowStorageHelp', () => vscode.env.openExternal(vscode.Uri.parse(SLOW_STORAGE_DOCS))),
-  );
+  context.subscriptions.push(storage);
   sidebar.useStorage(storage);
   void storage.start();
   sidebar.useQueue(reviews);
@@ -566,35 +430,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
   );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('flotilla.showJobLog', (arg?: unknown) => showJobLog(arg, jobLogs)),
-    vscode.commands.registerCommand('flotilla.showSidebar', () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`)),
-    vscode.commands.registerCommand('flotilla.showNeedsYou', () => needs.showList()),
-    vscode.commands.registerCommand('flotilla.showOverview', () => sidebar.showTool('overview')),
-    vscode.commands.registerCommand('flotilla.showBacklog', () => sidebar.showTool('backlog')),
-    vscode.commands.registerCommand('flotilla.foldAll', () => sidebar.fold(true)),
-    vscode.commands.registerCommand('flotilla.unfoldAll', () => sidebar.fold(false)),
-    vscode.commands.registerCommand('flotilla.addBacklogItem', async () => {
-      await sidebar.showTool('backlog');
-      await newBacklogItem(backlog, integrations);
-    }),
-    vscode.commands.registerCommand('flotilla.showFiles', () => sidebar.showTool('files')),
-    vscode.commands.registerCommand('flotilla.showSearch', () => sidebar.showTool('search')),
-    vscode.commands.registerCommand('flotilla.showVersionControl', () => sidebar.showTool('vc')),
-    vscode.commands.registerCommand('flotilla.showChats', () => sidebar.showTool('chats')),
-    vscode.commands.registerCommand('flotilla.selectWorktree', (arg?: unknown) => selectWorktree(arg, repository, active)),
-    vscode.commands.registerCommand('flotilla.closeTab', (arg?: unknown) => closeTabs(arg, repository, active, false)),
-    vscode.commands.registerCommand('flotilla.closeOtherTabs', (arg?: unknown) => closeTabs(arg, repository, active, true)),
-    vscode.commands.registerCommand('flotilla.newTerminal', () => newTerminal(repository, active, location.worktreeRoot, false)),
-    vscode.commands.registerCommand('flotilla.newTerminalIn', () => newTerminal(repository, active, location.worktreeRoot, true)),
-    vscode.commands.registerCommand('flotilla.useWorktreeTerminals', () => useWorktreeTerminals(context, true)),
-    vscode.commands.registerCommand('flotilla.quickOpen', () => {
-      const ws = repository.current.find((w) => w.key === active.key);
-      if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');
-      return quickOpenInWorktree(ws, folder.uri);
-    }),
-    vscode.commands.registerCommand('flotilla.configureActivityBar', () => offerActivityBar(context, true)),
-  );
+  registerAll(context.subscriptions, viewCommands({ sidebar, needs, jobLogs, backlog, integrations }));
+  registerAll(context.subscriptions, activeWorktreeCommands({ extension: context, repository, active, currentRoot: location.worktreeRoot, reference: folder.uri }));
   void offerActivityBar(context, false);
   context.subscriptions.push(offerWorktreeTerminals(context, repository, active));
   // With + opening terminals in the active worktree, the terminal panel's own worktree button is hidden.
