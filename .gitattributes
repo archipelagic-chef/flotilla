@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# Tickets each add their entry under "## Unreleased": a merge keeps both sides' entries instead of a conflict (BL-155).
+CHANGELOG.md merge=union
