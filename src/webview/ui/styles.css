@@ -444,10 +444,6 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tag.removing .codicon {
-  font-size: inherit;
-  vertical-align: middle;
-}
 .tag {
   margin-left: 6px;
   padding: 0 4px;
@@ -725,10 +721,6 @@ textarea:focus {
 .card.current {
   background: color-mix(in srgb, var(--ws-color) 10%, var(--vscode-sideBar-background));
 }
-.card:hover .actions,
-.card:focus-within .actions {
-  visibility: visible;
-}
 
 .toggle {
   width: 22px;
@@ -838,10 +830,6 @@ ins {
   cursor: pointer;
 }
 .wt-tab:focus-visible {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-.card.selected {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
 }
