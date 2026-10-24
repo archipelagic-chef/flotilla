@@ -6,6 +6,9 @@ export type FilesMessage =
   | { type: 'openHref'; href: string }
   /** Open what a commit changed. */
   | { type: 'openCommit'; hash: string }
+  /** A file of its Changes in the diff editor (group: its index), or all of them in the multi-file diff editor. */
+  | { type: 'openChange'; group: number; path: string }
+  | { type: 'openAllChanges' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
   /** Remove a worktree of the ticket (asks first, as Remove Worktree… does). */
