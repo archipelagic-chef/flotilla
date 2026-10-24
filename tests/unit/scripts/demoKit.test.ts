@@ -425,6 +425,7 @@ describe('parseJsonc', () => {
     const text = '{\n  // the theme\n  "a": "http://x/*y*/", /* b */ "b": [1, 2,],\n}\n';
     expect(parseJsonc(text)).toEqual({ a: 'http://x/*y*/', b: [1, 2] });
     expect(parseJsonc('{"a": "say \\"hi\\" // not a comment"}')).toEqual({ a: 'say "hi" // not a comment' });
+    expect(parseJsonc('{"a": "x,}", "b": [1, /* c */ ], // d\n}')).toEqual({ a: 'x,}', b: [1] });
   });
 
   it('is undefined for what is not an object', () => {

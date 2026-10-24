@@ -360,10 +360,12 @@ export function parseJsonc(text) {
       const end = text.indexOf('*/', i + 2);
       i = end < 0 ? text.length : end + 1;
       out += ' ';
+    } else if (c === ',' && /^\s*(\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*[}\]]/.test(text.slice(i + 1))) {
+      // A trailing comma (outside strings: those are copied whole above).
     } else out += c;
   }
   try {
-    const parsed = JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+    const parsed = JSON.parse(out);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
   } catch {
     return undefined;

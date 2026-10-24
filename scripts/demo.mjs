@@ -117,6 +117,9 @@ function prepareProfile(githubUrl, own = {}) {
   Object.assign(settings, own);
   fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
   fs.writeFileSync(DEMO_OWN_FILE, `${JSON.stringify(Object.keys(own))}\n`);
+  // What the last demo left in the playground's window (the sidebar's state: a fold open, a filter on; the editors and
+  // views open) goes: each demo starts from the same window, so a toggle it clicks toggles the same way every time.
+  fs.rmSync(path.join(PROFILE_DIR, 'User', 'workspaceStorage'), { recursive: true, force: true });
 }
 
 function usage(message) {
@@ -125,21 +128,8 @@ function usage(message) {
   process.exit(1);
 }
 
-/**
- * A check (`npm run demo -- check`): the steps without their pauses, pointer moves and typing delays. Without them,
- * a step can act on a screen still redrawing after the one before (a list re-rendered, its element replaced, the click
- * lost), so each step that acts waits for the screen to be still for SETTLE_MS first (at most SETTLE_MAX_MS):
- * `drawnAt` is when the window last drew a frame.
- */
-const pace = { fast: false, drawnAt: () => 0 };
-const SETTLE_MS = 300;
-const SETTLE_MAX_MS = 3000;
-
-/** In a check, waits until nothing has changed on screen for SETTLE_MS (or SETTLE_MAX_MS passed: a caret blinks). */
-async function settle(page) {
-  const end = Date.now() + SETTLE_MAX_MS;
-  while (Date.now() - pace.drawnAt() < SETTLE_MS && Date.now() < end) await page.waitForTimeout(50);
-}
+/** A check (`npm run demo -- check`): the steps without their pauses, pointer moves and typing delays. */
+const pace = { fast: false };
 
 /** When the recording started (Date.now()), and the pointer's moves since then ([from, to] in ms): to measure them. */
 const recorded = { start: 0, moves: [] };
@@ -283,7 +273,6 @@ async function ready(page, drawnAt) {
 /** Plays a step in the window. */
 async function play(page, step) {
   const timeout = step.timeout ?? TIMEOUT_MS;
-  if (pace.fast && ['command', 'click', 'hover', 'drag', 'type', 'press'].includes(step.action)) await settle(page);
   switch (step.action) {
     case 'command': {
       await page.keyboard.press('F1');
@@ -548,7 +537,6 @@ async function show(mode, demo, out, still, display) {
     // Frames from the moment the window is there: the screen settling is what tells that it's ready.
     const gate = frameGate(async () => unsafeFrame({ title: await page.title().catch(() => undefined), argv }, { profileDir: PROFILE_DIR }));
     let drawnAt = Date.now();
-    pace.drawnAt = () => drawnAt;
     const stopScreencast = await screencast(page, (frame) => {
       drawnAt = Date.now();
       if (mode === 'record') gate.add(frame);
