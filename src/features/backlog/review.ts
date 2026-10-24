@@ -1,5 +1,6 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
+import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 
@@ -301,7 +302,8 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
   return [
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
     MAY_ASK,
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. Report it in the same shape (a summary, then "Needs from you: nothing"), and end that report with a line "Ready for review." so it's reviewed again.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: ", or are \`fixup!\` commits of those), then report in the ticket as before, saying what you changed for each request. Report it in the same shape (a summary, then "Needs from you: nothing"), and end that report with a line "Ready for review." so it's reviewed again.`,
+    fixupNote(o.item.id),
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
     `If you disagree with a request, say why in your report instead of making the change.`,
   ].join('\n\n');
@@ -323,7 +325,8 @@ export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: s
     `Read the ticket ${o.ticket} for the context (the description, and the activity).`,
     MAY_ASK,
     UPDATE_DESCRIPTION(o.ticket),
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, in the same shape (a summary, then "Needs from you: nothing"), saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: ", or are \`fixup!\` commits of those), then report in the ticket, in the same shape (a summary, then "Needs from you: nothing"), saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    fixupNote(o.item.id),
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }

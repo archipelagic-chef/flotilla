@@ -220,10 +220,18 @@ explanations that change nothing don't need one.
    acceptance criteria. Edit only the description; leave the activity as it is.
 6. When the work is done, end your final report with a line \`Ready for review.\` It's then reviewed: by another
    agent, or by the user. ${reviewNotes({ id: '<id>', backlogDir })}
-7. Keep your branch current with main: before you report \`Ready for review.\`, merge main (the branch work merges
-   into) into your branch, resolve any conflicts, and run the project's checks (build, tests). Merge only main, never
-   another ticket's branch. If you need another ticket's work, add a line \`Depends on: BL-12\` (its id) to your
-   ticket's description and say so in your report: your ticket then shows that it waits for that one to be merged.
+7. Keep your branch current with main, and tidy it: before you report \`Ready for review.\`, rebase it onto main
+   (\`git rebase main\`, the branch work merges into; never merge main into it), resolving any conflicts commit by
+   commit. Then tidy its commits into the steps a reviewer would want to read, non-interactively: \`fixup!\` commits
+   and \`GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main\`, or \`git rebase -i main\` with a scripted
+   \`GIT_SEQUENCE_EDITOR\`. Each commit is one step that builds and passes on its own where reasonable, its message
+   starting with the ticket's id: no "Merge main" and no "fix typo" commits. Say in your report how many commits you
+   made from how many, and run the project's checks (build, tests) on the result. When a review asks for changes, make
+   them as \`fixup!\` commits (\`git commit --fixup <commit>\`) so the reviewer sees what changed; they're squashed in
+   the next tidy-up. The branch is rewritten, so push it only with \`git push --force-with-lease\`; never force-push
+   anything else. Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, add a
+   line \`Depends on: BL-12\` (its id) to your ticket's description and say so in your report: your ticket then shows
+   that it waits for that one to be merged.
    Use \`Depends on:\` only when a ticket builds on another's work or reshapes the same feature, not because both
    change the same files: tickets start from main at once, and overlapping changes are reconciled when they merge.
 
