@@ -1,0 +1,46 @@
+.main-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.main-note .main-note-action {
+  margin-left: auto;
+}
+/* Why Merge to main stopped on CI (BL-112), under the merge button. */
+.merge-stop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.merge-stop > .codicon {
+  font-size: 16px;
+  color: var(--error);
+}
+.merge-queue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--working);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.merge-queue.conflicts {
+  border-left-color: var(--waiting);
+}
+.merge-queue > .codicon {
+  font-size: 16px;
+}
+.merge-stop-jobs {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
