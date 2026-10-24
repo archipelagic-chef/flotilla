@@ -3,6 +3,7 @@ import { AGENT_EFFORTS, type BacklogStatus, priorityFromName } from '../../featu
 import type { TicketView } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
 import { act, Dropdown, send, useWorking } from './actions';
+import './header.css';
 
 export const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = [
   { status: 'todo', label: 'To Do', icon: 'circle-large-outline' },

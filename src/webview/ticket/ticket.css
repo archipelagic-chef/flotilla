@@ -58,18 +58,6 @@ header {
 .title:hover {
   background: var(--vscode-list-hoverBackground);
 }
-.title-input {
-  font: inherit;
-  font-size: 22px;
-  font-weight: 600;
-  padding: 0 4px;
-  margin: 0 -5px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--focus);
-  border-radius: 3px;
-  outline: none;
-}
 .toolbar,
 .actions-row {
   display: flex;
