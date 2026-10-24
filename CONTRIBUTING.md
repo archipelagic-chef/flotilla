@@ -103,6 +103,18 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+- **Commands** (BL-185): each feature's module exports its commands as a map of handlers by command id
+  (`Commands`, [src/ui/commandSet.ts](src/ui/commandSet.ts)), made from the deps it's given:
+  `mergeCommands` ([src/ui/backlog/mergeCommands.ts](src/ui/backlog/mergeCommands.ts)), `agentCommands`,
+  `autopilotCommands`, `metricsCommands`, `viewCommands` (the sidebar's), `activeWorktreeCommands`, `hygieneCommands`.
+  [src/extension.ts](src/extension.ts) only makes the deps and calls `registerAll(context.subscriptions, xCommands(…))`
+  once per feature; it registers no command itself. The worktree commands of [src/ui/commands.ts](src/ui/commands.ts)
+  (they report errors with Show Output) are split the same way: `registerCommands` joins `worktreeCommands`,
+  `backlogCommands`, `ciCommands`, `scmCommands` ([src/ui/scmCommands.ts](src/ui/scmCommands.ts)) and `chatCommands`
+  ([src/ui/chatCommands.ts](src/ui/chatCommands.ts)). A new command goes in its feature's map, next to its
+  `package.json` entry; a new feature's map also goes in the list of
+  [tests/unit/ui/commandSet.test.ts](tests/unit/ui/commandSet.test.ts), which checks that every command of
+  `package.json` is registered, once.
 - **A part's CSS** is in its own file next to it (`card.tsx` → `card.css`), which the part imports
   (`import './card.css';`); esbuild bundles it into `dist/webview.css` or `dist/ticket.css`. Only what parts share
   (the variables, `body`, buttons, rows, `.rendered`, the layout) stays in the entry CSS, `ui/styles.css` or

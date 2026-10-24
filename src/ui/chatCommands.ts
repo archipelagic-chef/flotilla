@@ -12,6 +12,9 @@ import { choiceArgs, isRunningHeadless, runAgentInTerminal, type AgentTrack } fr
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
+import { clearAgentStatus } from '../features/workstreams/agentStatus';
+import { claudeHookConfig } from './claudeHooks';
+import { isTarget, type Arg, type Commands, type WithWorkstream } from './commandSet';
 
 const CLAUDE_EXTENSION = 'anthropic.claude-code';
 const CLAUDE_OPEN = 'claude-vscode.editor.open';
@@ -334,4 +337,28 @@ export async function maybeOfferHooks(ctx: ChatContext): Promise<void> {
     'Not Now',
   );
   if (choice === 'Install Hooks') await installChatHooks(ctx);
+}
+
+/** The chats' commands, on the worktree they're given (or picked). */
+export function chatCommands(ctx: ChatContext, withWs: WithWorkstream): Commands {
+  return {
+    'flotilla.newChat': withWs((ws) => newChat(ctx, ws)),
+    'flotilla.openChat': withWs((ws, arg) => isTarget(arg) && arg.chatId && openChat(ctx, ws, arg.chatId, arg.prompt)),
+    'flotilla.unlinkChat': withWs((ws, arg) => isTarget(arg) && arg.chatId && unlink(ctx, ws, arg.chatId)),
+    'flotilla.linkChat': withWs((ws) => link(ctx, ws)),
+    'flotilla.installClaudeHooks': (arg?: Arg) => installChatHooks(ctx, isTarget(arg) ? ctx.workstreams().find((w) => w.key === arg.key) : undefined),
+    'flotilla.clearAgentStatus': withWs(
+      async (ws) => {
+        await clearAgentStatus(ws.worktree.adminDir);
+        await ctx.refresh();
+      },
+      { includeUnreachable: true },
+    ),
+    'flotilla.copyClaudeHookConfig': async () => {
+      await vscode.env.clipboard.writeText(claudeHookConfig());
+      void vscode.window.showInformationMessage(
+        'Claude Code hook config copied. The hooks also need the hook script, .claude/flotilla-hook.js, in each worktree: run Flotilla: Install Claude Code Hooks to set up both.',
+      );
+    },
+  };
 }
