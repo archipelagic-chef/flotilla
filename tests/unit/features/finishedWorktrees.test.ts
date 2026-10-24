@@ -71,9 +71,12 @@ async function setup(o: {
   leftovers?: string[];
   kept?: string[];
   keptLeftovers?: string[];
+  /** Branches whose worktree a removal left halfway (RemovalRisks.halfRemoved). */
+  halfRemoved?: string[];
 }) {
   const { FinishedWorktrees } = await import('../../../src/ui/finishedWorktrees');
   const removed: string[] = [];
+  const forced: string[] = [];
   const deleted: string[] = [];
   const output: string[] = [];
   const activity: Array<[string, string]> = [];
@@ -89,8 +92,15 @@ async function setup(o: {
     },
     repository: { current: o.worktrees, refresh: async () => undefined, onDidChange: () => ({ dispose() {} }) } as never,
     service: {
-      removalRisks: async (wt) => ({ changedFiles: o.worktrees.find((w) => w.worktree === wt)!.changes.length, unmergedCommits: 0 }),
-      remove: async (wt) => void removed.push(wt.branch!),
+      removalRisks: async (wt) => ({
+        changedFiles: o.worktrees.find((w) => w.worktree === wt)!.changes.length,
+        unmergedCommits: 0,
+        halfRemoved: !!o.halfRemoved?.includes(wt.branch!),
+      }),
+      remove: async (wt, opts) => {
+        removed.push(wt.branch!);
+        if (opts.force) forced.push(wt.branch!);
+      },
       leftovers: async () => o.leftovers ?? [],
       deleteLeftover: async (dir) => void deleted.push(dir),
     },
@@ -100,7 +110,7 @@ async function setup(o: {
     removeAnyway,
   });
   disposables.push(cleaner);
-  return { cleaner, removed, deleted, output, activity, state, removeAnyway };
+  return { cleaner, removed, forced, deleted, output, activity, state, removeAnyway };
 }
 
 describe('FinishedWorktrees', () => {
@@ -112,6 +122,29 @@ describe('FinishedWorktrees', () => {
     expect(removed).toEqual(['feature/BL-1']);
     expect(showInformationMessage).not.toHaveBeenCalled();
     expect(activity).toEqual([['BL-1', 'Removed the worktree of `feature/BL-1` now that the ticket is done; the branch stays: 100 bytes freed.']]);
+  });
+
+  it('finishes a removal that stopped halfway without asking, even before the first question, and notes it', async () => {
+    const half = worktree('BL-1', { changes: Array.from({ length: 167 }, () => ({})) as never });
+    const { cleaner, removed, forced, activity } = await setup({ items: [item('BL-1', 'done')], worktrees: [half], halfRemoved: ['feature/BL-1'] });
+
+    await cleaner.sweep();
+
+    expect(removed).toEqual(['feature/BL-1']);
+    expect(forced).toEqual(['feature/BL-1']);
+    expect(showInformationMessage).not.toHaveBeenCalled();
+    expect(activity[0][1]).toMatch(/^Finished removing the worktree of `feature\/BL-1`: an earlier removal had stopped halfway/);
+  });
+
+  it('asks about a half-deleted worktree with a real change, and doesn’t force it', async () => {
+    const changed = worktree('BL-1', { changes: Array.from({ length: 160 }, () => ({})) as never });
+    const { cleaner, removed } = await setup({ items: [item('BL-1', 'done')], worktrees: [changed], introduced: true });
+    showInformationMessage.mockResolvedValueOnce(undefined);
+
+    await cleaner.sweep();
+
+    expect(removed).toEqual([]);
+    expect(showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('it has 160 uncommitted or untracked files'), 'Remove Anyway', 'Keep');
   });
 
   it('leaves tickets that aren’t done alone, and does nothing in a window that isn’t leading', async () => {

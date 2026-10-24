@@ -1979,6 +1979,36 @@ ins {
 .backlog-item .demo-mark:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
 }
+.backlog-item.has-status {
+  height: auto;
+  min-height: var(--row-height);
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.backlog-item .agent-status {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 0 3px 46px;
+  box-sizing: border-box;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.backlog-item .agent-status .codicon {
+  font-size: 11px;
+  flex: none;
+}
+.backlog-item .agent-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backlog-item .agent-status.stuck {
+  color: var(--vscode-editorWarning-foreground);
+}
 .backlog-item .agent-chip {
   flex: none;
   display: inline-flex;
@@ -2256,6 +2286,22 @@ ins {
 }
 .autopilot-line .what {
   color: var(--vscode-descriptionForeground);
+}
+.autopilot-line .status {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.autopilot-line .status .codicon {
+  font-size: 11px;
+  vertical-align: -1px;
+}
+.autopilot-line .status.stuck {
+  color: var(--vscode-editorWarning-foreground);
 }
 .autopilot-line:hover .title {
   text-decoration: underline;

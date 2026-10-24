@@ -212,7 +212,7 @@ describe('WorktreeService.remove', () => {
     git(wt.path!, 'commit', '-q', '-am', 'branch-only commit');
     writeFile(wt.path!, 'README.md', 'dirty\n');
 
-    expect(await s.removalRisks(wt)).toEqual({ changedFiles: 2, unmergedCommits: 1 });
+    expect(await s.removalRisks(wt)).toEqual({ changedFiles: 2, unmergedCommits: 1, halfRemoved: false });
     await expect(s.remove(wt, { force: false })).rejects.toBeInstanceOf(GitError);
     expect((await s.list()).find((w) => w.id === wt.id)!.locked).toBe(true);
 
@@ -221,6 +221,63 @@ describe('WorktreeService.remove', () => {
     expect(fs.existsSync(wt.adminDir)).toBe(false);
     await s.deleteBranch('feat', true);
     expect(git(repo, 'branch', '--list', 'feat')).toBe('');
+  });
+
+  /** A worktree whose branch ignores node_modules/, with files in it, and some tracked files. */
+  async function withNodeModules() {
+    const repo = initRepo();
+    cleanup.push(repo);
+    writeFile(repo, '.gitignore', 'node_modules/\n.playground/\n');
+    for (const name of ['a.txt', 'b.txt', 'c.txt', 'src/d.ts']) writeFile(repo, name, `${name}\n`);
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'files');
+    const s = service(repo);
+    const wt = await s.create({ kind: 'new', branch: 'feat' });
+    for (let i = 0; i < 20; i++) writeFile(wt.path!, `node_modules/pkg${i}/index.js`, 'x');
+    writeFile(wt.path!, '.playground/state.json', '{}');
+    return { repo, s, wt };
+  }
+
+  /** What a `git worktree remove` stopped partway leaves: the first files deleted, .gitignore among them. */
+  const stopHalfway = (dir: string) => ['.gitignore', 'README.md', 'a.txt', 'b.txt'].forEach((f) => fs.rmSync(path.join(dir, f), { force: true }));
+
+  it('deletes ignored folders before git, and deletes nothing when it refuses a worktree with changes', async () => {
+    const { s, wt } = await withNodeModules();
+    writeFile(wt.path!, 'a.txt', 'mine\n');
+    await expect(s.remove(wt, { force: false })).rejects.toBeInstanceOf(GitError);
+    expect(fs.existsSync(path.join(wt.path!, 'node_modules', 'pkg0', 'index.js'))).toBe(true);
+
+    git(wt.path!, 'checkout', '--', 'a.txt');
+    await s.remove(wt, { force: false });
+    expect(fs.existsSync(wt.path!)).toBe(false);
+  });
+
+  it('finds a removal that stopped halfway and finishes it, ignoring as the branch does', async () => {
+    const { s, wt } = await withNodeModules();
+    stopHalfway(wt.path!);
+
+    expect(await s.removalRisks(wt)).toMatchObject({ halfRemoved: true });
+    await s.remove(wt, { force: true });
+    expect(fs.existsSync(wt.path!)).toBe(false);
+    expect(fs.existsSync(wt.adminDir)).toBe(false);
+  });
+
+  it('doesn’t take a half-deleted worktree with a real change for a removal that stopped halfway', async () => {
+    const modified = await withNodeModules();
+    stopHalfway(modified.wt.path!);
+    writeFile(modified.wt.path!, 'c.txt', 'mine\n');
+    expect(await modified.s.removalRisks(modified.wt)).toMatchObject({ halfRemoved: false });
+
+    const added = await withNodeModules();
+    stopHalfway(added.wt.path!);
+    writeFile(added.wt.path!, 'notes.txt', 'mine\n');
+    expect(await added.s.removalRisks(added.wt)).toMatchObject({ halfRemoved: false });
+
+    const staged = await withNodeModules();
+    stopHalfway(staged.wt.path!);
+    writeFile(staged.wt.path!, 'src/e.ts', 'new\n');
+    git(staged.wt.path!, 'add', 'src/e.ts');
+    expect(await staged.s.removalRisks(staged.wt)).toMatchObject({ halfRemoved: false });
   });
 
   it('removes a worktree from the other environment', async () => {

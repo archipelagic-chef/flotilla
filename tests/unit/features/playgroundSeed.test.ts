@@ -226,6 +226,12 @@ describe('playground seed', () => {
     expect(transcriptMarkdown(transcript(), agent!.title)).not.toContain('Added chatOf');
     expect(appendAgentTurn(dir, home, later)).toBe(true);
     expect(transcriptMarkdown(transcript(), agent!.title)).toContain('Added chatOf');
+    // Then its tests run on, with its plan 3 steps in (BL-175).
+    expect(appendAgentTurn(dir, home, later)).toBe(true);
+    expect((await read(later)).chats.find((c) => c.id === file.sessionId)?.activity).toMatchObject({
+      tool: { name: 'Bash', detail: 'npm test -- chats' },
+      todos: expect.arrayContaining([expect.objectContaining({ status: 'in_progress', active: 'Running the chat tests' })]),
+    });
     expect(appendAgentTurn(dir, home, later)).toBe(false);
     expect((await read(later)).chats.find((c) => c.id === file.sessionId)).toMatchObject({ state: 'working', open: true });
 

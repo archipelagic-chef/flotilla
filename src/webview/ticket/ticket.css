@@ -1497,6 +1497,75 @@ button.timeline-item:hover .timeline-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.agent-live {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 34px;
+  min-width: 0;
+}
+.agent-now {
+  all: unset;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-now:hover {
+  text-decoration: underline;
+}
+.agent-now:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.agent-thoughts,
+.agent-thoughts summary {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-thoughts ol,
+.agent-plan ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  white-space: normal;
+}
+.agent-plan ul {
+  list-style: none;
+  padding-left: 4px;
+}
+.agent-plan summary,
+.agent-thoughts summary {
+  cursor: pointer;
+}
+.agent-plan progress {
+  width: 80px;
+  height: 6px;
+  vertical-align: middle;
+}
+.todo.completed {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+.todo.in_progress {
+  font-weight: 600;
+}
+.agent-health {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.agent-health.stuck {
+  color: var(--vscode-editorWarning-foreground);
+}
+.agent-health-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
 .active-agent-report {
   padding-left: 34px;
   min-width: 0;

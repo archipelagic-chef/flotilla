@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { DEFAULT_STUCK_RULES, type StuckRules } from '../features/chats/activity';
 import type { CiNotify } from '../features/ci/notify';
 import type { RemoveFinishedMode } from '../features/storage/finished';
 
@@ -36,4 +37,11 @@ export function readSettings(): Settings {
     pollSeconds: c.get<number>('pollSeconds', 15),
     ciNotify: c.get<CiNotify>('ci.notify', 'failures'),
   };
+}
+
+/** The thresholds of the "looks stuck" warnings on working agents (BL-175). */
+export function stuckRules(): StuckRules {
+  const c = vscode.workspace.getConfiguration('flotilla.agents.stuck');
+  const n = (key: keyof StuckRules) => Math.max(0, c.get<number>(key, DEFAULT_STUCK_RULES[key]));
+  return { silentMinutes: n('silentMinutes'), repeatedFailures: n('repeatedFailures'), commandMinutes: n('commandMinutes') };
 }
