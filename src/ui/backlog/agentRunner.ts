@@ -489,7 +489,7 @@ export function runAgentHeadless(o: {
       // Its chat is done now, even when the hooks' last word was "working" (BL-131).
       void locateRepo(o.cwd).then((repo) => repo && finishChatRecords(repo.commonDir, sessionId)).catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
-      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
+      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.${result.limit.said ? ` Claude said: ${result.limit.said} (reset time not understood).` : ''}`);
       if (track) {
         const role = track.role;
         if (result.limit) {
@@ -542,7 +542,7 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       clearTimeout(timer);
       const failed = code !== 0 || /"is_error"\s*:\s*true/.test(out);
       const limit = failed ? parseUsageLimit(out, new Date()) : undefined;
-      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
+      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
       resolve(limit);
     });
   });
