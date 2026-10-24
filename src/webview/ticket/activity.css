@@ -1,5 +1,26 @@
+.feed {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.entry {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+}
+.entry.kind-agent {
+  border-left-color: var(--working);
+}
 .entry.kind-comment {
   border-left-color: var(--focus);
+}
+.entry.kind-history {
+  border-style: dashed;
+  border-left-style: solid;
 }
 /* An agent's report: its summary, what it needs from you (answered by clicking), and its details, folded. */
 .report-details {
@@ -9,6 +30,13 @@
   cursor: pointer;
   color: var(--muted);
   font-size: 12px;
+}
+.needs {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--waiting);
+  border-radius: 3px;
 }
 .needs.answered {
   border-left-color: var(--border);
@@ -99,6 +127,9 @@
 .chat-chip .dot.working {
   background: var(--working);
 }
+.chat-chip .dot.waiting {
+  background: var(--waiting);
+}
 .chat-chip .dot.done {
   background: var(--done);
 }
@@ -111,6 +142,10 @@
   letter-spacing: 0.04em;
   color: var(--vscode-badge-foreground);
   background: var(--vscode-badge-background);
+}
+/* Older entries fold to one line each, opened by a click. */
+.entry.folded {
+  padding: 0;
 }
 .entry-fold {
   display: flex;
@@ -149,6 +184,15 @@
 .reply-entry + .fold-entry {
   margin-left: 0;
 }
+.replies {
+  list-style: none;
+  margin: 8px 0 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--vscode-panel-border, var(--muted));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .reply-to {
   display: block;
   margin-bottom: 2px;
@@ -169,6 +213,13 @@ button.reply-to:hover {
   flex: none;
   font-size: 11px;
   color: var(--muted);
+}
+.replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
 }
 .replying-first {
   flex: 1;
@@ -257,8 +308,32 @@ button.timeline-item:hover .timeline-text {
   flex-direction: column;
   gap: 10px;
 }
+.entry.sending {
+  opacity: 0.7;
+}
 .sending-body {
   white-space: pre-wrap;
+}
+/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
+.feed .report-media .rendered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+.feed .report-media .rendered > * {
+  margin: 0;
+}
+.feed .report-media .rendered > .diagram {
+  flex: 1 1 100%;
+}
+.feed .report-media .rendered img {
+  max-height: 420px;
+}
+.feed .report-media .rendered video.media {
+  max-height: 420px;
+  margin: 0;
 }
 /* A folded report's media: thumbnails beside its line, each opening in the viewer. */
 .entry.folded:has(.media-strip) {

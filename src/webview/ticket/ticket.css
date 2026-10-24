@@ -272,34 +272,6 @@ h2 {
   border-left: 3px solid var(--vscode-textBlockQuote-border, var(--border));
   color: var(--muted);
 }
-.feed {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.entry {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-  border-radius: 3px;
-}
-.entry.kind-agent {
-  border-left-color: var(--working);
-}
-.entry.kind-history {
-  border-style: dashed;
-  border-left-style: solid;
-}
-.needs {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--waiting);
-  border-radius: 3px;
-}
 .question {
   margin: 8px 0 0;
   padding: 0;
@@ -488,9 +460,6 @@ h2 {
   border-radius: 50%;
   background: var(--muted);
   flex: none;
-}
-.chat-chip .dot.waiting {
-  background: var(--waiting);
 }
 .agents {
   display: flex;
@@ -685,27 +654,6 @@ h2 {
   mask-image: linear-gradient(to bottom, #000 65%, transparent);
 }
 
-/* Older entries fold to one line each, opened by a click. */
-.entry.folded {
-  padding: 0;
-}
-.replies {
-  list-style: none;
-  margin: 8px 0 0 12px;
-  padding: 0 0 0 12px;
-  border-left: 2px solid var(--vscode-panel-border, var(--muted));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.replying {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  font-size: 12px;
-}
-
 .review-panel.stopped {
   border-left-color: var(--error);
 }
@@ -713,9 +661,6 @@ h2 {
   color: var(--error);
 }
 
-.entry.sending {
-  opacity: 0.7;
-}
 /* A Run button in a report, while the host runs it: its label says so (set on click, cleared when it's done). */
 .run-button[data-busy]::after {
   content: "  " attr(data-busy);
@@ -756,27 +701,6 @@ h2 {
   font-size: 20px;
 }
 
-/* A report's pictures, videos and diagrams (BL-114), under its summary: larger than a picture in the text. */
-.feed .report-media .rendered {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 6px;
-}
-.feed .report-media .rendered > * {
-  margin: 0;
-}
-.feed .report-media .rendered > .diagram {
-  flex: 1 1 100%;
-}
-.feed .report-media .rendered img {
-  max-height: 420px;
-}
-.feed .report-media .rendered video.media {
-  max-height: 420px;
-  margin: 0;
-}
 .media-thumb-diagram .media-note,
 .media-thumb > .media-note {
   display: none;
