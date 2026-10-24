@@ -25,7 +25,7 @@ export interface MainSyncDeps {
 /**
  * Keeps open tickets' branches current with main (BL-55). When main or a branch moves, each open ticket's branch is
  * merged with main in memory; what it finds is kept on the item (its card and ticket show it) and a branch that comes
- * to conflict, or stops conflicting, is noted in its ticket. Update from Main merges main into a ticket's branch, or
+ * to conflict, or stops conflicting, is noted in its ticket. Update from Main rebases a ticket's branch onto main, or
  * has its agent do it when that conflicts.
  */
 export class MainSync implements vscode.Disposable {
@@ -131,7 +131,7 @@ export class MainSync implements vscode.Disposable {
     if (!item) return;
     const ws = this.worktreeOf(item);
     if (!ws?.worktree.path || !ws.worktree.branch) {
-      void vscode.window.showWarningMessage(`${id} has no worktree to merge main into: check out its branch first.`);
+      void vscode.window.showWarningMessage(`${id} has no worktree to rebase onto main: check out its branch first.`);
       return;
     }
     const cwd = ws.worktree.path;

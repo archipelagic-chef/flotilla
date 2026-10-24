@@ -39,6 +39,11 @@ export interface MergeState {
    * ahead, its ids). Approving it records the resolution (rerere) and rebuilds the train, which lands the ticket.
    */
   train?: { ahead: string[] };
+  /**
+   * Made by rebasing the branch onto baseTip (flotilla.merge.style fast-forward, BL-181), not by a merge commit: the
+   * worktree is detached at the rebased tip (or mid-rebase, on its conflicts), and the base fast-forwards to it.
+   */
+  rebase?: boolean;
   /** ISO 8601. */
   started: string;
 }
@@ -327,7 +332,7 @@ async function unlinkDependencies(dir: string): Promise<void> {
   if (await fs.promises.lstat(link).then(() => true, () => false)) throw new Error(`Couldn't remove the link ${link}.`);
 }
 
-/** Removes a temporary merge worktree (aborting a merge in progress there), and git's record of it. */
+/** Removes a temporary merge worktree (aborting a merge or rebase in progress there), and git's record of it. */
 export async function removeMergeWorktree(cwd: string, dir: string): Promise<void> {
   await unlinkDependencies(dir);
   // A real node_modules (not our link) is never removed with it.
@@ -335,6 +340,7 @@ export async function removeMergeWorktree(cwd: string, dir: string): Promise<voi
     throw new Error(`${dir} has a node_modules folder that isn't Flotilla's link; remove the folder yourself.`);
   }
   await runGit(['merge', '--abort'], { cwd: dir }).catch(() => undefined);
+  await runGit(['rebase', '--abort'], { cwd: dir }).catch(() => undefined);
   try {
     await runGit(['worktree', 'remove', '--force', '--force', dir], { cwd, timeoutMs: 120_000 });
   } catch (error) {
@@ -385,19 +391,24 @@ export function fixChecksPrompt(o: {
   ours: readonly string[];
   /** The tickets those commits are of. */
   others: ReadonlyArray<{ id: string; title: string; description: string; ticket: string }>;
+  /** The branch was rebased onto the base (fast-forward, BL-181), not merged. */
+  rebase?: boolean;
 }): string {
   const quote = (s: string) => (s.trim() ? s.trim().replace(/^/gm, '> ') : '> (no description)');
   const short = o.start.slice(0, 12);
   const ours = o.ours.length ? o.ours.slice(-30).map((l) => `- ${l}`).join('\n') + (o.ours.length > 30 ? `\n- (and ${o.ours.length - 30} older)` : '') : '- (none)';
+  const what = o.rebase ? `${o.item.id}'s branch ${o.branch} rebased onto ${o.base}` : `the merge of ${o.item.id}'s branch ${o.branch} into ${o.base}`;
   return [
-    `Your task: fix the checks on the merge of ${o.item.id}'s branch ${o.branch} into ${o.base}. This is a temporary git worktree, detached, with the merge committed (\`git merge --no-ff ${o.branch}\` onto ${o.base}), but the checks fail on it: each side passed on its own, so it's the two together that break. The checks: \`${o.checks.command}\`. The end of their output:`,
+    o.rebase
+      ? `Your task: fix the checks on ${what}. This is a temporary git worktree, detached at the rebased branch (\`git rebase ${o.base}\`: ${o.item.id}'s commits on top of ${o.base}), but the checks fail on it: each side passed on its own, so it's the two together that break. The checks: \`${o.checks.command}\`. The end of their output:`
+      : `Your task: fix the checks on ${what}. This is a temporary git worktree, detached, with the merge committed (\`git merge --no-ff ${o.branch}\` onto ${o.base}), but the checks fail on it: each side passed on its own, so it's the two together that break. The checks: \`${o.checks.command}\`. The end of their output:`,
     `\`\`\`text\n${o.checks.output.trim() || '(no output)'}\n\`\`\``,
     `${o.item.id} "${o.item.title}" (the branch being merged), as its ticket ${o.ticket} describes it:\n\n${quote(o.description)}`,
-    `What ${o.base} has that ${o.branch} didn't (\`git log ${short}..HEAD^1\`):\n${ours}`,
+    `What ${o.base} has that ${o.branch} didn't (\`git log ${short}..${o.rebase ? o.base : 'HEAD^1'}\`):\n${ours}`,
     ...(o.others.length ? [`Those changes on ${o.base} are from:\n\n${o.others.map((t) => `${t.id} "${t.title}" (${t.ticket}):\n\n${quote(t.description)}`).join('\n\n')}`] : []),
-    `Keep both intents: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop or disable either side's code or tests to make the checks pass. Read the ticket's latest activity first: the user may have answered a question of yours there. Fix what the two sides break together, run the checks (\`${o.checks.command}\`) until they pass, then commit your fix on top of the merge, as a commit of its own whose message starts with "${o.item.id}: " (\`git commit -m "${o.item.id}: Fix the checks after merging ${o.base}"\`, or say what you fixed). Don't amend the merge commit, don't change any other branch or worktree, don't rebase or reset, and don't push.`,
+    `Keep both intents: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop or disable either side's code or tests to make the checks pass. Read the ticket's latest activity first: the user may have answered a question of yours there. Fix what the two sides break together, run the checks (\`${o.checks.command}\`) until they pass, then commit your fix on top of ${o.rebase ? 'it' : 'the merge'}, as a commit of its own whose message starts with "${o.item.id}: " (\`git commit -m "${o.item.id}: Fix the checks ${o.rebase ? 'on' : 'after merging'} ${o.base}"\`, or say what you fixed). Don't amend ${o.rebase ? 'its commits' : 'the merge commit'}, don't change any other branch or worktree, don't rebase or reset, and don't push.`,
     `If the two intents can't both be kept (they want opposite things: a design conflict), don't pick a side: commit nothing, and ask in the ticket instead. In your report, after its summary, put the question in a block fenced with \`\`\`question: its first line the question, then the choices as "- " lines, the one you suggest marked "(recommended)". The user answers there and starts you again.`,
-    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time), then what broke, how you fixed it and why, and whether the checks pass (or your question). The user reads it and approves the fix from the ticket; Flotilla then runs the checks again and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
+    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time), then what broke, how you fixed it and why, and whether the checks pass (or your question). The user reads it and approves the fix from the ticket; Flotilla then runs the checks again and moves ${o.base} to ${o.rebase ? 'its tip' : 'the merge'}. Don't end it with "Ready for review.".`,
   ].join('\n\n');
 }
 
@@ -419,11 +430,14 @@ export function resolvePrompt(o: {
   problem?: string;
   /** The base moved since the merge was made (BL-149): it's made again onto it. */
   moved?: boolean;
+  /** The branch is rebased onto the base (fast-forward, BL-181), not merged. */
+  rebase?: boolean;
 }): string {
   const quote = (s: string) => (s.trim() ? s.trim().replace(/^/gm, '> ') : '> (no description)');
   const list = (lines: readonly string[]) => (lines.length ? lines.map((l) => `- ${l}`).join('\n') : '- (none touching these files)');
   const short = o.start.slice(0, 12);
   const fixing = !o.files.length;
+  if (o.rebase) return resolveRebasePrompt({ ...o, quote, list, short, fixing });
   return [
     o.moved
       ? `Your task: merge ${o.item.id}'s branch ${o.branch} again into ${o.base}. This is a temporary git worktree with the merge committed (its conflicts were resolved), but ${o.base} moved since, so it stopped: ${o.problem ?? 'merge again'}. Make the merge again onto ${o.base} as it is now: note the earlier merge (\`git rev-parse HEAD\`), then \`git checkout --detach ${o.base}\` and \`git merge --no-ff --no-edit ${o.branch}\`, and resolve its conflicts as the earlier merge did (\`git checkout <earlier> -- <file>\` where ${o.base}'s new changes don't touch the file). Flotilla takes one merge commit whose first parent is ${o.base}'s tip and whose second is ${o.branch}, with only commits whose messages start with "${o.item.id}: " on top of it.`
@@ -437,5 +451,24 @@ export function resolvePrompt(o: {
       ? `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do.${o.checks ? ` Run the checks (\`${o.checks}\`) until they pass.` : ''} ${o.moved ? 'Commit the merge with `git commit --no-edit` (keep its message), and amend it with your fixes.' : 'Amend the merge commit with your fixes.'} Don't change any other branch or worktree, don't rebase or reset, and don't push.`
       : `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop either to make the conflict go away. Resolve every conflict, \`git add\` the files${o.checks ? `, run the checks (\`${o.checks}\`) and fix what they find` : ''}, then commit the merge with \`git commit --no-edit\` (keep its message). Don't change any other branch or worktree, don't rebase or reset, and don't push.`,
     `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time) followed by how you resolved ${fixing ? 'it' : 'each conflict'} and why${o.checks ? ', and whether the checks pass' : ''}. The user reads it and approves the resolution from the ticket; Flotilla then runs the checks and moves ${o.base} to the merge. Don't end it with "Ready for review.".`,
+  ].join('\n\n');
+}
+
+/** resolvePrompt's for a rebase (BL-181): its conflicts are resolved commit by commit, its commits kept as they are. */
+function resolveRebasePrompt(
+  o: Parameters<typeof resolvePrompt>[0] & { quote: (s: string) => string; list: (lines: readonly string[]) => string; short: string; fixing: boolean },
+): string {
+  const files = o.files.map((f) => `\`${f}\``).join(', ');
+  return [
+    o.moved
+      ? `Your task: rebase ${o.item.id}'s branch ${o.branch} again onto ${o.base}. This is a temporary git worktree with the branch rebased (its conflicts were resolved), but ${o.base} moved since, so it stopped: ${o.problem ?? 'rebase again'}. Rebase it again onto ${o.base} as it is now (\`git rebase ${o.base}\`), resolving its conflicts as before.`
+      : o.fixing
+        ? `Your task: finish rebasing ${o.item.id}'s branch ${o.branch} onto ${o.base}. This is a temporary git worktree, detached, with the branch rebased onto ${o.base}, but it stopped: ${o.problem ?? 'it needs fixing'}. Fix that (\`git commit --amend --no-edit\` keeps a commit what it was, or \`GIT_EDITOR=true git rebase --continue\` goes on with a rebase in progress).`
+        : `Your task: resolve the conflicts of rebasing ${o.item.id}'s branch ${o.branch} onto ${o.base}. This is a temporary git worktree, detached, in the middle of that rebase (\`git rebase ${o.base}\`: ${o.item.id}'s commits replayed one by one onto ${o.base}); it stopped on conflicts in ${files}.`,
+    `${o.item.id} "${o.item.title}" (the branch being rebased), as its ticket ${o.ticket} describes it:\n\n${o.quote(o.description)}\n\nIts commits touching those files (\`git log ${o.short}..${o.branch} -- <file>\`):\n${o.list(o.theirs)}`,
+    `What ${o.base} changed in them since ${o.branch} started (\`git log ${o.short}..${o.base} -- <file>\`):\n${o.list(o.ours)}`,
+    ...(o.others.length ? [`Those changes on ${o.base} are from:\n\n${o.others.map((t) => `${t.id} "${t.title}":\n\n${o.quote(t.description)}`).join('\n\n')}`] : []),
+    `Keep both sides' intent: what ${o.item.id} does, and what ${o.base}'s changes do; don't drop either to make a conflict go away. Resolve the conflicts commit by commit: \`git add\` the files, then \`GIT_EDITOR=true git rebase --continue\`, and again at each commit it stops on, until the rebase is done. Keep each commit's message (they start with "${o.item.id}: ").${o.checks ? ` Then run the checks (\`${o.checks}\`) and fix what they find, in a commit of its own whose message starts with "${o.item.id}: ".` : ''} Don't merge, don't change any other branch or worktree, don't reset, and don't push.`,
+    `Then report in the ticket ${o.ticket}: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time) followed by how you resolved ${o.fixing ? 'it' : 'each conflict'} and why${o.checks ? ', and whether the checks pass' : ''}. The user reads it and approves the resolution from the ticket; Flotilla then runs the checks and moves ${o.base} to the rebased tip. Don't end it with "Ready for review.".`,
   ].join('\n\n');
 }

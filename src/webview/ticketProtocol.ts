@@ -362,7 +362,7 @@ export type TicketWebviewMessage =
   | { type: 'stopReview' }
   /** Pause, stop or resume an agent: the one with that chat, else the one working on it. */
   | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
-  /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
+  /** Rebase its branch onto main, or have its agent do it when that conflicts (BL-55, BL-181). */
   | { type: 'updateFromMain' }
   /** Check what the ticket says is going on (BL-163); Clean Up its glitches (one, by key, or all). */
   | { type: 'check' }

@@ -1755,6 +1755,19 @@
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
         },
+        "flotilla.merge.style": {
+          "type": "string",
+          "enum": [
+            "fast-forward",
+            "merge-commit"
+          ],
+          "enumDescriptions": [
+            "Main fast-forwards to the ticket's branch: Merge to main rebases it onto main (squashing its fixup! commits) when it isn't on top of it, runs the checks on that tip and moves main there. The history stays linear, with no merge commits.",
+            "A merge commit (`git merge --no-ff`) for each ticket, as before."
+          ],
+          "default": "fast-forward",
+          "markdownDescription": "How a ticket lands on main (Merge to main, and the merge train)."
+        },
         "flotilla.merge.checkCommand": {
           "type": "string",
           "default": "",

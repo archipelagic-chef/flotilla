@@ -122,7 +122,8 @@ export class World {
 
   static async create(ids: string[]): Promise<World> {
     const world = new World();
-    resetUi({ 'merge.checkCommand': FAKE_CHECKS });
+    // The scenarios follow merge commits (merge-commit); fast-forward (BL-181) has its own tests in merger.test.ts.
+    resetUi({ 'merge.checkCommand': FAKE_CHECKS, 'merge.style': 'merge-commit' });
     agents.scripts = [];
     agents.started = [];
     agents.waiting = [];
