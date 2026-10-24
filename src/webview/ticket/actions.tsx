@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
+import { WORKING_MIN_MS } from '../workingMin';
 import { commentSent } from './comments';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -14,6 +15,8 @@ export const send = (message: TicketWebviewMessage) => vscode.postMessage(messag
  * (it does so for every action, whether it posted, failed or did nothing).
  */
 const working = new Map<string, string>();
+/** When each action in progress was clicked: its "working…" shows for at least WORKING_MIN_MS. */
+const started = new Map<string, number>();
 const workingListeners = new Set<() => void>();
 export const doneListeners = new Set<(message: TicketWebviewMessage, failed: boolean) => void>();
 
@@ -22,25 +25,44 @@ const notifyWorking = () => workingListeners.forEach((f) => f());
 /** Sends an action, and shows it as working (its label) until the host is done with it. */
 export function act(message: TicketWebviewMessage, label = 'Working…') {
   working.set(actionKey(message), label);
+  started.set(actionKey(message), Date.now());
   notifyWorking();
   send(message);
 }
 
-/** The label of an action in progress (undefined when it isn't), re-rendered as it starts and ends. */
-export function useWorking(message: TicketWebviewMessage): string | undefined {
+/** Re-renders the component whenever an action starts or ends. */
+export function useWorkingChanges() {
   const [, refresh] = useState(0);
   useEffect(() => {
     const listener = () => refresh((n) => n + 1);
     workingListeners.add(listener);
     return () => void workingListeners.delete(listener);
   }, []);
-  return working.get(actionKey(message));
+}
+
+/** The label of an action in progress (undefined when it isn't). */
+export const workingLabel = (message: TicketWebviewMessage) => working.get(actionKey(message));
+
+/** The label of an action in progress (undefined when it isn't), re-rendered as it starts and ends. */
+export function useWorking(message: TicketWebviewMessage): string | undefined {
+  useWorkingChanges();
+  return workingLabel(message);
 }
 
 /** Called when the host is done with an action: failed if it threw. */
 export function finished(message: TicketWebviewMessage, failed: boolean) {
-  working.delete(actionKey(message));
-  notifyWorking();
+  const key = actionKey(message);
+  const clicked = started.get(key);
+  // A quick action still shows it worked: its "working…" stays a moment (unless it's clicked again meanwhile).
+  setTimeout(
+    () => {
+      if (started.get(key) !== clicked) return;
+      started.delete(key);
+      working.delete(key);
+      notifyWorking();
+    },
+    clicked === undefined ? 0 : Math.max(0, clicked + WORKING_MIN_MS - Date.now()),
+  );
   if (message.type === 'comment') commentSent(message.text);
   if (message.type === 'run') {
     // The Run button of a run block (set on click, in Rendered): its working state ends.

@@ -1330,7 +1330,8 @@ export class Merger implements vscode.Disposable {
     const root = this.deps.mainRoot;
     const remote = (await runGit(['config', `branch.${base}.remote`], { cwd: root }).catch(() => '')).trim();
     if (!remote) return undefined;
-    const count = Number((await runGit(['rev-list', '--count', `refs/heads/${base}@{upstream}..refs/heads/${base}`], { cwd: root }).catch(() => '0')).trim()) || 0;
+    // `<branch>@{upstream}` takes the branch's name: git rejects refs/heads/<branch>@{upstream} ("no such branch").
+    const count = Number((await runGit(['rev-list', '--count', `${base}@{upstream}..refs/heads/${base}`], { cwd: root }).catch(() => '0')).trim()) || 0;
     return { remote, count };
   }
 

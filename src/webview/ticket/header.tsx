@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, type BacklogStatus, priorityFromName } from '../../features/backlog/backlog';
-import type { TicketView } from '../ticketProtocol';
+import type { TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
 import { act, Dropdown, send, useWorking } from './actions';
 
@@ -121,6 +121,9 @@ const MODELS: Array<{ model: string; label: string; detail: string }> = [
   { model: 'haiku', label: 'Haiku', detail: 'Fastest, for small tasks' },
 ];
 
+/** A model or effort chosen: saved to the ticket (a running agent takes it on its next turn). */
+const pick = (message: Extract<TicketWebviewMessage, { type: 'agentModel' | 'agentEffort' }>) => act(message, 'Saving…');
+
 const modelLabel = (model: string) => MODELS.find((m) => m.model === model.toLowerCase())?.label ?? model;
 
 /**
@@ -137,11 +140,14 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
   const defaultModel = defaults.model ? `Default (${modelLabel(defaults.model)})` : "Default (Claude Code's)";
   const defaultEffort = defaults.effort ? `Default (${defaults.effort})` : "Default (Claude Code's)";
   const custom = chosen.model && !MODELS.some((m) => m.model === chosen.model!.toLowerCase()) ? [chosen.model] : [];
+  const savingModel = useWorking({ type: 'agentModel', model: null });
+  const savingEffort = useWorking({ type: 'agentEffort', effort: null });
   return (
     <>
       <Dropdown
         class={`priority agent-choice${chosen.model || light ? '' : ' unset'}`}
         label={`Agents' model: ${model ? modelLabel(model) : 'default'}${light ? ' (Light)' : ''}. Change…`}
+        busy={savingModel}
         button={
           <>
             <i class="codicon codicon-hubot" />
@@ -149,7 +155,7 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
           </>
         }
         items={[
-          { key: '', label: defaultModel, icon: 'circle-small', checked: !chosen.model && !light, onSelect: () => send({ type: 'agentModel', model: null }) },
+          { key: '', label: defaultModel, icon: 'circle-small', checked: !chosen.model && !light, onSelect: () => pick({ type: 'agentModel', model: null }) },
           ...(ticket.lightModel
             ? [
                 {
@@ -158,7 +164,7 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
                   detail: 'Small, mechanical work. Reviewed by the default model; moves up to it when it turns out hard',
                   icon: 'feather',
                   checked: !!light,
-                  onSelect: () => send({ type: 'agentModel', model: 'light' }),
+                  onSelect: () => pick({ type: 'agentModel', model: 'light' }),
                 },
               ]
             : []),
@@ -168,15 +174,16 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
             detail: m.detail,
             icon: 'hubot',
             checked: chosen.model?.toLowerCase() === m.model,
-            onSelect: () => send({ type: 'agentModel', model: m.model }),
+            onSelect: () => pick({ type: 'agentModel', model: m.model }),
           })),
-          ...custom.map((c) => ({ key: c, label: c, icon: 'hubot', checked: true, onSelect: () => send({ type: 'agentModel', model: c }) })),
-          { key: 'other', label: 'Other Model…', icon: 'edit', onSelect: () => send({ type: 'agentModel', model: 'other' }) },
+          ...custom.map((c) => ({ key: c, label: c, icon: 'hubot', checked: true, onSelect: () => pick({ type: 'agentModel', model: c }) })),
+          { key: 'other', label: 'Other Model…', icon: 'edit', onSelect: () => pick({ type: 'agentModel', model: 'other' }) },
         ]}
       />
       <Dropdown
         class={`priority agent-choice${chosen.effort ? '' : ' unset'}`}
         label={`Agents' effort: ${effort ?? 'default'}. Change…`}
+        busy={savingEffort}
         button={
           <>
             <i class="codicon codicon-dashboard" />
@@ -184,13 +191,13 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
           </>
         }
         items={[
-          { key: '', label: defaultEffort, icon: 'circle-small', checked: !chosen.effort, onSelect: () => send({ type: 'agentEffort', effort: null }) },
+          { key: '', label: defaultEffort, icon: 'circle-small', checked: !chosen.effort, onSelect: () => pick({ type: 'agentEffort', effort: null }) },
           ...AGENT_EFFORTS.map((e) => ({
             key: e,
             label: `${e[0].toUpperCase()}${e.slice(1)}`,
             icon: 'dashboard',
             checked: chosen.effort === e,
-            onSelect: () => send({ type: 'agentEffort', effort: e }),
+            onSelect: () => pick({ type: 'agentEffort', effort: e }),
           })),
         ]}
       />

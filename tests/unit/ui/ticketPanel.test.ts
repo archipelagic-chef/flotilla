@@ -144,6 +144,64 @@ describe("the host's done for an action", () => {
   });
 });
 
+describe('the buttons that wait on the host (BL-118)', () => {
+  /** What the handlers call: every method of it fails. */
+  const fail = async () => Promise.reject(new Error('it broke'));
+  const failing = () => new Proxy({}, { get: () => fail });
+
+  it.each([
+    { type: 'updateFromMain' },
+    { type: 'mergeCancel' },
+    { type: 'mergeResolve' },
+    { type: 'mergeRecheck' },
+    { type: 'mergeApprove' },
+    { type: 'prioritize' },
+    { type: 'push' },
+    { type: 'accept' },
+    { type: 'dismiss' },
+    { type: 'mergeSibling' },
+    { type: 'dismissUnmerged' },
+    { type: 'link' },
+    { type: 'unlink', id: 'PROJ-1' },
+    { type: 'agentModel', model: 'opus' },
+    { type: 'agentEffort', effort: 'high' },
+  ])('$type gets its done, also when its work throws', async (message) => {
+    const panels = panelsWith(async () => Promise.reject(new Error('it broke'))) as ReturnType<typeof panelsWith> & Record<string, unknown>;
+    Object.assign(panels, { merger: failing(), mainSync: failing(), reviews: failing(), mergeSibling: fail, dismissUnmerged: fail });
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    // Commands (Link Issue's) fail too.
+    if (message.type === 'link') vscode.commands.executeCommand.mockRejectedValueOnce(new Error('it broke'));
+    // Dismiss returns early (the item isn't a proposal): done all the same, not failed.
+    const threw = await panels.onMessage('BL-1', t, message).then(
+      () => false,
+      () => true,
+    );
+    expect(threw).toBe(message.type !== 'dismiss');
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: threw });
+  });
+
+  it.each([{ type: 'askNew' }, { type: 'askStop' }, { type: 'askPost', index: 0 }])('the Ask chat\'s $type gets its done, also after a throw', async (message) => {
+    const panels = panelsWith(async () => undefined) as unknown as {
+      panels: Map<string, unknown>;
+      asks: Map<string, unknown>;
+      onAskMessage: (id: string, panel: unknown, m: unknown) => Promise<void>;
+    };
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    panels.asks.set('BL-1', { reset: () => undefined, stop: () => undefined, answered: () => undefined });
+    await panels.onAskMessage('BL-1', t, message);
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: false });
+    t.webview.postMessage.mockClear();
+    const broke = () => {
+      throw new Error('it broke');
+    };
+    panels.asks.set('BL-1', { reset: broke, stop: broke, answered: broke });
+    await expect(panels.onAskMessage('BL-1', t, message)).rejects.toThrow('it broke');
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: true });
+  });
+});
+
 describe('Open Chat (BL-131)', () => {
   const at = new Date('2026-10-18T21:46:00Z');
   /** A worktree whose branch doesn't name the ticket, with the chat of an agent that signed one of its entries. */
