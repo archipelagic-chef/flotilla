@@ -684,21 +684,9 @@ h2 {
 .review-panel.ask {
   align-items: flex-start;
 }
-.ask-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 .ask-question {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.ask-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 /* The description folds to its first lines when the ticket has activity. */
