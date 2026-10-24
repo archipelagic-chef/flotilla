@@ -3,6 +3,7 @@ import { fraction, progressLine, elapsed } from '../../features/backlog/checksPr
 import type { ChecksRunRecord } from '../../features/backlog/merge';
 import type { MergeChecksView } from '../ticketProtocol';
 import { ActionButton, send } from './actions';
+import './checksPanel.css';
 
 /** Show All's replies (BL-169): a run's whole log, by request. */
 export const checksLogReplies = new Map<number, (text: string) => void>();
