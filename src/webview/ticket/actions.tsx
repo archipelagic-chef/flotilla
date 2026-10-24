@@ -4,6 +4,7 @@ import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';
 import { commentSent } from './comments';
+import './actions.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
