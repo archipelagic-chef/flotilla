@@ -1189,10 +1189,6 @@ ins {
   position: relative;
   min-height: 4px;
 }
-.lane.drop-end .lane-body::after {
-  top: auto;
-  bottom: 0;
-}
 
 /* ---- comparisons ---- */
 .comparison + .comparison {
@@ -1248,38 +1244,11 @@ ins {
 .backlog-item .merge-chip.unmerged {
   color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
 }
-.backlog-problem {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: calc(100% - 16px);
-  margin: 0 8px 6px;
-  padding: 4px 8px;
-  text-align: left;
-  font-size: 12px;
-  border-radius: 3px;
-  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
-  background: var(--vscode-inputValidation-warningBackground, transparent);
-  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
-}
-.backlog-problem .codicon {
-  font-size: 14px;
-  margin-top: 1px;
-}
 .backlog-item a.icon {
   color: inherit;
 }
 .backlog-item .turn-chip.turn-stopped {
   color: var(--error);
-}
-.lane .lane-filter {
-  margin-left: auto;
-}
-.lane .lane-filter.on {
-  color: var(--waiting);
-}
-.proposed-lane .group-head .icon {
-  margin-left: auto;
 }
 .needs-lane .need-approved .need-icon {
   color: var(--done);
@@ -1595,26 +1564,6 @@ ins {
 .merge-queue-bar .land-all:disabled {
   opacity: 0.5;
   cursor: default;
-}
-.working-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
-  margin: 2px 0 6px;
-  padding: 5px 8px;
-  border-left: 2px solid var(--working);
-  background: color-mix(in srgb, var(--working) 10%, transparent);
-  font-size: 12px;
-  text-align: left;
-  color: var(--vscode-foreground);
-}
-.working-bar .codicon {
-  margin-top: 1px;
-  color: var(--working);
-}
-.working-bar .link {
-  color: var(--vscode-textLink-foreground);
 }
 
 /* CI: a static dot on the Version Control tool for the scope's state (no spinner; its hover names the failed workflows), and a worktree's CI line in the same colors. */
