@@ -17,6 +17,13 @@
   right: 0;
   min-width: 220px;
 }
+.work {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
 .work-head {
   display: flex;
   align-items: center;

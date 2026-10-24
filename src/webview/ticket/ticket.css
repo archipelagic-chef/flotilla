@@ -485,13 +485,6 @@ h2 {
 .open-arrow {
   color: var(--muted);
 }
-.work {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
 .work-head .count,
 .tabs .count {
   padding: 0 6px;
