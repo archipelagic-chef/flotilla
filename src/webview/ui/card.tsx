@@ -11,6 +11,7 @@ import type { BacklogItemView as BacklogItem, BacklogStatus, WorkstreamView } fr
 import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { PriorityPicker } from './priority';
+import './card.css';
 
 export const DRAG_TYPE = 'application/x-flotilla-backlog';
 
