@@ -69,6 +69,12 @@
     },
     "commands": [
       {
+        "command": "flotilla.backToTicket",
+        "title": "Back to Its Ticket",
+        "category": "Flotilla",
+        "icon": "$(arrow-left)"
+      },
+      {
         "command": "flotilla.mergeBacklogItem",
         "title": "Merge Ticket into the Base Branch…",
         "category": "Flotilla",
@@ -708,7 +714,18 @@
       ]
     },
     "menus": {
+      "editor/title": [
+        {
+          "command": "flotilla.backToTicket",
+          "when": "flotilla.ticketDiff",
+          "group": "navigation@-100"
+        }
+      ],
       "commandPalette": [
+        {
+          "command": "flotilla.backToTicket",
+          "when": "flotilla.ticketDiff"
+        },
         {
           "command": "flotilla.mergeBacklogItem",
           "when": "flotilla.state == ready"
