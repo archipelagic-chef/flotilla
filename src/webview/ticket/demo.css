@@ -71,3 +71,10 @@
   gap: 6px;
   margin: 0;
 }
+.demo-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.viewer-figure .demo-bar {
+  width: 100%;
+}

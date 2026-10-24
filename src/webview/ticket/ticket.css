@@ -669,11 +669,3 @@ h2 {
   background: var(--vscode-inputOption-activeBackground, rgba(128, 128, 128, 0.2));
 }
 
-.demo-actions {
-  display: inline-flex;
-  gap: 6px;
-}
-.viewer-figure .demo-bar {
-  width: 100%;
-}
-
