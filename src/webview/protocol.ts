@@ -260,7 +260,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView; /** The cards show every detail (flotilla.backlog.cards, BL-183). */ detailedCards?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -399,8 +399,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
-  /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20). */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
+  /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20); merge: merge its approved work (a card's next step, BL-183). */
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run' | 'merge'; id: string }
   /** The card's Create Worktree (as the ticket's): a new worktree at once, its branch named without asking unless named. */
   | { type: 'backlog'; op: 'createWorktree'; id: string; named?: boolean }
   /** Accept every proposed item; plan the backlog with Claude. */
@@ -419,6 +419,8 @@ export type WebviewMessage =
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
   | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
   | { type: 'backlog'; op: 'mergeNext'; id: string }
+  /** Compact or Detailed cards (BL-183): saved in flotilla.backlog.cards. */
+  | { type: 'backlog'; op: 'cards'; detailed: boolean }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
   | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }

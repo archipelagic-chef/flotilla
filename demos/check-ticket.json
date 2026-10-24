@@ -4,7 +4,7 @@
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "BL-3 says two agents are working: Vega-2, and Orbit-2, whose process ended 7 minutes ago" },
-    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
     { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
     { "waitFor": ".check-note", "timeout": 20000 },
     { "caption": "Opening it checks quietly: what isn't true shows as a line" },

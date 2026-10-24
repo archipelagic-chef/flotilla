@@ -5,7 +5,7 @@
     { "wait": 2000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
-    { "click": ".backlog-item:has-text(\"Remember the last open ticket\")" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
     { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
     { "caption": "The comment box has a toolbar: each button wraps the selection" },
     { "click": ".comment-box textarea" },

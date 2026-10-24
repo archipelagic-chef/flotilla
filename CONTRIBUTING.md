@@ -103,6 +103,11 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+  A card is Compact by default (`flotilla.backlog.cards`, BL-183): its title, one status line and its next step, all
+  from `cardStatus()` ([src/features/backlog/cardStatus.ts](src/features/backlog/cardStatus.ts)), with its tests in
+  `tests/unit/features/cardStatus.test.ts`. A new state of a ticket gets its line (and its mark, if it needs you) there;
+  a new detail or action goes in the hover row (`CompactCard`) and in Detailed. A demo that shows a Detailed-only sign
+  sets `"settings": { "flotilla.backlog.cards": "detailed" }`.
 - **Commands** (BL-185): each feature's module exports its commands as a map of handlers by command id
   (`Commands`, [src/ui/commandSet.ts](src/ui/commandSet.ts)), made from the deps it's given:
   `mergeCommands` ([src/ui/backlog/mergeCommands.ts](src/ui/backlog/mergeCommands.ts)), `agentCommands`,

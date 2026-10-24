@@ -1930,6 +1930,13 @@
           "default": false,
           "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
         },
+        "flotilla.backlog.cards": {
+          "type": "string",
+          "enum": ["compact", "detailed"],
+          "enumDescriptions": ["Each card shows its title, one status line and its next step; the rest on hover, in its menu and in its ticket.", "Each card shows every detail: the id, priority, agents, chips and badges."],
+          "default": "compact",
+          "markdownDescription": "How much the backlog's cards show. The Compact / Detailed switch in the backlog's title sets it."
+        },
         "flotilla.autopilot.maxAgents": {
           "type": "number",
           "minimum": 1,

@@ -143,7 +143,7 @@ export function App() {
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
   const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView; detailedCards?: boolean }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -306,7 +306,7 @@ export function App() {
         case 'backlog':
           pruneBusy(new Set(m.items.map((i) => i.id)));
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot, mergeQueue: m.mergeQueue });
+          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot, mergeQueue: m.mergeQueue, detailedCards: !!m.detailedCards });
           return;
         case 'backlogDone':
           finished(m.message);
@@ -517,6 +517,12 @@ export function App() {
         setWorkingOnly={(on) => update((p) => ({ ...p, workingOnly: on }))}
         autopilotOpen={!!persisted.autopilotOpen}
         setAutopilotOpen={(open) => update((p) => ({ ...p, autopilotOpen: open }))}
+        detailed={!!backlogInfo.detailedCards}
+        setDetailed={(on) => {
+          // Shown at once; the setting (flotilla.backlog.cards) keeps it.
+          setBacklogInfo((b) => ({ ...b, detailedCards: on }));
+          send({ type: 'backlog', op: 'cards', detailed: on });
+        }}
         openWorktree={(key) => {
           setClosed((c) => new Set([...c].filter((k) => k !== key)));
           setActive(key);
