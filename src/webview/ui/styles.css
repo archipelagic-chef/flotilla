@@ -1141,13 +1141,6 @@ ins {
   opacity: 0.75;
 }
 
-.needs-lane .need-approved .need-icon {
-  color: var(--done);
-}
-.needs-lane .need-stopped .need-icon,
-.needs-lane .need-failed .need-icon {
-  color: var(--error);
-}
 .proposed-lane .backlog-item .status-toggle {
   color: var(--vscode-editorLightBulb-foreground, #ffcc00);
 }
