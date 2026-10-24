@@ -1148,16 +1148,6 @@ ins {
 .ci-dot.queued {
   background: var(--working);
 }
-.ci-state.success {
-  color: var(--done);
-}
-.ci-state.failure {
-  color: var(--error);
-}
-.ci-state.running,
-.ci-state.queued {
-  color: var(--working);
-}
 .tools .sub-tool .ci-dot {
   left: auto;
   right: 2px;

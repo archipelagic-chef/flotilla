@@ -98,3 +98,13 @@
   font-size: 12px;
   vertical-align: -2px;
 }
+.ci-state.success {
+  color: var(--done);
+}
+.ci-state.failure {
+  color: var(--error);
+}
+.ci-state.running,
+.ci-state.queued {
+  color: var(--working);
+}
