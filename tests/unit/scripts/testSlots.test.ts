@@ -8,6 +8,7 @@ import {
   mayStart,
   namesFiles,
   readQueue,
+  relatedPlan,
   slotCount,
   takeSlot,
   waitingLine,
@@ -46,6 +47,23 @@ describe('slots and workers', () => {
     expect(namesFiles([])).toBe(false);
     expect(namesFiles(['-t', 'merges', '--reporter', 'dot'])).toBe(false);
     expect(namesFiles(['--reporter=dot', 'tests/unit/a.test.ts'])).toBe(true);
+  });
+});
+
+describe('relatedPlan', () => {
+  it('runs the tests related to the changed code files', () => {
+    expect(relatedPlan(['src/a.ts', 'README.md', 'tests/unit/a.test.ts', 'scripts/b.mjs'])).toEqual({
+      full: false,
+      files: ['src/a.ts', 'tests/unit/a.test.ts', 'scripts/b.mjs'],
+    });
+    expect(relatedPlan(['CONTRIBUTING.md'])).toEqual({ full: false, files: [] });
+  });
+
+  it('runs the full suite when a shared helper, the vitest config, the packages or a tsconfig changed', () => {
+    for (const f of ['tests/helpers/gitRepo.ts', 'vitest.config.ts', 'package.json', 'package-lock.json', 'tsconfig.json']) {
+      expect(relatedPlan(['src/a.ts', f])).toEqual({ full: true, reason: f, files: [] });
+    }
+    expect(relatedPlan(['src/package.json']).full).toBe(false);
   });
 });
 

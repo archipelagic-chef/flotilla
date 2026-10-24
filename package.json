@@ -2076,6 +2076,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "node scripts/test.mjs",
+    "test:related": "node scripts/test.mjs --related",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "node scripts/package.mjs",
     "playground": "node scripts/playground.mjs",
