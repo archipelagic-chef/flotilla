@@ -684,9 +684,6 @@ h2 {
   -webkit-mask-image: linear-gradient(to bottom, #000 65%, transparent);
   mask-image: linear-gradient(to bottom, #000 65%, transparent);
 }
-.fold-toggle {
-  margin-top: 4px;
-}
 
 /* Older entries fold to one line each, opened by a click. */
 .entry.folded {
