@@ -12,6 +12,9 @@ export const filesHandlers: Handlers<FilesMessage> = {
   openWorktree: async ({ item, panels }, m) => {
     if (panels.worktreesOf(item).some((w) => w.key === m.key)) panels.deps.revealWorktree(m.key);
   },
+  removeWorktree: async ({ item, panels }, m) => {
+    if (panels.worktreesOf(item).some((w) => w.key === m.key)) await vscode.commands.executeCommand('flotilla.remove', { key: m.key });
+  },
   openCommit: async ({ id, item, panels }, m) => {
     // In the history of a worktree that has it (one of the ticket's first, else the main one); its diff otherwise.
     const work = await panels.work(item);

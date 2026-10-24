@@ -8,6 +8,8 @@ export type FilesMessage =
   | { type: 'openCommit'; hash: string }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
+  /** Remove a worktree of the ticket (asks first, as Remove Worktree… does). */
+  | { type: 'removeWorktree'; key: string }
   /** Run a run block of an agent's report (after asking): the Run buttons. */
   /** try: a demo block's window set up as the demo starts, its steps not played (Try it yourself, BL-135). */
   | { type: 'run'; key: string; index: number; try?: boolean };

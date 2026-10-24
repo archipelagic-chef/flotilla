@@ -33,6 +33,9 @@ export interface MainSyncDeps {
   output: vscode.OutputChannel;
 }
 
+/** What Update from Main did: merged main into the branch (or it had it), handed the conflicts to its agent, or stopped. */
+export type UpdateOutcome = 'updated' | 'handed' | 'stopped';
+
 /**
  * Keeps open tickets' branches current with main (BL-55). When main or a branch moves, each open ticket's branch is
  * merged with main in memory; what it finds is kept on the item (its card and ticket show it) and a branch that comes
@@ -138,33 +141,33 @@ export class MainSync implements vscode.Disposable {
    * Update from Main: rebases the item's branch onto main in its worktree (BL-181). When that conflicts (known from the
    * last check, or found by the rebase), the rebase is left to the ticket's agent: its chat resumed with the task.
    */
-  async update(id: string): Promise<void> {
+  async update(id: string): Promise<UpdateOutcome> {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
-    if (!item) return;
+    if (!item) return 'stopped';
     const ws = this.worktreeOf(item);
     if (!ws?.worktree.path || !ws.worktree.branch) {
       void vscode.window.showWarningMessage(`${id} has no worktree to rebase onto main: check out its branch first.`);
-      return;
+      return 'stopped';
     }
     const cwd = ws.worktree.path;
     const branch = ws.worktree.branch;
     const base = await this.base();
     if (!base) {
       void vscode.window.showWarningMessage(`No main branch found to merge (set flotilla.defaultBase).`);
-      return;
+      return 'stopped';
     }
     const label = baseLabel(base);
     const busy = ws.chats.find((c) => c.open && (c.state === 'working' || c.state === 'waiting-for-input'));
     if (busy || this.deps.reviews.isRunning(id)) {
       void vscode.window.showWarningMessage(`An agent is working in ${branch}: update it from ${label} when it's done.`);
-      return;
+      return 'stopped';
     }
     // With uncommitted changes, a merge is the agent's to do (it knows what they are), if it's known to conflict anyway.
     if (ws.changes.length) {
       const expected = conflictsOf(item).find((b) => b.branch === branch);
       if (expected) return this.handToAgent(item, base, branch, expected.conflicts);
       void vscode.window.showWarningMessage(`${branch} has uncommitted changes: commit them (or set them aside) before updating it from ${label}.`);
-      return;
+      return 'stopped';
     }
     try {
       // Rebased, not merged (BL-181): the branch stays a line of its own commits on top of main.
@@ -177,16 +180,17 @@ export class MainSync implements vscode.Disposable {
       await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
       void vscode.window.showInformationMessage(`${id}: ${upToDate ? `${branch} is already up to date with ${label}.` : `Rebased ${branch} onto ${label}.`}`);
       this.schedule(0);
+      return 'updated';
     } catch (e) {
       // Conflicts: back to where it was, and the agent takes it. Anything else (a hook refusing it): the user sees why.
       const conflicted = await conflictedFiles(cwd);
       await runGit(['rebase', '--abort'], { cwd }).catch(() => undefined);
       if (!conflicted.length) throw e instanceof GitError ? new Error(`Rebasing ${branch} onto ${label} failed: ${e.stderr.trim() || e.message}`) : e;
-      await this.handToAgent(item, base, branch, conflicted);
+      return this.handToAgent(item, base, branch, conflicted);
     }
   }
 
-  private async handToAgent(item: BacklogItem, base: string, branch: string, files: string[]): Promise<void> {
+  private async handToAgent(item: BacklogItem, base: string, branch: string, files: string[]): Promise<UpdateOutcome> {
     const label = baseLabel(base);
     const handed = await this.deps.reviews.handToImplementer(item.id, {
       prompt: mergeBasePrompt({ id: item.id, base, branch, files, ticket: this.deps.backlog.docPath(item.id) }),
@@ -196,6 +200,7 @@ export class MainSync implements vscode.Disposable {
     const conflicts = `${item.id}: rebasing ${branch} onto ${label} conflicts (${files.join(', ')})`;
     if (handed) void vscode.window.showInformationMessage(`${conflicts}, so its agent is rebasing it and resolving the conflicts.`);
     else void vscode.window.showWarningMessage(`${conflicts}, and an agent is already working on it: update it from ${label} when it's done.`);
+    return handed ? 'handed' : 'stopped';
   }
 
   /** The item's worktree: the review's, else its first. */

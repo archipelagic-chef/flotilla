@@ -1,7 +1,9 @@
 /** A ticket tab's messages about merging it, and cleaning up its branch's history first: handled in ./merge.ts. Type-only, as ticketProtocol.ts. */
 export type MergeMessage =
-  /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
-  | { type: 'mergeCiFix' }
+  /** Fix with Agent on its red CI: the stop of its last Merge to main (BL-112), else the given failed run of its branch (BL-154). */
+  | { type: 'mergeCiFix'; branch?: string; run?: number }
+  /** Update from Main and Merge (BL-154): main into its branch (its agent resolves conflicts), then Merge to main. */
+  | { type: 'updateAndMerge' }
   /** Clean up the history of its branch; and the clean-up's actions. */
   | { type: 'cleanUp' }
   | { type: 'finishCleanUp' }

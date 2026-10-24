@@ -266,6 +266,8 @@ export interface TicketView {
   mergeStop?: CiStop;
   /** Its place in the merge queue (BL-140): "2nd of 3", what the train says of it, and the tickets that land before it. */
   mergeQueue?: { place: string; state?: string; ahead: string[] };
+  /** Update from Main and Merge under way (BL-154): the part it's at. */
+  chain?: 'updating' | 'resolving' | 'merging';
   /** A merge of it (Merge to main) waiting for a decision, and whether its agent is at it now. */
   merging?: NonNullable<BacklogItem['merging']> & { running: boolean };
   /** Once merged: what the base branch has that its upstream doesn't (to push). */

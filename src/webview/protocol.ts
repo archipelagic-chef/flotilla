@@ -429,6 +429,8 @@ export type WebviewMessage =
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
   | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
   | { type: 'backlog'; op: 'mergeNext'; id: string }
+  /** Update from Main and Merge (BL-154): a conflicting card's next step. */
+  | { type: 'backlog'; op: 'updateAndMerge'; id: string }
   /** Compact or Detailed cards (BL-183): saved in flotilla.backlog.cards. */
   | { type: 'backlog'; op: 'cards'; detailed: boolean }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */

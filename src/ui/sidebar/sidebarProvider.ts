@@ -426,6 +426,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'mergeNext':
         await this.merger?.mergeNext(m.id);
         return;
+      case 'updateAndMerge':
+        await this.merger?.updateAndMerge(m.id);
+        return;
       case 'merge':
         await vscode.commands.executeCommand('flotilla.mergeBacklogItem', m.id);
         return;
