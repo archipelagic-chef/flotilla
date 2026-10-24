@@ -26,6 +26,7 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'agent-started': { role: 'work', model: 'opus', session: 's1' },
   'agent-resumed': { role: 'review', session: 's1' },
   'agent-paused': { role: 'work', session: 's1', reason: 'limit', until: '2026-10-21T23:00:00.000Z' },
+  'agent-spend': { session: 's1', purpose: 'review', to: '2026-10-21T22:10:00.000Z', tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }, costUsd: 0.5, contextK: [60, 62], tools: { code: 1200 } },
   'agent-ended': { role: 'merge', session: 's1', code: 0, ok: true, minutes: 3.5, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 }, costUsd: 0.12 },
   'review-verdict': { verdict: 'changes', round: 2, by: 'Ember-6' },
   'merge-started': { into: 'main', branch: 'feature/x' },

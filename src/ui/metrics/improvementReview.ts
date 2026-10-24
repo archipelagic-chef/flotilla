@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentName } from '../../features/backlog/backlog';
 import { INBOX } from '../../features/backlog/inbox';
+import { criteriaCount } from '../../features/metrics/productivity';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { eventsDir, readEvents } from '../../features/metrics/events';
 import { checkFix, fixesMarkdown, readImproves, type FixCheck } from '../../features/metrics/improves';
@@ -151,15 +152,17 @@ export class ImprovementReview implements vscode.Disposable {
     const events = await readEvents(this.deps.commonDir);
     const data = await this.deps.backlog.read();
     const checks: FixCheck[] = [];
+    const criteria = new Map<string, number>();
     for (const item of data.items.filter((i) => i.status === 'done')) {
       const { description } = await this.deps.backlog.readTicketCached(item).catch(() => ({ description: '' }));
+      criteria.set(item.id, criteriaCount(description));
       for (const improves of readImproves(description)) {
         const c = checkFix(events, { ticket: item.id, title: item.title, improves, now });
         if (c.landed) checks.push(c);
       }
     }
     return {
-      summary: summaryMarkdown(metricsSummary(events, { to: now, days: every() || 7 })),
+      summary: summaryMarkdown(metricsSummary(events, { to: now, days: every() || 7, criteria })),
       fixes: fixesMarkdown(checks),
       openTickets: data.items.filter((i) => i.status !== 'done').map((i) => `${i.id} (${i.status}${i.proposed ? ', proposed' : ''}): ${i.title}`),
     };

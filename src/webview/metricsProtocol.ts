@@ -3,7 +3,8 @@
 /** The period shown: the last day, week or month (30 days), each compared with the one before. */
 export type MetricsPeriod = 'day' | 'week' | 'month';
 
-export type MetricUnit = 'count' | 'minutes' | 'usd' | 'tokens' | 'percent' | 'ms';
+/** ratio: a number per another (criteria per $), with two decimals. */
+export type MetricUnit = 'count' | 'minutes' | 'usd' | 'tokens' | 'percent' | 'ms' | 'ratio';
 
 /** One thing a number or bar is made of: a ticket, a merge, an agent's run; its ticket opens from it. */
 export interface MetricRow {
@@ -52,7 +53,7 @@ export interface MetricChart {
 }
 
 export interface MetricSection {
-  id: 'flow' | 'merges' | 'agents' | 'cost' | 'you';
+  id: 'productivity' | 'flow' | 'merges' | 'agents' | 'cost' | 'you';
   title: string;
   numbers: MetricNumber[];
   charts: MetricChart[];

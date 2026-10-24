@@ -50,6 +50,8 @@ export function formatValue(value: number, unit: MetricUnit): string {
         : `${Math.round(value)} ms`;
     case "count":
       return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    case "ratio":
+      return value >= 100 ? String(Math.round(value)) : value.toFixed(2);
   }
 }
 
