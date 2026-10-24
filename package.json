@@ -2046,6 +2046,7 @@
     "debug-profile": "node scripts/debug-profile.mjs",
     "demo": "node scripts/demo.mjs",
     "fake-github": "node scripts/fake-github.mjs",
+    "merge-replay": "node scripts/merge-replay.mjs",
     "prepare": "node scripts/install-hooks.mjs",
     "vscode:prepublish": "npm run build"
   },
