@@ -1,0 +1,95 @@
+{
+  "title": "The merge panel's buttons show they're working: Run the Checks Again, Fix with Agent, Approve Fix, Cancel",
+  "settings": {
+    "flotilla.merge.checks": "local"
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")"
+    },
+    {
+      "caption": "BL-13 merges into main, and its checks fail on the merge"
+    },
+    {
+      "waitFor": "button:has-text(\"Fix with Agent\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "Run the Checks Again: Running the checks\u2026 until they've run"
+    },
+    {
+      "click": "button:has-text(\"Run the Checks Again\")"
+    },
+    {
+      "waitFor": "button:has-text(\"Run the Checks Again\") .action-busy"
+    },
+    {
+      "waitFor": "button:has-text(\"Run the Checks Again\"):not([aria-busy=\"true\"])",
+      "timeout": 60000
+    },
+    {
+      "caption": "Fix with Agent: Starting\u2026 until its agent has started"
+    },
+    {
+      "click": "button:has-text(\"Fix with Agent\")"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"fixing the checks\")",
+      "timeout": 30000
+    },
+    {
+      "caption": "The agent fixes it and reports: Approve Fix runs the checks (Running the checks\u2026)"
+    },
+    {
+      "waitFor": "button:has-text(\"Approve Fix\")",
+      "timeout": 60000
+    },
+    {
+      "click": "button:has-text(\"Approve Fix\")"
+    },
+    {
+      "waitFor": "button:has-text(\"Run the Checks Again\"):not([aria-busy=\"true\"])",
+      "timeout": 60000
+    },
+    {
+      "caption": "The fix didn't make them pass (the fake agent's never does): the merge stops again"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "Cancel: Cancelling\u2026 until the temporary worktree is gone"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Cancel\")"
+    },
+    {
+      "waitFor": "button:has-text(\"Merge to main\")",
+      "timeout": 30000
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

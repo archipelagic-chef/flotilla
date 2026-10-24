@@ -222,6 +222,8 @@ const TICKETS = [
     title: 'Start a ticket from the keyboard',
     status: 'todo',
     daysAgo: 3,
+    // A linked issue, with no integration connected: its chip shows, and Unlink works offline (BL-118's demo).
+    links: [{ id: 'GH-7', source: 'github', url: 'https://github.com/example/playground/issues/7', title: 'Start tickets without the mouse' }],
     description: [
       'A keyboard shortcut starts the selected ticket in its own worktree, as the Start button does.',
       '',
@@ -724,6 +726,7 @@ function writeBacklog(backlog, now) {
     if (t.priority) item.priority = t.priority;
     if (t.proposed) item.proposed = t.proposed;
     if (t.parent) item.parent = t.parent;
+    if (t.links) item.links = t.links;
     if (t.branch) item.branches = [t.branch];
     if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
     item.descriptionHash = descriptionHash(t.description);

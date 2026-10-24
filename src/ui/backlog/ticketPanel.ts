@@ -1451,10 +1451,6 @@ export class TicketPanels implements vscode.Disposable {
   readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  /**
-   * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
-   * it's sent (or has waited for memory); its answer streams in as it's written.
-   */
   /** An Ask chat's message, then its done (also after a throw): its button's "working…" ends. */
   private async onAskMessage(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
     let failed = false;
@@ -1468,6 +1464,10 @@ export class TicketPanels implements vscode.Disposable {
     }
   }
 
+  /**
+   * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
+   * it's sent (or has waited for memory); its answer streams in as it's written.
+   */
   private async onAsk(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
     if (m.type === 'askNew') return this.asks.get(id)?.reset();
     if (m.type === 'askStop') return this.asks.get(id)?.stop();

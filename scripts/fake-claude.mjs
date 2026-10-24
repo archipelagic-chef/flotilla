@@ -12,6 +12,9 @@
 //   fake: limit 2m          its first run hits a usage limit that resets in 2 minutes; the resumed run goes on
 //   fake: crash             its first run dies without reporting; the resumed run goes on
 //
+// Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
+// word by word over a few seconds, and stops (a second later) when it's interrupted.
+//
 // Try it: in the debug window's settings, set "flotilla.agents.claudePath" to the absolute path of this file (it must
 // be executable: chmod +x scripts/fake-claude.mjs). It's not part of the published extension (.vscodeignore).
 import { execFileSync } from 'node:child_process';
@@ -170,7 +173,52 @@ function implement(file, text, hints, id) {
   reply(`Fake implementer: committed ${done.sha} and reported in the ticket.`);
 }
 
-main().catch((e) => {
+/** One line of stream-json output. */
+const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
+
+/** The Ask chat: each user message gets an answer streamed word by word; an interrupt stops it where it is. */
+function chat() {
+  emit({ type: 'system', subtype: 'init', session_id: session });
+  let answering;
+  const finish = (text, stopped) => {
+    clearInterval(answering);
+    answering = undefined;
+    emit({ type: 'result', subtype: stopped ? 'error_during_execution' : 'success', is_error: false, result: text, session_id: session, total_cost_usd: 0 });
+  };
+  const answer = () => {
+    const words = 'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'.split(' ');
+    let said = '';
+    emit({ type: 'stream_event', event: { type: 'message_start' } });
+    answering = setInterval(() => {
+      const word = words.shift();
+      if (word === undefined) return finish(said, false);
+      const text = `${said ? ' ' : ''}${word}`;
+      said += text;
+      emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } });
+    }, 150);
+    answer.said = () => said;
+  };
+  let rest = '';
+  process.stdin.on('data', (chunk) => {
+    const lines = (rest + chunk.toString()).split('\n');
+    rest = lines.pop() ?? '';
+    for (const line of lines.filter((l) => l.trim())) {
+      const m = JSON.parse(line);
+      if (m.type === 'user' && !answering) answer();
+      else if (m.type === 'control_request') {
+        emit({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id } });
+        // A moment, as Claude Code takes one: the chat shows it's stopping.
+        if (answering) {
+          clearInterval(answering);
+          setTimeout(() => finish(answer.said(), true), 1000);
+        }
+      }
+    }
+  });
+}
+
+if (option('--input-format') === 'stream-json') chat();
+else main().catch((e) => {
   process.stderr.write(`fake-claude: ${e instanceof Error ? e.message : String(e)}\n`);
   process.exitCode = 1;
 });

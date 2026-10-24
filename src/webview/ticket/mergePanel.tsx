@@ -344,13 +344,19 @@ export function MergePanel({ ticket }: { ticket: TicketView }) {
           <ActionButton class="button secondary" message={{ type: 'dismissUnmerged' }} working="Dismissing…" title="The work is superseded by another ticket (asks which)">
             Dismiss
           </ActionButton>
-          <button
-            class="button secondary"
-            onClick={() => (hasWorktree ? send({ type: 'openWorktree', key: ticket.worktrees.find((w) => w.branch === branch)!.key }) : send({ type: 'checkout', branch: branch! }))}
-            title={`Opens ${branch}: its worktree, or a new one for the branch`}
-          >
-            <i class="codicon codicon-git-branch" /> Open Branch
-          </button>
+          {hasWorktree ? (
+            <button
+              class="button secondary"
+              onClick={() => send({ type: 'openWorktree', key: ticket.worktrees.find((w) => w.branch === branch)!.key })}
+              title={`Opens ${branch}: its worktree`}
+            >
+              <i class="codicon codicon-git-branch" /> Open Branch
+            </button>
+          ) : (
+            <ActionButton class="button secondary" message={{ type: 'checkout', branch: branch! }} working="Creating the worktree…" title={`Opens ${branch} in a new worktree`}>
+              <i class="codicon codicon-git-branch" /> Open Branch
+            </ActionButton>
+          )}
         </>
       )}
     </div>

@@ -535,7 +535,8 @@ h2 {
   visibility: hidden;
 }
 .link-chip:hover .link-remove,
-.link-remove:focus-visible {
+.link-remove:focus-visible,
+.link-remove[aria-busy='true'] {
   visibility: visible;
 }
 .link-open:hover,

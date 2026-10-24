@@ -20,7 +20,6 @@ const INSTANT = new Set([
   'openUrl',
   'openView',
   'openWorktree',
-  'checkout',
   'ciShow',
   'backlog:open',
   'backlog:comment',
