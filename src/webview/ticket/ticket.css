@@ -677,13 +677,6 @@ h2 {
   background: var(--vscode-inputOption-activeBackground, rgba(128, 128, 128, 0.2));
 }
 
-.active-agent-report .rendered > :first-child {
-  margin-top: 2px;
-}
-.active-agent-report .rendered > :last-child {
-  margin-bottom: 0;
-}
-
 .demo-actions {
   display: inline-flex;
   gap: 6px;

@@ -269,3 +269,9 @@ button.chat-card:hover {
   padding-left: 34px;
   min-width: 0;
 }
+.active-agent-report .rendered > :first-child {
+  margin-top: 2px;
+}
+.active-agent-report .rendered > :last-child {
+  margin-bottom: 0;
+}
