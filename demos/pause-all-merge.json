@@ -1,0 +1,38 @@
+{
+  "title": "Pause All asks about a merge's checks running, and pauses a merge's agent, its chat kept",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.checkCommand": "npm run checks"
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
+    { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "click": ".review-panel button:has-text(\"Merge to main\")" },
+    { "waitFor": ".merge-checks" },
+    { "caption": "Pause All while BL-13's merge checks run: it asks first" },
+    { "command": "Pause All Agents" },
+    { "waitFor": ".monaco-dialog-box" },
+    { "wait": 2500 },
+    { "caption": "Let Them Finish: the agents pause, and the checks go on (Stop Them stops them)" },
+    { "click": ".monaco-dialog-box .monaco-button:has-text(\"Let Them Finish\")" },
+    { "waitFor": ".review-panel button:has-text(\"Fix with Agent\")", "timeout": 60000 },
+    { "wait": 1500 },
+    { "command": "Resume All Agents" },
+    { "caption": "Fix with Agent: an agent works on the merge" },
+    { "click": ".review-panel button:has-text(\"Fix with Agent\")" },
+    { "waitFor": ".review-panel:has-text(\"is fixing the checks\")" },
+    { "wait": 1500 },
+    { "caption": "Pause All pauses it: its run ends, its chat is kept" },
+    { "command": "Pause All Agents" },
+    { "waitFor": ".review-panel:has-text(\"(Pause All)\")" },
+    { "wait": 2500 },
+    { "caption": "Resume All: it goes on in its chat, in the merge's worktree" },
+    { "command": "Resume All Agents" },
+    { "waitFor": ".review-panel:has-text(\"is fixing the checks\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}

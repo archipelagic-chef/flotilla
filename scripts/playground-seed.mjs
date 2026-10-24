@@ -488,7 +488,8 @@ const TICKETS = [
     branch: 'feature/BL-13-say-hi-in-the-greeting',
     // Pushed to the playground's origin (a local bare repository with a GitHub-like path): its ticket shows its CI from the fake GitHub (BL-106).
     published: true,
-    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
+    // Its merge's agent (Fix with Agent) works long enough to be paused by Pause All (demos/pause-all-merge.json).
+    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.\n\nfake: wait 30s',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
     activity: [
       {
