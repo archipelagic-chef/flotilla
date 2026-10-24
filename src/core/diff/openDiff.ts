@@ -5,6 +5,7 @@ import { toWorkspaceUri } from '../uris';
 import { makeGitUri } from './gitContentProvider';
 import { sideRefsFor, WORKING, type DiffSide } from './refs';
 
+/** Opens a file's change in the diff editor; returns its right side (the diff's tab is known by it). */
 export async function openChangeDiff(
   reference: vscode.Uri,
   worktreeDir: string,
@@ -12,11 +13,13 @@ export async function openChangeDiff(
   leftRef: string,
   rightRef: string,
   label: string,
-): Promise<void> {
+): Promise<vscode.Uri> {
   const { left, right } = sideRefsFor(change, leftRef, rightRef);
   const toUri = (side: DiffSide) =>
     side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
-  await vscode.commands.executeCommand('vscode.diff', toUri(left), toUri(right), `${path.posix.basename(change.path)} (${label})`);
+  const modified = toUri(right);
+  await vscode.commands.executeCommand('vscode.diff', toUri(left), modified, `${path.posix.basename(change.path)} (${label})`);
+  return modified;
 }
 
 /** Opens VS Code's multi-file diff editor on the changes (one entry per file). */

@@ -392,6 +392,8 @@ export type TicketHostMessage =
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
   /** The comment box, the Demo section (BL-135), or an entry a reference named (BL-130). */
   | { type: 'focus'; target: FocusTarget }
+  /** Back from a diff opened from its Changes (BL-171): the section, at that file (none: Open All Changes). */
+  | { type: 'showChange'; path?: string }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** A Markdown box's Preview (BL-129): its text rendered as the activity shows it. */

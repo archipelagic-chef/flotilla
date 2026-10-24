@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'preact/hooks';
-import type { ChangedFile, TicketView } from '../ticketProtocol';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { ChangedFile, TicketHostMessage, TicketView } from '../ticketProtocol';
 import { ActionButton, send } from './actions';
 import './changes.css';
 import { changeLetter, changeRows, rowWindow, type ChangeRow } from './changeTree';
@@ -24,12 +24,32 @@ const STAGE: Record<string, string> = {
 
 /**
  * What the ticket's work changes compared with main (BL-171): its files as a tree that folds by folder, each with its
- * lines added and deleted. A file opens its diff; Open All Changes opens them all in the multi-file diff editor.
+ * lines added and deleted. A file opens its diff beside the ticket; Open All Changes opens them all in the multi-file
+ * diff editor. The file opened last stays marked, and Back to Ticket in a diff's title bar comes back here, at its file.
  */
 export function Changes({ ticket }: { ticket: TicketView }) {
   const change = ticket.changes;
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
+  /** The file whose diff was opened last (marked), and one to scroll to once its row is there. */
+  const [current, setCurrent] = useState<string>();
+  const [reveal, setReveal] = useState<{ path?: string }>();
+  const section = useRef<HTMLElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const listener = (e: MessageEvent<TicketHostMessage>) => {
+      if (e.data.type !== 'showChange') return;
+      const path = e.data.path;
+      if (path) {
+        setCurrent(path);
+        // The folders (and branch) it's in unfold.
+        setFolded((f) => new Set([...f].filter((k) => !path.startsWith(k.slice(k.indexOf(':') + 1)))));
+      }
+      setReveal({ path });
+    };
+    window.addEventListener('message', listener);
+    return () => window.removeEventListener('message', listener);
+  }, []);
   const rows = useMemo(() => (change ? changeRows(change, folded) : []), [change, folded]);
   const toggle = (key: string) => {
     const next = new Set(folded);
@@ -38,8 +58,19 @@ export function Changes({ ticket }: { ticket: TicketView }) {
   };
   const height = Math.min(rows.length * ROW, MAX_HEIGHT);
   const { start, end } = rowWindow(rows.length, scrollTop, height, ROW);
+  useEffect(() => {
+    if (!reveal || !change) return;
+    const index = reveal.path ? rows.findIndex((r) => r.kind === 'file' && r.file.path === reveal.path) : -1;
+    if (index >= 0 && list.current) list.current.scrollTop = Math.max(0, index * ROW - height / 2);
+    section.current?.scrollIntoView({ block: 'start' });
+    setReveal(undefined);
+  }, [reveal, rows, change]);
+  const open = (group: number, path: string) => {
+    setCurrent(path);
+    send({ type: 'openChange', group, path });
+  };
   return (
-    <section class="block changes">
+    <section class="block changes" ref={section}>
       <div class="block-head">
         <h2>
           Changes{' '}
@@ -63,10 +94,10 @@ export function Changes({ ticket }: { ticket: TicketView }) {
         ) : (
           <>
             {change.groups.length === 1 && <div class="changes-compared muted">{change.groups[0].compared}</div>}
-            <div class="change-rows" style={{ height: `${height}px` }} onScroll={(e) => setScrollTop((e.currentTarget as HTMLElement).scrollTop)}>
+            <div class="change-rows" ref={list} style={{ height: `${height}px` }} onScroll={(e) => setScrollTop((e.currentTarget as HTMLElement).scrollTop)}>
               <div style={{ height: `${rows.length * ROW}px`, position: 'relative' }}>
                 {rows.slice(start, end).map((r, i) => (
-                  <Row key={r.key} row={r} top={(start + i) * ROW} ticket={ticket} toggle={toggle} />
+                  <Row key={r.key} row={r} top={(start + i) * ROW} ticket={ticket} toggle={toggle} open={open} current={current} />
                 ))}
               </div>
             </div>
@@ -77,7 +108,21 @@ export function Changes({ ticket }: { ticket: TicketView }) {
   );
 }
 
-function Row({ row, top, ticket, toggle }: { row: ChangeRow; top: number; ticket: TicketView; toggle: (key: string) => void }) {
+function Row({
+  row,
+  top,
+  ticket,
+  toggle,
+  open,
+  current,
+}: {
+  row: ChangeRow;
+  top: number;
+  ticket: TicketView;
+  toggle: (key: string) => void;
+  open: (group: number, path: string) => void;
+  current?: string;
+}) {
   const style = { top: `${top}px`, height: `${ROW}px` };
   if (row.kind === 'group') {
     const g = ticket.changes!.groups[row.group];
@@ -109,10 +154,11 @@ function Row({ row, top, ticket, toggle }: { row: ChangeRow; top: number; ticket
   const letter = changeLetter(f);
   return (
     <button
-      class="change-row change-file"
+      class={`change-row change-file${f.path === current ? ' current' : ''}`}
       style={{ ...style, ...indent }}
-      onClick={() => send({ type: 'openChange', group: row.group, path: f.path })}
-      title={`${f.origPath ? `${f.origPath} → ` : ''}${f.path}${f.uncommitted ? '\nNot committed yet' : ''}\nClick to open its diff`}
+      onClick={() => open(row.group, f.path)}
+      aria-current={f.path === current ? 'true' : undefined}
+      title={`${f.origPath ? `${f.origPath} → ` : ''}${f.path}${f.uncommitted ? '\nNot committed yet' : ''}\nClick to open its diff beside the ticket`}
     >
       <span class={`change-letter kind-${letter}`}>{letter}</span>
       <span class="change-name">{row.name}</span>

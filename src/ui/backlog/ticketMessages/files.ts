@@ -53,7 +53,11 @@ export const filesHandlers: Handlers<FilesMessage> = {
     // The change as the ticket shows it: what it lists is what opens.
     const g = (await panels.changesShown(item)).groups[m.group];
     const f = g?.files.find((x) => x.path === m.path);
-    if (g && f) await openChangeDiff(panels.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`);
+    if (!g || !f) return;
+    // Beside the ticket, which stays in view; the diff's title bar leads back to it.
+    await panels.beside(item.id);
+    const modified = await openChangeDiff(panels.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`);
+    panels.diffs.openedDiff(modified, { id: item.id, path: f.path });
   },
   openAllChanges: async ({ item, panels }) => {
     const { groups } = await panels.changesShown(item);
@@ -62,7 +66,9 @@ export const filesHandlers: Handlers<FilesMessage> = {
       void vscode.window.showInformationMessage(`${item.id} changes no files yet.`);
       return;
     }
+    await panels.beside(item.id);
     await openChangeEntries(panels.deps.reference, entries, `${item.id}: Changes`);
+    panels.diffs.openedList(`${item.id}: Changes`, { id: item.id });
   },
   openHref: async ({ item, panels }, m) => {
     await panels.openHref(item, m.href);

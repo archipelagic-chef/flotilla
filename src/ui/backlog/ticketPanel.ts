@@ -75,6 +75,7 @@ import { movesSince, ticketCommits, versionCommits } from '../../features/histor
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
 import { ticketChange } from '../../features/diffs/ticketChange';
+import { focusBeside, TicketDiffs, type DiffOrigin } from './ticketDiffs';
 import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
@@ -648,6 +649,7 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.ticketDiffs?.dispose();
     this.subscriptions.forEach((d) => d.dispose());
     this.panels.forEach((p) => p.dispose());
     this.asks.forEach((a) => a.dispose());
@@ -659,6 +661,35 @@ export class TicketPanels implements vscode.Disposable {
    * or to show their Demo section in (opened from a review card's demo mark, BL-135).
    */
   private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, FocusTarget>();
+
+  /** The file of its Changes a ticket opened from a diff shows once its view is sent (BL-171). */
+  private readonly changeOnPost = new WeakMap<vscode.WebviewPanel, { path?: string }>();
+
+  private ticketDiffs: TicketDiffs | undefined;
+
+  /** Diffs opened from tickets' Changes, which lead back to them (BL-171): kept from the first one opened. */
+  get diffs(): TicketDiffs {
+    return (this.ticketDiffs ??= new TicketDiffs((o) => this.showChange(o)));
+  }
+
+  /** Makes the editor group beside the ticket the active one: a diff opened next opens there, the ticket in view. */
+  async beside(id: string): Promise<void> {
+    const panel = this.panels.get(id);
+    if (panel) await focusBeside(panel);
+  }
+
+  /** Back from a diff: the ticket, its Changes scrolled to the file the diff shows, marked. */
+  async showChange(o: DiffOrigin): Promise<void> {
+    const existing = this.panels.get(o.id);
+    if (existing) {
+      existing.reveal();
+      void existing.webview.postMessage({ type: 'showChange', ...(o.path ? { path: o.path } : {}) } satisfies TicketHostMessage);
+      return;
+    }
+    await this.open(o.id);
+    const panel = this.panels.get(o.id);
+    if (panel) this.changeOnPost.set(panel, o.path ? { path: o.path } : {});
+  }
 
   async open(id: string, o: { focus?: FocusTarget } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
@@ -1329,6 +1360,8 @@ export class TicketPanels implements vscode.Disposable {
       }
       const focus = this.focusOnPost.get(panel);
       if (focus && this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: focus } satisfies TicketHostMessage);
+      const change = this.changeOnPost.get(panel);
+      if (change && this.changeOnPost.delete(panel)) void panel.webview.postMessage({ type: 'showChange', ...change } satisfies TicketHostMessage);
     };
     let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
     try {

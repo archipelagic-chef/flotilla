@@ -75,3 +75,8 @@
   color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
   border: 1px solid currentColor;
 }
+/* The file whose diff was opened last: where Back to Ticket comes back to. */
+.change-row.current {
+  background: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--vscode-list-inactiveSelectionForeground, inherit);
+}
