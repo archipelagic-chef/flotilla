@@ -17,6 +17,10 @@
   border-radius: 0 2px 2px 0;
   box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
 }
+/* ---- commit history ---- */
+.history {
+  margin-top: 2px;
+}
 .badge.outgoing {
   background: transparent;
   color: var(--muted);
@@ -74,6 +78,10 @@
 }
 .compare-swap .codicon {
   transform: rotate(90deg);
+}
+/* ---- comparisons ---- */
+.comparison + .comparison {
+  margin-top: 4px;
 }
 .comparison-head {
   gap: 4px;
