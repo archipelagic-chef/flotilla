@@ -1,5 +1,5 @@
 import { runGit } from '../../core/git/gitCli';
-import { parseStatusV2, type FileChange, type StatusBranch } from '../../core/git/porcelain';
+import { parseStatusV2, summariseUntracked, type FileChange, type StatusBranch } from '../../core/git/porcelain';
 import { isInside, samePath } from '../../core/paths';
 import type { Scope } from '../../core/repository';
 import { claudeHome, homedElsewhere, mergeChats, mostUrgent, readChatRecords, readTranscript, readTranscripts, readUnlinked, type Chat, type TranscriptInfo } from '../chats/chats';
@@ -237,7 +237,7 @@ export function findWorkstreamFor<T extends Pick<Workstream, 'worktree'>>(items:
 
 /** A worktree's git status: its changes, split into staged and unstaged, and its branch's upstream state. */
 export async function readStatus(dir: string): Promise<ReturnType<typeof parseStatusV2>> {
-  return parseStatusV2(await runGit(['status', '--porcelain=v2', '--branch', '-z'], { cwd: dir }));
+  return summariseUntracked(parseStatusV2(await runGit(['status', '--porcelain=v2', '--branch', '-z'], { cwd: dir })));
 }
 
 /**

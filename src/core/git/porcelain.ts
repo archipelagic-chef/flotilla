@@ -4,6 +4,8 @@ export interface FileChange {
   path: string;
   origPath?: string;
   kind: ChangeKind;
+  /** A folder of untracked files summarised as one entry (see summariseUntracked): how many files it holds. */
+  files?: number;
 }
 
 export interface StatusBranch {
@@ -148,4 +150,37 @@ export function sumNumstat(out: string): { added: number; deleted: number } {
     if (m[3] === '') i += 2;
   }
   return { added, deleted };
+}
+
+/** From this many untracked files on, those in a folder are listed as the folder (status.showUntrackedFiles=all). */
+export const UNTRACKED_SUMMARY_AT = 1000;
+
+/**
+ * Lists the untracked files of each top-level folder as one entry ("node_modules/", with its count) when there are
+ * thousands, so a worktree whose .gitignore is gone doesn't send ten thousand rows to the sidebar.
+ */
+export function summariseUntracked(status: StatusResult): StatusResult {
+  if (status.unstaged.filter((c) => c.kind === 'untracked').length < UNTRACKED_SUMMARY_AT) return status;
+  const summarise = (list: FileChange[]): FileChange[] => {
+    const folders = new Map<string, FileChange>();
+    const result: FileChange[] = [];
+    for (const c of list) {
+      const slash = c.path.indexOf('/');
+      if (c.kind !== 'untracked' || slash < 0) {
+        result.push(c);
+        continue;
+      }
+      const folder = c.path.slice(0, slash + 1);
+      const entry = folders.get(folder);
+      const files = c.files ?? 1;
+      if (entry) entry.files! += files;
+      else {
+        const summary: FileChange = { path: folder, kind: 'untracked', files };
+        folders.set(folder, summary);
+        result.push(summary);
+      }
+    }
+    return result;
+  };
+  return { ...status, changes: summarise(status.changes), unstaged: summarise(status.unstaged) };
 }

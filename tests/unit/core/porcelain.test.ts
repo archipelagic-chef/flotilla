@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseNameStatus, parseStatusV2, sumNumstat } from '../../../src/core/git/porcelain';
+import { parseNameStatus, parseStatusV2, summariseUntracked, sumNumstat, UNTRACKED_SUMMARY_AT } from '../../../src/core/git/porcelain';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -102,5 +102,27 @@ describe('sumNumstat', () => {
   it('sums text changes, ignores binary files and skips rename path pairs', () => {
     const out = ['3\t1\ta.ts', '-\t-\tbin.png', '5\t0\t', 'old.ts', 'new.ts', ''].join('\0');
     expect(sumNumstat(out)).toEqual({ added: 8, deleted: 1 });
+  });
+});
+
+describe('summariseUntracked', () => {
+  const status = (untracked: string[]) =>
+    parseStatusV2(['1 .M N... 100644 100644 100644 a a src/x.ts', ...untracked.map((p) => `? ${p}`), ''].join('\0'));
+
+  it('lists thousands of untracked files as their top-level folders, with counts', () => {
+    const files = Array.from({ length: UNTRACKED_SUMMARY_AT + 212 }, (_, i) => `node_modules/pkg${i}/index.js`);
+    const result = summariseUntracked(status([...files, 'notes.txt', '.playground/a.json']));
+    expect(result.unstaged).toEqual([
+      { path: 'src/x.ts', kind: 'modified' },
+      { path: 'node_modules/', kind: 'untracked', files: UNTRACKED_SUMMARY_AT + 212 },
+      { path: 'notes.txt', kind: 'untracked' },
+      { path: '.playground/', kind: 'untracked', files: 1 },
+    ]);
+    expect(result.changes).toHaveLength(4);
+  });
+
+  it('leaves fewer untracked files as they are', () => {
+    const s = status(['node_modules/a.js', 'node_modules/b.js']);
+    expect(summariseUntracked(s)).toBe(s);
   });
 });

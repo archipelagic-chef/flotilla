@@ -121,6 +121,8 @@ export interface FileChangeView {
   path: string;
   origPath?: string;
   kind: ChangeKind;
+  /** A folder of untracked files listed as one entry: how many files it holds. */
+  files?: number;
 }
 
 export interface ChatView {

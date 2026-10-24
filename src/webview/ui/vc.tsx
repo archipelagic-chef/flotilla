@@ -218,7 +218,7 @@ function ChangeRow({ ws, group, change }: { ws: WorkstreamView; group: ChangeGro
     >
       <i class="codicon codicon-file" />
       <span class={`name k-${change.kind}`}>{name}</span>
-      <span class="dir">{parts.join('/')}</span>
+      <span class="dir">{change.files ? `${change.files.toLocaleString('en-US')} untracked file${change.files === 1 ? '' : 's'}` : parts.join('/')}</span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
         {change.kind !== 'deleted' && (
           <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', target)}>
