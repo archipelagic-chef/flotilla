@@ -103,6 +103,11 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+  A card is Compact by default (`flotilla.backlog.cards`, BL-183): its title, one status line and its next step, all
+  from `cardStatus()` ([src/features/backlog/cardStatus.ts](src/features/backlog/cardStatus.ts)), with its tests in
+  `tests/unit/features/cardStatus.test.ts`. A new state of a ticket gets its line (and its mark, if it needs you) there;
+  a new detail or action goes in the hover row (`CompactCard`) and in Detailed. A demo that shows a Detailed-only sign
+  sets `"settings": { "flotilla.backlog.cards": "detailed" }`.
 - **A part's CSS** is in its own file next to it (`card.tsx` → `card.css`), which the part imports
   (`import './card.css';`); esbuild bundles it into `dist/webview.css` or `dist/ticket.css`. Only what parts share
   (the variables, `body`, buttons, rows, `.rendered`, the layout) stays in the entry CSS, `ui/styles.css` or

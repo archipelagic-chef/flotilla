@@ -45,7 +45,7 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   if (m?.state === 'failed') return { text: `Merge failed${m.reason ? `: ${strip(m.reason)}` : ''}`, mark: 'error', next: OPEN };
   if (item.checks) return { text: `Merging: checks${item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}`, working: true };
   if (m?.state === 'resolving') return { text: 'Merging: an agent resolves its conflicts', working: true };
-  if (m?.state === 'resolved') return { text: 'Waiting for you: approve the resolved merge', mark: 'question', next: OPEN };
+  if (m?.state === 'resolved') return { text: 'Waiting for you: approve the merge', mark: 'question', next: OPEN };
   if (item.startFailed) return { text: `Couldn't start: ${strip(item.startFailed.message)}`, mark: 'error', next: { ...START, label: 'Retry' } };
   const stuck = agents.find((a) => a.stuck);
   if (stuck) return { text: `${stuck.name} looks stuck: ${strip(stuck.stuck!)}`, mark: 'warning', next: OPEN };
@@ -56,7 +56,7 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   if (turn) {
     switch (turn.kind) {
       case 'asking':
-        return { text: 'Waiting for you: answer its question', mark: 'question', next: { op: 'comment', label: 'Answer', icon: 'comment' } };
+        return { text: 'Waiting for you: answer', mark: 'question', next: { op: 'comment', label: 'Answer', icon: 'comment' } };
       case 'yours':
         if (queuedBehind) return { text: 'Approved · in the merge queue', next: { op: 'mergeNext', label: 'Merge Next', icon: 'git-merge' } };
         if (readyToMerge(item)) return { text: `Approved${r?.reviewer ? ` by ${r.reviewer}` : ''} · ready to merge`, next: { op: 'merge', label: 'Merge', icon: 'git-merge' } };
@@ -66,7 +66,7 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
       case 'agent-revising':
         return { text: `Revising · ${turn.who}${r?.round ? ` · round ${r.round}` : ''}`, working: true };
       case 'stopped':
-        return { text: 'Review stopped: yours to decide how it goes on', mark: 'warning', next: OPEN };
+        return { text: 'Stopped: yours to decide', mark: 'warning', next: OPEN };
       case 'paused':
         return { text: 'Paused', next: OPEN };
     }

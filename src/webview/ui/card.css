@@ -320,8 +320,8 @@
   margin-left: auto;
   flex: none;
 }
-/* Compact (BL-183): the title (up to two lines) over one line, the status or, hovered or focused, the details and
-   actions in its place, so the card keeps its height; the next step on the right. */
+/* Compact (BL-183): the title (up to two lines) over one line: the status or, hovered or focused, the details and
+   actions in its place, so the card keeps its height; the next step at its end. */
 .backlog-item.compact {
   height: auto;
   min-height: 0;
@@ -356,6 +356,7 @@
   white-space: nowrap;
 }
 .backlog-item.compact .card-status {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -433,7 +434,8 @@
 }
 .backlog-item.compact .card-next {
   flex: none;
-  align-self: center;
+  margin-left: auto;
+  padding-left: 6px;
 }
 .backlog-item.compact .card-next .button.small {
   height: 20px;

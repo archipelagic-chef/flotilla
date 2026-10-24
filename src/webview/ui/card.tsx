@@ -559,27 +559,27 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                 )}
               </span>
             </span>
+            {next && (
+              <span class="card-next" onClick={(e) => e.stopPropagation()}>
+                {next.op === 'open' ? (
+                  <button class="button small secondary" onClick={() => send({ type: 'backlog', op: 'open', id: item.id })}>
+                    {next.label}
+                  </button>
+                ) : next.op === 'comment' ? (
+                  <button class="button small" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })}>
+                    {next.label}
+                  </button>
+                ) : (
+                  <BusyButton class={`button small${next.op === 'start' ? ' secondary' : ''}`} message={{ type: 'backlog', op: next.op, id: item.id }} icon={next.icon}>
+                    {' '}
+                    {next.label}
+                  </BusyButton>
+                )}
+              </span>
+            )}
           </span>
         )}
       </span>
-      {!renaming && next && (
-        <span class="card-next" onClick={(e) => e.stopPropagation()}>
-          {next.op === 'open' ? (
-            <button class="button small secondary" onClick={() => send({ type: 'backlog', op: 'open', id: item.id })}>
-              {next.label}
-            </button>
-          ) : next.op === 'comment' ? (
-            <button class="button small" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })}>
-              {next.label}
-            </button>
-          ) : (
-            <BusyButton class={`button small${next.op === 'start' ? ' secondary' : ''}`} message={{ type: 'backlog', op: next.op, id: item.id }} icon={next.icon}>
-              {' '}
-              {next.label}
-            </BusyButton>
-          )}
-        </span>
-      )}
     </>
   );
 }
