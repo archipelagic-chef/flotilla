@@ -2,16 +2,17 @@ import { conflictRegions } from '../../core/git/conflictRegions';
 import type { CiStop } from '../backlog/ciStop';
 import type { MergeTrain } from '../backlog/mergeTrain';
 import { trainOnto } from '../backlog/mergeTrain';
-import { recordEvent } from './events';
+import { recordEvent, recordEventOf } from './events';
 
 /**
  * Records a merge's conflicts (BL-157) with their regions, measured in memory (merge-tree) without holding up the
  * merge: the files git named, with no regions, when that fails.
  */
 export function recordConflicts(ticket: string, cwd: string, ours: string, theirs: string, files: readonly string[]): void {
-  void conflictRegions(cwd, ours, theirs)
+  const data = conflictRegions(cwd, ours, theirs)
     .catch(() => [])
-    .then((found) => recordEvent('merge-conflicted', { ticket, data: { files: found.length ? found : files.map((file) => ({ file, regions: [] })) } }));
+    .then((found) => ({ files: found.length ? found : files.map((file) => ({ file, regions: [] })) }));
+  recordEventOf('merge-conflicted', { ticket, data });
 }
 
 /**
