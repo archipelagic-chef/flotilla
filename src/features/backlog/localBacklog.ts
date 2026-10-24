@@ -152,6 +152,9 @@ export class LocalBacklog {
       if (old && old.status !== item.status) {
         recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(opts.by ?? ''), data: { from: old.status, to: item.status, by: opts.by ?? 'You' } });
       }
+      if (old && old.review?.state !== item.review?.state) {
+        recordEvent('review-state', { ticket: item.id, data: { ...(old.review?.state ? { from: old.review.state } : {}), ...(item.review?.state ? { to: item.review.state } : {}) } });
+      }
       if (lines.length) await this.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: lines.join('\n\n') });
     }
     return next;

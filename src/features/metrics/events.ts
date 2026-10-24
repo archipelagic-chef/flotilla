@@ -21,6 +21,8 @@ export interface EventData {
   'agent-resumed': { role: AgentRole; model?: string; effort?: string; session: string };
   'agent-paused': { role: AgentRole; session: string; reason: 'limit' | 'user' | 'slot'; until?: string };
   'agent-ended': { role: AgentRole; session: string; code: number | null; ok: boolean; minutes: number; tokens?: Tokens; costUsd?: number; model?: string };
+  /** A ticket's review state changed (BL-158): the waits for you (asking, yours, approved, stopped) are its spans. */
+  'review-state': { from?: string; to?: string };
   'review-verdict': { verdict: 'approved' | 'changes'; round: number; by: string };
   'merge-started': { into: string; branch?: string };
   'merge-conflicted': { files: ConflictFile[] };
@@ -117,7 +119,11 @@ export async function appendEvents(commonDir: string, events: readonly FlotillaE
 
 /** The events of a month's file; what isn't an event (a write cut short by a crash) is skipped. */
 export async function readEventsFile(file: string): Promise<FlotillaEvent[]> {
-  const text = await fs.promises.readFile(file, 'utf8').catch(() => '');
+  return parseEvents(await fs.promises.readFile(file, 'utf8').catch(() => ''));
+}
+
+/** The events of lines of a month's file; what isn't an event (a write cut short by a crash) is skipped. */
+export function parseEvents(text: string): FlotillaEvent[] {
   const out: FlotillaEvent[] = [];
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
