@@ -1,0 +1,24 @@
+{
+  "title": "Jot down a note, and an agent turns it into a ticket proposal",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".notes-input" },
+    { "caption": "The Notes box: what you'd say to an agent in a chat" },
+    { "click": ".notes-input" },
+    { "type": "Another thing I want is a way to export the backlog as CSV" },
+    { "wait": 600 },
+    { "press": "Enter" },
+    { "caption": "Enter adds it to the Notes lane; an agent picks it up within a minute" },
+    { "waitFor": ".note-card:has-text(\"export the backlog\")" },
+    { "waitFor": ".note-working:has-text(\"export the backlog\")", "timeout": 60000 },
+    { "caption": "The agent reads the code and the backlog, and writes the proposal" },
+    { "waitFor": ".proposed-lane:has-text(\"export the backlog\")", "timeout": 60000 },
+    { "caption": "The proposal is in, and the note folds into Past notes with what it became" },
+    { "click": ".notes-past .group-head" },
+    { "waitFor": ".note-past:has-text(\"Became\")", "timeout": 30000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

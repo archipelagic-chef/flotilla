@@ -12,6 +12,9 @@
 //   fake: limit 2m          its first run hits a usage limit that resets in 2 minutes; the resumed run goes on
 //   fake: crash             its first run dies without reporting; the resumed run goes on
 //
+// As a note agent (BL-182), it proposes a ticket per note through the inbox, after 3 s; a note with "fake: ask" in it
+// gets a question first, and its proposal once the user has answered.
+//
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
 // word by word over a few seconds, and stops (a second later) when it's interrupted.
 //
@@ -102,7 +105,31 @@ function change(id) {
   return { rel, n, line, sha: git('rev-parse', '--short', 'HEAD') };
 }
 
+/** A note agent: a question for a note that says "fake: ask" (until answered), else a proposal per note in the inbox. */
+async function handleNotes() {
+  const notes = [...prompt.matchAll(/(NOTE-\d+) \(([^)]+\.md)\)/g)].map((m) => ({ id: m[1], file: m[2] }));
+  const inbox = /a Markdown file per ticket in (\S+?)\/ /.exec(prompt)?.[1];
+  await new Promise((r) => setTimeout(r, 3000));
+  const texts = notes.map((n) => ({ ...n, text: fs.existsSync(n.file) ? fs.readFileSync(n.file, 'utf8') : '' }));
+  if (texts.some((n) => /fake: ask/.test(n.text) && !hasEntryBy(n.text, 'You'))) {
+    reply('I read the code and the backlog: this can go two ways.\n\nNeeds from you: which way\n\n```question\nOne ticket, or an epic with a ticket per part?\n- One ticket (recommended)\n- An epic with parts\n```');
+    return;
+  }
+  const ids = [];
+  for (const n of texts) {
+    const title = /^#\s+(.+)$/m.exec(n.text)?.[1]?.replace(/\s*fake: ask\s*/, '').trim() || n.id;
+    const name = `fake-${n.id.toLowerCase()}`;
+    if (inbox) {
+      fs.mkdirSync(inbox, { recursive: true });
+      fs.writeFileSync(path.join(inbox, `${name}.md`), `---\nnote: ${n.id}\nagent: ${who}\n---\n# ${title}\n\n**When it's done:** ${title.toLowerCase()}.\n\n**Why:** the user asked for it in ${n.id}.\n\nAcceptance criteria:\n- [ ] It works as the note says.\n`);
+    }
+    ids.push(n.id);
+  }
+  reply(`Proposed a ticket for ${ids.join(', ')}, after reading the code and the backlog.`);
+}
+
 async function main() {
+  if (/^You are agent [A-Za-z0-9-]+, handling note NOTE-\d+/.test(prompt) || (resume && /handling NOTE-\d+$/.test(name))) return handleNotes();
   const file = ticketFile();
   const text = file ? fs.readFileSync(file, 'utf8') : '';
   const hints = directives(text);

@@ -126,8 +126,8 @@ export function BacklogView({ items: posted, problems, integrations, autopilot, 
         </button>
       ))}
       {!workingOnly && <NotesBox />}
-      <NeedsYou items={items ?? []} />
       {!workingOnly && <NotesLane notes={notes} />}
+      <NeedsYou items={items ?? []} />
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && (
         <div class="empty">

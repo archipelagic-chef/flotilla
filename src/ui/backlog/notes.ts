@@ -61,8 +61,8 @@ export class NoteAgents implements vscode.Disposable {
       this.changed.fire();
       void this.tick();
     });
-    // A row is picked up once it has settled, and a slot that comes free is taken: looked at every 10 s.
-    const timer = setInterval(() => void this.tick(), 10_000);
+    // A row is picked up once it has settled, and a slot that comes free is taken: looked at every 5 s.
+    const timer = setInterval(() => void this.tick(), 5000);
     // A note agent working in another window shows on its note here too.
     let working = '';
     const chats = deps.repository.onDidChange(() => {
@@ -225,8 +225,8 @@ export class NoteAgents implements vscode.Disposable {
    * handled, once the inbox has taken in its proposals, and record what they became.
    */
   private async finished(lead: string, ids: string[], agent: string, result: AgentResult, slot: number): Promise<void> {
-    this.runs.delete(lead);
     this.deps.giveBack(slot);
+    // Its notes stay taken (in runs) until their state says what's next: open meanwhile, a tick would resume them.
     try {
       const reply = result.reply?.trim();
       if (!reply) {
@@ -248,6 +248,7 @@ export class NoteAgents implements vscode.Disposable {
       for (const id of ids) await this.deps.notes.setState(id, (s) => ({ ...s, status: 'handled', handled }));
       await this.deps.notes.append(lead, { author: 'Flotilla', body: `${becameText(became, (id) => `[${id}](../${id}.md)`)}.` });
     } finally {
+      this.runs.delete(lead);
       this.changed.fire();
       void this.tick();
     }
