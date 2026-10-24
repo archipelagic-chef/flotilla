@@ -33,7 +33,7 @@ describe('cardStatus', () => {
     expect(line(item('review', { review: review('yours') }))).toEqual(['Waiting for you: review', 'question', '', 'Approve']);
     expect(line(item('doing', { review: review('asking') }))).toEqual(['Waiting for you: answer', 'question', '', 'Answer']);
     expect(line(item('review', { review: review('stopped') }))).toEqual(['Stopped: yours to decide', 'warning', '', 'Open']);
-    expect(line(item('review', { review: review('paused', { paused: { byUser: true } } as Partial<ReviewState>) }))).toEqual(['Paused', '', '', 'Open']);
+    expect(line(item('review', { review: review('paused', { paused: { byUser: 'You' } } as unknown as Partial<ReviewState>) }))).toEqual(['Paused', '', '', 'Open']);
   });
 
   it('offers Merge once approved, and Merge Next behind others in the merge queue', () => {
@@ -61,7 +61,7 @@ describe('cardStatus', () => {
   });
 
   it('says what a working agent does, or why the ticket waits', () => {
-    const activity = { tool: { name: 'Bash', input: 'npm test', since: '2026-10-24T10:00:00.000Z', done: true } } as CardAgent['activity'];
+    const activity = { tool: { name: 'Bash', input: 'npm test', since: '2026-10-24T10:00:00.000Z', done: true } } as unknown as CardAgent['activity'];
     const [text, mark, working] = line(item('doing'), [agent('Vega-2', { activity })]);
     expect(text).toMatch(/^Vega-2: /);
     expect([mark, working]).toEqual(['', 'working']);
