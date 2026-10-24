@@ -646,14 +646,6 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-/* The description folds to its first lines when the ticket has activity. */
-.description.folded {
-  max-height: 9em;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 65%, transparent);
-  mask-image: linear-gradient(to bottom, #000 65%, transparent);
-}
-
 .review-panel.stopped {
   border-left-color: var(--error);
 }
