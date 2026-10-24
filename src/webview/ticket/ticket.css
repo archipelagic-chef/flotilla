@@ -1138,39 +1138,6 @@ button.work-row:hover {
   width: 100%;
 }
 
-/* A ticket's Check (BL-163): each claim, ✓ or ✗ with Clean Up. */
-.check-result {
-  margin-top: 12px;
-  padding: 6px 10px;
-  border-radius: 3px;
-  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
-}
-.check-result.glitched {
-  border-color: var(--vscode-inputValidation-warningBorder, var(--waiting));
-}
-.check-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.check-head .button {
-  margin-left: auto;
-}
-.check-result ul {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.check-result li {
-  padding: 2px 0;
-}
-.check-result li.ok .check-mark {
-  color: var(--done);
-}
-.check-result li.glitch .check-mark {
-  color: var(--error);
-}
 /* A merge's checks in the background (BL-169). */
 .merge-checks {
   margin-top: 4px;
