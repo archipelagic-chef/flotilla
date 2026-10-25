@@ -1,0 +1,27 @@
+{
+  "title": "A note's agent asks, and your answer on the card lets it go on",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".monaco-editor.focused" },
+    { "waitFor": ".note-draft" },
+    { "wait": 800 },
+    { "type": "Tags on tickets, to filter the board fake: ask" },
+    { "wait": 600 },
+    { "press": "Control+s" },
+    { "hover": ".notes-lane .group-head" },
+    { "caption": "When a note needs a choice only you can make, its agent asks on the note" },
+    { "waitFor": ".note-asking .note-choice", "timeout": 60000 },
+    { "wait": 1500 },
+    { "caption": "Click an answer, and its chat goes on with it" },
+    { "click": ".note-asking .note-choice:has-text(\"An epic with parts\")" },
+    { "wait": 600 },
+    { "click": ".note-asking button:has-text(\"Answer\")" },
+    { "waitFor": ".proposed-lane:has-text(\"Tags on tickets\")", "timeout": 60000 },
+    { "caption": "Then it proposes the tickets" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

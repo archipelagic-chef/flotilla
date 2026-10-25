@@ -1,0 +1,27 @@
+{
+  "title": "Write a note in the editor, and an agent turns it into a ticket proposal",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "New Note opens a note in the editor, to write as you'd ask an agent in a chat" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".monaco-editor.focused" },
+    { "waitFor": ".note-draft" },
+    { "wait": 800 },
+    { "type": "Another thing I want is a way to export the backlog as CSV" },
+    { "wait": 600 },
+    { "caption": "Saving it sends it: it shows in the Notes lane, under Needs you" },
+    { "press": "Control+s" },
+    { "hover": ".notes-lane .group-head" },
+    { "waitFor": ".note-card:has-text(\"export the backlog\")" },
+    { "waitFor": ".note-working:has-text(\"export the backlog\")", "timeout": 60000 },
+    { "caption": "The agent reads the code and the backlog, and writes the proposal" },
+    { "waitFor": ".proposed-lane:has-text(\"export the backlog\")", "timeout": 60000 },
+    { "caption": "The proposal is in, and the note folds into Past notes with what it became" },
+    { "click": ".notes-past .group-head" },
+    { "waitFor": ".note-past:has-text(\"Became\")", "timeout": 30000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
