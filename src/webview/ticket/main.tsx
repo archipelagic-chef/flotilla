@@ -2,7 +2,12 @@ import { Component, render, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import type { AskView } from '../../features/backlog/ask';
-import type { TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  TicketCiView,
+  TicketHostMessage,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 // The shared rules first: each section's own CSS, imported by its module, comes after them.
 import '../ui/priority.css';
 import './ticket.css';
@@ -12,11 +17,23 @@ import { applyTicketParts } from '../ticketParts';
 import { activeAgents } from '../activeAgents';
 import { PriorityPicker } from '../ui/priority';
 import { TicketCi } from './ci';
-import { ActionButton, finished, send, useWorkingChanges, workingLabel } from './actions';
+import {
+  ActionButton,
+  finished,
+  send,
+  useWorkingChanges,
+  workingLabel,
+} from './actions';
 import { showingEntries } from './comments';
 import { imageReplies, previewReplies } from './markdownBox';
 import { checksLogReplies } from './checksPanel';
-import { AgentPicker, RemotePriority, STATUSES, StatusMenu, Title } from './header';
+import {
+  AgentPicker,
+  RemotePriority,
+  STATUSES,
+  StatusMenu,
+  Title,
+} from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
 import { ActiveAgents, Agents } from './agents';
@@ -102,7 +119,14 @@ function App() {
   if (!received) return <div class="empty-text">Loading…</div>;
   const ticket: TicketView =
     picked.status || picked.priority !== undefined
-      ? { ...received, item: { ...received.item, ...(picked.status ? { status: picked.status } : {}), ...(picked.priority !== undefined ? { priority: picked.priority ?? undefined } : {}) } }
+      ? {
+          ...received,
+          item: {
+            ...received.item,
+            ...(picked.status ? { status: picked.status } : {}),
+            ...(picked.priority !== undefined ? { priority: picked.priority ?? undefined } : {}),
+          },
+        }
       : received;
   const pick = (change: typeof picked, message: TicketWebviewMessage) => {
     setPicked((p) => ({ ...p, ...change }));
@@ -129,7 +153,12 @@ function App() {
           ) : (
             <div class="segmented" role="radiogroup" aria-label="Status">
               {STATUSES.map((s) => (
-                <button key={s.status} role="radio" aria-checked={ticket.item.status === s.status} onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}>
+                <button
+                  key={s.status}
+                  role="radio"
+                  aria-checked={ticket.item.status === s.status}
+                  onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}
+                >
                   <i class={`codicon codicon-${s.icon}`} /> {s.label}
                 </button>
               ))}
@@ -165,7 +194,10 @@ function App() {
           {ticket.remote?.edit?.priorities ? (
             <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
           ) : (
-            <PriorityPicker value={ticket.item.priority} onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })} />
+            <PriorityPicker
+              value={ticket.item.priority}
+              onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })}
+            />
           )}
           {!ticket.remote && <AgentPicker ticket={ticket} />}
           <LinkChips links={ticket.links} />
@@ -221,7 +253,12 @@ function App() {
                 <i class="codicon codicon-pulse" /> Check
               </ActionButton>
               {ticket.canReview && !ticket.review && (
-                <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…" title="Another agent reviews the work and gives a verdict here">
+                <ActionButton
+                  class="button secondary"
+                  message={{ type: 'startReview' }}
+                  working="Starting the review…"
+                  title="Another agent reviews the work and gives a verdict here"
+                >
                   <i class="codicon codicon-eye" /> Start Review
                 </ActionButton>
               )}

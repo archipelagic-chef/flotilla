@@ -53,18 +53,7 @@ export async function readLog(
 ): Promise<{ commits: CommitView[]; more: boolean }> {
   const [out, ahead] = await Promise.all([
     runGit(
-      [
-        '-c',
-        'log.showSignature=false',
-        'log',
-        `--format=${FORMAT}`,
-        '--decorate=short',
-        `--skip=${opts.skip}`,
-        '-n',
-        String(opts.limit + 1),
-        'HEAD',
-        '--',
-      ],
+      ['-c', 'log.showSignature=false', 'log', `--format=${FORMAT}`, '--decorate=short', `--skip=${opts.skip}`, '-n', String(opts.limit + 1), 'HEAD', '--'],
       { cwd },
     ),
     outgoing(cwd, opts.upstream, opts.hasRemote),

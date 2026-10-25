@@ -1,9 +1,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { classifyActivity, lastActivity } from '../../../src/features/workstreams/activity';
-import { AGENT_STATUS_FILE, clearAgentStatus, parseAgentStatus, readAgentStatus } from '../../../src/features/workstreams/agentStatus';
-import { deleteHeartbeat, envFromRemoteName, isAlive, isHeartbeatPath, readHeartbeat, writeHeartbeat } from '../../../src/features/workstreams/heartbeat';
+import {
+  AGENT_STATUS_FILE,
+  clearAgentStatus,
+  parseAgentStatus,
+  readAgentStatus,
+} from '../../../src/features/workstreams/agentStatus';
+import {
+  deleteHeartbeat,
+  envFromRemoteName,
+  isAlive,
+  isHeartbeatPath,
+  readHeartbeat,
+  writeHeartbeat,
+} from '../../../src/features/workstreams/heartbeat';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];

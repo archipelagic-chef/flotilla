@@ -1,5 +1,11 @@
 import * as crypto from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { agentChatItem, type BacklogItem } from '../../../src/features/backlog/backlog';
 import { isDiscussionChat } from '../../../src/features/backlog/shaping';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
@@ -283,7 +289,19 @@ describe('Discuss: a chat with the agent (BL-188)', () => {
   it('reopens a closed chat rather than starting another', async () => {
     const fake = fakeBacklog({ shaping: { agent: 'Iris-7', session: SESSION, chat: { since: '2026-10-24 07:00' } } });
     const repo = fakeRepository();
-    repo.current = [{ key: 'main', chats: [{ id: SESSION, firstPrompt: 'You are agent Iris-7, working on backlog item BL-1, discussing it with its owner: "A ticket".', open: false, updatedAt: new Date() }] }];
+    repo.current = [
+      {
+        key: 'main',
+        chats: [
+          {
+            id: SESSION,
+            firstPrompt: 'You are agent Iris-7, working on backlog item BL-1, discussing it with its owner: "A ticket".',
+            open: false,
+            updatedAt: new Date(),
+          },
+        ],
+      },
+    ];
     const s = shaping(fake.backlog, repo);
     await s.discuss('BL-1');
     expect(chats.started).toHaveLength(0);
@@ -298,7 +316,12 @@ describe('Discuss: a chat with the agent (BL-188)', () => {
         key: 'main',
         chats: [
           { id: 'a', firstPrompt: 'You are agent Iris-7, working on backlog item BL-1: "A ticket".', open: true, updatedAt: new Date() },
-          { id: 'b', firstPrompt: 'You are agent Nova-2, working on backlog item BL-1, discussing it with its owner: "A ticket".', open: true, updatedAt: new Date() },
+          {
+            id: 'b',
+            firstPrompt: 'You are agent Nova-2, working on backlog item BL-1, discussing it with its owner: "A ticket".',
+            open: true,
+            updatedAt: new Date(),
+          },
         ],
       },
     ];

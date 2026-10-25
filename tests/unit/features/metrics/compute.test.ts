@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeMetrics, EventIndex, idleKind, ticketFlow } from '../../../../src/features/metrics/compute';
+import {
+  computeMetrics,
+  EventIndex,
+  idleKind,
+  ticketFlow,
+} from '../../../../src/features/metrics/compute';
 import type { EventData, EventKind, FlotillaEvent } from '../../../../src/features/metrics/events';
 import type { MetricsView } from '../../../../src/webview/metricsProtocol';
 
@@ -55,7 +60,7 @@ const num = (v: MetricsView, section: string, id: string) => v.sections.find((s)
 const chart = (v: MetricsView, section: string, id: string) => v.sections.find((s) => s.id === section)!.charts.find((c) => c.id === id)!;
 
 describe('ticketFlow', () => {
-  it('splits a ticket\'s time from To Do to merged into its phases', () => {
+  it("splits a ticket's time from To Do to merged into its phases", () => {
     const index = new EventIndex();
     index.add(LOG);
     const flow = ticketFlow('BL-1', index.ticketEvents('BL-1'), NOW);
@@ -124,7 +129,13 @@ describe('computeMetrics', () => {
   });
 
   it('counts a usage limit as idle time of its own', () => {
-    const limited = view([ev(NOW - 3 * H, 'limit-hit', { limit: 'five-hour', until: new Date(NOW - 2 * H).toISOString() }), ev(NOW - H, 'agent-started', { role: 'work', session: 'x' }, 'BL-9')], 'day');
+    const limited = view(
+      [
+        ev(NOW - 3 * H, 'limit-hit', { limit: 'five-hour', until: new Date(NOW - 2 * H).toISOString() }),
+        ev(NOW - H, 'agent-started', { role: 'work', session: 'x' }, 'BL-9'),
+      ],
+      'day',
+    );
     expect(chart(limited, 'agents', 'idleWhy').bars.find((b) => b.label === 'Usage limit')!.values[0]).toBe(60);
   });
 

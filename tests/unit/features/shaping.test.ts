@@ -4,13 +4,13 @@ import {
   discussionLead,
   discussionPrompt,
   findDiscussionChat,
-  isDiscussionChat,
-  summarizedSince,
   followUpPrompt,
+  isDiscussionChat,
   readyToStart,
   saysReadyToStart,
   shapingPrompt,
   shapingTools,
+  summarizedSince,
 } from '../../../src/features/backlog/shaping';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 import { acceptItem, agentChatItem, agentLead } from '../../../src/features/backlog/backlog';
@@ -45,12 +45,7 @@ describe('shaping', () => {
   });
 
   it('lets the agent edit its ticket and read the code, and nothing else', () => {
-    expect(shapingTools('/work/repo/.flotilla/backlog/BL-45.md')).toEqual([
-      'Read',
-      'Grep',
-      'Glob',
-      'Edit(//work/repo/.flotilla/backlog/BL-45.md)',
-    ]);
+    expect(shapingTools('/work/repo/.flotilla/backlog/BL-45.md')).toEqual(['Read', 'Grep', 'Glob', 'Edit(//work/repo/.flotilla/backlog/BL-45.md)']);
   });
 
   it('tells a new discussion what it is for, that its reply is its final message, and how it writes the ticket', () => {
@@ -59,13 +54,16 @@ describe('shaping', () => {
     expect(prompt).toContain('You change no code');
     expect(prompt).toContain('Your reply is your final message');
     expect(prompt).toContain("Flotilla adds it to the end of the ticket's Activity");
-    expect(prompt).toContain('Don\'t write in the Activity yourself');
+    expect(prompt).toContain("Don't write in the Activity yourself");
     expect(prompt).toContain('"Ready to start."');
     expect(prompt).toContain('Edit the ticket with the Edit tool');
   });
 
   it('has the description show what has a shape, as a Mermaid diagram next to its text', () => {
-    for (const prompt of [shapingPrompt({ item: { id: 'BL-45', title: 'Shape a ticket' }, agent: 'Nova-7', ticket: '/t/BL-45.md' }), followUpPrompt({ ticket: '/t/BL-45.md', opened: false })]) {
+    for (const prompt of [
+      shapingPrompt({ item: { id: 'BL-45', title: 'Shape a ticket' }, agent: 'Nova-7', ticket: '/t/BL-45.md' }),
+      followUpPrompt({ ticket: '/t/BL-45.md', opened: false }),
+    ]) {
       expect(prompt).toContain('show it with a ```mermaid diagram next to the text it explains');
     }
   });
@@ -119,6 +117,8 @@ describe('a discussion in a chat (BL-188)', () => {
   it('tells whether the agent wrote its summary since the discussion opened', () => {
     const entries = [{ date: '2026-10-24 07:00', author: 'Agent Iris-7', body: 'Earlier.' }];
     expect(summarizedSince(entries, 'Iris-7', '2026-10-24 07:01')).toBe(false);
-    expect(summarizedSince([...entries, { date: '2026-10-24 07:30', author: 'Agent Iris-7', body: 'Discussed with you.' }], 'Iris-7', '2026-10-24 07:01')).toBe(true);
+    expect(summarizedSince([...entries, { date: '2026-10-24 07:30', author: 'Agent Iris-7', body: 'Discussed with you.' }], 'Iris-7', '2026-10-24 07:01')).toBe(
+      true,
+    );
   });
 });

@@ -47,7 +47,8 @@ export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undef
       return {
         kind: 'stopped',
         since: r.since,
-        line: r.stop?.kind === 'user' ? (r.stop.agent ? `You stopped ${r.stop.agent.agent}` : 'You stopped the review') : `Stopped: ${r.reason ?? 'no verdict.'}`,
+        line:
+          r.stop?.kind === 'user' ? (r.stop.agent ? `You stopped ${r.stop.agent.agent}` : 'You stopped the review') : `Stopped: ${r.reason ?? 'no verdict.'}`,
       };
     return { kind: 'yours', since: r?.since, line: 'Ready for your review' };
   }

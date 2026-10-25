@@ -1,6 +1,11 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { IDLE_REFRESH_MS, isLive, isRebuildDue, scopeForChange } from '../../../src/features/workstreams/refreshPlan';
+import {
+  IDLE_REFRESH_MS,
+  isLive,
+  isRebuildDue,
+  scopeForChange,
+} from '../../../src/features/workstreams/refreshPlan';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z');

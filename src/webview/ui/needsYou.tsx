@@ -14,7 +14,14 @@ function waited(since: string | undefined): string | undefined {
   return `${Math.floor(minutes / (24 * 60))}d`;
 }
 
-const NEED_ICON: Record<NeedKind, string> = { asking: 'comment-discussion', yours: 'eye', approved: 'pass-filled', stopped: 'debug-pause', failed: 'error', queued: 'clock' };
+const NEED_ICON: Record<NeedKind, string> = {
+  asking: 'comment-discussion',
+  yours: 'eye',
+  approved: 'pass-filled',
+  stopped: 'debug-pause',
+  failed: 'error',
+  queued: 'clock',
+};
 const NEED_TITLE: Record<NeedKind, string> = {
   asking: 'Has a question for you',
   yours: 'Ready for your review',
@@ -75,17 +82,26 @@ function NeedRow({ item }: { item: BacklogItem }) {
       {age && <span class="need-age">{age}</span>}
       <span class="need-actions" onClick={(e) => e.stopPropagation()}>
         {need.kind === 'asking' && (
-          <button class="button" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: answer there">
+          <button
+            class="button"
+            onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })}
+            title="Opens the ticket with the comment box focused: answer there"
+          >
             <i class="codicon codicon-comment" /> Answer
           </button>
         )}
         {need.kind === 'yours' && (
           <>
-            <button class="button secondary" onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })} title="Opens the ticket with the comment box focused: write what should change">
+            <button
+              class="button secondary"
+              onClick={() => send({ type: 'backlog', op: 'comment', id: item.id })}
+              title="Opens the ticket with the comment box focused: write what should change"
+            >
               <i class="codicon codicon-request-changes" /> Request Changes
             </button>
             <BusyButton class="button" message={{ type: 'backlog', op: 'approve', id: item.id }} icon="check">
-              {' '}Approve
+              {' '}
+              Approve
             </BusyButton>
           </>
         )}
@@ -95,13 +111,25 @@ function NeedRow({ item }: { item: BacklogItem }) {
           </BusyButton>
         )}
         {need.kind === 'queued' && (
-          <BusyButton class="button" message={{ type: 'backlog', op: 'prioritize', id: item.id }} icon="arrow-up" title="Starts it now, above the limit, or pauses a running agent to make room">
-            {' '}Prioritize
+          <BusyButton
+            class="button"
+            message={{ type: 'backlog', op: 'prioritize', id: item.id }}
+            icon="arrow-up"
+            title="Starts it now, above the limit, or pauses a running agent to make room"
+          >
+            {' '}
+            Prioritize
           </BusyButton>
         )}
         {need.kind === 'failed' && (
-          <BusyButton class="button" message={{ type: 'backlog', op: 'start', id: item.id }} icon="play" title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket">
-            {' '}Run
+          <BusyButton
+            class="button"
+            message={{ type: 'backlog', op: 'start', id: item.id }}
+            icon="play"
+            title="Creates its worktree if needed and starts an agent there: it runs in the background and reports in the ticket"
+          >
+            {' '}
+            Run
           </BusyButton>
         )}
         <button class="button secondary" onClick={open}>

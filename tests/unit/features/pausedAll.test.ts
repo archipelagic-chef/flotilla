@@ -2,17 +2,35 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checksDetail, checksQuestion, mergePaused, parsePausedAll, pausedMessage, PausedAllStore, resumedMessage, resumeOrder } from '../../../src/features/backlog/pausedAll';
+import {
+  checksDetail,
+  checksQuestion,
+  mergePaused,
+  parsePausedAll,
+  PausedAllStore,
+  pausedMessage,
+  resumedMessage,
+  resumeOrder,
+} from '../../../src/features/backlog/pausedAll';
 
 describe("Pause All's record (BL-160)", () => {
   it('is kept in .git/flotilla/, read by another store (a restart, another window), and cleared', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paused-all-'));
     const store = new PausedAllStore(dir);
     expect(store.held).toBe(false);
-    await store.write({ at: '2026-10-21T21:00:00Z', agents: [{ id: 'BL-2', kind: 'agent', session: 's2' }, { id: 'BL-1', kind: 'discussion' }] });
+    await store.write({
+      at: '2026-10-21T21:00:00Z',
+      agents: [
+        { id: 'BL-2', kind: 'agent', session: 's2' },
+        { id: 'BL-1', kind: 'discussion' },
+      ],
+    });
     expect(fs.existsSync(path.join(dir, 'flotilla', 'paused-all.json'))).toBe(true);
     const other = new PausedAllStore(dir);
-    expect(other.read()?.agents).toEqual([{ id: 'BL-2', kind: 'agent', session: 's2' }, { id: 'BL-1', kind: 'discussion' }]);
+    expect(other.read()?.agents).toEqual([
+      { id: 'BL-2', kind: 'agent', session: 's2' },
+      { id: 'BL-1', kind: 'discussion' },
+    ]);
     await other.clear();
     expect(store.held).toBe(false);
   });
@@ -24,9 +42,21 @@ describe("Pause All's record (BL-160)", () => {
 
   it('resumes in the backlog order, adds a later Pause All to the set, and says what it did', () => {
     const items = [{ id: 'BL-3' }, { id: 'BL-1' }, { id: 'BL-2' }];
-    const set = [{ id: 'BL-1', kind: 'agent' as const }, { id: 'BL-9', kind: 'agent' as const }, { id: 'BL-3', kind: 'agent' as const }];
+    const set = [
+      { id: 'BL-1', kind: 'agent' as const },
+      { id: 'BL-9', kind: 'agent' as const },
+      { id: 'BL-3', kind: 'agent' as const },
+    ];
     expect(resumeOrder(items, set).map((a) => a.id)).toEqual(['BL-3', 'BL-1', 'BL-9']);
-    expect(mergePaused([{ id: 'BL-1', kind: 'agent', session: 'a' }], [{ id: 'BL-1', kind: 'agent', session: 'b' }, { id: 'BL-2', kind: 'agent' }])).toEqual([
+    expect(
+      mergePaused(
+        [{ id: 'BL-1', kind: 'agent', session: 'a' }],
+        [
+          { id: 'BL-1', kind: 'agent', session: 'b' },
+          { id: 'BL-2', kind: 'agent' },
+        ],
+      ),
+    ).toEqual([
       { id: 'BL-1', kind: 'agent', session: 'b' },
       { id: 'BL-2', kind: 'agent' },
     ]);
@@ -44,7 +74,7 @@ describe("Pause All's question while merges' checks run (BL-164)", () => {
     expect(checksDetail(['BL-122'])).toMatch(/Stop Them: the checks stop; it can merge again after/);
   });
 
-  it("keeps a merge agent in the saved set", () => {
+  it('keeps a merge agent in the saved set', () => {
     expect(parsePausedAll('{"at":"x","agents":[{"id":"BL-1","kind":"merge","session":"s"}]}').agents).toEqual([{ id: 'BL-1', kind: 'merge', session: 's' }]);
   });
 });

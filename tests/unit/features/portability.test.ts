@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   isPortable,
   LOCK_REASON,
@@ -11,7 +16,14 @@ import {
   retargetBackPointer,
   unlock,
 } from '../../../src/features/worktrees/portability';
-import { git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  simulateOtherEnvironment,
+  symlinkedRepo,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

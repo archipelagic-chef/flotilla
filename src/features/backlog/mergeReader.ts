@@ -36,7 +36,14 @@ export class MergeReader {
         next.set(key, state);
         branches.push(state);
       }
-      if (branches.length) result.set(item.id, summarizeMerge(base, branches.sort((a, b) => a.branch.localeCompare(b.branch))));
+      if (branches.length)
+        result.set(
+          item.id,
+          summarizeMerge(
+            base,
+            branches.sort((a, b) => a.branch.localeCompare(b.branch)),
+          ),
+        );
     }
     // Only the branches read now stay cached: a branch that moved (or was deleted) has a new key.
     this.cache = next;

@@ -5,11 +5,30 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
-import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } from '../../features/backlog/modelLevel';
+import {
+  type Levels,
+  lightNote,
+  moveUpTarget,
+  reviewModel,
+  weaker,
+  workModel,
+} from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
-import { LEAN_TOOLS, leanFlags, settingsFileOf, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
+import {
+  LEAN_TOOLS,
+  leanFlags,
+  settingsFileOf,
+  userPlugins,
+  writeAgentSettings,
+  writeOnce,
+} from '../../features/backlog/leanStart';
 import { askArgs } from '../../features/backlog/ask';
-import { SUMMARY_MODEL, summaryAnswer, summaryArgs, summaryInput } from '../../features/chats/summary';
+import {
+  SUMMARY_MODEL,
+  summaryAnswer,
+  summaryArgs,
+  summaryInput,
+} from '../../features/chats/summary';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
@@ -134,7 +153,8 @@ export function agentChoice(item: { agent?: AgentChoice } | undefined, role: 'wo
   const config = vscode.workspace.getConfiguration('flotilla');
   const effort = (v: string | undefined) => (AGENT_EFFORTS.includes(v as AgentEffort) ? (v as AgentEffort) : undefined);
   const levels = modelLevels();
-  const model = role === 'review' ? reviewModel(item?.agent, { ...levels, review: config.get<string>('review.model', '').trim() }) : workModel(item?.agent, levels);
+  const model =
+    role === 'review' ? reviewModel(item?.agent, { ...levels, review: config.get<string>('review.model', '').trim() }) : workModel(item?.agent, levels);
   const level =
     (role === 'review' ? effort(config.get<string>('review.effort', '')) : undefined) ?? item?.agent?.effort ?? effort(config.get<string>('agents.effort', ''));
   return { ...(model ? { model } : {}), ...(level ? { effort: level } : {}) };
@@ -199,7 +219,16 @@ export function runUsage(stdout: string): { tokens?: Tokens; costUsd?: number } 
     const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
     const u = r.usage;
     return {
-      ...(u ? { tokens: { input: n(u.input_tokens), output: n(u.output_tokens), cacheRead: n(u.cache_read_input_tokens), cacheCreation: n(u.cache_creation_input_tokens) } } : {}),
+      ...(u
+        ? {
+            tokens: {
+              input: n(u.input_tokens),
+              output: n(u.output_tokens),
+              cacheRead: n(u.cache_read_input_tokens),
+              cacheCreation: n(u.cache_creation_input_tokens),
+            },
+          }
+        : {}),
       ...(typeof r.total_cost_usd === 'number' ? { costUsd: r.total_cost_usd } : {}),
     };
   } catch {
@@ -306,7 +335,12 @@ export function runAgentInTerminal(o: {
   });
   terminals.set(sessionId, terminal);
   if (o.track) {
-    const data = { role: o.track.role, session: sessionId, ...(o.choice?.model ? { model: o.choice.model } : {}), ...(o.choice?.effort ? { effort: o.choice.effort } : {}) };
+    const data = {
+      role: o.track.role,
+      session: sessionId,
+      ...(o.choice?.model ? { model: o.choice.model } : {}),
+      ...(o.choice?.effort ? { effort: o.choice.effort } : {}),
+    };
     recordEvent(o.resume ? 'agent-resumed' : 'agent-started', { ticket: o.track.ticket, agent: o.track.agent, data });
     terminalRuns.set(sessionId, { track: o.track, cwd: o.cwd, started: new Date(), terminal, model: o.choice?.model });
   }
@@ -331,7 +365,15 @@ export async function endTerminalRun(sessionId: string, code: number | null, hom
   recordEvent('agent-ended', {
     ticket: run.track.ticket,
     agent: run.track.agent,
-    data: { role: run.track.role, session: sessionId, code, ok: code === 0, minutes, ...(usage.tokens ? { tokens: usage.tokens } : {}), ...(model ? { model } : {}) },
+    data: {
+      role: run.track.role,
+      session: sessionId,
+      code,
+      ok: code === 0,
+      minutes,
+      ...(usage.tokens ? { tokens: usage.tokens } : {}),
+      ...(model ? { model } : {}),
+    },
   });
 }
 
@@ -465,7 +507,12 @@ export function runAgentHeadless(o: {
   const track = o.track;
   const who = { ticket: track?.ticket, agent: track?.agent };
   if (track) {
-    const data = { role: track.role, session: sessionId, ...(o.choice?.model ? { model: o.choice.model } : {}), ...(o.choice?.effort ? { effort: o.choice.effort } : {}) };
+    const data = {
+      role: track.role,
+      session: sessionId,
+      ...(o.choice?.model ? { model: o.choice.model } : {}),
+      ...(o.choice?.effort ? { effort: o.choice.effort } : {}),
+    };
     recordEvent(o.resume ? 'agent-resumed' : 'agent-started', { ...who, data });
   }
   const start = o.slot ?? starting.begin();
@@ -488,9 +535,14 @@ export function runAgentHeadless(o: {
     child.on('close', (code) => {
       o.output.appendLine(`${o.name} stopped (exit code ${code}).${stderr.trim() ? ` ${stderr.trim()}` : ''}`);
       // Its chat is done now, even when the hooks' last word was "working" (BL-131).
-      void locateRepo(o.cwd).then((repo) => repo && finishChatRecords(repo.commonDir, sessionId)).catch(() => undefined);
+      void locateRepo(o.cwd)
+        .then((repo) => repo && finishChatRecords(repo.commonDir, sessionId))
+        .catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
-      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.${result.limit.said ? ` Claude said: ${result.limit.said} (reset time not understood).` : ''}`);
+      if (result.limit)
+        o.output.appendLine(
+          `${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.${result.limit.said ? ` Claude said: ${result.limit.said} (reset time not understood).` : ''}`,
+        );
       if (track) {
         const role = track.role;
         if (result.limit) {
@@ -499,7 +551,10 @@ export function runAgentHeadless(o: {
           recordEvent('agent-paused', { ...who, data: { role, session: sessionId, reason: 'limit', until } });
         } else {
           const minutes = Math.round((Date.now() - spawnedAt) / 600) / 100;
-          recordEvent('agent-ended', { ...who, data: { role, session: sessionId, code, ok: !result.error, minutes, ...runUsage(stdout), ...(o.choice?.model ? { model: o.choice.model } : {}) } });
+          recordEvent('agent-ended', {
+            ...who,
+            data: { role, session: sessionId, code, ok: !result.error, minutes, ...runUsage(stdout), ...(o.choice?.model ? { model: o.choice.model } : {}) },
+          });
         }
       }
       resolve(result);
@@ -543,7 +598,11 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       clearTimeout(timer);
       const failed = code !== 0 || /"is_error"\s*:\s*true/.test(out);
       const limit = failed ? parseUsageLimit(out, new Date()) : undefined;
-      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
+      o.output.appendLine(
+        limit
+          ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}`
+          : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`,
+      );
       resolve(limit);
     });
   });
@@ -607,7 +666,11 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
   }
   const model = askModel();
   o.output.appendLine(`Ask: starting in ${cwd} (model ${model}).`);
-  const child = spawn(claudeBinary(), askArgs({ model, instructions: o.instructions, plugins }), { cwd, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(claudeBinary(), askArgs({ model, instructions: o.instructions, plugins }), {
+    cwd,
+    env: { ...process.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));
@@ -636,7 +699,10 @@ export function trackAsk(child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 
     if (ended) return;
     ended = true;
     const minutes = Math.round((Date.now() - startedAt) / 600) / 100;
-    recordEvent('agent-ended', { ...who, data: { role: 'reply', session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) } });
+    recordEvent('agent-ended', {
+      ...who,
+      data: { role: 'reply', session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) },
+    });
   };
   child.on('error', () => end(null));
   child.on('close', (code: number | null) => end(code));

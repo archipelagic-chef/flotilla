@@ -6,32 +6,67 @@ import type { Repository } from '../../core/repository';
 import {
   addItem,
   agentChatItem,
+  type BacklogItem,
   branchMatches,
   childrenOf,
   currentPrefix,
-  itemBranches,
   entryAgent,
-  sameAgent,
+  itemBranches,
   linkedItem,
   readyToMerge,
-  type BacklogItem,
+  sameAgent,
 } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
-import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
+import type {
+  IssueSource,
+  RemoteDetails,
+  RemoteEditOptions,
+  RemoteIssue,
+} from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
-import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import {
+  entryAnchors,
+  entryDate,
+  entryThreads,
+  parseReply,
+  replyLine,
+  type Ticket,
+  type TicketEntry,
+} from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type {
+  AgentChatView,
+  AttachmentView,
+  MediaThumb,
+  ReportView,
+  TicketCheckView,
+  TicketHostMessage,
+  TicketView,
+  TicketWebviewMessage,
+} from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
 import { parseFileLink, summaryOf, whenItsDone } from '../../features/backlog/ticket';
-import { answeredBy, deleteEntry, editable, editEntry, entryEdit, repliesOf, showsDeleted } from '../../features/backlog/commentEdits';
+import {
+  answeredBy,
+  deleteEntry,
+  editable,
+  editEntry,
+  entryEdit,
+  repliesOf,
+  showsDeleted,
+} from '../../features/backlog/commentEdits';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
-import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
+import {
+  type MediaKind,
+  mediaType,
+  tooLarge,
+  tooLargeNote,
+} from '../../features/backlog/media';
 import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
@@ -45,7 +80,16 @@ import type { Claim } from '../../features/backlog/ticketCheck';
 import { readSettings, stuckRules } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, summarizeAgent } from './agentRunner';
+import {
+  agentChoice,
+  askModel,
+  isRunningHeadless,
+  isRunningInTerminal,
+  memoryShortage,
+  modelLevels,
+  spawnAsk,
+  summarizeAgent,
+} from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
@@ -57,11 +101,37 @@ import { summaryWait, type AgentSummary } from '../../features/chats/summary';
 import type { Shaping } from './shaping';
 import type { AskAgent } from './askAgent';
 import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
-import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
-import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
+import {
+  demoPath,
+  demoRun,
+  isReport,
+  latestRun,
+  parseRunBlocks,
+  pickRunBlock,
+  placedRunBlocks,
+  withRunButtons,
+} from '../../features/backlog/runBlocks';
+import {
+  gifSeconds,
+  recordedDemo,
+  type Recording,
+  withDemoUnits,
+} from '../../features/backlog/demo';
 import { openTarget } from '../../features/backlog/runTarget';
-import { demoPlace, runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
-import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
+import {
+  demoPlace,
+  runFingerprint,
+  type RunPlace,
+  runPlaces,
+} from '../../features/backlog/runWorktree';
+import {
+  folderFor,
+  missingName,
+  type RunApprovals,
+  type RunTerminals,
+  startLaunch,
+  startTask,
+} from './runBlock';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import type { CiRuns } from '../ci/ciRuns';
 import { TicketCi } from './ticketCi';
@@ -215,7 +285,9 @@ export function stripStyles(html: string): string {
     .replace(/<style\b(?:"[^"]*"|'[^']*'|[^'">])*>[\s\S]*?<\/style\s*>/gi, '')
     .replace(/<\/?style\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi, '')
     .replace(TAG, (tag, name: string, attributes: string) =>
-      /\bstyle\b/i.test(attributes) ? `<${name}${attributes.replace(ATTRIBUTE, (a, _s: string, attr: string) => (attr.toLowerCase() === 'style' ? '' : a))}>` : tag,
+      /\bstyle\b/i.test(attributes)
+        ? `<${name}${attributes.replace(ATTRIBUTE, (a, _s: string, attr: string) => (attr.toLowerCase() === 'style' ? '' : a))}>`
+        : tag,
     );
 }
 
@@ -433,7 +505,8 @@ export class TicketPanels implements vscode.Disposable {
     try {
       const claims = await this.checker.check(id);
       // A quiet check doesn't hide what the user asked for.
-      if (this.panels.has(id) && (full || !this.checks.get(id)?.full)) this.checks.set(id, { full, at, claims: claims.map((c) => ({ key: c.key, ok: c.ok, text: c.text, ...(c.fix ? { fix: c.fix } : {}) })) });
+      if (this.panels.has(id) && (full || !this.checks.get(id)?.full))
+        this.checks.set(id, { full, at, claims: claims.map((c) => ({ key: c.key, ok: c.ok, text: c.text, ...(c.fix ? { fix: c.fix } : {}) })) });
       return claims;
     } catch (e) {
       if (full && this.panels.has(id)) this.checks.set(id, { full, at, claims: [], error: e instanceof Error ? e.message : String(e) });
@@ -471,7 +544,11 @@ export class TicketPanels implements vscode.Disposable {
     const mergeChecks = this.merger?.checksView(id);
     const { mergeChecks: _old, ...rest } = sent;
     this.sentViews.set(panel, mergeChecks ? { ...rest, mergeChecks } : rest);
-    void panel.webview.postMessage({ type: 'ticketParts', parts: mergeChecks ? { mergeChecks } : {}, removed: mergeChecks ? [] : ['mergeChecks'] } satisfies TicketHostMessage);
+    void panel.webview.postMessage({
+      type: 'ticketParts',
+      parts: mergeChecks ? { mergeChecks } : {},
+      removed: mergeChecks ? [] : ['mergeChecks'],
+    } satisfies TicketHostMessage);
   }
 
   /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
@@ -553,9 +630,7 @@ export class TicketPanels implements vscode.Disposable {
           ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
             (this.ci?.handle(id, m) ?? Promise.resolve())
           : this.onMessage(id, panel, m)
-      ).catch(
-        (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)),
-      ),
+      ).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
     );
   }
 
@@ -614,7 +689,9 @@ export class TicketPanels implements vscode.Disposable {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     const shaping = item?.shaping;
     const discussing =
-      !!shaping && !!this.shaping && (session ? session === shaping.session : action === 'resume' ? !!shaping.held && !heldBy(item.review) : this.shaping.isRunning(id));
+      !!shaping &&
+      !!this.shaping &&
+      (session ? session === shaping.session : action === 'resume' ? !!shaping.held && !heldBy(item.review) : this.shaping.isRunning(id));
     if (discussing) return this.shaping!.control(id, action);
     await this.reviews?.control(id, action, session);
   }
@@ -669,9 +746,18 @@ export class TicketPanels implements vscode.Disposable {
    * A ticket's local activity entries, rendered, with their keys, where they were posted, and their agent's chat: for
    * an agent's report, the chat that wrote it; for "Opened a chat for agent …", the chat it opened.
    */
-  private async localEntries(item: BacklogItem, entries: TicketEntry[], webview: vscode.Webview, attachments: readonly AttachmentView[] = []): Promise<TicketView['activity']> {
+  private async localEntries(
+    item: BacklogItem,
+    entries: TicketEntry[],
+    webview: vscode.Webview,
+    attachments: readonly AttachmentView[] = [],
+  ): Promise<TicketView['activity']> {
     // A demo's recording and its block show as one unit (BL-111).
-    const demos = new Map(attachments.filter((a) => a.demo).map((a): [string, Recording] => [a.src, { ...(a.recorded ? { name: a.recorded } : {}), ...(a.seconds ? { seconds: a.seconds } : {}) }]));
+    const demos = new Map(
+      attachments
+        .filter((a) => a.demo)
+        .map((a): [string, Recording] => [a.src, { ...(a.recorded ? { name: a.recorded } : {}), ...(a.seconds ? { seconds: a.seconds } : {}) }]),
+    );
     const units = (html: string) => withDemoUnits(html, (src) => demos.get(src));
     const posted = await this.deps.backlog.posted();
     const agents = new Map(this.agentChats(item, entries).map((c) => [c.agent.toLowerCase(), c]));
@@ -731,7 +817,12 @@ export class TicketPanels implements vscode.Disposable {
     const roots = this.roots(item);
     const answer = reportAnswer(later);
     // Run blocks keep their Run buttons, numbered through the entry: the summary's first, then the details'.
-    const details = withRunButtons(await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots), parseRunBlocks(parts.details), key, parseRunBlocks(parts.summary).length);
+    const details = withRunButtons(
+      await renderMarkdown(parts.details, webview, this.deps.backlog.dir, roots),
+      parseRunBlocks(parts.details),
+      key,
+      parseRunBlocks(parts.summary).length,
+    );
     // Its pictures, videos and diagrams lead the details (BL-114). A recording goes with its demo block in the details
     // (BL-111): they're paired as one, which shows with the media.
     const media = parts.media.length ? await renderMarkdown(parts.media.join('\n\n'), webview, this.deps.backlog.dir, roots) : '';
@@ -941,9 +1032,7 @@ export class TicketPanels implements vscode.Disposable {
     const moves = await movesSince(this.deps.mainRoot);
     if (!changed.size && !moves) return;
     const data = await this.deps.backlog.read();
-    const chatStarts = current
-      .filter((w) => changed.has(w.key))
-      .flatMap((w) => w.chats.flatMap((c) => agentChatItem(c.firstPrompt)?.item ?? []));
+    const chatStarts = current.filter((w) => changed.has(w.key)).flatMap((w) => w.chats.flatMap((c) => agentChatItem(c.firstPrompt)?.item ?? []));
     const open: OpenTicket[] = [...this.panels].map(([id, panel]) => {
       const item = data.items.find((i) => i.id === id);
       return {
@@ -1019,7 +1108,9 @@ export class TicketPanels implements vscode.Disposable {
     if (!dir) return;
     const at = new Date().toISOString();
     this.summaries.set(session, { at, running: true });
-    const answer = await summarizeAgent(transcriptPath(dir, session), { output: this.output() }).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+    const answer = await summarizeAgent(transcriptPath(dir, session), { output: this.output() }).catch((e: unknown) => ({
+      error: e instanceof Error ? e.message : String(e),
+    }));
     this.summaries.set(session, { at, ...answer });
   }
 
@@ -1084,10 +1175,19 @@ export class TicketPanels implements vscode.Disposable {
         };
       });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
-      this.ci?.setWorktrees(id, view.worktrees.map((w) => ({ key: w.key, branch: w.branch })));
+      this.ci?.setWorktrees(
+        id,
+        view.worktrees.map((w) => ({ key: w.key, branch: w.branch })),
+      );
       const showActivity = showActivityKept(this.deps.memento);
       const check = this.checks.get(id);
-      const next: TicketView = { ...view, agents, showActivity, attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id), ...(check ? { check } : {}) };
+      const next: TicketView = {
+        ...view,
+        agents,
+        showActivity,
+        attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id),
+        ...(check ? { check } : {}),
+      };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {
         this.sentViews.set(panel, next);
@@ -1231,7 +1331,15 @@ export class TicketPanels implements vscode.Disposable {
       ...(!remote && this.answers ? { canAsk: true, asked: this.answers.viewsOf(plain.id) } : {}),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
-        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}), ...this.discussionChat(plain) } }
+        ? {
+            shaping: {
+              agent: plain.shaping.agent,
+              running: this.shaping.isRunning(plain.id),
+              ready: !!plain.shaping.ready,
+              ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}),
+              ...this.discussionChat(plain),
+            },
+          }
         : {}),
     };
   }
@@ -1286,7 +1394,14 @@ export class TicketPanels implements vscode.Disposable {
       // A local item's branch with commits of its own (not a clean-up's) can have its history cleaned up.
       const canCleanUp = !item.remote && !item.rewrite && !!base && commits.some((c) => c.branches.some((b) => b !== base && !/-clean(-\d+)?$/.test(b)));
       const merge = this.deps.merges.get(item.id);
-      return { branches: branches.filter((b) => !checkedOut.has(b) && b !== base), commits, history, canCleanUp, ...(rewrite ? { rewrite } : {}), ...(merge ? { merge } : {}) };
+      return {
+        branches: branches.filter((b) => !checkedOut.has(b) && b !== base),
+        commits,
+        history,
+        canCleanUp,
+        ...(rewrite ? { rewrite } : {}),
+        ...(merge ? { merge } : {}),
+      };
     } catch {
       return { branches: [], commits: [], history: [], canCleanUp: false };
     }
@@ -1307,7 +1422,8 @@ export class TicketPanels implements vscode.Disposable {
   async openHref(item: BacklogItem, href: string): Promise<void> {
     // A note's link to a discussion's chat (BL-188).
     if (href.startsWith(CHAT_LINK)) {
-      if (!(await this.shaping?.openSession(href.slice(CHAT_LINK.length)))) void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in any worktree.`);
+      if (!(await this.shaping?.openSession(href.slice(CHAT_LINK.length))))
+        void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in any worktree.`);
       return;
     }
     if (/^(https?|mailto):/i.test(href)) {
@@ -1390,7 +1506,11 @@ export class TicketPanels implements vscode.Disposable {
     if (!by) return;
     const superseding = data.items.find((i) => i.id.toLowerCase() === by.toLowerCase())!.id;
     await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, supersededBy: superseding } : i)) }));
-    await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'You', body: `Dismissed its unmerged work: ${superseding} supersedes it.` });
+    await this.deps.backlog.appendActivity(item, {
+      date: entryDate(new Date()),
+      author: 'You',
+      body: `Dismissed its unmerged work: ${superseding} supersedes it.`,
+    });
   }
 
   /** Adds an entry to a ticket's (local) activity: comments, and notes from Flotilla (an agent started). */
@@ -1437,7 +1557,9 @@ export class TicketPanels implements vscode.Disposable {
     const detail = [
       summaryOf(entryEdit(activity[i].body).text) ?? '',
       replies ? `It has ${replies === 1 ? 'a reply' : `${replies} replies`}: "Comment deleted" stays, with ${replies === 1 ? 'it' : 'them'} under it.` : '',
-      agents.length ? `${agents.join(' and ')} already answered it, and keep${agents.length === 1 ? 's' : ''} what ${agents.length === 1 ? 'it' : 'they'} read.` : '',
+      agents.length
+        ? `${agents.join(' and ')} already answered it, and keep${agents.length === 1 ? 's' : ''} what ${agents.length === 1 ? 'it' : 'they'} read.`
+        : '',
       posted ? `It was posted to ${posted}: only the local copy is deleted, the comment there stays.` : '',
     ].filter(Boolean);
     return (await vscode.window.showWarningMessage('Delete your comment?', { modal: true, detail: detail.join('\n\n') }, 'Delete')) === 'Delete';
@@ -1621,7 +1743,11 @@ export class TicketPanels implements vscode.Disposable {
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /** An Ask chat's message, then its done (also after a throw): its button's "working…" ends. */
-  private async onAskMessage(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
+  private async onAskMessage(
+    id: string,
+    panel: vscode.WebviewPanel,
+    m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>,
+  ): Promise<void> {
     let failed = false;
     try {
       await this.onAsk(id, panel, m);
@@ -1637,7 +1763,11 @@ export class TicketPanels implements vscode.Disposable {
    * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
    * it's sent (or has waited for memory); its answer streams in as it's written.
    */
-  private async onAsk(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
+  private async onAsk(
+    id: string,
+    panel: vscode.WebviewPanel,
+    m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>,
+  ): Promise<void> {
     if (m.type === 'askNew') return this.asks.get(id)?.reset();
     if (m.type === 'askStop') return this.asks.get(id)?.stop();
     if (m.type === 'askPost') {
@@ -1657,8 +1787,15 @@ export class TicketPanels implements vscode.Disposable {
           return short && `Waiting for memory: ${formatMemory(short.freeMB)} free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)}…`;
         },
         context: () => this.askContext(id, panel),
-        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output(), ticket: id }),
-        render: (markdown) => renderMarkdown(markdown, panel.webview, this.deps.backlog.dir, this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' })),
+        spawn: (cwd) =>
+          spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output(), ticket: id }),
+        render: (markdown) =>
+          renderMarkdown(
+            markdown,
+            panel.webview,
+            this.deps.backlog.dir,
+            this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' }),
+          ),
         changed: () => {
           if (this.asks.get(id) === created) this.postAsk(id, panel);
         },
@@ -1707,9 +1844,17 @@ export class TicketPanels implements vscode.Disposable {
     };
     const [diffStat, changes] = await Promise.all([
       base && branch && branch !== base
-        ? runGit(['diff', '--stat=120', `${base}...${branch}`], { cwd: mainRoot }).then((t) => firstLines(t, 40), () => '')
+        ? runGit(['diff', '--stat=120', `${base}...${branch}`], { cwd: mainRoot }).then(
+            (t) => firstLines(t, 40),
+            () => '',
+          )
         : Promise.resolve(''),
-      ws ? runGit(['status', '--short'], { cwd }).then((t) => firstLines(t, 30), () => '') : Promise.resolve(''),
+      ws
+        ? runGit(['status', '--short'], { cwd }).then(
+            (t) => firstLines(t, 30),
+            () => '',
+          )
+        : Promise.resolve(''),
     ]);
     const text = askContextText({
       id: item.id,

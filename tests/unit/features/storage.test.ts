@@ -1,8 +1,33 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { runGit } from '../../../src/core/git/gitCli';
-import { cleanUpInProgress, LOOSE_OBJECT_LIMIT, needsPacking, packRepository, parseLooseCount } from '../../../src/features/storage/packing';
-import { fsTypeOf, medianMs, parseMountInfo, probeReadMs, slowStorageText, storageReport, type MountEntry } from '../../../src/features/storage/storage';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  cleanUpInProgress,
+  LOOSE_OBJECT_LIMIT,
+  needsPacking,
+  packRepository,
+  parseLooseCount,
+} from '../../../src/features/storage/packing';
+import {
+  fsTypeOf,
+  medianMs,
+  type MountEntry,
+  parseMountInfo,
+  probeReadMs,
+  slowStorageText,
+  storageReport,
+} from '../../../src/features/storage/storage';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

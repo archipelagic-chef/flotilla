@@ -2,7 +2,16 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Merger } from './merge';
-import { checksDetail, checksQuestion, mergePaused, pausedMessage, resumedMessage, resumeOrder, type PausedAgent, type PausedAllStore } from '../../features/backlog/pausedAll';
+import {
+  checksDetail,
+  checksQuestion,
+  mergePaused,
+  type PausedAgent,
+  type PausedAllStore,
+  pausedMessage,
+  resumedMessage,
+  resumeOrder,
+} from '../../features/backlog/pausedAll';
 import type { ReviewLoop } from './reviewLoop';
 import type { Shaping } from './shaping';
 

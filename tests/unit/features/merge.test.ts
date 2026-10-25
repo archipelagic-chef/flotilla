@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { describeChanges } from '../../../src/features/backlog/changes';
 import {
@@ -20,12 +25,18 @@ import {
   mergeResult,
   mergeRoot,
   outputTail,
-  timeoutsOnly,
   removeMergeWorktree,
   resolvePrompt,
+  timeoutsOnly,
 } from '../../../src/features/backlog/merge';
 import { mergeAgain } from '../../../src/features/backlog/mergeTrain';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -230,7 +241,12 @@ describe('a merge whose checks fail (BL-65)', () => {
     expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ commit: out.commit, merge: out.commit, onto: baseTip, fixes: [] });
     commit(dir, 'c.txt', 'c\n', 'BL-1: Fix the checks after merging main');
     const fix = git(dir, 'rev-parse', 'HEAD');
-    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ commit: fix, merge: out.commit, onto: baseTip, fixes: ['BL-1: Fix the checks after merging main'] });
+    expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({
+      commit: fix,
+      merge: out.commit,
+      onto: baseTip,
+      fixes: ['BL-1: Fix the checks after merging main'],
+    });
     // Not another ticket's commit ("BL-12" isn't BL-1), nor one without an id.
     commit(dir, 'd.txt', 'd\n', 'BL-12: something else');
     expect(await mergeResult(dir, baseTip, 'BL-1')).toEqual({ problem: expect.stringContaining("doesn't start with BL-1") });
@@ -251,7 +267,8 @@ describe('a merge whose checks fail (BL-65)', () => {
   });
 
   it('tells a check run that failed only with timeouts (BL-124)', () => {
-    const timeouts = ' FAIL  tests/a.test.ts > a\nError: Test timed out in 30000ms.\nIf this is a long-running test, pass a timeout value.\n FAIL  tests/b.test.ts > b\n\x1b[31mError: Hook timed out in 10000ms.\x1b[0m\n Tests  2 failed | 40 passed';
+    const timeouts =
+      ' FAIL  tests/a.test.ts > a\nError: Test timed out in 30000ms.\nIf this is a long-running test, pass a timeout value.\n FAIL  tests/b.test.ts > b\n\x1b[31mError: Hook timed out in 10000ms.\x1b[0m\n Tests  2 failed | 40 passed';
     expect(timeoutsOnly(timeouts)).toBe(2);
     expect(timeoutsOnly(`${timeouts}\nAssertionError: expected 1 to be 2`)).toBe(0);
     expect(timeoutsOnly(`${timeouts}\nsrc/a.ts(1,2): error TS2322: Type 'string' is not assignable`)).toBe(0);
@@ -367,16 +384,29 @@ describe('a merge whose base moved (BL-149)', () => {
     expect(out).toEqual({ kind: 'merged', commit: git(dir, 'rev-parse', 'HEAD'), merge: expect.any(String), skipped: [] });
     const again = (out as { merge: string }).merge;
     expect(git(dir, 'log', '-1', '--format=%P', again)).toBe(`${now} ${git(repo, 'rev-parse', 'feature/BL-1')}`);
-    for (const [file, text] of [['a.txt', 'a\nother\n'], ['e.txt', 'from the resolution\n'], ['b.txt', 'from BL-3\n'], ['c.txt', 'c\n']]) {
+    for (const [file, text] of [
+      ['a.txt', 'a\nother\n'],
+      ['e.txt', 'from the resolution\n'],
+      ['b.txt', 'from BL-3\n'],
+      ['c.txt', 'c\n'],
+    ]) {
       expect(fs.readFileSync(path.join(dir, file), 'utf8')).toBe(text);
     }
-    expect(await mergeResult(dir, now, 'BL-1', redo)).toEqual({ commit: git(dir, 'rev-parse', 'HEAD'), merge: again, onto: now, fixes: ['BL-1: Fix the checks after merging main'] });
+    expect(await mergeResult(dir, now, 'BL-1', redo)).toEqual({
+      commit: git(dir, 'rev-parse', 'HEAD'),
+      merge: again,
+      onto: now,
+      fixes: ['BL-1: Fix the checks after merging main'],
+    });
     await removeMergeWorktree(repo, dir);
   });
 
   it('leaves only the new conflicts when main changed what the branch changes', async () => {
     const { repo, dir, baseTip, merge, fix, now } = await moved('r2', { conflictAgain: true });
-    expect(await mergeAgain(dir, { from: baseTip, onto: now, merge, commit: fix, message: 'Merge BL-1: Item' })).toEqual({ kind: 'conflicts', files: ['z.txt'] });
+    expect(await mergeAgain(dir, { from: baseTip, onto: now, merge, commit: fix, message: 'Merge BL-1: Item' })).toEqual({
+      kind: 'conflicts',
+      files: ['z.txt'],
+    });
     // The earlier resolution is reused for a.txt.
     expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('a\nother\n');
     await removeMergeWorktree(repo, dir);

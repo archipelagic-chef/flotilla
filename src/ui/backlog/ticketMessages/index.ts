@@ -12,7 +12,16 @@ import { trackerHandlers } from './tracker';
 export type { MessageContext } from './context';
 
 /** Every handler, by message type: each group's module has its own. */
-const HANDLERS: Handlers<HandledTicketMessage> = { ...ticketHandlers, ...commentsHandlers, ...filesHandlers, ...trackerHandlers, ...agentsHandlers, ...reviewHandlers, ...mergeHandlers, ...checkHandlers };
+const HANDLERS: Handlers<HandledTicketMessage> = {
+  ...ticketHandlers,
+  ...commentsHandlers,
+  ...filesHandlers,
+  ...trackerHandlers,
+  ...agentsHandlers,
+  ...reviewHandlers,
+  ...mergeHandlers,
+  ...checkHandlers,
+};
 
 /** Handles a message of a ticket's tab by its group's handler (none for a message handled elsewhere, like the Ask chat's). */
 export async function handleMessage(c: MessageContext, m: TicketWebviewMessage): Promise<void> {

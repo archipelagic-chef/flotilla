@@ -1,18 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../../src/features/backlog/refresh';
 
-const items = [
-  { id: 'BL-1' },
-  { id: 'BL-2', parent: 'BL-1' },
-  { id: 'BL-3', parent: 'BL-1' },
-  { id: 'BL-4' },
-];
+const items = [{ id: 'BL-1' }, { id: 'BL-2', parent: 'BL-1' }, { id: 'BL-3', parent: 'BL-1' }, { id: 'BL-4' }];
 
 const none = new Set<string>();
 const files = (...names: string[]) => new Set(names);
 
 describe('ticketsForBacklogChange', () => {
-  it("refreshes a ticket whose file changed, and only it", () => {
+  it('refreshes a ticket whose file changed, and only it', () => {
     expect(ticketsForBacklogChange({ items, changed: none, files: files('BL-4.md') })).toEqual(new Set(['BL-4']));
   });
 
@@ -39,7 +34,7 @@ function open(id: string, over: Partial<OpenTicket> = {}): OpenTicket {
 }
 
 describe('ticketsForRepositoryChange', () => {
-  it("refreshes a ticket whose worktree changed, and not one with an unrelated worktree", () => {
+  it('refreshes a ticket whose worktree changed, and not one with an unrelated worktree', () => {
     const tickets = [open('BL-1', { keys: new Set(['/w/one']) }), open('BL-2', { keys: new Set(['/w/two']) })];
     expect(ticketsForRepositoryChange({ open: tickets, changedKeys: new Set(['/w/one']), chatStarts: [] })).toEqual(new Set(['BL-1']));
     expect(ticketsForRepositoryChange({ open: tickets, changedKeys: new Set(['/w/three']), chatStarts: [] })).toEqual(new Set());
@@ -55,15 +50,21 @@ describe('ticketsForRepositoryChange', () => {
     expect(ticketsForRepositoryChange({ open: tickets, changedKeys: new Set(['/w/x']), chatStarts: ['BL-2'] })).toEqual(new Set(['BL-2']));
   });
 
-  it("refreshes, when a ref moved, the ticket whose branch moved, and not the others", () => {
+  it('refreshes, when a ref moved, the ticket whose branch moved, and not the others', () => {
     const tickets = [open('BL-1', { branches: (b) => b === 'feature/BL-1-sso' }), open('BL-2', { branches: () => false })];
     const moves = { branches: ['feature/BL-1-sso'], commits: [] };
     expect(ticketsForRepositoryChange({ open: tickets, changedKeys: new Set(), chatStarts: [], moves })).toEqual(new Set(['BL-1']));
   });
 
-  it("refreshes, when a ref moved, the tickets a new commit mentions (whole ids, linked issues too)", () => {
+  it('refreshes, when a ref moved, the tickets a new commit mentions (whole ids, linked issues too)', () => {
     const tickets = [open('BL-1'), open('BL-12'), open('BL-4', { ids: ['BL-4', 'ABC-7'] })];
-    const moves = { branches: [], commits: [{ subject: 'Fix BL-1 in the lock', body: '' }, { subject: 'Linked ABC-7', body: '' }] };
+    const moves = {
+      branches: [],
+      commits: [
+        { subject: 'Fix BL-1 in the lock', body: '' },
+        { subject: 'Linked ABC-7', body: '' },
+      ],
+    };
     expect(ticketsForRepositoryChange({ open: tickets, changedKeys: new Set(), chatStarts: [], moves })).toEqual(new Set(['BL-1', 'BL-4']));
   });
 

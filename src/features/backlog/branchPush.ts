@@ -26,7 +26,13 @@ export interface PushedInfo {
 export type PushResult =
   | { kind: 'pushed'; branch: string; commit: string; count: number; rewritten?: boolean }
   | { kind: 'up-to-date'; branch: string; commit: string }
-  | { kind: 'identity'; branch: string; commit: string; identity: string; strangers: Array<{ commit: string; subject: string; author: string; committer: string }> }
+  | {
+      kind: 'identity';
+      branch: string;
+      commit: string;
+      identity: string;
+      strangers: Array<{ commit: string; subject: string; author: string; committer: string }>;
+    }
   | { kind: 'force'; branch: string; commit: string; remoteCommit: string }
   | { kind: 'failed'; branch: string; commit: string; reason: string; hint: string };
 
@@ -38,7 +44,10 @@ export function runsOnPush(workflowYaml: string): boolean {
   const lines = workflowYaml.split(/\r?\n/);
   const at = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
   if (at < 0) return false;
-  const inline = lines[at].replace(/\s#.*$/, '').replace(/^["']?on["']?\s*:/, '').trim();
+  const inline = lines[at]
+    .replace(/\s#.*$/, '')
+    .replace(/^["']?on["']?\s*:/, '')
+    .trim();
   if (inline) return /(^|[\s,[{])push\b/.test(inline);
   for (let i = at + 1; i < lines.length; i++) {
     const l = lines[i];
@@ -123,7 +132,12 @@ export async function pushBranch(cwd: string, branch: string, o: { leased?: stri
     await runGit(['branch', `--set-upstream-to=${PUSH_REMOTE}/${branch}`, branch], { cwd }).catch(() => undefined);
     return { kind: 'up-to-date', branch, commit };
   }
-  const rewritten = !!remoteCommit && !(await runGit(['merge-base', '--is-ancestor', remoteCommit, commit], { cwd }).then(() => true, () => false));
+  const rewritten =
+    !!remoteCommit &&
+    !(await runGit(['merge-base', '--is-ancestor', remoteCommit, commit], { cwd }).then(
+      () => true,
+      () => false,
+    ));
   // Rewritten over someone else's push (or one Flotilla doesn't know): never forced.
   if (rewritten && remoteCommit !== o.leased) return { kind: 'force', branch, commit, remoteCommit };
 
@@ -151,7 +165,9 @@ export function pushNote(r: PushResult): string | undefined {
       return [
         `Didn't push ${b} to origin: ${r.strangers.length === 1 ? 'a commit has' : `${r.strangers.length} commits have`} another identity than the repository's (\`${r.identity}\`):`,
         '',
-        ...r.strangers.slice(0, 10).map((c) => `- \`${short(c.commit)}\` ${c.subject}: author \`${c.author}\`${c.committer !== c.author ? `, committer \`${c.committer}\`` : ''}`),
+        ...r.strangers
+          .slice(0, 10)
+          .map((c) => `- \`${short(c.commit)}\` ${c.subject}: author \`${c.author}\`${c.committer !== c.author ? `, committer \`${c.committer}\`` : ''}`),
         ...(r.strangers.length > 10 ? [`- and ${r.strangers.length - 10} more`] : []),
         '',
         "Rewrite them with the repository's identity (or push yourself, if that's intended). Merge to main runs the checks locally.",

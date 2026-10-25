@@ -131,10 +131,13 @@ export function fakesArg(argv = process.argv.slice(2)) {
 
 /** What the log says about the debug profile, in a few lines. */
 export function describeDebugProfile(result) {
-  const claude = result.claudeCode ? `Claude Code (${result.claudeCode}) is in ${result.extensions}` : 'no Claude Code found to copy: chats will not start in the debug window';
+  const claude = result.claudeCode
+    ? `Claude Code (${result.claudeCode}) is in ${result.extensions}`
+    : 'no Claude Code found to copy: chats will not start in the debug window';
   let fakes = 'fakes off';
   if (result.unreadable) fakes = "settings.json isn't plain JSON, so it was left as it is and the fakes weren't changed";
-  else if (result.on) fakes = `fakes on${result.applied.length ? `: ${result.applied.join(', ')}` : ' (no fake files in scripts/ yet, so the real ones are used)'}`;
+  else if (result.on)
+    fakes = `fakes on${result.applied.length ? `: ${result.applied.join(', ')}` : ' (no fake files in scripts/ yet, so the real ones are used)'}`;
   return [`Debug profile: ${result.profile} (its own settings, secrets and state)`, `Debug extensions: ${claude}`, `Debug window: ${fakes}`].join('\n');
 }
 

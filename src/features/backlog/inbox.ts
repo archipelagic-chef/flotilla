@@ -1,7 +1,17 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
+import {
+  addBranch,
+  addItem,
+  type BacklogData,
+  type BacklogItem,
+  entryAgent,
+  ID_PATTERN,
+  nextId,
+  priorityFromName,
+  updateItem,
+} from './backlog';
 import { DESCRIPTION_SHAPE, KEEP_WHEN_DONE } from './descriptionShape';
 import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
@@ -141,16 +151,19 @@ export async function takeInbox(
     let error = 'error' in proposal ? proposal.error : 'Not added.';
     if (!('error' in proposal)) {
       const by = proposal.agent ? `Agent ${proposal.agent}` : 'Agent';
-      await store.change(async (d) => {
-        // Ids on disk count too: a ticket file whose item isn't in backlog.json keeps its id.
-        const r = addProposal(d, proposal, { prefix: opts.prefix, mode: opts.mode, now: new Date(), taken: [...opts.taken, ...(await store.ticketIds())] });
-        if ('error' in r) {
-          error = r.error;
-          return d;
-        }
-        item = r.item;
-        return r.data;
-      }, { by });
+      await store.change(
+        async (d) => {
+          // Ids on disk count too: a ticket file whose item isn't in backlog.json keeps its id.
+          const r = addProposal(d, proposal, { prefix: opts.prefix, mode: opts.mode, now: new Date(), taken: [...opts.taken, ...(await store.ticketIds())] });
+          if ('error' in r) {
+            error = r.error;
+            return d;
+          }
+          item = r.item;
+          return r.data;
+        },
+        { by },
+      );
       if (item) {
         if (proposal.claim) {
           const where = proposal.branch ? ` on branch \`${proposal.branch}\`` : '';

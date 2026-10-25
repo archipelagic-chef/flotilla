@@ -1,7 +1,22 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { highlight, matcher, parseGrep, searchWorktree } from '../../../../src/features/search/gitGrep';
-import { git, initRepo, removeDir, writeFile } from '../../../helpers/gitRepo';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  highlight,
+  matcher,
+  parseGrep,
+  searchWorktree,
+} from '../../../../src/features/search/gitGrep';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

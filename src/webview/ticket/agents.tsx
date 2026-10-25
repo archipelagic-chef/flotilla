@@ -1,5 +1,11 @@
 import { formatTokens } from '../../features/chats/usage';
-import { DEFAULT_STUCK_RULES, health, nowLine, progress, type StuckRules } from '../../features/chats/activity';
+import {
+  DEFAULT_STUCK_RULES,
+  health,
+  nowLine,
+  progress,
+  type StuckRules,
+} from '../../features/chats/activity';
 import { SUMMARY_EVERY_MS, summaryWait } from '../../features/chats/summary';
 import { useEffect, useState } from 'preact/hooks';
 import type { AgentChatView, TicketView } from '../ticketProtocol';
@@ -84,7 +90,9 @@ export function outsideAgents(ticket: TicketView): TicketView['agents'] {
   const r = ticket.review;
   const own = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
   // The discussion's agent shows in its own panel.
-  return ticket.agents.filter((a) => a.runs && a.id !== own && !((ticket.shaping?.running || ticket.shaping?.chat === 'open') && a.agent === ticket.shaping.agent));
+  return ticket.agents.filter(
+    (a) => a.runs && a.id !== own && !((ticket.shaping?.running || ticket.shaping?.chat === 'open') && a.agent === ticket.shaping.agent),
+  );
 }
 
 /**
@@ -162,7 +170,9 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
             </ol>
           </details>
         ) : (
-          <div key="thought" class="agent-thoughts">“{thoughts[0]}”</div>
+          <div key="thought" class="agent-thoughts">
+            “{thoughts[0]}”
+          </div>
         ))}
       {plan && (
         <details key="plan" class="agent-plan">
@@ -173,7 +183,10 @@ export function LiveStatus({ agent: a, rules }: { agent: TicketView['agents'][nu
           <ul>
             {activity.todos!.map((t, n) => (
               <li key={n} class={`todo ${t.status}`}>
-                <i class={`codicon ${t.status === 'completed' ? 'codicon-pass-filled' : t.status === 'in_progress' ? 'codicon-circle-large-filled' : 'codicon-circle-large-outline'}`} /> {t.text}
+                <i
+                  class={`codicon ${t.status === 'completed' ? 'codicon-pass-filled' : t.status === 'in_progress' ? 'codicon-circle-large-filled' : 'codicon-circle-large-outline'}`}
+                />{' '}
+                {t.text}
               </li>
             ))}
           </ul>
@@ -225,7 +238,11 @@ export function Summary({ agent: a }: { agent: TicketView['agents'][number] }) {
         message={message}
         working="Summarizing…"
         disabled={wait > 0}
-        title={wait > 0 ? `Once a minute: again in ${Math.ceil(wait / 1000)} s` : `Two lines on where it stands, from a small model reading its transcript's last part (at most once every ${SUMMARY_EVERY_MS / 60_000} min)`}
+        title={
+          wait > 0
+            ? `Once a minute: again in ${Math.ceil(wait / 1000)} s`
+            : `Two lines on where it stands, from a small model reading its transcript's last part (at most once every ${SUMMARY_EVERY_MS / 60_000} min)`
+        }
       >
         <i class="codicon codicon-sparkle" /> {wait > 0 && !s?.running ? `Summarize again in ${Math.ceil(wait / 1000)} s` : 'Summarize'}
       </ActionButton>
@@ -249,7 +266,8 @@ export function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: T
       </div>
       <div class="agents">
         {agents.map((a) => {
-          const state = a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : a.state === 'waiting-for-input' ? CHAT_STATE['waiting-for-input'] : CHAT_STATE.working;
+          const state =
+            a.held === 'paused' ? { label: 'Paused', cls: 'waiting' } : a.state === 'waiting-for-input' ? CHAT_STATE['waiting-for-input'] : CHAT_STATE.working;
           const report = lastReport(ticket.activity, a.id);
           return (
             <div key={a.id} class={`active-agent ${state.cls}`}>
@@ -266,7 +284,13 @@ export function ActiveAgents({ ticket, agents }: { ticket: TicketView; agents: T
                 <span class="muted agent-meta active-agent-worktree" title={`Worktree: ${a.key}`}>
                   <i class="codicon codicon-git-branch" /> {a.branch}
                 </span>
-                <ActionButton class="button secondary" message={{ type: 'openChat', key: a.key, id: a.id }} working="Opening…" aria-label={`Open ${a.agent}'s chat`} title="Open this agent's chat in Claude Code">
+                <ActionButton
+                  class="button secondary"
+                  message={{ type: 'openChat', key: a.key, id: a.id }}
+                  working="Opening…"
+                  aria-label={`Open ${a.agent}'s chat`}
+                  title="Open this agent's chat in Claude Code"
+                >
                   <i class="codicon codicon-comment-discussion" /> Open Chat
                 </ActionButton>
               </div>
@@ -331,7 +355,10 @@ export function Agents({ ticket }: { ticket: TicketView }) {
                   {a.reports} report{a.reports === 1 ? '' : 's'} · {ago(a.updated)}
                 </span>
                 {a.runs === 'panel' && (
-                  <span class="muted agent-meta" title="Claude Code's panel can't be paused or stopped from outside: stop it in its chat (Esc, or its stop button)">
+                  <span
+                    class="muted agent-meta"
+                    title="Claude Code's panel can't be paused or stopped from outside: stop it in its chat (Esc, or its stop button)"
+                  >
                     in Claude Code's panel
                   </span>
                 )}
@@ -340,16 +367,34 @@ export function Agents({ ticket }: { ticket: TicketView }) {
               {(a.held || (a.runs && a.runs !== 'panel')) && (
                 <span class="agent-actions">
                   {a.held ? (
-                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'resume', session: a.id }} working="Resuming…" aria-label={`Resume ${a.agent}`} title={FIX_TIP.resume}>
+                    <ActionButton
+                      class="icon-button"
+                      message={{ type: 'agent', action: 'resume', session: a.id }}
+                      working="Resuming…"
+                      aria-label={`Resume ${a.agent}`}
+                      title={FIX_TIP.resume}
+                    >
                       <i class="codicon codicon-debug-continue" />
                     </ActionButton>
                   ) : (
-                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'pause', session: a.id }} working="Pausing…" aria-label={`Pause ${a.agent}`} title={PAUSE_TIP}>
+                    <ActionButton
+                      class="icon-button"
+                      message={{ type: 'agent', action: 'pause', session: a.id }}
+                      working="Pausing…"
+                      aria-label={`Pause ${a.agent}`}
+                      title={PAUSE_TIP}
+                    >
                       <i class="codicon codicon-debug-pause" />
                     </ActionButton>
                   )}
                   {a.held !== 'stopped' && (
-                    <ActionButton class="icon-button" message={{ type: 'agent', action: 'stop', session: a.id }} working="Stopping…" aria-label={`Stop ${a.agent}`} title={STOP_TIP}>
+                    <ActionButton
+                      class="icon-button"
+                      message={{ type: 'agent', action: 'stop', session: a.id }}
+                      working="Stopping…"
+                      aria-label={`Stop ${a.agent}`}
+                      title={STOP_TIP}
+                    >
                       <i class="codicon codicon-debug-stop" />
                     </ActionButton>
                   )}

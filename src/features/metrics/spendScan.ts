@@ -32,7 +32,8 @@ export async function projectDirs(home: string, mainRoot: string, tmp: string): 
   const names = await fs.promises.readdir(path.join(home, 'projects')).catch(() => [] as string[]);
   const out: Array<{ dir: string; ticket?: string }> = [];
   for (const name of names.sort()) {
-    const rest = name === root ? '' : name.startsWith(worktrees) ? name.slice(worktrees.length) : name.startsWith(merges) ? name.slice(merges.length) : undefined;
+    const rest =
+      name === root ? '' : name.startsWith(worktrees) ? name.slice(worktrees.length) : name.startsWith(merges) ? name.slice(merges.length) : undefined;
     if (rest === undefined) continue;
     const ticket = /(?:^|-)([A-Z][A-Z0-9]*-\d+)(?=-|$)/.exec(rest)?.[1];
     out.push({ dir: path.join(home, 'projects', name), ...(ticket ? { ticket } : {}) });
@@ -71,7 +72,16 @@ export async function scanSpend(o: { commonDir: string; mainRoot: string; home: 
       kind: 'agent-spend',
       ...(spend.ticket ? { ticket: spend.ticket } : {}),
       ...(spend.agent ? { agent: spend.agent } : {}),
-      data: { session, purpose: p.purpose, to: p.to, tokens: p.tokens, costUsd: Math.round(p.costUsd * 1e6) / 1e6, contextK: p.contextK, tools: p.tools, ...(p.priced ? { priced: true as const } : {}) },
+      data: {
+        session,
+        purpose: p.purpose,
+        to: p.to,
+        tokens: p.tokens,
+        costUsd: Math.round(p.costUsd * 1e6) / 1e6,
+        contextK: p.contextK,
+        tools: p.tools,
+        ...(p.priced ? { priced: true as const } : {}),
+      },
       ...(was ? {} : { imported: true as const }),
     }));
     await appendEvents(o.commonDir, events);

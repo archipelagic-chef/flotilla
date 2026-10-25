@@ -52,7 +52,12 @@ export function TicketCi({ ci, send }: { ci: TicketCiView | undefined; send: (me
                 </span>
                 {shown.length > 1 && <span class="ci-branch">{branch}</span>}
               </button>
-              <button class="icon-button" title="Show it in the CI/CD view" aria-label="Show it in the CI/CD view" onClick={() => send({ type: 'ciShow', key })}>
+              <button
+                class="icon-button"
+                title="Show it in the CI/CD view"
+                aria-label="Show it in the CI/CD view"
+                onClick={() => send({ type: 'ciShow', key })}
+              >
                 <i class="codicon codicon-layout-sidebar-left" />
               </button>
               <button class="icon-button" title="Open the run on GitHub" aria-label="Open the run on GitHub" onClick={() => actions.openUrl(run.url)}>

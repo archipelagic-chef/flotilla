@@ -5,7 +5,14 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { buildSync } from 'esbuild';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { addItem, parseNewItem } from '../../../src/features/backlog/backlog';
 import { takeInbox } from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
@@ -161,10 +168,7 @@ describe('inbox at once', () => {
     }
     // Two windows take the inbox at the same time.
     const other = new LocalBacklog(repo, path.join(repo, '.git'));
-    const [a, b] = await Promise.all([
-      takeInbox(store, { prefix: 'BL', mode: 'add', taken: [] }),
-      takeInbox(other, { prefix: 'BL', mode: 'add', taken: [] }),
-    ]);
+    const [a, b] = await Promise.all([takeInbox(store, { prefix: 'BL', mode: 'add', taken: [] }), takeInbox(other, { prefix: 'BL', mode: 'add', taken: [] })]);
     expect(a.length + b.length).toBe(6);
     const data = await store.read();
     expect(ids(data.items)).toHaveLength(7);

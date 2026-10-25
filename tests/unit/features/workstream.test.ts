@@ -1,9 +1,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { buildWorkstreams, canReuseProgress, findWorkstreamFor, type BuildOptions, type Workstream } from '../../../src/features/workstreams/workstream';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  type BuildOptions,
+  buildWorkstreams,
+  canReuseProgress,
+  findWorkstreamFor,
+  type Workstream,
+} from '../../../src/features/workstreams/workstream';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
-import { git, initRepo, makeStatDirty, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeStatDirty,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

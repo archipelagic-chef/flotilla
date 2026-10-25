@@ -26,7 +26,11 @@ export function conflictsOf(text) {
     } else if (place && line.startsWith('||||||| ')) side = 'base';
     else if (place && line === '=======') side = 'theirs';
     else if (place && line.startsWith('>>>>>>> ')) {
-      places.push({ ...place, pureAddition: place.base.length === 0, imports: [...place.ours, ...place.theirs].some((l) => /^\s*(import|export) .* from /.test(l)) });
+      places.push({
+        ...place,
+        pureAddition: place.base.length === 0,
+        imports: [...place.ours, ...place.theirs].some((l) => /^\s*(import|export) .* from /.test(l)),
+      });
       place = undefined;
     } else if (place) place[side].push(line);
   }
@@ -35,7 +39,11 @@ export function conflictsOf(text) {
 
 /** Replays one merge: undefined when it merged cleanly, else its conflicted files with their places. */
 export function replay(cwd, first, second) {
-  const r = spawnSync('git', ['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '-z', first, second], { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const r = spawnSync('git', ['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '-z', first, second], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  });
   if (r.status === 0) return undefined;
   if (r.status !== 1) throw new Error(r.stderr.trim() || `git merge-tree exited with ${r.status}`);
   // -z output: the tree, then the conflicted files, then an empty field before the messages.

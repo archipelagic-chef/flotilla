@@ -1,12 +1,25 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
 import { GitHubActions } from '../../../src/features/ci/githubActions';
 import { failedJob, type FailedJob } from '../../../src/features/ci/failureTask';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
 
 /** What the mocked VS Code answers and records. */
@@ -41,7 +54,6 @@ vi.mock('vscode', () => {
 
 /** The checks: they print a failure and exit with ui.checksExit. */
 const CHECKS = `node -e "console.log('FAIL a.test.ts: expected 1, got 2'); process.exit(Number(process.env.FLOTILLA_TEST_CHECKS_EXIT))"`;
-
 
 /** The checks' environment (Merger's checksEnv): the command really runs; CHECKS reads how to end from it. */
 function fakeChecksEnv(command: string): NodeJS.ProcessEnv {
@@ -149,11 +161,11 @@ async function setup(items: BacklogItem[], o: { reader?: string; ciPollMs?: numb
 
 /** Waits until done, up to 25 s (under the suite's 30 s timeout): a loaded machine polls and merges slowly (BL-120). */
 const until = async (done: () => Promise<boolean>) => {
-  for (const end = Date.now() + 25_000; Date.now() < end && !(await done()); ) await new Promise((r) => setTimeout(r, 20));
+  for (const end = Date.now() + 25_000; Date.now() < end && !(await done());) await new Promise((r) => setTimeout(r, 20));
 };
 
 describe('Merge to main on CI (BL-105)', () => {
-  it("merges on green CI without running the checks locally, and notes the runs it relied on", async () => {
+  it('merges on green CI without running the checks locally, and notes the runs it relied on', async () => {
     const { repo, merger, item, activity, branch, runsOf } = await setup([approved('BL-1')]);
     branch('feature/BL-1', 'a.txt', 'BL-1');
     const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
@@ -176,7 +188,9 @@ describe('Merge to main on CI (BL-105)', () => {
     const ci = (await runsOf('feature/BL-1')).find((r) => r.workflow === 'CI')!;
 
     expect(await merger.merge('BL-1')).toBe('waiting');
-    expect(merger.mergeProgress('BL-1')).toEqual({ ci: [expect.objectContaining({ workflow: 'CI', number: 3, status: 'queued' }), expect.objectContaining({ workflow: 'Deploy' })] });
+    expect(merger.mergeProgress('BL-1')).toEqual({
+      ci: [expect.objectContaining({ workflow: 'CI', number: 3, status: 'queued' }), expect.objectContaining({ workflow: 'Deploy' })],
+    });
     expect(await activity('BL-1')).toContain('Merges when CI passes: `feature/BL-1`');
 
     // BL-2 has no CI (not pushed): its merge goes ahead meanwhile, with the local checks.
@@ -271,7 +285,7 @@ describe('Merge to main on CI (BL-105)', () => {
 
     expect(await merger.merge('BL-1')).toBe('merged');
     expect(ui.checks).toEqual([CHECKS]);
-    expect(await activity('BL-1')).toContain("The checks passed (`" + CHECKS + "`). CI wasn't used: you aren't signed in to GitHub in VS Code.");
+    expect(await activity('BL-1')).toContain('The checks passed (`' + CHECKS + "`). CI wasn't used: you aren't signed in to GitHub in VS Code.");
 
     ui.settings['merge.checks'] = 'local';
     branch('feature/BL-2', 'b.txt', 'BL-2');
@@ -355,7 +369,9 @@ describe('Landing from the merge train on CI (BL-145)', () => {
     expect(result).toBe('waiting');
     const inTrain = git(repo, 'rev-parse', 'flotilla/train');
     expect(trainOnOrigin()).toEqual([`refs/heads/flotilla/merge-queue/BL-1 ${inTrain}`]);
-    expect(merger.mergeProgress('BL-1')).toEqual({ ci: [expect.objectContaining({ workflow: 'CI', status: 'queued' }), expect.objectContaining({ workflow: 'Deploy' })] });
+    expect(merger.mergeProgress('BL-1')).toEqual({
+      ci: [expect.objectContaining({ workflow: 'CI', status: 'queued' }), expect.objectContaining({ workflow: 'Deploy' })],
+    });
     expect(await activity('BL-1')).toContain(`Merges when CI passes: \`flotilla/merge-queue/BL-1\` at \`${inTrain.slice(0, 7)}\``);
     expect(await queue()).toEqual(['BL-1']);
 
@@ -379,7 +395,9 @@ describe('Landing from the merge train on CI (BL-145)', () => {
   });
 
   it('takes a ticket out of the queue on red CI on its train commit, with the failed jobs, and rebuilds the train without it', async () => {
-    const { repo, merger, item, activity, branch, queue, trainOnOrigin, fixes, failures } = await setup([approved('BL-1'), approved('BL-2')], { ciPollMs: HOUR });
+    const { repo, merger, item, activity, branch, queue, trainOnOrigin, fixes, failures } = await setup([approved('BL-1'), approved('BL-2')], {
+      ciPollMs: HOUR,
+    });
     branch('feature/BL-1', 'a.txt', 'BL-1');
     commit(repo, 'm.txt', 'm\n', 'main moves on');
     const before = git(repo, 'rev-parse', 'main');

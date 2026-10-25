@@ -7,13 +7,22 @@ import './demo.css';
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
-import { demoLength, demoRunFor, gifSeconds, staleNote, ticketDemo, wantsDemo } from '../../features/backlog/demo';
+import {
+  demoLength,
+  demoRunFor,
+  gifSeconds,
+  staleNote,
+  ticketDemo,
+  wantsDemo,
+} from '../../features/backlog/demo';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 
 /** The section's id: a review card's demo mark opens the ticket there. */
 export const DEMO_SECTION = 'demo';
 
-export type Action = (props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string; children?: ComponentChildren }) => JSX.Element;
+export type Action = (
+  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { message: TicketWebviewMessage; working?: string; children?: ComponentChildren },
+) => JSX.Element;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -95,26 +104,26 @@ export function DemoBar({ seconds, run, Action }: { seconds?: number; run?: { ke
       <span class="demo-label">
         <i class="codicon codicon-device-camera-video" /> Recorded demo{seconds ? ` · ${demoLength(seconds)}` : ''}
       </span>
-        {run && (
-          <>
-            <Action
-              class="button"
-              message={{ type: 'run', key: run.key, index: run.index, try: true }}
-              working="Starting…"
-              title={`Opens the demo "${run.name}"'s window as it starts, in the ticket's worktree, and leaves it to you (npm run demo -- try ${run.name})`}
-            >
-              <i class="codicon codicon-debug-start" /> Try it yourself
-            </Action>
-            <Action
-              class="button secondary"
-              message={{ type: 'run', key: run.key, index: run.index }}
-              working="Playing…"
-              title={`Plays the demo "${run.name}" live, in the ticket's worktree (npm run demo -- play ${run.name})`}
-            >
-              <i class="codicon codicon-play" /> Watch it live
-            </Action>
-          </>
-        )}
+      {run && (
+        <>
+          <Action
+            class="button"
+            message={{ type: 'run', key: run.key, index: run.index, try: true }}
+            working="Starting…"
+            title={`Opens the demo "${run.name}"'s window as it starts, in the ticket's worktree, and leaves it to you (npm run demo -- try ${run.name})`}
+          >
+            <i class="codicon codicon-debug-start" /> Try it yourself
+          </Action>
+          <Action
+            class="button secondary"
+            message={{ type: 'run', key: run.key, index: run.index }}
+            working="Playing…"
+            title={`Plays the demo "${run.name}" live, in the ticket's worktree (npm run demo -- play ${run.name})`}
+          >
+            <i class="codicon codicon-play" /> Watch it live
+          </Action>
+        </>
+      )}
     </div>
   );
 }

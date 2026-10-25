@@ -13,7 +13,13 @@ function fakeFetch(routes: Record<string, unknown>) {
       .filter((r) => url.startsWith(r))
       .sort((a, b) => b.length - a.length)[0];
     const found = match !== undefined;
-    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => (found ? JSON.stringify(routes[match]) : '') };
+    return {
+      ok: found,
+      status: found ? 200 : 404,
+      statusText: found ? 'OK' : 'Not Found',
+      json: async () => routes[match!],
+      text: async () => (found ? JSON.stringify(routes[match]) : ''),
+    };
   };
   return { fetch, calls };
 }
@@ -50,13 +56,22 @@ describe('Jira', () => {
       'https://acme.atlassian.net/rest/api/2/issue/ABC-1/comment': {},
       'https://acme.atlassian.net/rest/api/2/issue/ABC-1': {
         key: 'ABC-1',
-        fields: { summary: 'One', description: 'h1. Hi', comment: { comments: [{ author: { displayName: 'Kim' }, created: '2026-10-10T10:00:00Z', body: '*raw*' }] } },
+        fields: {
+          summary: 'One',
+          description: 'h1. Hi',
+          comment: { comments: [{ author: { displayName: 'Kim' }, created: '2026-10-10T10:00:00Z', body: '*raw*' }] },
+        },
         renderedFields: { description: '<h1>Hi</h1>', comment: { comments: [{ created: '2026-10-10T10:00:00Z', body: '<b>raw</b>' }] } },
       },
     });
     const jira = new JiraSource(config, 'tok', fetch);
     const d = await jira.details('ABC-1');
-    expect(d).toMatchObject({ description: '<h1>Hi</h1>', format: 'html', descriptionText: 'h1. Hi', comments: [{ author: 'Kim', body: '<b>raw</b>', format: 'html' }] });
+    expect(d).toMatchObject({
+      description: '<h1>Hi</h1>',
+      format: 'html',
+      descriptionText: 'h1. Hi',
+      comments: [{ author: 'Kim', body: '<b>raw</b>', format: 'html' }],
+    });
     await jira.comment('ABC-1', 'Looks good');
     expect(calls.at(-1)).toMatchObject({ method: 'POST', body: JSON.stringify({ body: 'Looks good' }) });
   });
@@ -190,11 +205,21 @@ describe('editing issues', () => {
     expect(calls.at(-1)).toMatchObject({ method: 'PUT', body: JSON.stringify({ fields: { summary: 'New', priority: { name: 'P1' } } }) });
     const created = await jira.create({ project: 'ABC', issueType: '10001' }, 'Title', 'h2. Hi');
     expect(created).toMatchObject({ id: 'ABC-9', url: `${site}/browse/ABC-9` });
-    expect(JSON.parse(calls.at(-1)!.body!)).toEqual({ fields: { project: { key: 'ABC' }, issuetype: { id: '10001' }, summary: 'Title', description: 'h2. Hi' } });
+    expect(JSON.parse(calls.at(-1)!.body!)).toEqual({
+      fields: { project: { key: 'ABC' }, issuetype: { id: '10001' }, summary: 'Title', description: 'h2. Hi' },
+    });
   });
 
   it('lists the fields a project requires on new issues', () => {
-    expect(missingFields([['customfield_1', { name: 'Team', required: true }], ['summary', { name: 'Summary', required: true }]], new Set(['summary']))).toEqual(['Team']);
+    expect(
+      missingFields(
+        [
+          ['customfield_1', { name: 'Team', required: true }],
+          ['summary', { name: 'Summary', required: true }],
+        ],
+        new Set(['summary']),
+      ),
+    ).toEqual(['Team']);
   });
 
   it('closes and reopens GitHub issues', async () => {
@@ -210,7 +235,8 @@ describe('editing issues', () => {
 describe('GitHub repository names', () => {
   it("can't lead into other API routes", async () => {
     const { GitHubSource } = await import('../../../src/features/backlog/sources/github');
-    const make = (owner: string, repo: string) => () => new GitHubSource({ kind: 'github', id: 'g', owner, repo, prefix: 'GH' } as never, async () => 't', (async () => ({})) as never);
+    const make = (owner: string, repo: string) => () =>
+      new GitHubSource({ kind: 'github', id: 'g', owner, repo, prefix: 'GH' } as never, async () => 't', (async () => ({})) as never);
     expect(make('acme', 'web.app')).not.toThrow();
     expect(make('..', 'users')).toThrow();
     expect(make('acme', 'x/../../user')).toThrow();

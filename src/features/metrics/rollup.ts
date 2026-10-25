@@ -47,7 +47,12 @@ export function addTotals(a: MonthTotals, b: MonthTotals | undefined): MonthTota
     agents[role] = { runs: x.runs + y.runs, minutes: x.minutes + y.minutes, costUsd: x.costUsd + y.costUsd, tokens: x.tokens + y.tokens };
   }
   const c = b.conflicts ?? { merges: 0, regions: 0, additions: 0 };
-  return { month: a.month, counts, agents, conflicts: { merges: a.conflicts.merges + c.merges, regions: a.conflicts.regions + c.regions, additions: a.conflicts.additions + c.additions } };
+  return {
+    month: a.month,
+    counts,
+    agents,
+    conflicts: { merges: a.conflicts.merges + c.merges, regions: a.conflicts.regions + c.regions, additions: a.conflicts.additions + c.additions },
+  };
 }
 
 /** The first month kept whole at now: the months before it are rolled up. */
@@ -72,7 +77,10 @@ export async function rollUpOldEvents(commonDir: string, now = new Date()): Prom
     const file = path.join(dir, n);
     const out = path.join(dir, `totals-${month}.json`);
     // Events written to a month already rolled up (late, or imported) are added to its totals.
-    const before = await fs.promises.readFile(out, 'utf8').then((t) => JSON.parse(t) as MonthTotals, () => undefined);
+    const before = await fs.promises.readFile(out, 'utf8').then(
+      (t) => JSON.parse(t) as MonthTotals,
+      () => undefined,
+    );
     const totals = addTotals(monthTotals(month, await readEventsFile(file)), before);
     const tmp = `${out}.${process.pid}.tmp`;
     await fs.promises.writeFile(tmp, `${JSON.stringify(totals, null, 1)}\n`);

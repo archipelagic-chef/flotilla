@@ -6,14 +6,33 @@ import { GitError } from '../core/git/gitCli';
 import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
-import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import {
+  addBranch,
+  agentChatItem,
+  agentLead,
+  agentName,
+  type BacklogItem,
+  branchFor,
+  branchMatches,
+  itemBranches,
+  linkIssue,
+  removeItem,
+  setStartFailed,
+  updateItem,
+} from '../features/backlog/backlog';
 import { tidyNotes } from '../features/backlog/tidyNotes';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import { KEEP_WHEN_DONE } from '../features/backlog/descriptionShape';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
-import { cancelCleanUp, compareCleanUp, finishCleanUp, startCleanUp, type CleanUpDeps } from './backlog/historyCleanup';
+import {
+  cancelCleanUp,
+  type CleanUpDeps,
+  compareCleanUp,
+  finishCleanUp,
+  startCleanUp,
+} from './backlog/historyCleanup';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
@@ -21,11 +40,22 @@ import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../features/workstreams/removingWorktrees';
-import { clashFiles, mapFor, mapNote, type Clash, type CodeMap } from '../features/backlog/codeMap';
+import {
+  type Clash,
+  clashFiles,
+  type CodeMap,
+  mapFor,
+  mapNote,
+} from '../features/backlog/codeMap';
 import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
-import { agentChoice, confirmMemory, describeChoice, levelNote } from './backlog/agentRunner';
+import {
+  agentChoice,
+  confirmMemory,
+  describeChoice,
+  levelNote,
+} from './backlog/agentRunner';
 import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import type { ResolvedWorktree } from '../features/worktrees/resolver';
@@ -36,7 +66,16 @@ import type { ChangeGroup } from '../webview/protocol';
 import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
-import { isTarget, joinCommands, registerAll, type Arg, type Commands, type Handler, type PickFilter, type WithWorkstream } from './commandSet';
+import {
+  type Arg,
+  type Commands,
+  type Handler,
+  isTarget,
+  joinCommands,
+  type PickFilter,
+  registerAll,
+  type WithWorkstream,
+} from './commandSet';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
@@ -75,7 +114,6 @@ export interface CommandContext {
 }
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
-
 
 export async function openWorktree(ctx: CommandContext, dir: string, newWindow: boolean): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', toWorkspaceUri(ctx.reference, dir), { forceNewWindow: newWindow });
@@ -246,9 +284,7 @@ async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter)
     if (ws && (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain)) return ws;
   }
   const now = new Date();
-  const candidates = ctx.repository.current.filter(
-    (ws) => (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain),
-  );
+  const candidates = ctx.repository.current.filter((ws) => (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain));
   if (candidates.length === 0) {
     void vscode.window.showInformationMessage('No matching workstreams.');
     return undefined;
@@ -263,7 +299,10 @@ async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter)
 type BranchItem = vscode.QuickPickItem & { action?: BranchPickAction };
 
 /** One searchable picker, like VS Code's own branch picker. Resolves to the chosen action, or undefined when dismissed. */
-async function pickBranchAction(branches: BranchList, checkedOut: ReadonlyMap<string, string>): Promise<{ action: BranchPickAction; typed: string } | undefined> {
+async function pickBranchAction(
+  branches: BranchList,
+  checkedOut: ReadonlyMap<string, string>,
+): Promise<{ action: BranchPickAction; typed: string } | undefined> {
   const quickPick = vscode.window.createQuickPick<BranchItem>();
   quickPick.title = 'New workstream';
   quickPick.placeholder = 'Select a branch for the new worktree, or type a new branch name';
@@ -301,7 +340,8 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
   const branches = await ctx.service.listBranches();
   const checkedOut = new Map<string, string>();
   for (const ws of ctx.repository.current) {
-    if (ws.worktree.branch) checkedOut.set(ws.worktree.branch, ws.worktree.isMain ? 'the main worktree' : path.basename(ws.worktree.path ?? ws.worktree.recordedPath));
+    if (ws.worktree.branch)
+      checkedOut.set(ws.worktree.branch, ws.worktree.isMain ? 'the main worktree' : path.basename(ws.worktree.path ?? ws.worktree.recordedPath));
   }
   const picked = await pickBranchAction(branches, checkedOut);
   if (!picked) return;
@@ -345,7 +385,10 @@ async function newWorkstream(ctx: CommandContext): Promise<void> {
 async function createWorkstream(ctx: CommandContext, request: CreateRequest, opts: { quiet?: boolean; label?: string } = {}): Promise<string> {
   // Quiet (the autopilot's): progress in the status bar, and the sidebar stays where it is.
   const created = await vscode.window.withProgress(
-    { location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification, title: opts.label ? `Creating ${opts.label}'s worktree…` : 'Creating worktree…' },
+    {
+      location: opts.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification,
+      title: opts.label ? `Creating ${opts.label}'s worktree…` : 'Creating worktree…',
+    },
     () => ctx.service.create(request),
   );
   const dir = created.path!;
@@ -418,13 +461,16 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   const branch = ws.worktree.branch;
   await enforceCommitPrefix(ctx, ws, item.id);
   // Issues from integrations aren't in the local backlog: their branch carries their key, which links them.
-  if (!remote) await ctx.backlog.change((d) => setStartFailed(updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }), id));
+  if (!remote)
+    await ctx.backlog.change((d) => setStartFailed(updateItem(addBranch(d, id, branch), id, { status: item.status === 'done' ? 'done' : 'doing' }), id));
   // Held back by the autopilot for a clash (BL-71): started anyway, which the ticket and a notice say.
   const clash = !remote && item.status === 'todo' ? ctx.clashOf?.(item.id) : undefined;
   if (clash) {
     const body = `Started by hand despite the clash with ${clash.with} (in progress): both change ${clashFiles(clash)}. Its work may need redoing once ${clash.with} is merged.`;
     await ctx.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
-    void vscode.window.showInformationMessage(`${item.id} started despite the clash with ${clash.with}: both change ${clash.files.slice(0, 3).join(', ')}${clash.files.length > 3 ? ', …' : ''}.`);
+    void vscode.window.showInformationMessage(
+      `${item.id} started despite the clash with ${clash.with}: both change ${clash.files.slice(0, 3).join(', ')}${clash.files.length > 3 ? ', …' : ''}.`,
+    );
   }
   ctx.sidebar.reveal(ws.key);
   if (agent && ws.worktree.path) await runAgent(ctx, item, ws, remote);
@@ -530,12 +576,14 @@ async function newItemWorktree(ctx: CommandContext, item: BacklogItem, askName: 
   if (askName || checkedOut.has(branch)) {
     let suggestion = branchFor(item, pattern);
     for (let n = 2; branches.local.includes(suggestion) || checkedOut.has(suggestion); n++) suggestion = `${branchFor(item, pattern)}-${n}`;
-    const name = !askName ? suggestion : await vscode.window.showInputBox({
-      title: `New worktree for ${item.id}`,
-      prompt: 'Branch name (it should keep the item id, which links it to the item)',
-      value: suggestion,
-      validateInput: (v) => branchNameProblem(v.trim(), branches.local),
-    });
+    const name = !askName
+      ? suggestion
+      : await vscode.window.showInputBox({
+          title: `New worktree for ${item.id}`,
+          prompt: 'Branch name (it should keep the item id, which links it to the item)',
+          value: suggestion,
+          validateInput: (v) => branchNameProblem(v.trim(), branches.local),
+        });
     if (!name) return undefined;
     branch = name.trim();
   }
@@ -582,18 +630,30 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
  * How agents keep their branch current with main (rebased and tidied, BL-181), and what they do when they need another
  * ticket's work (BL-55).
  */
-export const mergeNotes = (id: string): string => `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
+export const mergeNotes = (id: string): string =>
+  `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
 
 /** Agents keep a todo list, so the ticket shows how far they are (BL-175). */
 export const PLAN_NOTE =
   'Plan with your todo list (TodoWrite) when you start: a few steps, from reading to the final report. Keep it current as you go (mark a step in progress when you begin it, completed when it is done, and add steps you find): the ticket shows it to the user as your progress.';
 
 /** What an agent is told when it starts on an item. */
-export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
+export function agentPrompt(
+  item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>,
+  ticket: string,
+  branch: string,
+  agent: string,
+  guide: string,
+  map?: CodeMap,
+): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   const level = levelNote(item);
   return [
-    ...(links.length ? [`It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`] : []),
+    ...(links.length
+      ? [
+          `It's linked to ${links.length === 1 ? 'the issue' : 'the issues'} ${links.join(', ')}; mention ${links.length === 1 ? 'its key' : 'their keys'} in your commit messages.`,
+        ]
+      : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder). If its description has a "Where to start" section, begin there: it's what was found in the code when the ticket was shaped.`,
     CONTEXT_NOTES,
     ...(mapNote(map) ? [mapNote(map)!] : []),
@@ -643,7 +703,11 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const choice = agentChoice(item);
   const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
   const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
-  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}`, track: { ticket: item.id, agent, role: 'work' } });
+  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), {
+    choice,
+    name: `${agent} · ${item.id}`,
+    track: { ticket: item.id, agent, role: 'work' },
+  });
   const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
   await ctx.tickets.addActivity(
     item.id,
@@ -679,11 +743,17 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   const agent = newAgentName(ctx);
   const choice = agentChoice(item);
   const map = remote ? undefined : await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
-  const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map), agentLead(item, agent), {
-    choice,
-    name: `${agent} · ${item.id}`,
-    track: { ticket: item.id, agent, role: 'work' },
-  });
+  const where = await chatUi.startAgent(
+    chatContext(ctx),
+    ws,
+    agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map),
+    agentLead(item, agent),
+    {
+      choice,
+      name: `${agent} · ${item.id}`,
+      track: { ticket: item.id, agent, role: 'work' },
+    },
+  );
   await ctx.tickets.addActivity(
     item.id,
     'Flotilla',
@@ -786,9 +856,7 @@ async function compareWith(ctx: CommandContext, ws: Workstream): Promise<void> {
   const dir = ws.worktree.path!;
   const branches = await ctx.service.listBranches();
   const defaultBase = await resolveBase(dir, readSettings().defaultBase);
-  const options = [...new Set([defaultBase, ...branches.local, ...branches.remote])].filter(
-    (b): b is string => b !== undefined && b !== ws.worktree.branch,
-  );
+  const options = [...new Set([defaultBase, ...branches.local, ...branches.remote])].filter((b): b is string => b !== undefined && b !== ws.worktree.branch);
   const base = await vscode.window.showQuickPick(options, { title: `Compare '${workstreamLabel(ws)}' with…` });
   if (!base) return;
   const modes: Array<vscode.QuickPickItem & { mode: CompareMode }> = [
@@ -860,8 +928,9 @@ export async function removeWorkstream(ctx: CommandContext, ws: Workstream): Pro
   }
   if (!wt.path) return forgetWorkstream(ctx, ws);
   if (removingWorktrees.has(ws.key)) return;
-  const risks = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `Checking '${workstreamLabel(ws)}' before removing it…` }, () =>
-    ctx.service.removalRisks(wt),
+  const risks = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: `Checking '${workstreamLabel(ws)}' before removing it…` },
+    () => ctx.service.removalRisks(wt),
   );
   const lines: string[] = [];
   if (risks.changedFiles) lines.push(`${risks.changedFiles} uncommitted or untracked file(s) will be deleted.`);

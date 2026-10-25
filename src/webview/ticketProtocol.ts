@@ -2,7 +2,12 @@
  * Messages between the extension host and a ticket editor tab. Type-only: imported by both sides, so it must not
  * import vscode, node or DOM APIs.
  */
-import type { AgentChoice, BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type {
+  AgentChoice,
+  BacklogItem,
+  BacklogPriority,
+  BacklogStatus,
+} from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { MergeInfo } from '../features/backlog/merged';
@@ -347,14 +352,7 @@ export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts
 
 /** The messages of a ticket tab that ticketMessages/ handles, one group per module, each declared next to its handlers. */
 export type HandledTicketMessage =
-  | AgentsMessage
-  | CheckMessage
-  | CommentsMessage
-  | FilesMessage
-  | MergeMessage
-  | ReviewMessage
-  | TicketMessage
-  | TrackerMessage;
+  AgentsMessage | CheckMessage | CommentsMessage | FilesMessage | MergeMessage | ReviewMessage | TicketMessage | TrackerMessage;
 
 export type TicketWebviewMessage =
   | HandledTicketMessage

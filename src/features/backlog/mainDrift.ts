@@ -1,4 +1,9 @@
-import { ID_PATTERN, itemBranches, type BacklogData, type BacklogItem } from './backlog';
+import {
+  type BacklogData,
+  type BacklogItem,
+  ID_PATTERN,
+  itemBranches,
+} from './backlog';
 
 /**
  * Open tickets' branches against main (BL-55): when main or a branch moves, the branch is merged with main in memory,

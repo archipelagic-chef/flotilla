@@ -4,7 +4,13 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { currentPrefix } from '../../features/backlog/backlog';
 import { installCommitHook, markWorktree } from '../../features/backlog/commitHook';
-import { agentGuide, GUIDE, INBOX, takeInbox, type AgentTicketMode } from '../../features/backlog/inbox';
+import {
+  agentGuide,
+  type AgentTicketMode,
+  GUIDE,
+  INBOX,
+  takeInbox,
+} from '../../features/backlog/inbox';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { commitPrefixMode } from '../commands';

@@ -35,7 +35,10 @@ export type RebaseOutcome = { kind: 'rebased'; commit: string; rebased: boolean 
 export async function rebaseInDir(dir: string, onto: string, o: { rerere?: boolean } = {}): Promise<RebaseOutcome> {
   const head = async () => (await runGit(['rev-parse', 'HEAD'], { cwd: dir })).trim();
   const before = await head();
-  const contained = await runGit(['merge-base', '--is-ancestor', onto, before], { cwd: dir }).then(() => true, () => false);
+  const contained = await runGit(['merge-base', '--is-ancestor', onto, before], { cwd: dir }).then(
+    () => true,
+    () => false,
+  );
   if (contained && !(await hasFixups(dir, onto, before))) return { kind: 'rebased', commit: before, rebased: false };
   const rerere = o.rerere ? ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=true'] : [];
   try {
@@ -97,10 +100,16 @@ export async function continueRebase(dir: string, rerere: string[] = []): Promis
  */
 export async function rebaseResult(dir: string, baseTip: string, id: string): Promise<{ commit: string; count: number } | { problem: string }> {
   const conflicts = await conflictedFiles(dir).catch(() => []);
-  if (conflicts.length) return { problem: `${conflicts.length} file${conflicts.length === 1 ? ' still has' : 's still have'} conflicts (${conflicts.slice(0, 5).join(', ')}).` };
+  if (conflicts.length)
+    return { problem: `${conflicts.length} file${conflicts.length === 1 ? ' still has' : 's still have'} conflicts (${conflicts.slice(0, 5).join(', ')}).` };
   if (await rebasing(dir)) return { problem: 'the rebase is still in progress (`git rebase --continue`).' };
   const head = (await runGit(['rev-parse', 'HEAD'], { cwd: dir })).trim();
-  if (!(await runGit(['merge-base', '--is-ancestor', baseTip, head], { cwd: dir }).then(() => true, () => false))) {
+  if (
+    !(await runGit(['merge-base', '--is-ancestor', baseTip, head], { cwd: dir }).then(
+      () => true,
+      () => false,
+    ))
+  ) {
     return { problem: `its worktree isn't on top of the base branch (${baseTip.slice(0, 7)}).` };
   }
   const log = (await runGit(['log', '--format=%H %P%x00%s', `${baseTip}..${head}`], { cwd: dir })).split('\n').filter(Boolean);

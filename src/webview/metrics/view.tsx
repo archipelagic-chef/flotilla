@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from 'preact/hooks';
 import type {
   MetricChart,
   MetricNumber,
@@ -6,8 +6,8 @@ import type {
   MetricsPeriod,
   MetricsView,
   MetricUnit,
-} from "../metricsProtocol";
-import "./metrics.css";
+} from '../metricsProtocol';
+import './metrics.css';
 
 /**
  * The Metrics view (BL-158): the event log's numbers for a period, each compared with the period before. A number or
@@ -15,42 +15,34 @@ import "./metrics.css";
  */
 
 const PERIODS: Array<{ id: MetricsPeriod; label: string; before: string }> = [
-  { id: "day", label: "Day", before: "the day before" },
-  { id: "week", label: "Week", before: "the week before" },
-  { id: "month", label: "Month", before: "the month before" },
+  { id: 'day', label: 'Day', before: 'the day before' },
+  { id: 'week', label: 'Week', before: 'the week before' },
+  { id: 'month', label: 'Month', before: 'the month before' },
 ];
 
 /** The theme's chart colors, in the order the series take them. */
-const SERIES = ["blue", "orange", "purple", "green", "red", "yellow"].map(
-  (c) => `var(--vscode-charts-${c})`,
-);
+const SERIES = ['blue', 'orange', 'purple', 'green', 'red', 'yellow'].map((c) => `var(--vscode-charts-${c})`);
 
 export function formatValue(value: number, unit: MetricUnit): string {
   switch (unit) {
-    case "minutes": {
+    case 'minutes': {
       const m = Math.round(value);
       if (m < 60) return `${m}m`;
       const h = Math.floor(m / 60);
       if (h < 48) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
       return `${Math.round(h / 24)}d`;
     }
-    case "usd":
+    case 'usd':
       return value >= 100 ? `$${Math.round(value)}` : `$${value.toFixed(2)}`;
-    case "tokens":
-      return value >= 1e6
-        ? `${(value / 1e6).toFixed(1)}M`
-        : value >= 1000
-          ? `${Math.round(value / 1000)}k`
-          : String(Math.round(value));
-    case "percent":
+    case 'tokens':
+      return value >= 1e6 ? `${(value / 1e6).toFixed(1)}M` : value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value));
+    case 'percent':
       return `${Math.round(value)}%`;
-    case "ms":
-      return value >= 1000
-        ? `${(value / 1000).toFixed(1)} s`
-        : `${Math.round(value)} ms`;
-    case "count":
+    case 'ms':
+      return value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`;
+    case 'count':
       return Number.isInteger(value) ? String(value) : value.toFixed(1);
-    case "ratio":
+    case 'ratio':
       return value >= 100 ? String(Math.round(value)) : value.toFixed(2);
   }
 }
@@ -58,14 +50,14 @@ export function formatValue(value: number, unit: MetricUnit): string {
 /** How a number moved since the period before: "▲ 2", worse or better. */
 function change(n: MetricNumber): {
   text: string;
-  tone: "up" | "down" | "same";
+  tone: 'up' | 'down' | 'same';
 } {
   const d = n.value - n.previous;
-  if (Math.abs(d) < 1e-9) return { text: "same", tone: "same" };
+  if (Math.abs(d) < 1e-9) return { text: 'same', tone: 'same' };
   const worse = n.lowerIsBetter ? d > 0 : d < 0;
   return {
-    text: `${d > 0 ? "▲" : "▼"} ${formatValue(Math.abs(d), n.unit)}`,
-    tone: worse ? "down" : "up",
+    text: `${d > 0 ? '▲' : '▼'} ${formatValue(Math.abs(d), n.unit)}`,
+    tone: worse ? 'down' : 'up',
   };
 }
 
@@ -87,67 +79,34 @@ interface Props {
   wide?: boolean;
 }
 
-export function MetricsBody({
-  view,
-  error,
-  period,
-  setPeriod,
-  openTicket,
-  openEditor,
-  wide,
-}: Props) {
+export function MetricsBody({ view, error, period, setPeriod, openTicket, openEditor, wide }: Props) {
   const [opened, setOpened] = useState<Opened | undefined>();
   // What was opened belongs to the numbers it was opened from.
   useEffect(() => setOpened(undefined), [period]);
   const before = PERIODS.find((p) => p.id === period)!.before;
-  const open = (o: Opened) =>
-    setOpened((was) => (was?.key === o.key ? undefined : o));
+  const open = (o: Opened) => setOpened((was) => (was?.key === o.key ? undefined : o));
   // A list opens under what it was opened from: a section's numbers, or a chart.
   const list = (prefix: string) =>
-    opened?.key.startsWith(prefix) ? (
-      <RowList
-        opened={opened}
-        close={() => setOpened(undefined)}
-        openTicket={openTicket}
-      />
-    ) : null;
+    opened?.key.startsWith(prefix) ? <RowList opened={opened} close={() => setOpened(undefined)} openTicket={openTicket} /> : null;
   return (
-    <div class={`metrics${wide ? " wide" : ""}`}>
+    <div class={`metrics${wide ? ' wide' : ''}`}>
       <div class="metrics-bar">
         <div class="metrics-periods" role="radiogroup" aria-label="Period">
           {PERIODS.map((p) => (
-            <button
-              key={p.id}
-              role="radio"
-              aria-checked={p.id === period}
-              class={p.id === period ? "on" : ""}
-              onClick={() => setPeriod(p.id)}
-            >
+            <button key={p.id} role="radio" aria-checked={p.id === period} class={p.id === period ? 'on' : ''} onClick={() => setPeriod(p.id)}>
               {p.label}
             </button>
           ))}
         </div>
         {openEditor && (
-          <button
-            class="metrics-icon"
-            title="Open in an editor tab"
-            aria-label="Open in an editor tab"
-            onClick={openEditor}
-          >
+          <button class="metrics-icon" title="Open in an editor tab" aria-label="Open in an editor tab" onClick={openEditor}>
             <i class="codicon codicon-link-external" />
           </button>
         )}
       </div>
-      {error && (
-        <p class="metrics-empty">The metrics couldn't be read: {error}</p>
-      )}
+      {error && <p class="metrics-empty">The metrics couldn't be read: {error}</p>}
       {!view && !error && <p class="metrics-empty">Counting…</p>}
-      {view && !view.events && (
-        <p class="metrics-empty">
-          No events recorded yet: Flotilla records them as tickets, agents and
-          merges go.
-        </p>
-      )}
+      {view && !view.events && <p class="metrics-empty">No events recorded yet: Flotilla records them as tickets, agents and merges go.</p>}
       <div class="metrics-sections">
         {view &&
           view.sections.map((s) => (
@@ -160,11 +119,9 @@ export function MetricsBody({
                   return (
                     <button
                       key={n.id}
-                      class={`metrics-number${opened?.key === key ? " open" : ""}`}
+                      class={`metrics-number${opened?.key === key ? ' open' : ''}`}
                       title={`${n.label}: ${formatValue(n.previous, n.unit)} ${before}`}
-                      onClick={() =>
-                        open({ key, title: n.label, rows: n.rows })
-                      }
+                      onClick={() => open({ key, title: n.label, rows: n.rows })}
                     >
                       <span class="value">{formatValue(n.value, n.unit)}</span>
                       <span class="label">{n.label}</span>
@@ -201,21 +158,10 @@ export function MetricsBody({
   );
 }
 
-function Chart({
-  chart,
-  open,
-  openKey,
-  keyOf,
-}: {
-  chart: MetricChart;
-  open(i: number): void;
-  openKey?: string;
-  keyOf(i: number): string;
-}) {
+function Chart({ chart, open, openKey, keyOf }: { chart: MetricChart; open(i: number): void; openKey?: string; keyOf(i: number): string }) {
   const totals = chart.bars.map((b) => b.values.reduce((a, x) => a + x, 0));
   const max = Math.max(...totals, chart.limit ?? 0, 0);
-  if (!totals.some((t) => t > 0))
-    return <p class="metrics-empty">{chart.empty}</p>;
+  if (!totals.some((t) => t > 0)) return <p class="metrics-empty">{chart.empty}</p>;
   const isOpen = (i: number) => openKey === keyOf(i);
   const legend =
     chart.series.length > 1 ? (
@@ -229,19 +175,13 @@ function Chart({
       </div>
     ) : null;
   const tip = (i: number) =>
-    `${chart.bars[i].label}: ${chart.series.length > 1 ? chart.bars[i].values.map((v, j) => `${chart.series[j]} ${formatValue(v, chart.unit)}`).join(", ") : formatValue(totals[i], chart.unit)}`;
+    `${chart.bars[i].label}: ${chart.series.length > 1 ? chart.bars[i].values.map((v, j) => `${chart.series[j]} ${formatValue(v, chart.unit)}`).join(', ') : formatValue(totals[i], chart.unit)}`;
 
-  if (chart.kind === "rows") {
+  if (chart.kind === 'rows') {
     return (
       <div class="metrics-rows">
         {chart.bars.map((b, i) => (
-          <button
-            key={b.label}
-            class={`metrics-row${isOpen(i) ? " open" : ""}`}
-            title={tip(i)}
-            disabled={!b.rows.length}
-            onClick={() => open(i)}
-          >
+          <button key={b.label} class={`metrics-row${isOpen(i) ? ' open' : ''}`} title={tip(i)} disabled={!b.rows.length} onClick={() => open(i)}>
             <span class="label">{b.label}</span>
             <span class="track">
               <span
@@ -266,17 +206,13 @@ function Chart({
       <div class="metrics-columns" role="list">
         <span class="metrics-max">{formatValue(max, chart.unit)}</span>
         {chart.limit !== undefined && max > 0 && (
-          <span
-            class="metrics-limit"
-            style={{ bottom: `${(chart.limit / max) * 100}%` }}
-            title={`Limit: ${chart.limit}`}
-          />
+          <span class="metrics-limit" style={{ bottom: `${(chart.limit / max) * 100}%` }} title={`Limit: ${chart.limit}`} />
         )}
         {chart.bars.map((b, i) => (
           <button
             key={i}
             role="listitem"
-            class={`metrics-column${isOpen(i) ? " open" : ""}`}
+            class={`metrics-column${isOpen(i) ? ' open' : ''}`}
             title={tip(i)}
             aria-label={tip(i)}
             disabled={!b.rows.length}
@@ -300,32 +236,19 @@ function Chart({
       </div>
       <div class="metrics-axis">
         {chart.bars.map((b, i) => (
-          <span key={i}>{i % every === 0 ? b.label : ""}</span>
+          <span key={i}>{i % every === 0 ? b.label : ''}</span>
         ))}
       </div>
     </div>
   );
 }
 
-function RowList({
-  opened,
-  close,
-  openTicket,
-}: {
-  opened: Opened;
-  close(): void;
-  openTicket(id: string): void;
-}) {
+function RowList({ opened, close, openTicket }: { opened: Opened; close(): void; openTicket(id: string): void }) {
   return (
     <div class="metrics-list" role="region" aria-label={opened.title}>
       <div class="metrics-list-head">
         <span>{opened.title}</span>
-        <button
-          class="metrics-icon"
-          title="Close"
-          aria-label="Close"
-          onClick={close}
-        >
+        <button class="metrics-icon" title="Close" aria-label="Close" onClick={close}>
           <i class="codicon codicon-close" />
         </button>
       </div>
@@ -340,14 +263,10 @@ function RowList({
         >
           <span class="label">{r.label}</span>
           {r.detail && <span class="detail">{r.detail}</span>}
-          {r.value !== undefined && r.unit && (
-            <span class="value">{formatValue(r.value, r.unit)}</span>
-          )}
+          {r.value !== undefined && r.unit && <span class="value">{formatValue(r.value, r.unit)}</span>}
         </button>
       ))}
-      {opened.rows.length > 200 && (
-        <p class="metrics-empty">and {opened.rows.length - 200} more</p>
-      )}
+      {opened.rows.length > 200 && <p class="metrics-empty">and {opened.rows.length - 200} more</p>}
     </div>
   );
 }

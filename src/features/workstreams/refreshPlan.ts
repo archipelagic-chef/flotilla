@@ -32,13 +32,7 @@ export function scopeForChange(file: string, commonDir: string): Scope {
  * Whether a refresh rebuilds this worktree: it has never been built, the scope names it (or everything), or it's due
  * by its schedule. Live worktrees are due every `pollMs`; the others every `IDLE_REFRESH_MS`.
  */
-export function isRebuildDue(
-  prev: Workstream | undefined,
-  scope: Scope,
-  now: number,
-  pollMs: number,
-  activeKey: string | undefined,
-): boolean {
+export function isRebuildDue(prev: Workstream | undefined, scope: Scope, now: number, pollMs: number, activeKey: string | undefined): boolean {
   if (!prev || scope === 'all' || scope.has(prev.key)) return true;
   const interval = isLive(prev, activeKey) ? pollMs : IDLE_REFRESH_MS;
   return now - prev.refreshedAt >= interval - SLACK_MS;

@@ -5,7 +5,13 @@ import { branchMatches, type BacklogItem } from '../features/backlog/backlog';
 import type { Leader } from '../features/backlog/leader';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import { entryDate } from '../features/backlog/ticket';
-import { FINISHED_SWEEP_MS, formatBytes, freedBytes, removalDecision, type RemovalDecision } from '../features/storage/finished';
+import {
+  FINISHED_SWEEP_MS,
+  formatBytes,
+  freedBytes,
+  type RemovalDecision,
+  removalDecision,
+} from '../features/storage/finished';
 import type { Workstream } from '../features/workstreams/workstream';
 import type { WorktreeService } from '../features/worktrees/worktreeService';
 import { workstreamLabel } from './format';
@@ -262,8 +268,14 @@ export class FinishedWorktrees implements vscode.Disposable {
     const tickets = new Set(choices.tickets ?? []);
     const leftovers = new Set(choices.leftovers ?? []);
     const { tickets: keptTickets, leftovers: keptLeftovers } = this.kept();
-    await this.deps.workspaceState.update(KEPT_KEY, keptTickets.filter((id) => !tickets.has(id)));
-    await this.deps.workspaceState.update(KEPT_LEFTOVERS_KEY, keptLeftovers.filter((name) => !leftovers.has(name)));
+    await this.deps.workspaceState.update(
+      KEPT_KEY,
+      keptTickets.filter((id) => !tickets.has(id)),
+    );
+    await this.deps.workspaceState.update(
+      KEPT_LEFTOVERS_KEY,
+      keptLeftovers.filter((name) => !leftovers.has(name)),
+    );
     for (const id of tickets) this.asked.delete(id);
     for (const name of leftovers) this.asked.delete(`leftover:${name}`);
     for (const id of tickets) this.deps.output.appendLine(`No longer keeping the worktree of ${id}: Flotilla asks about it again.`);

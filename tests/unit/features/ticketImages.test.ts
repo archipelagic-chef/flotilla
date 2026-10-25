@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 vi.mock('vscode', () => ({ Uri: {}, window: {}, workspace: {}, commands: {}, EventEmitter: class {} }));
 
@@ -10,7 +15,7 @@ describe('images in tickets', () => {
     expect(out).toBe('<p><img src="data:image/png;base64,AAA" alt="a"> <img alt="b" src="https://x/b.png"> <img src="data:image/png;base64,AAA"></p>');
   });
 
-  it('fetches Jira\'s own images with the login, and only those', async () => {
+  it("fetches Jira's own images with the login, and only those", async () => {
     const { JiraSource } = await import('../../../src/features/backlog/sources/jira');
     const seen: Array<{ url: string; auth?: string }> = [];
     const fetch = async (url: string, init?: { headers?: Record<string, string> }) => {
@@ -25,7 +30,11 @@ describe('images in tickets', () => {
         headers: { get: () => 'image/png' },
       };
     };
-    const jira = new JiraSource({ id: 'jira:1', kind: 'jira', site: 'https://acme.atlassian.net', email: 'a@b.c', jql: '', prefix: 'OPS' } as never, 'token', fetch);
+    const jira = new JiraSource(
+      { id: 'jira:1', kind: 'jira', site: 'https://acme.atlassian.net', email: 'a@b.c', jql: '', prefix: 'OPS' } as never,
+      'token',
+      fetch,
+    );
     expect(await jira.image('/rest/api/2/attachment/content/10001')).toEqual({ type: 'image/png', data: Buffer.from([1, 2, 3]) });
     expect(seen[0].url).toBe('https://acme.atlassian.net/rest/api/2/attachment/content/10001');
     expect(seen[0].auth).toMatch(/^Basic /);

@@ -22,7 +22,7 @@ describe('usage limits', () => {
     expect([weekly.until.getMonth(), weekly.until.getDate(), weekly.until.getHours(), weekly.until.getMinutes()]).toEqual([9, 14, 9, 1]);
   });
 
-  it('waits a while when the reset isn\'t said, and knows other errors', () => {
+  it("waits a while when the reset isn't said, and knows other errors", () => {
     expect(parseUsageLimit('Usage limit reached. Try again later.', now)).toMatchObject({ known: false, kind: 'usage' });
     expect(minutes(parseUsageLimit('Usage limit reached.', now)?.until)).toBe(30);
     expect(parseUsageLimit('API Error: 529 {"type":"overloaded_error"}', now)).toMatchObject({ kind: 'overloaded' });
@@ -76,9 +76,13 @@ describe('usage limits', () => {
         expect(utc(s)).toEqual({ known: true, kind: 'usage', at: '2026-10-25T09:01:00.000Z' });
       }
       expect(utc('5-hour limit reached ∙ resets 11:30pm (UTC)').at).toBe('2026-10-23T23:31:00.000Z');
-      const json = JSON.stringify({ type: 'result', is_error: true, result: "API Error: 429 rate_limit_error · You've hit your session limit · resets 4am (UTC)" });
+      const json = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        result: "API Error: 429 rate_limit_error · You've hit your session limit · resets 4am (UTC)",
+      });
       expect(utc(json)).toEqual({ known: true, kind: 'usage', at: '2026-10-24T04:01:00.000Z' });
-      expect(utc("API Error: 429 · limit · resets 4am (UTC)").kind).toBe('usage');
+      expect(utc('API Error: 429 · limit · resets 4am (UTC)').kind).toBe('usage');
       expect(parseUsageLimit("You've hit your session limit", at)).toMatchObject({ known: false, kind: 'usage' });
     });
 

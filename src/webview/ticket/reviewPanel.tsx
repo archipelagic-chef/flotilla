@@ -1,6 +1,16 @@
-import { fixesFor, fixLabel, heldBy, type ReviewFix } from '../../features/backlog/review';
+import {
+  fixesFor,
+  fixLabel,
+  heldBy,
+  type ReviewFix,
+} from '../../features/backlog/review';
 import { reviewOutcome } from '../../features/backlog/rounds';
-import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
+import {
+  TURN_ICON,
+  TURN_LABEL,
+  turnOf,
+  turnSentence,
+} from '../../features/backlog/turn';
 import type { QueuedView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton } from './actions';
@@ -113,7 +123,12 @@ export function QueuedPanel({ queued }: { queued: QueuedView }) {
         {queuedNeed(queued).line}
         {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
       </span>
-      <ActionButton class="button secondary" message={{ type: 'prioritize' }} working="Starting…" title="Starts it now, above the limit, or pauses a running agent to make room">
+      <ActionButton
+        class="button secondary"
+        message={{ type: 'prioritize' }}
+        working="Starting…"
+        title="Starts it now, above the limit, or pauses a running agent to make room"
+      >
         <i class="codicon codicon-arrow-up" /> Prioritize
       </ActionButton>
     </div>
@@ -131,20 +146,32 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
     r.state === 'paused' && r.paused?.byUser
       ? `(${when(r.paused.byUser)}) Its chat is kept, and its work in the worktree as it was.`
       : r.state === 'paused' && r.paused?.for
-      ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
-      : r.state === 'paused' && r.paused
-      ? `${r.paused.agent} stopped on ${r.paused.kind === 'rate' ? "Claude's rate limit" : r.paused.kind === 'overloaded' ? 'Claude being overloaded' : "Claude's usage limit"}; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
-      : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
-      ? `(${when(r.stop.at)})`
-      : undefined;
+        ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
+        : r.state === 'paused' && r.paused
+          ? `${r.paused.agent} stopped on ${r.paused.kind === 'rate' ? "Claude's rate limit" : r.paused.kind === 'overloaded' ? 'Claude being overloaded' : "Claude's usage limit"}; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
+          : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
+            ? `(${when(r.stop.at)})`
+            : undefined;
   // The agent the user paused or stopped: it can be resumed in its chat.
   const held = heldBy(r);
   const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
   const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
   const [icon, cls, label, text, todo] = autopilot
     ? r.byHand
-      ? ['play', 'working', 'Working', pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`, undefined]
-      : ['rocket', 'working', 'Autopilot', pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`, undefined]
+      ? [
+          'play',
+          'working',
+          'Working',
+          pause ?? `${r.implementer ?? 'the implementer'} is working on it (you started it, without a window); it reports below`,
+          undefined,
+        ]
+      : [
+          'rocket',
+          'working',
+          'Autopilot',
+          pause ?? `${r.implementer ?? 'the implementer'} is working on it (the autopilot started it); it reports below`,
+          undefined,
+        ]
     : turn && said
       ? [
           r.state === 'paused' ? 'debug-pause' : TURN_ICON[turn.kind],
@@ -200,7 +227,12 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
             </ActionButton>
           </>
         ) : active ? (
-          <ActionButton class="button secondary" message={{ type: 'stopReview' }} working="Stopping…" title={running ? STOP_TIP : 'Stops the review and the handoffs'}>
+          <ActionButton
+            class="button secondary"
+            message={{ type: 'stopReview' }}
+            working="Stopping…"
+            title={running ? STOP_TIP : 'Stops the review and the handoffs'}
+          >
             <i class="codicon codicon-debug-stop" /> Stop
           </ActionButton>
         ) : r.state === 'stopped' ? (

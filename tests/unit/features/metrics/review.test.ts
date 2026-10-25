@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
@@ -6,8 +11,18 @@ vi.mock('vscode', () => ({
 }));
 
 import type { EventData, EventKind, FlotillaEvent } from '../../../../src/features/metrics/events';
-import { checkFix, fixesMarkdown, landedAt, readImproves } from '../../../../src/features/metrics/improves';
-import { reviewBlocked, reviewDue, reviewPrompt, reviewTools } from '../../../../src/features/metrics/review';
+import {
+  checkFix,
+  fixesMarkdown,
+  landedAt,
+  readImproves,
+} from '../../../../src/features/metrics/improves';
+import {
+  reviewBlocked,
+  reviewDue,
+  reviewPrompt,
+  reviewTools,
+} from '../../../../src/features/metrics/review';
 import { metricsSummary, summaryMarkdown, trend } from '../../../../src/features/metrics/summary';
 import { headlessArgs } from '../../../../src/ui/backlog/agentRunner';
 
@@ -89,7 +104,7 @@ describe('metricsSummary (BL-159)', () => {
 describe('Improves: lines (BL-159)', () => {
   it('reads the metric and the target, however the line is written', () => {
     const d = [
-      '**When it\'s done:** fewer conflicts.',
+      "**When it's done:** fewer conflicts.",
       '',
       'Improves: conflicts-per-merge from 0.67 to 0.3',
       '- **Improves:** `lead-time-hours` 25 → 12',
@@ -132,7 +147,7 @@ describe('the review itself (BL-159)', () => {
     expect(reviewDue({ every: 0, now: NOW })).toBe(false);
   });
 
-  it("waits while the autopilot is busy, on a limit, or paused", () => {
+  it('waits while the autopilot is busy, on a limit, or paused', () => {
     const idle = { running: 0, waiting: 0, enabled: true, idle: 'nothing left in To Do', elsewhere: false };
     expect(reviewBlocked(idle)).toBeUndefined();
     expect(reviewBlocked({ ...idle, enabled: false, idle: undefined })).toBeUndefined();
@@ -166,7 +181,16 @@ describe('the review itself (BL-159)', () => {
     });
     // Not "working on backlog item": Flotilla mustn't take its chat for a ticket's.
     expect(p).toMatch(/^You are agent Nova-7, writing Flotilla's improvement review of 2026-10-15\./);
-    for (const s of ['SUMMARY', 'FIXES', 'BL-3 (todo): Something', '/b/reviews/2026-10-15.md', '/b/inbox/review-2026-10-15-<n>.md', '/g/flotilla/metrics', "**When it's done:**", 'Improves: <metric id>'])
+    for (const s of [
+      'SUMMARY',
+      'FIXES',
+      'BL-3 (todo): Something',
+      '/b/reviews/2026-10-15.md',
+      '/b/inbox/review-2026-10-15-<n>.md',
+      '/g/flotilla/metrics',
+      "**When it's done:**",
+      'Improves: <metric id>',
+    ])
       expect(p).toContain(s);
   });
 });

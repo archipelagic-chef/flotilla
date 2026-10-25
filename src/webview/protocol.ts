@@ -260,7 +260,15 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView; /** The cards show every detail (flotilla.backlog.cards, BL-183). */ detailedCards?: boolean }
+  | {
+      type: 'backlog';
+      items: BacklogItemView[];
+      problems: BacklogProblem[];
+      integrations: number;
+      autopilot?: AutopilotState;
+      mergeQueue?: MergeQueueView;
+      /** The cards show every detail (flotilla.backlog.cards, BL-183). */ detailedCards?: boolean;
+    }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -431,7 +439,7 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'prioritize'; id: string }
   /** The Integrations menu, or reread the integrations' issues. */
   | { type: 'backlog'; op: 'integrations' | 'refresh' }
-  | { type: 'compare'; id: number } & RefComparison
+  | ({ type: 'compare'; id: number } & RefComparison)
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
   | ({ type: 'openCompare'; path?: string } & RefComparison);
 

@@ -1,7 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { agentSettingsText, enabledPlugins, leanFlags, writeAgentSettings } from '../../../src/features/backlog/leanStart';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  agentSettingsText,
+  enabledPlugins,
+  leanFlags,
+  writeAgentSettings,
+} from '../../../src/features/backlog/leanStart';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];

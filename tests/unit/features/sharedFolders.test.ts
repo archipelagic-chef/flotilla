@@ -1,6 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 

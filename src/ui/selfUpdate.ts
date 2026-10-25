@@ -4,8 +4,23 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../core/git/gitCli';
-import { installMain, noteAction, resumeFromNote, type AgentHold, type InstallNote, type NoteStore } from '../features/installMain';
-import { agentsPhrase, describeBuild, isFlotillaRepo, mergesLabel, mergesSince, parseBuildStamp, type BuildStamp } from '../features/selfUpdate';
+import {
+  type AgentHold,
+  installMain,
+  type InstallNote,
+  noteAction,
+  type NoteStore,
+  resumeFromNote,
+} from '../features/installMain';
+import {
+  agentsPhrase,
+  type BuildStamp,
+  describeBuild,
+  isFlotillaRepo,
+  mergesLabel,
+  mergesSince,
+  parseBuildStamp,
+} from '../features/selfUpdate';
 import { runningAgentNames } from './backlog/agentRunner';
 import { expectReinstall } from './installedVersion';
 
@@ -75,8 +90,7 @@ function show(): void {
   if (!item) return;
   if (!behind && state === 'idle') return item.hide();
   const merges = behind ? `${mergesLabel(behind.count)} since your build` : 'update';
-  item.text =
-    state === 'building' ? '$(sync~spin) Flotilla: installing main…' : `$(cloud-download) Flotilla: ${merges}`;
+  item.text = state === 'building' ? '$(sync~spin) Flotilla: installing main…' : `$(cloud-download) Flotilla: ${merges}`;
   item.tooltip = `${buildLine()}.${behind ? `\n\n${behind.base} has ${mergesLabel(behind.count)} since. Click to build ${behind.base}, pause the agents, install it and reload: they resume on the new build.` : ''}`;
   item.show();
 }
@@ -95,7 +109,8 @@ async function update(): Promise<void> {
     void vscode.window.showInformationMessage("Installing main works in Flotilla's own repository: its package.json names it flotilla.");
     return;
   }
-  if (state === 'building') return void vscode.window.showInformationMessage('Flotilla is installing main already: see its notification and the "Flotilla Update" terminal.');
+  if (state === 'building')
+    return void vscode.window.showInformationMessage('Flotilla is installing main already: see its notification and the "Flotilla Update" terminal.');
   const r = repo;
   state = 'building';
   show();
@@ -141,9 +156,13 @@ async function update(): Promise<void> {
         });
       },
     );
-    if (result.kind === 'build-failed') void vscode.window.showErrorMessage(`Building ${base} failed: the "Flotilla Update" terminal says why. Nothing was paused or installed.`);
+    if (result.kind === 'build-failed')
+      void vscode.window.showErrorMessage(`Building ${base} failed: the "Flotilla Update" terminal says why. Nothing was paused or installed.`);
     else if (result.kind === 'failed') void vscode.window.showErrorMessage(`${result.error}.${result.resumed ? ' The agents it paused are resumed.' : ''}`);
-    else if (result.kind === 'cancelled') void vscode.window.showInformationMessage(`Install Main cancelled: nothing was installed${result.resumed ? ', and the agents it paused are resumed' : ''}.`);
+    else if (result.kind === 'cancelled')
+      void vscode.window.showInformationMessage(
+        `Install Main cancelled: nothing was installed${result.resumed ? ', and the agents it paused are resumed' : ''}.`,
+      );
   } catch (e) {
     void vscode.window.showErrorMessage(`Installing main failed: ${e instanceof Error ? e.message : String(e)}. The installed Flotilla is as it was.`);
   } finally {
@@ -160,7 +179,9 @@ function notes(commonDir: string): NoteStore & { file: string } {
     read: () => {
       try {
         const o = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<InstallNote>;
-        return typeof o.commit === 'string' && typeof o.at === 'string' ? { commit: o.commit, at: o.at, paused: Number(o.paused) || 0, resume: o.resume === true } : undefined;
+        return typeof o.commit === 'string' && typeof o.at === 'string'
+          ? { commit: o.commit, at: o.at, paused: Number(o.paused) || 0, resume: o.resume === true }
+          : undefined;
       } catch {
         return undefined;
       }
@@ -186,7 +207,10 @@ export function resumeAfterInstall(context: vscode.ExtensionContext, commonDir: 
   if (action.kind === 'resume')
     void resumeFromNote(store, stamp?.commit, hold).then(
       (said) => said && (action.expected ? vscode.window.showInformationMessage(said) : vscode.window.showWarningMessage(said)),
-      (e: unknown) => vscode.window.showErrorMessage(`Resuming the agents after the reload failed: ${e instanceof Error ? e.message : String(e)}. Resume All Agents goes on.`),
+      (e: unknown) =>
+        vscode.window.showErrorMessage(
+          `Resuming the agents after the reload failed: ${e instanceof Error ? e.message : String(e)}. Resume All Agents goes on.`,
+        ),
     );
   // In development the window runs the checkout's build: it isn't reloaded for an install.
   if (context.extensionMode !== vscode.ExtensionMode.Production) return;
@@ -250,7 +274,9 @@ async function buildInTerminal(root: string, base: string, signal: AbortSignal):
             close.fire(0);
           },
           (e: unknown) => {
-            say(`\n\x1b[31mThe build ${signal.aborted ? 'was cancelled' : `failed: ${e instanceof Error ? e.message : String(e)}`}. Nothing was paused or installed.\x1b[0m\n`);
+            say(
+              `\n\x1b[31mThe build ${signal.aborted ? 'was cancelled' : `failed: ${e instanceof Error ? e.message : String(e)}`}. Nothing was paused or installed.\x1b[0m\n`,
+            );
             fs.rmSync(dir, { recursive: true, force: true });
             resolve(undefined);
           },

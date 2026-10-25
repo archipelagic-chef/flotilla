@@ -176,7 +176,15 @@ export function SearchView({ scope, search, results, refresh, workstreams, color
               const { group: g, file: f, id, open, count } = row;
               const slash = f.path.lastIndexOf('/');
               return (
-                <div class="row" style={{ paddingLeft: '8px' }} role="button" tabIndex={0} aria-expanded={open} onClick={() => toggle(id)} onKeyDown={(e) => e.key === 'Enter' && toggle(id)}>
+                <div
+                  class="row"
+                  style={{ paddingLeft: '8px' }}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
+                  onClick={() => toggle(id)}
+                  onKeyDown={(e) => e.key === 'Enter' && toggle(id)}
+                >
                   <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} chev`} />
                   <i class="codicon codicon-file" />
                   <span class="name">{f.path.slice(slash + 1)}</span>

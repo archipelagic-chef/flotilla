@@ -42,7 +42,10 @@ export const agentsHandlers: Handlers<AgentsMessage> = {
       void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
       return;
     }
-    await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
+    await backlog.change((d) => ({
+      ...d,
+      items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)),
+    }));
   },
   agentEffort: async ({ id, item, backlog }, m) => {
     if (item.remote) return;

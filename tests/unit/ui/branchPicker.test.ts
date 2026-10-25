@@ -27,7 +27,11 @@ describe('branchPickEntries', () => {
 
   it('keeps the create actions visible while typing and names the branch when the text is a valid new name', () => {
     const entries = branchPickEntries('  fix/login ', branches, checkedOut);
-    expect(entries[0]).toMatchObject({ label: "$(plus) Create new branch 'fix/login'", alwaysShow: true, action: { kind: 'createNamed', branch: 'fix/login' } });
+    expect(entries[0]).toMatchObject({
+      label: "$(plus) Create new branch 'fix/login'",
+      alwaysShow: true,
+      action: { kind: 'createNamed', branch: 'fix/login' },
+    });
     expect(entries[1]).toMatchObject({ alwaysShow: true, action: { kind: 'createFrom' } });
   });
 
@@ -52,9 +56,6 @@ describe('branchPickEntries', () => {
   });
 
   it('omits empty sections', () => {
-    expect(labels(branchPickEntries('', { local: [], remote: [] }, new Map()))).toEqual([
-      '$(plus) Create new branch…',
-      '$(plus) Create new branch from…',
-    ]);
+    expect(labels(branchPickEntries('', { local: [], remote: [] }, new Map()))).toEqual(['$(plus) Create new branch…', '$(plus) Create new branch from…']);
   });
 });

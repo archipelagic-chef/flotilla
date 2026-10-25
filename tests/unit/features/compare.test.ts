@@ -1,9 +1,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
-import { compareRefs, compareWithBase, isRefLike, listRefs } from '../../../src/features/diffs/compare';
-import { git, initRepo, makeStatDirty, removeDir, restatInPast, writeFile } from '../../helpers/gitRepo';
+import {
+  compareRefs,
+  compareWithBase,
+  isRefLike,
+  listRefs,
+} from '../../../src/features/diffs/compare';
+import {
+  git,
+  initRepo,
+  makeStatDirty,
+  removeDir,
+  restatInPast,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

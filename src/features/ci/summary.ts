@@ -33,7 +33,11 @@ export function ciState(view: CiView | undefined): CiStatus | undefined {
 
 /** The workflows whose latest run failed. */
 export function failedWorkflows(view: CiView | undefined): string[] {
-  return view?.kind === 'runs' ? latestPerWorkflow(view.runs).filter((r) => r.status === 'failure').map((r) => r.workflow) : [];
+  return view?.kind === 'runs'
+    ? latestPerWorkflow(view.runs)
+        .filter((r) => r.status === 'failure')
+        .map((r) => r.workflow)
+    : [];
 }
 
 /** One line for a branch's CI: its state and the workflows that failed, or why there is no state. */

@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 // Whatever a module touches of vscode (or of a feature's deps) at registration is a stub; registerCommand notes the id.
 const registered: string[] = [];
@@ -55,7 +60,9 @@ describe('commands', () => {
     registerFileCommands(extension as never, stub(), stub(), stub());
     registerAll(subscriptions, joinCommands(...Object.values(features).map((f) => f(stub()))));
 
-    const declared = (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { contributes: { commands: { command: string }[] } }).contributes.commands.map((c) => c.command);
+    const declared = (
+      JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { contributes: { commands: { command: string }[] } }
+    ).contributes.commands.map((c) => c.command);
     expect(declared.filter((id) => !registered.includes(id))).toEqual([]);
     expect(registered.filter((id, i) => registered.indexOf(id) !== i)).toEqual([]);
   });

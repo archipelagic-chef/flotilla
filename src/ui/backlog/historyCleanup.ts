@@ -4,7 +4,13 @@ import { runGit } from '../../core/git/gitCli';
 import { parseNameStatus } from '../../core/git/porcelain';
 import { samePath } from '../../core/paths';
 import type { CreateRequest } from '../../features/worktrees/worktreeService';
-import { agentChatItem, agentLead, agentName, branchMatches, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentLead,
+  agentName,
+  type BacklogItem,
+  branchMatches,
+} from '../../features/backlog/backlog';
 import {
   branchStart,
   cleanBranchName,

@@ -3,7 +3,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as prettier from 'prettier';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { installPreCommit, PRE_COMMIT_HOOK, PREVIOUS_HOOK } from '../../../scripts/install-hooks.mjs';
 import * as imports from '../../../scripts/prettier-imports.mjs';
 

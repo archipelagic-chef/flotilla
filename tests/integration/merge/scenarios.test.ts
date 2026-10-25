@@ -1,7 +1,13 @@
 // The merge flow, end to end, in the sequences that broke (BL-150): each scenario runs a whole sequence of clicks on
 // a real repository with scripted agents and checks, and ends with main as expected and the ticket merged (or with one
 // button that works), never in a loop. The states and what moves each are in src/features/backlog/mergeStates.ts.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { git } from '../../helpers/gitRepo';
 import { World } from './harness';
 
@@ -139,7 +145,11 @@ describe('The merge flow, end to end', () => {
     w.checks('fail', 'fail');
     w.agents('nothing', 'fix');
     await w.merge('BL-1');
-    expect(await w.next('BL-1')).toMatchObject({ state: 'failed', reason: expect.stringContaining('committed no fix, and the checks still fail'), next: 'resolve' });
+    expect(await w.next('BL-1')).toMatchObject({
+      state: 'failed',
+      reason: expect.stringContaining('committed no fix, and the checks still fail'),
+      next: 'resolve',
+    });
     expect((await w.next('BL-1')).state).toBe('resolved');
     expect((await w.next('BL-1')).status).toBe('done');
     expect(w.checkRuns).toBe(3);
@@ -169,7 +179,10 @@ describe('The merge flow, end to end', () => {
     expect((await w.item('BL-2')).status).toBe('done');
     expect(w.merger.queuePlace('BL-3')?.state).toMatch(/^Conflicts with main/);
     expectMainEndsWith(w, [/^initial$/, /^Merge BL-1\b/, /^Merge BL-2\b/]);
-    expect(await w.step('BL-3', 'Resolve with Agent (train)', () => w.merger.resolveTrainConflict('BL-3'))).toMatchObject({ state: 'resolved', next: 'approve' });
+    expect(await w.step('BL-3', 'Resolve with Agent (train)', () => w.merger.resolveTrainConflict('BL-3'))).toMatchObject({
+      state: 'resolved',
+      next: 'approve',
+    });
     expect((await w.approve('BL-3')).status).toBe('done');
     expectMainEndsWith(w, [/^Merge BL-1\b/, /^Merge BL-2\b/, /^Merge BL-3\b/]);
   });

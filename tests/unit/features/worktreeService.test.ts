@@ -1,10 +1,24 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { GitError } from '../../../src/core/git/gitCli';
 import { locateRepo } from '../../../src/core/repoLocator';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
-import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo, writeFile } from '../../helpers/gitRepo';
+import {
+  expectSamePath,
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  simulateOtherEnvironment,
+  symlinkedRepo,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

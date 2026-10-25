@@ -88,7 +88,8 @@ export function fraction(p: Pick<ChecksProgress, 'step' | 'files' | 'total'>): n
 
 /** "Tests: 84 of 145 files · 1:12", "Tests: 84 files · 1:12", "Typecheck · 0:12". */
 export function progressLine(p: Pick<ChecksProgress, 'step' | 'files' | 'total'>, ms: number): string {
-  const files = p.step === 'Tests' && p.files ? `: ${p.total ? `${p.files} of ${Math.max(p.total, p.files)}` : p.files} file${(p.total ?? p.files) === 1 ? '' : 's'}` : '';
+  const files =
+    p.step === 'Tests' && p.files ? `: ${p.total ? `${p.files} of ${Math.max(p.total, p.files)}` : p.files} file${(p.total ?? p.files) === 1 ? '' : 's'}` : '';
   return `${p.step ?? 'Checks'}${files} · ${elapsed(ms)}`;
 }
 
@@ -105,13 +106,26 @@ export function failureSummary(output: string, maxTests = 30, maxLines = 4): Fai
   for (let i = 0; i < lines.length; i++) {
     const m = /^\s*FAIL\s+(\S+)(?:\s+>\s+(.+?))?(?:\s+\[ .* \])?\s*$/.exec(lines[i]);
     if (!m) continue;
-    const test = m[2] ? `${m[1]} › ${m[2].trim().split(/\s+>\s+/).join(' › ')}` : m[1];
+    const test = m[2]
+      ? `${m[1]} › ${m[2]
+          .trim()
+          .split(/\s+>\s+/)
+          .join(' › ')}`
+      : m[1];
     if (found.has(test)) continue;
     const error: string[] = [];
     for (let j = i + 1; j < lines.length && error.length < maxLines; j++) {
       const l = lines[j];
       // Its error ends at the next failure, a rule, its stack or diff, or the summary.
-      if (/^\s*FAIL\s/.test(l) || /^\s*⎯/.test(l) || /^\s*❯\s/.test(l) || /^\s*at\s/.test(l) || /^[-+] (Expected|Received)/.test(l) || /^\s*Test Files\s/.test(l)) break;
+      if (
+        /^\s*FAIL\s/.test(l) ||
+        /^\s*⎯/.test(l) ||
+        /^\s*❯\s/.test(l) ||
+        /^\s*at\s/.test(l) ||
+        /^[-+] (Expected|Received)/.test(l) ||
+        /^\s*Test Files\s/.test(l)
+      )
+        break;
       if (l.trim()) error.push(l.trimEnd());
     }
     found.set(test, { test, error });

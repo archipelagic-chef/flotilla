@@ -9,7 +9,7 @@ describe('what a chat waits for', () => {
     expect(awaiting({ open: true, state: 'done', firstPrompt: 'Fix the login' })).toBe('reply');
   });
 
-  it('counts nothing for chats that work, haven\'t started, or are closed', () => {
+  it("counts nothing for chats that work, haven't started, or are closed", () => {
     expect(awaiting({ open: true, state: 'working', firstPrompt: 'x' })).toBeUndefined();
     expect(awaiting({ open: true, state: 'done' })).toBeUndefined();
     expect(awaiting({ open: false, state: 'waiting-for-input', message: 'Claude needs your permission to use Bash' })).toBeUndefined();

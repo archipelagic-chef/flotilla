@@ -80,7 +80,9 @@ describe('turnSentence', () => {
     });
     expect(say(item('review', { state: 'approved' })).text).toBe("Jet-6 approved Rune-3's work, round 2. It waits for your approval.");
     expect(say(item('review', { state: 'approved', byUser: true })).todo).toBe('Merge it, then move it to Done.');
-    expect(say(item('review', { state: 'stopped', reason: 'no verdict.', stop: { kind: 'no-verdict' } })).text).toBe("The review of Rune-3's work stopped, round 2: no verdict.");
+    expect(say(item('review', { state: 'stopped', reason: 'no verdict.', stop: { kind: 'no-verdict' } })).text).toBe(
+      "The review of Rune-3's work stopped, round 2: no verdict.",
+    );
     expect(say(item('review', { state: 'stopped', stop: { kind: 'user' } })).text).toBe("You stopped the review of Rune-3's work, round 2.");
     expect(say(item('doing', { state: 'asking' })).todo).toMatch(/^Answer it/);
     expect(say(item('review')).text).toBe('The work waits for your review.');

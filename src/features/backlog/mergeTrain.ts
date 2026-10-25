@@ -100,7 +100,10 @@ export function trainState(train: MergeTrain, id: string): string | undefined {
   const at = train.entries.findIndex((e) => e.id === id);
   const entry = train.entries[at];
   if (!entry) return undefined;
-  const ahead = train.entries.slice(0, at).filter((e) => e.commit).map((e) => e.id);
+  const ahead = train.entries
+    .slice(0, at)
+    .filter((e) => e.commit)
+    .map((e) => e.id);
   const onto = [train.base, ...ahead].join(' + ');
   if (entry.contained) return `Its commits come in with ${ahead.at(-1) ?? train.base} ahead of it: nothing of its own to merge.`;
   if (entry.conflicts) return `Conflicts with ${onto} in ${entry.conflicts.map((f) => `\`${f}\``).join(', ')}.`;
@@ -134,7 +137,11 @@ export async function startTrainMerge(cwd: string, o: { dir: string; onto: strin
     return files;
   }
   await runGit(['worktree', 'add', '--detach', o.dir, o.onto], { cwd, timeoutMs: 120_000 });
-  const merged = await runGit([...RERERE, 'merge', '--no-ff', '--no-edit', '-m', o.message, `refs/heads/${o.branch}`], { cwd: o.dir, timeoutMs: 120_000, env: MERGE_ENV }).then(
+  const merged = await runGit([...RERERE, 'merge', '--no-ff', '--no-edit', '-m', o.message, `refs/heads/${o.branch}`], {
+    cwd: o.dir,
+    timeoutMs: 120_000,
+    env: MERGE_ENV,
+  }).then(
     () => true,
     () => false,
   );
@@ -151,14 +158,19 @@ export async function startTrainMerge(cwd: string, o: { dir: string; onto: strin
 export async function recordResolution(dir: string, o: { onto: string; tip: string; resolved: string; message: string }): Promise<string[]> {
   await runGit(['checkout', '-q', '--detach', '--force', o.onto], { cwd: dir });
   // Without autoUpdate, a file an older resolution resolves stays unmerged, so it's recorded again.
-  await runGit(['-c', 'rerere.enabled=true', 'merge', '--no-ff', '--no-edit', '-m', o.message, o.tip], { cwd: dir, timeoutMs: 120_000, env: MERGE_ENV }).catch(() => undefined);
+  await runGit(['-c', 'rerere.enabled=true', 'merge', '--no-ff', '--no-edit', '-m', o.message, o.tip], { cwd: dir, timeoutMs: 120_000, env: MERGE_ENV }).catch(
+    () => undefined,
+  );
   const files = await conflictedFiles(dir).catch(() => []);
   try {
     if (files.length) {
       // An older resolution of the same conflicts is forgotten: the approved one replaces it.
       await runGit(['-c', 'rerere.enabled=true', 'rerere', 'forget', '--', ...files], { cwd: dir }).catch(() => undefined);
       for (const f of files) {
-        const kept = await runGit(['cat-file', '-e', `${o.resolved}:${f}`], { cwd: dir }).then(() => true, () => false);
+        const kept = await runGit(['cat-file', '-e', `${o.resolved}:${f}`], { cwd: dir }).then(
+          () => true,
+          () => false,
+        );
         await runGit(kept ? ['checkout', o.resolved, '--', f] : ['rm', '-q', '--force', '--', f], { cwd: dir });
       }
       await runGit(['-c', 'rerere.enabled=true', 'rerere'], { cwd: dir });
@@ -179,7 +191,10 @@ export async function recordResolution(dir: string, o: { onto: string; tip: stri
 export async function recordRebaseResolution(dir: string, o: { onto: string; tip: string; resolved: string }): Promise<string[]> {
   const git = (args: string[]) => runGit(args, { cwd: dir, timeoutMs: 120_000, env: REBASE_ENV });
   const rerere = ['-c', 'rerere.enabled=true'];
-  const picked = (await git(['log', '--reverse', '--format=%H%x00%s', `${o.onto}..${o.resolved}`])).split('\n').filter(Boolean).map((l) => l.split('\0'));
+  const picked = (await git(['log', '--reverse', '--format=%H%x00%s', `${o.onto}..${o.resolved}`]))
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => l.split('\0'));
   const recorded: string[] = [];
   await git(['checkout', '-q', '--detach', '--force', o.tip]);
   try {
@@ -192,14 +207,20 @@ export async function recordRebaseResolution(dir: string, o: { onto: string; tip
         const from = at >= 0 ? picked.splice(at, 1)[0][0] : o.resolved;
         await git([...rerere, 'rerere', 'forget', '--', ...files]).catch(() => undefined);
         for (const f of files) {
-          const kept = await git(['cat-file', '-e', `${from}:${f}`]).then(() => true, () => false);
+          const kept = await git(['cat-file', '-e', `${from}:${f}`]).then(
+            () => true,
+            () => false,
+          );
           await git(kept ? ['checkout', from, '--', f] : ['rm', '-q', '--force', '--', f]);
         }
         await git([...rerere, 'rerere']);
         recorded.push(...files.filter((f) => !recorded.includes(f)));
       }
       await git(['add', '-u']);
-      const went = await git([...rerere, 'rebase', '--continue']).then(() => true, () => false);
+      const went = await git([...rerere, 'rebase', '--continue']).then(
+        () => true,
+        () => false,
+      );
       if (!went && !(await conflictedFiles(dir).catch(() => [])).length && (await rebasing(dir))) await git(['rebase', '--skip']).catch(() => undefined);
     }
   } finally {
@@ -239,7 +260,10 @@ export async function mergeAgain(
     const files = await conflictedFiles(dir);
     if (files.length) return { kind: 'conflicts', files };
     // rerere resolved them all: the merge is staged, not committed.
-    const merging = await git(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD']).then(() => true, () => false);
+    const merging = await git(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD']).then(
+      () => true,
+      () => false,
+    );
     if (merging) await git(['commit', '--no-edit']);
     merge = (await git(['rev-parse', 'HEAD'])).trim();
     if (merge === o.onto) throw new Error(`merging it again onto ${o.onto.slice(0, 7)} failed.`);
@@ -274,7 +298,12 @@ export async function buildTrain(
   try {
     for (const e of o.entries) {
       const tip = (await runGit(['rev-parse', `refs/heads/${e.branch}^{commit}`], { cwd })).trim();
-      if (await runGit(['merge-base', '--is-ancestor', tip, 'HEAD'], { cwd: o.dir }).then(() => true, () => false)) {
+      if (
+        await runGit(['merge-base', '--is-ancestor', tip, 'HEAD'], { cwd: o.dir }).then(
+          () => true,
+          () => false,
+        )
+      ) {
         entries.push({ id: e.id, branch: e.branch, tip, commit: await head(o.dir), contained: true });
         continue;
       }
@@ -291,7 +320,10 @@ export async function buildTrain(
         continue;
       }
       const files = await conflictedFiles(o.dir).catch(() => []);
-      const inMerge = await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], { cwd: o.dir }).then(() => true, () => false);
+      const inMerge = await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], { cwd: o.dir }).then(
+        () => true,
+        () => false,
+      );
       if (!files.length && inMerge) {
         // rerere resolved every conflict (and staged it): the merge is committed with it.
         await runGit([...rerere, 'commit', '--no-edit'], { cwd: o.dir, env });

@@ -1,4 +1,10 @@
-import { agentChatItem, agentLead, entryAgent, sameAgent, type BacklogItem } from './backlog';
+import {
+  agentChatItem,
+  agentLead,
+  type BacklogItem,
+  entryAgent,
+  sameAgent,
+} from './backlog';
 import type { TicketEntry } from './ticket';
 import { SHAPE_RULE } from './descriptionShape';
 
@@ -130,10 +136,7 @@ export interface DiscussionChatInfo {
  * The chat of a ticket's discussion: the one with its session, or else (its first message only just sent, the
  * session not saved yet) the newest discussion chat started for the ticket and its agent.
  */
-export function findDiscussionChat<C extends DiscussionChatInfo>(
-  chats: readonly C[],
-  o: { id: string; agent: string; session?: string },
-): C | undefined {
+export function findDiscussionChat<C extends DiscussionChatInfo>(chats: readonly C[], o: { id: string; agent: string; session?: string }): C | undefined {
   if (o.session) return chats.find((c) => c.id === o.session);
   return chats
     .filter((c) => {

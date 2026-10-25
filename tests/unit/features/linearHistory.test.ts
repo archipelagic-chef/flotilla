@@ -1,9 +1,25 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { rebaseInDir, rebaseResult } from '../../../src/features/backlog/linearHistory';
 import { fixupNote, mergeStyle, tidyNotes } from '../../../src/features/backlog/tidyNotes';
-import { buildTrain, recordRebaseResolution, startTrainMerge, trainIsCurrent } from '../../../src/features/backlog/mergeTrain';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  buildTrain,
+  recordRebaseResolution,
+  startTrainMerge,
+  trainIsCurrent,
+} from '../../../src/features/backlog/mergeTrain';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -90,7 +106,10 @@ describe('A tidy, linear history (BL-181)', () => {
 
   it('stacks two tickets in the train by rebasing each onto the one before: no merge commits, in order', async () => {
     const { repo, dir } = setup();
-    for (const [id, file] of [['BL-1', 'a.txt'], ['BL-2', 'b.txt']]) {
+    for (const [id, file] of [
+      ['BL-1', 'a.txt'],
+      ['BL-2', 'b.txt'],
+    ]) {
       git(repo, 'checkout', '-q', '-b', `feature/${id}`, 'main');
       commit(repo, file, `${id}\n`, `${id}: Add ${file}`);
     }
@@ -115,10 +134,13 @@ describe('A tidy, linear history (BL-181)', () => {
     expect(trainIsCurrent(train, baseTip, tips, 'merge-commit')).toBe(false);
   });
 
-  it("leaves out a ticket whose rebase conflicts with the train ahead; its approved resolution is recorded and reused", async () => {
+  it('leaves out a ticket whose rebase conflicts with the train ahead; its approved resolution is recorded and reused', async () => {
     const { repo, dir } = setup();
     commit(repo, 's.txt', 'one\n', 'shared');
-    for (const [id, content] of [['BL-2', 'two\n'], ['BL-3', 'three\n']]) {
+    for (const [id, content] of [
+      ['BL-2', 'two\n'],
+      ['BL-3', 'three\n'],
+    ]) {
       git(repo, 'checkout', '-q', '-b', `feature/${id}`, 'main');
       commit(repo, 's.txt', content, `${id}: Change s`);
     }
@@ -134,7 +156,9 @@ describe('A tidy, linear history (BL-181)', () => {
 
     // The agent resolves the rebase in the ticket's worktree in the train.
     const wt = dir('BL-3');
-    expect(await startTrainMerge(repo, { dir: wt, onto: train.entries[0].commit!, branch: 'feature/BL-3', message: 'Merge BL-3', style: 'fast-forward' })).toEqual(['s.txt']);
+    expect(
+      await startTrainMerge(repo, { dir: wt, onto: train.entries[0].commit!, branch: 'feature/BL-3', message: 'Merge BL-3', style: 'fast-forward' }),
+    ).toEqual(['s.txt']);
     writeFile(wt, 's.txt', 'two and three\n');
     git(wt, 'add', '.');
     git(wt, '-c', 'core.editor=true', 'rebase', '--continue');

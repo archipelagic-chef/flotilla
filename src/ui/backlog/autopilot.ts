@@ -3,8 +3,21 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { branchMatches, childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
-import { changedFiles, clashFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
+import {
+  type BacklogData,
+  type BacklogItem,
+  branchMatches,
+  childrenOf,
+  setStartFailed,
+} from '../../features/backlog/backlog';
+import {
+  changedFiles,
+  type Clash,
+  clashFiles,
+  type CodeMap,
+  codeMap,
+  findClash,
+} from '../../features/backlog/codeMap';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
@@ -18,7 +31,12 @@ import type { PauseAll } from './pauseAll';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
-import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
+import {
+  awayLine,
+  finished,
+  idleReason,
+  wasOvernight,
+} from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -381,7 +399,11 @@ export class Autopilot implements vscode.Disposable {
       // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
       if (fresh.status !== 'doing') {
         this.deps.reviews.giveBack(slot);
-        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
+        await this.deps.backlog.appendActivity(item, {
+          date: entryDate(new Date()),
+          author: 'Flotilla',
+          body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.',
+        });
         return;
       }
       await this.deps.reviews.startWork(fresh, ws, { slot });

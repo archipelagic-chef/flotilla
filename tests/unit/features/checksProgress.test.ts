@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ChecksReader, elapsed, failureSummary, fraction, progressLine, TAIL_LINES } from '../../../src/features/backlog/checksProgress';
+import {
+  ChecksReader,
+  elapsed,
+  failureSummary,
+  fraction,
+  progressLine,
+  TAIL_LINES,
+} from '../../../src/features/backlog/checksProgress';
 
 /** vitest's output, written to a pipe (no terminal): one line per test file as it ends, then its summary. */
 const RUN = [
@@ -94,7 +101,10 @@ describe("The checks' failure (BL-169)", () => {
   it('lists the failing tests, file › name, each once with its first error lines', () => {
     expect(failureSummary([...RUN, ...FAILURES].join('\n'))).toEqual([
       { test: 'tests/unit/b.test.ts › b › adds', error: ['AssertionError: expected 3 to be 4 // Object.is equality'] },
-      { test: 'tests/unit/d.test.ts › slow one', error: ['Error: Test timed out in 30000ms.', 'If this is a long-running test, pass a timeout value as the last argument.'] },
+      {
+        test: 'tests/unit/d.test.ts › slow one',
+        error: ['Error: Test timed out in 30000ms.', 'If this is a long-running test, pass a timeout value as the last argument.'],
+      },
     ]);
   });
 
@@ -102,7 +112,9 @@ describe("The checks' failure (BL-169)", () => {
     expect(failureSummary(' FAIL  tests/e.test.ts [ tests/e.test.ts ]\nError: Transform failed with 1 error:\n')).toEqual([
       { test: 'tests/e.test.ts', error: ['Error: Transform failed with 1 error:'] },
     ]);
-    expect(failureSummary(' FAIL  tests/e.test.ts\nSyntaxError: Unexpected token\n')).toEqual([{ test: 'tests/e.test.ts', error: ['SyntaxError: Unexpected token'] }]);
+    expect(failureSummary(' FAIL  tests/e.test.ts\nSyntaxError: Unexpected token\n')).toEqual([
+      { test: 'tests/e.test.ts', error: ['SyntaxError: Unexpected token'] },
+    ]);
     expect(failureSummary('src/a.ts(3,1): error TS2322: no\n')).toEqual([]);
   });
 });

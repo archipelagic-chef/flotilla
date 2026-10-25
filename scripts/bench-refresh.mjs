@@ -32,14 +32,18 @@ const FLAGS = {
 };
 const DEFAULTS = { worktrees: 20, files: 20000, changed: 0, transcriptMb: 0, refreshes: 3, gitOnMainThread: 0, halfRemoved: 0, nodeModules: 2000 };
 const SETTINGS = { activeWindowMinutes: 5, staleAfterDays: 7, agentStatusStaleMinutes: 10, defaultBase: '' };
-const LOREM =
-  'Refreshing the workstreams reads every worktree status, the activity of changed files, and the chat transcripts. ';
+const LOREM = 'Refreshing the workstreams reads every worktree status, the activity of changed files, and the chat transcripts. ';
 
 function parseArgs(argv) {
   const opts = { ...DEFAULTS };
   for (let i = 0; i < argv.length; i++) {
     const m = /^--([a-z-]+)(?:=(.*))?$/.exec(argv[i]);
-    if (!m || !(m[1] in FLAGS)) throw new Error(`Unknown option ${argv[i]}. Options: ${Object.keys(FLAGS).map((f) => `--${f}`).join(', ')}`);
+    if (!m || !(m[1] in FLAGS))
+      throw new Error(
+        `Unknown option ${argv[i]}. Options: ${Object.keys(FLAGS)
+          .map((f) => `--${f}`)
+          .join(', ')}`,
+      );
     const value = m[2] ?? argv[++i];
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`--${m[1]} needs a whole number, not "${value}"`);
@@ -113,7 +117,7 @@ function writeTranscript(file, bytes) {
   const write = (text) => (written += fs.writeSync(fd, text));
   write(JSON.stringify({ type: 'user', timestamp: '2026-10-11T08:00:00.000Z', message: { content: 'Benchmark the refresh' } }) + '\n');
   write(JSON.stringify({ type: 'ai-title', aiTitle: 'Benchmark chat' }) + '\n');
-  for (let n = 0; written < bytes; ) {
+  for (let n = 0; written < bytes;) {
     let chunk = '';
     for (let end = n + 1000; n < end; n++) chunk += transcriptLine(n);
     write(chunk);
@@ -189,7 +193,9 @@ async function main() {
 
     console.log(`Flotilla refresh benchmark: ${worktreeCount} worktrees (main + ${linked.length} linked) × ${opts.files} files`);
     if (opts.halfRemoved) console.log(`  ${opts.halfRemoved} of them half-removed, each with a node_modules of ${opts.nodeModules} files`);
-    console.log(`  ${opts.changed} changed files per linked worktree, transcript ${opts.transcriptMb} MB, git started on the ${opts.gitOnMainThread ? 'main' : 'worker'} thread`);
+    console.log(
+      `  ${opts.changed} changed files per linked worktree, transcript ${opts.transcriptMb} MB, git started on the ${opts.gitOnMainThread ? 'main' : 'worker'} thread`,
+    );
     console.log(`  node ${process.version}, ${os.cpus()[0]?.model ?? 'unknown CPU'} (${os.cpus().length} cores), ${os.platform()} ${os.release()}`);
     console.log(`  setup ${(setupMs / 1000).toFixed(1)} s (fixture in ${root})`);
     console.log('');

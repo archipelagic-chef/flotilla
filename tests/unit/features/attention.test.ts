@@ -8,7 +8,10 @@ describe('computeAttention', () => {
   const base = { reachable: true, activity: 'idle' as const, now, agentStaleMinutes: 10 };
 
   it('uses the agent state when present', () => {
-    expect(computeAttention({ ...base, agent: { state: 'waiting-for-input', updatedAt: minutesAgo(1) } })).toEqual({ state: 'waiting-for-input', agentStale: false });
+    expect(computeAttention({ ...base, agent: { state: 'waiting-for-input', updatedAt: minutesAgo(1) } })).toEqual({
+      state: 'waiting-for-input',
+      agentStale: false,
+    });
   });
 
   it('falls back to activity when a working report is stale', () => {
@@ -16,7 +19,10 @@ describe('computeAttention', () => {
   });
 
   it('keeps old waiting/done reports but flags them as stale', () => {
-    expect(computeAttention({ ...base, agent: { state: 'waiting-for-input', updatedAt: minutesAgo(60) } })).toEqual({ state: 'waiting-for-input', agentStale: true });
+    expect(computeAttention({ ...base, agent: { state: 'waiting-for-input', updatedAt: minutesAgo(60) } })).toEqual({
+      state: 'waiting-for-input',
+      agentStale: true,
+    });
   });
 
   it('uses activity without an agent and unreachable before anything else', () => {

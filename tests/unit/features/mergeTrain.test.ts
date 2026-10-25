@@ -1,9 +1,34 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { mergeRoot } from '../../../src/features/backlog/merge';
-import { buildTrain, dequeue, enqueue, landing, lastInTrain, ordinal, queuedItems, recordResolution, startTrainMerge, TRAIN_BRANCH, trainIsCurrent, trainOnto, trainState } from '../../../src/features/backlog/mergeTrain';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  buildTrain,
+  dequeue,
+  enqueue,
+  landing,
+  lastInTrain,
+  ordinal,
+  queuedItems,
+  recordResolution,
+  startTrainMerge,
+  TRAIN_BRANCH,
+  trainIsCurrent,
+  trainOnto,
+  trainState,
+} from '../../../src/features/backlog/mergeTrain';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -68,7 +93,10 @@ describe('the train', () => {
     ]);
     expect(rev(repo, TRAIN_BRANCH)).toBe(train.tip);
     // One merge commit per ticket on the first-parent line, each ticket's commits on its second parent.
-    expect(git(repo, 'log', '--first-parent', '--format=%s', `${baseTip}..${train.tip}`).trim().split('\n')).toEqual(['Merge BL-2: Item BL-2', 'Merge BL-1: Item BL-1']);
+    expect(git(repo, 'log', '--first-parent', '--format=%s', `${baseTip}..${train.tip}`).trim().split('\n')).toEqual([
+      'Merge BL-2: Item BL-2',
+      'Merge BL-1: Item BL-1',
+    ]);
     expect(rev(repo, `${train.entries[1].commit}^1`)).toBe(train.entries[0].commit);
     expect(rev(repo, `${train.entries[0].commit}^2`)).toBe(rev(repo, 'feature/BL-1'));
     expect(trainState(train, 'BL-2')).toBe('Merges cleanly onto main + BL-1.');

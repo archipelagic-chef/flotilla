@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { priceOf, promptPurpose, toolKind, transcriptSpend } from '../../../../src/features/metrics/transcriptSpend';
+import {
+  priceOf,
+  promptPurpose,
+  toolKind,
+  transcriptSpend,
+} from '../../../../src/features/metrics/transcriptSpend';
 
 const T = Date.parse('2026-10-24T10:00:00Z');
 const at = (min: number) => new Date(T + min * 60_000).toISOString();
@@ -15,12 +20,19 @@ export const line = {
       message: {
         id,
         model: o.model ?? 'claude-opus-5-5',
-        content: o.tool ? [{ type: 'tool_use', id: o.tool.id, name: o.tool.name, input: o.tool.command ? { command: o.tool.command } : { file_path: 'a.ts' } }] : [{ type: 'text', text: 'ok' }],
+        content: o.tool
+          ? [{ type: 'tool_use', id: o.tool.id, name: o.tool.name, input: o.tool.command ? { command: o.tool.command } : { file_path: 'a.ts' } }]
+          : [{ type: 'text', text: 'ok' }],
         usage: { input_tokens: 10, output_tokens: o.output ?? 1000, cache_read_input_tokens: o.read ?? 50_000, cache_creation_input_tokens: 0 },
       },
     }),
   result: (min: number, toolId: string, size: number) =>
-    JSON.stringify({ type: 'user', sessionId: 's1', timestamp: at(min), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: 'x'.repeat(size) }] } }),
+    JSON.stringify({
+      type: 'user',
+      sessionId: 's1',
+      timestamp: at(min),
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: 'x'.repeat(size) }] },
+    }),
   cost: (total: number, startMin = 0) => JSON.stringify({ type: 'cost-state', sessionId: 's1', totalCostUSD: total, startTime: T + startMin * 60_000 }),
 };
 
@@ -106,7 +118,9 @@ describe('transcriptSpend', () => {
     // Ended without a record (or idle): priced from the table.
     const idle = transcriptSpend(running, { after: now.last, settled: true });
     expect(idle.parts.every((p) => p.priced)).toBe(true);
-    expect(idle.parts[0].costUsd).toBeCloseTo(priceOf('claude-opus-5-5', { tokens: { input: 10, output: 1000, cacheRead: 50_000, cacheCreation: 0 }, write1h: 0 }));
+    expect(idle.parts[0].costUsd).toBeCloseTo(
+      priceOf('claude-opus-5-5', { tokens: { input: 10, output: 1000, cacheRead: 50_000, cacheCreation: 0 }, write1h: 0 }),
+    );
   });
 
   it("is orchestration when no Flotilla prompt started the chat, and skips a resumed chat's copies", () => {

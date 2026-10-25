@@ -5,7 +5,18 @@ import type { Repository } from '../../core/repository';
 import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { recordEvent } from '../../features/metrics/events';
-import { baseLabel, branchesToCheck, capitalize, conflictsOf, driftNotes, isOpen, mergeBasePrompt, reusable, type BranchCheck, type MainCheck } from '../../features/backlog/mainDrift';
+import {
+  baseLabel,
+  type BranchCheck,
+  branchesToCheck,
+  capitalize,
+  conflictsOf,
+  driftNotes,
+  isOpen,
+  type MainCheck,
+  mergeBasePrompt,
+  reusable,
+} from '../../features/backlog/mainDrift';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase, resolveCommit } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -116,7 +127,8 @@ export class MainSync implements vscode.Disposable {
       const notes = driftNotes(before.get(id), next);
       for (const b of next.branches) {
         const was = before.get(id)?.branches.find((w) => w.branch === b.branch)?.conflicts ?? [];
-        if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0')) recordEvent('branch-conflicts', { ticket: id, data: { branch: b.branch, files: b.conflicts } });
+        if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0'))
+          recordEvent('branch-conflicts', { ticket: id, data: { branch: b.branch, files: b.conflicts } });
       }
       if (notes.length) await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: notes.join('\n\n') });
     }
@@ -156,7 +168,10 @@ export class MainSync implements vscode.Disposable {
     }
     try {
       // Rebased, not merged (BL-181): the branch stays a line of its own commits on top of main.
-      const upToDate = await runGit(['merge-base', '--is-ancestor', base, 'HEAD'], { cwd }).then(() => true, () => false);
+      const upToDate = await runGit(['merge-base', '--is-ancestor', base, 'HEAD'], { cwd }).then(
+        () => true,
+        () => false,
+      );
       if (!upToDate) await runGit(['rebase', base], { cwd, timeoutMs: 300_000, env: { GIT_EDITOR: ':' } });
       const note = upToDate ? `\`${branch}\` is already up to date with ${label}.` : `Rebased \`${branch}\` onto ${label} (Update from ${capitalize(label)}).`;
       await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
@@ -185,7 +200,9 @@ export class MainSync implements vscode.Disposable {
 
   /** The item's worktree: the review's, else its first. */
   private worktreeOf(item: BacklogItem): Workstream | undefined {
-    const all = this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
+    const all = this.deps.repository.current.filter(
+      (w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch),
+    );
     return all.find((w) => w.key === item.review?.worktree) ?? all[0];
   }
 }

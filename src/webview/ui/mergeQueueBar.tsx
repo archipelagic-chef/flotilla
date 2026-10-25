@@ -53,7 +53,13 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
                 }}
                 onDragEnd={() => setDropBefore(undefined)}
                 class={[e.state === 'conflicts' ? 'conflicts' : '', dropBefore === e.id ? 'drop-before' : ''].filter(Boolean).join(' ') || undefined}
-                title={e.state === 'conflicts' ? `${e.id} conflicts with the tickets ahead of it: it waits` : e.state === 'clean' ? `${e.id} merges cleanly onto main and the tickets ahead` : `${e.id}: the merge train is being built`}
+                title={
+                  e.state === 'conflicts'
+                    ? `${e.id} conflicts with the tickets ahead of it: it waits`
+                    : e.state === 'clean'
+                      ? `${e.id} merges cleanly onto main and the tickets ahead`
+                      : `${e.id}: the merge train is being built`
+                }
                 onClick={(ev) => {
                   ev.preventDefault();
                   send({ type: 'backlog', op: 'open', id: e.id });
@@ -67,7 +73,12 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
           {dropBefore === null && <span class="drop-end" />}
         </span>
       </span>
-      <BusyButton class="land-all" disabled={!!queue.working} message={{ type: 'backlog', op: 'landAll' }} title="Merge All Ready: lands the queue's tickets in order, each after its checks">
+      <BusyButton
+        class="land-all"
+        disabled={!!queue.working}
+        message={{ type: 'backlog', op: 'landAll' }}
+        title="Merge All Ready: lands the queue's tickets in order, each after its checks"
+      >
         Land All
       </BusyButton>
     </div>

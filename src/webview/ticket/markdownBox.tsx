@@ -1,7 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
-import { type Format, formatEdit, type Markup, pasteLink, type TextEdit } from './format';
+import {
+  type Format,
+  formatEdit,
+  type Markup,
+  pasteLink,
+  type TextEdit,
+} from './format';
 import { demoLength } from '../../features/backlog/demo';
 import { act, send } from './actions';
 import './markdownBox.css';

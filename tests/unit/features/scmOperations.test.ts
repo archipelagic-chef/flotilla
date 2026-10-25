@@ -1,9 +1,32 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { parseStatusV2 } from '../../../src/core/git/porcelain';
-import { commit, discard, listRemotes, publish, pull, push, stage, stageAll, sync, unstage, unstageAll } from '../../../src/features/scm/operations';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  commit,
+  discard,
+  listRemotes,
+  publish,
+  pull,
+  push,
+  stage,
+  stageAll,
+  sync,
+  unstage,
+  unstageAll,
+} from '../../../src/features/scm/operations';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

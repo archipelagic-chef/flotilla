@@ -63,7 +63,10 @@ export async function markIgnored(root: string, relDir: string, entries: DirEntr
     try {
       // One path per line, unescaped (-z needs --stdin, which runGit doesn't feed).
       const out = await runGit(['-c', 'core.quotePath=false', 'check-ignore', '--', ...chunk], { cwd: root });
-      out.split('\n').filter(Boolean).forEach((p) => ignored.add(p));
+      out
+        .split('\n')
+        .filter(Boolean)
+        .forEach((p) => ignored.add(p));
     } catch (error) {
       // Exit code 1: none of them is ignored.
       if (!(error instanceof GitError && error.exitCode === 1)) return entries;

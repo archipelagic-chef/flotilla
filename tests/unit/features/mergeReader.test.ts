@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { laneOf } from '../../../src/features/backlog/backlog';
 import { MergeReader } from '../../../src/features/backlog/mergeReader';

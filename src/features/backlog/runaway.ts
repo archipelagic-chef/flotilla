@@ -15,7 +15,8 @@ export function runawayReason(now: ChatUsage, base: ChatUsage, budget: number): 
   const before = now.failRuns === base.failRuns ? base.failStreak : 0;
   if (now.failStreak >= before + STUCK_FAILS) return `the same command failed ${now.failStreak} times in a row, with no change in between`;
   const used = now.reRead - base.reRead;
-  if (budget > 0 && used > budget) return `it re-read ${formatTokens(used)} tokens since it started, past flotilla.agents.tokenBudget (${formatTokens(budget)})`;
+  if (budget > 0 && used > budget)
+    return `it re-read ${formatTokens(used)} tokens since it started, past flotilla.agents.tokenBudget (${formatTokens(budget)})`;
   return undefined;
 }
 

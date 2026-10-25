@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { excludeMatcher, listDirectory } from '../../../../src/ui/sidebar/files';
 import { initials } from '../../../../src/ui/sidebar/viewModel';
 import { makeTempDir, removeDir, writeFile } from '../../../helpers/gitRepo';

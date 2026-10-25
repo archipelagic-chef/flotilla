@@ -1,19 +1,25 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { writeChecksConfig } from '../../../src/features/backlog/checksConfig';
 import {
   describeRun,
   mayStart,
   namesFiles,
+  type QueueEntry,
   readQueue,
   relatedPlan,
   slotCount,
   takeSlot,
   waitingLine,
   workersFor,
-  type QueueEntry,
 } from '../../../scripts/test.mjs';
 
 const host = os.hostname();
@@ -108,7 +114,7 @@ describe('readQueue', () => {
 });
 
 describe('takeSlot', () => {
-  it("waits for a run going to end, saying who it waits for, then takes the slot", async () => {
+  it('waits for a run going to end, saying who it waits for, then takes the slot', async () => {
     fs.writeFileSync(path.join(tmp, 'other.json'), JSON.stringify(entry(process.ppid, { running: true, label: 'BL-120', since: 0 })));
     const lines: string[] = [];
     const taking = takeSlot({ dir: tmp, n: 1, label: 'BL-138', first: false, pollMs: 10, onWait: (_, line) => lines.push(line) });

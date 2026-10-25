@@ -1,7 +1,18 @@
 import { GitError, runGit } from '../../core/git/gitCli';
-import { highlight, matcher, type FileMatches, type SearchOptions, type SearchResult } from './matcher';
+import {
+  type FileMatches,
+  highlight,
+  matcher,
+  type SearchOptions,
+  type SearchResult,
+} from './matcher';
 
-export type { FileMatches, LineMatch, SearchOptions, SearchResult } from './matcher';
+export type {
+  FileMatches,
+  LineMatch,
+  SearchOptions,
+  SearchResult,
+} from './matcher';
 export { highlight, matcher } from './matcher';
 
 /** Parses `git grep -n -z` output: "path\0line\0text\n" per match. */

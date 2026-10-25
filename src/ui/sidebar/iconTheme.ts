@@ -82,7 +82,10 @@ const lower = (r: Record<string, string> | undefined) => Object.fromEntries(Obje
  */
 export function buildIconMap(theme: ThemeJson, light: boolean, languages: { extensions: Record<string, string>; filenames: Record<string, string> }): IconMap {
   const pick = <K extends keyof Associations>(k: K): Associations[K] => (light && theme.light?.[k] !== undefined ? theme.light[k] : theme[k]);
-  const merge = (k: 'fileExtensions' | 'fileNames' | 'folderNames' | 'folderNamesExpanded') => ({ ...lower(theme[k]), ...(light ? lower(theme.light?.[k]) : {}) });
+  const merge = (k: 'fileExtensions' | 'fileNames' | 'folderNames' | 'folderNamesExpanded') => ({
+    ...lower(theme[k]),
+    ...(light ? lower(theme.light?.[k]) : {}),
+  });
   const languageIds = { ...(theme.languageIds ?? {}), ...(light ? (theme.light?.languageIds ?? {}) : {}) };
   const fileExtensions: Record<string, string> = {};
   const fileNames: Record<string, string> = {};
@@ -106,7 +109,8 @@ function contributedLanguages(): Languages {
   const extensions: Record<string, string> = {};
   const filenames: Record<string, string> = {};
   for (const ext of vscode.extensions.all) {
-    const langs = (ext.packageJSON as { contributes?: { languages?: Array<{ id: string; extensions?: string[]; filenames?: string[] }> } }).contributes?.languages ?? [];
+    const langs =
+      (ext.packageJSON as { contributes?: { languages?: Array<{ id: string; extensions?: string[]; filenames?: string[] }> } }).contributes?.languages ?? [];
     for (const lang of langs) {
       for (const e of lang.extensions ?? []) extensions[e.replace(/^\./, '').toLowerCase()] ??= lang.id;
       for (const n of lang.filenames ?? []) filenames[n.toLowerCase()] ??= lang.id;
@@ -166,7 +170,7 @@ export async function loadIconTheme(webview: vscode.Webview, extensionUri: vscod
   const icons = Object.entries(theme.iconDefinitions ?? {}).map(([iconId, def]) => {
     if (def.iconPath) return `.${cssId(iconId)}::before { content: ""; background: url("${asset(def.iconPath)}") left center / 16px no-repeat; }`;
     const font = def.fontId ?? defaultFont?.id;
-    return `.${cssId(iconId)}::before { content: "${def.fontCharacter ?? ''}"; font-family: "fi-font-${font}"; ${def.fontColor ? `color: ${def.fontColor};` : ''} ${def.fontSize ?? defaultFont?.size ? `font-size: ${def.fontSize ?? defaultFont?.size};` : ''} }`;
+    return `.${cssId(iconId)}::before { content: "${def.fontCharacter ?? ''}"; font-family: "fi-font-${font}"; ${def.fontColor ? `color: ${def.fontColor};` : ''} ${(def.fontSize ?? defaultFont?.size) ? `font-size: ${def.fontSize ?? defaultFont?.size};` : ''} }`;
   });
   const kind = vscode.window.activeColorTheme.kind;
   const light = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;

@@ -143,7 +143,7 @@ button {
   margin-top: 4px;
 }
 @media (prefers-reduced-motion: reduce) {
-  }
+}
 .sec-line {
   display: flex;
   align-items: center;

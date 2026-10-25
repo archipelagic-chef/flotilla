@@ -6,7 +6,11 @@ import type { TicketEntry } from '../../../src/features/backlog/ticket';
 // BL-19's cases, on the parser BL-24 wrote (the one the Run buttons use): a launch, task or open block without a body
 // names its target in its title.
 const runBlocks = (text: string) =>
-  parseRunBlocks(text).map((b: RunBlock) => ({ kind: b.kind, title: b.title ?? '', lines: b.lines.length || b.kind === 'shell' || !b.title ? b.lines : [b.title] }));
+  parseRunBlocks(text).map((b: RunBlock) => ({
+    kind: b.kind,
+    title: b.title ?? '',
+    lines: b.lines.length || b.kind === 'shell' || !b.title ? b.lines : [b.title],
+  }));
 const activityRuns = (activity: TicketEntry[]) => activity.filter((e) => isReport(e.author)).flatMap((e) => runBlocks(e.body));
 const ticketRun = (activity: TicketEntry[]) => activityRuns(activity).at(-1);
 
@@ -45,17 +49,7 @@ describe('run blocks', () => {
   });
 
   it('ignores other fences, and run blocks inside them (examples)', () => {
-    const text = [
-      '````markdown',
-      '```run Example',
-      'npm run build',
-      '```',
-      '````',
-      '',
-      '```ts',
-      'const run = 1;',
-      '```',
-    ].join('\n');
+    const text = ['````markdown', '```run Example', 'npm run build', '```', '````', '', '```ts', 'const run = 1;', '```'].join('\n');
     expect(runBlocks(text)).toEqual([]);
   });
 
@@ -73,7 +67,7 @@ describe('run blocks', () => {
     expect(runBlocks('`run inline` and ```run not a fence```')).toEqual([]);
   });
 
-  it('reads the blocks of agents and Flotilla only, and the last one reported is the ticket\'s run', () => {
+  it("reads the blocks of agents and Flotilla only, and the last one reported is the ticket's run", () => {
     const activity = [
       entry('Agent Nova-7', '```run First\nnpm test\n```'),
       entry('You', '```run Mine\nrm -rf x\n```'),

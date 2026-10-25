@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ResolvedWorktree } from '../../../src/features/worktrees/resolver';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
-import { describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../../../src/ui/format';
+import {
+  describeSync,
+  describeWorkstream,
+  formatAge,
+  syncKind,
+  workstreamContext,
+  workstreamLabel,
+} from '../../../src/ui/format';
 
 const now = new Date('2026-10-09T10:00:00Z');
 const ago = (ms: number) => new Date(now.getTime() - ms);
@@ -127,7 +134,7 @@ describe('sync state', () => {
     expect(describeSync(ws)).toBe('2 to push, 1 to pull');
     expect(describeSync(makeWs({ sync: sync({ upstream: 'origin/feat' }) }))).toBe('');
   });
-  it('marks worktrees that are in this window\'s workspace', () => {
+  it("marks worktrees that are in this window's workspace", () => {
     expect(describeWorkstream(makeWs({ lastActivity: ago(MIN) }), now, true)).toBe('idle · 1m · in workspace');
   });
 });

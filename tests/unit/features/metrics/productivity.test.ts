@@ -1,9 +1,19 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { computeMetrics, EventIndex } from '../../../../src/features/metrics/compute';
-import { readEvents, type EventData, type EventKind, type FlotillaEvent } from '../../../../src/features/metrics/events';
+import {
+  type EventData,
+  type EventKind,
+  type FlotillaEvent,
+  readEvents,
+} from '../../../../src/features/metrics/events';
 import { criteriaCount, laneTimes } from '../../../../src/features/metrics/productivity';
 import { IDLE_MS, projectDirs, scanSpend } from '../../../../src/features/metrics/spendScan';
 import { metricsSummary } from '../../../../src/features/metrics/summary';
@@ -19,7 +29,20 @@ function ev<K extends EventKind>(t: number, kind: K, data: EventData[K], ticket?
 
 const tokens = (k: number) => ({ input: 0, output: 0, cacheRead: k * 1000, cacheCreation: 0 });
 const spend = (t: number, purpose: EventData['agent-spend']['purpose'], usd: number, ticket?: string, contextK = [50]): FlotillaEvent<'agent-spend'> =>
-  ev(t, 'agent-spend', { session: `s-${ticket ?? 'own'}`, purpose, to: new Date(t + H).toISOString(), tokens: tokens(sum(contextK)), costUsd: usd, contextK, tools: { code: 4000, git: 400 } }, ticket);
+  ev(
+    t,
+    'agent-spend',
+    {
+      session: `s-${ticket ?? 'own'}`,
+      purpose,
+      to: new Date(t + H).toISOString(),
+      tokens: tokens(sum(contextK)),
+      costUsd: usd,
+      contextK,
+      tools: { code: 4000, git: 400 },
+    },
+    ticket,
+  );
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 /** This week: BL-1 (4 criteria, recorded) and BL-2 (2, from its description) are done; a chat of the user's isn't a ticket's. */

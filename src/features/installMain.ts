@@ -173,8 +173,13 @@ export async function resumeFromNote(notes: NoteStore, commit: string | undefine
   const short = note.commit.slice(0, 7);
   const expected = note.commit === commit;
   const r = hold ? await hold.resume() : { resumed: 0, waiting: 0 };
-  const agents = r.resumed || r.waiting ? `Resumed ${agentsCount(r.resumed)}${r.waiting ? `; ${r.waiting} wait${r.waiting === 1 ? 's' : ''} for a slot` : ''}` : 'No agents were paused';
+  const agents =
+    r.resumed || r.waiting
+      ? `Resumed ${agentsCount(r.resumed)}${r.waiting ? `; ${r.waiting} wait${r.waiting === 1 ? 's' : ''} for a slot` : ''}`
+      : 'No agents were paused';
   return expected
-    ? r.resumed || r.waiting ? `${agents} on the new build (${short}).` : `Flotilla runs the new build (${short}).`
+    ? r.resumed || r.waiting
+      ? `${agents} on the new build (${short}).`
+      : `Flotilla runs the new build (${short}).`
     : `The new build (${short}) isn't the one running: the install may have failed (this is ${commit?.slice(0, 7) ?? 'a build without a commit'}). ${agents}.`;
 }

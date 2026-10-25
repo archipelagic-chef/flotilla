@@ -1,9 +1,20 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { readChatRecords } from '../../../../src/features/chats/chats';
-import { hasCurrentHooks, hooksInstalled, hooksPresent, installHooks, withFlotillaHooks } from '../../../../src/features/chats/hookInstall';
+import {
+  hasCurrentHooks,
+  hooksInstalled,
+  hooksPresent,
+  installHooks,
+  withFlotillaHooks,
+} from '../../../../src/features/chats/hookInstall';
 import { HOOK_EVENTS, hookCommand, hookSource } from '../../../../src/features/chats/hookScript';
 import { git, initRepo, removeDir } from '../../../helpers/gitRepo';
 import { sessionAgentName } from '../../../../src/features/backlog/backlog';
@@ -81,7 +92,11 @@ describe('hook script', () => {
     const sub = path.join(wt, 'src');
     fs.mkdirSync(sub, { recursive: true });
     const run = (cwd: string, sid: string, env: Record<string, string> = {}) =>
-      execFileSync('sh', ['-c', hookCommand()], { cwd, env: { ...process.env, ...env }, input: JSON.stringify({ session_id: sid, hook_event_name: 'Stop', cwd: wt }) });
+      execFileSync('sh', ['-c', hookCommand()], {
+        cwd,
+        env: { ...process.env, ...env },
+        input: JSON.stringify({ session_id: sid, hook_event_name: 'Stop', cwd: wt }),
+      });
     run(sub, 'q1', { CLAUDE_PROJECT_DIR: wt });
     run(wt, 'q2');
     expect(fs.readdirSync(path.join(wtGitDir, 'flotilla', 'chats')).sort()).toEqual(['q1.json', 'q2.json']);
@@ -102,7 +117,14 @@ describe('hook installation', () => {
     const settings = {
       permissions: { allow: ['Bash(npm test)'] },
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'node -e "...workstream.json..." done' }, { type: 'command', command: 'say done' }] }],
+        Stop: [
+          {
+            hooks: [
+              { type: 'command', command: 'node -e "...workstream.json..." done' },
+              { type: 'command', command: 'say done' },
+            ],
+          },
+        ],
         PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'guard' }] }],
       },
     };
@@ -124,7 +146,7 @@ describe('hook installation', () => {
     // The hook is a readable file, not an encoded blob.
     const script = fs.readFileSync(path.join(wt, '.claude', 'flotilla-hook.js'), 'utf8');
     expect(script).toMatch(/^\/\/ Flotilla hook for Claude Code/);
-    expect(script).toContain("hook_event_name");
+    expect(script).toContain('hook_event_name');
     expect(fs.readFileSync(path.join(wt, '.claude', 'settings.local.json'), 'utf8')).not.toMatch(/base64|eval/);
     // A changed or missing hook file is reinstalled.
     fs.writeFileSync(path.join(wt, '.claude', 'flotilla-hook.js'), '// tampered');
@@ -142,7 +164,10 @@ describe('hooks present', () => {
     const { wt } = setup();
     expect(await hooksPresent(wt)).toBe(false);
     fs.mkdirSync(path.join(wt, '.claude'), { recursive: true });
-    fs.writeFileSync(path.join(wt, '.claude', 'settings.local.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node old flotilla-hook' }] }] } }));
+    fs.writeFileSync(
+      path.join(wt, '.claude', 'settings.local.json'),
+      JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node old flotilla-hook' }] }] } }),
+    );
     expect(await hooksPresent(wt)).toBe(true);
     expect(await hooksInstalled(wt)).toBe(false);
   });

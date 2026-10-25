@@ -3,7 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { GIT_SCHEME, GitFileSystemProvider } from './core/diff/gitContentProvider';
-import { getGitVersion, GitError, MIN_GIT_VERSION, runGit, versionAtLeast } from './core/git/gitCli';
+import {
+  getGitVersion,
+  GitError,
+  MIN_GIT_VERSION,
+  runGit,
+  versionAtLeast,
+} from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
 import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
@@ -11,14 +17,29 @@ import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
 import { JOB_LOG_SCHEME, JobLogProvider, signedInActions } from './features/ci/jobLog';
 import { CiNotifier } from './ui/ci/ciNotifier';
-import { deleteHeartbeat, envFromRemoteName, HEARTBEAT_INTERVAL_MS, isHeartbeatPath, writeHeartbeat } from './features/workstreams/heartbeat';
+import {
+  deleteHeartbeat,
+  envFromRemoteName,
+  HEARTBEAT_INTERVAL_MS,
+  isHeartbeatPath,
+  writeHeartbeat,
+} from './features/workstreams/heartbeat';
 import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
 import { registerTranscriptView } from './ui/transcriptView';
-import { chatContext, commitPrefixMode, openWorktree, prepareItemWorktree, registerCommands, removeWorkstream, resumePendingActions, type CommandContext } from './ui/commands';
+import {
+  chatContext,
+  type CommandContext,
+  commitPrefixMode,
+  openWorktree,
+  prepareItemWorktree,
+  registerCommands,
+  removeWorkstream,
+  resumePendingActions,
+} from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { ImprovementReview } from './ui/metrics/improvementReview';
@@ -31,14 +52,26 @@ import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
-import { isRunningHeadless, isRunningInTerminal, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
+import {
+  isRunningHeadless,
+  isRunningInTerminal,
+  setAgentDirs,
+  trackTerminals,
+} from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
 import { PausedAllStore } from './features/backlog/pausedAll';
 import { commit, scmContext } from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
-import { activeWorktreeCommands, offerActivityBar, offerWorktreeTerminals, TERMINAL_PROFILE_ID, usesWorktreeTerminals, worktreeTerminalOptions } from './ui/activeWorktreeCommands';
+import {
+  activeWorktreeCommands,
+  offerActivityBar,
+  offerWorktreeTerminals,
+  TERMINAL_PROFILE_ID,
+  usesWorktreeTerminals,
+  worktreeTerminalOptions,
+} from './ui/activeWorktreeCommands';
 import { workstreamLabel } from './ui/format';
 import { registerFileCommands } from './ui/sidebar/fileCommands';
 import { LocalBacklog } from './features/backlog/localBacklog';
@@ -98,7 +131,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   watchInstalledVersion(context);
   // The build's commit, and in Flotilla's own repository what main has merged since (BL-151).
   registerSelfUpdate(context);
-  context.subscriptions.push(output, vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }));
+  context.subscriptions.push(
+    output,
+    vscode.workspace.registerFileSystemProvider(GIT_SCHEME, new GitFileSystemProvider(), { isReadonly: true, isCaseSensitive: true }),
+  );
   // A job's CI log, read-only: the CI/CD view opens it through flotilla.showJobLog.
   const jobLogs = new JobLogProvider(signedInActions(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)));
   context.subscriptions.push(jobLogs, vscode.workspace.registerTextDocumentContentProvider(JOB_LOG_SCHEME, jobLogs));
@@ -233,9 +269,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void merges.refresh();
   const runTerminals = new RunTerminals();
   context.subscriptions.push(runTerminals);
-  const tickets = new TicketPanels({ extensionUri: context.extensionUri, mainRoot: service.roots.mainRoot, reference: folder.uri, backlog, integrations, repository, merges, approvals: new RunApprovals(context.workspaceState), terminals: runTerminals, revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
-    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected), memento: context.globalState, output,
-    ci: sidebar.ci, showCi: (key) => sidebar.showCi(key),
+  const tickets = new TicketPanels({
+    extensionUri: context.extensionUri,
+    mainRoot: service.roots.mainRoot,
+    reference: folder.uri,
+    backlog,
+    integrations,
+    repository,
+    merges,
+    approvals: new RunApprovals(context.workspaceState),
+    terminals: runTerminals,
+    revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
+    showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
+    memento: context.globalState,
+    output,
+    ci: sidebar.ci,
+    showCi: (key) => sidebar.showCi(key),
   });
   context.subscriptions.push(tickets);
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
@@ -306,7 +355,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
-  const answers = new AskAgent({ backlog, repository, mainRoot: location.mainRoot, output, reviews, isOpen: (id) => tickets.isOpen(id), open: (id) => tickets.open(id) });
+  const answers = new AskAgent({
+    backlog,
+    repository,
+    mainRoot: location.mainRoot,
+    output,
+    reviews,
+    isOpen: (id) => tickets.isOpen(id),
+    open: (id) => tickets.open(id),
+  });
   context.subscriptions.push(answers);
   tickets.useAnswers(answers);
   const pauseAll = new PauseAll({ backlog, reviews, shaping, merges: merger, store: pausedAll, lifted: () => reviews.dispatchQueued() });
@@ -454,15 +511,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   registerAll(context.subscriptions, viewCommands({ sidebar, needs, jobLogs, backlog, integrations }));
-  registerAll(context.subscriptions, activeWorktreeCommands({ extension: context, repository, active, currentRoot: location.worktreeRoot, reference: folder.uri }));
+  registerAll(
+    context.subscriptions,
+    activeWorktreeCommands({ extension: context, repository, active, currentRoot: location.worktreeRoot, reference: folder.uri }),
+  );
   void offerActivityBar(context, false);
   context.subscriptions.push(offerWorktreeTerminals(context, repository, active));
   // With + opening terminals in the active worktree, the terminal panel's own worktree button is hidden.
   const updateTerminalContext = () => void vscode.commands.executeCommand('setContext', 'flotilla.worktreeTerminals', usesWorktreeTerminals());
   updateTerminalContext();
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('terminal.integrated') && updateTerminalContext()),
-  );
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('terminal.integrated') && updateTerminalContext()));
   registerFileCommands(context, sidebar, folder.uri, output);
   await setState('ready');
   const chats = chatContext(ctx);

@@ -130,7 +130,13 @@ export function takeMedia(markdown: string): { media: string[]; text: string } {
     } else if (PICTURES.test(lines[i])) media.push(...lines[i].match(PICTURE)!);
     else text.push(lines[i]);
   }
-  return { media, text: text.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
+  return {
+    media,
+    text: text
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  };
 }
 
 const TASK = /^\s*[-*+] \[[ xX]\]\s/;
@@ -190,7 +196,15 @@ export function parseQuestion(inner: string): Question | undefined {
   if (!question) return undefined;
   // No choices: a free answer (yes or no only when asked for).
   const resolved: QuestionKind = kind === 'yesno' ? 'yesno' : kind === 'text' || !options.length ? 'text' : (kind ?? 'one');
-  const choices = resolved === 'text' ? [] : resolved === 'yesno' && !options.length ? [{ text: 'Yes', recommended: false }, { text: 'No', recommended: false }] : options;
+  const choices =
+    resolved === 'text'
+      ? []
+      : resolved === 'yesno' && !options.length
+        ? [
+            { text: 'Yes', recommended: false },
+            { text: 'No', recommended: false },
+          ]
+        : options;
   return { text: question, kind: resolved, options: choices };
 }
 
@@ -208,7 +222,12 @@ export function answersIn(questions: Question[], comment: string): string[] {
   return questions.map((q) => {
     const head = `**${q.text}** `;
     const at = comment.indexOf(head);
-    return at < 0 ? '' : comment.slice(at + head.length).split(/\n\n/)[0].trim();
+    return at < 0
+      ? ''
+      : comment
+          .slice(at + head.length)
+          .split(/\n\n/)[0]
+          .trim();
   });
 }
 
@@ -247,9 +266,7 @@ export function choose(q: Question, a: Answer, i: number): Answer {
 export function answerOf(q: Question, a: Answer): string {
   const other = q.options.length;
   if (a.picked.includes(other) && !a.other.trim()) return '';
-  const texts = [...new Set(a.picked)]
-    .sort((x, y) => x - y)
-    .flatMap((i) => (i === other ? [a.other.trim()] : q.options[i] ? [q.options[i].text] : []));
+  const texts = [...new Set(a.picked)].sort((x, y) => x - y).flatMap((i) => (i === other ? [a.other.trim()] : q.options[i] ? [q.options[i].text] : []));
   return texts.join(', ');
 }
 

@@ -1,5 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { ChangeGroup, CommitView, FileChangeView, RefComparison, Tool, VcView, WorkstreamView } from '../protocol';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import type {
+  ChangeGroup,
+  CommitView,
+  FileChangeView,
+  RefComparison,
+  Tool,
+  VcView,
+  WorkstreamView,
+} from '../protocol';
 import { menuContext, run, send } from './api';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
@@ -163,10 +176,7 @@ function Group({ ws, group, title, items, total }: { ws: WorkstreamView; group: 
   const more = total - items.length;
   return (
     <div class="group">
-      <div
-        class="row group-head"
-        data-vscode-context={items.length ? menuContext('changeGroup', { key: ws.key, group, flotillaWs: ws.context }) : undefined}
-      >
+      <div class="row group-head" data-vscode-context={items.length ? menuContext('changeGroup', { key: ws.key, group, flotillaWs: ws.context }) : undefined}>
         <span class="name">{title}</span>
         <span class="hover-actions" hidden={!total}>
           <button class="icon" aria-label="Open Changes" onClick={() => run('flotilla.openChanges', target)}>
@@ -245,7 +255,6 @@ function ChangeRow({ ws, group, change }: { ws: WorkstreamView; group: ChangeGro
     </div>
   );
 }
-
 
 /**
  * Version Control › History: the worktree's commits, newest first. They're read when shown and again when HEAD or
@@ -451,13 +460,7 @@ function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: Com
   const name = parts.pop()!;
   const open = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path });
   return (
-    <div
-      class="row change commit-file"
-      role="button"
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => e.key === 'Enter' && open()}
-    >
+    <div class="row change commit-file" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
       <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>
@@ -472,7 +475,6 @@ function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: Com
     </div>
   );
 }
-
 
 /** Branches and tags to compare. */
 export interface Refs {
@@ -523,7 +525,19 @@ interface RefGroup {
  * A branch picker: a button with the chosen branch that opens a searchable list of the worktrees' branches, other
  * branches, remote branches and tags. Anything else typed (a commit, HEAD~2) can be used as is.
  */
-function RefPicker({ value, placeholder, groups, colorOf, onPick }: { value: string; placeholder: string; groups: RefGroup[]; colorOf(ref: string): string | undefined; onPick(ref: string): void }) {
+function RefPicker({
+  value,
+  placeholder,
+  groups,
+  colorOf,
+  onPick,
+}: {
+  value: string;
+  placeholder: string;
+  groups: RefGroup[];
+  colorOf(ref: string): string | undefined;
+  onPick(ref: string): void;
+}) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [at, setAt] = useState(0);
@@ -746,9 +760,7 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
             )}
           </div>
           {base && head && result?.error && <div class="row group-empty error">{result.error}</div>}
-          {base && head && !result?.error && !files.length && (
-            <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>
-          )}
+          {base && head && !result?.error && !files.length && <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>}
           {files.map((f) => (
             <CompareRow key={f.path} worktree={worktree?.key} change={f} open={() => open(f.path)} />
           ))}
@@ -762,13 +774,7 @@ function CompareRow({ worktree, change, open }: { worktree: string | undefined; 
   const parts = change.path.split('/');
   const name = parts.pop()!;
   return (
-    <div
-      class="row change"
-      role="button"
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => e.key === 'Enter' && open()}
-    >
+    <div class="row change" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
       <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>

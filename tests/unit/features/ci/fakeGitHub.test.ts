@@ -1,8 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
 import { fakeApiOrigin, GitHubActions, type CiRun } from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
-import { git, initRepo, makeTempDir, removeDir } from '../../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../../helpers/gitRepo';
 
 // The fake's timeline (scripts/fake-github.mjs): a run waits 6 s, then its jobs run for 25 s.
 const QUEUE_MS = 6_000;
@@ -93,7 +104,9 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     const id = ci(await actions().runs('main'))[0].id;
     clock = T0 + QUEUE_MS + RUN_MS;
 
-    const jobs = (await (await call('GET', `/runs/${id}/jobs`)).json()) as { jobs: Array<{ id: number; name: string; conclusion: string; steps: Array<{ name: string; conclusion: string }> }> };
+    const jobs = (await (await call('GET', `/runs/${id}/jobs`)).json()) as {
+      jobs: Array<{ id: number; name: string; conclusion: string; steps: Array<{ name: string; conclusion: string }> }>;
+    };
     const test = jobs.jobs.find((j) => j.name === 'test')!;
     expect(test.conclusion).toBe('failure');
     expect(test.steps.find((s) => s.name === 'Run tests')?.conclusion).toBe('failure');

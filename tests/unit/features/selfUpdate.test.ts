@@ -1,9 +1,26 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { runGit } from '../../../src/core/git/gitCli';
-import { agentsPhrase, describeBuild, isFlotillaRepo, mergesLabel, mergesSince, parseBuildStamp } from '../../../src/features/selfUpdate';
+import {
+  agentsPhrase,
+  describeBuild,
+  isFlotillaRepo,
+  mergesLabel,
+  mergesSince,
+  parseBuildStamp,
+} from '../../../src/features/selfUpdate';
 import { outFile, SHIPPED, stagedManifest } from '../../../scripts/package.mjs';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(removeDir));
@@ -68,7 +85,9 @@ describe('labels', () => {
   it('says the merges, the build and the agents', () => {
     expect(mergesLabel(1)).toBe('1 merge');
     expect(mergesLabel(10)).toBe('10 merges');
-    expect(describeBuild('0.2.0', { commit: '814b863a17bea13f', dirty: false, builtAt: 'x' }, () => 'Oct 20')).toBe('Flotilla 0.2.0, built from 814b863 on Oct 20');
+    expect(describeBuild('0.2.0', { commit: '814b863a17bea13f', dirty: false, builtAt: 'x' }, () => 'Oct 20')).toBe(
+      'Flotilla 0.2.0, built from 814b863 on Oct 20',
+    );
     expect(describeBuild('0.2.0', { commit: '814b863a17bea13f', dirty: true })).toBe('Flotilla 0.2.0, built from 814b863 with uncommitted changes');
     expect(describeBuild('0.2.0', undefined)).toBe("Flotilla 0.2.0 (its commit isn't recorded)");
     expect(agentsPhrase(['Byte-7'])).toBe('Byte-7');

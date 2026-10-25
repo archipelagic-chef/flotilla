@@ -2,14 +2,33 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
-import { GitHubActions, isActive, splitUpstream, type CiJob, type CiRun, type CiStatus } from '../../features/ci/githubActions';
+import {
+  type CiJob,
+  type CiRun,
+  type CiStatus,
+  GitHubActions,
+  isActive,
+  splitUpstream,
+} from '../../features/ci/githubActions';
 import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
-import { anyDeploymentActive, anyRunActive, CI_ACTIVE_INTERVAL_MS, ciStamp, jobsDue, refreshDelay } from '../../features/ci/refresh';
+import {
+  anyDeploymentActive,
+  anyRunActive,
+  CI_ACTIVE_INTERVAL_MS,
+  ciStamp,
+  jobsDue,
+  refreshDelay,
+} from '../../features/ci/refresh';
 import { failedJob } from '../../features/ci/failureTask';
 import { finished, type FinishedRun } from '../../features/ci/notify';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { CiBusy, CiRunView, CiView, RunBusy } from '../../webview/protocol';
+import type {
+  CiBusy,
+  CiRunView,
+  CiView,
+  RunBusy,
+} from '../../webview/protocol';
 
 const SCOPES = ['repo'];
 /** How long after a re-run or cancel GitHub is read again, for the state it has settled into. */
@@ -207,7 +226,10 @@ export class CiRuns implements vscode.Disposable {
       // A dismissed sign-in dialog ends it: nothing was asked of GitHub. The fake GitHub needs no sign-in, and never gets a real token.
       const session: Session | undefined = this.api
         ? { accessToken: FAKE_TOKEN }
-        : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+        : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(
+            (s) => s,
+            () => undefined,
+          );
       if (!session) return;
       const [owner, repo] = view.repo.split('/');
       const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
@@ -329,7 +351,10 @@ export class CiRuns implements vscode.Disposable {
   private async startFix(view: Extract<CiView, { kind: 'runs' }>, run: CiRunView, jobId?: number): Promise<void> {
     const session: Session | undefined = this.api
       ? { accessToken: FAKE_TOKEN }
-      : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then((s) => s, () => undefined);
+      : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(
+          (s) => s,
+          () => undefined,
+        );
     if (!session) return;
     const [owner, repo] = view.repo.split('/');
     const github = new GitHubActions(owner, repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
@@ -353,7 +378,10 @@ export class CiRuns implements vscode.Disposable {
     if (!gh || !gitHubName(gh.owner) || !gitHubName(gh.repo)) return "`origin` isn't a GitHub repository.";
     const session: Session | undefined = this.api
       ? { accessToken: FAKE_TOKEN }
-      : await vscode.authentication.getSession('github', SCOPES, interactive ? { createIfNone: true } : { silent: true }).then((s) => s, () => undefined);
+      : await vscode.authentication.getSession('github', SCOPES, interactive ? { createIfNone: true } : { silent: true }).then(
+          (s) => s,
+          () => undefined,
+        );
     if (!session) return "you aren't signed in to GitHub in VS Code (the CI/CD view's Sign In).";
     return new GitHubActions(gh.owner, gh.repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
   }
@@ -451,7 +479,11 @@ export class CiRuns implements vscode.Disposable {
     // Without a sign-in (or a provider to ask), the runs say so: they're not read. The fake GitHub needs no sign-in.
     let session: Session | undefined;
     if (github && this.api) session = { accessToken: FAKE_TOKEN };
-    else if (github) session = await vscode.authentication.getSession('github', SCOPES, { silent: true }).then((s) => s, () => undefined);
+    else if (github)
+      session = await vscode.authentication.getSession('github', SCOPES, { silent: true }).then(
+        (s) => s,
+        () => undefined,
+      );
     // Worktrees on the same branch share one read.
     const reads = new Map<string, Promise<BranchRead>>();
     await Promise.all(

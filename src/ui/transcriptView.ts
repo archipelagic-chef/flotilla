@@ -11,7 +11,11 @@ const SCHEME = 'flotilla-transcript';
 
 /** The view's document: the transcript's file is in its query, its title in its path (the editor's tab shows it). */
 function viewUri(file: string, title: string): vscode.Uri {
-  const name = title.replace(/[\\/:*?"<>|#%\n\r]+/g, ' ').trim().slice(0, 80) || 'Chat';
+  const name =
+    title
+      .replace(/[\\/:*?"<>|#%\n\r]+/g, ' ')
+      .trim()
+      .slice(0, 80) || 'Chat';
   return vscode.Uri.from({ scheme: SCHEME, path: `/${name}.md`, query: file });
 }
 

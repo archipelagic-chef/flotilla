@@ -23,10 +23,38 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
+import {
+  EXTENSIONS_DIR,
+  extensionFolders,
+  findClaudeCode,
+  installClaudeCode,
+  writeProfileSettings,
+} from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
 import { recordEvent, ticketOfBranch } from './record-event.mjs';
-import { DEMOS_DIR, DEMO_TAG, GIF_MAX_MS, TITLE_MARKER, demoDisplay, commandMatches, demoFile, failureReason, frameGate, freeDisplay, encodeGif, gapStats, listDemos, nearestElements, parseDemo, plainSettings, resultLine, staleBuild, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
+import {
+  DEMOS_DIR,
+  DEMO_TAG,
+  GIF_MAX_MS,
+  TITLE_MARKER,
+  demoDisplay,
+  commandMatches,
+  demoFile,
+  failureReason,
+  frameGate,
+  freeDisplay,
+  encodeGif,
+  gapStats,
+  listDemos,
+  nearestElements,
+  parseDemo,
+  plainSettings,
+  resultLine,
+  staleBuild,
+  stepsToPlay,
+  timeline,
+  unsafeFrame,
+} from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -100,7 +128,8 @@ function prepareProfile(githubUrl, own = {}) {
   installClaudeCode(findClaudeCode(extensionFolders())?.path, path.join(root, EXTENSIONS_DIR));
   const file = path.join(PROFILE_DIR, 'User', 'settings.json');
   // Settings with comments (VS Code writes them so) read as they are; a broken file is set aside and started afresh.
-  if (plainSettings(file) === 'moved') console.log(`The demo profile's settings.json wasn't JSON: moved to ${path.relative(root, file)}.broken, and started afresh.`);
+  if (plainSettings(file) === 'moved')
+    console.log(`The demo profile's settings.json wasn't JSON: moved to ${path.relative(root, file)}.broken, and started afresh.`);
   const result = writeProfileSettings(PROFILE_DIR, { root, fakes: true });
   if (result.unreadable) throw new Error(`${file} isn't JSON: delete .vscode-test/demo-profile and try again`);
   if (!result.applied.includes('fake Claude') || !result.applied.includes('fake GitHub')) {
@@ -145,9 +174,20 @@ async function pointer(page, x, y) {
         dot = document.createElement('div');
         dot.id = 'flotilla-demo-pointer';
         Object.assign(dot.style, {
-          position: 'fixed', left: '0', top: '0', width: '22px', height: '22px', margin: '-11px 0 0 -11px', borderRadius: '50%',
-          background: 'rgba(255, 196, 0, 0.55)', border: '2px solid rgba(255, 255, 255, 0.9)', boxShadow: '0 0 6px rgba(0,0,0,0.6)',
-          zIndex: '2147483647', pointerEvents: 'none', transition: `transform ${ms}ms ease-in-out`, transform: `translate(${innerWidth / 2}px, ${innerHeight / 2}px)`,
+          position: 'fixed',
+          left: '0',
+          top: '0',
+          width: '22px',
+          height: '22px',
+          margin: '-11px 0 0 -11px',
+          borderRadius: '50%',
+          background: 'rgba(255, 196, 0, 0.55)',
+          border: '2px solid rgba(255, 255, 255, 0.9)',
+          boxShadow: '0 0 6px rgba(0,0,0,0.6)',
+          zIndex: '2147483647',
+          pointerEvents: 'none',
+          transition: `transform ${ms}ms ease-in-out`,
+          transform: `translate(${innerWidth / 2}px, ${innerHeight / 2}px)`,
         });
         document.body.appendChild(dot);
         void dot.offsetWidth;
@@ -169,9 +209,19 @@ async function caption(page, text) {
       box = document.createElement('div');
       box.id = 'flotilla-demo-caption';
       Object.assign(box.style, {
-        position: 'fixed', left: '50%', bottom: '48px', transform: 'translateX(-50%)', maxWidth: '80%', padding: '10px 18px',
-        borderRadius: '8px', background: 'rgba(20, 20, 20, 0.85)', color: '#fff', font: '600 18px system-ui, sans-serif',
-        zIndex: '2147483646', pointerEvents: 'none', textAlign: 'center',
+        position: 'fixed',
+        left: '50%',
+        bottom: '48px',
+        transform: 'translateX(-50%)',
+        maxWidth: '80%',
+        padding: '10px 18px',
+        borderRadius: '8px',
+        background: 'rgba(20, 20, 20, 0.85)',
+        color: '#fff',
+        font: '600 18px system-ui, sans-serif',
+        zIndex: '2147483646',
+        pointerEvents: 'none',
+        textAlign: 'center',
       });
       document.body.appendChild(box);
     }
@@ -236,7 +286,12 @@ async function visibleElements(page) {
           const text = all.length <= 100 ? all : '';
           const label = el.getAttribute('aria-label') ?? el.getAttribute('title') ?? undefined;
           if (!text && !label) continue;
-          out.push({ tag: el.tagName.toLowerCase(), text: text || undefined, label: label || undefined, classes: typeof el.className === 'string' ? el.className : undefined });
+          out.push({
+            tag: el.tagName.toLowerCase(),
+            text: text || undefined,
+            label: label || undefined,
+            classes: typeof el.className === 'string' ? el.className : undefined,
+          });
           if (out.length >= 600) break;
         }
         return out;
@@ -255,7 +310,10 @@ async function visibleElements(page) {
 async function ready(page, drawnAt) {
   const end = Date.now() + READY_MS;
   await page.locator('.monaco-workbench').waitFor({ timeout: READY_MS });
-  await page.locator('.activitybar [aria-label^="Flotilla"]').first().waitFor({ timeout: Math.max(1000, end - Date.now()) });
+  await page
+    .locator('.activitybar [aria-label^="Flotilla"]')
+    .first()
+    .waitFor({ timeout: Math.max(1000, end - Date.now()) });
   // The activity bar's icon is there before the extension starts; its status bar item only once it has.
   await page
     .locator('.statusbar-item[id$="flotilla.current"]')
@@ -378,14 +436,40 @@ function save(captures, endMs, out, name) {
       list.push(`file '${frames.length - 1}.png'`);
       fs.writeFileSync(path.join(dir, 'frames.txt'), `${list.join('\n')}\n`);
       const mp4 = out.replace(/\.[^./\\]+$/, '') + '.mp4';
-      execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-metadata', `comment=${DEMO_TAG}${name}`, path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
+      execFileSync(
+        ffmpeg,
+        [
+          '-y',
+          '-loglevel',
+          'error',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          'frames.txt',
+          '-vf',
+          'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:v',
+          'libx264',
+          '-metadata',
+          `comment=${DEMO_TAG}${name}`,
+          path.resolve(mp4),
+        ],
+        { cwd: dir, stdio: 'inherit' },
+      );
       return { file: mp4, note: '' };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
   fs.writeFileSync(out, encodeGif(frames, { name }));
-  const note = endMs > GIF_MAX_MS ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.` : '';
+  const note =
+    endMs > GIF_MAX_MS
+      ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.`
+      : '';
   return { file: out, note };
 }
 
@@ -421,7 +505,11 @@ function build() {
   if (!stale) return;
   console.log(`Building first (${stale})…`);
   try {
-    execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '-s', 'build'], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'], shell: process.platform === 'win32' });
+    execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '-s', 'build'], {
+      cwd: root,
+      stdio: ['ignore', 'ignore', 'inherit'],
+      shell: process.platform === 'win32',
+    });
   } catch {
     throw new Error('the build failed (npm run build): fix it and try again');
   }
@@ -457,7 +545,12 @@ function startXvfbOn(n) {
     xvfb.stderr.on('data', (d) => (stderr = (stderr + d).slice(-2000)));
     xvfb.on('error', (error) => {
       if (error.code !== 'ENOENT') return reject(new Error(`Xvfb didn't start: ${error.message}`));
-      reject(Object.assign(new Error("Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"), { missing: true }));
+      reject(
+        Object.assign(
+          new Error("Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"),
+          { missing: true },
+        ),
+      );
     });
     xvfb.on('exit', (code) => reject(new Error(`Xvfb stopped on :${n} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`)));
     // It writes the display's number to fd 3 once it's ready for clients.
@@ -493,35 +586,41 @@ async function show(mode, demo, out, still, display) {
   console.log(
     `${{ record: 'Recording', try: 'Setting up', check: 'Checking' }[mode] ?? 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
   );
-  const app = await _electron.launch({
-    executablePath: executable,
-    args: [
-      `--extensionDevelopmentPath=${root}`,
-      `--user-data-dir=${PROFILE_DIR}`,
-      `--extensions-dir=${path.join(root, EXTENSIONS_DIR)}`,
-      '--skip-welcome',
-      '--skip-release-notes',
-      '--disable-workspace-trust',
-      '--new-window',
-      // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
-      '--disable-dev-shm-usage',
-      // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
-      '--password-store=basic',
-      playground,
-    ],
-    // The user's VS Code session variables would make this window talk to theirs.
-    env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDE_CONFIG_DIR' && !(xvfb && k === 'WAYLAND_DISPLAY'))),
-      HOME: HOME_DIR,
-      USERPROFILE: HOME_DIR,
-      // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
-      ...(xvfb ? { DISPLAY: xvfb.display } : {}),
-    },
-    timeout: 60_000,
-  }).catch((error) => {
-    xvfb?.stop();
-    throw error;
-  });
+  const app = await _electron
+    .launch({
+      executablePath: executable,
+      args: [
+        `--extensionDevelopmentPath=${root}`,
+        `--user-data-dir=${PROFILE_DIR}`,
+        `--extensions-dir=${path.join(root, EXTENSIONS_DIR)}`,
+        '--skip-welcome',
+        '--skip-release-notes',
+        '--disable-workspace-trust',
+        '--new-window',
+        // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
+        '--disable-dev-shm-usage',
+        // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
+        '--password-store=basic',
+        playground,
+      ],
+      // The user's VS Code session variables would make this window talk to theirs.
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            ([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDE_CONFIG_DIR' && !(xvfb && k === 'WAYLAND_DISPLAY'),
+          ),
+        ),
+        HOME: HOME_DIR,
+        USERPROFILE: HOME_DIR,
+        // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
+        ...(xvfb ? { DISPLAY: xvfb.display } : {}),
+      },
+      timeout: 60_000,
+    })
+    .catch((error) => {
+      xvfb?.stop();
+      throw error;
+    });
   // Kept now: once the window is closed, app.process() no longer answers (it throws "reading '_object'").
   let child;
   try {
@@ -582,12 +681,23 @@ async function show(mode, demo, out, still, display) {
     if (mode === 'record') {
       const endMs = end - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
-      const gaps = gapStats(timeline(captures, endMs).map((f) => f.at), recorded.moves);
-      if (gaps) console.log(`While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`);
+      const gaps = gapStats(
+        timeline(captures, endMs).map((f) => f.at),
+        recorded.moves,
+      );
+      if (gaps)
+        console.log(
+          `While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`,
+        );
       const saved = save(captures, endMs, out, demo.name);
       // For the metrics (BL-157, BL-133): how smooth the recording was.
       const commonDir = gitCommonDir();
-      const data = { name: demo.name, frames: captures.length, ms: endMs, ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}) };
+      const data = {
+        name: demo.name,
+        frames: captures.length,
+        ms: endMs,
+        ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}),
+      };
       recordEvent(commonDir, 'demo-recorded', { ticket: ticketOfBranch(gitBranch()), data });
       if (saved.note) console.log(saved.note.trim());
       if (still && captures.length) {
@@ -596,7 +706,10 @@ async function show(mode, demo, out, still, display) {
       }
       console.log(resultLine({ saved: saved.file, bytes: fs.statSync(saved.file).size, ms: endMs }));
     } else if (mode === 'check') {
-      recordEvent(gitCommonDir(), 'demo-checked', { ticket: ticketOfBranch(gitBranch()), data: { name: demo.name, steps: demo.steps.length, ms: end - start } });
+      recordEvent(gitCommonDir(), 'demo-checked', {
+        ticket: ticketOfBranch(gitBranch()),
+        data: { name: demo.name, steps: demo.steps.length, ms: end - start },
+      });
       console.log(resultLine({ checked: demo.steps.length, ms: end - start }));
     } else if (xvfb) {
       console.log('Done. The window was on a virtual display, so it closes now.');

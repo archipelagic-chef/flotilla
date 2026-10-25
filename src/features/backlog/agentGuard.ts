@@ -6,7 +6,11 @@
  *
  * `guard` is written into the hook's script as its source (see guardScript), so it uses nothing from outside itself.
  */
-export function guard(input: { tool_name?: string; tool_input?: Record<string, unknown>; cwd?: string }, maxLines: number, maxDiffLines: number): string | undefined {
+export function guard(
+  input: { tool_name?: string; tool_input?: Record<string, unknown>; cwd?: string },
+  maxLines: number,
+  maxDiffLines: number,
+): string | undefined {
   const fs = require('node:fs') as typeof import('node:fs');
   const path = require('node:path') as typeof import('node:path');
   const cp = require('node:child_process') as typeof import('node:child_process');
@@ -47,7 +51,8 @@ export function guard(input: { tool_name?: string; tool_input?: Record<string, u
   if (git) {
     const rest = (git[3] ?? '').trim();
     // Already narrowed: a summary, paths, or a format of its own.
-    if (/(^|\s)(--stat|--numstat|--shortstat|--name-only|--name-status|--summary|--format|--pretty|--oneline|-s|--no-patch|--)(\s|=|$)/.test(rest)) return undefined;
+    if (/(^|\s)(--stat|--numstat|--shortstat|--name-only|--name-status|--summary|--format|--pretty|--oneline|-s|--no-patch|--)(\s|=|$)/.test(rest))
+      return undefined;
     if (git[2] === 'show' && /:/.test(rest)) return undefined;
     let out: string;
     try {
@@ -73,7 +78,7 @@ export function guard(input: { tool_name?: string; tool_input?: Record<string, u
 /** The hook's script: reads the tool call from stdin; a refusal goes to stderr with exit code 2 (Claude Code shows it to the agent). */
 export function guardScript(maxLines: number, maxDiffLines: number): string {
   return [
-    '// Flotilla: keeps large outputs out of its agents\' context (a PreToolUse hook). Written by the Flotilla extension.',
+    "// Flotilla: keeps large outputs out of its agents' context (a PreToolUse hook). Written by the Flotilla extension.",
     `const guard = ${guard.toString()};`,
     "let raw = '';",
     "process.stdin.on('data', (d) => (raw += d));",

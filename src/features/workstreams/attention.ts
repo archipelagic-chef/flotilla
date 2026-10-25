@@ -23,7 +23,5 @@ export function computeAttention(input: AttentionInput): { state: AttentionState
 
 export function sortByAttention<T extends { attention: AttentionState; lastActivity?: Date }>(items: readonly T[]): T[] {
   const rank = (a: AttentionState) => ATTENTION_ORDER.indexOf(a);
-  return [...items].sort(
-    (a, b) => rank(a.attention) - rank(b.attention) || (b.lastActivity?.getTime() ?? 0) - (a.lastActivity?.getTime() ?? 0),
-  );
+  return [...items].sort((a, b) => rank(a.attention) - rank(b.attention) || (b.lastActivity?.getTime() ?? 0) - (a.lastActivity?.getTime() ?? 0));
 }

@@ -3,7 +3,15 @@ import type { Repository } from '../core/repository';
 import type { BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { Leader } from '../features/backlog/leader';
-import { isWarning, needsYouList, needsYouMessage, newNeeds, phrase, subject, type NeedsYou } from '../features/needsYou';
+import {
+  isWarning,
+  type NeedsYou,
+  needsYouList,
+  needsYouMessage,
+  newNeeds,
+  phrase,
+  subject,
+} from '../features/needsYou';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import { readSettings } from './settings';
@@ -97,9 +105,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
     const batch = this.pending.splice(0).filter((n) => open.has(n.key));
     if (!batch.length || readSettings().notify === 'off') return;
     const text = needsYouMessage(batch);
-    const choice = batch.some((n) => isWarning(n.kind))
-      ? vscode.window.showWarningMessage(text, 'Show')
-      : vscode.window.showInformationMessage(text, 'Show');
+    const choice = batch.some((n) => isWarning(n.kind)) ? vscode.window.showWarningMessage(text, 'Show') : vscode.window.showInformationMessage(text, 'Show');
     void choice.then((c) => c && this.showList());
   }
 

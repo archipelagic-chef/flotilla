@@ -1,8 +1,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { makeTempDir, removeDir } from '../../helpers/gitRepo';
-import { fileKind, MEDIA_LIMITS, mediaType, tooLarge, tooLargeNote } from '../../../src/features/backlog/media';
+import {
+  fileKind,
+  MEDIA_LIMITS,
+  mediaType,
+  tooLarge,
+  tooLargeNote,
+} from '../../../src/features/backlog/media';
 
 // The renderer gives back the text as it is: the tests write the html it would make.
 vi.mock('vscode', () => ({
@@ -68,9 +80,11 @@ describe('media in a ticket', () => {
     expect(html).toMatch(/src="webview:[^"]*BL-1\/demo\.gif" alt="Demo"/);
   });
 
-  it('plays videos next to the ticket in a player with controls, which doesn\'t start by itself', async () => {
+  it("plays videos next to the ticket in a player with controls, which doesn't start by itself", async () => {
     const html = await render('<p><img src="BL-1/demo.webm" alt="The demo"></p>');
-    expect(html).toMatch(/<video class="media" src="webview:[^"]*BL-1\/demo\.webm" controls muted playsinline preload="metadata" title="The demo" aria-label="The demo"><\/video>/);
+    expect(html).toMatch(
+      /<video class="media" src="webview:[^"]*BL-1\/demo\.webm" controls muted playsinline preload="metadata" title="The demo" aria-label="The demo"><\/video>/,
+    );
     expect(html).not.toMatch(/autoplay/);
   });
 
@@ -84,7 +98,7 @@ describe('media in a ticket', () => {
     expect(html.match(/class="media-note"/g)).toHaveLength(3);
   });
 
-  it('embeds images from the repository, and says videos play only from the ticket\'s folder', async () => {
+  it("embeds images from the repository, and says videos play only from the ticket's folder", async () => {
     const html = await render('<p><img src="docs/flow.png" alt="Flow"> <img src="docs/clip.mp4" alt="Clip"></p>');
     expect(html).toContain('<img src="data:image/png;base64,');
     expect(html).toContain("clip.mp4 isn't next to the ticket: videos play from the ticket's folder");
@@ -128,7 +142,13 @@ describe("a folded report's thumbnails (BL-114)", () => {
     const resolve = async (src: string) =>
       src === 'BL-1/big.gif' ? { note: 'big.gif is 3 MB' } : src === 'https://x/a.png' ? undefined : { src: `webview:${src}`, kind: mediaType(src)!.kind };
     const thumbs = await mediaThumbs(
-      ['![The demo](BL-1/demo.mp4)', '![](BL-1/big.gif)', '![Shot](<BL-1/a shot.png> "title")', '![](https://x/a.png)', '```mermaid\nflowchart LR\n  A --> B\n```'],
+      [
+        '![The demo](BL-1/demo.mp4)',
+        '![](BL-1/big.gif)',
+        '![Shot](<BL-1/a shot.png> "title")',
+        '![](https://x/a.png)',
+        '```mermaid\nflowchart LR\n  A --> B\n```',
+      ],
       resolve,
     );
     expect(thumbs).toEqual([
