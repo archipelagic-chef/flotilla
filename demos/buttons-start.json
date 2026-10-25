@@ -1,0 +1,121 @@
+{
+  "title": "Dismiss (a proposal), Prioritize and the Ask chat's buttons show they're working",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
+    },
+    {
+      "waitFor": ".proposal-banner"
+    },
+    {
+      "caption": "A proposal's Dismiss: Dismissing\u2026 until the backlog is written"
+    },
+    {
+      "click": ".proposal-banner button:has-text(\"Dismiss\")"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    },
+    {
+      "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")"
+    },
+    {
+      "caption": "Two agents are working, the most at once: a start waits for a free slot"
+    },
+    {
+      "click": "button:has-text(\"Start with an Agent\")"
+    },
+    {
+      "waitFor": ".review-panel button:has-text(\"Prioritize\")",
+      "timeout": 30000
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "caption": "Prioritize: Starting\u2026 until its agent has started, above the limit"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Prioritize\")"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Start a ticket from the keyboard\")):not(:has(button:has-text(\"Prioritize\")))",
+      "timeout": 30000
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "command": "Notifications: Clear All Notifications"
+    },
+    {
+      "caption": "The Ask chat: Stop says Stopping\u2026 until the answer has stopped"
+    },
+    {
+      "click": ".ask-toggle"
+    },
+    {
+      "click": "[aria-label=\"Ask about this ticket\"]"
+    },
+    {
+      "type": "Which files does it touch?"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "waitFor": ".ask-streaming"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "click": ".ask button:has-text(\"Stop\")"
+    },
+    {
+      "waitFor": ".ask-turn .hint:has-text(\"Stopped\")"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "Post to Ticket: Posting\u2026 until the entry is written"
+    },
+    {
+      "click": ".ask-turn button:has-text(\"Post to Ticket\")"
+    },
+    {
+      "waitFor": ".ask-turn:has-text(\"Posted to the ticket\")"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "New Question: Starting over\u2026 until the chat is reset"
+    },
+    {
+      "click": ".ask button:has-text(\"New Question\")"
+    },
+    {
+      "waitFor": ".ask:not(:has(.ask-turn))"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

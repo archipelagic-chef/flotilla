@@ -2,7 +2,9 @@
  * Messages between the extension host and the sidebar webview. Type-only: imported by both sides,
  * so it must not import vscode, node or DOM APIs.
  */
+import type { AgentActivity } from '../features/chats/activity';
 import type { ChangeKind } from '../core/git/porcelain';
+import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
 import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
 import type { Need } from '../features/backlog/needs';
@@ -16,7 +18,7 @@ import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'backlog' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
 
 export type { BacklogItem, BacklogPriority, BacklogStatus };
 export type { MergeInfo };
@@ -47,6 +49,8 @@ export interface BacklogItemView extends BacklogItem {
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
   demo?: boolean;
+  /** Its discussion's chat is open (BL-188): its card says Discussing, and opens that chat. */
+  discussing?: boolean;
 }
 
 /** Integrations whose issues don't load, to show in the backlog. */
@@ -121,6 +125,8 @@ export interface FileChangeView {
   path: string;
   origPath?: string;
   kind: ChangeKind;
+  /** A folder of untracked files listed as one entry: how many files it holds. */
+  files?: number;
 }
 
 export interface ChatView {
@@ -142,6 +148,9 @@ export interface ChatView {
   size?: { label: string; tip: string; big: boolean };
   /** The agent and backlog item its first line names (agentChatItem): its ticket's card shows the agent (BL-96). */
   agent?: { name: string; item: string };
+  /** What it's doing (BL-175), while it works; and why it looks stuck, when it does (flotilla.agents.stuck.*). */
+  activity?: AgentActivity;
+  stuck?: string;
 }
 
 export interface WorkstreamView {
@@ -212,6 +221,7 @@ export interface CommitView {
 }
 
 export type HostMessage =
+  | MetricsHostMessage
   /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
   | { type: 'state'; workstreams: WorkstreamView[]; keys: string[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
@@ -250,7 +260,7 @@ export type HostMessage =
   /** The files that differ in comparison id. */
   | { type: 'compared'; id: number; files: FileChangeView[]; error?: string }
   /** The backlog, in priority order; sent at start and whenever it changes. */
-  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView }
+  | { type: 'backlog'; items: BacklogItemView[]; problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView; /** The cards show every detail (flotilla.backlog.cards, BL-183). */ detailedCards?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -290,6 +300,8 @@ export interface MergeQueueView {
 export interface AutopilotState {
   enabled: boolean;
   running: number;
+  /** Merges' agents and checks running in this window (BL-164): Pause All pauses them too. */
+  merging?: number;
   max: number;
   /** Starts waiting for a free slot (in the queue: reviews and resumes go first). */
   waiting: number;
@@ -349,6 +361,7 @@ export interface Target {
 }
 
 export type WebviewMessage =
+  | MetricsWebviewMessage
   | { type: 'ready' }
   | { type: 'listDir'; key: string; path: string }
   | { type: 'openFile'; key: string; path: string; preview: boolean; line?: number; range?: [number, number] }
@@ -388,8 +401,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'update'; id: string; title?: string; notes?: string; status?: BacklogStatus; priority?: BacklogPriority | null }
   /** Drag and drop: into a lane, before another item or at the lane's end. */
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
-  /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20). */
-  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run'; id: string }
+  /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20); merge: merge its approved work (a card's next step, BL-183). */
+  | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run' | 'merge'; id: string }
   /** The card's Create Worktree (as the ticket's): a new worktree at once, its branch named without asking unless named. */
   | { type: 'backlog'; op: 'createWorktree'; id: string; named?: boolean }
   /** Accept every proposed item; plan the backlog with Claude. */
@@ -408,6 +421,8 @@ export type WebviewMessage =
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
   | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
   | { type: 'backlog'; op: 'mergeNext'; id: string }
+  /** Compact or Detailed cards (BL-183): saved in flotilla.backlog.cards. */
+  | { type: 'backlog'; op: 'cards'; detailed: boolean }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
   | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }

@@ -20,7 +20,7 @@ export function parseDemo(text: string, name?: string): { title: string; steps: 
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
 export function unsafeFrame(frame: { title?: string; argv?: string[] }, options: { profileDir: string }): string | undefined;
-export function stepsToPlay<S>(demo: { steps: S[] }, mode: 'record' | 'play' | 'try'): S[];
+export function stepsToPlay<S>(demo: { steps: S[] }, mode: 'record' | 'play' | 'try' | 'check'): S[];
 export function demoDisplay(env: Record<string, string | undefined>): 'virtual' | 'screen';
 export function freeDisplay(exists: (file: string) => boolean, from?: number): number;
 export function decodePng(buffer: Buffer): RgbaImage;
@@ -31,3 +31,11 @@ export function gapStats(ats: number[], moves: [number, number][]): { median: nu
 export const DEMO_TAG: string;
 export function tagGif(gif: Buffer, name: string): Buffer;
 export function encodeGif(frames: { png: Buffer; ms: number }[], options?: { maxWidth?: number; name?: string }): Buffer;
+export function parseJsonc(text: string): Record<string, unknown> | undefined;
+export const BUILT: string[];
+export function staleBuild(root: string): string | undefined;
+export function failureReason(error: unknown): string;
+export function nearestElements(selector: string, elements: { tag: string; text?: string; label?: string; classes?: string }[], count?: number): string[];
+export function resultLine(result: { saved: string; bytes: number; ms: number } | { checked: number; ms: number } | { step?: string; reason: string; screenshot?: string }): string;
+export function plainSettings(file: string): 'kept' | 'rewritten' | 'moved';
+export function commandMatches(typed: string, label: string | undefined | null): boolean;

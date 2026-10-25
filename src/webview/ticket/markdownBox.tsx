@@ -4,6 +4,7 @@ import { drawDiagrams } from './diagrams';
 import { type Format, formatEdit, type Markup, pasteLink, type TextEdit } from './format';
 import { demoLength } from '../../features/backlog/demo';
 import { act, send } from './actions';
+import './markdownBox.css';
 
 /** Replies to pasted or dropped images, by request id. */
 export const imageReplies = new Map<number, (markdown: string) => void>();
@@ -96,6 +97,8 @@ export function MarkdownBox({
   placeholder,
   label,
   onSubmit,
+  onCancel,
+  onSubmitShift,
   autoFocus,
   minRows = 3,
   images = true,
@@ -107,6 +110,10 @@ export function MarkdownBox({
   placeholder: string;
   label: string;
   onSubmit(): void;
+  /** Escape: the box is closed without its text (an edit, BL-128). */
+  onCancel?(): void;
+  /** Ctrl+Shift+Enter, when it does something else than Ctrl+Enter (Comment and Ask an Agent). */
+  onSubmitShift?(): void;
   autoFocus?: boolean;
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
@@ -154,7 +161,14 @@ export function MarkdownBox({
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          onSubmit();
+          if (e.shiftKey && onSubmitShift) onSubmitShift();
+          else onSubmit();
+          return;
+        }
+        if (e.key === 'Escape' && onCancel) {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
           return;
         }
         const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());

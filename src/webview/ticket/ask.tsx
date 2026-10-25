@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import { send } from './actions';
+import { act, ActionButton, send, useWorking } from './actions';
 import { Rendered } from './markdownBox';
 import { modelName } from './agents';
+import './ask.css';
 
 /** A question in the Ask chat, and its answer: streaming in as plain text, rendered once it's finished. */
 function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
-  const [posting, setPosting] = useState(false);
   const finished = t.state === 'done' || (t.state === 'stopped' && !!t.answer.trim());
   return (
     <div class={`ask-turn ${t.state}`}>
@@ -31,17 +31,14 @@ function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
                 <i class="codicon codicon-check" /> Posted to the ticket
               </span>
             ) : (
-              <button
+              <ActionButton
                 class="text-button"
-                disabled={posting}
-                onClick={() => {
-                  setPosting(true);
-                  send({ type: 'askPost', index });
-                }}
+                message={{ type: 'askPost', index }}
+                working="Posting…"
                 title="Adds the question and this answer to the ticket's activity, as your comment"
               >
                 <i class="codicon codicon-comment" /> Post to Ticket
-              </button>
+              </ActionButton>
             )}
           </div>
         )}
@@ -62,7 +59,9 @@ export function AskPane({ ask }: { ask?: AskView }) {
   const turns = ask?.turns ?? [];
   const last = turns[turns.length - 1];
   const busy = !!ask?.busy;
-  const stopping = busy && last?.state === 'stopped';
+  // Stopping from the click: the answer shows it's stopped once it is.
+  const stopSent = !!useWorking({ type: 'askStop' });
+  const stopping = busy && (last?.state === 'stopped' || stopSent);
   useEffect(() => {
     if (open) box.current?.focus();
   }, [open]);
@@ -97,9 +96,9 @@ export function AskPane({ ask }: { ask?: AskView }) {
         </button>
         {open && turns.length > 0 && (
           <span class="head-actions">
-            <button class="text-button" onClick={() => send({ type: 'askNew' })} title="Starts over: this chat is forgotten">
+            <ActionButton class="text-button" message={{ type: 'askNew' }} working="Starting over…" title="Starts over: this chat is forgotten">
               <i class="codicon codicon-add" /> New Question
-            </button>
+            </ActionButton>
           </span>
         )}
       </div>
@@ -124,7 +123,7 @@ export function AskPane({ ask }: { ask?: AskView }) {
               }}
             />
             {busy ? (
-              <button class="button secondary" disabled={stopping} onClick={() => send({ type: 'askStop' })} title="Stops the answer; what it wrote so far stays">
+              <button class="button secondary" disabled={stopping} onClick={() => act({ type: 'askStop' }, 'Stopping…')} title="Stops the answer; what it wrote so far stays">
                 <i class="codicon codicon-debug-stop" /> {stopping ? 'Stopping…' : 'Stop'}
               </button>
             ) : (

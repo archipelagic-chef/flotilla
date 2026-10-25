@@ -1,10 +1,11 @@
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
 import type { Props } from './backlog';
+import './titleBar.css';
 
 /** How long something has waited, short: "5m", "3h", "2d". */
 /** The backlog's title bar: its name and the actions on the whole backlog. */
-export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly }: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly'>) {
+export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly, detailed, setDetailed }: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly' | 'detailed' | 'setDetailed'>) {
   return (
     <div class="tool-title backlog-title">
       <span>Backlog</span>
@@ -32,6 +33,14 @@ export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly 
           onClick={() => setWorkingOnly(!workingOnly)}
         >
           <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
+        </button>
+        <button
+          class={`icon cards-detail${detailed ? ' on' : ''}`}
+          aria-pressed={detailed}
+          aria-label={detailed ? 'Detailed Cards: every detail on each card. Click for Compact cards' : 'Compact Cards: the title, a status line and the next step. Click for Detailed cards'}
+          onClick={() => setDetailed(!detailed)}
+        >
+          <i class={`codicon codicon-${detailed ? 'list-flat' : 'list-selection'}`} />
         </button>
         <BusyButton
           class="icon"

@@ -1,0 +1,113 @@
+{
+  "title": "The merge queue's buttons and Push\u2026 show they're working",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open ticket\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")",
+      "timeout": 30000
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open tab\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open tab\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".merge-queue button:has-text(\"Merge Next\")",
+      "timeout": 30000
+    },
+    {
+      "caption": "Merge Next: Moving\u2026 until the train is rebuilt in the new order"
+    },
+    {
+      "click": ".merge-queue button:has-text(\"Merge Next\")"
+    },
+    {
+      "waitFor": ".merge-queue:not(:has(button:has-text(\"Merge Next\")))",
+      "timeout": 30000
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "Remove from Queue: Removing\u2026 until the train is rebuilt without it"
+    },
+    {
+      "waitFor": ".merge-queue:has-text(\"1st of 2\") button:has-text(\"Remove from Queue\"):not([disabled])",
+      "timeout": 60000
+    },
+    {
+      "click": ".merge-queue:has-text(\"1st of 2\") button:has-text(\"Remove from Queue\")"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Remember the last open tab\")):not(:has(.merge-queue))",
+      "timeout": 30000
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "Land All, in the backlog: its icon spins until the queue has started landing"
+    },
+    {
+      "click": ".merge-queue-bar .land-all"
+    },
+    {
+      "click": ".tabs-container .tab:has-text(\"BL-10\")"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"Merged into main\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "Push\u2026: Pushing\u2026 from the confirmation until git push is done"
+    },
+    {
+      "waitFor": ".review-panel button:has-text(\"Push\")",
+      "timeout": 30000
+    },
+    {
+      "click": ".review-panel button:has-text(\"Push\")"
+    },
+    {
+      "waitFor": ".monaco-dialog-box"
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "click": ".monaco-dialog-box .monaco-button:has-text(\"Push\")"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"Merged into main\"):not(:has(.action-busy))",
+      "timeout": 30000
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

@@ -10,4 +10,6 @@ export type AgentsMessage =
   | { type: 'agentModel'; model: string | null }
   | { type: 'agentEffort'; effort: AgentEffort | null }
   /** Open an agent's chat in Claude Code. */
-  | { type: 'openChat'; key: string; id: string };
+  | { type: 'openChat'; key: string; id: string }
+  /** Summarize a working agent's status with a small model (BL-180): at most once a minute per agent. */
+  | { type: 'summarize'; session: string };

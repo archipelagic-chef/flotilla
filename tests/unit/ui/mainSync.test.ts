@@ -95,14 +95,16 @@ describe('keeping open tickets current with main', () => {
     expect((await item()).mainCheck).toBeUndefined();
   });
 
-  it('Update from Main merges main into the branch when it merges cleanly', async () => {
+  it('Update from Main rebases the branch onto main when that goes cleanly: no merge commit', async () => {
     commitIn(wt, 'one\ntwo\nTHREE\n');
+    const own = git(wt, 'log', '-1', '--format=%s');
     commitIn(repo, 'ONE\ntwo\nthree\n');
     await sync.update('BL-1');
-    expect(git(wt, 'log', '-1', '--format=%s')).toBe('BL-1: Merge main into feature/BL-1-x');
+    expect(git(wt, 'log', '-1', '--format=%s')).toBe(own);
+    expect(git(wt, 'rev-parse', 'HEAD^')).toBe(git(repo, 'rev-parse', 'main'));
     expect(git(wt, 'show', 'HEAD:a.txt')).toBe('ONE\ntwo\nTHREE');
-    expect((await activity()).at(-1)).toBe('Merged main into `feature/BL-1-x` (Update from Main).');
-    expect(infos).toEqual(['BL-1: Merged main into feature/BL-1-x.']);
+    expect((await activity()).at(-1)).toBe('Rebased `feature/BL-1-x` onto main (Update from Main).');
+    expect(infos).toEqual(['BL-1: Rebased feature/BL-1-x onto main.']);
     expect(handed).toEqual([]);
   });
 
@@ -113,7 +115,7 @@ describe('keeping open tickets current with main', () => {
     expect((await activity()).at(-1)).toBe('`feature/BL-1-x` is already up to date with main.');
   });
 
-  it('Update from Main hands a conflicting merge to the ticket\'s agent, leaving the worktree as it was', async () => {
+  it('Update from Main hands a conflicting rebase to the ticket\'s agent, leaving the worktree as it was', async () => {
     commitIn(wt, 'one\nTWO\nthree\n');
     commitIn(repo, 'one\n2\nthree\n');
     const head = git(wt, 'rev-parse', 'HEAD');
@@ -121,10 +123,10 @@ describe('keeping open tickets current with main', () => {
     expect(git(wt, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(wt, 'status', '--porcelain')).toBe('');
     expect(handed).toHaveLength(1);
-    expect(handed[0].prompt).toContain('git merge main');
+    expect(handed[0].prompt).toContain('git rebase main');
     expect(handed[0].prompt).toContain('a.txt');
     expect(infos).toHaveLength(1);
-    expect(infos[0]).toMatch(/^BL-1: merging main into feature\/BL-1-x conflicts \(a\.txt\), so its agent/);
+    expect(infos[0]).toMatch(/^BL-1: rebasing feature\/BL-1-x onto main conflicts \(a\.txt\), so its agent/);
   });
 
   it('Update from Main warns, rather than saying it was handed, when an agent already runs on the ticket', async () => {
@@ -134,6 +136,6 @@ describe('keeping open tickets current with main', () => {
     await sync.update('BL-1');
     expect(handed).toHaveLength(0);
     expect(infos).toHaveLength(0);
-    expect(warnings).toEqual(["BL-1: merging main into feature/BL-1-x conflicts (a.txt), and an agent is already working on it: update it from main when it's done."]);
+    expect(warnings).toEqual(["BL-1: rebasing feature/BL-1-x onto main conflicts (a.txt), and an agent is already working on it: update it from main when it's done."]);
   });
 });

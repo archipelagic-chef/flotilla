@@ -6,7 +6,8 @@ import { hasActiveAgent } from '../../features/backlog/activeAgent';
 import { turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, BacklogProblem, BacklogStatus, WorkstreamView, AutopilotState, MergeQueueView } from '../protocol';
 import { send } from './api';
-import { BusyButton } from './backlogBusy';
+import { act, BusyButton, useBusy } from './backlogBusy';
+import { withMoves } from '../backlogActions';
 import './priority.css';
 import { TitleBar } from './titleBar';
 import { AgentCount, AutopilotBar } from './autopilotBar';
@@ -14,6 +15,7 @@ import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
+import './backlog.css';
 
 const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
   { lane: 'todo', title: 'To Do', icon: 'circle-large-outline' },
@@ -47,6 +49,9 @@ export interface Props {
   /** The autopilot's details are folded out (kept in the view's state: per window). */
   autopilotOpen: boolean;
   setAutopilotOpen(open: boolean): void;
+  /** Cards show every detail (Detailed), or the title, a status line and the next step (Compact, BL-183). */
+  detailed: boolean;
+  setDetailed(on: boolean): void;
   openWorktree(key: string): void;
 }
 
@@ -54,8 +59,11 @@ export interface Props {
  * The backlog: items in priority order in three lanes. Drag to reprioritize or to move between lanes; Start creates
  * (or shows) the item's worktree. Local items live in the repository's git dir, shared by all its worktrees.
  */
-export function BacklogView({ items, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, openWorktree }: Props) {
+export function BacklogView({ items: posted, problems, integrations, autopilot, mergeQueue, workstreams, colors, workingOnly, setWorkingOnly, autopilotOpen, setAutopilotOpen, detailed, setDetailed, openWorktree }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // A card dropped in a lane shows there at once, marked as saving, until the host has saved it.
+  const busy = useBusy();
+  const items = posted && withMoves(posted, busy.moves());
   // The Review lane shows only the tickets whose turn is the user's.
   const [mineOnly, setMineOnly] = useState(false);
   const [renaming, setRenaming] = useState<string>();
@@ -71,6 +79,11 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
   const chats = workstreams.flatMap((w) => w.chats);
   const agentsOf = (item: BacklogItem) => (item.source ? [] : cardAgents(item, chats));
+  // What the autopilot's agents are doing, for its details (BL-175).
+  const live = new Map((autopilot?.agents ?? []).flatMap((g) => {
+    const item = items?.find((i) => i.id === g.id);
+    return item ? [[g.id, agentsOf(item)] as const] : [];
+  }));
 
   // Ready to Merge is no drop target: an item gets there by its review's approval (in its ticket).
   const drop = (e: DragEvent, lane: BacklogLane, before?: string) => {
@@ -79,7 +92,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
     if (!id || lane === 'ready') return;
     e.preventDefault();
     e.stopPropagation();
-    if (id !== before) send({ type: 'backlog', op: 'move', id, status: lane, before });
+    if (id !== before) act({ type: 'backlog', op: 'move', id, status: lane, before });
   };
   const dragOver = (e: DragEvent, lane: BacklogLane, before?: string) => {
     if (!e.dataTransfer?.types.includes(DRAG_TYPE) || lane === 'ready') return;
@@ -91,9 +104,9 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
 
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>
-      <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} />
-      {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
-      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      <TitleBar integrations={integrations} autopilot={autopilot} workingOnly={workingOnly} setWorkingOnly={setWorkingOnly} detailed={detailed} setDetailed={setDetailed} />
+      {countLabel && autopilot && <AgentCount label={countLabel} autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
@@ -144,6 +157,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
                 onDragOver={() => undefined}
                 onDrop={() => undefined}
                 openWorktree={openWorktree}
+                compact={!detailed}
               />
             ))}
           </div>
@@ -198,6 +212,7 @@ export function BacklogView({ items, problems, integrations, autopilot, mergeQue
                       onDragOver={(e) => dragOver(e, lane.lane, item.id)}
                       onDrop={(e) => drop(e, lane.lane, item.id)}
                       openWorktree={openWorktree}
+                      compact={!detailed}
                     />
                   ))}
                   {!laneItems.length && <div class="row group-empty">{workingOnly ? 'No agent works on these' : filtered ? 'Nothing in review waits for you' : EMPTY_LANE[lane.lane]}</div>}

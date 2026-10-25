@@ -1,6 +1,7 @@
 import { glitchLine } from '../../features/backlog/ticketCheck';
 import type { TicketCheckView } from '../ticketProtocol';
 import { ActionButton } from './actions';
+import './checkResult.css';
 
 /**
  * A ticket's Check (BL-163). Clicked: each claim, ✓ with its evidence or ✗ with Clean Up (one, or all). Made on

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { DEMO_TAG as READ_TAG, gifSeconds, recordedDemo } from '../../../src/features/backlog/demo';
-import { DEMO_TAG, FRAME_MS, decodePng, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import { DEMO_TAG, FRAME_MS, commandMatches, decodePng, failureReason, nearestElements, parseJsonc, plainSettings, resultLine, staleBuild, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -416,5 +416,136 @@ describe('freeDisplay', () => {
     expect(freeDisplay((f) => files.has(f))).toBe(102);
     expect(freeDisplay((f) => files.has(f), 0)).toBe(1);
     expect(freeDisplay(() => false, 103)).toBe(103);
+  });
+});
+
+// BL-190: what the recorder fixes before it starts, and what it says when a step fails.
+describe('parseJsonc', () => {
+  it('reads settings with comments and trailing commas, as VS Code writes them', () => {
+    const text = '{\n  // the theme\n  "a": "http://x/*y*/", /* b */ "b": [1, 2,],\n}\n';
+    expect(parseJsonc(text)).toEqual({ a: 'http://x/*y*/', b: [1, 2] });
+    expect(parseJsonc('{"a": "say \\"hi\\" // not a comment"}')).toEqual({ a: 'say "hi" // not a comment' });
+    expect(parseJsonc('{"a": "x,}", "b": [1, /* c */ ], // d\n}')).toEqual({ a: 'x,}', b: [1] });
+  });
+
+  it('is undefined for what is not an object', () => {
+    expect(parseJsonc('{"a": ')).toBeUndefined();
+    expect(parseJsonc('[1]')).toBeUndefined();
+  });
+});
+
+describe('plainSettings', () => {
+  const settingsFile = (text?: string) => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'demo-settings-')), 'settings.json');
+    if (text !== undefined) fs.writeFileSync(file, text);
+    return file;
+  };
+
+  it('keeps plain JSON, and a missing file', () => {
+    const file = settingsFile('{"a": 1}');
+    expect(plainSettings(file)).toBe('kept');
+    expect(fs.readFileSync(file, 'utf8')).toBe('{"a": 1}');
+    expect(plainSettings(settingsFile())).toBe('kept');
+  });
+
+  it('rewrites one with comments as plain JSON', () => {
+    const file = settingsFile('{ // x\n "a": 1, }');
+    expect(plainSettings(file)).toBe('rewritten');
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ a: 1 });
+  });
+
+  it('moves a broken one aside, so the profile starts afresh', () => {
+    const file = settingsFile('{"a": ');
+    expect(plainSettings(file)).toBe('moved');
+    expect(fs.existsSync(file)).toBe(false);
+    expect(fs.readFileSync(`${file}.broken`, 'utf8')).toBe('{"a": ');
+  });
+});
+
+describe('staleBuild', () => {
+  const project = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-build-'));
+    fs.mkdirSync(path.join(root, 'src', 'ui'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'dist'));
+    fs.writeFileSync(path.join(root, 'src', 'ui', 'app.ts'), '');
+    return root;
+  };
+  const build = (root: string, at: Date) => {
+    for (const f of ['extension.js', 'webview.js', 'ticket.js']) {
+      fs.writeFileSync(path.join(root, 'dist', f), '');
+      fs.utimesSync(path.join(root, 'dist', f), at, at);
+    }
+  };
+
+  it('says what is missing, or what changed since the build', () => {
+    const root = project();
+    expect(staleBuild(root)).toBe(`${path.join('dist', 'extension.js')} is missing`);
+    build(root, new Date(Date.now() - 60_000));
+    expect(staleBuild(root)).toMatch(/^src\/ui.* changed since the last build$/);
+  });
+
+  it('is undefined when the build is newer than the sources', () => {
+    const root = project();
+    build(root, new Date(Date.now() + 60_000));
+    expect(staleBuild(root)).toBeUndefined();
+  });
+});
+
+describe('failureReason', () => {
+  it("says the window closed for Playwright's errors about a window gone", () => {
+    expect(failureReason(new TypeError("Cannot read properties of undefined (reading '_object')\n    at toImpl"))).toBe(
+      "the VS Code window closed or crashed (Cannot read properties of undefined (reading '_object'))",
+    );
+    expect(failureReason(new Error('locator.waitFor: Target crashed '))).toMatch(/^the VS Code window closed or crashed/);
+  });
+
+  it("keeps others' first line", () => {
+    expect(failureReason(new Error('nothing visible matches .x after 15000 ms\nCall log: …'))).toBe('nothing visible matches .x after 15000 ms');
+  });
+});
+
+describe('nearestElements', () => {
+  const elements = [
+    { tag: 'div', classes: 'menubar-menu-button', label: 'File' },
+    { tag: 'button', label: 'Backlog', text: '7' },
+    { tag: 'div', classes: 'row backlog-item', text: 'BL-1 Show a run button' },
+    { tag: 'button', label: 'Plan the Backlog with Claude' },
+  ];
+
+  it('lists those most like what the selector looks for, a plural or typo included', () => {
+    expect(nearestElements('[aria-label="Backlogs"]', elements)).toEqual([
+      'button aria-label="Backlog" "7"',
+      'div.row.backlog-item "BL-1 Show a run button"',
+      'button aria-label="Plan the Backlog with Claude"',
+    ]);
+    expect(nearestElements('.backlog-item:has-text("Show a run")', elements)[0]).toBe('div.row.backlog-item "BL-1 Show a run button"');
+  });
+
+  it('lists the first ones when none is like it', () => {
+    expect(nearestElements('.zzz', elements, 2)).toEqual(['div.menubar-menu-button aria-label="File"', 'button aria-label="Backlog" "7"']);
+  });
+});
+
+describe('commandMatches', () => {
+  it('is the command typed, not one of the "similar commands" offered for no match', () => {
+    expect(commandMatches('Focus on Flotilla View', 'Flotilla: Focus on Flotilla View, Ctrl+K')).toBe(true);
+    expect(commandMatches('Zzqx no such command', 'View: Toggle Tree Sticky Scroll, similar commands')).toBe(false);
+    expect(commandMatches('Focus on Flotilla View', undefined)).toBe(false);
+  });
+});
+
+describe('resultLine', () => {
+  it('says in one line what was saved, checked, or where it failed', () => {
+    expect(resultLine({ saved: '/b/BL-1/demo.gif', bytes: 1.5 * 1024 * 1024, ms: 12_340 })).toBe('Demo saved: /b/BL-1/demo.gif (1.5 MB, 12.3 s)');
+    expect(resultLine({ checked: 7, ms: 8000 })).toBe('Demo checked: all 7 steps passed (8.0 s). Record it once now.');
+    expect(resultLine({ step: 'step 2 (click ".x")', reason: 'nothing visible matches .x', screenshot: 'demos/a.failed.png' })).toBe(
+      'Demo failed: step 2 (click ".x"): nothing visible matches .x (screenshot: demos/a.failed.png)',
+    );
+  });
+
+  it('fills in the reason, never a template left as text', () => {
+    const line = resultLine({ reason: failureReason(new Error('the build failed')) });
+    expect(line).toBe('Demo failed: the build failed');
+    expect(line).not.toContain('${');
   });
 });

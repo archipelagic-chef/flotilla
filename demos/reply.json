@@ -4,7 +4,7 @@
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
-    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
     { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
     { "caption": "Every comment and report has a Reply button" },
     { "click": ".feed .reply-entry" },

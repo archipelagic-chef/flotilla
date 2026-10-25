@@ -1,0 +1,125 @@
+/* Create Worktree ▾: the main action and a menu of the other way, as Commit ▾ in Version Control. */
+.split-button {
+  position: relative;
+  display: inline-flex;
+  gap: 1px;
+}
+.split-button > .button:first-child {
+  border-radius: 2px 0 0 2px;
+}
+.split-button > .button.more {
+  padding: 2px 4px;
+  border-radius: 0 2px 2px 0;
+  box-shadow: inset 1px 0 0 var(--vscode-button-separator, rgba(255, 255, 255, 0.4));
+}
+.split-button > .priority-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+}
+.work {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--vscode-sideBar-background, transparent);
+}
+.work-head + * {
+  border-top: 1px solid var(--border);
+}
+* + .work-head {
+  border-top: 1px solid var(--border);
+}
+.work-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.work-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+.work-row + .work-row {
+  border-top: 1px solid var(--border);
+}
+button.work-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.work-row.dim .work-main {
+  color: var(--muted);
+}
+.work-main {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.work-row.commit .work-main {
+  flex: 1;
+  font-weight: normal;
+}
+.work-message {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.work-facts {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.work-facts .codicon {
+  font-size: 12px;
+  vertical-align: -1px;
+}
+.work-action {
+  margin-left: auto;
+  font-size: 12px;
+}
+.work-when {
+  flex: none;
+  white-space: nowrap;
+}
+.work-more {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+.parts-progress {
+  margin-left: 6px;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* The Commits head's action (Clean Up History…), on its right; in the case its head keeps. */
+.work-head .work-head-action {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+/* A kept history's commits, under it. */
+.work-row.nested {
+  padding-left: 32px;
+}

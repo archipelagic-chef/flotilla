@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { mergePaused, parsePausedAll, pausedMessage, PausedAllStore, resumedMessage, resumeOrder } from '../../../src/features/backlog/pausedAll';
+import { checksDetail, checksQuestion, mergePaused, parsePausedAll, pausedMessage, PausedAllStore, resumedMessage, resumeOrder } from '../../../src/features/backlog/pausedAll';
 
 describe("Pause All's record (BL-160)", () => {
   it('is kept in .git/flotilla/, read by another store (a restart, another window), and cleared', async () => {
@@ -34,5 +34,17 @@ describe("Pause All's record (BL-160)", () => {
     expect(pausedMessage(1, 2)).toBe("Paused 1 agent. 2 agents in chats can't be paused: stop them there. Nothing new starts until Resume All.");
     expect(resumedMessage(4, 1)).toBe('Resumed 4; 1 waits for a slot.');
     expect(resumedMessage(3, 0)).toBe('Resumed 3.');
+  });
+});
+
+describe("Pause All's question while merges' checks run (BL-164)", () => {
+  it('names the tickets, and says what each answer does', () => {
+    expect(checksQuestion(['BL-122'])).toBe("BL-122's merge checks are running.");
+    expect(checksQuestion(['BL-1', 'BL-2', 'BL-3'])).toBe("BL-1's, BL-2's and BL-3's merge checks are running.");
+    expect(checksDetail(['BL-122'])).toMatch(/Stop Them: the checks stop; it can merge again after/);
+  });
+
+  it("keeps a merge agent in the saved set", () => {
+    expect(parsePausedAll('{"at":"x","agents":[{"id":"BL-1","kind":"merge","session":"s"}]}').agents).toEqual([{ id: 'BL-1', kind: 'merge', session: 's' }]);
   });
 });

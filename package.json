@@ -433,6 +433,16 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "flotilla.reviewImprovementsNow",
+        "title": "Review Now: An Agent Reads the Metrics and Proposes Tickets",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openImprovementReview",
+        "title": "Open the Latest Improvement Review",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.pauseAllAgents",
         "title": "Pause All Agents",
         "category": "Flotilla",
@@ -508,6 +518,12 @@
         "command": "flotilla.openBacklogItem",
         "title": "Open Backlog Ticket",
         "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openMetrics",
+        "title": "Open Metrics",
+        "category": "Flotilla",
+        "icon": "$(graph)"
       },
       {
         "command": "flotilla.fixBacklogReview",
@@ -1739,6 +1755,19 @@
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
         },
+        "flotilla.merge.style": {
+          "type": "string",
+          "enum": [
+            "fast-forward",
+            "merge-commit"
+          ],
+          "enumDescriptions": [
+            "Main fast-forwards to the ticket's branch: Merge to main rebases it onto main (squashing its fixup! commits) when it isn't on top of it, runs the checks on that tip and moves main there. The history stays linear, with no merge commits.",
+            "A merge commit (`git merge --no-ff`) for each ticket, as before."
+          ],
+          "default": "fast-forward",
+          "markdownDescription": "How a ticket lands on main (Merge to main, and the merge train)."
+        },
         "flotilla.merge.checkCommand": {
           "type": "string",
           "default": "",
@@ -1748,11 +1777,11 @@
           "type": "string",
           "enum": ["ci", "local"],
           "enumDescriptions": [
-            "When GitHub Actions runs on the branch's pushed tip, Merge to main decides on CI's result (it waits while CI runs, and never merges past red CI); the checks run locally only when there's no CI.",
+            "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
             "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
           ],
           "default": "ci",
-          "markdownDescription": "What Merge to main decides on: CI's result for the branch's pushed tip, or the local checks."
+          "markdownDescription": "What Merge to main decides on: CI's result for what lands (the branch's pushed tip, or the ticket's commit in the merge train), or the local checks."
         },
         "flotilla.checks.maxParallel": {
           "type": "number",
@@ -1807,6 +1836,24 @@
           "default": "",
           "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
         },
+        "flotilla.agents.stuck.silentMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when its transcript hasn't changed for this many minutes while its process runs (not counting a command or a subagent it waits for). Its card then offers Open Transcript, Check and Stop. 0: no such warning."
+        },
+        "flotilla.agents.stuck.repeatedFailures": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when the same command failed this many times in a row, with no edit in between. 0: no such warning."
+        },
+        "flotilla.agents.stuck.commandMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "markdownDescription": "A working agent looks stuck when one command has run longer than this many minutes. 0: no such warning."
+        },
         "flotilla.agents.autoCompactWindow": {
           "type": "number",
           "default": 200000,
@@ -1860,6 +1907,12 @@
           "maximum": 10,
           "markdownDescription": "How many agents Flotilla runs at once, in all: the autopilot's tickets, reviews, revisions after a review, and agents going on after a usage limit. Starts Flotilla makes on its own wait in a queue when it's reached: your replies (answers, requested changes) first, then reviews and revisions, then resumes, then new tickets. Starts you make with a ticket's Start or Start Review run at once, and count toward it. Prioritize starts a queued one now, above the limit (see `#flotilla.agents.maxPrioritized#`)."
         },
+        "flotilla.metrics.reviewEvery": {
+          "type": "number",
+          "default": 7,
+          "minimum": 0,
+          "markdownDescription": "How many days apart the improvement review runs (0: never; **Review Now** still runs one). An agent reads the metrics of that many days (next to the days before them) and the code, writes the three to five biggest problems in how the work flows to `.flotilla/backlog/reviews/YYYY-MM-DD.md`, and proposes a ticket for each one worth fixing, with an `Improves:` line the next review checks. It runs in the leading window only when no agent works or waits, no usage limit or Pause All is on and the autopilot has nothing to start, on `#flotilla.agents.model#`, and counts against `#flotilla.agents.maxRunning#`."
+        },
         "flotilla.agents.maxPrioritized": {
           "type": "number",
           "default": 2,
@@ -1889,6 +1942,13 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
+        },
+        "flotilla.backlog.cards": {
+          "type": "string",
+          "enum": ["compact", "detailed"],
+          "enumDescriptions": ["Each card shows its title, one status line and its next step; the rest on hover, in its menu and in its ticket.", "Each card shows every detail: the id, priority, agents, chips and badges."],
+          "default": "compact",
+          "markdownDescription": "How much the backlog's cards show. The Compact / Detailed switch in the backlog's title sets it."
         },
         "flotilla.autopilot.maxAgents": {
           "type": "number",
@@ -2037,6 +2097,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "format": "prettier --write .",
     "test": "node scripts/test.mjs",
+    "test:related": "node scripts/test.mjs --related",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
     "package": "node scripts/package.mjs",
     "playground": "node scripts/playground.mjs",

@@ -7,8 +7,10 @@ import type { ReportView, TicketView, TicketWebviewMessage } from '../ticketProt
 import { Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
 import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from './actions';
 import { REPLY_TO, sendComment, useSending } from './comments';
+import { AskButton, AskLine } from './askAgent';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
 import { ago, ChatCard, chatState } from './agents';
+import './activity.css';
 
 type ActivityEntry = TicketView['activity'][number];
 
@@ -198,11 +200,32 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
       </li>
     );
   }
-  const e = f;
+  return <EntryView e={f} ticket={ticket} onFold={onFold} nest={nest} />;
+}
+
+/** An entry of the feed: a comment, an agent's report, a note; with its replies under it. */
+function EntryView({ e, ticket, onFold, nest }: { e: ActivityEntry; ticket: TicketView; onFold?: () => void; nest?: boolean }) {
   const kind = kindOf(e.author);
   const agentChat = kind === 'agent' && e.chat && !('pending' in e.chat) ? e.chat : undefined;
   // Its replies show under it, one level deep (BL-126): a top-level entry's, in the conversation.
   const replies = nest ? repliesTo(e, ticket) : [];
+  // Editing one of your comments in place (BL-128): its text, while the box is open.
+  const [editing, setEditing] = useState<string | undefined>(undefined);
+  const saving = useWorking({ type: 'editComment', anchor: e.anchor ?? '', text: '' });
+  const own = !!e.own && !ticket.remote && !!e.anchor && !e.deleted;
+  useEffect(() => {
+    // It wasn't saved: the edit opens again with what was written, so nothing is lost.
+    const listener = (m: TicketWebviewMessage, failed: boolean) => {
+      if (m.type === 'editComment' && failed && m.anchor === e.anchor) setEditing((draft) => draft ?? m.text);
+    };
+    doneListeners.add(listener);
+    return () => void doneListeners.delete(listener);
+  }, [e.anchor]);
+  const save = () => {
+    if (!editing?.trim()) return;
+    act({ type: 'editComment', anchor: e.anchor!, text: editing }, 'Saving…');
+    setEditing(undefined);
+  };
   return (
     <li class={`entry kind-${kind}${e.reply ? ' reply' : ''}`} data-entry-key={e.key}>
       {e.reply && <ReplyLine e={e} ticket={ticket} />}
@@ -212,6 +235,12 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
         <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
         {kind === 'agent' && <span class="bot-tag">agent</span>}
         {e.date && <span class="muted">{e.date}</span>}
+        {e.edited && !e.deleted && (
+          <span class="muted edited" title={`Edited ${e.edited}`}>
+            edited
+          </span>
+        )}
+        {saving && <WorkingTag label={saving} />}
         {agentChat && (
           <button
             class="chat-chip"
@@ -233,7 +262,26 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
           </ActionButton>
         )}
-        {!ticket.remote && e.anchor && kind !== 'history' && (
+        {own && editing === undefined && (
+          <>
+            <button
+              class="text-button edit-entry"
+              onClick={() => setEditing(e.body)}
+              title={e.posted ? `Edit your comment here: the one posted to ${e.posted} stays as it was (only the local copy changes)` : 'Edit your comment'}
+            >
+              <i class="codicon codicon-edit" /> Edit
+            </button>
+            <ActionButton
+              class="text-button delete-entry"
+              message={{ type: 'deleteComment', anchor: e.anchor! }}
+              working="Deleting…"
+              title={e.posted ? `Delete your comment here (asks first): the one posted to ${e.posted} stays (only the local copy is deleted)` : 'Delete your comment (asks first)'}
+            >
+              <i class="codicon codicon-trash" /> Delete
+            </ActionButton>
+          </>
+        )}
+        {!ticket.remote && e.anchor && kind !== 'history' && !e.deleted && (
           <button
             class="text-button reply-entry"
             onClick={() => window.dispatchEvent(new CustomEvent<ActivityEntry>(REPLY_TO, { detail: e }))}
@@ -242,13 +290,41 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
             <i class="codicon codicon-reply" /> Reply
           </button>
         )}
+        <AskButton e={e} ticket={ticket} />
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
             <i class="codicon codicon-chevron-up" /> Fold
           </button>
         )}
       </div>
-      {e.report ? (
+      {e.deleted ? (
+        <div class="deleted-entry muted" title={`Deleted ${e.deleted}`}>
+          Comment deleted
+        </div>
+      ) : editing !== undefined ? (
+        <div class="edit-box">
+          {e.posted && <div class="muted">Only the local copy changes: the comment posted to {e.posted} stays as it was.</div>}
+          <MarkdownBox
+            value={editing}
+            setValue={setEditing}
+            placeholder="Your comment (Markdown; Ctrl+Enter saves, Escape cancels)"
+            label="Edit the comment"
+            onSubmit={save}
+            onCancel={() => setEditing(undefined)}
+            autoFocus
+            format="markdown"
+            mention={mentionPrefix(ticket.item.id)}
+          />
+          <div class="actions-row">
+            <button class="button secondary" onClick={() => setEditing(undefined)}>
+              Cancel
+            </button>
+            <button class="button" disabled={!editing.trim() || editing.trim() === e.body.trim()} onClick={save}>
+              Save
+            </button>
+          </div>
+        </div>
+      ) : e.report ? (
         <>
           <Rendered html={e.report.summary} empty="" />
           {/* Its pictures, videos and diagrams lead it (BL-114): the text they belong to stays in Details. */}
@@ -268,6 +344,11 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
       ) : (
         <Rendered html={e.html} empty="" />
       )}
+      {!!e.readBefore?.length && !e.deleted && (
+        <div class="read-before muted">
+          <i class="codicon codicon-history" /> {e.readBefore.join(' and ')} answered the earlier version.
+        </div>
+      )}
       {kind === 'history' && e.chat && <ChatCard chat={e.chat} />}
       {replies.length > 0 && (
         <ol class="replies">
@@ -276,6 +357,8 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
           ))}
         </ol>
       )}
+      {/* Where its reply will show: what the agent asked to answer it is at (BL-127). */}
+      <AskLine e={e} ticket={ticket} />
     </li>
   );
 }
@@ -283,7 +366,7 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
 /** The replies grouped under a top-level entry (BL-126): in the conversation, by anyone but Flotilla. */
 function repliesTo(e: ActivityEntry, ticket: TicketView): ActivityEntry[] {
   const i = ticket.activity.indexOf(e);
-  return ticket.activity.filter((r) => r.root === i && kindOf(r.author) !== 'history');
+  return ticket.activity.filter((r) => r.root === i && !r.hidden && kindOf(r.author) !== 'history');
 }
 
 /** Whether an entry shows under its top-level entry, not on its own: a reply to an entry of the conversation. */
@@ -495,9 +578,9 @@ export function Activity({ ticket }: { ticket: TicketView }) {
   const unconfirmed = sending.filter((p) => !ticket.activity.slice(p.at).some((e) => e.author === 'You' && e.body.trim() === p.text.trim()));
   const changesBusy = useWorking({ type: 'userReview', verdict: 'changes', text: '' });
   const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
-  const post = () => {
+  const post = (ask = false) => {
     if (!comment.trim()) return;
-    sendComment(comment, replying?.anchor);
+    sendComment(comment, replying?.anchor, ask);
     setComment('');
     setReplyTo(undefined);
     if (tab && tab !== 'comment') setTab(undefined);
@@ -518,7 +601,7 @@ export function Activity({ ticket }: { ticket: TicketView }) {
     document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus();
   };
   // In All, a reply shows under its top-level entry (BL-126); a tab shows each entry of its kind on its own.
-  const inConversation = (e: ActivityEntry) => kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
+  const inConversation = (e: ActivityEntry) => !e.hidden && kindOf(e.author) !== 'history' && (tab ? kindOf(e.author) === tab : !nested(e, ticket));
   // In All, a review's rounds fold into one line (rounds.ts). They're found with Flotilla's notes ("Review round 2: …"),
   // which then stay in the timeline: a fold shows the reviews and revisions.
   const groups: Array<FeedGroup<FeedRow>> = tab
@@ -537,7 +620,7 @@ export function Activity({ ticket }: { ticket: TicketView }) {
       </div>
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
-          const count = ticket.activity.filter((e) => kindOf(e.author) !== 'history' && (!t.kind || kindOf(e.author) === t.kind)).length;
+          const count = ticket.activity.filter((e) => !e.hidden && kindOf(e.author) !== 'history' && (!t.kind || kindOf(e.author) === t.kind)).length;
           return (
             <button key={t.label} role="tab" aria-selected={tab === t.kind} onClick={() => setTab(t.kind)}>
               {t.label}
@@ -555,14 +638,16 @@ export function Activity({ ticket }: { ticket: TicketView }) {
           const replies = tab ? 0 : repliesTo(e, ticket).length;
           // The latest agent's entry is open, and so is the entry it replies to.
           const holdsLatest = !!latest && latest.root === i && nested(latest, ticket);
-          if (e !== latest && !holdsLatest && !opened.has(i)) {
+          // A comment an agent is answering stays open: its line shows what the agent is at (BL-127).
+          const answering = !!e.anchor && ['thinking', 'waiting'].includes(ticket.asked?.[e.anchor]?.state ?? '');
+          if (e !== latest && !holdsLatest && !answering && !opened.has(i)) {
             return (
               <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
                   <i class="codicon codicon-chevron-right" />
                   <strong>{entryAgent(e.author) ?? (e.author || 'Note')}</strong>
                   {e.date && <span class="muted">{e.date}</span>}
-                  <span class="fold-first">{summaryOf(e.body) ?? ''}</span>
+                  <span class="fold-first">{e.deleted ? 'Comment deleted' : (summaryOf(e.body) ?? '')}</span>
                   {replies > 0 && (
                     <span class="reply-count">
                       {replies} repl{replies === 1 ? 'y' : 'ies'}
@@ -616,7 +701,8 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 : 'Add a comment (Markdown; paste or drop images and videos; Ctrl+Enter posts)'
           }
           label="Comment"
-          onSubmit={post}
+          onSubmit={() => post()}
+          onSubmitShift={ticket.canAsk && !asking ? () => post(true) : undefined}
           images={!ticket.remote}
           format="markdown"
           mention={mentionPrefix(ticket.item.id)}
@@ -666,7 +752,12 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 )}
               </>
             ))}
-          <button class="button" disabled={!comment.trim()} onClick={post}>
+          {ticket.canAsk && !asking && (
+            <button class="button secondary" disabled={!comment.trim()} onClick={() => post(true)} title="Posts your comment, and an agent answers it now, as a reply (Ctrl+Shift+Enter)">
+              <i class="codicon codicon-sparkle" /> Comment and Ask an Agent
+            </button>
+          )}
+          <button class="button" disabled={!comment.trim()} onClick={() => post()}>
             {asking ? 'Answer' : 'Comment'}
           </button>
         </div>

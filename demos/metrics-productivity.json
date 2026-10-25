@@ -1,0 +1,22 @@
+{
+  "title": "Productivity: criteria delivered per $ and per token, and where the spend went",
+  "steps": [
+    {"command": "Focus on Flotilla View"},
+    {"caption": "The Metrics view opens with Productivity: criteria of tickets done, per $ and per million tokens"},
+    {"click": "[aria-label=\"Metrics\"]"},
+    {"waitFor": ".metrics-number:has-text(\"Criteria done per $\")"},
+    {"wait": 2000},
+    {"waitFor": ".metrics-chart:has-text(\"Where the spend went\")"},
+    {"wait": 2500},
+    {"caption": "Where the spend went: first pass, review, rework, main, resumes, your own chats"},
+    {"click": ".metrics-row:has-text(\"First pass\")"},
+    {"wait": 3000},
+    {"caption": "Each ticket done: its cost, its criteria, $ per criterion and its time per lane"},
+    {"click": ".metrics-chart:has-text(\"Tickets done, costliest first\") .metrics-row"},
+    {"wait": 3000},
+    {"caption": "And a lever: what the agents' tools read, by kind"},
+    {"hover": ".metrics-row:has-text(\"Reading code\")"},
+    {"wait": 3000},
+    {"caption": ""}
+  ]
+}

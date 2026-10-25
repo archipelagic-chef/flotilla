@@ -26,6 +26,7 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'agent-started': { role: 'work', model: 'opus', session: 's1' },
   'agent-resumed': { role: 'review', session: 's1' },
   'agent-paused': { role: 'work', session: 's1', reason: 'limit', until: '2026-10-21T23:00:00.000Z' },
+  'agent-spend': { session: 's1', purpose: 'review', to: '2026-10-21T22:10:00.000Z', tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }, costUsd: 0.5, contextK: [60, 62], tools: { code: 1200 } },
   'agent-ended': { role: 'merge', session: 's1', code: 0, ok: true, minutes: 3.5, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 }, costUsd: 0.12 },
   'review-verdict': { verdict: 'changes', round: 2, by: 'Ember-6' },
   'merge-started': { into: 'main', branch: 'feature/x' },
@@ -35,13 +36,17 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'merge-approved': { by: 'You' },
   'merge-landed': { into: 'main', commit: 'abc1234' },
   'merge-cancelled': { reason: 'by you' },
+  'merge-ci-stopped': { reason: 'failed', branch: 'feature/BL-1-x', jobs: ['test'] },
   'branch-conflicts': { branch: 'feature/x', files: ['a.ts'] },
   'limit-hit': { limit: 'usage', until: '2026-10-21T23:00:00.000Z', known: true },
   'limit-lifted': { minutes: 60, tries: 2 },
   'autopilot-idle': { reason: 'nothing left in To Do' },
   'click-waited': { button: 'merge', ms: 2400 },
+  'review-state': { from: 'working', to: 'asking' },
   'test-run': { ms: 90_000, waitMs: 30_000, full: true, ok: true, slots: 1 },
   'demo-recorded': { name: 'open-agent-chat', frames: 120, ms: 8000, medianGapMs: 40, p90GapMs: 80 },
+  'demo-checked': { name: 'open-agent-chat', steps: 7, ms: 6000 },
+  'demo-failed': { name: 'open-agent-chat', mode: 'record', step: 2, reason: 'nothing visible matches .x after 15000 ms' },
 };
 
 afterEach(() => setEventLog(undefined));

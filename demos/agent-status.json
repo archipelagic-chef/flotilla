@@ -1,0 +1,31 @@
+{
+  "title": "See what a working agent is doing, how far it is, and whether it's stuck",
+  "settings": { "flotilla.backlog.cards": "detailed" },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 3000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "A working agent's card says what it's doing, with its plan's progress" },
+    { "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\") .agent-status", "timeout": 30000 },
+    { "hover": ".backlog-item:has-text(\"Keep chats when a window reloads\") .agent-status" },
+    { "wait": 3000 },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "caption": "Its ticket shows it in full: now, its latest thought, its progress and health" },
+    { "waitFor": ".agent-live .agent-plan", "timeout": 20000 },
+    { "wait": 2000 },
+    { "click": ".active-agent:has-text(\"Vega-2\") .agent-plan summary" },
+    { "wait": 2000 },
+    { "caption": "As it goes on, the status follows it: an edit, then its tests, with a clock" },
+    { "agentTurn": "Vega-2" },
+    { "waitFor": ".active-agent:has-text(\"Vega-2\") .agent-now:has-text(\"src/chats.js\")", "timeout": 20000 },
+    { "wait": 1500 },
+    { "agentTurn": "Vega-2" },
+    { "waitFor": ".active-agent:has-text(\"Vega-2\") .agent-now:has-text(\"npm test\")", "timeout": 20000 },
+    { "wait": 3500 },
+    { "caption": "A click on it opens its live transcript" },
+    { "click": ".active-agent:has-text(\"Vega-2\") .agent-now" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

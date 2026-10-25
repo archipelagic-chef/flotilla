@@ -13,6 +13,9 @@ export type MergeMessage =
   | { type: 'mergeApprove' }
   | { type: 'mergeRecheck' }
   | { type: 'mergeCancel' }
+  /** Pause its merge's agent, its chat kept; Resume goes on with it there (BL-164). */
+  | { type: 'mergePause' }
+  | { type: 'mergeResume' }
   /** Stop waiting for CI to pass (BL-105): nothing is merged. */
   | { type: 'mergeCiCancel' }
   /** A merge's checks (BL-169): Stop them; the whole log of a run (Show All); the log, followed, in a terminal. */

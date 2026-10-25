@@ -32,4 +32,12 @@ describe('cardAgents', () => {
     expect(cardAgents({ id: 'BL-1' }, [])).toEqual([]);
     expect(cardAgents({ id: 'BL-1' }, [chat('Nova-7', 'done'), chat('Byte-2', 'ended'), chat('Dex-8', 'working', 'BL-2'), { state: 'working' }])).toEqual([]);
   });
+
+  it("carries a working agent's status (BL-175), not a waiting one's", () => {
+    const activity = { tool: { id: 't', name: 'Bash', detail: 'npm test', since: '2026-10-24T10:00:00Z' } };
+    expect(cardAgents({ id: 'BL-1' }, [{ ...chat('Nova-7', 'working'), activity, stuck: 'No activity for 12 min' }])).toEqual([
+      { name: 'Nova-7', state: 'working', activity, stuck: 'No activity for 12 min' },
+    ]);
+    expect(cardAgents({ id: 'BL-1' }, [{ ...chat('Nova-7', 'waiting-for-input'), activity }])).toEqual([{ name: 'Nova-7', state: 'waiting' }]);
+  });
 });

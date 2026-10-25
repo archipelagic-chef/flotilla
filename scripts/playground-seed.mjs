@@ -59,8 +59,13 @@ const TICKETS = [
     daysAgo: 6,
     branch: 'feature/BL-1-show-a-run-button-on-review-cards',
     description: [
-      'A review card shows a Run button when its ticket has a run block, so the board can try the work.',
+      "**When it's done:** A review card shows a Run button when its ticket has a run block, so you try the work from the",
+      'board, without opening the ticket.',
       '',
+      "**Why:** to try a ticket's work today, you open the ticket, find its last report and copy its commands into a",
+      'terminal. The card knows the ticket, but not its run block.',
+      '',
+      'Acceptance criteria:',
       "- [ ] The card's Run button runs the ticket's run block: the last one its reports have.",
       '- [ ] Each kind of run block (shell, launch, task, open a URL, open a file) does what it says.',
     ].join('\n'),
@@ -222,6 +227,8 @@ const TICKETS = [
     title: 'Start a ticket from the keyboard',
     status: 'todo',
     daysAgo: 3,
+    // A linked issue, with no integration connected: its chip shows, and Unlink works offline (BL-118's demo).
+    links: [{ id: 'GH-7', source: 'github', url: 'https://github.com/example/playground/issues/7', title: 'Start tickets without the mouse' }],
     description: [
       'A keyboard shortcut starts the selected ticket in its own worktree, as the Start button does.',
       '',
@@ -488,7 +495,8 @@ const TICKETS = [
     branch: 'feature/BL-13-say-hi-in-the-greeting',
     // Pushed to the playground's origin (a local bare repository with a GitHub-like path): its ticket shows its CI from the fake GitHub (BL-106).
     published: true,
-    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
+    // Its merge's agent (Fix with Agent) works long enough to be paused by Pause All (demos/pause-all-merge.json).
+    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.\n\nfake: wait 30s',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
     activity: [
       {
@@ -684,6 +692,7 @@ export function seedPlayground(dir, now = new Date()) {
   const main = git(dir, 'rev-parse', 'HEAD');
   for (const t of TICKETS.filter((t) => t.branch && t.from !== 'first')) branchWorktree(dir, t, main);
   writeBacklog(backlog, now);
+  seedEvents(dir, now);
   return true;
 }
 
@@ -724,6 +733,7 @@ function writeBacklog(backlog, now) {
     if (t.priority) item.priority = t.priority;
     if (t.proposed) item.proposed = t.proposed;
     if (t.parent) item.parent = t.parent;
+    if (t.links) item.links = t.links;
     if (t.branch) item.branches = [t.branch];
     if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
     item.descriptionHash = descriptionHash(t.description);
@@ -749,9 +759,20 @@ const STALE_CHAT = '9c5a7d43-6e8f-4ba2-9d3c-4f5e6a7b8c92';
 const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
 const MODEL = 'claude-opus-5-5';
 
+/** Vega-2's todo list (TodoWrite), with its first `done` steps done and the next in progress. */
+const PLAN = [
+  ['Read the ticket and find where chats are saved', 'Reading the ticket'],
+  ['Add chatOf, to find a worktree\'s chat again', 'Adding chatOf'],
+  ['Read the store when the window starts', 'Reading the store on start'],
+  ['Run the chat tests', 'Running the chat tests'],
+  ['Report in the ticket', 'Reporting in the ticket'],
+];
+const plan = (done) =>
+  PLAN.map(([content, activeForm], i) => ({ content, activeForm, status: i < done ? 'completed' : i === done ? 'in_progress' : 'pending' }));
+
 /**
  * The turns of a chat, as Claude Code writes its transcript: `say` is the user's prompt, `reply` Claude's text, `tools`
- * the calls it makes (each with its result).
+ * the calls it makes (each with its result; one without runs on, and ends the turn).
  */
 const AGENT_TURNS = [
   {
@@ -759,6 +780,7 @@ const AGENT_TURNS = [
     tools: [
       { name: 'Read', input: { file_path: '.flotilla/backlog/BL-3.md' }, result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again." },
       { name: 'Grep', input: { pattern: 'saveChat', description: 'Find where chats are saved' }, result: 'src/chats.js:1:export function saveChat(store, worktree, id) {' },
+      { name: 'TodoWrite', input: { todos: plan(1) }, result: 'Todos have been modified successfully.' },
     ],
     reply: "The chat's id is saved with its worktree in `src/chats.js`, but nothing reads it back after a reload.",
   },
@@ -768,6 +790,13 @@ const AGENT_NEXT = [
   {
     tools: [{ name: 'Edit', input: { file_path: 'src/chats.js', description: 'Add chatOf' }, result: 'The file src/chats.js has been updated.' }],
     reply: 'Added chatOf, which finds the chat of a worktree again. Next: read the store on start.',
+  },
+  {
+    // Its tests run on: the call has no result yet (BL-175's status shows it running).
+    tools: [
+      { name: 'TodoWrite', input: { todos: plan(3) }, result: 'Todos have been modified successfully.' },
+      { name: 'Bash', input: { command: 'npm test -- chats', description: 'Run the chat tests' } },
+    ],
   },
 ];
 const STALE_TURNS = [
@@ -796,9 +825,11 @@ function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
   for (const [i, tool] of (turn.tools ?? []).entries()) {
     const call = { type: 'tool_use', id: `toolu_${id('t', i).replace(/-/g, '')}`, name: tool.name, input: tool.input };
     lines.push({ type: 'assistant', ...base(), uuid: id('a', i), message: { id: id('m', i), role: 'assistant', model: MODEL, content: [call], usage } });
+    // A call without a result still runs.
+    if (tool.result === undefined) break;
     lines.push({ type: 'user', ...base(), uuid: id('r', i), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] } });
   }
-  lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
+  if (turn.reply) lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
   return lines.map((l) => `${JSON.stringify(l)}\n`).join('');
 }
 
@@ -860,7 +891,8 @@ export function appendAgentTurn(dir, claudeHome, now = new Date()) {
   const cwd = path.join(dir, BL3_WORKTREE);
   const file = transcriptFile(claudeHome, cwd, AGENT_CHAT);
   if (!fs.existsSync(file)) return false;
-  const done = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.includes('-a-end"')).length;
+  // The turns written so far, by the turn number in their lines' uuids (a turn may end without a reply).
+  const done = new Set([...fs.readFileSync(file, 'utf8').matchAll(/"uuid":"[0-9a-f]{8}-(\d+)-/g)].map((m) => m[1])).size;
   const next = AGENT_NEXT[done - AGENT_TURNS.length];
   if (!next) return false;
   fs.appendFileSync(file, turnLines(next, { sessionId: AGENT_CHAT, cwd, entrypoint: 'sdk-cli', n: done }, now));
@@ -870,4 +902,135 @@ export function appendAgentTurn(dir, claudeHome, now = new Date()) {
     fs.writeFileSync(recordFile, `${JSON.stringify({ ...record, state: 'working', updatedAt: now.toISOString() }, null, 1)}\n`);
   }
   return true;
+}
+
+/** Marks the events seedEvents writes, so the next seeding replaces them and leaves the playground's own. */
+const SEEDED = '"seeded":true';
+
+/**
+ * Seeds a month of events (BL-158's Metrics view), up to now: tickets going from To Do to merged through work, review,
+ * waits for you and merges (some conflicted, some checks failing), agents' costs, idle spells, a usage limit and slow
+ * clicks. The same every time for the same now (a fixed random seed); written again on every call, in place of the
+ * last seeding's. Returns how many it wrote.
+ */
+export function seedEvents(dir, now = new Date()) {
+  const metrics = path.join(path.resolve(dir, git(dir, 'rev-parse', '--git-common-dir')), 'flotilla', 'metrics');
+  fs.mkdirSync(metrics, { recursive: true });
+  let state = 158;
+  const random = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const between = (a, b) => a + random() * (b - a);
+  const M = 60_000;
+  const end = now.getTime();
+  const events = [];
+  const add = (t, kind, data, ticket, agent) => {
+    if (t <= end) events.push({ at: new Date(t).toISOString(), kind, ...(ticket ? { ticket } : {}), ...(agent ? { agent } : {}), data, imported: true, seeded: true });
+  };
+  const agents = ['Vega-2', 'Nova-7', 'Orbit-2', 'Atlas-8', 'Onyx-4'];
+  const files = ['src/greet.js', 'src/server.js', 'README.md', 'src/last.js', 'package.json', 'test/greet.test.js'];
+  const tokens = (k) => ({ input: Math.round(k * 300), output: Math.round(k * 120), cacheRead: Math.round(k * 2400), cacheCreation: Math.round(k * 200) });
+  // A run's spend, split by purpose as the transcripts are (BL-189): its turns' context and its tools' output.
+  const spend = (t, minutes, purpose, usd, s, id, agent) => {
+    const turns = Math.max(1, Math.round(minutes / 5));
+    const contextK = Array.from({ length: turns }, (_, i) => Math.round(30 + (i / turns) * between(60, 200)));
+    const tools = { code: Math.round(minutes * between(2000, 5000)), git: Math.round(minutes * between(300, 1500)), tests: Math.round(minutes * between(100, 800)), other: Math.round(minutes * 200) };
+    add(t, 'agent-spend', { session: s, purpose, to: new Date(t + minutes * M).toISOString(), tokens: tokens(minutes), costUsd: Math.round(usd * 100) / 100, contextK, tools }, id, agent);
+  };
+  let n = 0;
+  let session = 0;
+  // A ticket's way, from its start at t: work, review (sent back now and then), your approval, its merge.
+  const ticket = (t) => {
+    const id = `BL-${(n++ % 15) + 1}`;
+    const worker = agents[n % agents.length];
+    const reviewer = agents[(n + 2) % agents.length];
+    add(t, 'ticket-moved', { from: 'todo', to: 'doing', by: 'Autopilot' }, id);
+    for (let round = 1; ; round++) {
+      const s = `seed-${session++}`;
+      const work = between(30, 140) * M;
+      add(t, round === 1 ? 'agent-started' : 'agent-resumed', { role: 'work', session: s, model: 'opus' }, id, worker);
+      spend(t, work / M, round === 1 ? 'first' : 'rework', (work / M) * 0.06, s, id, worker);
+      if (random() < 0.15) spend(t + work / 2, between(3, 15), 'resume', between(0.2, 0.9), s, id, worker);
+      t += work;
+      add(t, 'agent-ended', { role: 'work', session: s, code: 0, ok: true, minutes: Math.round(work / M), tokens: tokens(work / M), costUsd: Math.round(work / M) * 0.06 }, id, worker);
+      add(t, 'ticket-moved', { from: 'doing', to: 'review', by: 'Flotilla' }, id);
+      t += between(5, 60) * M;
+      const r = `seed-${session++}`;
+      const review = between(10, 35) * M;
+      add(t, 'agent-started', { role: 'review', session: r, model: 'opus' }, id, reviewer);
+      spend(t, review / M, 'review', (review / M) * 0.05, r, id, reviewer);
+      t += review;
+      add(t, 'agent-ended', { role: 'review', session: r, code: 0, ok: true, minutes: Math.round(review / M), tokens: tokens(review / M), costUsd: Math.round(review / M) * 0.05 }, id, reviewer);
+      const back = round < 3 && random() < 0.25;
+      add(t, 'review-verdict', { verdict: back ? 'changes' : 'approved', round, by: `Agent ${reviewer}` }, id, reviewer);
+      if (!back) break;
+      add(t, 'ticket-moved', { from: 'review', to: 'doing', by: 'Flotilla' }, id);
+    }
+    add(t, 'review-state', { from: 'reviewing', to: 'yours' }, id);
+    // Overnight, a ticket waits for you longer.
+    t += between(10, new Date(t).getHours() >= 20 ? 600 : 150) * M;
+    add(t, 'review-verdict', { verdict: 'approved', round: 1, by: 'You' }, id);
+    add(t, 'review-state', { from: 'yours', to: 'approved' }, id);
+    t += between(1, 20) * M;
+    add(t, 'merge-started', { into: 'main', branch: `feature/${id}` }, id);
+    if (random() < 0.3) {
+      const pure = random() < 0.5;
+      const conflicted = files.filter(() => random() < 0.35).slice(0, 3);
+      if (!conflicted.length) conflicted.push(files[Math.floor(random() * files.length)]);
+      add(t + M, 'merge-conflicted', { files: conflicted.map((file) => ({ file, regions: [{ lines: Math.ceil(between(1, 12)), additions: pure }] })) }, id);
+      const m = `seed-${session++}`;
+      const resolve = between(4, 20) * M;
+      add(t + M, 'agent-started', { role: 'merge', session: m }, id, worker);
+      spend(t + M, resolve / M, 'main', (resolve / M) * 0.04, m, id, worker);
+      add(t + M + resolve, 'agent-ended', { role: 'merge', session: m, code: 0, ok: true, minutes: Math.round(resolve / M), tokens: tokens(resolve / M), costUsd: Math.round(resolve / M) * 0.04 }, id, worker);
+      add(t + M + resolve, 'merge-resolved', { minutes: Math.round(resolve / M), by: `Agent ${worker}` }, id, worker);
+      t += M + resolve + between(2, 40) * M;
+      add(t, 'merge-approved', { by: 'You' }, id);
+    }
+    if (random() < 0.12) {
+      const timeout = random() < 0.5;
+      t += between(4, 9) * M;
+      add(t, 'merge-checks-failed', { failure: timeout ? 'timeout' : 'assertion', tests: timeout ? [] : ['test/greet.test.js > greets without a comma'] }, id);
+      add(t + 2 * M, 'merge-started', { into: 'main', branch: `feature/${id}` }, id);
+    }
+    t += between(3, 9) * M;
+    add(t, 'merge-landed', { into: 'main', commit: Math.floor(random() * 0xffffff).toString(16).padStart(7, '0') }, id);
+    add(t, 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla', criteria: Math.ceil(between(2, 8)) }, id);
+  };
+  // Two to four tickets start a day, the last ones still under way now.
+  for (let day = 30; day >= 0; day--) {
+    const midnight = new Date(end - day * 86_400_000);
+    midnight.setHours(0, 0, 0, 0);
+    const starts = Math.floor(between(2, 5));
+    // Your own chats with Claude: orchestration, not a ticket's.
+    const chat = between(10, 60);
+    spend(midnight.getTime() + between(8, 11) * 60 * M, chat, 'orchestration', chat * 0.07, `seed-own-${day}`);
+    for (let i = 0; i < starts; i++) ticket(midnight.getTime() + between(8, 18) * 60 * M);
+    // An idle evening: what waits is held back by what isn't merged yet.
+    add(midnight.getTime() + 21 * 60 * M, 'autopilot-idle', { reason: random() < 0.6 ? 'BL-5 waits for BL-2 (In Progress)' : 'nothing left in To Do' });
+    if (random() < 0.2) add(midnight.getTime() + 22 * 60 * M, 'autopilot-idle', { reason: '1 merge failed (BL-13): it needs you' });
+    if (random() < 0.5) add(midnight.getTime() + between(9, 19) * 60 * M, 'click-waited', { button: random() < 0.5 ? 'backlog:approve' : 'backlog:start', ms: Math.round(between(1000, 6000)) }, `BL-${Math.ceil(between(1, 15))}`);
+    if (day % 9 === 4) {
+      const hit = midnight.getTime() + 16 * 60 * M;
+      add(hit, 'limit-hit', { limit: 'five-hour', until: new Date(hit + 90 * M).toISOString(), known: true });
+      add(hit + 90 * M, 'limit-lifted', { minutes: 90 });
+    }
+  }
+  events.sort((a, b) => a.at.localeCompare(b.at));
+  // Each month's file: the playground's own events kept, the last seeding's replaced.
+  const byMonth = new Map();
+  for (const e of events) {
+    const month = e.at.slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? '') + `${JSON.stringify(e)}\n`);
+  }
+  for (const name of fs.readdirSync(metrics).filter((f) => /^events-\d{4}-\d{2}\.jsonl$/.test(f))) {
+    const file = path.join(metrics, name);
+    const kept = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim() && !l.includes(SEEDED));
+    fs.writeFileSync(file, kept.length ? `${kept.join('\n')}\n` : '');
+  }
+  for (const [month, text] of byMonth) fs.appendFileSync(path.join(metrics, `events-${month}.jsonl`), text);
+  return events.length;
 }

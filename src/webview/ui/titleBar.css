@@ -1,0 +1,12 @@
+.backlog-title .title-actions {
+  display: flex;
+  gap: 2px;
+}
+/* The autopilot: its switch in the backlog's title (lit while on), and a line saying what it's doing. */
+.autopilot-toggle.on {
+  color: var(--vscode-charts-green, var(--working));
+}
+/* The board narrowed to the tickets being worked on: its switch in the title (lit while on), and a line with the count. */
+.working-filter.on {
+  color: var(--working);
+}

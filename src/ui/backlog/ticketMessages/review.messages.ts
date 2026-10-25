@@ -10,7 +10,7 @@ export type ReviewMessage =
   /** The user's own review: approve, or request changes (an agent picks them up). */
   | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
   | { type: 'stopReview' }
-  /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
+  /** Rebase its branch onto main, or have its agent do it when that conflicts (BL-55, BL-181). */
   | { type: 'updateFromMain' }
   /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
   | { type: 'reviewFix'; fix: ReviewFix }

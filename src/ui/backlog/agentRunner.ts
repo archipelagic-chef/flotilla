@@ -9,11 +9,13 @@ import { lightNote, moveUpTarget, reviewModel, weaker, workModel, type Levels } 
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
 import { LEAN_TOOLS, leanFlags, settingsFileOf, userPlugins, writeAgentSettings, writeOnce } from '../../features/backlog/leanStart';
 import { askArgs } from '../../features/backlog/ask';
+import { SUMMARY_MODEL, summaryAnswer, summaryArgs, summaryInput } from '../../features/chats/summary';
 import { guardScript } from '../../features/backlog/agentGuard';
 import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
 import { recordEvent, type AgentRole, type Tokens } from '../../features/metrics/events';
-import { finishChatRecords } from '../../features/chats/chats';
+import { finishChatRecords, transcriptPath } from '../../features/chats/chats';
+import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 
 /** How much unattended agents may do without asking (Claude Code's permission modes); they can't ask anyone. */
@@ -260,6 +262,13 @@ export function runningAgentNames(): string[] {
   return [...running.values(), ...[...terminals.values()].filter((t) => t.exitStatus === undefined).map((t) => t.name)];
 }
 
+/** Whose run an agent's is, for its events: its ticket, its agent name and its role. */
+export interface AgentTrack {
+  ticket?: string;
+  agent: string;
+  role: AgentRole;
+}
+
 /** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
 const terminals = new Map<string, vscode.Terminal>();
 
@@ -267,7 +276,15 @@ const terminals = new Map<string, vscode.Terminal>();
  * Starts an interactive Claude Code session in a terminal (in cwd): a new chat with prompt (its session chosen here, so
  * it's known at once), or a chat resumed with it.
  */
-export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: string; name: string; choice?: AgentChoice }): { sessionId: string; terminal: vscode.Terminal } {
+export function runAgentInTerminal(o: {
+  cwd: string;
+  prompt: string;
+  resume?: string;
+  name: string;
+  choice?: AgentChoice;
+  /** Records its start and end as events (BL-168), as a run without a window does. */
+  track?: AgentTrack;
+}): { sessionId: string; terminal: vscode.Terminal } {
   if (o.resume !== undefined && !validSession(o.resume)) throw new Error(`Not a chat session id: ${o.resume.slice(0, 60)}`);
   const sessionId = o.resume ?? crypto.randomUUID();
   // A lean start's tool list takes several values: the --name after it ends it, before the prompt.
@@ -288,14 +305,41 @@ export function runAgentInTerminal(o: { cwd: string; prompt: string; resume?: st
     iconPath: new vscode.ThemeIcon('hubot'),
   });
   terminals.set(sessionId, terminal);
+  if (o.track) {
+    const data = { role: o.track.role, session: sessionId, ...(o.choice?.model ? { model: o.choice.model } : {}), ...(o.choice?.effort ? { effort: o.choice.effort } : {}) };
+    recordEvent(o.resume ? 'agent-resumed' : 'agent-started', { ticket: o.track.ticket, agent: o.track.agent, data });
+    terminalRuns.set(sessionId, { track: o.track, cwd: o.cwd, started: new Date(), terminal, model: o.choice?.model });
+  }
   terminal.show();
   return { sessionId, terminal };
 }
 
-/** Forgets terminals that were closed. */
+/** The tracked runs in terminals (BL-168), by session, until their end is recorded. */
+const terminalRuns = new Map<string, { track: AgentTrack; cwd: string; started: Date; terminal: vscode.Terminal; model?: string }>();
+
+/**
+ * Records a tracked terminal run's end, once: its exit code (none when it's unknown), and its tokens and model from its
+ * transcript (a terminal gives no JSON result, and no cost). home: Claude's, for tests.
+ */
+export async function endTerminalRun(sessionId: string, code: number | null, home?: string): Promise<void> {
+  const run = terminalRuns.get(sessionId);
+  if (!run) return;
+  terminalRuns.delete(sessionId);
+  const minutes = Math.round((Date.now() - run.started.getTime()) / 600) / 100;
+  const usage = await transcriptUsage(transcriptPath(run.cwd, sessionId, home), run.started).catch(() => ({}) as { tokens?: Tokens; model?: string });
+  const model = run.model ?? usage.model;
+  recordEvent('agent-ended', {
+    ticket: run.track.ticket,
+    agent: run.track.agent,
+    data: { role: run.track.role, session: sessionId, code, ok: code === 0, minutes, ...(usage.tokens ? { tokens: usage.tokens } : {}), ...(model ? { model } : {}) },
+  });
+}
+
+/** Forgets terminals that were closed, and records the end of the tracked runs in them. */
 export function trackTerminals(): vscode.Disposable {
   return vscode.window.onDidCloseTerminal((t) => {
     for (const [session, terminal] of terminals) if (terminal === t) terminals.delete(session);
+    for (const [session, run] of terminalRuns) if (run.terminal === t) void endTerminalRun(session, t.exitStatus?.code ?? null);
   });
 }
 
@@ -312,6 +356,8 @@ export function isRunningInTerminal(sessionId: string): boolean {
 export async function stopTerminalAgent(sessionId: string): Promise<boolean> {
   const t = terminals.get(sessionId);
   terminals.delete(sessionId);
+  // Stopped: its terminal may stay open, so its end is recorded now.
+  void endTerminalRun(sessionId, t?.exitStatus?.code ?? null);
   if (!t || t.exitStatus !== undefined) return false;
   const pid = await t.processId;
   try {
@@ -349,6 +395,8 @@ export function headlessArgs(o: {
   sessionId: string;
   mode: AgentPermissionMode;
   tools?: string[];
+  /** Tools offered besides the list's, allowed only by its rules (Write, allowed where an Edit(path) rule says). */
+  offer?: string[];
   /** How it starts (agentStart): its flags, and the tools offered when there's no tools list. */
   lean?: { flags: string[]; tools?: string[] };
 }): string[] {
@@ -367,7 +415,7 @@ export function headlessArgs(o: {
     // Last: the lists are variadic, so no flag may follow them. --tools takes the tools' names, so Bash and the rest
     // are not there at all; --allowedTools lets the listed ones run (with a rule's path, when it has one).
     ...(o.tools?.length
-      ? ['--tools', [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','), '--allowedTools', ...o.tools]
+      ? ['--tools', [...new Set([...o.tools.map((t) => t.replace(/\(.*$/, '')), ...(o.offer ?? [])])].join(','), '--allowedTools', ...o.tools]
       : o.lean?.tools
         ? ['--tools', o.lean.tools.join(',')]
         : []),
@@ -389,8 +437,10 @@ export function runAgentHeadless(o: {
   slot?: number;
   /** Only these tools, and no other: the run asks no one, so anything else is refused (see headlessArgs). */
   tools?: string[];
+  /** Tools offered besides those, allowed only by the tools' rules (see headlessArgs). */
+  offer?: string[];
   /** What the run is, for its events (BL-157): its ticket, agent and role. */
-  track?: { ticket?: string; agent: string; role: AgentRole };
+  track?: AgentTrack;
 }): AgentRun {
   // Session ids come from backlog.json too (agents can write it): only a real one is resumed.
   if (o.resume !== undefined && !validSession(o.resume)) {
@@ -403,7 +453,7 @@ export function runAgentHeadless(o: {
   // With a tool list, what isn't on it is refused, not asked about: that's the list's whole point.
   const mode: AgentPermissionMode = o.tools ? 'dontAsk' : configuredMode;
   const lean = agentStart(o.cwd, o.choice?.model);
-  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, lean });
+  const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, offer: o.offer, lean });
   // A missing one shows: the agent then starts without Flotilla's settings (BL-85).
   const settingsFile = settingsFileOf(lean?.flags ?? []);
   o.output.appendLine(
@@ -440,7 +490,7 @@ export function runAgentHeadless(o: {
       // Its chat is done now, even when the hooks' last word was "working" (BL-131).
       void locateRepo(o.cwd).then((repo) => repo && finishChatRecords(repo.commonDir, sessionId)).catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
-      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.`);
+      if (result.limit) o.output.appendLine(`${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.${result.limit.said ? ` Claude said: ${result.limit.said} (reset time not understood).` : ''}`);
       if (track) {
         const role = track.role;
         if (result.limit) {
@@ -493,9 +543,48 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       clearTimeout(timer);
       const failed = code !== 0 || /"is_error"\s*:\s*true/.test(out);
       const limit = failed ? parseUsageLimit(out, new Date()) : undefined;
-      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
+      o.output.appendLine(limit ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}` : `Claude takes work again${failed ? ` (the check failed otherwise: exit code ${code})` : ''}.`);
       resolve(limit);
     });
+  });
+}
+
+/** The transcript's end read for a summary (BL-180): enough for its last calls and messages. */
+const SUMMARY_TAIL_BYTES = 512 * 1024;
+
+/**
+ * Summarizes a working agent's status (BL-180): its transcript's last part to a small model (flotilla.agents.lightModel,
+ * else Haiku), in one short request that keeps no session and has no tools or hooks. Its two lines, or why it failed.
+ */
+export async function summarizeAgent(transcript: string, o: { output: vscode.OutputChannel }): Promise<{ text: string } | { error: string }> {
+  const handle = await fs.promises.open(transcript, 'r');
+  let tail: string;
+  try {
+    const { size } = await handle.stat();
+    const start = Math.max(0, size - SUMMARY_TAIL_BYTES);
+    const buffer = Buffer.alloc(size - start);
+    await handle.read(buffer, 0, buffer.length, start);
+    tail = buffer.toString('utf8');
+  } finally {
+    await handle.close();
+  }
+  const input = summaryInput(tail.split('\n'));
+  if (!input) return { error: 'Nothing in its transcript to summarize yet.' };
+  const model = modelLevels().light ?? SUMMARY_MODEL;
+  o.output.appendLine(`Summarize: ${transcript} (model ${model}, ${input.length} characters).`);
+  return new Promise((resolve) => {
+    let out = '';
+    const child = spawn(claudeBinary(), summaryArgs(model), { cwd: os.tmpdir(), env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => child.kill(), 120_000);
+    child.stdout.on('data', (d: Buffer) => (out += d.toString()));
+    child.on('error', (e) => (clearTimeout(timer), resolve({ error: e.message })));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const answer = summaryAnswer(out);
+      if ('error' in answer) o.output.appendLine(`Summarize failed (exit code ${code}): ${answer.error}`);
+      resolve(answer);
+    });
+    child.stdin.end(`The agent's transcript, its last part:\n\n${input}`);
   });
 }
 
@@ -509,7 +598,7 @@ export function askModel(): string {
  * recorded as a chat. It isn't one of the running agents (flotilla.agents.maxRunning), but its memory counts against
  * the free memory for its first minute, like an agent's.
  */
-export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.OutputChannel }): ChildProcessWithoutNullStreams {
+export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.OutputChannel; ticket?: string }): ChildProcessWithoutNullStreams {
   let plugins: string[] = [];
   try {
     plugins = userPlugins(cwd, process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
@@ -522,5 +611,33 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));
+  trackAsk(child, { ticket: o.ticket, model });
   return child;
+}
+
+/**
+ * Records an Ask process's start and end (BL-168), as the agent "Ask" in the role reply. Its tokens and cost are its
+ * last result's: a result counts the whole process so far. It keeps no session: the event's is made up here.
+ */
+export function trackAsk(child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 'on'>, o: { ticket?: string; model?: string }): void {
+  const who = { ticket: o.ticket, agent: 'Ask' };
+  const session = crypto.randomUUID();
+  const startedAt = Date.now();
+  recordEvent('agent-started', { ...who, data: { role: 'reply', session, ...(o.model ? { model: o.model } : {}) } });
+  let rest = '';
+  let last = '';
+  child.stdout.on('data', (d: Buffer) => {
+    const lines = (rest + d.toString()).split('\n');
+    rest = lines.pop() ?? '';
+    for (const line of lines) if (line.includes('"type":"result"')) last = line;
+  });
+  let ended = false;
+  const end = (code: number | null) => {
+    if (ended) return;
+    ended = true;
+    const minutes = Math.round((Date.now() - startedAt) / 600) / 100;
+    recordEvent('agent-ended', { ...who, data: { role: 'reply', session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) } });
+  };
+  child.on('error', () => end(null));
+  child.on('close', (code: number | null) => end(code));
 }

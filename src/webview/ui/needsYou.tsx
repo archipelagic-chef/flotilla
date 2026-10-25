@@ -4,6 +4,7 @@ import { fixesFor, fixLabel } from '../../features/backlog/review';
 import type { BacklogItemView as BacklogItem } from '../protocol';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
+import './needsYou.css';
 
 function waited(since: string | undefined): string | undefined {
   if (!since) return undefined;

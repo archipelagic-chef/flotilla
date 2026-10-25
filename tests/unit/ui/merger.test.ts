@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
 
 /** What the mocked VS Code answers and records. */
 const ui = {
@@ -39,10 +40,15 @@ vi.mock('vscode', () => {
 });
 
 /** The resolving agent: never started for real; the test does its work in the merge's worktree. */
-const agents = { prompts: [] as string[] };
+const agents = { prompts: [] as string[], runs: [] as Array<{ cwd: string; resume?: string; stopped: boolean }> };
 vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/ui/backlog/agentRunner')>()),
-  runAgentHeadless: (o: { prompt: string }) => (agents.prompts.push(o.prompt), { sessionId: 'session', done: new Promise(() => undefined), stop() {} }),
+  runAgentHeadless: (o: { prompt: string; cwd: string; resume?: string }) => {
+    agents.prompts.push(o.prompt);
+    const r = { cwd: o.cwd, resume: o.resume, stopped: false };
+    agents.runs.push(r);
+    return { sessionId: o.resume ?? 'session', done: new Promise(() => undefined), stop: () => void (r.stopped = true) };
+  },
 }));
 
 /** The checks: they print a failure and exit with ui.checksExit. */
@@ -63,7 +69,8 @@ afterEach(() => cleanup.splice(0).forEach(removeDir));
 beforeEach(() => {
   ui.answers = [];
   ui.messages = [];
-  ui.settings = { 'merge.checkCommand': CHECKS };
+  // The tests below written before BL-181 merge with merge commits; those of fast-forward set it themselves.
+  ui.settings = { 'merge.checkCommand': CHECKS, 'merge.style': 'merge-commit' };
   ui.checksExit = 0;
   ui.checksExits = [];
   ui.checksOut = '';
@@ -272,6 +279,31 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it('records the conflicts of merging again onto main when it moved before the approval (BL-168)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: add a');
+    git(repo, 'checkout', '-q', 'main');
+    ui.checksExit = 1;
+    await merger.merge('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    commit(dir, 'fix.txt', 'fixed\n', 'BL-1: Fix the checks after merging main');
+    // main moves while the fix waits for approval, in the same file.
+    commit(repo, 'a.txt', 'other\n', 'BL-2: add a too');
+    ui.checksExit = 0;
+    const log = makeTempDir();
+    setEventLog(log);
+
+    expect(await merger.approveResolution('BL-1')).toBe('stopped');
+
+    await eventsWritten();
+    setEventLog(undefined);
+    expect((await readEvents(log)).filter((e) => e.kind === 'merge-conflicted')).toEqual([
+      expect.objectContaining({ ticket: 'BL-1', data: { files: [expect.objectContaining({ file: 'a.txt' })] } }),
+    ]);
+    merger.dispose();
+  });
+
   it("doesn't take a commit after the merge that isn't the ticket's fix (BL-65)", async () => {
     const { repo, merger, item } = await setup([approved('BL-1')]);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
@@ -428,6 +460,36 @@ describe('Merge to main', () => {
     merger.dispose();
   });
 
+  it('Pause All pauses a resolving merge agent, keeping its chat, and Resume All resumes it in the merge worktree (BL-164)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'one\n', 'BL-1: a');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 'a.txt', 'two\n', 'other: a');
+    agents.runs = [];
+    ui.answers = ['Resolve with Agent'];
+    expect(await merger.merge('BL-1')).toBe('stopped');
+    await merger.resolveWithAgent('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    cleanup.push(dir);
+    expect(merger.isRunning('BL-1')).toBe(true);
+
+    expect(await merger.pauseForAll('BL-1')).toBe('session');
+    expect(agents.runs[0].stopped).toBe(true);
+    expect(merger.isRunning('BL-1')).toBe(false);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session', paused: expect.any(String) });
+    expect(await merger.pauseForAll('BL-1')).toBeUndefined(); // paused already
+
+    expect(await merger.resumeForAll('BL-1', 'other-session')).toBeUndefined(); // not paused in that chat
+    expect(await merger.resumeForAll('BL-1', 'session')).toBe('running');
+    expect(agents.runs[1]).toMatchObject({ cwd: dir, resume: 'session', stopped: false });
+    expect(merger.isRunning('BL-1')).toBe(true);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session' });
+    expect((await item('BL-1')).merging!.paused).toBeUndefined();
+    await merger.cancel('BL-1');
+    merger.dispose();
+  });
+
   it("a Check's Clean Up fails a merge whose agent runs nowhere, and clears one whose worktree is gone (BL-163)", async () => {
     const merging = { dir: '/nowhere', branch: 'feature/BL-1', base: 'main', baseTip: 'abc', state: 'resolving' as const, agent: 'Nova-1', started: '' };
     const { merger, item } = await setup([{ ...approved('BL-1'), merging }]);
@@ -506,6 +568,137 @@ describe('Merge to main', () => {
   });
 });
 
+describe('Merge to main with fast-forward (BL-181)', () => {
+  beforeEach(() => {
+    ui.settings['merge.style'] = 'fast-forward';
+  });
+  const linear = (repo: string, range: string) => git(repo, 'rev-list', '--merges', '--count', range);
+
+  it('fast-forwards main to a branch on top of it: what was checked is what lands, no merge commit', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: Add a');
+    commit(repo, 'b.txt', 'b\n', 'BL-1: Add b');
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    const tip = git(repo, 'rev-parse', 'feature/BL-1');
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect(git(repo, 'rev-parse', 'main')).toBe(tip);
+    expect(linear(repo, `${before}..main`)).toBe('0');
+    expect(ui.checks).toEqual([CHECKS]);
+    expect(worktrees()).toBe(1);
+    const done = await item('BL-1');
+    expect(done.merged).toMatchObject({ into: 'main', commit: tip });
+    const activity = (await backlog.readTicket(done)).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain(`\`main\` fast-forwarded to ${tip.slice(0, 7)}, 2 commits of BL-1, no merge commit.`);
+    merger.dispose();
+  });
+
+  it('rebases a branch main moved away from, squashing its fixups, and moves the branch to what landed', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: Add a');
+    commit(repo, 'a.txt', 'a, as reviewed\n', 'fixup! BL-1: Add a');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 'm.txt', 'm\n', 'BL-2: Main moves on');
+    const before = git(repo, 'rev-parse', 'main');
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect(git(repo, 'log', '--format=%s', `${before}..main`)).toBe('BL-1: Add a');
+    expect(git(repo, 'rev-parse', 'main^')).toBe(before);
+    expect(git(repo, 'show', 'main:a.txt')).toBe('a, as reviewed');
+    expect(git(repo, 'rev-parse', 'feature/BL-1')).toBe(git(repo, 'rev-parse', 'main'));
+    const activity = (await backlog.readTicket(await item('BL-1'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain('1 commit of BL-1, no merge commit. `feature/BL-1` was moved to it too (it was rebased');
+    merger.dispose();
+  });
+
+  it('has an agent resolve a rebase that conflicts, commit by commit, and lands it once you approve', async () => {
+    const { repo, merger, item, worktrees } = await setup([approved('BL-1')]);
+    commit(repo, 's.txt', 'one\n', 'shared');
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 's.txt', 'two\n', 'BL-1: Two');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 's.txt', 'three\n', 'BL-2: Three');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.answers = ['Resolve with Agent'];
+
+    expect(await merger.merge('BL-1')).toBe('stopped');
+
+    expect(ui.messages).toContain('Rebasing feature/BL-1 onto main has conflicts.');
+    const m = (await item('BL-1')).merging!;
+    expect(m).toMatchObject({ state: 'resolving', rebase: true, baseTip: before });
+    expect(agents.prompts.at(-1)).toContain("resolve the conflicts of rebasing BL-1's branch feature/BL-1 onto main");
+    expect(agents.prompts.at(-1)).toContain('git rebase --continue');
+    // What the agent does: resolves the commit and goes on with the rebase.
+    writeFile(m.dir, 's.txt', 'two and three\n');
+    git(m.dir, 'add', '.');
+    git(m.dir, '-c', 'core.editor=true', 'rebase', '--continue');
+    merger['runs'].delete('BL-1');
+
+    expect(await merger.approveResolution('BL-1')).toBe('merged');
+
+    expect(git(repo, 'log', '--format=%s', `${before}..main`)).toBe('BL-1: Two');
+    expect(git(repo, 'rev-parse', 'main^')).toBe(before);
+    expect(git(repo, 'show', 'main:s.txt')).toBe('two and three');
+    expect((await item('BL-1')).status).toBe('done');
+    expect(worktrees()).toBe(1);
+    merger.dispose();
+  });
+
+  it('keeps a rebase whose checks fail, for an agent to fix with a commit on top', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'a\n', 'BL-1: Add a');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 'm.txt', 'm\n', 'BL-2: Main moves on');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.checksExit = 1;
+
+    expect(await merger.merge('BL-1')).toBe('stopped');
+
+    const m = (await item('BL-1')).merging!;
+    expect(m).toMatchObject({ state: 'failed', rebase: true });
+    await merger.resolveWithAgent('BL-1');
+    expect(agents.prompts.at(-1)).toContain("fix the checks on BL-1's branch feature/BL-1 rebased onto main");
+    commit(m.dir, 'fix.txt', 'fixed\n', 'BL-1: Fix the checks on main');
+    merger['runs'].delete('BL-1');
+    ui.checksExit = 0;
+
+    expect(await merger.approveResolution('BL-1')).toBe('merged');
+    expect(git(repo, 'log', '--format=%s', `${before}..main`).split('\n')).toEqual(['BL-1: Fix the checks on main', 'BL-1: Add a']);
+    merger.dispose();
+  });
+
+  it('lands two queued tickets from the train in order, with no merge commits', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1'), approved('BL-2')]);
+    for (const [id, file] of [['BL-1', 'a.txt'], ['BL-2', 'b.txt']]) {
+      git(repo, 'checkout', '-q', '-b', `feature/${id}`, 'main');
+      commit(repo, file, `${id}\n`, `${id}: Add ${file}`);
+    }
+    git(repo, 'checkout', '-q', 'main');
+    const before = git(repo, 'rev-parse', 'main');
+    ui.settings['merge.onApprove'] = 'off';
+    await merger.approved('BL-1', 'Rex-1');
+    await merger.approved('BL-2', 'Rex-1');
+    await merger.refreshTrain();
+    expect((await backlog.read()).mergeTrain?.style).toBe('fast-forward');
+    ui.answers = ['Land 2'];
+
+    expect(await merger.merge('BL-2')).toBe('merged');
+
+    expect(git(repo, 'log', '--format=%s', `${before}..main`).split('\n')).toEqual(['BL-2: Add b.txt', 'BL-1: Add a.txt']);
+    expect(linear(repo, `${before}..main`)).toBe('0');
+    expect(ui.checks).toEqual([CHECKS, CHECKS]);
+    expect((await item('BL-1')).merged?.commit).toBe(git(repo, 'rev-parse', 'main^'));
+    expect((await item('BL-2')).status).toBe('done');
+    merger.dispose();
+  });
+});
+
 describe('The merge queue (BL-140)', () => {
   /** BL-1 adds a.txt; BL-2 and BL-3 change shared.txt's line (they conflict with each other, not with main). */
   function branches(repo: string): void {
@@ -563,9 +756,17 @@ describe('The merge queue (BL-140)', () => {
     branches(repo);
     const tip3 = git(repo, 'rev-parse', 'feature/BL-3');
     ui.settings['merge.onApprove'] = 'off';
+    const log = makeTempDir();
+    setEventLog(log);
     for (const id of ['BL-1', 'BL-2', 'BL-3']) await merger.approved(id, 'Rex-1');
     await merger.refreshTrain();
+    await merger['currentTrain']({ rebuild: true });
     expect(merger.queuePlace('BL-3')?.state).toBe('Conflicts with main + BL-1 + BL-2 in `shared.txt`.');
+    // Its conflict in the train is recorded once, measured onto the train before it (BL-168): not again as it's rebuilt.
+    await eventsWritten();
+    setEventLog(undefined);
+    const conflicted = (await readEvents(log)).filter((e) => e.kind === 'merge-conflicted');
+    expect(conflicted).toEqual([expect.objectContaining({ ticket: 'BL-3', data: { files: [expect.objectContaining({ file: 'shared.txt', regions: [expect.anything()] })] } })]);
     const before = (await backlog.read()).mergeTrain!;
 
     await merger.resolveTrainConflict('BL-3');

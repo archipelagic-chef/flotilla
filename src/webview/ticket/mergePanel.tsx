@@ -9,6 +9,7 @@ import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
 import { act, ActionButton, send, UpdateFromButton, useWorking, WorkingTag } from './actions';
 import { STATUSES } from './header';
 import { ChecksRuns } from './checksPanel';
+import './mergePanel.css';
 
 /** The ticket without its merge's CI stop once its CI shows other runs on the tip it stopped on (a re-run). */
 export function withCiStop(ticket: TicketView, ci: TicketCiView | undefined): TicketView {
@@ -45,7 +46,7 @@ export function MergeStop({ stop }: { stop: CiStop }) {
           <strong>Not merged:</strong> {stop.base} has moved on since <code>{stop.branch}</code> took it in, so CI checked another tree than the merge's. Update
           from {capitalize(stop.base)}, then merge when CI passes.
         </span>
-        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Merges ${stop.base} into the branch, which is pushed, and CI runs again`}>
+        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Rebases the branch onto ${stop.base}; it's pushed, and CI runs again`}>
           <i class="codicon codicon-sync" /> Update from {capitalize(stop.base)}
         </ActionButton>
       </div>
@@ -188,6 +189,8 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
         : m.train
           ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
           : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      : m.state === 'resolving' && m.paused
+        ? ['debug-pause', 'waiting', `${agent} is paused ${work}; its chat is kept. Resume goes on with it there.`]
       : m.state === 'resolving'
         ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
         : checks && m.reason?.startsWith('the checks failed')
@@ -201,13 +204,24 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
           <strong>Merging into {m.train ? `${[m.base, ...m.train.ahead].join(' + ')} (the merge train)` : m.base}</strong> {text}
           {checks?.at && m.state === 'failed' && <span class="muted"> The checks failed on {failedAt(checks.at)}.</span>}
         </span>
-        <button class="button secondary" onClick={() => send({ type: 'mergeCancel' })} title="Stops its agent and removes the temporary worktree; nothing changes">
+        <ActionButton class="button secondary" message={{ type: 'mergeCancel' }} working="Cancelling…" title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
-        </button>
+        </ActionButton>
+        {actions.includes('pause') && (
+          <ActionButton class="button secondary" message={{ type: 'mergePause' }} working="Pausing…" title="Pauses its agent: its chat is kept, and Resume goes on with it there">
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+        )}
+        {actions.includes('resume') && (
+          <ActionButton class="button" message={{ type: 'mergeResume' }} working="Resuming…" title="Its agent goes on in its chat, in the merge's temporary worktree">
+            <i class="codicon codicon-debug-continue" /> Resume
+          </ActionButton>
+        )}
         {actions.includes('resolve') && (
-          <button
+          <ActionButton
             class="button"
-            onClick={() => send({ type: 'mergeResolve' })}
+            message={{ type: 'mergeResolve' }}
+            working="Starting…"
             title={
               checks
                 ? 'An agent fixes the merge, given the failing output and the tickets of both sides: it keeps both intents (or asks you here), and reports here for you to approve'
@@ -215,21 +229,27 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
             }
           >
             <i class="codicon codicon-hubot" /> {checks ? 'Fix with Agent' : 'Resolve with Agent'}
-          </button>
+          </ActionButton>
         )}
         {actions.includes('recheck') && (
-          <button
+          <ActionButton
             class="button secondary"
-            onClick={() => send({ type: 'mergeRecheck' })}
+            message={{ type: 'mergeRecheck' }}
+            working="Running the checks…"
             title="Runs the checks again on the merge as it is (a failure that was only a loaded machine's goes away): passing, the base branch moves to the merge"
           >
             <i class="codicon codicon-refresh" /> Run the Checks Again
-          </button>
+          </ActionButton>
         )}
         {actions.includes('approve') && (
-          <button class={`button${m.state === 'resolved' ? '' : ' secondary'}`} onClick={() => send({ type: 'mergeApprove' })} title="Runs the checks on the merge, then moves the base branch to it">
+          <ActionButton
+            class={`button${m.state === 'resolved' ? '' : ' secondary'}`}
+            message={{ type: 'mergeApprove' }}
+            working="Running the checks…"
+            title="Runs the checks on the merge, then moves the base branch to it"
+          >
             <i class="codicon codicon-check" /> {checks ? 'Approve Fix' : 'Approve Resolution'}
-          </button>
+          </ActionButton>
         )}
       </div>
       {checks?.runs?.length && !ticket.mergeChecks ? <ChecksRuns runs={checks.runs} /> : null}
@@ -255,9 +275,9 @@ export function MergedPanel({ ticket }: { ticket: TicketView }) {
         {u ? ` · ${u.count} commit${u.count === 1 ? '' : 's'} not on ${u.remote} yet` : ''}
       </span>
       {u && (
-        <button class="button secondary" onClick={() => send({ type: 'push' })} title={`Pushes ${u.base} to ${u.remote} (asks first)`}>
+        <ActionButton class="button secondary" message={{ type: 'push' }} working="Pushing…" title={`Pushes ${u.base} to ${u.remote} (asks first)`}>
           <i class="codicon codicon-cloud-upload" /> Push…
-        </button>
+        </ActionButton>
       )}
     </div>
   );
@@ -333,19 +353,25 @@ export function MergePanel({ ticket }: { ticket: TicketView }) {
       </span>
       {warn && (
         <>
-          <button class="button secondary" onClick={() => send({ type: 'mergeSibling' })} title="Adds a ticket, next to this one, to merge the branch (asks which, when there are several)">
+          <ActionButton class="button secondary" message={{ type: 'mergeSibling' }} working="Adding…" title="Adds a ticket, next to this one, to merge the branch (asks which, when there are several)">
             <i class="codicon codicon-git-merge" /> Merge…
-          </button>
-          <button class="button secondary" onClick={() => send({ type: 'dismissUnmerged' })} title="The work is superseded by another ticket (asks which)">
+          </ActionButton>
+          <ActionButton class="button secondary" message={{ type: 'dismissUnmerged' }} working="Dismissing…" title="The work is superseded by another ticket (asks which)">
             Dismiss
-          </button>
-          <button
-            class="button secondary"
-            onClick={() => (hasWorktree ? send({ type: 'openWorktree', key: ticket.worktrees.find((w) => w.branch === branch)!.key }) : send({ type: 'checkout', branch: branch! }))}
-            title={`Opens ${branch}: its worktree, or a new one for the branch`}
-          >
-            <i class="codicon codicon-git-branch" /> Open Branch
-          </button>
+          </ActionButton>
+          {hasWorktree ? (
+            <button
+              class="button secondary"
+              onClick={() => send({ type: 'openWorktree', key: ticket.worktrees.find((w) => w.branch === branch)!.key })}
+              title={`Opens ${branch}: its worktree`}
+            >
+              <i class="codicon codicon-git-branch" /> Open Branch
+            </button>
+          ) : (
+            <ActionButton class="button secondary" message={{ type: 'checkout', branch: branch! }} working="Creating the worktree…" title={`Opens ${branch} in a new worktree`}>
+              <i class="codicon codicon-git-branch" /> Open Branch
+            </ActionButton>
+          )}
         </>
       )}
     </div>
@@ -354,7 +380,7 @@ export function MergePanel({ ticket }: { ticket: TicketView }) {
 
 /**
  * How the work stands against main (BL-55): its branches that conflict with main, and the tickets it waits for
- * ("Depends on: BL-12" in its description). Update from Main merges main into its branch (its agent resolves conflicts).
+ * ("Depends on: BL-12" in its description). Update from Main rebases its branch onto main (its agent resolves conflicts).
  */
 export function MainState({ ticket }: { ticket: TicketView }) {
   const conflicts = conflictsOf(ticket.item);

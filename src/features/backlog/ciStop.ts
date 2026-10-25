@@ -10,6 +10,8 @@ export type CiStop =
       kind: 'failed';
       branch: string;
       tip: string;
+      /** The ref CI ran on, when it isn't branch: the ticket's train branch (BL-145). Fix with Agent reads the run there. */
+      runBranch?: string;
       runs: Array<Pick<CiRun, 'id' | 'workflow' | 'number' | 'attempt' | 'status' | 'url'>>;
       jobs: Array<{
         runId: number;

@@ -1,0 +1,29 @@
+{
+  "title": "The ticket's pickers, Unlink and Link Issue show they're working",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },
+    { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
+    { "caption": "The agents' model: Saving… until the ticket is written" },
+    { "click": "[aria-label^=\"Agents' model\"]" },
+    { "click": "[role=menuitemradio]:has-text(\"Opus\")" },
+    { "waitFor": ".agent-choice:has-text(\"Opus\"):not(:has(.action-busy))" },
+    { "caption": "Their effort: the same" },
+    { "click": "[aria-label^=\"Agents' effort\"]" },
+    { "click": "[role=menuitemradio]:has-text(\"High\")" },
+    { "waitFor": ".agent-choice:has-text(\"High effort\"):not(:has(.action-busy))" },
+    { "caption": "Unlink: Unlinking… until the link is gone" },
+    { "hover": ".link-chip:has-text(\"GH-7\")" },
+    { "click": "[aria-label=\"Unlink GH-7\"]" },
+    { "waitFor": ".add-link:has-text(\"Link Issue\")" },
+    { "caption": "Link Issue: Linking… while it asks (nothing's connected here: it offers to connect)" },
+    { "click": ".add-link" },
+    { "waitFor": ".notification-toast:has-text(\"Connect Jira or GitHub\")" },
+    { "wait": 1500 },
+    { "command": "Notifications: Clear All Notifications" },
+    { "waitFor": ".add-link:not([aria-busy=\"true\"])" },
+    { "wait": 1000 },
+    { "caption": "" }
+  ]
+}

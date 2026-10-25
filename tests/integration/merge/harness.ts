@@ -122,7 +122,8 @@ export class World {
 
   static async create(ids: string[]): Promise<World> {
     const world = new World();
-    resetUi({ 'merge.checkCommand': FAKE_CHECKS });
+    // The scenarios follow merge commits (merge-commit); fast-forward (BL-181) has its own tests in merger.test.ts.
+    resetUi({ 'merge.checkCommand': FAKE_CHECKS, 'merge.style': 'merge-commit' });
     agents.scripts = [];
     agents.started = [];
     agents.waiting = [];
@@ -262,12 +263,14 @@ export class World {
   approve = (id: string) => this.step(id, `Approve ${id}`, () => this.merger.approveResolution(id));
   recheck = (id: string) => this.step(id, `Run the Checks Again ${id}`, () => this.merger.recheck(id));
   cancel = (id: string) => this.step(id, `Cancel ${id}`, () => this.merger.cancel(id));
+  pause = (id: string) => this.step(id, `Pause ${id}`, () => this.merger.pause(id));
+  resume = (id: string) => this.step(id, `Resume ${id}`, () => this.merger.resolveWithAgent(id));
 
   /** Clicks what the ticket offers next, as a user who follows it would. */
   async next(id: string): Promise<Snapshot> {
     const { next } = await this.snapshot(id);
     expect(next, `${id} offers nothing to click`).toBeDefined();
-    const click = { merge: this.merge, resolve: this.resolve, approve: this.approve, recheck: this.recheck, cancel: this.cancel }[next!];
+    const click = { merge: this.merge, resolve: this.resolve, approve: this.approve, recheck: this.recheck, cancel: this.cancel, pause: this.pause, resume: this.resume }[next!];
     return click(id);
   }
 }

@@ -358,11 +358,14 @@ export class CiRuns implements vscode.Disposable {
     return new GitHubActions(gh.owner, gh.repo, async () => session.accessToken, globalThis.fetch as unknown as Fetch, this.api);
   }
 
-  /** Fix with Agent on a failed job of a branch's run on origin (BL-7), from Merge to main's red CI. */
-  async fixOnOrigin(cwd: string, branch: string, runId: number, jobId?: number): Promise<void> {
+  /**
+   * Fix with Agent on a failed job of a branch's run on origin (BL-7), from Merge to main's red CI. runBranch: the ref
+   * the run is on, when it isn't the branch the agent fixes (the ticket's train branch, BL-145).
+   */
+  async fixOnOrigin(cwd: string, branch: string, runId: number, jobId?: number, runBranch = branch): Promise<void> {
     const github = await this.originActions(cwd, true);
     if (typeof github === 'string') throw new Error(`Can't read the run: ${github}`);
-    const run = (await github.runs(branch, 30)).find((r) => r.id === runId);
+    const run = (await github.runs(runBranch, 30)).find((r) => r.id === runId);
     const failure = run && (await failedJob(github, branch, run, jobId));
     if (!failure) {
       void vscode.window.showWarningMessage("That run has no failed job any more, so there's nothing for an agent to fix.");

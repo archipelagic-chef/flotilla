@@ -3,7 +3,7 @@ import { reviewOutcome } from '../../features/backlog/rounds';
 import { TURN_ICON, TURN_LABEL, turnOf, turnSentence } from '../../features/backlog/turn';
 import type { QueuedView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
-import { ActionButton, send } from './actions';
+import { ActionButton } from './actions';
 import { PAUSE_TIP, STOP_TIP } from './agents';
 import { MergeButton, MergeStop, QueuePlace } from './mergePanel';
 
@@ -32,15 +32,34 @@ const when = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString(un
 
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** The ticket's discussion with its agent (BL-45): while the agent replies, and when it says the ticket is ready. */
+/**
+ * The ticket's discussion with its agent: its chat while it's open (BL-188), or the agent replying in the ticket
+ * (BL-45), and when it says the ticket is ready.
+ */
 export function DiscussPanel({ ticket }: { ticket: TicketView }) {
   const s = ticket.shaping!;
+  if ((s.chat === 'open' || s.chat === 'pending') && !s.ready) {
+    return (
+      <div class="review-panel working">
+        <i class={`codicon codicon-comment-discussion${s.chat === 'open' ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>Discussing</strong>{' '}
+          {s.chat === 'open'
+            ? `with ${s.agent} in its chat: it writes what's agreed into the description as you go.`
+            : `${s.agent}'s chat is ready: send its first message, and it starts.`}
+        </span>
+        <ActionButton class="button" message={{ type: 'discuss' }} working="Opening…" title="Open the discussion's chat in Claude Code">
+          <i class="codicon codicon-comment-discussion" /> Open Chat
+        </ActionButton>
+      </div>
+    );
+  }
   if (s.held && !s.running) {
     return (
       <div class="review-panel waiting">
         <i class="codicon codicon-debug-pause" />
         <span class="review-text">
-          <strong>Discussion</strong> You {s.held} {s.agent}. Its chat is kept: Resume, or write a comment, and it goes on there.
+          <strong>Discussion</strong> You {s.held} {s.agent}. Its chat is kept: Resume, and it goes on there.
         </span>
         <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
           <i class="codicon codicon-debug-continue" /> Resume
@@ -68,15 +87,15 @@ export function DiscussPanel({ ticket }: { ticket: TicketView }) {
       {s.ready && !s.running && (
         <>
           {ticket.item.proposed ? (
-            <button class="button" onClick={() => send({ type: 'accept' })}>
+            <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
               <i class="codicon codicon-check" /> Accept
-            </button>
+            </ActionButton>
           ) : (
             <ActionButton class="button" message={{ type: 'start', agent: true }} working="Starting…">
               <i class="codicon codicon-play" /> Start
             </ActionButton>
           )}
-          <ActionButton class="button secondary" message={{ type: 'keepDiscussing' }} working="Continuing…" title="Dismisses this; the discussion goes on with your next comment">
+          <ActionButton class="button secondary" message={{ type: 'keepDiscussing' }} working="Continuing…" title="Dismisses this; Discuss goes on with it">
             Keep discussing
           </ActionButton>
         </>
@@ -94,9 +113,9 @@ export function QueuedPanel({ queued }: { queued: QueuedView }) {
         {queuedNeed(queued).line}
         {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
       </span>
-      <button class="button secondary" onClick={() => send({ type: 'prioritize' })} title="Starts it now, above the limit, or pauses a running agent to make room">
+      <ActionButton class="button secondary" message={{ type: 'prioritize' }} working="Starting…" title="Starts it now, above the limit, or pauses a running agent to make room">
         <i class="codicon codicon-arrow-up" /> Prioritize
-      </button>
+      </ActionButton>
     </div>
   );
 }
@@ -114,7 +133,7 @@ export function ReviewPanel({ ticket }: { ticket: TicketView }) {
       : r.state === 'paused' && r.paused?.for
       ? `${r.paused.agent} is paused for ${r.paused.for}: its slot went to a prioritized start. It resumes from its chat when a slot frees.`
       : r.state === 'paused' && r.paused
-      ? `${r.paused.agent} stopped on Claude's usage limit; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
+      ? `${r.paused.agent} stopped on ${r.paused.kind === 'rate' ? "Claude's rate limit" : r.paused.kind === 'overloaded' ? 'Claude being overloaded' : "Claude's usage limit"}; it goes on by itself ${r.paused.known ? 'when it resets' : 'at'} ${when(r.paused.until)}.`
       : r.state === 'stopped' && r.stop?.kind === 'user' && r.stop.at
       ? `(${when(r.stop.at)})`
       : undefined;

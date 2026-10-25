@@ -2,10 +2,14 @@
 // temporary folder, then times the refresh the sidebar runs: buildWorkstreams, bundled from the real source.
 //
 //   npm run bench -- [--worktrees 20] [--files 20000] [--changed 0] [--transcript-mb 0] [--refreshes 3] [--git-on-main-thread 0]
+//                    [--half-removed 0] [--node-modules 2000]
 //
 // --changed: modified files per linked worktree. --transcript-mb: a fake chat transcript of that size in the first
 // linked worktree; a line is appended before each refresh after the first, as a running chat does.
 // --git-on-main-thread 1: start git on the main thread, as before BL-165, to compare what spawning blocks.
+// --half-removed: linked worktrees left as a `git worktree remove` stopped halfway leaves them (BL-176): .gitignore and
+// the first 40% of the files deleted, a node_modules of --node-modules files kept. After the refreshes, the
+// finished-worktree sweep's steps finish those removals (removalRisks, remove), and one more refresh is timed.
 // Everything is removed afterwards, also on Ctrl+C. scripts/ is not in the vsix (.vscodeignore).
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -16,8 +20,17 @@ import * as path from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import * as esbuild from 'esbuild';
 
-const FLAGS = { worktrees: 'worktrees', files: 'files', changed: 'changed', 'transcript-mb': 'transcriptMb', refreshes: 'refreshes', 'git-on-main-thread': 'gitOnMainThread' };
-const DEFAULTS = { worktrees: 20, files: 20000, changed: 0, transcriptMb: 0, refreshes: 3, gitOnMainThread: 0 };
+const FLAGS = {
+  worktrees: 'worktrees',
+  files: 'files',
+  changed: 'changed',
+  'transcript-mb': 'transcriptMb',
+  refreshes: 'refreshes',
+  'git-on-main-thread': 'gitOnMainThread',
+  'half-removed': 'halfRemoved',
+  'node-modules': 'nodeModules',
+};
+const DEFAULTS = { worktrees: 20, files: 20000, changed: 0, transcriptMb: 0, refreshes: 3, gitOnMainThread: 0, halfRemoved: 0, nodeModules: 2000 };
 const SETTINGS = { activeWindowMinutes: 5, staleAfterDays: 7, agentStatusStaleMinutes: 10, defaultBase: '' };
 const LOREM =
   'Refreshing the workstreams reads every worktree status, the activity of changed files, and the chat transcripts. ';
@@ -34,6 +47,7 @@ function parseArgs(argv) {
   }
   if (opts.refreshes < 1 || opts.worktrees < 1 || opts.files < 1) throw new Error('--refreshes, --worktrees and --files must be at least 1');
   if (opts.changed > opts.files) throw new Error('--changed cannot be more than --files');
+  if (opts.halfRemoved > opts.worktrees) throw new Error('--half-removed cannot be more than --worktrees');
   return opts;
 }
 
@@ -58,6 +72,7 @@ function buildFixture(main, opts) {
     fs.writeFileSync(path.join(main, rel), `file ${i}\n`);
     files.push(rel);
   }
+  fs.writeFileSync(path.join(main, '.gitignore'), 'node_modules/\n');
   git(main, 'add', '-A');
   git(main, 'commit', '-q', '-m', 'Benchmark fixture');
 
@@ -67,6 +82,15 @@ function buildFixture(main, opts) {
     const dir = path.join(main, '.worktrees', name);
     git(main, 'worktree', 'add', '-q', '-b', name, dir, 'main');
     for (const rel of files.slice(0, opts.changed)) fs.appendFileSync(path.join(dir, rel), `changed in ${name}\n`);
+    if (i <= opts.halfRemoved) {
+      for (let n = 0; n < opts.nodeModules; n++) {
+        const rel = path.join('node_modules', `pkg${n % 50}`, `file${n}.js`);
+        fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+        fs.writeFileSync(path.join(dir, rel), '');
+      }
+      fs.rmSync(path.join(dir, '.gitignore'));
+      for (const rel of [...files].sort().slice(0, Math.floor(files.length * 0.4))) fs.rmSync(path.join(dir, rel));
+    }
     linked.push(dir);
   }
   return linked;
@@ -144,7 +168,7 @@ async function main() {
 
     const setupStart = performance.now();
     const linked = buildFixture(mainRoot, opts);
-    const worktreeCount = linked.length + 1;
+    let worktreeCount = linked.length + 1;
     let transcript;
     if (opts.transcriptMb > 0) {
       transcript = transcriptPath(linked[0], randomUUID(), home);
@@ -164,6 +188,7 @@ async function main() {
     sampler = setInterval(sample, 10);
 
     console.log(`Flotilla refresh benchmark: ${worktreeCount} worktrees (main + ${linked.length} linked) × ${opts.files} files`);
+    if (opts.halfRemoved) console.log(`  ${opts.halfRemoved} of them half-removed, each with a node_modules of ${opts.nodeModules} files`);
     console.log(`  ${opts.changed} changed files per linked worktree, transcript ${opts.transcriptMb} MB, git started on the ${opts.gitOnMainThread ? 'main' : 'worker'} thread`);
     console.log(`  node ${process.version}, ${os.cpus()[0]?.model ?? 'unknown CPU'} (${os.cpus().length} cores), ${os.platform()} ${os.release()}`);
     console.log(`  setup ${(setupMs / 1000).toFixed(1)} s (fixture in ${root})`);
@@ -171,8 +196,7 @@ async function main() {
     console.log('refresh      time    blocked   git max    rss max   heap max  workstreams  changed  chats');
     console.log('            (ms)       (ms)    at once      (MB)      (MB)');
 
-    for (let r = 1; r <= opts.refreshes; r++) {
-      if (transcript && r > 1) fs.appendFileSync(transcript, transcriptLine(100000 + r));
+    const refresh = async (label) => {
       gitProcesses.peak = 0;
       peaks.rss = 0;
       peaks.heap = 0;
@@ -191,10 +215,25 @@ async function main() {
       const blocked = loop.max / 1e6;
       const changed = items.reduce((n, ws) => n + ws.changes.length, 0);
       const chats = items.reduce((n, ws) => n + ws.chats.length, 0);
-      const label = r === 1 ? 'cold' : String(r);
       console.log(
         `${label.padEnd(8)}${fmt(ms)}${fmt(blocked, 1).padStart(11)}${String(gitProcesses.peak).padStart(10)}${fmt(mb(peaks.rss))}${fmt(mb(peaks.heap))}${String(items.length).padStart(13)}${String(changed).padStart(9)}${String(chats).padStart(7)}`,
       );
+    };
+    for (let r = 1; r <= opts.refreshes; r++) {
+      if (transcript && r > 1) fs.appendFileSync(transcript, transcriptLine(100000 + r));
+      await refresh(r === 1 ? 'cold' : String(r));
+    }
+    if (opts.halfRemoved) {
+      const t0 = performance.now();
+      let finished = 0;
+      for (const wt of await service.list()) {
+        if (wt.isMain || !(await service.removalRisks(wt)).halfRemoved) continue;
+        await service.remove(wt, { force: true });
+        finished++;
+      }
+      console.log(`finished ${finished} half-removed worktrees in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+      worktreeCount -= finished;
+      await refresh('after');
     }
     loop.disable();
   } finally {

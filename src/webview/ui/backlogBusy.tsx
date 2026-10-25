@@ -1,24 +1,38 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { BusyActions, type BacklogMessage } from '../backlogActions';
+import { backlogActionKey, BusyActions, type BacklogMessage } from '../backlogActions';
+import { WORKING_MIN_MS } from '../workingMin';
 import { send } from './api';
 
 /** The backlog's actions the host hasn't finished (BL-117): set on click, cleared by its backlogDone. */
 const busy = new BusyActions();
+/** When each action in progress was clicked: it shows working for at least WORKING_MIN_MS. */
+const started = new Map<string, number>();
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((f) => f());
 
 /** Sends a backlog action, shown as working until the host is done with it; a second click while it is does nothing. */
 export function act(message: BacklogMessage): void {
   if (!busy.start(message)) return;
+  started.set(backlogActionKey(message), Date.now());
   notify();
   send(message);
 }
 
 /** The host is done with an action (or it failed). */
 export function finished(message: BacklogMessage): void {
-  busy.finish(message);
-  notify();
+  const key = backlogActionKey(message);
+  const clicked = started.get(key);
+  // A quick action still shows it worked: it stays working a moment (a second click meanwhile does nothing).
+  setTimeout(
+    () => {
+      if (started.get(key) !== clicked) return;
+      started.delete(key);
+      busy.finish(message);
+      notify();
+    },
+    clicked === undefined ? 0 : Math.max(0, clicked + WORKING_MIN_MS - Date.now()),
+  );
 }
 
 /** The backlog was posted: actions on items that went (dismissed, deleted) end. */

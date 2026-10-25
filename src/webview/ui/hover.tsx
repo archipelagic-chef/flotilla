@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ciState, ciSummary } from '../../features/ci/summary';
 import type { CiView, WorkstreamView } from '../protocol';
 import { ATTENTION_ICON } from './section';
+import './hover.css';
 
 /**
  * Hovers that look like VS Code's own, instead of the browser's title tooltips. Mark an element with

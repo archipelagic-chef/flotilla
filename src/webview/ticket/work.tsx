@@ -4,6 +4,7 @@ import { PRIORITY } from '../ui/priority';
 import { act, ActionButton, send, UpdateFromButton } from './actions';
 import { LANE_ICON } from './header';
 import { ago } from './agents';
+import './work.css';
 
 /**
  * Create Worktree ▾: a click creates a new worktree at once, its branch named without asking (numbered when the name is
@@ -150,7 +151,7 @@ export function Work({ ticket }: { ticket: TicketView }) {
             <UpdateFromButton
               class="text-button work-head-action"
               base={ticket.updateFromMain.base}
-              title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
+              title={`Rebases its branch onto ${ticket.updateFromMain.base}; when that conflicts, its agent does it and resolves the conflicts`}
             />
           )}
         </div>

@@ -7,14 +7,14 @@ import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { tidyNotes } from '../features/backlog/tidyNotes';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
+import { KEEP_WHEN_DONE } from '../features/backlog/descriptionShape';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
 import { cancelCleanUp, compareCleanUp, finishCleanUp, startCleanUp, type CleanUpDeps } from './backlog/historyCleanup';
 import { compareWithBase, type CompareMode } from '../features/diffs/compare';
-import * as scm from '../features/scm/operations';
-import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { resolveBase } from '../features/workstreams/progress';
 import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
@@ -32,11 +32,11 @@ import type { ResolvedWorktree } from '../features/worktrees/resolver';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
-import type { ChangeGroup, Target } from '../webview/protocol';
+import type { ChangeGroup } from '../webview/protocol';
 import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
-import { claudeHookConfig } from './claudeHooks';
+import { isTarget, joinCommands, registerAll, type Arg, type Commands, type Handler, type PickFilter, type WithWorkstream } from './commandSet';
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
@@ -76,24 +76,6 @@ export interface CommandContext {
 
 const PENDING_REMOVAL_KEY = 'flotilla.pendingRemoval';
 
-interface PickFilter {
-  includeUnreachable?: boolean;
-  excludeMain?: boolean;
-}
-
-type Handler = (...args: any[]) => unknown;
-/** Commands get a Target from the sidebar (or its context menus), a folder Uri from the Explorer, or nothing from the palette. */
-type Arg = Target | vscode.Uri | undefined;
-
-export function isTarget(arg: unknown): arg is Target {
-  return typeof arg === 'object' && arg !== null && !(arg instanceof vscode.Uri) && typeof (arg as Target).key === 'string';
-}
-
-/** The files a file command acts on: a multi-selection, or the one clicked file. */
-function targetPaths(arg: unknown): string[] {
-  if (!isTarget(arg)) return [];
-  return arg.paths?.length ? arg.paths : arg.path ? [arg.path] : [];
-}
 
 export async function openWorktree(ctx: CommandContext, dir: string, newWindow: boolean): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', toWorkspaceUri(ctx.reference, dir), { forceNewWindow: newWindow });
@@ -115,63 +97,33 @@ export function chatContext(ctx: CommandContext): chatUi.ChatContext {
 }
 
 export function registerCommands(ctx: CommandContext): void {
-  const register = (id: string, handler: Handler) => ctx.extension.subscriptions.push(vscode.commands.registerCommand(id, guard(ctx, handler)));
-  const withWs =
-    (handler: (ws: Workstream, arg: Arg) => unknown, filter: PickFilter = {}) =>
+  const withWs: WithWorkstream =
+    (handler, filter = {}) =>
     async (arg?: Arg) => {
       const ws = await pickWorkstream(ctx, arg, filter);
       if (ws) await handler(ws, arg);
     };
-  const scmCtx = scmUi.scmContext(ctx.repository);
   const chats = chatContext(ctx);
-
-  register('flotilla.refresh', () => ctx.repository.refresh());
-  register('flotilla.newWorkstream', () => newWorkstream(ctx));
-  register('flotilla.startBacklogItem', (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts));
-  register('flotilla.backlogIntegrations', () => ctx.integrations.manage());
-  register('flotilla.planBacklog', () => planBacklog(ctx));
-  register('flotilla.linkBacklogItem', (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)));
-  // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
-  register('flotilla.startBacklogItemFromCard', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }));
-  // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
-  register('flotilla.createBacklogWorktree', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }));
-  register('flotilla.createBacklogWorktreeNamed', (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }));
-  register('flotilla.renameBacklogItem', (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)));
-  register('flotilla.deleteBacklogItem', (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)));
-  register('flotilla.selectBacklogWorktree', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false));
-  register('flotilla.openBacklogWorktreeInNewWindow', (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true));
-  // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
-  register('flotilla.ci.fixWithAgent', (failure?: unknown) => fixWithAgent(ctx, failure));
-  const cleanUp: CleanUpDeps = {
-    ctx,
-    chats,
-    createWorkstream: (request) => createWorkstream(ctx, request),
-    enforceCommitPrefix: (ws, id) => enforceCommitPrefix(ctx, ws, id),
-  };
-  register('flotilla.cleanUpHistory', (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts));
-  register('flotilla.finishCleanUp', (id?: unknown, opts?: unknown) => finishCleanUp(cleanUp, id, opts));
-  register('flotilla.cancelCleanUp', (id?: unknown) => cancelCleanUp(cleanUp, id));
-  register('flotilla.compareCleanUp', (id?: unknown) => compareCleanUp(cleanUp, id));
-  register('flotilla.reviewBacklogItem', (id?: unknown, verdict?: unknown, text?: unknown) =>
-    ctx.tickets.review(
-      typeof id === 'string' ? id : undefined,
-      verdict === 'approved' || verdict === 'changes' ? verdict : undefined,
-      typeof text === 'string' ? text : undefined,
-    ),
+  const commands = joinCommands(
+    worktreeCommands(ctx, withWs),
+    backlogCommands(ctx, chats),
+    ciCommands(ctx),
+    scmUi.scmCommands(scmUi.scmContext(ctx.repository), withWs),
+    chatUi.chatCommands(chats, withWs),
   );
-  register('flotilla.openBacklogItem', (id?: unknown, opts?: unknown) => {
-    const itemId = backlogIdOf(id);
-    const focus = (opts as { focus?: unknown } | undefined)?.focus;
-    return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
-  });
-  register('flotilla.quickSwitch', () => quickSwitch(ctx));
-  register('flotilla.runWorkflow', () => runWorkflowByHand(ctx.currentRoot, devGitHubApi(ctx.extension.extensionMode)));
-  register('flotilla.openInNewWindow', withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)));
-  register('flotilla.switchHere', withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)));
-  register('flotilla.remove', withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }));
-  register(
-    'flotilla.adopt',
-    withWs(
+  registerAll(ctx.extension.subscriptions, commands, (handler) => guard(ctx, handler));
+}
+
+/** The worktrees' commands: make, switch, remove, and what's in them. */
+function worktreeCommands(ctx: CommandContext, withWs: WithWorkstream): Commands {
+  return {
+    'flotilla.refresh': () => ctx.repository.refresh(),
+    'flotilla.newWorkstream': () => newWorkstream(ctx),
+    'flotilla.quickSwitch': () => quickSwitch(ctx),
+    'flotilla.openInNewWindow': withWs((ws) => openWorktree(ctx, ws.worktree.path!, true)),
+    'flotilla.switchHere': withWs((ws) => openWorktree(ctx, ws.worktree.path!, false)),
+    'flotilla.remove': withWs((ws) => removeWorkstream(ctx, ws), { includeUnreachable: true, excludeMain: true }),
+    'flotilla.adopt': withWs(
       async (ws) => {
         await ctx.service.adopt(ws.worktree);
         void maybeOfferHygiene(ctx.extension, ctx.service.roots.mainRoot);
@@ -179,67 +131,73 @@ export function registerCommands(ctx: CommandContext): void {
       },
       { excludeMain: true },
     ),
-  );
-  register('flotilla.runSetupHere', withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }));
-  register('flotilla.openTerminal', withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()));
-  register('flotilla.copyPath', withWs((ws, arg) => vscode.env.clipboard.writeText(resolveInside(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))));
-  register('flotilla.revealInOS', withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))));
-  register('flotilla.compareWith', withWs((ws) => compareWith(ctx, ws)));
-  register('flotilla.openFile', withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)));
-  register('flotilla.openFileDiff', withWs((ws, arg) => isTarget(arg) && arg.path && openFileDiff(ctx, ws, arg.path, arg.group ?? 'unstaged')));
-  register('flotilla.openChanges', withWs((ws, arg) => openGroupChanges(ctx, ws, (isTarget(arg) && arg.group) || 'unstaged')));
-  register('flotilla.stage', withWs((ws, arg) => scmUi.stagePaths(scmCtx, ws, targetPaths(arg))));
-  register('flotilla.unstage', withWs((ws, arg) => scmUi.unstagePaths(scmCtx, ws, targetPaths(arg))));
-  register(
-    'flotilla.discard',
-    withWs((ws, arg) => {
-      const paths = new Set(targetPaths(arg));
-      if (paths.size) return scmUi.discardChanges(scmCtx, ws, ws.unstaged.filter((c) => paths.has(c.path)));
-    }),
-  );
-  register('flotilla.stageAll', withWs((ws) => scmUi.stageAll(scmCtx, ws)));
-  register('flotilla.unstageAll', withWs((ws) => scmUi.unstageAll(scmCtx, ws)));
-  register('flotilla.discardAll', withWs((ws) => scmUi.discardChanges(scmCtx, ws)));
-  register('flotilla.commit', withWs((ws) => scmUi.commit(scmCtx, ws)));
-  register('flotilla.publish', withWs((ws) => scmUi.publish(scmCtx, ws)));
-  register('flotilla.sync', withWs((ws) => scmUi.sync(scmCtx, ws)));
-  register('flotilla.push', withWs((ws) => scmUi.network(scmCtx, ws, 'Pushing', scm.push)));
-  register('flotilla.pull', withWs((ws) => scmUi.network(scmCtx, ws, 'Pulling', scm.pull)));
-  register('flotilla.fetch', withWs((ws) => scmUi.network(scmCtx, ws, 'Fetching', scm.fetch)));
-  register(
-    'flotilla.addToWorkspace',
-    withWs(
+    'flotilla.runSetupHere': withWs((ws) => runSetupNow(ctx, ws.worktree.path!), { excludeMain: true }),
+    'flotilla.openTerminal': withWs((ws) => vscode.window.createTerminal({ name: workstreamLabel(ws), cwd: ws.worktree.path }).show()),
+    'flotilla.copyPath': withWs((ws, arg) => vscode.env.clipboard.writeText(resolveInside(ws.worktree.path!, (isTarget(arg) && arg.path) || ''))),
+    'flotilla.revealInOS': withWs((ws) => vscode.commands.executeCommand('revealFileInOS', toWorkspaceUri(ctx.reference, ws.worktree.path!))),
+    'flotilla.compareWith': withWs((ws) => compareWith(ctx, ws)),
+    'flotilla.openFile': withWs((ws, arg) => openFile(ctx, ws, isTarget(arg) ? arg.path : undefined)),
+    'flotilla.openFileDiff': withWs((ws, arg) => isTarget(arg) && arg.path && openFileDiff(ctx, ws, arg.path, arg.group ?? 'unstaged')),
+    'flotilla.openChanges': withWs((ws, arg) => openGroupChanges(ctx, ws, (isTarget(arg) && arg.group) || 'unstaged')),
+    'flotilla.addToWorkspace': withWs(
       (ws) => {
         if (ws.isCurrent) return vscode.window.showInformationMessage(`'${workstreamLabel(ws)}' is already this window's folder.`);
         addWorkspaceFolder(ctx.reference, ws.worktree.path!, `⎇ ${workstreamLabel(ws)}`);
       },
       { excludeMain: true },
     ),
-  );
-  register('flotilla.removeFromWorkspace', withWs((ws) => removeWorkspaceFolder(ws.worktree.path)));
-  register('flotilla.revealInExplorer', (arg?: Arg) => revealInExplorer(ctx, arg));
-  // Chats
-  register('flotilla.newChat', withWs((ws) => chatUi.newChat(chats, ws)));
-  register('flotilla.openChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.openChat(chats, ws, arg.chatId, arg.prompt)));
-  register('flotilla.unlinkChat', withWs((ws, arg) => isTarget(arg) && arg.chatId && chatUi.unlink(chats, ws, arg.chatId)));
-  register('flotilla.linkChat', withWs((ws) => chatUi.link(chats, ws)));
-  register('flotilla.installClaudeHooks', (arg?: Arg) => chatUi.installChatHooks(chats, isTarget(arg) ? ctx.repository.current.find((w) => w.key === arg.key) : undefined));
-  register(
-    'flotilla.clearAgentStatus',
-    withWs(
-      async (ws) => {
-        await clearAgentStatus(ws.worktree.adminDir);
-        await ctx.repository.refresh();
-      },
-      { includeUnreachable: true },
-    ),
-  );
-  register('flotilla.copyClaudeHookConfig', async () => {
-    await vscode.env.clipboard.writeText(claudeHookConfig());
-    void vscode.window.showInformationMessage(
-      'Claude Code hook config copied. The hooks also need the hook script, .claude/flotilla-hook.js, in each worktree: run Flotilla: Install Claude Code Hooks to set up both.',
-    );
-  });
+    'flotilla.removeFromWorkspace': withWs((ws) => removeWorkspaceFolder(ws.worktree.path)),
+    'flotilla.revealInExplorer': (arg?: Arg) => revealInExplorer(ctx, arg),
+  };
+}
+
+/** The backlog's commands on a ticket: start it, its worktrees, its review, its history's clean-up. */
+function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Commands {
+  const cleanUp: CleanUpDeps = {
+    ctx,
+    chats,
+    createWorkstream: (request) => createWorkstream(ctx, request),
+    enforceCommitPrefix: (ws, id) => enforceCommitPrefix(ctx, ws, id),
+  };
+  return {
+    'flotilla.startBacklogItem': (id?: unknown, opts?: unknown) => startBacklogItem(ctx, backlogIdOf(id), opts),
+    'flotilla.backlogIntegrations': () => ctx.integrations.manage(),
+    'flotilla.planBacklog': () => planBacklog(ctx),
+    'flotilla.linkBacklogItem': (id?: unknown) => linkBacklogItem(ctx, backlogIdOf(id)),
+    // The backlog card's context menu (package.json, webviewSection backlogItem) passes its card, not an id.
+    'flotilla.startBacklogItemFromCard': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: true }),
+    // Create Worktree, as the ticket's button: at once, or with the branch named first (the card, its menu, the ticket).
+    'flotilla.createBacklogWorktree': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'auto' }),
+    'flotilla.createBacklogWorktreeNamed': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }),
+    'flotilla.renameBacklogItem': (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.deleteBacklogItem': (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.selectBacklogWorktree': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false),
+    'flotilla.openBacklogWorktreeInNewWindow': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true),
+    'flotilla.cleanUpHistory': (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts),
+    'flotilla.finishCleanUp': (id?: unknown, opts?: unknown) => finishCleanUp(cleanUp, id, opts),
+    'flotilla.cancelCleanUp': (id?: unknown) => cancelCleanUp(cleanUp, id),
+    'flotilla.compareCleanUp': (id?: unknown) => compareCleanUp(cleanUp, id),
+    'flotilla.reviewBacklogItem': (id?: unknown, verdict?: unknown, text?: unknown) =>
+      ctx.tickets.review(
+        typeof id === 'string' ? id : undefined,
+        verdict === 'approved' || verdict === 'changes' ? verdict : undefined,
+        typeof text === 'string' ? text : undefined,
+      ),
+    'flotilla.openBacklogItem': (id?: unknown, opts?: unknown) => {
+      const itemId = backlogIdOf(id);
+      const focus = (opts as { focus?: unknown } | undefined)?.focus;
+      return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
+    },
+  };
+}
+
+/** CI's commands: a workflow run by hand, and an agent on a failed job. */
+function ciCommands(ctx: CommandContext): Commands {
+  return {
+    'flotilla.runWorkflow': () => runWorkflowByHand(ctx.currentRoot, devGitHubApi(ctx.extension.extensionMode)),
+    // A failed CI job (from the CI/CD view or its notice): an agent fixes it in the worktree on its branch.
+    'flotilla.ci.fixWithAgent': (failure?: unknown) => fixWithAgent(ctx, failure),
+  };
 }
 
 export async function resumePendingActions(ctx: CommandContext): Promise<void> {
@@ -620,8 +578,15 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
   return ws;
 }
 
-/** How agents keep their branch current with main, and what they do when they need another ticket's work (BL-55). */
-export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
+/**
+ * How agents keep their branch current with main (rebased and tidied, BL-181), and what they do when they need another
+ * ticket's work (BL-55).
+ */
+export const mergeNotes = (id: string): string => `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
+
+/** Agents keep a todo list, so the ticket shows how far they are (BL-175). */
+export const PLAN_NOTE =
+  'Plan with your todo list (TodoWrite) when you start: a few steps, from reading to the final report. Keep it current as you go (mark a step in progress when you begin it, completed when it is done, and add steps you find): the ticket shows it to the user as your progress.';
 
 /** What an agent is told when it starts on an item. */
 export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>, ticket: string, branch: string, agent: string, guide: string, map?: CodeMap): string {
@@ -633,10 +598,11 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | '
     CONTEXT_NOTES,
     ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
-    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
+    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria). ${KEEP_WHEN_DONE}`,
+    PLAN_NOTE,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
     ...(level ? [level] : []),
-    MERGE_NOTES,
+    mergeNotes(item.id),
     reviewNotes({ id: item.id, backlogDir: path.dirname(guide) }),
     `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,
@@ -677,7 +643,7 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const choice = agentChoice(item);
   const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
   const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
-  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}` });
+  const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), { choice, name: `${agent} · ${item.id}`, track: { ticket: item.id, agent, role: 'work' } });
   const steps = job.failedSteps.length ? ` (failed steps: ${job.failedSteps.join(', ')})` : '';
   await ctx.tickets.addActivity(
     item.id,
@@ -716,6 +682,7 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   const where = await chatUi.startAgent(chatContext(ctx), ws, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map), agentLead(item, agent), {
     choice,
     name: `${agent} · ${item.id}`,
+    track: { ticket: item.id, agent, role: 'work' },
   });
   await ctx.tickets.addActivity(
     item.id,

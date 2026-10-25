@@ -9,12 +9,13 @@ import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { acceptItem, moveItem, removeItem, updateItem } from '../../features/backlog/backlog';
+import { acceptItem, moveItem, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
-import { summaryOf } from '../../features/backlog/ticket';
+import { cardSummaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -37,6 +38,7 @@ import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
 import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
+import { stuckRules } from '../settings';
 import { changeMarks, ListedFolders } from './changeMarks';
 import { openCommit } from '../openCommit';
 import { onDidChangeProgress, progressByTool } from '../progress';
@@ -46,6 +48,8 @@ import { webUrl } from '../../features/ci/githubDeployments';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../../features/workstreams/removingWorktrees';
 import { recordClickWait } from '../../features/metrics/record';
+import type { MetricsPeriod } from '../../webview/metricsProtocol';
+import type { Metrics } from '../metrics/metrics';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -71,6 +75,8 @@ export interface SidebarDeps {
   githubApi?: string;
   /** Runs that finished on a worktree's branch while they were read (for the notices). */
   onCiFinished?: (items: FinishedRun[]) => void;
+  /** The Metrics tool's numbers (BL-158). */
+  metrics?: Metrics;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -92,6 +98,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** The CI/CD view's runs, read while the sidebar is visible. */
   readonly ci: CiRuns;
 
+  /** The open discussion chats the backlog was last posted with (see openDiscussions). */
+  private discussionsShown = '';
+
+  /** The open discussion chats (BL-188), as a key: when it changes, the cards change. */
+  private openDiscussions(): string {
+    return this.deps.repository.current
+      .flatMap((w) => w.chats.filter((c) => c.open && isDiscussionChat(c.firstPrompt)).map((c) => c.id))
+      .sort()
+      .join(',');
+  }
+
+  /** Whether an item's discussion chat is open now. */
+  private discussing(item: BacklogItem): boolean {
+    const shaping = item.shaping;
+    if (!shaping?.chat || !discussable(item)) return false;
+    return this.deps.repository.current.some((w) => !!findDiscussionChat(w.chats, { id: item.id, agent: shaping.agent, session: shaping.session })?.open);
+  }
+
   constructor(private readonly deps: SidebarDeps) {
     this.ci = new CiRuns(
       (views) => this.post({ type: 'ci', views }),
@@ -106,8 +130,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      // A discussion's chat opened or closed: its card says so (BL-188).
+      {
+        dispose: deps.repository.onDidChange(() => {
+          const open = this.openDiscussions();
+          if (open === this.discussionsShown) return;
+          this.discussionsShown = open;
+          void this.postBacklog();
+        }).dispose,
+      },
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
+        if (e.affectsConfiguration('flotilla.backlog.cards')) void this.postBacklog();
       }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
@@ -118,6 +152,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
       this.ci,
+      ...(deps.metrics ? [deps.metrics.onDidChange(() => void this.postMetrics())] : []),
     );
   }
 
@@ -220,7 +255,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
-          summary: summaryOf(ticket.description),
+          summary: cardSummaryOf(ticket.description),
           activity: ticket.activity.length,
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
@@ -230,6 +265,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
+          ...(this.discussing(item) ? { discussing: true } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
           ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };
@@ -250,7 +286,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
     const queue = this.merger?.queueView();
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
+    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, detailedCards: vscode.workspace.getConfiguration('flotilla').get<string>('backlog.cards') === 'detailed', ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -353,6 +389,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'mergeNext':
         await this.merger?.mergeNext(m.id);
         return;
+      case 'merge':
+        await vscode.commands.executeCommand('flotilla.mergeBacklogItem', m.id);
+        return;
+      case 'cards':
+        await vscode.workspace.getConfiguration('flotilla').update('backlog.cards', m.detailed ? 'detailed' : 'compact', vscode.ConfigurationTarget.Global);
+        return;
       case 'integrations':
         await this.deps.integrations.manage();
         return;
@@ -420,8 +462,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const config = vscode.workspace.getConfiguration('flotilla');
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
+    const rules = stuckRules();
     const views = tabOrder(all).map((ws) => ({
-      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext()),
+      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext(), rules),
       ...(removingWorktrees.has(ws.key) ? { removing: true } : {}),
     }));
     const { changed, keys } = changedViews(views, this.sent);
@@ -515,8 +558,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     return this.deps.repository.current.find((w) => w.key === key);
   }
 
+  /** The period the Metrics tool shows, while it's shown: it's counted again as events come in. */
+  private metricsPeriod: MetricsPeriod | undefined;
+
+  private async postMetrics(): Promise<void> {
+    const period = this.metricsPeriod;
+    if (!period || !this.deps.metrics) return;
+    const message = await this.deps.metrics.message(period);
+    if (this.metricsPeriod === period) this.post(message);
+  }
+
   private async onMessage(m: WebviewMessage): Promise<void> {
     switch (m.type) {
+      case 'metrics':
+        this.metricsPeriod = m.period;
+        await this.postMetrics();
+        return;
+      case 'metricsClosed':
+        this.metricsPeriod = undefined;
+        return;
+      case 'metricsOpen':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);
+        return;
+      case 'metricsEditor':
+        this.deps.metrics?.openEditor(m.period);
+        return;
       case 'ready':
         void this.postIconTheme();
         // A page that has just loaded has none of the views: send them all.

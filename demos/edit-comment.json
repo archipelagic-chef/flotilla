@@ -1,0 +1,95 @@
+{
+  "title": "Edit and delete your own comments",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Sort the backlog by priority\")"
+    },
+    {
+      "click": ".comment-box textarea"
+    },
+    {
+      "type": "Keep them for a day."
+    },
+    {
+      "press": "Control+Enter"
+    },
+    {
+      "waitFor": ".feed .entry:has-text(\"Keep them for a day.\")"
+    },
+    {
+      "click": ".feed .entry.folded:has-text(\"Keep them for a day.\") .entry-fold"
+    },
+    {
+      "waitFor": ".feed .entry:has-text(\"Keep them for a day.\") .edit-entry"
+    },
+    {
+      "caption": "Your comments have Edit and Delete"
+    },
+    {
+      "hover": ".feed .entry:has-text(\"Keep them for a day.\")"
+    },
+    {
+      "click": ".feed .entry:has-text(\"Keep them for a day.\") .edit-entry"
+    },
+    {
+      "waitFor": ".feed .edit-box textarea"
+    },
+    {
+      "caption": "Edit opens it in place: Ctrl+Enter saves, Escape cancels"
+    },
+    {
+      "press": "Control+a"
+    },
+    {
+      "type": "Keep them for a week."
+    },
+    {
+      "press": "Control+Enter"
+    },
+    {
+      "waitFor": ".feed .entry:has-text(\"Keep them for a week.\") .edited"
+    },
+    {
+      "caption": "It says it was edited (its time in the hover); its id stays, so replies still point at it"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Delete asks first"
+    },
+    {
+      "click": ".feed .entry:has-text(\"Keep them for a week.\") .delete-entry"
+    },
+    {
+      "waitFor": ".monaco-dialog-box"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".monaco-dialog-box .dialog-buttons a:has-text(\"Delete\")"
+    },
+    {
+      "caption": "Without replies, it goes"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

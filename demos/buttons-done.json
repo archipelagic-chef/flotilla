@@ -1,0 +1,137 @@
+{
+  "title": "A Done ticket's unmerged work, Accept (a proposal) and the backlog's buttons show they're working",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
+    },
+    {
+      "waitFor": ".proposal-banner"
+    },
+    {
+      "caption": "A proposal's Accept: Accepting\u2026 until the backlog is written"
+    },
+    {
+      "click": ".proposal-banner button:has-text(\"Accept\")"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Sort the backlog by priority\")):not(:has(.proposal-banner))"
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "click": ".backlog-item:has-text(\"Warn on a big diff before review\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Warn on a big diff before review\")"
+    },
+    {
+      "caption": "Moved to Done with its work unmerged, it warns and offers Merge\u2026, Dismiss and Open Branch"
+    },
+    {
+      "click": "body:has(h1:has-text(\"Warn on a big diff before review\")) [role=radio]:has-text(\"Done\")"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Warn on a big diff before review\")) .review-panel button:has-text(\"Merge\u2026\")",
+      "timeout": 30000
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "caption": "Dismiss: Dismissing\u2026 while it asks which ticket superseded it"
+    },
+    {
+      "click": "body:has(h1:has-text(\"Warn on a big diff before review\")) .review-panel button:has-text(\"Dismiss\")"
+    },
+    {
+      "wait": 1800
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Warn on a big diff before review\")) .review-panel button:has-text(\"Dismiss\"):not([aria-busy=\"true\"])"
+    },
+    {
+      "caption": "Merge\u2026: Adding\u2026 until the ticket that merges it is added"
+    },
+    {
+      "click": "body:has(h1:has-text(\"Warn on a big diff before review\")) .review-panel button:has-text(\"Merge\u2026\")"
+    },
+    {
+      "wait": 1800
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "waitFor": "body:has(h1:has-text(\"Warn on a big diff before review\")) .review-panel button:has-text(\"Merge\u2026\"):not([aria-busy=\"true\"])",
+      "timeout": 30000
+    },
+    {
+      "wait": 800
+    },
+    {
+      "caption": "In the backlog: a card's Mark Done spins, and the card shows it's saving"
+    },
+    {
+      "click": ".backlog-item:has-text(\"List attached files in the activity\") [aria-label=\"Mark Done\"]"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "The agents' limit: \u2212 and + spin until the setting is written"
+    },
+    {
+      "click": ".agent-count, .autopilot-what"
+    },
+    {
+      "click": "[aria-label=\"One agent more\"]"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": "[aria-label=\"One agent fewer\"]"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "The autopilot's switch spins until the autopilot has turned"
+    },
+    {
+      "click": ".autopilot-switch"
+    },
+    {
+      "waitFor": ".autopilot-switch.on:not([aria-busy=\"true\"])",
+      "timeout": 30000
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".autopilot-switch"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "click": ".monaco-dialog-box .monaco-button:has-text(\"Turn Off\")"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

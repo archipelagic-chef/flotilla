@@ -51,6 +51,7 @@ export const agentsHandlers: Handlers<AgentsMessage> = {
   agent: async ({ id, panels }, m) => {
     await panels.controlAgent(id, m.action, m.session);
   },
+  summarize: async ({ id, panels }, m) => panels.summarize(id, m.session),
   openChat: async ({ item, backlog, panels }, m) => {
     // Any chat the ticket lists opens, in whichever worktree it ran (BL-131): not only the ticket's own.
     const listed = panels.agentChats(item, (await backlog.readTicket(item)).activity).some((c) => c.key === m.key && c.id === m.id);

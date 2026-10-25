@@ -6,7 +6,7 @@
     { "wait": 500 },
     { "click": "[aria-label=\"Show done items\"]" },
     { "wait": 500 },
-    { "click": ".backlog-item:has-text(\"Show the backlog as a board\")" },
+    { "click": ".backlog-item:has-text(\"Show the backlog as a board\") .name" },
     { "waitFor": "h1:has-text(\"Show the backlog as a board\")" },
     { "caption": "The latest report: its diagram and picture right under its summary" },
     { "waitFor": ".feed .report-media .diagram" },

@@ -439,6 +439,16 @@ describe('the agent limit', () => {
     loop.dispose();
   });
 
+  it("notes what Claude said when it doesn't understand the reset, with the guess (BL-184)", async () => {
+    await loop.start('BL-1');
+    finish[0]({ code: 1, limit: { until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate', said: 'API Error: 429 slow down' } } as never);
+    await settle();
+    expect(data.items[0].review).toMatchObject({ state: 'paused', paused: { known: false, kind: 'rate' } });
+    const note = notes.find((n) => n.includes("Claude's rate limit"));
+    expect(note).toContain('Claude said: “API Error: 429 slow down”; reset time not understood, retrying in 5 min.');
+    loop.dispose();
+  });
+
   it('a resume that waits for a slot after a usage limit starts once one frees', async () => {
     await loop.start('BL-1');
     await loop.start('BL-2');
@@ -468,7 +478,7 @@ describe('the agent limit', () => {
       round: 1,
       state: 'paused',
       reviewer: '',
-      paused: { until: at, known: false, kind: 'rate', tries: 0, since: at, phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+      paused: { until: at, known: false, kind: 'rate', tries: 0, since: new Date().toISOString(), phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
     };
     probe.mockReset();
     probe.mockResolvedValue(rate);
@@ -499,6 +509,76 @@ describe('the agent limit', () => {
     expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { tries: 3, session: 'session-1' } });
     expect(minutesLeft()).toBe(40);
     expect(notes).toHaveLength(1);
+    loop.dispose();
+  });
+
+  /** Agents paused on one guessed-at rate limit, the n-th since `minutesAgo[n]` minutes, all due for a try now. */
+  const pauseGuessed = (minutesAgo: Record<number, number>) => {
+    for (const [n, ago] of Object.entries(minutesAgo)) {
+      pauseOn(Number(n), new Date(Date.now() - 1000).toISOString());
+      Object.assign((data.items[Number(n)].review as { paused: object }).paused, { known: false, kind: 'rate', tries: 0, since: new Date(Date.now() - ago * 60_000).toISOString() });
+    }
+  };
+
+  it('one probe tries a limit for every agent paused on it, and they all go on together, oldest pause first (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue(undefined);
+    pauseGuessed({ 1: 10, 2: 30, 3: 20 });
+    await loop.resumePaused();
+    await settle();
+    expect(probe).toHaveBeenCalledTimes(1);
+    // Two slots: the oldest two go on, the third is first in line.
+    expect(spawn.mock.calls.map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p2', 'session-p3']);
+    expect(notes).toContain('BL-4: The limit lifted (found while resuming Ada-2): resumed the chat for agent Ada-3 to go on.');
+    expect(notes).toContain('BL-2: Queued: an agent takes this up when one is free (1st in line).');
+    const live = loop as unknown as { canStartNew(): boolean };
+    finish[0]({ code: 0 });
+    // The freed slot goes to the waiting agent, not to a new ticket.
+    expect(live.canStartNew()).toBe(false);
+    await settle();
+    expect((spawn.mock.calls[2][0] as { resume?: string }).resume).toBe('session-p1');
+    expect(notes).toContain('BL-2: The limit lifted (found while resuming Ada-2): resumed the chat for agent Ada-1 to go on.');
+    loop.dispose();
+  });
+
+  it('a limit still there moves every agent paused on it to the same next try, and no new ticket starts meanwhile (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue({ until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate' });
+    pauseGuessed({ 1: 10, 2: 30 });
+    // Due but not tried yet: the autopilot holds now.
+    expect((await loop.pausedUntil())!.getTime()).toBeLessThanOrEqual(Date.now());
+    await loop.resumePaused();
+    expect(probe).toHaveBeenCalledTimes(1);
+    const untils = [1, 2].map((n) => (data.items[n].review as { paused: { until: string; tries: number } }).paused);
+    expect(untils[0].until).toBe(untils[1].until);
+    expect(untils.map((u) => u.tries)).toEqual([1, 1]);
+    expect((await loop.pausedUntil())?.toISOString()).toBe(untils[0].until);
+    expect(started()).toHaveLength(0);
+    loop.dispose();
+  });
+
+  it('the probe of a limit that lasts over an hour tries again every 15 minutes at most (BL-179)', async () => {
+    probe.mockReset();
+    probe.mockResolvedValue({ until: new Date(Date.now() + 5 * 60_000), known: false, kind: 'rate' });
+    pauseGuessed({ 1: 90 });
+    (data.items[1].review as { paused: { tries: number } }).paused.tries = 5;
+    await loop.resumePaused();
+    const until = Date.parse((data.items[1].review as { paused: { until: string } }).paused.until);
+    expect(Math.round((until - Date.now()) / 60_000)).toBe(15);
+    loop.dispose();
+  });
+
+  it("another agent's run that gets through resumes the agents paused on a guessed-at limit (BL-179)", async () => {
+    probe.mockReset();
+    await loop.start('BL-5');
+    pauseGuessed({ 1: 10, 2: 30 });
+    data.items[1].review = { ...(data.items[1].review as object), paused: { ...(data.items[1].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
+    data.items[2].review = { ...(data.items[2].review as object), paused: { ...(data.items[2].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
+    finish[0]({ code: 0 });
+    await settle();
+    expect(probe).not.toHaveBeenCalled();
+    expect(spawn.mock.calls.slice(1).map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p2', 'session-p1']);
+    expect(notes.some((n) => /^BL-2: The limit lifted \(found by .+'s run\): resumed the chat for agent Ada-1/.test(n))).toBe(true);
     loop.dispose();
   });
 
@@ -564,6 +644,22 @@ describe('the agent limit', () => {
     expect(data.items[1].review).toMatchObject({ state: 'paused', paused: { until: sooner.toISOString() } });
     expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { until: later } });
     expect(notes).toEqual([]);
+    loop.dispose();
+  });
+
+  it('a reset Claude says now holds for every agent waiting on a guessed-at limit, so they all go on then (BL-184)', async () => {
+    const guess = new Date(Date.now() + 10 * 60_000).toISOString();
+    const reset = new Date(Date.now() + 3 * 3600_000);
+    probe.mockReset();
+    probe.mockResolvedValue({ until: reset, known: true, kind: 'usage' });
+    for (const n of [1, 2]) {
+      pauseOn(n, guess);
+      Object.assign((data.items[n].review as { paused: object }).paused, { known: false, kind: 'rate', tries: 3, since: guess });
+    }
+    const result = await loop.tryPausedNow();
+    await settle();
+    expect(result).toMatchObject({ resumed: 0, limited: reset });
+    for (const n of [1, 2]) expect(data.items[n].review).toMatchObject({ state: 'paused', paused: { until: reset.toISOString(), known: true } });
     loop.dispose();
   });
 
@@ -1310,6 +1406,34 @@ describe('Pause All and Resume All (BL-160)', () => {
     expect(result).toEqual({ resumed: 2, waiting: 0 });
     expect(state('BL-1')).toBe('stopped');
     expect(spawn.mock.calls.map((c) => (c[0] as { name: string }).name)).toEqual([expect.stringContaining('BL-2'), expect.stringContaining('BL-3')]);
+    all.dispose();
+    loop.dispose();
+  });
+
+  it("pauses a merge's agent with the others, saved as kind merge, and resumes it in its chat (BL-164)", async () => {
+    data.items[4].merging = { dir: '/tmp/m', branch: 'feature/BL-5', base: 'main', baseTip: 'abc', state: 'resolving', started: at };
+    const calls: string[] = [];
+    let checks = ['BL-5'];
+    const merges = {
+      pauseForAll: async (id: string) => (calls.push(`pause ${id}`), 'merge-session'),
+      resumeForAll: async (id: string, session?: string) => (calls.push(`resume ${id} ${session}`), 'running' as const),
+      checksRunning: () => checks,
+      stopChecks: (id: string) => void (calls.push(`stop checks ${id}`), (checks = [])),
+    };
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const withMerges = new PauseAll({ backlog: backlog as never, reviews: loop as never, store, merges });
+    // Let Them Finish: the checks go on.
+    const { paused } = await withMerges.pause();
+    expect(paused).toContainEqual({ id: 'BL-5', kind: 'merge', session: 'merge-session' });
+    expect(store.read()?.agents).toContainEqual({ id: 'BL-5', kind: 'merge', session: 'merge-session' });
+    expect(calls).toEqual(['pause BL-5']);
+    expect(await withMerges.resume()).toEqual({ resumed: 3, waiting: 1 }); // a merge's agent isn't held by the limit
+    expect(calls).toEqual(['pause BL-5', 'resume BL-5 merge-session']);
+    // Stop Them: the checks stop first.
+    calls.length = 0;
+    await withMerges.pause({ stopChecks: true });
+    expect(calls).toEqual(['stop checks BL-5', 'pause BL-5']);
+    withMerges.dispose();
     all.dispose();
     loop.dispose();
   });

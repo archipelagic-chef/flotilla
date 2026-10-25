@@ -8,10 +8,13 @@ import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import type { AgentChoice } from '../features/backlog/backlog';
-import { choiceArgs, isRunningHeadless, runAgentInTerminal } from './backlog/agentRunner';
+import { choiceArgs, isRunningHeadless, runAgentInTerminal, type AgentTrack } from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
+import { clearAgentStatus } from '../features/workstreams/agentStatus';
+import { claudeHookConfig } from './claudeHooks';
+import { isTarget, type Arg, type Commands, type WithWorkstream } from './commandSet';
 
 const CLAUDE_EXTENSION = 'anthropic.claude-code';
 const CLAUDE_OPEN = 'claude-vscode.editor.open';
@@ -81,18 +84,20 @@ function worktreeLocation(ctx: ChatContext, dir: string): string {
  * Starts a chat in this window. For another worktree, the message box is pre-filled with where to work, and the
  * chat is linked to that worktree as soon as Claude Code creates it (when the first message is sent).
  */
-export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead = ''): Promise<void> {
+export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead = '', o: { beside?: boolean } = {}): Promise<void> {
   if (!claudeAvailable()) return;
   const dir = ws.worktree.path!;
+  // Beside: in the editor group next to the active one (a ticket's tab), rather than where Claude Code puts its chats.
+  const column = o.beside ? vscode.ViewColumn.Beside : undefined;
   if (samePath(dir, ctx.currentRoot)) {
-    await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, task].filter(Boolean).join('\n\n') || undefined);
+    await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, task].filter(Boolean).join('\n\n') || undefined, column);
     return;
   }
   pendingLinks.add(ws.worktree.adminDir, await sessionsHere(ctx), Date.now());
   linkTimer ??= setInterval(() => void linkPendingChats(ctx).catch((e: unknown) => ctx.output.appendLine(`Linking chats failed: ${String(e)}`)), 3000);
   const branch = workstreamLabel(ws);
   const where = `Work in the git worktree at ${worktreeLocation(ctx, dir)} (branch ${branch}): run commands there and only change files under it.`;
-  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, where, task].filter(Boolean).join('\n\n'));
+  await vscode.commands.executeCommand(CLAUDE_OPEN, undefined, [lead, where, task].filter(Boolean).join('\n\n'), column);
 }
 
 /**
@@ -100,14 +105,14 @@ export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead 
  * a model or an effort is chosen (which the panel can't be started with), as an interactive Claude Code session in a
  * terminal in the worktree, the task sent at once.
  */
-export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string }): Promise<'panel' | 'terminal'> {
+export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string; track?: AgentTrack }): Promise<'panel' | 'terminal'> {
   const args = choiceArgs(o.choice);
   if (!args.length || !ws.worktree.path) {
     await newChat(ctx, ws, task, lead);
     return 'panel';
   }
   // With a session of its own, known at once: it can be paused, stopped and resumed from its ticket.
-  runAgentInTerminal({ cwd: ws.worktree.path, prompt: [lead, task].filter(Boolean).join('\n\n'), name: o.name, choice: o.choice });
+  runAgentInTerminal({ cwd: ws.worktree.path, prompt: [lead, task].filter(Boolean).join('\n\n'), name: o.name, choice: o.choice, track: o.track });
   return 'terminal';
 }
 
@@ -334,4 +339,28 @@ export async function maybeOfferHooks(ctx: ChatContext): Promise<void> {
     'Not Now',
   );
   if (choice === 'Install Hooks') await installChatHooks(ctx);
+}
+
+/** The chats' commands, on the worktree they're given (or picked). */
+export function chatCommands(ctx: ChatContext, withWs: WithWorkstream): Commands {
+  return {
+    'flotilla.newChat': withWs((ws) => newChat(ctx, ws)),
+    'flotilla.openChat': withWs((ws, arg) => isTarget(arg) && arg.chatId && openChat(ctx, ws, arg.chatId, arg.prompt)),
+    'flotilla.unlinkChat': withWs((ws, arg) => isTarget(arg) && arg.chatId && unlink(ctx, ws, arg.chatId)),
+    'flotilla.linkChat': withWs((ws) => link(ctx, ws)),
+    'flotilla.installClaudeHooks': (arg?: Arg) => installChatHooks(ctx, isTarget(arg) ? ctx.workstreams().find((w) => w.key === arg.key) : undefined),
+    'flotilla.clearAgentStatus': withWs(
+      async (ws) => {
+        await clearAgentStatus(ws.worktree.adminDir);
+        await ctx.refresh();
+      },
+      { includeUnreachable: true },
+    ),
+    'flotilla.copyClaudeHookConfig': async () => {
+      await vscode.env.clipboard.writeText(claudeHookConfig());
+      void vscode.window.showInformationMessage(
+        'Claude Code hook config copied. The hooks also need the hook script, .claude/flotilla-hook.js, in each worktree: run Flotilla: Install Claude Code Hooks to set up both.',
+      );
+    },
+  };
 }

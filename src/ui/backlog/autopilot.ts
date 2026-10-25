@@ -13,6 +13,7 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import type { Merger } from './merge';
 import type { PauseAll } from './pauseAll';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
@@ -30,6 +31,8 @@ export interface AutopilotDeps {
   output: vscode.OutputChannel;
   /** Pause All (BL-160): while it holds, the autopilot starts nothing (it stays on). */
   pauseAll?: Pick<PauseAll, 'pausedCount' | 'onDidChange'>;
+  /** Merges' agents and checks (BL-164): Pause All covers them, so the views offer it while they run. */
+  merges?: Pick<Merger, 'pausable' | 'onDidChange'>;
   /**
    * The key that signs the switch (from VS Code's secret storage): agents can write the backlog's folder, but can't
    * turn the autopilot on.
@@ -44,6 +47,8 @@ export interface AutopilotView {
   enabled: boolean;
   /** Agents working now (for any work), and the most at once (flotilla.agents.maxRunning). */
   running: number;
+  /** Merges' agents and checks running in this window (BL-164): Pause All pauses them too. */
+  merging?: number;
   max: number;
   /** Starts waiting for a free slot (or for memory): they go on when there's room, reviews and resumes first. */
   waiting: number;
@@ -119,6 +124,7 @@ export class Autopilot implements vscode.Disposable {
           void this.tick();
         }),
       );
+    if (deps.merges) this.subscriptions.push(deps.merges.onDidChange(() => this.changed.fire()));
     void this.refresh().then(() => this.tick());
   }
 
@@ -174,6 +180,7 @@ export class Autopilot implements vscode.Disposable {
     return {
       enabled: this.enabled,
       running: this.deps.reviews.running,
+      ...(this.deps.merges?.pausable ? { merging: this.deps.merges.pausable } : {}),
       max: this.deps.reviews.limit,
       waiting: this.deps.reviews.waitingCount,
       ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now()

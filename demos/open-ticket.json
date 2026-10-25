@@ -6,7 +6,7 @@
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },
     { "caption": "A click on a card opens its ticket" },
-    { "click": ".backlog-item:has-text(\"Sort the backlog by priority\")" },
+    { "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name" },
     { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
     { "wait": 2000 },
     { "caption": "" }

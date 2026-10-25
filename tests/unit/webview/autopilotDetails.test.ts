@@ -70,4 +70,23 @@ describe('the autopilot details', () => {
     const d = autopilotDetails({ ...base, idle: 'BL-130 waits for BL-126 (in review)' }, titles, now);
     expect(d).toMatchObject({ agents: [], waiting: [], idle: 'BL-130 waits for BL-126 (in review)', tryNow: false });
   });
+
+  it("adds what each agent is doing (BL-175), or why it looks stuck", () => {
+    const tool = { id: 't', name: 'Bash', detail: 'npm test', since: new Date(now.getTime() - 130_000).toISOString() };
+    const todos = [{ text: 'a', status: 'completed' as const }, { text: 'b', status: 'in_progress' as const }];
+    const live = new Map([
+      ['BL-1', [{ name: 'Nova-7', state: 'working' as const, activity: { tool, todos } }]],
+      ['BL-2', [{ name: 'Vega-2', state: 'working' as const, activity: { tool }, stuck: 'No activity for 14 min' }]],
+    ]);
+    const d = autopilotDetails(
+      { ...base, running: 2, agents: [{ id: 'BL-1', agent: 'Nova-7', doing: 'work' }, { id: 'BL-2', agent: 'Vega-2', doing: 'review' }] },
+      titles,
+      now,
+      live,
+    );
+    expect(d.agents.map((a) => [a.status, a.stuck])).toEqual([
+      ['Running `npm test` · 2:10 · 1 of 2', undefined],
+      ['Looks stuck: No activity for 14 min', true],
+    ]);
+  });
 });

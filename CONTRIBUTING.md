@@ -7,6 +7,7 @@ Open the folder in the devcontainer (or on the host with Node 22 and git), then:
 ```bash
 npm ci
 npm test               # unit + git integration tests (vitest), queued with the other worktrees' runs
+npm run test:related   # only the tests of what changed since main
 npm run typecheck
 npm run build
 npm run format         # Prettier; the pre-commit hook does it for the staged files
@@ -14,7 +15,7 @@ xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
 
-`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait: run those while you work, and the whole suite once, at the end.
+`npm test` (`scripts/test.mjs`) shares the machine with the test runs of the repository's other worktrees: a full run waits for one of `flotilla.checks.maxParallel` slots (by default 1 per 16 cores; `FLOTILLA_CHECKS_MAX_PARALLEL` overrides it) and runs vitest with its share of the cores. A merge's checks go first. Runs given files (`npm test -- tests/unit/foo.test.ts`) don't wait. While you work, run `npm run test:related`: `vitest related` on the files changed since the merge base with main (committed, not committed and new), so only the tests that import them run, without waiting; a change to `tests/helpers/`, `vitest.config.ts`, `package.json`, the lockfile or a tsconfig runs the full suite instead (queued). A single file with `npx vitest run <file>` is enough when you know which. Run the full `npm test` once, before "Ready for review" (the merge's checks run it again).
 
 Each vitest run gets a temp folder of its own, `<tmp>/flotilla-tests/run-<pid>-…` ([tests/helpers/tempRoot.ts](tests/helpers/tempRoot.ts)): the workers see it as the system temp folder (`TMPDIR`, `TMP`, `TEMP`), so what the tests and the code under test make there (`makeTempDir`, `os.tmpdir()`) is removed with it when the run ends, also when tests fail or time out. The folders of runs that were killed are removed when the next run starts.
 
@@ -105,6 +106,28 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
+  A card is Compact by default (`flotilla.backlog.cards`, BL-183): its title, one status line and its next step, all
+  from `cardStatus()` ([src/features/backlog/cardStatus.ts](src/features/backlog/cardStatus.ts)), with its tests in
+  `tests/unit/features/cardStatus.test.ts`. A new state of a ticket gets its line (and its mark, if it needs you) there;
+  a new detail or action goes in the hover row (`CompactCard`) and in Detailed. A demo that shows a Detailed-only sign
+  sets `"settings": { "flotilla.backlog.cards": "detailed" }`.
+- **Commands** (BL-185): each feature's module exports its commands as a map of handlers by command id
+  (`Commands`, [src/ui/commandSet.ts](src/ui/commandSet.ts)), made from the deps it's given:
+  `mergeCommands` ([src/ui/backlog/mergeCommands.ts](src/ui/backlog/mergeCommands.ts)), `agentCommands`,
+  `autopilotCommands`, `metricsCommands`, `viewCommands` (the sidebar's), `activeWorktreeCommands`, `hygieneCommands`.
+  [src/extension.ts](src/extension.ts) only makes the deps and calls `registerAll(context.subscriptions, xCommands(…))`
+  once per feature; it registers no command itself. The worktree commands of [src/ui/commands.ts](src/ui/commands.ts)
+  (they report errors with Show Output) are split the same way: `registerCommands` joins `worktreeCommands`,
+  `backlogCommands`, `ciCommands`, `scmCommands` ([src/ui/scmCommands.ts](src/ui/scmCommands.ts)) and `chatCommands`
+  ([src/ui/chatCommands.ts](src/ui/chatCommands.ts)). A new command goes in its feature's map, next to its
+  `package.json` entry; a new feature's map also goes in the list of
+  [tests/unit/ui/commandSet.test.ts](tests/unit/ui/commandSet.test.ts), which checks that every command of
+  `package.json` is registered, once.
+- **A part's CSS** is in its own file next to it (`card.tsx` → `card.css`), which the part imports
+  (`import './card.css';`); esbuild bundles it into `dist/webview.css` or `dist/ticket.css`. Only what parts share
+  (the variables, `body`, buttons, rows, `.rendered`, the layout) stays in the entry CSS, `ui/styles.css` or
+  `ticket/ticket.css`, which the entry imports before the parts, so a part's rules come after the shared ones and win
+  at the same specificity.
 
 ## Additions that merge cleanly
 
@@ -157,7 +180,9 @@ What happens to tickets, agents and merges is recorded as events (BL-157), one J
 
 - **To record something**, call `recordEvent(kind, { ticket, agent, data })` ([src/features/metrics/events.ts](src/features/metrics/events.ts)) where it happens. It isn't awaited and never throws: recording doesn't slow or break the step it records. A new kind goes into `EventData` there, with the shape of its `data`, and gets a sample in `tests/unit/features/metrics/events.test.ts` (it doesn't compile without one). Scripts record with `recordEvent(commonDir, kind, …)` of `scripts/record-event.mjs`.
 - **The history** before the log (the tickets' activity notes and the merges replayed from git) is read in once by the leading window, marked `imported` ([src/features/metrics/import.ts](src/features/metrics/import.ts)). A note whose wording changes should still be read there.
+- **The Metrics view** (BL-158: the sidebar's Metrics tool, and *Flotilla: Open Metrics* in an editor tab) counts them in the host: [src/features/metrics/compute.ts](src/features/metrics/compute.ts) turns the log into its numbers and charts for a period and the one before (pure, tested on a fixed log in `tests/unit/features/metrics/compute.test.ts`), and [src/features/metrics/store.ts](src/features/metrics/store.ts) reads only what was appended since its last look. A new number goes into `computeMetrics`, with its rows (what it's made of) and its `empty` line. The playground has a month of events to show (`seedEvents` in `scripts/playground-seed.mjs`, written again before every demo). Its first section, Productivity (BL-189), reads `agent-spend` events: [src/features/metrics/transcriptSpend.ts](src/features/metrics/transcriptSpend.ts) splits a chat's transcript by the prompt that started each part (first pass, review, rework, main, resume, answer, orchestration) and shares its cost records among them, and [src/features/metrics/spendScan.ts](src/features/metrics/spendScan.ts) records what's new every 5 minutes in the leading window (the history imported once, its place kept in `spend-scan.json` next to the events). A new Flotilla prompt gets its purpose in `PROMPTS` there, tested in `tests/unit/features/metrics/transcriptSpend.test.ts`.
 - **After 12 months** a month's events are rolled up into `totals-YYYY-MM.json` ([src/features/metrics/rollup.ts](src/features/metrics/rollup.ts)).
+- **The improvement review** (BL-159) gives its agent the metrics of [src/features/metrics/summary.ts](src/features/metrics/summary.ts), each with a stable id, this period next to the one before. A proposal's `Improves: <id> from X to Y` line names one, and the next review counts it before and after the ticket landed ([src/features/metrics/improves.ts](src/features/metrics/improves.ts)). A new metric is a `metricDefs` entry there (keep the ids: merged tickets name them). The reviews are `.flotilla/backlog/reviews/YYYY-MM-DD.md`.
 
 ## Demos
 
@@ -173,17 +198,19 @@ Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for
 
 The ticket shows the recording and its block as one demo: "Recorded demo · 0:12" over the recording, with **Try it yourself** (`npm run demo -- try <name>`: the demo's window as it starts, its steps left to you) and **Watch it live** (`play`), in the report, the Demo section and the Attachments viewer alike; the block isn't shown again below it. The recorder notes the demo's name in what it records (`flotilla-demo:<name>`, in the GIF's or MP4's comment), so a recording goes with its block wherever the report puts them. Once the ticket's worktree is gone (merged and cleaned up), they run from the main worktree when the demo is there.
 
+Write the demo, check it, and record it once: `check` plays the steps fast, without recording or pauses, and prints each step's result, so a wrong selector costs seconds, not a recording. Record when it passes, at the end of the work, and don't record again unless the work changed since.
+
 ```sh
-npm run build
+npm run demo -- check open-ticket   # the dry run: each step's result, and what failed
 npm run demo -- record open-ticket --out .flotilla/backlog/BL-3/demo.gif --still .vscode-test/last.png
 npm run demo -- play open-ticket    # live, in the window; it stays open until you close it
 npm run demo -- try open-ticket     # its window as the demo starts, its steps left to you (Try it yourself)
 npm run demo -- list
 ```
 
-The recorder refuses a build older than `src/` (it would play an old sidebar, whose elements the steps may not find): run `npm run build` again after a change.
+Before it starts, the recorder makes ready what it needs: it builds (`npm run build`) when `dist/` is older than `src/` (an old build plays an old sidebar, whose elements the steps may not find), and reads the demo profile's `settings.json` as JSON with comments, moving a broken one aside (`settings.json.broken`) to start afresh. Each demo starts from the same window: what the last one left in the profile's workspace storage (the sidebar's state, a fold left open, the views and editors open) is cleared first, so a toggle a demo clicks goes the same way every run. A step that fails saves a screenshot of the window next to the demo (`demos/<name>.failed.png`, ignored by git, gone once it passes) and prints the visible elements most like what it looked for, their labels and text: `[aria-label="Backlogs"]` lists `button aria-label="Backlog"`. A `command` step whose command the palette doesn't have fails there, rather than running one of the "similar commands" it offers. The last line says how it went, for an agent to read: `Demo saved: <file> (<size>, <length>)`, `Demo checked: all <n> steps passed`, or `Demo failed: step <n> (…): <why> (screenshot: <file>)`. Checks and failures are events too (`demo-checked`, `demo-failed`), next to `demo-recorded`.
 
-The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are that window's page as Chromium draws it: its screencast through the debugging port (playwright-core), never the screen. Each frame comes when the page changes, with the time it was drawn, and the recording keeps 25 a second, so the pointer glides rather than jumps, also when the machine is busy. Recording starts once the window is ready: the workbench shown, Flotilla's view in the activity bar, and nothing changed on screen for a second (a window that doesn't settle within a minute fails the demo). A frame is kept only once a check after it finds that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`), checked four times a second. If a check fails, nothing is saved, and the recorder says why. A GIF holds only what changed from one frame to the next, so a 15 s demo stays well under 2 MB; a longer one becomes an MP4 at 25 fps. Recording prints how far apart the frames were while the pointer moved (the `pointer-sweep` demo is there to measure it). `--still` saves the last frame as a PNG, to check how the demo ends. `--still` saves the last frame as a PNG, to check how the demo ends. One demo runs at a time in a worktree, as it holds that profile: a second one started there says so and waits for the first to finish (or its window to be closed); demos in other worktrees run alongside.
+The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are that window's page as Chromium draws it: its screencast through the debugging port (playwright-core), never the screen. Each frame comes when the page changes, with the time it was drawn, and the recording keeps 25 a second, so the pointer glides rather than jumps, also when the machine is busy. Recording starts once the window is ready: the workbench shown, Flotilla's view in the activity bar, Flotilla's status bar item (there once the extension has started, so its commands are), and nothing changed on screen for a second (a window that doesn't settle within a minute fails the demo). A frame is kept only once a check after it finds that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`), checked four times a second. If a check fails, nothing is saved, and the recorder says why. A GIF holds only what changed from one frame to the next, so a 15 s demo stays well under 2 MB; a longer one becomes an MP4 at 25 fps. Recording prints how far apart the frames were while the pointer moved (the `pointer-sweep` demo is there to measure it). `--still` saves the last frame as a PNG, to check how the demo ends. One demo runs at a time in a worktree, as it holds that profile: a second one started there says so and waits for the first to finish (or its window to be closed); demos in other worktrees run alongside.
 
 An agent's demos never open on your screen: when the recorder or player runs in an agent's command (Claude Code sets `CLAUDECODE` there, for agents Flotilla starts and any other), the window opens on a virtual display of its own, an Xvfb started for it on the first display from `:99` up with neither an X socket nor a lock (a dev container serves `:0`–`:2` without locks) and stopped when it's done. Frames are the window's page either way, so the recording is the same size (1280 × 800) and quality. Played there, the window closes when the demo ends, as nobody sees it. Where Xvfb isn't installed, the demo says so and stops; it never falls back to your screen. `DEMO_DISPLAY=virtual` or `DEMO_DISPLAY=screen` chooses either way by hand (agents don't set it). Your run blocks play in a terminal of yours, so they show on your screen.
 

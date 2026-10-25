@@ -59,7 +59,10 @@ export interface BacklogItem {
    */
   shaping?: {
     agent: string;
+    /** Its chat's session; "" for a discussion chat whose first message isn't sent yet (found by it, see findDiscussionChat). */
     session: string;
+    /** The discussion is a Claude Code chat the owner talks in (BL-188), not replies in the ticket: when it opened ("YYYY-MM-DD HH:MM"). */
+    chat?: { since: string };
     ready?: boolean;
     /** The user paused (or stopped) it, when (ISO 8601): it goes on in its chat when they resume it, or write again. */
     held?: { kind: 'paused' | 'stopped'; at: string };
@@ -69,6 +72,8 @@ export interface BacklogItem {
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+  /** Agents' replies to your comments (Ask an Agent, BL-127) that came while its ticket wasn't open: its card says so until it's opened. */
+  unseenReplies?: number;
   /** The autopilot couldn't start an agent on it (why, and when): it waits for the user to start it (Run). */
   startFailed?: { message: string; /** ISO 8601. */ since: string };
   /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */

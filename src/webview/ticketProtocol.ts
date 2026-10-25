@@ -9,9 +9,12 @@ import type { MergeInfo } from '../features/backlog/merged';
 import type { ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
+import type { AnswerView } from '../features/backlog/askAgent';
 import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
+import type { AgentActivity, StuckRules } from '../features/chats/activity';
+import type { AgentSummary } from '../features/chats/summary';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -74,6 +77,10 @@ export type AgentChatView =
       effort?: string;
       /** Its token use (BL-76): its context now ("84k"), and the totals for the tooltip. */
       tokens?: { label: string; tip: string; reRead: number };
+      /** What it's doing, from its transcript (BL-175); `updated` is when it last wrote it. */
+      activity?: AgentActivity;
+      /** Its status in two lines, from a small model (BL-180): the latest asked, or the one being written. */
+      summary?: AgentSummary;
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
@@ -143,6 +150,8 @@ export interface TicketView {
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
+  /** Its "When it's done" lines, rendered (BL-137): the folded description shows them in place of its first lines. */
+  whenDoneHtml?: string;
   /**
    * key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. anchor: its
    * id in the ticket file, to reply to it; reply: whom a reply answers (its body is without the reply line), and root:
@@ -160,6 +169,14 @@ export interface TicketView {
       anchor?: string;
       reply?: { to: string; author: string; date: string; label: string };
       root?: number;
+      /** One of your comments: you can edit and delete it (BL-128). Its body is its text (without its mark). */
+      own?: boolean;
+      /** When it was edited, and the agents that answered the version before. */
+      edited?: string;
+      readBefore?: string[];
+      /** When it was deleted: it shows "Comment deleted", with its replies; hidden: it has none (kept for its anchor). */
+      deleted?: string;
+      hidden?: boolean;
     }
   >;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
@@ -252,6 +269,8 @@ export interface TicketView {
   agentDefaults: AgentChoice;
   /** The model Light tickets' work runs on (flotilla.agents.lightModel); unset: no ticket can be Light. */
   lightModel?: string;
+  /** When a working agent looks stuck (flotilla.agents.stuck.*); unset: the defaults. */
+  stuckRules?: StuckRules;
   /** Whether the user keeps Flotilla's notes (the activity timeline) open. */
   showActivity: boolean;
   /** Its attachments (BL-110), newest first: the Attachments section above the activity. None: no section. */
@@ -264,8 +283,19 @@ export interface TicketView {
   dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
+  /** Your comments can be answered by an agent now (Ask an Agent, BL-127), and those asked about, by their anchors. */
+  canAsk?: boolean;
+  asked?: Record<string, AnswerView>;
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
-  shaping?: { agent: string; running: boolean; ready: boolean; /** The user paused or stopped it: Resume goes on in its chat. */ held?: 'paused' | 'stopped' };
+  shaping?: {
+    agent: string;
+    running: boolean;
+    ready: boolean;
+    /** The user paused or stopped it: Resume goes on in its chat. */
+    held?: 'paused' | 'stopped';
+    /** It's a Claude Code chat (BL-188): open (Discussing), or closed, or its first message not sent yet (pending). */
+    chat?: 'open' | 'closed' | 'pending';
+  };
   /**
    * Its last Check (BL-163): each thing it says is going on, ✓ (ok, with its evidence) or ✗ (with what Clean Up does).
    * full: the user clicked Check (all claims shown); else the check made on opening it, which shows only glitches.

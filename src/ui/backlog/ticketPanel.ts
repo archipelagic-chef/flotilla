@@ -27,7 +27,8 @@ import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheck
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
-import { parseFileLink } from '../../features/backlog/ticket';
+import { parseFileLink, summaryOf, whenItsDone } from '../../features/backlog/ticket';
+import { answeredBy, deleteEntry, editable, editEntry, entryEdit, repliesOf, showsDeleted } from '../../features/backlog/commentEdits';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
@@ -41,18 +42,21 @@ import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/bac
 import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
 import type { Claim } from '../../features/backlog/ticketCheck';
-import { readSettings } from '../settings';
+import { readSettings, stuckRules } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, summarizeAgent } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
 import { formatMemory } from '../../features/workstreams/memory';
 import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
+import { readTranscript, transcriptPath } from '../../features/chats/chats';
+import { summaryWait, type AgentSummary } from '../../features/chats/summary';
 import type { Shaping } from './shaping';
-import { discussable } from '../../features/backlog/shaping';
+import type { AskAgent } from './askAgent';
+import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
 import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
 import { openTarget } from '../../features/backlog/runTarget';
@@ -367,6 +371,9 @@ function workstreamState(w: Workstream) {
   };
 }
 
+/** How often a showing ticket reads its busy agents' transcripts again (BL-175). */
+const LIVE_MS = 3000;
+
 /** Ticket editor tabs: one per backlog item, kept up to date with the ticket file and the item's worktree. */
 export class TicketPanels implements vscode.Disposable {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
@@ -386,6 +393,19 @@ export class TicketPanels implements vscode.Disposable {
   /** Update from Main (BL-55), for the tickets being worked on. */
   useMainSync(mainSync: MainSync): void {
     this.mainSync = mainSync;
+  }
+
+  answers: AskAgent | undefined;
+
+  /** Ask an Agent (BL-127): agents answering your comments. */
+  useAnswers(answers: AskAgent): void {
+    this.answers = answers;
+    this.subscriptions.push(answers.onDidChange((id) => this.refresh(new Set([id]))));
+  }
+
+  /** Whether a ticket's tab is open. */
+  isOpen(id: string): boolean {
+    return this.panels.has(id);
   }
 
   /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
@@ -508,12 +528,18 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
+    // Its agents' replies are seen now (BL-127): its card no longer says so.
+    if (item.unseenReplies) {
+      await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? (({ unseenReplies: _, ...rest }) => rest)(i) : i)) }));
+    }
     if (o.focus) this.focusOnPost.set(panel, o.focus);
     const ci = this.ci?.open(id, panel);
+    const live = setInterval(() => void this.liveActivity(panel), LIVE_MS);
     // Told before a button refuses: a glitch found on opening it shows as a line (BL-163).
     void this.check(id, false);
     panel.onDidDispose(() => {
       ci?.dispose();
+      clearInterval(live);
       this.panels.delete(id);
       this.checks.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.
@@ -522,7 +548,7 @@ export class TicketPanels implements vscode.Disposable {
     });
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
       (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost'
-        ? this.onAsk(id, panel, m)
+        ? this.onAskMessage(id, panel, m)
         : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
           ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
             (this.ci?.handle(id, m) ?? Promise.resolve())
@@ -655,7 +681,10 @@ export class TicketPanels implements vscode.Disposable {
         const key = Store.entryKey(item.id, whole);
         // A reply shows whom it answers above it, not its reply line (BL-126).
         const thread = threads[n];
-        const e = thread.reply ? { ...whole, body: parseReply(whole.body)?.text ?? whole.body } : whole;
+        // An edited or deleted comment (BL-128) shows its text without its mark, and says so.
+        const edit = entryEdit(whole.body);
+        const shown = edit.replyLine || edit.edited || edit.deleted ? edit.text : whole.body;
+        const e = { ...whole, body: shown };
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
@@ -676,6 +705,10 @@ export class TicketPanels implements vscode.Disposable {
           ...(thread.reply ? { reply: thread.reply } : {}),
           ...(thread.root !== undefined ? { root: thread.root } : {}),
           ...(posted[key] ? { posted: posted[key] } : {}),
+          ...(editable(whole) ? { own: true } : {}),
+          ...(edit.edited ? { edited: edit.edited } : {}),
+          ...(edit.deleted ? { deleted: edit.deleted, ...(showsDeleted(entries, thread.anchor) ? {} : { hidden: true }) } : {}),
+          ...(edit.edited ? { readBefore: answeredBy(entries, thread.anchor, edit.edited) } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
           ...(thumbs.length ? { thumbs } : {}),
@@ -763,6 +796,7 @@ export class TicketPanels implements vscode.Disposable {
               ...((c.model ?? startedWith.get(agent.toLowerCase())?.model) ? { model: c.model ?? startedWith.get(agent.toLowerCase())?.model } : {}),
               ...((c.effort ?? startedWith.get(agent.toLowerCase())?.effort) ? { effort: c.effort ?? startedWith.get(agent.toLowerCase())?.effort } : {}),
               ...(c.usage?.turns ? { tokens: { label: formatTokens(c.usage.reRead), tip: usageTip(c.usage), reRead: c.usage.reRead } } : {}),
+              ...(c.activity ? { activity: c.activity } : {}),
             },
           ];
         }),
@@ -927,6 +961,67 @@ export class TicketPanels implements vscode.Disposable {
 
   /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
   private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
+  /** The panels whose agents' transcripts are being read (liveActivity): one read at a time each. */
+  private readonly liveReads = new WeakSet<vscode.WebviewPanel>();
+
+  /**
+   * What a ticket's busy agents are doing, read again every few seconds while it shows (BL-175): only their
+   * transcripts' new bytes are read (readTranscript keeps the rest), and only the agents' part is sent when it changed.
+   */
+  private async liveActivity(panel: vscode.WebviewPanel): Promise<void> {
+    const sent = this.sentViews.get(panel);
+    if (!panel.visible || !sent || this.liveReads.has(panel)) return;
+    const busy = sent.agents.filter((a) => a.runs && !a.held);
+    if (!busy.length) return;
+    this.liveReads.add(panel);
+    try {
+      const read = new Map(
+        await Promise.all(
+          busy.map(async (a) => {
+            const ws = this.deps.repository.current.find((w) => w.key === a.key);
+            const chat = ws?.chats.find((c) => c.id === a.id);
+            const dir = chat?.cwd ?? ws?.worktree.path;
+            return [a.id, dir ? await readTranscript(dir, a.id).catch(() => undefined) : undefined] as const;
+          }),
+        ),
+      );
+      const now = this.sentViews.get(panel);
+      if (!now) return;
+      const agents = now.agents.map((a) => {
+        const t = read.get(a.id);
+        if (!t?.activity) return a;
+        const updated = t.updatedAt.toISOString() > a.updated ? t.updatedAt.toISOString() : a.updated;
+        return { ...a, activity: t.activity, updated };
+      });
+      const next = { ...now, agents };
+      const update = ticketUpdate(now, next);
+      if (!update) return;
+      this.sentViews.set(panel, next);
+      void panel.webview.postMessage(update);
+    } finally {
+      this.liveReads.delete(panel);
+    }
+  }
+
+  /** The agents' status summaries (BL-180), by chat: in memory only, the latest of each. */
+  private readonly summaries = new Map<string, AgentSummary>();
+
+  /**
+   * Summarizes a ticket's working agent with a small model (BL-180): at most once a minute per agent (a click before
+   * then does nothing; the button says when). Returns once its answer is in; the message's post then shows it.
+   */
+  async summarize(id: string, session: string): Promise<void> {
+    if (summaryWait(this.summaries.get(session)) > 0) return;
+    const panel = this.panels.get(id);
+    const agent = panel && this.sentViews.get(panel)?.agents.find((a) => a.id === session);
+    const ws = agent && this.deps.repository.current.find((w) => w.key === agent.key);
+    const dir = ws?.chats.find((c) => c.id === session)?.cwd ?? ws?.worktree.path;
+    if (!dir) return;
+    const at = new Date().toISOString();
+    this.summaries.set(session, { at, running: true });
+    const answer = await summarizeAgent(transcriptPath(dir, session), { output: this.output() }).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+    this.summaries.set(session, { at, ...answer });
+  }
 
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
   readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
@@ -985,6 +1080,7 @@ export class TicketPanels implements vscode.Disposable {
           reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length,
           ...(runs ? { runs } : {}),
           ...(halted ? { held: halted } : {}),
+          ...(this.summaries.has(c.id) ? { summary: this.summaries.get(c.id) } : {}),
         };
       });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
@@ -1020,10 +1116,12 @@ export class TicketPanels implements vscode.Disposable {
       } else {
         const ticket = await this.deps.backlog.readTicketCached(item);
         const attachments = await this.attachments(item, ticket.description, ticket.activity, panel.webview);
+        const done = whenItsDone(ticket.description);
         send({
           ...base,
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
+          ...(done ? { whenDoneHtml: await renderMarkdown(done, panel.webview, dir, this.roots(plain)) } : {}),
           activity: await this.localEntries(item, ticket.activity, panel.webview, attachments),
           attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
@@ -1117,6 +1215,7 @@ export class TicketPanels implements vscode.Disposable {
       canCleanUp: false,
       agentDefaults: agentChoice(undefined),
       ...(modelLevels().light ? { lightModel: modelLevels().light } : {}),
+      stuckRules: stuckRules(),
       children: [],
       ...(plain.review ? { review: { ...plain.review, running: !!this.reviews?.isRunning(plain.id) } } : {}),
       ...(queued ? { queued } : {}),
@@ -1129,9 +1228,10 @@ export class TicketPanels implements vscode.Disposable {
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
+      ...(!remote && this.answers ? { canAsk: true, asked: this.answers.viewsOf(plain.id) } : {}),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
-        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}) } }
+        ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}), ...this.discussionChat(plain) } }
         : {}),
     };
   }
@@ -1197,7 +1297,19 @@ export class TicketPanels implements vscode.Disposable {
    * from the repository root (in the ticket's worktrees first, then the main one: after a merge it's there) or next to
    * the ticket (its pictures); "path#L10-L20" and "path:10" select lines.
    */
+  /** Where the ticket's discussion chat is (BL-188), for its view. */
+  private discussionChat(item: BacklogItem): { chat?: 'open' | 'closed' | 'pending' } {
+    if (!item.shaping?.chat || !this.shaping) return {};
+    const found = this.shaping.chatOf(item);
+    return { chat: !found ? 'pending' : found.chat.open ? 'open' : 'closed' };
+  }
+
   async openHref(item: BacklogItem, href: string): Promise<void> {
+    // A note's link to a discussion's chat (BL-188).
+    if (href.startsWith(CHAT_LINK)) {
+      if (!(await this.shaping?.openSession(href.slice(CHAT_LINK.length)))) void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in any worktree.`);
+      return;
+    }
     if (/^(https?|mailto):/i.test(href)) {
       await vscode.env.openExternal(vscode.Uri.parse(href));
       return;
@@ -1288,6 +1400,47 @@ export class TicketPanels implements vscode.Disposable {
     const activity = (await this.deps.backlog.readTicket(item)).activity;
     const parent = activity[entryAnchors(activity).indexOf(replyTo)];
     return parent ? `${replyLine(parent, replyTo)}\n${text.trim()}` : text;
+  }
+
+  /**
+   * Edits or deletes one of your comments (BL-128), found by its anchor as the ticket is when written: only that entry
+   * changes, through the backlog's queue (as appends do), so entries written meanwhile stay. A comment posted to an
+   * issue stays posted there as it was (Flotilla can't change it there): its local copy keeps its "Posted to".
+   */
+  async changeComment(id: string, anchor: string, text: string | undefined): Promise<void> {
+    const item = await this.item(id);
+    if (!item || item.remote) return;
+    if (text === undefined && !(await this.confirmDelete(item, anchor))) return;
+    const posted = await this.deps.backlog.posted();
+    let moved: { from: string; to: string } | undefined;
+    await this.deps.backlog.editTicket(item, (ticket) => {
+      const date = entryDate(new Date());
+      const activity = text === undefined ? deleteEntry(ticket.activity, anchor, date) : editEntry(ticket.activity, anchor, text, date);
+      if (!activity) throw new Error(text === undefined ? 'That comment is no longer there.' : 'That comment can no longer be edited.');
+      const i = entryAnchors(ticket.activity).indexOf(anchor);
+      // Kept (edited, or "Comment deleted"): it's in the same place.
+      const now = activity.length === ticket.activity.length ? activity[i] : undefined;
+      if (now) moved = { from: Store.entryKey(id, ticket.activity[i]), to: Store.entryKey(id, now) };
+      return { ...ticket, activity };
+    });
+    if (moved && posted[moved.from]) await this.deps.backlog.markPosted(moved.to, posted[moved.from]);
+  }
+
+  /** Asks before a comment is deleted, saying what's left of it and what the agents that answered it read. */
+  private async confirmDelete(item: BacklogItem, anchor: string): Promise<boolean> {
+    const activity = (await this.deps.backlog.readTicket(item)).activity;
+    const i = entryAnchors(activity).indexOf(anchor);
+    if (i < 0) return false;
+    const posted = (await this.deps.backlog.posted())[Store.entryKey(item.id, activity[i])];
+    const replies = repliesOf(activity, anchor).length;
+    const agents = answeredBy(activity, anchor);
+    const detail = [
+      summaryOf(entryEdit(activity[i].body).text) ?? '',
+      replies ? `It has ${replies === 1 ? 'a reply' : `${replies} replies`}: "Comment deleted" stays, with ${replies === 1 ? 'it' : 'them'} under it.` : '',
+      agents.length ? `${agents.join(' and ')} already answered it, and keep${agents.length === 1 ? 's' : ''} what ${agents.length === 1 ? 'it' : 'they'} read.` : '',
+      posted ? `It was posted to ${posted}: only the local copy is deleted, the comment there stays.` : '',
+    ].filter(Boolean);
+    return (await vscode.window.showWarningMessage('Delete your comment?', { modal: true, detail: detail.join('\n\n') }, 'Delete')) === 'Delete';
   }
 
   async addActivity(id: string, author: string, body: string): Promise<void> {
@@ -1467,6 +1620,19 @@ export class TicketPanels implements vscode.Disposable {
   readonly asks = new Map<string, AskChat>();
   private readonly askTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** An Ask chat's message, then its done (also after a throw): its button's "working…" ends. */
+  private async onAskMessage(id: string, panel: vscode.WebviewPanel, m: Extract<TicketWebviewMessage, { type: 'ask' | 'askStop' | 'askNew' | 'askPost' }>): Promise<void> {
+    let failed = false;
+    try {
+      await this.onAsk(id, panel, m);
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      if (this.panels.get(id) === panel) void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+    }
+  }
+
   /**
    * The Ask chat's messages: they change nothing in the ticket, so they don't post its view. A question returns once
    * it's sent (or has waited for memory); its answer streams in as it's written.
@@ -1491,7 +1657,7 @@ export class TicketPanels implements vscode.Disposable {
           return short && `Waiting for memory: ${formatMemory(short.freeMB)} free, and flotilla.agents.minFreeMemoryMB asks for ${formatMemory(short.minMB)}…`;
         },
         context: () => this.askContext(id, panel),
-        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output() }),
+        spawn: (cwd) => spawnAsk(cwd, { instructions: askInstructions({ id, title: this.sentViews.get(panel)?.item.title ?? id }), output: this.output(), ticket: id }),
         render: (markdown) => renderMarkdown(markdown, panel.webview, this.deps.backlog.dir, this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' })),
         changed: () => {
           if (this.asks.get(id) === created) this.postAsk(id, panel);

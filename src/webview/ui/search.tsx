@@ -5,6 +5,7 @@ import { send } from './api';
 import type { Update } from './app';
 import { Virtual } from './virtual';
 import { searchRows, type SearchRow } from './rows';
+import './search.css';
 
 export interface SearchState {
   query: string;

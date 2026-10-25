@@ -83,7 +83,8 @@ describe('what the ticket says about it', () => {
 
   it('tells the agent to merge, resolve, check, commit with the id and report', () => {
     const prompt = mergeBasePrompt({ id: 'BL-1', base: 'origin/main', branch: 'feature/BL-1-x', files: ['a.ts'], ticket: '/t/BL-1.md' });
-    expect(prompt).toContain('git merge origin/main');
+    expect(prompt).toContain('git rebase origin/main');
+    expect(prompt).not.toContain('git merge');
     expect(prompt).toContain('in a.ts');
     expect(prompt).toContain('"BL-1: "');
     expect(prompt).toContain('Ready for review.');
