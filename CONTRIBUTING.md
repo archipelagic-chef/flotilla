@@ -92,7 +92,7 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
 
 - **The ticket view** ([src/webview/ticket/](src/webview/ticket/)): [main.tsx](src/webview/ticket/main.tsx) is the app
   shell (the messages from the host, the layout of the sections) only. Each section is a module: `header.tsx`,
-  `description.tsx`, `stateCard.tsx`, `ask.tsx`, `work.tsx`, `changes.tsx` (its tree and inline diffs in `changeTree.ts`, read by `features/diffs/fileDiff.ts`), `agents.tsx`, `reviewPanel.tsx`, `mergePanel.tsx`,
+  `description.tsx`, `stateCard.tsx`, `ask.tsx`, `work.tsx`, `changes.tsx` (its tree and inline diffs in `changeTree.ts`, read by `features/diffs/fileDiff.ts`; a file expanded to the whole tab, under its header leading back, in `diffView.tsx`), `agents.tsx`, `reviewPanel.tsx`, `mergePanel.tsx`,
   `activity.tsx` (the feed and the comment box), `attachments.tsx`, `demo.tsx`, `ci.tsx`. What sections share is in its
   own: `actions.tsx` (`send`, `act`, `useWorking`, `ActionButton`, `Dropdown`), `comments.tsx` (sending a comment,
   replying), `markdownBox.tsx` (the Markdown editor and `Rendered`). A new section is a new module, which `main.tsx`
@@ -112,7 +112,7 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   a new detail or action goes in the hover row (`CompactCard`) and in Detailed. A demo that shows a Detailed-only sign
   sets `"settings": { "flotilla.backlog.cards": "detailed" }`.
 - **Version Control in the sidebar** ([src/webview/ui/vc.tsx](src/webview/ui/vc.tsx)) is its Changes, History and
-  Compare; a ticket's worktree adds the ticket's header and its own Changes and Commits views, in `ticketVc.tsx`
+  Compare; a ticket's worktree adds the ticket's header and its own Changes (a file picked shows its diff in the ticket's tab) and Commits views, in `ticketVc.tsx`
   (BL-171), read from the ticket host by `ticketVc` (`TicketPanels.ticketVc`).
 - **Commands** (BL-185): each feature's module exports its commands as a map of handlers by command id
   (`Commands`, [src/ui/commandSet.ts](src/ui/commandSet.ts)), made from the deps it's given:

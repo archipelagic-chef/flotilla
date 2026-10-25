@@ -3,6 +3,7 @@ import type { ChangedFile, FileDiff, TicketHostMessage, TicketView } from '../ti
 import { ActionButton, send } from './actions';
 import './changes.css';
 import { changeLetter, changeRows, rowWindow, withDiffs, type ChangeRow, type DiffRow } from './changeTree';
+import type { FullAt } from './diffView';
 
 const ROW = 22;
 const MAX_HEIGHT = 440;
@@ -31,11 +32,12 @@ const STAGE: Record<string, string> = {
 /**
  * What the ticket's work changes compared with main (BL-171), from a glance to the detail: its files as a tree that
  * folds by folder, each with its lines added and deleted; a file unfolds its diff inline (the preview); Expand (on a
- * file, or a hunk's head) opens the sidebar's Version Control on the ticket's Changes, that file selected, whose Back
- * to Ticket comes back here; Open All Changes opens them all in the multi-file diff editor beside the ticket. The file
- * expanded last stays marked, and Back to Ticket in a diff editor's title bar comes back here too.
+ * file, or a hunk's head, at that line) shows the whole file's diff in the ticket's tab instead of the ticket
+ * (DiffView, its header leading back here), and selects it in the sidebar's Version Control, on the ticket's Changes;
+ * Open All Changes opens them all in the multi-file diff editor beside the ticket. The file expanded last stays marked
+ * (marked), and Back to Ticket in a diff editor's title bar comes back here too.
  */
-export function Changes({ ticket }: { ticket: TicketView }) {
+export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand: (at: FullAt) => void; marked?: string }) {
   const change = ticket.changes;
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
@@ -45,6 +47,9 @@ export function Changes({ ticket }: { ticket: TicketView }) {
   /** The files whose diffs are unfolded inline (their rows' keys), and the diffs read (until the change is new). */
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
   const [diffs, setDiffs] = useState<ReadonlyMap<string, FileDiff>>(new Map());
+  useEffect(() => {
+    if (marked) setCurrent(marked);
+  }, [marked]);
   const section = useRef<HTMLElement>(null);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -102,10 +107,6 @@ export function Changes({ ticket }: { ticket: TicketView }) {
   const open = (group: number, path: string) => {
     setCurrent(path);
     send({ type: 'openChange', group, path });
-  };
-  const expand = (group: number, path: string) => {
-    setCurrent(path);
-    send({ type: 'expandChange', group, path });
   };
   return (
     <section class="block changes" ref={section}>
@@ -175,7 +176,7 @@ function Row({
   unfold: (key: string, group: number, path: string) => void;
   unfolded: ReadonlySet<string>;
   open: (group: number, path: string) => void;
-  expand: (group: number, path: string) => void;
+  expand: (at: FullAt) => void;
   current?: string;
 }) {
   const style = { top: `${top}px`, height: `${ROW}px` };
@@ -209,7 +210,7 @@ function Row({
     return (
       <div class="change-row change-hunk" style={{ ...style, ...indent }}>
         <span class="change-name">{row.label}</span>
-        <button class="change-action" onClick={() => expand(row.group, row.path)} title="Expand: the ticket's changes in Version Control, this file selected">
+        <button class="change-action" onClick={() => expand({ group: row.group, path: row.path, line: row.line })} title={`Expand: the whole file's diff, at line ${row.line}`}>
           <i class="codicon codicon-screen-full" /> Expand
         </button>
       </div>
@@ -257,7 +258,7 @@ function Row({
         )}
         <Counts added={f.added} deleted={f.deleted} binary={f.binary} />
       </button>
-      <button class="change-action icon" onClick={() => expand(row.group, f.path)} title="Expand: the ticket's changes in Version Control, this file selected" aria-label="Expand">
+      <button class="change-action icon" onClick={() => expand({ group: row.group, path: f.path })} title="Expand: the whole file's diff" aria-label="Expand">
         <i class="codicon codicon-screen-full" />
       </button>
     </div>

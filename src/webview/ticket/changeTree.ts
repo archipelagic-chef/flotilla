@@ -120,6 +120,44 @@ export function withDiffs(rows: readonly ChangeRow[], unfolded: ReadonlySet<stri
   return out;
 }
 
+/** A row of a file's full view: a line, or a stretch of unchanged lines folded (its first line's index in lines). */
+export type FullRow = { kind: 'line'; key: string; line: DiffLine } | { kind: 'gap'; key: string; index: number; count: number };
+
+/**
+ * The rows of a file's full view (BL-171): all its lines, where unchanged stretches further than `context` lines from
+ * a change fold into one row ("42 unchanged lines"), unless their first line's index is in shown. A stretch too short
+ * to be worth folding shows.
+ */
+export function fullRows(lines: readonly DiffLine[], shown: ReadonlySet<number>, context = 3): FullRow[] {
+  const n = lines.length;
+  // Distance to the nearest change, before and after.
+  const near = new Array<boolean>(n).fill(false);
+  let last = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (lines[i].kind !== 'context') last = i;
+    near[i] = i - last <= context;
+  }
+  last = Infinity;
+  for (let i = n - 1; i >= 0; i--) {
+    if (lines[i].kind !== 'context') last = i;
+    if (last - i <= context) near[i] = true;
+  }
+  const rows: FullRow[] = [];
+  const line = (i: number) => rows.push({ kind: 'line', key: `l${i}`, line: lines[i] });
+  for (let i = 0; i < n; ) {
+    if (near[i]) {
+      line(i++);
+      continue;
+    }
+    let j = i;
+    while (j < n && !near[j]) j++;
+    if (j - i <= 3 || shown.has(i)) for (let k = i; k < j; k++) line(k);
+    else rows.push({ kind: 'gap', key: `g${i}`, index: i, count: j - i });
+    i = j;
+  }
+  return rows;
+}
+
 /** The letter of a file's change, as Source Control shows it. */
 export function changeLetter(f: Pick<ChangedFile, 'kind'>): string {
   switch (f.kind) {

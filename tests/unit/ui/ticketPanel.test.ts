@@ -272,6 +272,15 @@ describe('Expand in Changes (BL-171)', () => {
     expect(showTicketChanges).not.toHaveBeenCalled();
   });
 
+  it("shows the whole diff in the ticket's tab of a file picked in Version Control", async () => {
+    const { panels } = expandable();
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    await (panels as unknown as { openTicketChange: (id: string, group: number, path: string) => Promise<void> }).openTicketChange('BL-1', 0, 'src/reload.js');
+    expect(t.reveal).toHaveBeenCalled();
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showFull', group: 0, path: 'src/reload.js' });
+  });
+
   it("gives Version Control the ticket's title, Changes and commits", async () => {
     const { panels } = expandable();
     expect(await panels.ticketVc('BL-1')).toEqual({ id: 'BL-1', title: 'A ticket', change, commits });

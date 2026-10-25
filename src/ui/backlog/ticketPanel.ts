@@ -666,8 +666,8 @@ export class TicketPanels implements vscode.Disposable {
    */
   private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, FocusTarget>();
 
-  /** The file of its Changes a ticket opened from a diff shows once its view is sent (BL-171). */
-  private readonly changeOnPost = new WeakMap<vscode.WebviewPanel, { path?: string }>();
+  /** What a ticket opened to show a file of its Changes shows once its view is sent (BL-171): that file, or its diff. */
+  private readonly changeOnPost = new WeakMap<vscode.WebviewPanel, TicketHostMessage>();
 
   private ticketDiffs: TicketDiffs | undefined;
 
@@ -692,7 +692,7 @@ export class TicketPanels implements vscode.Disposable {
     }
     await this.open(o.id);
     const panel = this.panels.get(o.id);
-    if (panel) this.changeOnPost.set(panel, o.path ? { path: o.path } : {});
+    if (panel) this.changeOnPost.set(panel, { type: 'showChange', ...(o.path ? { path: o.path } : {}) });
   }
 
   /** A file of the ticket's Changes in the diff editor, beside the ticket; the diff's title bar leads back to it. */
@@ -706,14 +706,16 @@ export class TicketPanels implements vscode.Disposable {
     this.diffs.openedDiff(modified, { id: item.id, path: f.path });
   }
 
-  /** Expand on a file of the ticket's Changes (BL-171): its worktree's Version Control on the ticket's Changes, else its diff. */
+  /**
+   * Expand on a file of the ticket's Changes (BL-171), whose tab shows its diff: the sidebar follows, its worktree's
+   * Version Control on the ticket's Changes, that file selected. A merged ticket has no worktree to show it in (its
+   * compare in Version Control is BL-173's).
+   */
   async expandChange(item: BacklogItem, group: number, path: string): Promise<void> {
     const g = (await this.changesShown(item)).groups[group];
     if (!g?.files.some((f) => f.path === path)) return;
     const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
-    // A merged ticket has no worktree to show it in: its diff (its compare in Version Control is BL-173's).
     if (ws) await this.deps.showTicketChanges(ws.key, item.id, path);
-    else await this.openChange(item, group, path);
   }
 
   /** A ticket as the sidebar's Version Control shows it (BL-171): its changes and commits; undefined when there's no such item. */
@@ -724,10 +726,18 @@ export class TicketPanels implements vscode.Disposable {
     return { id: item.id, title: item.title, change, commits };
   }
 
-  /** A file of a ticket's Changes in the diff editor, opened from the sidebar's Version Control. */
+  /** A file of a ticket's Changes picked in the sidebar's Version Control: the ticket's tab shows its whole diff. */
   async openTicketChange(id: string, group: number, path: string): Promise<void> {
-    const item = await this.item(id);
-    if (item) await this.openChange(item, group, path);
+    const show: TicketHostMessage = { type: 'showFull', group, path };
+    const existing = this.panels.get(id);
+    if (existing) {
+      existing.reveal(undefined, true);
+      void existing.webview.postMessage(show);
+      return;
+    }
+    await this.open(id);
+    const panel = this.panels.get(id);
+    if (panel) this.changeOnPost.set(panel, show);
   }
 
   async open(id: string, o: { focus?: FocusTarget } = {}): Promise<void> {
@@ -1400,7 +1410,7 @@ export class TicketPanels implements vscode.Disposable {
       const focus = this.focusOnPost.get(panel);
       if (focus && this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: focus } satisfies TicketHostMessage);
       const change = this.changeOnPost.get(panel);
-      if (change && this.changeOnPost.delete(panel)) void panel.webview.postMessage({ type: 'showChange', ...change } satisfies TicketHostMessage);
+      if (change && this.changeOnPost.delete(panel)) void panel.webview.postMessage(change);
     };
     let base: Omit<TicketView, 'agents' | 'showActivity'> | undefined;
     try {
