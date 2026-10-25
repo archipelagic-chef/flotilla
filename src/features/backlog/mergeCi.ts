@@ -5,7 +5,8 @@ import {
   type CiStatus,
   isActive,
 } from '../ci/githubActions';
-import { PUSH_REMOTE, runsOnPush } from './branchPush';
+import { branchFilterWhy, PUSH_REMOTE, pushTrigger } from './branchPush';
+import { TRAIN_REMOTE_PREFIX } from './trainPush';
 
 /**
  * Merge to main on CI's result (BL-105): when GitHub Actions ran on the branch's pushed tip, and the merge's tree is
@@ -67,13 +68,28 @@ export function runsVerdict(runs: readonly CiRun[]): 'passed' | 'running' | 'fai
 const short = (sha: string) => sha.slice(0, 7);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** Whether a workflow in the commit's .github/workflows runs on push. */
-async function workflowsOnPush(cwd: string, commit: string): Promise<boolean> {
+/**
+ * Why no workflow in the commit's .github/workflows runs on a push to branch, or undefined when one does: none runs on
+ * push, or each one that does has a filter that leaves the branch out (it says which, and for the train's branches
+ * what to add).
+ */
+async function whyNoWorkflowRuns(cwd: string, commit: string, branch: string): Promise<string | undefined> {
   const files = (await runGit(['ls-tree', '--name-only', `${commit}:.github/workflows`], { cwd }).catch(() => ''))
     .split('\n')
     .filter((f) => /\.ya?ml$/.test(f));
-  for (const f of files) if (runsOnPush(await runGit(['show', `${commit}:.github/workflows/${f}`], { cwd }).catch(() => ''))) return true;
-  return false;
+  const filtered: string[] = [];
+  for (const f of files) {
+    const trigger = pushTrigger(await runGit(['show', `${commit}:.github/workflows/${f}`], { cwd }).catch(() => ''));
+    if (!trigger) continue;
+    const why = branchFilterWhy(trigger, branch);
+    if (!why) return undefined;
+    filtered.push(`\`${f}\`: \`${why}\``);
+  }
+  if (!filtered.length) return `no workflow in \`${branch}\`'s \`.github/workflows\` runs on push.`;
+  const hint = branch.startsWith(TRAIN_REMOTE_PREFIX)
+    ? ' For CI to check the merge train, add `flotilla/**` to `branches` (or take what catches it out of `branches-ignore`).'
+    : '';
+  return `no workflow runs on a push to \`${branch}\`: the push filters leave it out (${filtered.join(', ')}).${hint}`;
 }
 
 /**
@@ -92,7 +108,8 @@ export async function decideCi(o: {
 }): Promise<CiDecision> {
   if (o.setting === 'local') return { kind: 'local' };
   const { cwd, branch, tip } = o;
-  if (!(await workflowsOnPush(cwd, tip))) return { kind: 'local', why: `no workflow in \`${branch}\`'s \`.github/workflows\` runs on push.` };
+  const noRun = await whyNoWorkflowRuns(cwd, tip, branch);
+  if (noRun) return { kind: 'local', why: noRun };
   const remoteRef = `refs/remotes/${PUSH_REMOTE}/${branch}`;
   const onOrigin = (await runGit(['rev-parse', '--verify', '--quiet', `${remoteRef}^{commit}`], { cwd }).catch(() => '')).trim();
   if (onOrigin !== tip) {

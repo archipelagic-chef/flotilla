@@ -6,11 +6,13 @@ import {
   it,
 } from 'vitest';
 import {
+  branchFilterWhy,
   isLocalUrl,
   pushBranch,
   pushHint,
   pushNote,
   pushOnApproval,
+  pushTrigger,
   runsOnPush,
 } from '../../../src/features/backlog/branchPush';
 import {
@@ -35,6 +37,26 @@ describe('which workflows run on push', () => {
     expect(runsOnPush('on:\n  pull_request:\n  workflow_dispatch:\njobs:\n  push:\n')).toBe(false);
     expect(runsOnPush('on: pull_request # push\n')).toBe(false);
     expect(runsOnPush('name: x\n')).toBe(false);
+  });
+
+  it("reads the push trigger's branch filters, as GitHub does", () => {
+    const train = 'flotilla/merge-queue/BL-1';
+    const on = (push: string) => `on:\n  pull_request:\n  push:\n${push}jobs:\n  build: {}\n`;
+    expect(runsOnPush('on: [push]\n', train)).toBe(true);
+    expect(runsOnPush(on(''), train)).toBe(true);
+    expect(runsOnPush(on('    branches: [main, "feature/**"]\n'), train)).toBe(false);
+    expect(runsOnPush(on('    branches: [main, "feature/**"]\n'), 'feature/BL-1-x')).toBe(true);
+    expect(runsOnPush(on('    branches: [main, feature/*]\n'), 'feature/a/b')).toBe(false); // * stays within a /
+    expect(runsOnPush(on('    branches:\n      - main\n      - flotilla/** # the train\n'), train)).toBe(true);
+    expect(runsOnPush(on("    branches: ['**', '!flotilla/**']\n"), train)).toBe(false);
+    expect(runsOnPush(on("    branches: ['**', '!flotilla/**', 'flotilla/merge-queue/*']\n"), train)).toBe(true);
+    expect(runsOnPush(on('    branches-ignore: [flotilla/**]\n'), train)).toBe(false);
+    expect(runsOnPush(on('    branches-ignore: [gh-pages]\n'), train)).toBe(true);
+    expect(runsOnPush(on("    tags: ['v*']\n"), train)).toBe(false); // tags only: no branch runs it
+    expect(runsOnPush(on("    tags: ['v*']\n    paths: [src/**]\n"), train)).toBe(false);
+    expect(runsOnPush(on('    paths: [src/**]\n'), train)).toBe(true);
+    expect(pushTrigger(on('    branches: [main]\n    tags-ignore: [x]\n'))).toEqual({ branches: ['main'], 'tags-ignore': ['x'] });
+    expect(branchFilterWhy({ branches: ['main'] }, train)).toBe('branches: main');
   });
 });
 

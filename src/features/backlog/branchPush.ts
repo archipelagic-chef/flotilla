@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import picomatch from 'picomatch';
 import { GitError, runGit } from '../../core/git/gitCli';
 import { gitHubRepo } from './sources/github';
 
@@ -39,23 +40,90 @@ export type PushResult =
 const short = (c: string) => c.slice(0, 7);
 const message = (e: unknown) => (e instanceof GitError ? e.stderr || e.message : e instanceof Error ? e.message : String(e)).trim();
 
-/** Whether a workflow file runs on push: its on: trigger is push, lists it, or has a push: key. */
-export function runsOnPush(workflowYaml: string): boolean {
+/** A workflow's push trigger's filters, as written (each one there only when the workflow has it). */
+export interface PushTrigger {
+  branches?: string[];
+  'branches-ignore'?: string[];
+  tags?: string[];
+  'tags-ignore'?: string[];
+}
+
+const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'] as const;
+const indent = (l: string) => /^\s*/.exec(l)![0].length;
+const unquote = (v: string) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
+const uncomment = (l: string) => l.replace(/\s#.*$/, '');
+
+/** A workflow's push trigger: undefined when it has none; its filters when it has a push: key with them. */
+export function pushTrigger(workflowYaml: string): PushTrigger | undefined {
   const lines = workflowYaml.split(/\r?\n/);
   const at = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
-  if (at < 0) return false;
-  const inline = lines[at]
-    .replace(/\s#.*$/, '')
+  if (at < 0) return undefined;
+  const inline = uncomment(lines[at])
     .replace(/^["']?on["']?\s*:/, '')
     .trim();
-  if (inline) return /(^|[\s,[{])push\b/.test(inline);
-  for (let i = at + 1; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l.trim() || l.trim().startsWith('#')) continue;
-    if (!/^\s/.test(l)) break;
-    if (/^\s+(-\s*)?["']?push["']?\s*(:|$)/.test(l)) return true;
+  if (inline) return /(^|[\s,[{])push\b/.test(inline) ? {} : undefined;
+  const block = (from: number, over: number) => {
+    const out: number[] = [];
+    for (let i = from; i < lines.length; i++) {
+      if (!lines[i].trim() || lines[i].trim().startsWith('#')) continue;
+      if (indent(lines[i]) <= over) break;
+      out.push(i);
+    }
+    return out;
+  };
+  for (const i of block(at + 1, 0)) {
+    const l = uncomment(lines[i]);
+    if (/^\s+-\s*["']?push["']?\s*$/.test(l)) return {};
+    if (!/^\s+["']?push["']?\s*:/.test(l)) continue;
+    const trigger: PushTrigger = {};
+    const own = block(i + 1, indent(l));
+    for (const j of own) {
+      const m = /^\s+["']?([\w-]+)["']?\s*:\s*(.*)$/.exec(uncomment(lines[j]));
+      const key = FILTERS.find((f) => f === m?.[1]);
+      if (!m || !key || indent(lines[j]) !== indent(lines[own[0]])) continue;
+      const value = m[2].trim();
+      trigger[key] = value
+        ? value
+            .replace(/^\[|\]$/g, '')
+            .split(',')
+            .map(unquote)
+            .filter(Boolean)
+        : block(j + 1, indent(lines[j]))
+            .map((k) => /^\s*-\s*(.*)$/.exec(uncomment(lines[k]))?.[1])
+            .filter((v): v is string => v !== undefined)
+            .map(unquote);
+    }
+    return trigger;
   }
-  return false;
+  return undefined;
+}
+
+/** Whether a GitHub Actions filter pattern matches a ref name (* stays within a /, ** doesn't). */
+const filterMatch = (pattern: string, ref: string) => picomatch.isMatch(ref, pattern, { dot: true });
+
+/**
+ * Why a push trigger doesn't run on a push to branch, as the filter that leaves it out ("branches: main, feature/**");
+ * undefined when it runs. As GitHub reads them: branches lets in what its last matching pattern does (a ! one keeps
+ * out), branches-ignore keeps out what any of its patterns matches, and tags without branches filters keep out every
+ * branch.
+ */
+export function branchFilterWhy(trigger: PushTrigger, branch: string): string | undefined {
+  const { branches, 'branches-ignore': ignore } = trigger;
+  if (branches) {
+    let runs = false;
+    for (const p of branches) if (filterMatch(p.replace(/^!/, ''), branch)) runs = !p.startsWith('!');
+    return runs ? undefined : `branches: ${branches.join(', ')}`;
+  }
+  if (ignore) return ignore.some((p) => filterMatch(p, branch)) ? `branches-ignore: ${ignore.join(', ')}` : undefined;
+  const tags = trigger.tags ?? trigger['tags-ignore'];
+  if (tags) return `${trigger.tags ? 'tags' : 'tags-ignore'}: ${tags.join(', ')} (no branches)`;
+  return undefined;
+}
+
+/** Whether a workflow file runs on push (to branch, when given: its branch filters let it in). */
+export function runsOnPush(workflowYaml: string, branch?: string): boolean {
+  const trigger = pushTrigger(workflowYaml);
+  return !!trigger && (branch === undefined || !branchFilterWhy(trigger, branch));
 }
 
 /** Whether pushing on approval is on for this repository: on, or auto with a GitHub origin and a workflow on push. */

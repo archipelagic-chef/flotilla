@@ -177,4 +177,32 @@ describe('Merge to main deciding on CI, against the fake GitHub', () => {
 
     expect(await decide()).toEqual({ kind: 'local', why: `no workflow in \`${BRANCH}\`'s \`.github/workflows\` runs on push.` });
   });
+
+  it("decides on the local checks at once when the push filters leave the train's branch out", async () => {
+    const train = 'flotilla/merge-queue/BL-1';
+    const onTrain = async (workflows: Record<string, string>) => {
+      git(repo, 'checkout', '-q', BRANCH);
+      for (const [f, yaml] of Object.entries(workflows)) writeFile(repo, `.github/workflows/${f}`, yaml);
+      git(repo, 'add', '-A');
+      git(repo, 'commit', '-q', '-m', 'BL-1: CI filters');
+      git(repo, 'checkout', '-q', 'main');
+      const tip = git(repo, 'rev-parse', BRANCH);
+      return decideCi({ cwd: repo, setting: 'ci', branch: train, tip, baseTip: git(repo, 'rev-parse', 'main'), reader: reader(), now: clock });
+    };
+
+    const left = await onTrain({
+      'ci.yml': 'on:\n  push:\n    branches: [main, "feature/**"]\njobs: {}\n',
+      'lint.yml': 'on:\n  push:\n    branches-ignore:\n      - flotilla/**\njobs: {}\n',
+    });
+    expect(left).toEqual({
+      kind: 'local',
+      why:
+        `no workflow runs on a push to \`${train}\`: the push filters leave it out (\`ci.yml\`: \`branches: main, feature/**\`, \`lint.yml\`: \`branches-ignore: flotilla/**\`).` +
+        ' For CI to check the merge train, add `flotilla/**` to `branches` (or take what catches it out of `branches-ignore`).',
+    });
+
+    // One workflow that runs there is enough: CI goes on to whether the train's commit is on origin.
+    const runs = await onTrain({ 'ci.yml': 'on:\n  push:\n    branches: [main, "flotilla/**"]\njobs: {}\n' });
+    expect(runs).toMatchObject({ kind: 'local', why: expect.stringContaining("isn't pushed") });
+  });
 });
