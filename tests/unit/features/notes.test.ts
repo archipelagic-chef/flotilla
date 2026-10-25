@@ -85,29 +85,33 @@ describe('storing notes', () => {
     expect(fs.existsSync(path.join(notes.dir, 'NOTE-99.became'))).toBe(false);
   });
 
-  it('opens a draft to write in the editor, sends it when saved with text, and drops it closed empty', async () => {
+  it('writes a draft in the New Note tab, sends it with text, and drops it when the tab closes unsent', async () => {
     const notes = store();
     const id = await notes.draft(new Date(T0));
     expect(fs.readFileSync(notes.file(id), 'utf8')).toBe(DRAFT_HINT);
     expect(await notes.read(id)).toMatchObject({ status: 'draft', text: '' });
     expect(await notes.send(id)).toBe(false);
-    fs.writeFileSync(notes.file(id), `${DRAFT_HINT}Another thing I want is\na dark mode\n\n![shot](image.png)\n`);
+    await notes.write(id, '**Another thing** I want is\na dark mode\n\n![shot](NOTE-1/shot.png)\n');
     expect(await notes.send(id, new Date(T0 + 5000))).toBe(true);
     expect(await notes.read(id)).toMatchObject({
       status: 'open',
       title: 'Another thing I want is',
-      text: 'Another thing I want is\na dark mode\n\n![shot](image.png)',
+      text: '**Another thing** I want is\na dark mode\n\n![shot](NOTE-1/shot.png)',
       created: new Date(T0 + 5000).toISOString(),
     });
+    await expect(notes.write(id, 'again')).rejects.toThrow(/sent already/);
     await notes.send(id, new Date(T0 + 9000));
     expect(await notes.read(id)).toMatchObject({ created: new Date(T0 + 5000).toISOString(), edited: new Date(T0 + 9000).toISOString() });
     expect(await notes.drop(id)).toBe(false);
     await notes.append(id, { author: 'Agent Vega-2', body: 'Which one?' });
-    expect(fs.readFileSync(notes.file(id), 'utf8')).toMatch(/^# Another thing I want is\n\nAnother thing I want is\na dark mode/);
+    expect(fs.readFileSync(notes.file(id), 'utf8')).toMatch(/^# Another thing I want is\n\n\*\*Another thing\*\* I want is\na dark mode/);
 
-    const empty = await notes.draft();
-    expect(await notes.drop(empty)).toBe(true);
-    expect(fs.existsSync(notes.file(empty))).toBe(false);
+    const unsent = await notes.draft();
+    await notes.write(unsent, 'Never mind');
+    await notes.saveImage(unsent, 'pasted.png', new Uint8Array([1, 2, 3]));
+    expect(await notes.drop(unsent)).toBe(true);
+    expect(fs.existsSync(notes.file(unsent))).toBe(false);
+    expect(fs.existsSync(path.join(notes.dir, unsent))).toBe(false);
     expect((await notes.list()).map((n) => n.id)).toEqual([id]);
   });
 
