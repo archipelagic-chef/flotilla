@@ -177,7 +177,7 @@ const TICKETS = [
         ago: 40,
         author: 'Agent Vega-2',
         body: [
-          'Progress: the chat id is saved, and a reload finds it again (two commits on the branch).',
+          'Progress: the chat id is saved, and a reload finds it again in [src/chats.js:6](src/chats.js#L6) (two commits on the branch).',
           '',
           'One question before I go on: when a worktree has changes that are not committed, should a reload keep them as they are, or ask first?',
           '',

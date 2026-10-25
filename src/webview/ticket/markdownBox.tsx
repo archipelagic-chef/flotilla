@@ -1,4 +1,6 @@
+import { createContext } from 'preact';
 import {
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -24,7 +26,8 @@ import {
   suggestQuery,
   type TicketSuggestion,
 } from './suggest';
-import type { EntrySuggestion } from '../ticketProtocol';
+import type { EntrySuggestion, TicketChange } from '../ticketProtocol';
+import { changeLink } from './changeTree';
 import './markdownBox.css';
 
 /** Replies to pasted or dropped images, by request id. */
@@ -290,9 +293,33 @@ export function MarkdownBox({
   );
 }
 
-/** Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). */
+/** The ticket's change, for the "diff" marks on links to its files (BL-174). */
+export const ChangeLinks = createContext<TicketChange | undefined>(undefined);
+
+/**
+ * Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). A link to a file the
+ * ticket changes gets a "diff" mark after it (BL-174), which opens its diff at the line.
+ */
 export function Rendered({ html, empty }: { html: string; empty: string }) {
   const el = useRef<HTMLDivElement>(null);
+  const change = useContext(ChangeLinks);
+  useEffect(() => {
+    const root = el.current;
+    if (!root) return;
+    root.querySelectorAll('.diff-mark').forEach((m) => m.remove());
+    root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+      const at = changeLink(a.getAttribute('href') ?? '', change);
+      if (!at) return;
+      const mark = document.createElement('button');
+      mark.className = 'diff-mark';
+      mark.textContent = 'diff';
+      mark.title = `Its diff in ${change!.groups[at.group].label}${at.line ? `, at line ${at.line}` : ''}`;
+      mark.dataset.diffGroup = String(at.group);
+      mark.dataset.diffPath = at.path;
+      if (at.line) mark.dataset.diffLine = String(at.line);
+      a.after(mark);
+    });
+  }, [html, change]);
   // Mermaid blocks become diagrams, again whenever the html is new.
   useEffect(() => {
     if (el.current) void drawDiagrams(el.current);
@@ -318,6 +345,12 @@ export function Rendered({ html, empty }: { html: string; empty: string }) {
       run.dataset.busy = 'Running…';
       (run as HTMLButtonElement).disabled = true;
       act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
+      return;
+    }
+    const mark = (e.target as HTMLElement).closest<HTMLElement>('.diff-mark');
+    if (mark) {
+      const { diffGroup, diffPath, diffLine } = mark.dataset;
+      send({ type: 'openChange', group: Number(diffGroup), path: diffPath!, ...(diffLine ? { line: Number(diffLine) } : {}) });
       return;
     }
     const a = (e.target as HTMLElement).closest('a');

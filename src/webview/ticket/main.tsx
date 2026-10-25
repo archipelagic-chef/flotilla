@@ -25,7 +25,12 @@ import {
   workingLabel,
 } from './actions';
 import { showingEntries } from './comments';
-import { entryReplies, imageReplies, previewReplies } from './markdownBox';
+import {
+  ChangeLinks,
+  entryReplies,
+  imageReplies,
+  previewReplies,
+} from './markdownBox';
 import { checksLogReplies } from './checksPanel';
 import {
   AgentPicker,
@@ -184,7 +189,8 @@ function App() {
   // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
   const resume = steps.main === 'resume';
   return (
-    <>
+    // The ticket's change for the diff marks on links to its files (BL-174).
+    <ChangeLinks.Provider value={ticket.changes}>
       {full && <DiffView ticket={ticket} at={full} back={back} go={expand} />}
       <main class="ticket" hidden={!!full}>
         <header>
@@ -352,7 +358,7 @@ function App() {
         <Changes ticket={ticket} expand={expand} marked={marked} />
         {ticket.agents.length > 0 && <Agents ticket={ticket} />}
       </main>
-    </>
+    </ChangeLinks.Provider>
   );
 }
 
