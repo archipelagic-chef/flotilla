@@ -436,6 +436,38 @@ describe('Landing from the merge train on CI (BL-145)', () => {
     merger.dispose();
   });
 
+  it('stops pushing the train when you take it back: deletes its branches on origin, and asks again next time (BL-196)', async () => {
+    const { repo, merger, item, branch, trainOnOrigin } = await setup([approved('BL-1')], { ciPollMs: HOUR });
+    branch('feature/BL-1', 'a.txt', 'BL-1');
+    commit(repo, 'm.txt', 'm\n', 'main moves on');
+    ui.answers = ['Push the Train'];
+    const { result, poll } = await byHand(merger, () => merger.merge('BL-1'));
+    expect(result).toBe('waiting');
+    expect(trainOnOrigin()).toHaveLength(1);
+
+    // Asked first: cancelled, nothing changes.
+    ui.answers = [undefined];
+    expect(await merger.stopPushingTrain()).toBe(false);
+    expect(trainOnOrigin()).toHaveLength(1);
+
+    ui.answers = ['Stop Pushing'];
+    expect(await merger.stopPushingTrain()).toBe(true);
+    expect(trainOnOrigin()).toEqual([]);
+    expect(ui.messages).toContain('Stop pushing the merge train to origin?');
+
+    // The next landing by the train asks again; not pushed, its commit is checked locally.
+    ui.answers = ["Don't Push"];
+    clock += DONE_MS;
+    await poll();
+    await until(async () => (await item('BL-1')).status === 'done');
+
+    expect((await item('BL-1')).status).toBe('done');
+    expect(ui.messages.filter((m) => m === PUSH_QUESTION)).toHaveLength(2);
+    expect(ui.checks).toEqual([CHECKS]);
+    expect(trainOnOrigin()).toEqual([]);
+    merger.dispose();
+  });
+
   it("checks the train's commits locally when you don't let it be pushed", async () => {
     const { repo, merger, item, activity, branch, trainOnOrigin } = await setup([approved('BL-1')]);
     branch('feature/BL-1', 'a.txt', 'BL-1');

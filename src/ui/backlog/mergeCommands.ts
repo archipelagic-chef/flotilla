@@ -4,7 +4,7 @@ import { showError, type Commands } from '../commandSet';
 import { backlogIdOf } from './cardMenu';
 import { readyToMerge, type Merger } from './merge';
 
-/** The merge queue's commands: merge a ticket (or all ready ones), take one next, push what's merged. */
+/** The merge queue's commands: merge a ticket (or all ready ones), take one next, push what's merged, stop pushing the train. */
 export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): Commands {
   const { backlog, merger } = deps;
   return {
@@ -27,5 +27,6 @@ export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): 
       if (id) await merger.mergeNext(id).catch(showError);
     },
     'flotilla.pushMerged': () => merger.push().catch(showError),
+    'flotilla.stopPushingTrain': () => merger.stopPushingTrain().catch(showError),
   };
 }
