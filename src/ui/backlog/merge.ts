@@ -8,6 +8,7 @@ import type { Repository } from '../../core/repository';
 import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { ciStop, type CiStop } from '../../features/backlog/ciStop';
+import { pushTrain, trainRef } from '../../features/backlog/trainPush';
 import { decideCi, failedNote, passedNote, waitingNote, type CiDecision, type CiReader, type MergeChecks } from '../../features/backlog/mergeCi';
 import type { CiRun } from '../../features/ci/githubActions';
 import {
@@ -36,7 +37,7 @@ import {
   type MergeState,
 } from '../../features/backlog/merge';
 import { mergeStyle, rebaseInDir, rebaseInWorktree, rebaseResult, type MergeStyle } from '../../features/backlog/linearHistory';
-import { buildTrain, dequeue, enqueue, landing, mergeAgain, ordinal, queuedItems, recordRebaseResolution, recordResolution, startTrainMerge, trainIsCurrent, trainOnto, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
+import { buildTrain, dequeue, enqueue, landing, mergeAgain, ordinal, queuedItems, recordRebaseResolution, recordResolution, startTrainMerge, trainIsCurrent, trainOnto, trainState, type MergeTrain, type TrainEntry } from '../../features/backlog/mergeTrain';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -61,11 +62,13 @@ export interface MergeDeps {
   /** Update from Main (BL-55): main into the ticket's branch, which is then pushed, and CI runs again. */
   updateFromMain?(id: string): Promise<void>;
   /** Fix with Agent (BL-7) on a failed CI job of the branch. */
-  fixCi?(branch: string, runId: number, jobId?: number): Promise<void>;
+  fixCi?(branch: string, runId: number, jobId?: number, runBranch?: string): Promise<void>;
   /** Whether this window rebuilds the merge train (BL-140): one window does. None: it does. */
   isLeader?(): boolean;
   /** How often a merge waiting for CI reads its runs again (the tests' is short). */
   ciPollMs?: number;
+  /** Where the answer to pushing the merge train (BL-145) is kept: the workspace's state. None: it's asked each window. */
+  state?: Pick<vscode.Memento, 'get' | 'update'>;
   /** The repository's git folder (the main worktree's .git, where the checks' logs go); none: mainRoot's .git. */
   commonDir?: string;
   /** The environment of a run of the checks (the tests' tells their fake checks how to end); none: the extension's. */
@@ -97,10 +100,18 @@ interface CiWait {
   baseTip: string;
   batch: boolean;
   runs: CiRun[];
+  /**
+   * Landing a train entry (BL-145): its commit there. branch and tip are what CI runs on: the entry's train branch and
+   * commit, or its own branch's tip when that's the same tree; baseTip is what it merges onto.
+   */
+  train?: { id: string; commit: string };
   timer?: ReturnType<typeof setTimeout>;
 }
 
 export { readyToMerge };
+
+/** Where the answer "Push the Train" is kept (BL-145). */
+const PUSH_TRAIN_KEY = 'flotilla.merge.pushTrain';
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
 /** flotilla.merge.style (BL-181): main fast-forwards to the rebased branch, or a merge commit is made. */
@@ -132,6 +143,8 @@ export class Merger implements vscode.Disposable {
   /** The merge queue and its train as last read (BL-140), for the views. */
   private queueSeen: { queue: string[]; train?: MergeTrain } = { queue: [] };
   private trainTimer?: ReturnType<typeof setTimeout>;
+  /** Your answer to pushing the merge train in this window (BL-145); undefined: not asked yet. */
+  private trainPushAllowed?: boolean;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
   /** Merges' checks running now, by ticket (BL-169). */
@@ -403,18 +416,68 @@ export class Merger implements vscode.Disposable {
       { by: 'Flotilla' },
     );
     this.deps.output.appendLine(`Merge train: ${train ? train.entries.map((e) => `${e.id} ${e.commit ? 'in' : 'conflicts'}`).join(', ') : 'empty'} (on ${base} ${baseTip.slice(0, 7)}).`);
+    // On origin too, for CI to run on it (BL-145), once you've let it be pushed.
+    await this.syncTrainPush(train);
     await this.readQueue();
     return train;
   }
 
   /**
-   * Whether landing goes by the train: its merge commits are what's checked and landed (BL-140). Not when CI decides
-   * the merge (flotilla.merge.checks ci, with GitHub readable): CI ran on the branch's own tip, so tickets land one by one.
+   * How landing by the train is checked: its merge commits are what's checked and landed (BL-140). With CI deciding
+   * (flotilla.merge.checks ci, GitHub readable), by CI on each one's commit, pushed to origin (BL-145); else by the
+   * local checks, with why CI wasn't used.
    */
-  private async landsByTrain(): Promise<{ localWhy?: string } | undefined> {
+  private async landsByTrain(): Promise<{ localWhy?: string; ci?: CiReader }> {
     if (settings().get<MergeChecks>('merge.checks', 'ci') === 'local') return {};
     const reader = this.deps.ciReader ? await this.deps.ciReader().catch((e: unknown) => `GitHub couldn't be read: ${e instanceof Error ? e.message : String(e)}`) : "this window doesn't read GitHub's runs.";
-    return typeof reader === 'string' ? { localWhy: reader } : undefined;
+    return typeof reader === 'string' ? { localWhy: reader } : { ci: reader };
+  }
+
+  /** Whether the merge train may be pushed to origin (BL-145): asked once (yes is kept for the workspace, no for this window). */
+  private async mayPushTrain(): Promise<boolean> {
+    if (this.deps.state?.get<boolean>(PUSH_TRAIN_KEY) || this.trainPushAllowed) return true;
+    if (this.trainPushAllowed === false) return false;
+    const yes = 'Push the Train';
+    const choice = await vscode.window.showWarningMessage(
+      'Push the merge train to origin, for CI to run on it?',
+      {
+        modal: true,
+        detail: `Each queued ticket's merge commit in the train goes to a branch of its own on origin (${trainRef('<ticket>')}), forced, and is deleted once it has landed or left the queue. Each ticket then lands when CI passes on its commit, so main moving on doesn't send it back to Update from Main. Not pushed: the train's commits are checked locally.`,
+      },
+      yes,
+      "Don't Push",
+    );
+    this.trainPushAllowed = choice === yes;
+    if (this.trainPushAllowed) await this.deps.state?.update(PUSH_TRAIN_KEY, true);
+    return this.trainPushAllowed;
+  }
+
+  /** Makes origin's train branches the train's, once it may be pushed and CI decides: the error, if the push failed. */
+  private async syncTrainPush(train: MergeTrain | undefined): Promise<string | undefined> {
+    if (!(this.deps.state?.get<boolean>(PUSH_TRAIN_KEY) || this.trainPushAllowed)) return undefined;
+    if (!(await this.landsByTrain()).ci) return undefined;
+    const result = await pushTrain(this.deps.mainRoot, train);
+    if ('error' in result) {
+      this.deps.output.appendLine(`Merge train: ${result.error}`);
+      return result.error;
+    }
+    if (result.pushed.length || result.deleted.length)
+      this.deps.output.appendLine(`Merge train: pushed ${result.pushed.join(', ') || 'nothing'}${result.deleted.length ? `, deleted ${result.deleted.join(', ')}` : ''} on origin.`);
+    return undefined;
+  }
+
+  /**
+   * What CI says of a train entry (BL-145): its own branch's CI when the branch has what it merges onto (the same tree,
+   * so CI doesn't run twice); else CI on its commit in the train, pushed to its train branch (asked once).
+   */
+  private async decideTrainCi(item: BacklogItem, e: TrainEntry, onto: string, reader: CiReader, push: () => Promise<{ error?: string } | undefined>): Promise<CiDecision> {
+    if (await runGit(['merge-base', '--is-ancestor', onto, e.tip], { cwd: this.deps.mainRoot }).then(() => true, () => false)) {
+      const own = await this.decideCi(item, e.branch, { tip: e.tip, baseTip: onto });
+      if (own.kind !== 'local' && own.kind !== 'moved') return own;
+    }
+    const pushed = await push();
+    if (!pushed) return { kind: 'local', why: "the merge train isn't pushed to origin (you chose not to push it)." };
+    return decideCi({ cwd: this.deps.mainRoot, setting: 'ci', branch: trainRef(e.id), tip: e.commit!, baseTip: onto, reader, pushError: pushed.error });
   }
 
   /**
@@ -422,7 +485,7 @@ export class Merger implements vscode.Disposable {
    * ticket at a time (each one's checks on its own merge commit), with those ahead of it first. Undefined: it isn't in
    * the train (it conflicts with what's ahead of it), or you chose to merge it alone: it's merged onto main as it is.
    */
-  private async landByTrain(item: BacklogItem, base: string, batch: boolean, localWhy: string | undefined): Promise<MergeEnd | undefined> {
+  private async landByTrain(item: BacklogItem, base: string, batch: boolean, byTrain: { localWhy?: string; ci?: CiReader }): Promise<MergeEnd | undefined> {
     const root = this.deps.mainRoot;
     await this.changeQueue((q) => enqueue(q, [item.id]));
     const train = await this.currentTrain();
@@ -443,6 +506,10 @@ export class Merger implements vscode.Disposable {
       if (!choice) return 'stopped';
       if (choice !== all) return undefined;
     }
+    // CI decides on each one's train commit, pushed to origin once (BL-145); not pushed, the local checks do.
+    const { localWhy, ci: reader } = byTrain;
+    let pushed: Promise<{ error?: string } | undefined> | undefined;
+    const push = () => (pushed ??= this.mayPushTrain().then(async (yes) => (yes ? { error: await this.syncTrainPush(train) } : undefined)));
     for (const e of target.lands) {
       const it = e.id === item.id ? item : await this.item(e.id);
       if (!it || (e.id !== item.id && !readyToMerge(it))) {
@@ -456,11 +523,27 @@ export class Merger implements vscode.Disposable {
         continue;
       }
       const baseTip = (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root })).trim();
+      const onto = (train && trainOnto(train, e.id)?.commit) ?? baseTip;
+      const ci = reader ? await this.decideTrainCi(it, e, onto, reader, push) : undefined;
+      if (ci?.kind === 'running') {
+        // Waits outside the queue, as Merge to main's: Merge to main is asked again once CI has ended.
+        const known = this.ciWaits.get(item.id);
+        const same = known?.train?.commit === e.commit && known?.tip === ci.tip ? known : undefined;
+        if (same) same.runs = ci.runs;
+        const ref = ci.tip === e.tip ? e.branch : trainRef(e.id);
+        await this.waitForCi(item.id, same ?? { branch: ref, tip: ci.tip, baseTip: onto, batch, runs: ci.runs, train: { id: e.id, commit: e.commit! } });
+        return 'waiting';
+      }
+      if (ci?.kind === 'failed' || ci?.kind === 'moved') {
+        await this.leaveTrainOnCi(it, e, ci, base, batch);
+        return 'stopped';
+      }
       const dir = this.mergeDir(e.id);
       await fs.promises.mkdir(path.dirname(dir), { recursive: true });
       await runGit(['worktree', 'add', '--detach', dir, e.commit!], { cwd: root, timeoutMs: 120_000 });
       this.deps.output.appendLine(`Merge: ${e.id} lands from the merge train (${e.commit!.slice(0, 7)} onto ${base} ${baseTip.slice(0, 7)}).`);
-      const end = await this.complete(it, { dir, branch: e.branch, base, baseTip, commit: e.commit!, localWhy, ...(train.style === 'fast-forward' ? { rebase: true } : {}) }, batch);
+      const onCi = ci?.kind === 'passed' ? { ci } : { localWhy: ci?.kind === 'local' ? ci.why : localWhy };
+      const end = await this.complete(it, { dir, branch: e.branch, base, baseTip, commit: e.commit!, ...onCi, ...(train.style === 'fast-forward' ? { rebase: true } : {}) }, batch);
       if (end !== 'merged') {
         await this.currentTrain().catch(() => undefined);
         return end;
@@ -477,7 +560,46 @@ export class Merger implements vscode.Disposable {
       { by: 'Flotilla' },
     );
     await this.readQueue();
+    // The landed tickets' train branches go from origin.
+    if (pushed && (await pushed)) await this.syncTrainPush((await this.deps.backlog.read()).mergeTrain);
     return 'merged';
+  }
+
+  /**
+   * Red CI on a ticket's commit in the train (BL-145): it's taken out of the merge queue, its ticket says which jobs
+   * failed (with Fix with Agent), and the train is rebuilt without it. Nothing lands.
+   */
+  private async leaveTrainOnCi(item: BacklogItem, e: TrainEntry, ci: Extract<CiDecision, { kind: 'failed' | 'moved' }>, base: string, batch: boolean): Promise<void> {
+    await this.changeQueue((q) => dequeue(q, [e.id]));
+    if (ci.kind === 'moved') {
+      // Not CI for its commit in the train: the train is rebuilt without it, and Merge to main puts it back.
+      await this.note(e.id, `Not merged: CI's result on \`${ci.tip.slice(0, 7)}\` isn't for ${e.id}'s commit in the merge train, so ${e.id} is out of the merge queue and the train is rebuilt without it. Merge to main puts it back.`);
+      await this.currentTrain({ rebuild: true });
+      return;
+    }
+    const ref = ci.tip === e.tip ? e.branch : trainRef(e.id);
+    const stop = ciStop(ci, e.branch, base);
+    if (stop?.kind === 'failed') {
+      // It holds while the ticket's branch is where it was; Fix with Agent finds the run on the ref CI ran on.
+      const held = { ...stop, tip: e.tip, ...(ref !== e.branch ? { runBranch: ref } : {}) };
+      this.ciStops.set(e.id, held);
+      recordCiStop(e.id, held);
+    }
+    await this.note(e.id, `${failedNote(ci, ref)}\n\n${e.id} is out of the merge queue: the train is rebuilt without it. Merge to main puts it back.`);
+    await this.currentTrain({ rebuild: true });
+    if (!batch) {
+      this.deps.openTicket(e.id);
+      const first = ci.jobs[0];
+      void vscode.window
+        .showWarningMessage(
+          ref === e.branch
+            ? `CI failed on ${ref}: ${item.id} wasn't merged, and is out of the merge queue.`
+            : `CI failed on ${item.id}'s commit in the merge train (${ref}): it wasn't merged, and is out of the merge queue.`,
+          ...(this.deps.fixCi ? ['Fix with Agent'] : []),
+        )
+        .then((c) => (c ? this.deps.fixCi?.(e.branch, first?.run.id ?? ci.runs[0].id, first?.job.id, ref) : undefined))
+        .then(undefined, showError);
+    }
   }
 
   /** Why the ticket's last Merge to main stopped on CI, while its branch is at the tip it stopped on (BL-112). */
@@ -493,7 +615,7 @@ export class Merger implements vscode.Disposable {
     const stop = this.ciStops.get(id);
     if (stop?.kind !== 'failed') return;
     const first = stop.jobs[0];
-    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId);
+    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId, stop.runBranch);
   }
 
   /** One at a time: merges move the base branch. what: what the task does, for those waiting behind it. */
@@ -654,9 +776,9 @@ export class Merger implements vscode.Disposable {
       if (choice === 'Move to Done') await this.finish(item, { base, branch, commit: check.baseTip, already: true });
       if (choice !== 'Merge Anyway') return 'stopped';
     }
-    const byTrain = await this.landsByTrain();
-    if (byTrain) {
-      const end = await this.landByTrain(item, base, batch, byTrain.localWhy);
+    {
+      const byTrain = await this.landsByTrain();
+      const end = await this.landByTrain(item, base, batch, byTrain);
       if (end) return end;
     }
     const ci = await this.decideCi(item, branch, check);
@@ -770,11 +892,35 @@ export class Merger implements vscode.Disposable {
     if (this.ciWaits.get(id) !== wait) return;
     const root = this.deps.mainRoot;
     const item = await this.item(id);
+    if (wait.train) return this.pollTrainCi(id, item, wait as CiWait & { train: { id: string; commit: string } });
     const tip = (await runGit(['rev-parse', `refs/heads/${wait.branch}`], { cwd: root }).catch(() => '')).trim();
     const base = await this.baseBranch().catch(() => undefined);
     const baseTip = base && (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root }).catch(() => '')).trim();
     // The same commits as when it was asked: CI's result decides; anything that moved is decided again by Merge to main.
     const ci = item && tip === wait.tip && baseTip === wait.baseTip ? await this.decideCi(item, wait.branch, { tip, baseTip }).catch(() => undefined) : undefined;
+    if (this.ciWaits.get(id) !== wait) return;
+    if (ci?.kind === 'running') {
+      wait.runs = ci.runs;
+      await this.waitForCi(id, wait);
+      return;
+    }
+    this.ciWaits.delete(id);
+    this.changed.fire();
+    if (!item || !readyToMerge(item)) {
+      if (item) await this.note(id, `Stopped waiting for CI: ${id} isn't ready to merge any more. Nothing was merged.`);
+      return;
+    }
+    await this.merge(id, { batch: wait.batch });
+  }
+
+  /** A wait for CI on a train entry (BL-145): while the train still has its commit, CI's runs are read again. */
+  private async pollTrainCi(id: string, item: BacklogItem | undefined, wait: CiWait & { train: { id: string; commit: string } }): Promise<void> {
+    const entry = (await this.deps.backlog.read()).mergeTrain?.entries.find((e) => e.id === wait.train.id);
+    const reader = (await this.landsByTrain()).ci;
+    const ci =
+      item && reader && entry?.commit === wait.train.commit
+        ? await decideCi({ cwd: this.deps.mainRoot, setting: 'ci', branch: wait.branch, tip: wait.tip, baseTip: wait.baseTip, reader }).catch(() => undefined)
+        : undefined;
     if (this.ciWaits.get(id) !== wait) return;
     if (ci?.kind === 'running') {
       wait.runs = ci.runs;
@@ -1052,7 +1198,7 @@ export class Merger implements vscode.Disposable {
       await this.changeQueue((q) => enqueue(q, order.map((i) => i.id)));
       const merged: string[] = [];
       // By the train, a ticket that conflicts with the ones ahead of it waits, and the others go on (BL-140).
-      const train = (await this.landsByTrain()) ? await this.currentTrain() : undefined;
+      const train = await this.currentTrain();
       const waiting = order.filter((i) => train?.entries.find((e) => e.id === i.id)?.conflicts).map((i) => i.id);
       for (const item of order) {
         if (waiting.includes(item.id) || (await this.item(item.id))?.status === 'done') continue;

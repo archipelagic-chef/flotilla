@@ -76,8 +76,17 @@ const notFound = () => json(404, { message: 'Not Found', documentation_url: 'htt
 /** The commit's subject, or undefined when the repository doesn't have the branch. */
 function gitBranch(dir, branch) {
   const run = (args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  // A branch pushed by its commit only (the merge train's) is known by origin's remote-tracking ref.
+  const ref = (r) => {
+    try {
+      return run(['rev-parse', '--verify', '-q', `${r}^{commit}`]);
+    } catch {
+      return '';
+    }
+  };
   try {
-    const sha = run(['rev-parse', '--verify', '-q', `refs/heads/${branch}^{commit}`]);
+    const sha = ref(`refs/heads/${branch}`) || ref(`refs/remotes/origin/${branch}`);
+    if (!sha) return undefined;
     return { sha, title: run(['log', '-1', '--format=%s', sha]) };
   } catch {
     return undefined;
