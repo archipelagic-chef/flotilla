@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Merge to main on CI's checks**: an approved ticket's branch is pushed to `origin` (`flotilla.ci.pushOnApproval`, with the repository's identity only, never forced over someone else's push), and Merge to main decides on CI's result for what lands instead of running the checks locally (`flotilla.merge.checks`): it waits while CI runs, and never merges past red CI. The merge train's commits get CI on `flotilla/merge-queue/<ticket>` branches. Without CI, the local checks run as before. The ticket shows its branch's CI live, with the CI/CD view's runs, jobs, logs and actions.
+
 - **CI/CD in Version Control**: a worktree's GitHub Actions runs, with their jobs, steps and logs; Re-run, Re-run Failed Jobs and Cancel; *Run Workflow…* for deploys and releases; the branch's deployments by environment. A dot shows each branch's CI state, a notice says when a run fails (`flotilla.ci.notify`), and **Fix with Agent** hands a failed job to an agent. Uses the GitHub sign-in of GitHub Issues; no new credentials.
 
 - **Try Now on a usage limit**: while the autopilot waits for Claude's usage limit to reset, its bar has *Try Now*: if Claude takes work again, the paused agents go on (top of the backlog first, within `flotilla.agents.maxRunning`) and the autopilot with them; if not, nothing starts and the bar says when it tried and when it tries next. **Flotilla: Try Paused Agents Now** does the same with the autopilot off. The bar shows the reset's day when it isn't today.
