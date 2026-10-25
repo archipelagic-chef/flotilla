@@ -273,7 +273,12 @@ export class ReviewLoop implements vscode.Disposable {
     const data = await this.deps.backlog.read();
     const automatic = settings().get<boolean>('review.automatic', true);
     // The sessions the user paused or stopped: they don't take a slot, whatever their chats still say (see running).
-    this.held = new Map(data.items.flatMap((i) => (heldBy(i.review) ? [[heldBy(i.review)!.session, i.review!.state as 'paused' | 'stopped'] as const] : [])));
+    this.held = new Map(
+      data.items.flatMap((i) => {
+        const held = heldBy(i.review);
+        return held ? [[held.session, i.review?.state === 'paused' ? 'paused' : 'stopped'] as const] : [];
+      }),
+    );
     this.noteAgents();
     for (const item of data.items) {
       const before = this.statuses.get(item.id);
@@ -424,7 +429,6 @@ export class ReviewLoop implements vscode.Disposable {
   /** An admitted start's agent has spawned (runAgentHeadless took its reserved memory over): it runs now. */
   private launched(id: string, slot: number, live: Running): void {
     this.starting.delete(slot);
-    this.noteAgents();
     this.runs.set(id, live);
     this.noteAgents();
     // A run that goes on in a session this window ended before (a revision, a later round, a limit resume) works again (BL-199).
