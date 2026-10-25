@@ -41,7 +41,6 @@ function useWorking(key: string): boolean {
 }
 
 const STATUS: Record<NoteView['status'], { icon: string; label: (n: NoteView) => string }> = {
-  draft: { icon: 'edit', label: () => 'Being written: save it to send it' },
   open: { icon: 'clock', label: (n) => (n.agent ? `Waiting for ${n.agent} to go on` : 'Waiting for an agent') },
   working: { icon: 'loading codicon-modifier-spin', label: (n) => `${n.agent ?? 'An agent'} is turning it into tickets` },
   asking: { icon: 'comment-discussion', label: (n) => `${n.agent ?? 'Its agent'} asks you` },

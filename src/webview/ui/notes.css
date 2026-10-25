@@ -17,9 +17,6 @@
   background: var(--vscode-editorWidget-background, transparent);
   border-radius: 3px;
 }
-.note-card.note-draft {
-  border-left-color: var(--vscode-disabledForeground);
-}
 .note-card.note-asking {
   border-left-color: var(--waiting);
 }
