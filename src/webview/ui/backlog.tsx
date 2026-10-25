@@ -10,6 +10,7 @@ import type {
   BacklogProblem,
   BacklogStatus,
   MergeQueueView,
+  NoteView,
   WorkstreamView,
 } from '../protocol';
 import { send } from './api';
@@ -22,6 +23,7 @@ import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
 import { DRAG_TYPE, ItemRow } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
+import { NotesLane } from './notes';
 import './backlog.css';
 
 const LANES: Array<{ lane: BacklogLane; title: string; icon: string }> = [
@@ -48,6 +50,8 @@ export interface Props {
   integrations: number;
   autopilot?: AutopilotState;
   mergeQueue?: MergeQueueView;
+  /** The notes (BL-182): the Notes box and lane at the top. */
+  notes: NoteView[];
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -72,6 +76,7 @@ export function BacklogView({
   integrations,
   autopilot,
   mergeQueue,
+  notes,
   workstreams,
   colors,
   workingOnly,
@@ -168,6 +173,7 @@ export function BacklogView({
           </button>
         </div>
       )}
+      {!workingOnly && <NotesLane notes={notes} />}
       {proposed.length > 0 && (
         <div class="group lane proposed-lane">
           <div class="row group-head">

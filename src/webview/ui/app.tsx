@@ -16,6 +16,7 @@ import {
   type HostMessage,
   type MachineState,
   type MergeQueueView,
+  type NoteView,
   type RefComparison,
   type SlowStorageView,
   type Tool,
@@ -44,6 +45,7 @@ import {
 } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
+import { noteFinished } from './notes';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
@@ -187,6 +189,7 @@ export function App() {
   const [logs, setLogs] = useState<ReadonlyMap<string, Log>>(new Map());
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
+  const [notes, setNotes] = useState<NoteView[]>([]);
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
   const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
@@ -374,6 +377,12 @@ export function App() {
           return;
         case 'backlogDone':
           finished(m.message);
+          return;
+        case 'notes':
+          setNotes(m.notes);
+          return;
+        case 'noteDone':
+          noteFinished(m.message);
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));
@@ -581,6 +590,7 @@ export function App() {
         integrations={backlogInfo.integrations}
         autopilot={backlogInfo.autopilot}
         mergeQueue={backlogInfo.mergeQueue}
+        notes={notes}
         workstreams={workstreams}
         colors={colors}
         workingOnly={!!persisted.workingOnly}
