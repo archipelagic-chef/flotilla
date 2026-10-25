@@ -12,6 +12,7 @@ import {
   resumedMessage,
   resumeOrder,
 } from '../../features/backlog/pausedAll';
+import type { NoteAgents } from './notes';
 import type { ReviewLoop } from './reviewLoop';
 import type { Shaping } from './shaping';
 
@@ -21,6 +22,8 @@ export interface PauseAllDeps {
   shaping?: Pick<Shaping, 'isRunning' | 'control'>;
   /** Merges' agents and checks (BL-164). */
   merges?: Pick<Merger, 'pauseForAll' | 'resumeForAll' | 'checksRunning' | 'stopChecks'>;
+  /** The note agents (BL-193). */
+  notes?: Pick<NoteAgents, 'pauseForAll' | 'resumeForAll'>;
   store: PausedAllStore;
   /** The hold is lifted (Resume All, here or in another window): the queue and the autopilot go on. */
   lifted?(): void;
@@ -67,7 +70,7 @@ export class PauseAll implements vscode.Disposable {
   }
 
   /**
-   * Pauses every agent working on a ticket (merges' too), top of the backlog first; the set is added to one already
+   * Pauses every agent working on a ticket (merges' too), then the note agents, top of the backlog first; the set is added to one already
    * paused. stopChecks: merges' checks running now stop as well (their merges can be run again); else they finish.
    */
   async pause(o: { stopChecks?: boolean } = {}): Promise<PauseAllResult> {
@@ -95,6 +98,11 @@ export class PauseAll implements vscode.Disposable {
         if (paused.length) await this.deps.store.write({ at: new Date().toISOString(), agents: mergePaused(before, paused) });
       }
     }
+    const notes = (await this.deps.notes?.pauseForAll()) ?? [];
+    if (notes.length) {
+      paused.push(...notes);
+      await this.deps.store.write({ at: new Date().toISOString(), agents: mergePaused(before, paused) });
+    }
     this.refresh();
     return { paused, inChats };
   }
@@ -113,6 +121,10 @@ export class PauseAll implements vscode.Disposable {
         if (item?.shaping?.held?.kind !== 'paused') continue;
         await this.deps.shaping?.control(a.id, 'resume');
         resumed++;
+        continue;
+      }
+      if (a.kind === 'note') {
+        if ((await this.deps.notes?.resumeForAll(a.id, a.session)) === 'running') resumed++;
         continue;
       }
       if (a.kind === 'merge') {
