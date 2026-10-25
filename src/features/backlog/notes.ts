@@ -142,10 +142,14 @@ export function askedForLimit(note: Pick<Note, 'status' | 'activity'>): boolean 
   return note.status === 'asking' && last?.author === 'Flotilla' && STOPPED_ON_LIMIT.test(last.body.trim());
 }
 
-/** The questions of the agent's newest reply in a note that asks you. */
+/**
+ * The questions of the agent's newest reply in a note that asks you. Its agent stopped without a reply (Flotilla's line
+ * is the newest entry): that line, with no questions, so you still get a box to answer in (BL-203).
+ */
 export function noteQuestion(note: Pick<Note, 'status' | 'activity' | 'agent'>): { reply: string; questions: Question[]; since?: string } | undefined {
   if (note.status !== 'asking') return undefined;
-  const reply = [...note.activity].reverse().find((e) => /^agent\s/i.test(e.author));
+  const last = note.activity.at(-1);
+  const reply = last?.author === 'Flotilla' ? last : [...note.activity].reverse().find((e) => /^agent\s/i.test(e.author));
   if (!reply) return undefined;
   const parts = parseReport(reply.body);
   // Its heading's local "YYYY-MM-DD HH:MM", as ISO 8601: when the note began waiting on you.

@@ -167,6 +167,8 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       runs.started[0].resolve({ code: 1, error: 'boom' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'));
       expect((await store.read(note.id))?.activity.at(-1)?.body).toMatch(/stopped without a reply \(boom\)\. Answer here and it goes on\./);
+      // Its card has a box to answer in, with Flotilla's line.
+      expect((await agents.views())[0].asks).toMatchObject({ reply: expect.stringMatching(/stopped without a reply/), questions: [] });
     });
 
     it('opens again the notes that asked only because of a limit, before BL-203', async () => {

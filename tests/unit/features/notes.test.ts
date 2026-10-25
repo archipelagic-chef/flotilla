@@ -238,6 +238,14 @@ describe("the agent's prompt and reply", () => {
     expect(q?.questions.map((x) => [x.text, x.options.map((o) => o.text)])).toEqual([['Which?', ['A', 'B']]]);
   });
 
+  it("gives a note whose agent stopped without a reply Flotilla's line to answer, newer than an earlier reply (BL-203)", () => {
+    const stopped = { date: '2026-10-25 15:11', author: 'Flotilla', body: 'Vega-2 stopped without a reply (boom). Answer here and it goes on.' };
+    for (const activity of [[stopped], [{ date: '2026-10-25 14:05', author: 'Agent Vega-2', body: 'Earlier.\n\nNeeds from you: which' }, stopped]]) {
+      const q = noteQuestion({ status: 'asking', activity });
+      expect(q).toEqual({ reply: stopped.body, questions: [], since: new Date('2026-10-25T15:11').toISOString() });
+    }
+  });
+
   it('reads the tickets it added to, and says what a note became', () => {
     expect(addedTo('Done.\nAdded to: BL-12, bl-30, BL-99', ['BL-12', 'BL-30'])).toEqual(['BL-12', 'BL-30']);
     expect(
