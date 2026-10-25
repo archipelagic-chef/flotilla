@@ -19,6 +19,8 @@ const memory = vi.hoisted(() => ({
   fail: false,
 }));
 const spawn = vi.hoisted(() => vi.fn());
+/** The sessions this window runs without one, and in its terminals (isRunningHeadless, isRunningInTerminal). */
+const here = vi.hoisted(() => ({ headless: new Set<string>(), terminal: new Set<string>() }));
 const terminal = vi.hoisted(() => vi.fn(() => ({ sessionId: 'terminal-session' })));
 /** Is Claude still limited? (undefined: it takes work again.) */
 const probe = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
@@ -31,8 +33,14 @@ const quick = vi.hoisted(() => ({
 
 vi.mock('vscode', () => ({
   EventEmitter: class {
-    event = () => ({ dispose() {} });
-    fire() {}
+    private listeners: Array<(v: unknown) => void> = [];
+    event = (l: (v: unknown) => void) => {
+      this.listeners.push(l);
+      return { dispose() {} };
+    };
+    fire(v: unknown) {
+      for (const l of this.listeners) l(v);
+    }
     dispose() {}
   },
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d, inspect: () => undefined }) },
@@ -48,8 +56,9 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   agentChoice: (item?: { agent?: unknown }) => item?.agent ?? {},
   confirmMemory: async () => false,
   describeChoice: () => '',
-  isRunningHeadless: () => false,
-  isRunningInTerminal: () => false,
+  isRunningHeadless: (s: string) => here.headless.has(s),
+  isRunningInTerminal: (s: string) => here.terminal.has(s),
+  isWorkingHere: (s: string) => here.headless.has(s) || here.terminal.has(s),
   runAgentInTerminal: terminal,
   stopTerminalAgent: async () => false,
   modelLevels: () => levels.now,
@@ -1138,7 +1147,7 @@ describe('pausing, stopping and resuming agents (BL-81)', () => {
     data.items[0].review = {
       ...r,
       state: 'paused',
-      paused: { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing', byUser: at },
+      paused: { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing', byUser: new Date().toISOString() },
     };
     await (loop as unknown as { scan(): Promise<void> }).scan();
     expect(stops).toBe(1);
@@ -1584,5 +1593,183 @@ describe('Pause All and Resume All (BL-160)', () => {
     expect(fresh.canStartNew()).toBe(false);
     pauseAll.dispose();
     fresh.dispose();
+  });
+});
+
+describe("the autopilot's count: the agents a ticket's Check calls working (BL-201)", () => {
+  const bolt = 'b0b0b0b0-0000-4000-8000-000000000171';
+  let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
+  let chats: Array<Record<string, unknown>>;
+  let finish: Array<(r: object) => void>;
+  let stops: number;
+  let changes: number;
+  type Loop = {
+    control(id: string, action: 'pause' | 'stop' | 'resume', session?: string): Promise<void>;
+    userReview(id: string, v: string, text: string): Promise<void>;
+    scan(): Promise<void>;
+    agentsNow(): Array<{ id: string; agent?: string; held?: string; uncounted?: string }>;
+    onDidChangeAgents(l: () => void): unknown;
+    readonly running: number;
+    dispose(): void;
+  };
+  let loop: Loop;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    spawn.mockReset();
+    terminal.mockClear();
+    here.headless.clear();
+    here.terminal.clear();
+    stops = 0;
+    changes = 0;
+    finish = [];
+    spawn.mockImplementation((o: { resume?: string }) => ({
+      sessionId: o.resume ?? bolt,
+      done: new Promise((resolve) => finish.push(resolve)),
+      stop: () => void stops++,
+    }));
+    memory.short = undefined;
+    memory.free = undefined;
+    memory.live = new Set();
+    // BL-171 in review, the user's turn: Bolt-2 made the changes of round 6 in its chat.
+    const review = { round: 6, reviewer: 'You', implementer: 'Bolt-2', implementerSession: bolt, state: 'yours', worktree: 'wt' };
+    data = { version: 1, next: 2, items: [{ id: 'BL-1', title: 'Its changes', status: 'review', created: at, review }] };
+    chats = [];
+    const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
+    const backlog = {
+      dir: '/unused',
+      watch: () => ({ dispose() {} }),
+      read: async () => structuredClone(data),
+      change: async (fn: (d: typeof data) => typeof data) => {
+        data = fn(data);
+      },
+      readTicket: async () => ({ title: 'Its changes', description: '', activity: [] }),
+      writeTicket: async () => undefined,
+      ensureDocument: async () => '/unused/BL-1.md',
+      docPath: () => '/unused/BL-1.md',
+      appendActivity: async () => undefined,
+    };
+    const repository = {
+      onDidChange: () => ({ dispose() {} }),
+      current: [{ key: 'wt', worktree: { isMain: false, path: '/wt', branch: 'feature/BL-1-changes', adminDir: '/wt/.git' }, chats }],
+    };
+    loop = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {} } as never) as unknown as Loop;
+    loop.onDidChangeAgents(() => void changes++);
+    await tick();
+  });
+
+  const chat = (state: string) => ({
+    id: bolt,
+    state,
+    cwd: '/wt',
+    firstPrompt: 'You are agent Bolt-2, working on backlog item BL-1: "Its changes".',
+    updatedAt: new Date(),
+  });
+  const counted = () => ({
+    running: loop.running,
+    agents: loop
+      .agentsNow()
+      .filter((a) => !a.uncounted)
+      .map((a) => `${a.id} ${a.agent}`),
+  });
+
+  it('Request Changes, then Pause, then Resume while a scan goes on with the backlog it read before: Bolt-2 goes on, and counts once', async () => {
+    await loop.userReview('BL-1', 'changes', 'Focus the diff.');
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    await loop.control('BL-1', 'pause');
+    expect(stops).toBe(1);
+    expect(counted()).toEqual({ running: 0, agents: [] });
+    const paused = structuredClone(data);
+    await loop.control('BL-1', 'resume');
+    expect(spawn).toHaveBeenCalledTimes(2);
+    // The scan the pause's write started read the backlog before the Resume restored it: that was BL-171's 0 agents.
+    const now = data;
+    data = paused;
+    await loop.scan();
+    data = { ...structuredClone(now) };
+    expect(stops).toBe(1);
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    // The next scan, with the backlog as it is, leaves it alone too.
+    await loop.scan();
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    loop.dispose();
+  });
+
+  it('pause, then resume: once while working, zero once ended, though its chat still says working', async () => {
+    await loop.userReview('BL-1', 'changes', 'Focus the diff.');
+    chats.push(chat('working'));
+    await loop.control('BL-1', 'pause');
+    await loop.scan();
+    expect(counted()).toEqual({ running: 0, agents: [] });
+    // Its chat's record goes on saying working: the line says why it isn't counted.
+    expect(loop.agentsNow()).toEqual([expect.objectContaining({ id: 'BL-1', uncounted: "paused by you, though its chat says it's working" })]);
+    await loop.control('BL-1', 'resume');
+    await loop.scan();
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    finish[1]({ code: 0, reply: 'Ready for review.' });
+    await tick();
+    expect(loop.running).toBe(0);
+    loop.dispose();
+  });
+
+  it('Request Changes, then a revision: once while it works, zero once it ended', async () => {
+    chats.push(chat('working'));
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] }); // its chat, in another window
+    chats[0].state = 'done';
+    await loop.userReview('BL-1', 'changes', 'Focus the diff.');
+    chats[0].state = 'working';
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    finish[0]({ code: 0, reply: 'Ready for review.' });
+    await tick();
+    expect(loop.running).toBe(0);
+    loop.dispose();
+  });
+
+  it('a held agent resumed in a terminal counts while its process runs, before its chat says working, and not once it ends', async () => {
+    data.items[0].review = {
+      ...(data.items[0].review as object),
+      state: 'paused',
+      paused: { phase: 'work', session: bolt, agent: 'Bolt-2', resume: 'revising', where: 'terminal', byUser: new Date().toISOString() },
+    };
+    chats.push(chat('idle'));
+    await loop.scan();
+    expect(loop.running).toBe(0);
+    await loop.control('BL-1', 'resume');
+    expect(terminal).toHaveBeenCalledTimes(1);
+    here.terminal.add(bolt);
+    expect(counted()).toEqual({ running: 1, agents: ['BL-1 Bolt-2'] });
+    here.terminal.delete(bolt);
+    chats[0].state = 'done';
+    expect(loop.running).toBe(0);
+    loop.dispose();
+  });
+
+  it('counts a held session whose process still runs here, and its line says so', async () => {
+    data.items[0].review = {
+      ...(data.items[0].review as object),
+      state: 'paused',
+      paused: { phase: 'work', session: bolt, agent: 'Bolt-2', resume: 'revising', byUser: new Date().toISOString() },
+    };
+    chats.push(chat('working'));
+    await loop.scan();
+    expect(loop.running).toBe(0);
+    here.headless.add(bolt); // a reply to a comment runs it without a window
+    expect(loop.running).toBe(1);
+    expect(loop.agentsNow()).toEqual([expect.objectContaining({ id: 'BL-1', agent: 'Bolt-2', held: 'paused' })]);
+    loop.dispose();
+  });
+
+  it('tells the autopilot when an agent spawns and when its run ends', async () => {
+    const seen: string[][] = [];
+    loop.onDidChangeAgents(() => seen.push(loop.agentsNow().map((a) => `${a.id} ${a.agent ?? 'starting'}`)));
+    await loop.userReview('BL-1', 'changes', 'Focus the diff.');
+    await tick();
+    expect(seen).toEqual([['BL-1 starting'], ['BL-1 Bolt-2']]);
+    finish[0]({ code: 0, reply: 'Ready for review.' });
+    await tick();
+    expect(seen).toEqual([['BL-1 starting'], ['BL-1 Bolt-2'], []]);
+    expect(changes).toBe(3);
+    loop.dispose();
   });
 });

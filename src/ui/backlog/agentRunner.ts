@@ -392,6 +392,15 @@ export function isRunningInTerminal(sessionId: string): boolean {
 }
 
 /**
+ * Whether an agent's session works here now: without a window, or in a terminal of this window. The one test the
+ * review loop's count (the autopilot's agents) and a ticket's Check share (BL-201): such a session is working, whatever
+ * its chat's record, a pause or an end says.
+ */
+export function isWorkingHere(sessionId: string): boolean {
+  return isRunningHeadless(sessionId) || isRunningInTerminal(sessionId);
+}
+
+/**
  * Ends the process of an agent's terminal (the terminal stays, and says the process ended; its chat is kept). False if
  * it doesn't run in a terminal of this window.
  */

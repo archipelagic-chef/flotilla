@@ -367,6 +367,10 @@ export interface AutopilotAgent {
   agent?: string;
   doing: 'work' | 'review' | 'starting';
   since?: string;
+  /** The user paused or stopped it, but its process still runs here: it's counted, and its line says so (BL-201). */
+  held?: 'paused' | 'stopped';
+  /** Why it isn't counted, though its chat says it's working: "paused by you, though its chat says it's working". */
+  uncounted?: string;
 }
 
 /** A start waiting: for a free slot or for memory; a reply, a review, a resume or a new ticket. */

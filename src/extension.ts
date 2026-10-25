@@ -54,12 +54,7 @@ import { NoteStore } from './features/backlog/notes';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
-import {
-  isRunningHeadless,
-  isRunningInTerminal,
-  setAgentDirs,
-  trackTerminals,
-} from './ui/backlog/agentRunner';
+import { isWorkingHere, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
@@ -332,7 +327,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviews,
     merger,
     mainRoot: location.mainRoot,
-    runsHere: (session) => isRunningHeadless(session) || isRunningInTerminal(session),
+    runsHere: isWorkingHere,
     get staleMinutes() {
       return readSettings().agentStatusStaleMinutes;
     },

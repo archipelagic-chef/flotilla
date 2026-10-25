@@ -89,6 +89,12 @@ export function heldBy(review: ReviewState | undefined): HeldAgent | undefined {
   return undefined;
 }
 
+/** When the user paused or stopped the agent heldBy names (ms since the epoch; 0 when not held, or not known). */
+export function heldAt(review: ReviewState | undefined): number {
+  const at = review?.state === 'paused' ? review.paused?.byUser : review?.state === 'stopped' && review.stop?.kind === 'user' ? review.stop.at : undefined;
+  return (at && Date.parse(at)) || 0;
+}
+
 /** Whether Flotilla's latest note about an agent says it was started (or resumed) in a terminal. */
 export function startedInTerminal(entries: TicketEntry[], agent: string): boolean {
   const name = agent.replace(/[^A-Za-z0-9-]/g, '');

@@ -143,6 +143,9 @@ export class Autopilot implements vscode.Disposable {
         }),
       );
     if (deps.merges) this.subscriptions.push(deps.merges.onDidChange(() => this.changed.fire()));
+    // An agent spawned or a run ended: the bar's count and details change at once (BL-201).
+    const agents = deps.reviews.onDidChangeAgents?.(() => this.changed.fire());
+    if (agents) this.subscriptions.push(agents);
     void this.refresh().then(() => this.tick());
   }
 

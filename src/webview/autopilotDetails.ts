@@ -14,6 +14,8 @@ export interface DetailLine {
   /** What the agent is doing now, from its transcript (BL-175): "Running `npm test` · 2:10 · 4 of 7", or why it looks stuck. */
   status?: string;
   stuck?: boolean;
+  /** An agent listed but not counted (BL-201): its line says why. */
+  uncounted?: boolean;
 }
 
 /** What the autopilot's details show (BL-153): the agents working, the starts waiting in order and why, why it's idle, the limit. */
@@ -65,8 +67,16 @@ export function autopilotDetails(
   const agents = (a.agents ?? []).map((g) => ({
     id: g.id,
     ...title(g.id),
-    text: [g.agent ? `Agent ${g.agent}` : undefined, DOING[g.doing], g.since ? runningFor(g.since, now.getTime()) : undefined].filter(Boolean).join(' · '),
-    ...(g.doing === 'starting' ? {} : liveStatus(live.get(g.id), g.agent, now)),
+    text: [
+      g.agent ? `Agent ${g.agent}` : undefined,
+      g.uncounted ? `not counted: ${g.uncounted}` : DOING[g.doing],
+      g.since && !g.uncounted ? runningFor(g.since, now.getTime()) : undefined,
+      g.held && !g.uncounted ? `${g.held} by you, but its process still runs` : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    ...(g.uncounted ? { uncounted: true } : {}),
+    ...(g.doing === 'starting' || g.uncounted ? {} : liveStatus(live.get(g.id), g.agent, now)),
   }));
   const waiting = (a.queue ?? []).map((q) => ({
     id: q.id,

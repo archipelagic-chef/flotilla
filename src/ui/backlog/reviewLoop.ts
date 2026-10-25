@@ -29,6 +29,7 @@ import {
   AUTOPILOT_NOTE,
   HAND_START_NOTE,
   type HeldAgent,
+  heldAt,
   heldBy,
   readyReport,
   resumeAfterLimitPrompt,
@@ -79,6 +80,7 @@ import {
   describeChoice,
   isRunningHeadless,
   isRunningInTerminal,
+  isWorkingHere,
   memoryShortage,
   modelLevels,
   probeLimit,
@@ -188,11 +190,36 @@ export class ReviewLoop implements vscode.Disposable {
   /** An item's review changed, or its place in the queue (by its id). */
   private readonly changed = new vscode.EventEmitter<string>();
   readonly onDidChange = this.changed.event;
+  /** The agents agentsNow lists (and running counts) changed: an agent spawned, a run ended, a chat started or ended (BL-201). */
+  private readonly agentsChanged = new vscode.EventEmitter<void>();
+  readonly onDidChangeAgents = this.agentsChanged.event;
+  private agentsKey = '[]';
+  private agentsNoted = false;
+
+  /** Fires onDidChangeAgents if agentsNow changed, once the change under way is done (a run dropped and ended, say). */
+  private noteAgents(): void {
+    if (this.agentsNoted) return;
+    this.agentsNoted = true;
+    queueMicrotask(() => {
+      this.agentsNoted = false;
+      try {
+        const key = JSON.stringify(this.agentsNow());
+        if (key === this.agentsKey) return;
+        this.agentsKey = key;
+        this.agentsChanged.fire();
+      } catch (e) {
+        this.deps.output.appendLine(`Review loop: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
+  }
 
   constructor(private readonly deps: ReviewDeps) {
     this.watcher = deps.backlog.watch(() => this.schedule());
     // A chat that ends (a window's agent) frees a slot too: the queue looks again.
-    this.repoWatcher = deps.repository.onDidChange(() => this.scheduleDispatch());
+    this.repoWatcher = deps.repository.onDidChange(() => {
+      this.noteAgents();
+      this.scheduleDispatch();
+    });
     this.schedule();
     // Agents paused on a usage limit go on when it resets, and waiting starts go on when there's room (each minute: a
     // sleeping computer skips timers).
@@ -226,6 +253,7 @@ export class ReviewLoop implements vscode.Disposable {
     clearTimeout(this.resumeTimer);
     this.runs.forEach((r) => r.run.stop());
     this.changed.dispose();
+    this.agentsChanged.dispose();
   }
 
   isRunning(id: string): boolean {
@@ -245,13 +273,19 @@ export class ReviewLoop implements vscode.Disposable {
     const data = await this.deps.backlog.read();
     const automatic = settings().get<boolean>('review.automatic', true);
     // The sessions the user paused or stopped: they don't take a slot, whatever their chats still say (see running).
-    this.held = new Set(data.items.flatMap((i) => heldBy(i.review)?.session ?? []));
+    this.held = new Map(
+      data.items.flatMap((i) => {
+        const held = heldBy(i.review);
+        return held ? [[held.session, i.review?.state === 'paused' ? 'paused' : 'stopped'] as const] : [];
+      }),
+    );
+    this.noteAgents();
     for (const item of data.items) {
       const before = this.statuses.get(item.id);
       this.statuses.set(item.id, item.status);
       // An agent the user paused or stopped (in any window) that runs here ends.
       const held = heldBy(item.review);
-      if (held && (this.runs.get(item.id)?.run.sessionId === held.session || isRunningInTerminal(held.session))) await this.end(item.id, held.session);
+      if (held && this.heldRunsHere(item.id, held.session, heldAt(item.review))) await this.end(item.id, held.session);
       if (before === undefined) {
         const ticket = await this.deps.backlog.readTicket(item);
         this.baseline.set(item.id, ticket.activity.map(this.key(item.id)));
@@ -384,6 +418,7 @@ export class ReviewLoop implements vscode.Disposable {
   private take(id: string): number {
     const slot = reserveStart();
     this.starting.set(slot, id);
+    this.noteAgents();
     if (this.waiting.has(id)) {
       this.waiting.remove(id);
       this.fireQueue(id);
@@ -395,6 +430,7 @@ export class ReviewLoop implements vscode.Disposable {
   private launched(id: string, slot: number, live: Running): void {
     this.starting.delete(slot);
     this.runs.set(id, live);
+    this.noteAgents();
     // A run that goes on in a session this window ended before (a revision, a later round, a limit resume) works again (BL-199).
     this.ended.delete(live.run.sessionId);
     void readTranscript(live.cwd, live.run.sessionId)
@@ -414,6 +450,7 @@ export class ReviewLoop implements vscode.Disposable {
       const why = usage && runawayReason(usage, live.base, budget);
       if (!why || this.runs.get(id) !== live) continue;
       this.runs.delete(id);
+      this.noteAgents();
       this.ended.add(live.run.sessionId);
       live.run.stop();
       this.scheduleDispatch();
@@ -428,7 +465,9 @@ export class ReviewLoop implements vscode.Disposable {
   /** Gives back the slot and memory of an admitted start that was given up before its agent spawned. */
   private release(slot: number): void {
     releaseStart(slot);
-    if (!this.starting.delete(slot)) return;
+    const had = this.starting.delete(slot);
+    this.noteAgents();
+    if (!had) return;
     this.scheduleDispatch();
   }
 
@@ -980,31 +1019,43 @@ export class ReviewLoop implements vscode.Disposable {
   /**
    * The agents running now: this window's, the starts it admitted that haven't spawned yet (see take), and the agent
    * chats (for tickets) that work in any window, each session once. The limit counts them all: a start from a ticket
-   * (its chat in Claude Code) takes its slot too; a discussion's chat doesn't (BL-188: the user is in it).
+   * (its chat in Claude Code) takes its slot too; a discussion's chat doesn't (BL-188: the user is in it). The same
+   * agents as agentsNow lists, less those it marks not counted.
    */
   get running(): number {
-    const sessions = new Set([...this.runs.values()].map((r) => r.run.sessionId));
-    for (const ws of this.deps.repository.current)
-      for (const chat of ws.chats)
-        if (chat.state === 'working' && countsAsAgent(chat.firstPrompt) && !this.isEnded(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
-    return sessions.size + this.starting.size;
+    return this.agentsNow().filter((a) => !a.uncounted).length;
   }
 
-  /** The agents counted in running, each once, for the autopilot's details: this window's runs, the starts admitted, the agent chats. */
+  /**
+   * The agents counted in running, each once, for the autopilot's details: this window's runs, the starts admitted, the
+   * agent chats. A session that works here (isWorkingHere, what a ticket's Check calls working) counts whatever its
+   * chat's record, a pause or an end says, and says when it's held (BL-201); a chat that says it's working but that
+   * the loop has as held or ended, with nothing running it here, is listed as not counted, with why.
+   */
   agentsNow(): AutopilotAgent[] {
     const agents: AutopilotAgent[] = [];
     const sessions = new Set<string>();
+    const held = (session: string) => (this.held.has(session) ? { held: this.held.get(session) } : {});
     for (const [id, r] of this.runs) {
       sessions.add(r.run.sessionId);
-      agents.push({ id, agent: r.agent, doing: r.phase, since: new Date(r.since).toISOString() });
+      agents.push({ id, agent: r.agent, doing: r.phase, since: new Date(r.since).toISOString(), ...held(r.run.sessionId) });
     }
     for (const ws of this.deps.repository.current)
       for (const chat of ws.chats) {
         const of = agentChatItem(chat.firstPrompt);
-        if (chat.state !== 'working' || !of || !countsAsAgent(chat.firstPrompt) || this.isEnded(chat.id) || this.held.has(chat.id) || sessions.has(chat.id))
-          continue;
+        if (!of || !countsAsAgent(chat.firstPrompt) || sessions.has(chat.id)) continue;
+        const here = isWorkingHere(chat.id);
+        if (!here && chat.state !== 'working') continue;
         sessions.add(chat.id);
-        agents.push({ id: of.item, agent: of.agent, doing: 'work', since: (chat.startedAt ?? chat.updatedAt).toISOString() });
+        const line = { id: of.item, agent: of.agent, doing: 'work' as const, since: (chat.startedAt ?? chat.updatedAt)?.toISOString() };
+        const uncounted = here
+          ? undefined
+          : this.held.has(chat.id)
+            ? `${this.held.get(chat.id)} by you`
+            : this.ended.has(chat.id)
+              ? 'its run here ended'
+              : undefined;
+        agents.push({ ...line, ...held(chat.id), ...(uncounted ? { uncounted: `${uncounted}, though its chat says it's working` } : {}) });
       }
     for (const id of this.starting.values()) agents.push({ id, doing: 'starting' });
     return agents;
@@ -1034,8 +1085,11 @@ export class ReviewLoop implements vscode.Disposable {
     return this.ended.has(session) && !isRunningHeadless(session);
   }
 
-  /** The sessions of agents the user paused or stopped, in any window (as of the last scan): they take no slot. */
-  private held = new Set<string>();
+  /**
+   * The sessions of agents the user paused or stopped, in any window (as of the last scan): they take no slot, unless
+   * they still work here (see agentsNow).
+   */
+  private held = new Map<string, 'paused' | 'stopped'>();
 
   /**
    * Starts an agent on an item's work, without a window (for the autopilot, and Start an Agent by hand: BL-122): it
@@ -1220,6 +1274,7 @@ export class ReviewLoop implements vscode.Disposable {
     const live = this.runs.get(victim);
     if (!live) return undefined;
     this.runs.delete(victim);
+    this.noteAgents();
     this.ended.add(live.run.sessionId);
     live.run.stop();
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === victim);
@@ -1458,11 +1513,27 @@ export class ReviewLoop implements vscode.Disposable {
     this.ended.add(session);
     if (live?.run.sessionId === session) {
       this.runs.delete(id);
+      this.noteAgents();
       live.run.stop();
     }
     await stopTerminalAgent(session);
     this.scheduleDispatch();
   }
+
+  /**
+   * Whether the agent the user paused or stopped (at `at`, 0 when not known) still runs here: a run of its session that
+   * started before then, or its terminal. One started since (a Resume here, while a scan went on with the backlog it
+   * read from before: BL-201) isn't that agent, and goes on.
+   */
+  private heldRunsHere(id: string, session: string, at: number): boolean {
+    if (at && (this.resumedAt.get(session) ?? 0) >= at) return false;
+    const live = this.runs.get(id);
+    if (live?.run.sessionId === session) return !at || live.since <= at;
+    return isRunningInTerminal(session);
+  }
+
+  /** When this window resumed a held session (see heldRunsHere). */
+  private readonly resumedAt = new Map<string, number>();
 
   /** Pauses or stops an agent: it ends now (here, or in the window running it), its chat kept to go on in. */
   private async halt(item: BacklogItem, target: AgentTarget, action: 'pause' | 'stop'): Promise<void> {
@@ -1524,6 +1595,7 @@ export class ReviewLoop implements vscode.Disposable {
     // Its state first, so that no window takes it for still held and ends it again.
     const restore = async () => {
       this.ended.delete(held.session);
+      this.resumedAt.set(held.session, Date.now());
       const before = held.before;
       if (before === 'none') {
         await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? withoutReview(i) : i)) }), { by: 'You' });
@@ -1543,6 +1615,7 @@ export class ReviewLoop implements vscode.Disposable {
         choice,
         track: { ticket: item.id, agent: held.agent, role: held.phase === 'review' ? 'review' : 'work' },
       });
+      this.noteAgents();
       await this.startNote(item.id, `You resumed the chat for agent ${held.agent}, in a terminal.`);
       return;
     }
@@ -1585,6 +1658,7 @@ export class ReviewLoop implements vscode.Disposable {
     if (item && target && target.where !== 'panel') return this.halt(item, target, 'stop');
     const live = this.runs.get(id);
     this.runs.delete(id);
+    this.noteAgents();
     this.waiting.remove(id);
     this.fireQueue(id);
     if (live) this.ended.add(live.run.sessionId);
@@ -1658,6 +1732,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async afterReview(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id)?.run !== run) return; // stopped
     this.runs.delete(id);
+    this.noteAgents();
     if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
     if (!result.limit && !result.error) await this.liftedByRun(id, 'review');
@@ -1715,6 +1790,7 @@ export class ReviewLoop implements vscode.Disposable {
   async userReview(id: string, verdict: Verdict, text: string): Promise<void> {
     const live = this.runs.get(id);
     this.runs.delete(id);
+    this.noteAgents();
     // What the user decides now replaces a start that waited.
     this.waiting.remove(id);
     this.fireQueue(id);
@@ -1920,6 +1996,7 @@ export class ReviewLoop implements vscode.Disposable {
   private async afterRevision(id: string, run: AgentRun, result: AgentResult): Promise<void> {
     if (this.runs.get(id)?.run !== run) return;
     this.runs.delete(id);
+    this.noteAgents();
     if (!result.limit) this.retrying.delete(id);
     this.ended.add(run.sessionId);
     if (!result.limit && !result.error) await this.liftedByRun(id, 'work');

@@ -35,6 +35,25 @@ describe('the autopilot details', () => {
     expect(d.idle).toBeUndefined();
   });
 
+  it("says when a counted agent is held but its process runs, and why an agent isn't counted (BL-201)", () => {
+    const d = autopilotDetails(
+      {
+        ...base,
+        running: 1,
+        agents: [
+          { id: 'BL-1', agent: 'Bolt-2', doing: 'work', since: minutesAgo(4), held: 'paused' },
+          { id: 'BL-2', agent: 'Vega-2', doing: 'work', since: minutesAgo(9), uncounted: "paused by you, though its chat says it's working" },
+        ],
+      },
+      titles,
+      now,
+    );
+    expect(d.agents).toEqual([
+      { id: 'BL-1', title: 'Sort the backlog', text: 'Agent Bolt-2 · working · 4 min · paused by you, but its process still runs' },
+      { id: 'BL-2', title: 'Fix the login', text: "Agent Vega-2 · not counted: paused by you, though its chat says it's working", uncounted: true },
+    ]);
+  });
+
   it('lists the starts waiting in order, and why: the limit, or memory', () => {
     const d = autopilotDetails(
       {
