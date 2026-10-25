@@ -18,6 +18,8 @@ import type { RunAction } from '../features/ci/runActions';
 import type { CiDeployment } from '../features/ci/githubDeployments';
 import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
+import type { TicketCommit } from '../features/history/log';
+import type { TicketChange } from './ticketProtocol';
 
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
@@ -82,7 +84,19 @@ export interface BacklogProblem {
 }
 
 /** The views under Version Control in the tool strip. */
-export type VcView = 'changes' | 'history' | 'compare' | 'ci';
+export type VcView = 'changes' | 'history' | 'compare' | 'ci' | 'ticketChanges' | 'ticketCommits';
+
+/**
+ * A ticket as Version Control shows it when a worktree is the ticket's (BL-171): its header, its Changes (every file it
+ * changes, as the ticket's Changes section lists them) and its Commits (stepped through one by one).
+ */
+export interface TicketVcView {
+  id: string;
+  title: string;
+  change: TicketChange;
+  /** Newest first, as the ticket lists them. */
+  commits: TicketCommit[];
+}
 
 /** A workflow run as the CI/CD view shows it; current: it runs the commit checked out in the worktree. */
 /** A job of a run, with its steps. */
@@ -258,6 +272,10 @@ export type HostMessage =
   | { type: 'reveal'; key: string; path?: string; tool?: Tool; vcView?: VcView }
   /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
+  /** Expand in a ticket's Changes (BL-171): Version Control on the ticket's Changes in its worktree, that file selected. */
+  | { type: 'showTicketChanges'; key: string; ticket: string; path: string }
+  /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
+  | { type: 'ticketVc'; id: string; view?: TicketVcView }
   /** The active worktree changed outside the webview (shortcut, status bar). */
   | { type: 'active'; key: string }
   /** Worktrees whose tab is closed (still in the Overview). */
@@ -421,6 +439,12 @@ export type WebviewMessage =
   /** Open the files a commit changed in a multi-file diff; with path, only that file's diff. */
   | { type: 'openCommit'; key: string; hash: string; path?: string }
   | { type: 'commitFiles'; key: string; hash: string }
+  /** A ticket's changes and commits, for Version Control's ticket views (answered with ticketVc). */
+  | { type: 'ticketVc'; id: string }
+  /** A file of a ticket's Changes in the diff editor (group: its index in the ticket's change). */
+  | { type: 'openTicketChange'; id: string; group: number; path: string }
+  /** Back to the ticket, its Changes at that file. */
+  | { type: 'backToTicket'; id: string; path?: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
   | ({ type: 'ci' } & CiRequest)

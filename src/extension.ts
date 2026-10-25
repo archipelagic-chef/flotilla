@@ -284,12 +284,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     terminals: runTerminals,
     revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
+    showTicketChanges: (key, ticket, path) => sidebar.showTicketChanges(key, ticket, path),
     memento: context.globalState,
     output,
     ci: sidebar.ci,
     showCi: (key) => sidebar.showCi(key),
   });
   context.subscriptions.push(tickets);
+  sidebar.useTickets(tickets);
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   // What happens to tickets, agents and merges, recorded as events (BL-157).

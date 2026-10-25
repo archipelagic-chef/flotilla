@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
-import { openChangeDiff, openChangeEntries } from '../../../core/diff/openDiff';
-import { fileDiff, WHOLE_FILE } from '../../../features/diffs/fileDiff';
+import { openChangeEntries } from '../../../core/diff/openDiff';
+import { fileDiff } from '../../../features/diffs/fileDiff';
 import type { FileDiff, TicketHostMessage } from '../../../webview/ticketProtocol';
 import type { Handlers } from './context';
 import type { FilesMessage } from './files.messages';
@@ -52,19 +52,15 @@ export const filesHandlers: Handlers<FilesMessage> = {
     await openCommit(panels.deps.reference, panels.deps.mainRoot, m.hash);
   },
   openChange: async ({ item, panels }, m) => {
-    // The change as the ticket shows it: what it lists is what opens.
-    const g = (await panels.changesShown(item)).groups[m.group];
-    const f = g?.files.find((x) => x.path === m.path);
-    if (!g || !f) return;
-    // Beside the ticket, which stays in view; the diff's title bar leads back to it.
-    await panels.beside(item.id);
-    const modified = await openChangeDiff(panels.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`, m.line);
-    panels.diffs.openedDiff(modified, { id: item.id, path: f.path });
+    await panels.openChange(item, m.group, m.path, m.line);
+  },
+  expandChange: async ({ item, panels }, m) => {
+    await panels.expandChange(item, m.group, m.path);
   },
   readChangeDiff: async ({ item, panel, panels }, m) => {
     const g = (await panels.changesShown(item)).groups[m.group];
     const f = g?.files.find((x) => x.path === m.path);
-    const diff: FileDiff = !g || !f ? { note: 'No longer in its changes.' } : await fileDiff(g.dir, f, f.left ?? g.left, f.right ?? g.right, m.whole ? WHOLE_FILE : 3).catch((e: Error) => ({ note: `Couldn't read its diff: ${e.message}` }));
+    const diff: FileDiff = !g || !f ? { note: 'No longer in its changes.' } : await fileDiff(g.dir, f, f.left ?? g.left, f.right ?? g.right).catch((e: Error) => ({ note: `Couldn't read its diff: ${e.message}` }));
     void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff } satisfies TicketHostMessage);
   },
   openAllChanges: async ({ item, panels }) => {

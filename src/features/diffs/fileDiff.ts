@@ -9,15 +9,11 @@ export type { DiffHunk, DiffLine, FileDiff };
 /** More changed lines than this, and a file's diff isn't shown inline: the diff editor is the place for it. */
 export const MAX_INLINE_LINES = 2000;
 
-/** Lines of context for the whole file (the full view): more than any file has. */
-export const WHOLE_FILE = 1_000_000;
-
 /**
  * A file's diff between left and right (WORKING: its worktree's files, uncommitted changes and all) in dir, as the
- * ticket's Changes shows it (BL-171): its hunks with that many lines of context (3 inline; WHOLE_FILE in the full
- * view). Read from git without touching the index.
+ * ticket's Changes shows it inline (BL-171): its hunks with 3 lines of context. Read from git without touching the index.
  */
-export async function fileDiff(dir: string, file: ChangedFile, left: string, right: string, context = 3): Promise<FileDiff> {
+export async function fileDiff(dir: string, file: ChangedFile, left: string, right: string): Promise<FileDiff> {
   if (file.binary) return { note: 'A binary file: its diff shows only in the diff editor.' };
   const changed = file.added + file.deleted;
   if (changed > MAX_INLINE_LINES) return { note: `${changed.toLocaleString('en-US')} changed lines: too many to show here.` };
@@ -28,7 +24,7 @@ export async function fileDiff(dir: string, file: ChangedFile, left: string, rig
     return { hunks: lines.length ? [{ oldStart: 0, newStart: 1, lines: lines.map((t, i) => ({ kind: 'added', text: t, new: i + 1 })) }] : [] };
   }
   const paths = file.origPath ? [file.origPath, file.path] : [file.path];
-  const out = await runGit(['diff', '--no-color', '--no-ext-diff', `-U${context}`, '-M', left, ...(right === WORKING ? [] : [right]), '--', ...paths], { cwd: dir });
+  const out = await runGit(['diff', '--no-color', '--no-ext-diff', '-U3', '-M', left, ...(right === WORKING ? [] : [right]), '--', ...paths], { cwd: dir });
   const hunks = parseHunks(out);
   if (!hunks.length) return { note: file.kind === 'renamed' ? 'Renamed, its lines unchanged.' : 'No lines changed.' };
   return { hunks };

@@ -49,6 +49,8 @@ import type {
   TicketView,
   TicketWebviewMessage,
 } from '../../webview/ticketProtocol';
+import type { TicketVcView } from '../../webview/protocol';
+import { openChangeDiff } from '../../core/diff/openDiff';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -171,6 +173,8 @@ export interface TicketDeps {
   revealWorktree(key: string): void;
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
+  /** Shows the ticket's Changes in a worktree's Version Control in the sidebar, that file selected (BL-171). */
+  showTicketChanges(key: string, ticket: string, path: string): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
@@ -689,6 +693,41 @@ export class TicketPanels implements vscode.Disposable {
     await this.open(o.id);
     const panel = this.panels.get(o.id);
     if (panel) this.changeOnPost.set(panel, o.path ? { path: o.path } : {});
+  }
+
+  /** A file of the ticket's Changes in the diff editor, beside the ticket; the diff's title bar leads back to it. */
+  async openChange(item: BacklogItem, group: number, path: string, line?: number): Promise<void> {
+    // The change as the ticket shows it: what it lists is what opens.
+    const g = (await this.changesShown(item)).groups[group];
+    const f = g?.files.find((x) => x.path === path);
+    if (!g || !f) return;
+    await this.beside(item.id);
+    const modified = await openChangeDiff(this.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`, line);
+    this.diffs.openedDiff(modified, { id: item.id, path: f.path });
+  }
+
+  /** Expand on a file of the ticket's Changes (BL-171): its worktree's Version Control on the ticket's Changes, else its diff. */
+  async expandChange(item: BacklogItem, group: number, path: string): Promise<void> {
+    const g = (await this.changesShown(item)).groups[group];
+    if (!g?.files.some((f) => f.path === path)) return;
+    const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
+    // A merged ticket has no worktree to show it in: its diff (its compare in Version Control is BL-173's).
+    if (ws) await this.deps.showTicketChanges(ws.key, item.id, path);
+    else await this.openChange(item, group, path);
+  }
+
+  /** A ticket as the sidebar's Version Control shows it (BL-171): its changes and commits; undefined when there's no such item. */
+  async ticketVc(id: string): Promise<TicketVcView | undefined> {
+    const item = await this.item(id);
+    if (!item || item.remote) return undefined;
+    const [change, { commits }] = await Promise.all([this.changesShown(item), this.work(item)]);
+    return { id: item.id, title: item.title, change, commits };
+  }
+
+  /** A file of a ticket's Changes in the diff editor, opened from the sidebar's Version Control. */
+  async openTicketChange(id: string, group: number, path: string): Promise<void> {
+    const item = await this.item(id);
+    if (item) await this.openChange(item, group, path);
   }
 
   async open(id: string, o: { focus?: FocusTarget } = {}): Promise<void> {

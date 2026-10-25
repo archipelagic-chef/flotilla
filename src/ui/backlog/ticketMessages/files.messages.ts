@@ -8,8 +8,10 @@ export type FilesMessage =
   | { type: 'openCommit'; hash: string }
   /** A file of its Changes in the diff editor (group: its index; line: on its right side, else its left), or all of them in the multi-file diff editor. */
   | { type: 'openChange'; group: number; path: string; line?: number }
-  /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
-  | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
+  /** Expand: the sidebar's Version Control on the ticket's Changes (BL-171), that file selected. */
+  | { type: 'expandChange'; group: number; path: string }
+  /** A file's diff, to show inline (answered with changeDiff). */
+  | { type: 'readChangeDiff'; requestId: number; group: number; path: string }
   | { type: 'openAllChanges' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }

@@ -41,6 +41,7 @@ import {
   type MachineState,
   type RefComparison,
   type SearchGroup,
+  type TicketVcView,
   type Tool,
   type VcView,
   type WebviewMessage,
@@ -73,6 +74,14 @@ const RUN_LISTED_MS = 5_000;
 
 /** Commits per page of a worktree's history. */
 const LOG_PAGE = 50;
+
+/** What Version Control's ticket views ask of the tickets (BL-171). */
+export interface TicketVc {
+  ticketVc(id: string): Promise<TicketVcView | undefined>;
+  openTicketChange(id: string, group: number, path: string): Promise<void>;
+  /** Back to the ticket, its Changes at that file. */
+  showChange(o: { id: string; path?: string }): Promise<void>;
+}
 
 export interface SidebarDeps {
   extensionUri: vscode.Uri;
@@ -251,6 +260,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
   private async postNotes(): Promise<void> {
     if (this.notes) this.post({ type: 'notes', notes: await this.notes.views() });
+  }
+
+  private tickets: TicketVc | undefined;
+
+  /** The tickets, for Version Control's ticket views (BL-171): their header, Changes and Commits. */
+  useTickets(tickets: TicketVc): void {
+    this.tickets = tickets;
   }
 
   private merges: Merges | undefined;
@@ -571,13 +587,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
    * sidebar is only brought into view.
    */
   async showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void> {
+    await this.showKeepingFocus();
+    this.act({ type: 'showCommits', key, ticket, hashes, selected });
+  }
+
+  /** Shows a worktree's Version Control on its ticket's Changes, that file selected (Expand in the ticket, BL-171). */
+  async showTicketChanges(key: string, ticket: string, path: string): Promise<void> {
+    await this.showKeepingFocus();
+    this.act({ type: 'showTicketChanges', key, ticket, path });
+  }
+
+  /** Brings the sidebar into view, the focus staying in the editor (the ticket). */
+  private async showKeepingFocus(): Promise<void> {
     if (this.view) this.view.show(true);
     else {
       // Not created yet: opening it takes the focus; give it back to the editor.
       await vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`);
       await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
     }
-    this.act({ type: 'showCommits', key, ticket, hashes, selected });
   }
 
   /** Sends an action (reveal, show a tool, …) now, or once the page is ready, so it isn't lost while it loads. */
@@ -775,6 +802,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         return;
       }
+      case 'ticketVc':
+        this.post({ type: 'ticketVc', id: m.id, view: await this.tickets?.ticketVc(m.id) });
+        return;
+      case 'openTicketChange':
+        await this.tickets?.openTicketChange(m.id, m.group, m.path);
+        return;
+      case 'backToTicket':
+        await this.tickets?.showChange({ id: m.id, ...(m.path ? { path: m.path } : {}) });
+        return;
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);
         return;

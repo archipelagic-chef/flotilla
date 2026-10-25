@@ -56,7 +56,7 @@ function tab() {
 }
 
 /** Ticket panels over a backlog whose one item's writes fail (or not): only what onMessage needs is there. */
-function panelsWith(change: () => Promise<unknown>, o: { workstreams?: unknown[]; activity?: unknown[] } = {}) {
+function panelsWith(change: () => Promise<unknown>, o: { workstreams?: unknown[]; activity?: unknown[]; deps?: Record<string, unknown> } = {}) {
   const none = { dispose: () => undefined };
   const backlog = {
     dir: '/nonexistent/backlog',
@@ -71,6 +71,7 @@ function panelsWith(change: () => Promise<unknown>, o: { workstreams?: unknown[]
     integrations: { current: [], issues: () => [], onDidChange: () => none },
     merges: { watch: () => none, get: () => undefined },
     memento: { get: (_key: string, fallback: unknown) => fallback, update: async () => undefined },
+    ...o.deps,
   };
   const panels = new TicketPanels(deps as never) as unknown as {
     panels: Map<string, unknown>;
@@ -239,5 +240,41 @@ describe('Open Chat (BL-131)', () => {
     await panels.onMessage('BL-1', tab(), { type: 'openChat', key: elsewhere.key, id: 'f545f4ca' });
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("Can't open this chat"));
+  });
+});
+
+describe('Expand in Changes (BL-171)', () => {
+  const ws = { key: '/repo/.git/worktrees/bl-1', worktree: { branch: 'feature/BL-1-a-ticket', path: '/repo/.worktrees/bl-1', isMain: false } };
+  const file = { path: 'src/reload.js', kind: 'modified', added: 4, deleted: 1 };
+  const change = { stage: 'In progress', files: 1, added: 4, deleted: 1, groups: [{ label: 'feature/BL-1-a-ticket', dir: ws.worktree.path, left: 'main', right: 'WORKING', compared: '', files: [file] }] };
+  const commits = [{ hash: 'b'.repeat(40), short: 'bbbbbbb', subject: 'Second', author: 'A', date: '2026-10-25T10:00:00Z', branches: [] }];
+  function expandable() {
+    const showTicketChanges = vi.fn(async () => undefined);
+    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { showTicketChanges } }) as ReturnType<typeof panelsWith> & {
+      changesShown: () => Promise<unknown>;
+      work: () => Promise<unknown>;
+      ticketVc: (id: string) => Promise<unknown>;
+    };
+    panels.changesShown = async () => change;
+    panels.work = async () => ({ commits });
+    return { panels, showTicketChanges };
+  }
+
+  it("opens the sidebar's Version Control on the ticket's Changes in the file's worktree, that file selected", async () => {
+    const { panels, showTicketChanges } = expandable();
+    await panels.onMessage('BL-1', tab(), { type: 'expandChange', group: 0, path: 'src/reload.js' });
+    expect(showTicketChanges).toHaveBeenCalledWith(ws.key, 'BL-1', 'src/reload.js');
+  });
+
+  it('does nothing for a file the Changes no longer list', async () => {
+    const { panels, showTicketChanges } = expandable();
+    await panels.onMessage('BL-1', tab(), { type: 'expandChange', group: 0, path: 'src/gone.js' });
+    expect(showTicketChanges).not.toHaveBeenCalled();
+  });
+
+  it("gives Version Control the ticket's title, Changes and commits", async () => {
+    const { panels } = expandable();
+    expect(await panels.ticketVc('BL-1')).toEqual({ id: 'BL-1', title: 'A ticket', change, commits });
+    expect(await panels.ticketVc('BL-404')).toBeUndefined();
   });
 });
