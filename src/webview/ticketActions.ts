@@ -17,6 +17,9 @@ export function actionKey(m: TicketWebviewMessage): string {
       return `reviewFix:${m.fix}`;
     case 'userReview':
       return `userReview:${m.verdict}`;
+    case 'editComment':
+    case 'deleteComment':
+      return `${m.type}:${m.anchor}`;
     case 'postEntry':
       return `postEntry:${m.key}`;
     case 'checkout':

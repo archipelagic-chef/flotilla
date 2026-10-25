@@ -27,7 +27,8 @@ import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheck
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
-import { parseFileLink } from '../../features/backlog/ticket';
+import { parseFileLink, summaryOf } from '../../features/backlog/ticket';
+import { answeredBy, deleteEntry, editable, editEntry, entryEdit, repliesOf, showsDeleted } from '../../features/backlog/commentEdits';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
 import { mediaType, tooLarge, tooLargeNote, type MediaKind } from '../../features/backlog/media';
@@ -662,7 +663,10 @@ export class TicketPanels implements vscode.Disposable {
         const key = Store.entryKey(item.id, whole);
         // A reply shows whom it answers above it, not its reply line (BL-126).
         const thread = threads[n];
-        const e = thread.reply ? { ...whole, body: parseReply(whole.body)?.text ?? whole.body } : whole;
+        // An edited or deleted comment (BL-128) shows its text without its mark, and says so.
+        const edit = entryEdit(whole.body);
+        const shown = edit.replyLine || edit.edited || edit.deleted ? edit.text : whole.body;
+        const e = { ...whole, body: shown };
         const opened = e.author === 'Flotilla' ? /chat for agent ([A-Za-z0-9-]+)/.exec(e.body)?.[1] : undefined;
         const agent = opened ?? entryAgent(e.author);
         const found = agent ? agents.get(agent.toLowerCase()) : undefined;
@@ -683,6 +687,10 @@ export class TicketPanels implements vscode.Disposable {
           ...(thread.reply ? { reply: thread.reply } : {}),
           ...(thread.root !== undefined ? { root: thread.root } : {}),
           ...(posted[key] ? { posted: posted[key] } : {}),
+          ...(editable(whole) ? { own: true } : {}),
+          ...(edit.edited ? { edited: edit.edited } : {}),
+          ...(edit.deleted ? { deleted: edit.deleted, ...(showsDeleted(entries, thread.anchor) ? {} : { hidden: true }) } : {}),
+          ...(edit.edited ? { readBefore: answeredBy(entries, thread.anchor, edit.edited) } : {}),
           ...(chat ? { chat } : {}),
           ...(report ? { report } : {}),
           ...(thumbs.length ? { thumbs } : {}),
@@ -1371,6 +1379,47 @@ export class TicketPanels implements vscode.Disposable {
     const activity = (await this.deps.backlog.readTicket(item)).activity;
     const parent = activity[entryAnchors(activity).indexOf(replyTo)];
     return parent ? `${replyLine(parent, replyTo)}\n${text.trim()}` : text;
+  }
+
+  /**
+   * Edits or deletes one of your comments (BL-128), found by its anchor as the ticket is when written: only that entry
+   * changes, through the backlog's queue (as appends do), so entries written meanwhile stay. A comment posted to an
+   * issue stays posted there as it was (Flotilla can't change it there): its local copy keeps its "Posted to".
+   */
+  async changeComment(id: string, anchor: string, text: string | undefined): Promise<void> {
+    const item = await this.item(id);
+    if (!item || item.remote) return;
+    if (text === undefined && !(await this.confirmDelete(item, anchor))) return;
+    const posted = await this.deps.backlog.posted();
+    let moved: { from: string; to: string } | undefined;
+    await this.deps.backlog.editTicket(item, (ticket) => {
+      const date = entryDate(new Date());
+      const activity = text === undefined ? deleteEntry(ticket.activity, anchor, date) : editEntry(ticket.activity, anchor, text, date);
+      if (!activity) throw new Error(text === undefined ? 'That comment is no longer there.' : 'That comment can no longer be edited.');
+      const i = entryAnchors(ticket.activity).indexOf(anchor);
+      // Kept (edited, or "Comment deleted"): it's in the same place.
+      const now = activity.length === ticket.activity.length ? activity[i] : undefined;
+      if (now) moved = { from: Store.entryKey(id, ticket.activity[i]), to: Store.entryKey(id, now) };
+      return { ...ticket, activity };
+    });
+    if (moved && posted[moved.from]) await this.deps.backlog.markPosted(moved.to, posted[moved.from]);
+  }
+
+  /** Asks before a comment is deleted, saying what's left of it and what the agents that answered it read. */
+  private async confirmDelete(item: BacklogItem, anchor: string): Promise<boolean> {
+    const activity = (await this.deps.backlog.readTicket(item)).activity;
+    const i = entryAnchors(activity).indexOf(anchor);
+    if (i < 0) return false;
+    const posted = (await this.deps.backlog.posted())[Store.entryKey(item.id, activity[i])];
+    const replies = repliesOf(activity, anchor).length;
+    const agents = answeredBy(activity, anchor);
+    const detail = [
+      summaryOf(entryEdit(activity[i].body).text) ?? '',
+      replies ? `It has ${replies === 1 ? 'a reply' : `${replies} replies`}: "Comment deleted" stays, with ${replies === 1 ? 'it' : 'them'} under it.` : '',
+      agents.length ? `${agents.join(' and ')} already answered it, and keep${agents.length === 1 ? 's' : ''} what ${agents.length === 1 ? 'it' : 'they'} read.` : '',
+      posted ? `It was posted to ${posted}: only the local copy is deleted, the comment there stays.` : '',
+    ].filter(Boolean);
+    return (await vscode.window.showWarningMessage('Delete your comment?', { modal: true, detail: detail.join('\n\n') }, 'Delete')) === 'Delete';
   }
 
   async addActivity(id: string, author: string, body: string): Promise<void> {

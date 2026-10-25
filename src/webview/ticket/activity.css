@@ -409,3 +409,35 @@ button.timeline-item:hover .timeline-text {
   outline-offset: 2px;
   transition: outline-color 0.4s;
 }
+/* Your own comments (BL-128): Edit and Delete beside Reply; "edited", and "Comment deleted" with its replies. */
+.edit-entry,
+.delete-entry {
+  font-size: 11px;
+}
+.entry-head .edit-entry {
+  margin-left: auto;
+}
+.post-entry ~ .edit-entry,
+.edit-entry ~ .reply-entry {
+  margin-left: 0;
+}
+.entry-head .edited {
+  font-size: 11px;
+  cursor: default;
+}
+.deleted-entry {
+  font-style: italic;
+}
+.edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.edit-box .actions-row {
+  justify-content: flex-end;
+}
+.read-before {
+  margin-top: 6px;
+  font-size: 12px;
+}
