@@ -27,7 +27,7 @@ import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheck
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
-import { parseFileLink, summaryOf } from '../../features/backlog/ticket';
+import { parseFileLink, summaryOf, whenItsDone } from '../../features/backlog/ticket';
 import { answeredBy, deleteEntry, editable, editEntry, entryEdit, repliesOf, showsDeleted } from '../../features/backlog/commentEdits';
 import { compareRewrite } from '../../features/backlog/history';
 import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
@@ -1116,10 +1116,12 @@ export class TicketPanels implements vscode.Disposable {
       } else {
         const ticket = await this.deps.backlog.readTicketCached(item);
         const attachments = await this.attachments(item, ticket.description, ticket.activity, panel.webview);
+        const done = whenItsDone(ticket.description);
         send({
           ...base,
           description: ticket.description,
           descriptionHtml: await renderMarkdown(ticket.description, panel.webview, dir, this.roots(plain)),
+          ...(done ? { whenDoneHtml: await renderMarkdown(done, panel.webview, dir, this.roots(plain)) } : {}),
           activity: await this.localEntries(item, ticket.activity, panel.webview, attachments),
           attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),

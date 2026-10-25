@@ -1,5 +1,6 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
+import { DESCRIPTION_CHECK, KEEP_WHEN_DONE } from './descriptionShape';
 import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
@@ -293,6 +294,7 @@ export function reviewerPrompt(o: {
     `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time). Start the entry with your verdict as a line, exactly "Verdict: approved" or "Verdict: changes requested", then at most 3 lines right under it, with no blank line between (what's good, and what must change); then a blank line and the details: what must change, as a checklist, specific enough to act on; what you ran and what it gave (or why you didn't run it); and any files the run left changed in \`git status\`.`,
     `If the work changes what the user sees (the UI), the report must show it: a screenshot, before and after, or a demo GIF or video. When it doesn't, request one in your checklist.`,
     `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
+    DESCRIPTION_CHECK,
     `Never change issue trackers (Jira, GitHub Issues), and don't push.`,
   ].join('\n\n');
 }
@@ -311,7 +313,7 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
 
 /** The ticket's description stays what's to be done: the implementer works the user's requests into it. */
 const UPDATE_DESCRIPTION = (ticket: string) =>
-  `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. Edit only the description there, and leave the activity as it is.`;
+  `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. ${KEEP_WHEN_DONE} Edit only the description there, and leave the activity as it is.`;
 
 /** How the implementer may ask the user before (or instead of) making changes, when it needs to. */
 const MAY_ASK = `If you need more context to do it well (what's asked is unclear, or there's a choice only the user can make), ask first: report in the ticket with your questions in its "Needs from you:" line, and stop without changing anything. You're resumed with the answer. Otherwise start on it directly.`;

@@ -456,7 +456,12 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
         />
       )}
       <span class="card-main">
-        {renaming ? <RenameBox item={item} onDone={() => setRenaming(false)} /> : <span class="name" title={item.title}>{item.title}</span>}
+        {renaming ? <RenameBox item={item} onDone={() => setRenaming(false)} /> : (
+          // Its hover: the whole title, and what the ticket does when it's done (its summary, BL-137).
+          <span class="name" data-tip={item.summary ? `${item.title}\n\n${item.summary}` : item.title}>
+            {item.title}
+          </span>
+        )}
         {!renaming && (
           <span class="card-line">
             <span class={`card-status${status.mark ? ` mark-${status.mark}` : ''}${status.working ? ' working' : ''}`} data-tip={item.summary}>

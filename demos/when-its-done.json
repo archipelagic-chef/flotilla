@@ -1,0 +1,21 @@
+{
+  "title": "A ticket's description opens with what it does when it's done: the card's hover and the folded description show those lines",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label=\"Hide what needs you\"]" },
+    { "waitFor": ".backlog-item.compact:has-text(\"Show a run button on review cards\")" },
+    { "wait": 1000 },
+    { "caption": "The card's hover says what the ticket does when it's done" },
+    { "hover": ".backlog-item.compact:has-text(\"Show a run button on review cards\") .name" },
+    { "wait": 2000 },
+    { "caption": "Its ticket, folded, shows the same lines" },
+    { "click": ".backlog-item:has-text(\"Show a run button on review cards\") .name" },
+    { "waitFor": "h1:has-text(\"Show a run button on review cards\")" },
+    { "wait": 2000 },
+    { "caption": "Unfolded: why, and the acceptance criteria" },
+    { "click": "button:has-text(\"Show the whole description\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}

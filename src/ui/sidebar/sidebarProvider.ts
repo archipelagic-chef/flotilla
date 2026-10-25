@@ -15,7 +15,7 @@ import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
-import { summaryOf } from '../../features/backlog/ticket';
+import { cardSummaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -255,7 +255,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
-          summary: summaryOf(ticket.description),
+          summary: cardSummaryOf(ticket.description),
           activity: ticket.activity.length,
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
