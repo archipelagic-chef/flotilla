@@ -172,10 +172,13 @@ export class LocalBacklog {
     return next;
   }
 
-  /** The ids that have a ticket file or folder, listed in backlog.json or not: a new item doesn't get one of these. */
+  /**
+   * The ids that have a ticket file, listed in backlog.json or not: a new item doesn't get one of these. Each once: a
+   * ticket's folder (its attachments) isn't another ticket (BL-178).
+   */
   async ticketIds(): Promise<string[]> {
     const names = await fs.promises.readdir(this.dir).catch(() => [] as string[]);
-    return names.map((n) => n.replace(/\.md$/, '')).filter((n) => ID_PATTERN.test(n));
+    return names.filter((n) => n.endsWith('.md')).map((n) => n.slice(0, -3)).filter((n) => ID_PATTERN.test(n));
   }
 
   /** The descriptions last seen, for how much an edit changed (this session only). */

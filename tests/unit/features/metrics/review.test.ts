@@ -59,6 +59,13 @@ describe('metricsSummary (BL-159)', () => {
     expect(m('cost-per-ticket').value).toBe(3);
   });
 
+  it("counts in the cost per ticket only the tickets whose agents' runs were recorded (BL-178)", () => {
+    const readIn = { ...ev('2026-10-10T12:00Z', 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla' }, 'BL-4'), imported: true as const };
+    const t = metricsSummary([...EVENTS, readIn], { to: NOW, days: 7 });
+    expect(t.metrics.find((x) => x.id === 'tickets-done')!.value).toBe(2);
+    expect(t.metrics.find((x) => x.id === 'cost-per-ticket')!.value).toBe(3);
+  });
+
   it('leaves out what it has no numbers for, rather than a zero', () => {
     expect(m('cost-usd').previous).toBeUndefined();
     expect(m('test-wait-median-s').value).toBeUndefined();
