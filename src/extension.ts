@@ -33,6 +33,7 @@ import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
 import { isRunningHeadless, isRunningInTerminal, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
+import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
 import { PausedAllStore } from './features/backlog/pausedAll';
 import { commit, scmContext } from './ui/scmCommands';
@@ -303,6 +304,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
+  const answers = new AskAgent({ backlog, repository, mainRoot: location.mainRoot, output, reviews, isOpen: (id) => tickets.isOpen(id), open: (id) => tickets.open(id) });
+  context.subscriptions.push(answers);
+  tickets.useAnswers(answers);
   const pauseAll = new PauseAll({ backlog, reviews, shaping, merges: merger, store: pausedAll, lifted: () => reviews.dispatchQueued() });
   context.subscriptions.push(pauseAll);
   // After Install Main's reload (BL-161): the agents it paused go on.

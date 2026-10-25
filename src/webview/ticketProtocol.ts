@@ -9,6 +9,7 @@ import type { MergeInfo } from '../features/backlog/merged';
 import type { ReviewFix, ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
+import type { AnswerView } from '../features/backlog/askAgent';
 import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
@@ -272,6 +273,9 @@ export interface TicketView {
   dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
+  /** Your comments can be answered by an agent now (Ask an Agent, BL-127), and those asked about, by their anchors. */
+  canAsk?: boolean;
+  asked?: Record<string, AnswerView>;
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
   shaping?: {
     agent: string;
@@ -335,11 +339,14 @@ export type TicketWebviewMessage =
   | { type: 'ready' }
   | { type: 'title'; title: string }
   | { type: 'description'; text: string }
-  /** replyTo: the anchor of the entry it answers (BL-126). */
-  | { type: 'comment'; text: string; replyTo?: string }
+  /** replyTo: the anchor of the entry it answers (BL-126); ask: an agent answers it at once (BL-127). */
+  | { type: 'comment'; text: string; replyTo?: string; ask?: boolean }
   /** Edit one of your comments (BL-128), by its anchor; delete it (after asking). */
   | { type: 'editComment'; anchor: string; text: string }
   | { type: 'deleteComment'; anchor: string }
+  /** Ask an Agent (and Retry) on a comment of yours; now: Answer Now, a fresh agent instead of the busy implementer. Stop ends it. */
+  | { type: 'askAgent'; anchor: string; now?: boolean }
+  | { type: 'askAgentStop'; anchor: string }
   | { type: 'status'; status: BacklogStatus }
   /** null clears it. */
   | { type: 'priority'; priority: BacklogPriority | null }

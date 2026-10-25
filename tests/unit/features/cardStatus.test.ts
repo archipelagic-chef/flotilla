@@ -13,6 +13,12 @@ const line = (i: CardStatusItem, agents: CardAgent[] = [], queued = false) => {
 };
 
 describe('cardStatus', () => {
+  it("says an agent's reply to your comment came, until the ticket is opened (BL-127)", () => {
+    expect(line(item('doing', { unseenReplies: 1 }), [agent('Vega-2')])).toEqual(['1 reply', 'question', '', 'Read']);
+    expect(line(item('doing', { unseenReplies: 2 }))).toEqual(['2 replies', 'question', '', 'Read']);
+    expect(line(item('doing', { unseenReplies: 'x' as never }))[0]).toBe('In progress · no agent on it');
+  });
+
   it('says where an idle ticket is, with Start as its next step while it has no agent', () => {
     expect(line(item('todo'))).toEqual(['To do', '', '', 'Start']);
     expect(line(item('todo', { agent: { light: true } }))).toEqual(['To do · light', '', '', 'Start']);
