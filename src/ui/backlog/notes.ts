@@ -9,7 +9,6 @@ import {
   addedTo,
   asksUser,
   becameText,
-  isNoteId,
   nextNotes,
   type Note,
   noteChatOf,
@@ -22,6 +21,7 @@ import {
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
 import { showError, type Commands } from '../commandSet';
+import { openNotePanel } from './notePanel';
 import { trackProgress } from '../progress';
 import {
   agentChoice,
@@ -33,6 +33,8 @@ import {
 } from './agentRunner';
 
 export interface NoteAgentsDeps {
+  /** The extension's folder: the New Note tab's bundle is in its dist. */
+  extensionUri: vscode.Uri;
   notes: NoteStore;
   backlog: LocalBacklog;
   repository: Repository<Workstream>;
@@ -50,6 +52,8 @@ export interface NoteAgentsDeps {
 
 /** How long a finished agent's proposals may take to be taken in from the inbox, before the note records what it became. */
 const INBOX_WAIT_MS = 20_000;
+/** How long a draft left without its tab is kept. */
+const DRAFT_KEPT_MS = 24 * 60 * 60_000;
 
 /**
  * The note agents (BL-182): each open note, oldest first, is picked up by an agent without a window, within the agents
@@ -79,50 +83,35 @@ export class NoteAgents implements vscode.Disposable {
       if (now !== working) this.changed.fire();
       working = now;
     });
-    // A note is written in the editor: saving it sends it, closing it empty drops it.
-    const saved = vscode.workspace.onDidSaveTextDocument((doc) => {
-      const id = this.noteOf(doc);
-      if (id) void deps.notes.send(id).then((sent) => sent && (this.changed.fire(), void this.tick()));
+    // A draft whose tab went with its window (a reload, a crash) is dropped a day later.
+    void deps.notes.list().then((all) => {
+      for (const n of all) if (n.status === 'draft' && Date.now() - Date.parse(n.created) > DRAFT_KEPT_MS) void deps.notes.drop(n.id);
     });
-    const closed = vscode.workspace.onDidCloseTextDocument((doc) => {
-      const id = this.noteOf(doc);
-      if (id) void deps.notes.drop(id).then((dropped) => dropped && this.changed.fire());
-    });
-    this.subscriptions.push({ dispose: () => (watch.dispose(), clearInterval(timer), chats.dispose()) }, saved, closed, this.changed);
-  }
-
-  /** The note a document is the file of, if it is one. */
-  private noteOf(doc: vscode.TextDocument): string | undefined {
-    const same = (x: string, y: string) => (process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y);
-    if (doc.uri.scheme !== 'file' || !same(path.dirname(doc.uri.fsPath), path.resolve(this.deps.notes.dir))) return undefined;
-    const id = path.basename(doc.uri.fsPath, '.md');
-    return isNoteId(id) && doc.uri.fsPath.endsWith('.md') ? id : undefined;
-  }
-
-  /** The notes with unsaved changes in an editor: still being written, no agent picks them up. */
-  private beingWritten(): string[] {
-    return vscode.workspace.textDocuments.filter((d) => d.isDirty).flatMap((d) => this.noteOf(d) ?? []);
+    this.subscriptions.push({ dispose: () => (watch.dispose(), clearInterval(timer), chats.dispose()) }, this.changed);
   }
 
   /** The notes as the backlog's Notes lane shows them, oldest first. */
   async views(): Promise<NoteView[]> {
     const chats = this.chatAgents();
-    return (await this.deps.notes.list()).map((n) => {
-      const agent = this.agentOf(n.id) ?? chats.get(n.with ?? n.id);
-      const asks = noteQuestion(n);
-      return {
-        id: n.id,
-        title: n.title,
-        text: n.text,
-        created: n.created,
-        status: n.status === 'open' && agent ? 'working' : n.status,
-        ...((agent ?? n.agent) ? { agent: agent ?? n.agent } : {}),
-        ...(n.with ? { with: n.with } : {}),
-        ...(asks ? { asks } : {}),
-        became: n.became,
-        ...(n.handled ? { handled: n.handled } : {}),
-      };
-    });
+    // A draft is in its New Note tab until it's sent.
+    return (await this.deps.notes.list())
+      .filter((n) => n.status !== 'draft')
+      .map((n) => {
+        const agent = this.agentOf(n.id) ?? chats.get(n.with ?? n.id);
+        const asks = noteQuestion(n);
+        return {
+          id: n.id,
+          title: n.title,
+          text: n.text,
+          created: n.created,
+          status: n.status === 'open' && agent ? 'working' : (n.status as Exclude<typeof n.status, 'draft'>),
+          ...((agent ?? n.agent) ? { agent: agent ?? n.agent } : {}),
+          ...(n.with ? { with: n.with } : {}),
+          ...(asks ? { asks } : {}),
+          became: n.became,
+          ...(n.handled ? { handled: n.handled } : {}),
+        };
+      });
   }
 
   /** The Notes box's and cards' messages. */
@@ -134,30 +123,27 @@ export class NoteAgents implements vscode.Disposable {
       case 'answer':
         await this.answer(m.id, m.text);
         return;
-      case 'open': {
-        // A note no agent has picked up yet opens to write on; after that, to read (its agent's replies, your answers).
-        const note = await this.deps.notes.read(m.id);
-        const uri = vscode.Uri.file(this.deps.notes.file(m.id));
-        if (note && (note.status === 'draft' || (note.status === 'open' && !note.session && !note.with && !this.agentOf(note.id)))) await this.edit(uri);
-        else await vscode.commands.executeCommand('markdown.showPreview', uri);
+      case 'open':
+        // The note, formatted: what you wrote, its agent's replies and your answers.
+        await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(this.deps.notes.file(m.id)));
         return;
-      }
     }
   }
 
-  /** Flotilla: New Note (and the backlog's New Note button): a new note, opened in the editor to write. Saving it sends it. */
+  /** Flotilla: New Note (and the backlog's New Note button): the New Note tab, a draft until you send it. */
   async newNote(): Promise<void> {
-    const id = await this.deps.notes.draft();
+    const ids = await this.deps.backlog
+      .read()
+      .then((d) => d.items.map((i) => i.id))
+      .catch(() => [] as string[]);
+    await openNotePanel({
+      extensionUri: this.deps.extensionUri,
+      notes: this.deps.notes,
+      mention: /^(.*?-)\d+$/.exec(ids[0] ?? '')?.[1] ?? '',
+      sent: () => (this.changed.fire(), void this.tick()),
+      dropped: () => this.changed.fire(),
+    });
     this.changed.fire();
-    await this.edit(vscode.Uri.file(this.deps.notes.file(id)));
-  }
-
-  /** Opens a note's file in the editor, the cursor at its end (under the hint). */
-  private async edit(uri: vscode.Uri): Promise<void> {
-    const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc, { preview: false });
-    const end = doc.lineAt(doc.lineCount - 1).range.end;
-    editor.selection = new vscode.Selection(end, end);
   }
 
   /** The note agents working in any window's chats, by the note they lead. */
@@ -200,7 +186,7 @@ export class NoteAgents implements vscode.Disposable {
     this.ticking = true;
     try {
       for (;;) {
-        const busy = new Set([...[...this.runs.values()].flatMap((r) => r.ids), ...this.beingWritten()]);
+        const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
         const due = nextNotes(await this.deps.notes.list(), busy, Date.now());
         if (!due || memoryShortage()) return;
         const slot = this.deps.admit(`note:${due[0].id}`);

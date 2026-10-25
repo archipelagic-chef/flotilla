@@ -63,7 +63,7 @@ export interface NoteView {
   text: string;
   created: string;
   /** Working: an agent handles it now. */
-  status: 'draft' | 'open' | 'working' | 'asking' | 'handled';
+  status: 'open' | 'working' | 'asking' | 'handled';
   agent?: string;
   /** Handled with another note, which leads (its questions and answers are there). */
   with?: string;

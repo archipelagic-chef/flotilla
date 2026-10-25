@@ -17,13 +17,13 @@ import {
  *
  * Each note is a ticket-like file in .flotilla/backlog/notes/:
  *
- *   NOTE-12.md      the note as written (in the editor), then "## Activity" (the agent's replies, your answers)
+ *   NOTE-12.md      the note as written (in the New Note tab), then "## Activity" (the agent's replies, your answers)
  *   NOTE-12.json    its state: a draft, open, asking or handled, its agent and chat, the notes handled with it
  *   NOTE-12.became  what it became, a line per ticket ("BL-180 proposal", "BL-12 added"), appended by whoever records it
  *   NOTE-12/        its images
  *
- * New Note opens a draft in the editor; saving it with some text sends it (it's open), and each save sends it again
- * until an agent picks it up.
+ * New Note opens a draft in the New Note tab (its pasted images are saved in its folder as you write); Send writes it
+ * and sends it (it's open). Closing the tab unsent drops the draft.
  */
 export const NOTES = 'notes';
 export const NOTE_PREFIX = 'NOTE';
@@ -40,9 +40,8 @@ export const SETTLE_MS = 20_000;
  */
 export type NoteStatus = 'draft' | 'open' | 'asking' | 'handled';
 
-/** What a new note's file says until you write it (a comment: the preview doesn't show it, and the note's text drops it). */
-export const DRAFT_HINT =
-  "<!-- Write what you'd ask an agent for, as loosely as you like, over as many lines as you like; paste images too. Save to send it to an agent; close it empty to drop it. -->\n\n";
+/** What a draft's file says until it's sent (a comment: the preview doesn't show it, and the note's text drops it). */
+export const DRAFT_HINT = '<!-- A note being written in the New Note tab: Send sends it to an agent; closing the tab drops it. -->\n\n';
 
 export interface NoteState {
   /** When it was sent (ISO 8601): saved with text first. */
@@ -100,6 +99,7 @@ export function noteTitle(text: string): string {
         l
           .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
           .replace(/^\s*(#+|[-*>]|\d+\.)\s+/, '')
+          .replace(/\*\*|__|`/g, '')
           .trim(),
       )
       .find(Boolean) ?? 'Note';
@@ -249,7 +249,7 @@ export class NoteStore {
     }
   }
 
-  /** A new note to write in the editor: a draft, its file only the hint, until it's saved with text (see send). */
+  /** A new note to write in the New Note tab: a draft, its file only the hint, until it's written and sent (see write, send). */
   async draft(now = new Date()): Promise<string> {
     const id = await this.take({ created: now.toISOString(), status: 'draft' });
     await writeAtomic(this.file(id), DRAFT_HINT);
@@ -257,8 +257,8 @@ export class NoteStore {
   }
 
   /**
-   * The note was saved: a draft with text is sent (open), and an open note no agent has picked up yet waits to settle
-   * again. Says whether it's open now.
+   * The note was sent: a draft with text is open (an agent picks it up once it has settled), and an open note no agent
+   * has picked up yet waits to settle again. Says whether it's open now.
    */
   async send(id: string, now = new Date()): Promise<boolean> {
     const note = await this.read(id);
@@ -271,10 +271,16 @@ export class NoteStore {
     return true;
   }
 
-  /** Drops a draft left without text (closed empty): its files go. */
+  /** Writes a draft's text (the New Note tab's Send, before send): titled by its first line. */
+  async write(id: string, text: string): Promise<void> {
+    if ((await this.read(id))?.status !== 'draft') throw new Error(`${id} was sent already.`);
+    await writeAtomic(this.file(id), formatTicket({ title: noteTitle(text), description: text.trim(), activity: [] }));
+  }
+
+  /** Drops a draft (its tab closed unsent): its files and images go. */
   async drop(id: string): Promise<boolean> {
     const note = await this.read(id);
-    if (note?.status !== 'draft' || note.text.trim()) return false;
+    if (note?.status !== 'draft') return false;
     for (const f of [this.file(id), this.stateFile(id), path.join(this.dir, `${id}.became`)]) await fs.promises.rm(f, { force: true });
     await fs.promises.rm(path.join(this.dir, id), { recursive: true, force: true });
     return true;

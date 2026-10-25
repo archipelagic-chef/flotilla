@@ -378,6 +378,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, noteStore);
   context.subscriptions.push(inbox);
   const notes = new NoteAgents({
+    extensionUri: context.extensionUri,
     notes: noteStore,
     backlog,
     repository,
