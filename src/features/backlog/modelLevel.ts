@@ -93,7 +93,9 @@ export function levelReport(items: readonly BacklogItem[], levels: Levels, reRea
     const rounds = reviewed.length ? (reviewed.reduce((n, i) => n + i.review!.round, 0) / reviewed.length).toFixed(1) : '–';
     const counted = its.filter((i) => reRead.has(i.id));
     const tokens = counted.length ? `, ${formatTokens(counted.reduce((n, i) => n + reRead.get(i.id)!, 0) / counted.length)} tokens re-read on average` : '';
-    lines.push(`  ${level}: ${its.length} ${its.length === 1 ? 'ticket' : 'tickets'}, ${rounds} review rounds on average${tokens} (${its.map((i) => i.id).join(', ')})`);
+    lines.push(
+      `  ${level}: ${its.length} ${its.length === 1 ? 'ticket' : 'tickets'}, ${rounds} review rounds on average${tokens} (${its.map((i) => i.id).join(', ')})`,
+    );
   }
   const moved = done.filter((i) => i.agent?.movedUp);
   for (const i of moved) lines.push(`  ${i.id} moved up: ${i.agent!.movedUp!.reason}`);

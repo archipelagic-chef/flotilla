@@ -33,13 +33,14 @@ export function checkQueue(item: BacklogItem, data: Pick<BacklogData, 'mergeQueu
     return glitch(`${item.id} is in ${where}, but it's ${state}`, `${item.id} was in ${where}, but it was ${state}`);
   }
   if (entry && tipNow !== entry.tip) {
-    const moved = tipNow ? `it's at ${short(tipNow)} now` : "the branch is gone";
+    const moved = tipNow ? `it's at ${short(tipNow)} now` : 'the branch is gone';
     return glitch(
       `Its train entry was built on \`${entry.branch}\` at ${short(entry.tip)}, but ${moved}`,
       `its train entry was built on \`${entry.branch}\` at ${short(entry.tip)}, but ${moved}`,
     );
   }
-  if (entry && at < 0 && !held) return glitch(`${item.id} is in the merge train, but not in the merge queue`, `${item.id} was in the merge train, but not in the merge queue`);
+  if (entry && at < 0 && !held)
+    return glitch(`${item.id} is in the merge train, but not in the merge queue`, `${item.id} was in the merge train, but not in the merge queue`);
   const place = at >= 0 ? `${ordinal(at + 1)} of ${queue.length} in the merge queue` : 'in the merge train';
   const train = entry ? `, its train entry built on its tip ${short(entry.tip)}` : held ? ', its train conflict being resolved' : ', not in the train yet';
   return { key: 'queue', ok: true, text: `${item.id} is ${place}${train}` };

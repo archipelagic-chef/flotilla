@@ -1,4 +1,9 @@
-import { ID_PATTERN, itemBranches, type BacklogData, type BacklogItem } from './backlog';
+import {
+  type BacklogData,
+  type BacklogItem,
+  ID_PATTERN,
+  itemBranches,
+} from './backlog';
 
 /**
  * Open tickets' branches against main (BL-55): when main or a branch moves, the branch is merged with main in memory,
@@ -81,8 +86,8 @@ export function driftNotes(prev: MainCheck | undefined, next: MainCheck): string
 export function mergeBasePrompt(o: { id: string; base: string; branch: string; files: readonly string[]; ticket: string }): string {
   const label = baseLabel(o.base);
   return [
-    `${label} moved on, and merging it into your branch ${o.branch} conflicts${o.files.length ? ` in ${o.files.join(', ')}` : ''}. The user asked to bring the branch up to date with ${label}.`,
-    `Merge ${o.base} into your branch (\`git merge ${o.base}\`), resolve the conflicts so both sides' changes keep working, run the project's checks (build, tests), and commit the merge (its message starts with "${o.id}: ").`,
+    `${label} moved on, and rebasing your branch ${o.branch} onto it conflicts${o.files.length ? ` in ${o.files.join(', ')}` : ''}. The user asked to bring the branch up to date with ${label}.`,
+    `Rebase your branch onto ${o.base} (\`git rebase ${o.base}\`; don't merge ${o.base} into it), resolve the conflicts commit by commit so both sides' changes keep working (\`git add\` the files, then \`GIT_EDITOR=true git rebase --continue\`), and run the project's checks (build, tests) on the result. Your commits keep their messages (starting with "${o.id}: "). The branch is rewritten: if you push it, push with \`git push --force-with-lease\`.`,
     `Then report in the ticket (${o.ticket}) which conflicts you resolved and how. If your work on the ticket was done, end the report with a line "Ready for review."; if not, go on with it first.`,
   ].join('\n\n');
 }

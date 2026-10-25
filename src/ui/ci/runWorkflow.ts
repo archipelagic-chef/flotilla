@@ -4,7 +4,14 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import { gitHubRepo } from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
-import { GitHubActions, dispatchInputs, isDispatchable, splitUpstream, type CiWorkflow, type DispatchInput } from '../../features/ci/githubActions';
+import {
+  type CiWorkflow,
+  type DispatchInput,
+  dispatchInputs,
+  GitHubActions,
+  isDispatchable,
+  splitUpstream,
+} from '../../features/ci/githubActions';
 
 const GITHUB_SCOPES = ['repo'];
 const FAKE_TOKEN = 'fake-token';
@@ -33,7 +40,10 @@ export async function dispatchTarget(worktree: string): Promise<DispatchTarget> 
   }
   if (!upstream) throw new Error('Publish this branch to run its CI.');
   const unpushed = Number((await runGit(['rev-list', '--count', '@{u}..HEAD'], { cwd: worktree })).trim());
-  if (unpushed > 0) throw new Error(`${unpushed} commit${unpushed === 1 ? '' : 's'} on ${local} ${unpushed === 1 ? "isn't" : "aren't"} pushed: push them first, a run uses what's on GitHub.`);
+  if (unpushed > 0)
+    throw new Error(
+      `${unpushed} commit${unpushed === 1 ? '' : 's'} on ${local} ${unpushed === 1 ? "isn't" : "aren't"} pushed: push them first, a run uses what's on GitHub.`,
+    );
   const remotes = (await runGit(['remote'], { cwd: worktree })).split(/\r?\n/).filter(Boolean);
   const split = splitUpstream(upstream, remotes);
   if (!split) throw new Error(`${upstream} isn't on a remote of this repository.`);

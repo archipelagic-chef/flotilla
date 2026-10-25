@@ -86,9 +86,17 @@ describe('applyTicketParts', () => {
   const cases: Array<[string, TicketView, TicketView]> = [
     ['a status and a title', view(), view({ item: { id: 'BL-1', title: 'Renamed', status: 'done', created: '' } })],
     ['a comment appended', view({ activity: [entry('a')] }), view({ activity: [entry('a'), entry('You says', 'You')] })],
-    ['the worktrees and commits', view(), view({ worktrees: [{ key: 'k', branch: 'b', attention: 'idle', status: 'Idle', changes: 2, ahead: 0, behind: 0 }], commits: [] })],
+    [
+      'the worktrees and commits',
+      view(),
+      view({ worktrees: [{ key: 'k', branch: 'b', attention: 'idle', status: 'Idle', changes: 2, ahead: 0, behind: 0 }], commits: [] }),
+    ],
     ['a part gone', view({ loading: true, error: 'x' }), view({ error: 'x' })],
-    ['an entry changed in the middle', view({ activity: [entry('a'), entry('b'), entry('c')] }), view({ activity: [entry('a'), entry('B'), entry('c'), entry('d')] })],
+    [
+      'an entry changed in the middle',
+      view({ activity: [entry('a'), entry('b'), entry('c')] }),
+      view({ activity: [entry('a'), entry('B'), entry('c'), entry('d')] }),
+    ],
     ['nothing at all', view({ activity: [entry('a')] }), view({ activity: [entry('a')] })],
   ];
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findReferences, linkReferences, mentionsIn, parseReferenceLink, resolveEntry } from '../../../src/features/backlog/references';
+import {
+  findReferences,
+  linkReferences,
+  mentionsIn,
+  parseReferenceLink,
+  resolveEntry,
+} from '../../../src/features/backlog/references';
 import { parseTicket } from '../../../src/features/backlog/ticket';
 
 const ids = new Set(['BL-1', 'BL-102', 'PROJ-12']);
@@ -86,7 +92,9 @@ describe('mentions', () => {
     const m = mentionsIn('BL-2', TICKET, (id) => ['BL-1', 'BL-2', 'BL-102'].includes(id));
     expect([...m.keys()]).toEqual(['BL-1', 'BL-102']);
     expect(m.get('BL-1')).toEqual([{ from: 'BL-2', author: '', date: '' }]);
-    expect(m.get('BL-102')).toEqual([{ from: 'BL-2', anchor: '2026-10-20-1604-you', author: 'You', date: '2026-10-20 16:04', text: 'Like BL-102 and BL-102#x; not BL-2 (this one).' }]);
+    expect(m.get('BL-102')).toEqual([
+      { from: 'BL-2', anchor: '2026-10-20-1604-you', author: 'You', date: '2026-10-20 16:04', text: 'Like BL-102 and BL-102#x; not BL-2 (this one).' },
+    ]);
   });
 });
 

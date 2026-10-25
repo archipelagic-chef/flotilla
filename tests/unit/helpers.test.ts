@@ -1,7 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { git, initRepo, removeDir, simulateOtherEnvironment } from '../helpers/gitRepo';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  git,
+  initRepo,
+  removeDir,
+  simulateOtherEnvironment,
+} from '../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

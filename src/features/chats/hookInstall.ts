@@ -1,7 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { HOOK_EVENTS, HOOK_FILE, HOOK_MARKER, hookCommand, hookFileContent } from './hookScript';
+import {
+  HOOK_EVENTS,
+  HOOK_FILE,
+  HOOK_MARKER,
+  hookCommand,
+  hookFileContent,
+} from './hookScript';
 
 export const SETTINGS_FILE = path.join('.claude', 'settings.local.json');
 

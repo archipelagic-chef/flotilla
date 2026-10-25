@@ -1,9 +1,22 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { locateRepo } from '../../../src/core/repoLocator';
 import { makePortable } from '../../../src/features/worktrees/portability';
 import { resolveWorktrees, type ResolvedWorktree } from '../../../src/features/worktrees/resolver';
-import { expectSamePath, git, initRepo, makeTempDir, removeDir, simulateOtherEnvironment, symlinkedRepo } from '../../helpers/gitRepo';
+import {
+  expectSamePath,
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  simulateOtherEnvironment,
+  symlinkedRepo,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

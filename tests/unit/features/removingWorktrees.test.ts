@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { RemovingWorktrees } from '../../../src/features/workstreams/removingWorktrees';
 
 describe('the worktrees being removed (BL-119)', () => {

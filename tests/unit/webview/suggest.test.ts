@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { matchEntries, matchTickets, pickSuggestion, suggestQuery } from '../../../src/webview/ticket/suggest';
+import {
+  matchEntries,
+  matchTickets,
+  pickSuggestion,
+  suggestQuery,
+} from '../../../src/webview/ticket/suggest';
 
 const at = (text: string) => suggestQuery(text, text.length, 'BL-');
 

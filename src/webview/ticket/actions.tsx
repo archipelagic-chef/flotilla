@@ -137,7 +137,19 @@ interface MenuItem {
 }
 
 /** A button that opens a menu below it. */
-export function Dropdown({ class: cls, button, label, items, busy }: { class: string; button: ComponentChildren; label: string; items: MenuItem[]; busy?: string }) {
+export function Dropdown({
+  class: cls,
+  button,
+  label,
+  items,
+  busy,
+}: {
+  class: string;
+  button: ComponentChildren;
+  label: string;
+  items: MenuItem[];
+  busy?: string;
+}) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {

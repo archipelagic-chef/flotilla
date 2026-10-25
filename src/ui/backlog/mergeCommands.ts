@@ -12,7 +12,12 @@ export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): 
       let id = backlogIdOf(arg);
       if (!id) {
         const ready = (await backlog.read()).items.filter(readyToMerge);
-        id = (await vscode.window.showQuickPick(ready.map((i) => ({ label: i.id, description: i.title })), { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' }))?.label;
+        id = (
+          await vscode.window.showQuickPick(
+            ready.map((i) => ({ label: i.id, description: i.title })),
+            { title: 'Merge a Ticket', placeHolder: ready.length ? 'Tickets ready to merge' : 'No tickets are ready to merge' },
+          )
+        )?.label;
       }
       if (id) await merger.merge(id).catch(showError);
     },

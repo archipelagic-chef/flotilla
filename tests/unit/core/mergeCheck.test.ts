@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import * as fs from 'node:fs';
 import { getGitVersion, versionAtLeast } from '../../../src/core/git/gitCli';
 import { indexConflicts, mergeConflicts, mergeTreeConflicts } from '../../../src/core/git/mergeCheck';

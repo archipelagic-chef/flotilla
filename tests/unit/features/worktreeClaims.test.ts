@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { checkBranchWorktrees, checkCreating, checkReviewWorktree, CREATING_MAX_MS } from '../../../src/features/backlog/worktreeClaims';
+import {
+  checkBranchWorktrees,
+  checkCreating,
+  checkReviewWorktree,
+  CREATING_MAX_MS,
+} from '../../../src/features/backlog/worktreeClaims';
 
 const wt = (name: string, branch?: string) => ({ adminDir: `/repo/.git/worktrees/${name}`, path: `/repo/.worktrees/${name}`, branch });
 

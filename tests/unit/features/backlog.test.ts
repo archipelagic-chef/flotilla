@@ -1,7 +1,35 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { addBranch, addItem, agentChatItem, agentLead, agentName, currentPrefix, entryAgent, parseNewItem, priorityFromName, branchFor, branchMatches, idProblem, itemBranches, linkIssue, linkedItem, unlinkIssue, nextId, EMPTY_BACKLOG, moveItem, removeItem, updateItem, type BacklogData } from '../../../src/features/backlog/backlog';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  addBranch,
+  addItem,
+  agentChatItem,
+  agentLead,
+  agentName,
+  type BacklogData,
+  branchFor,
+  branchMatches,
+  currentPrefix,
+  EMPTY_BACKLOG,
+  entryAgent,
+  idProblem,
+  itemBranches,
+  linkedItem,
+  linkIssue,
+  moveItem,
+  nextId,
+  parseNewItem,
+  priorityFromName,
+  removeItem,
+  unlinkIssue,
+  updateItem,
+} from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
@@ -149,7 +177,10 @@ describe('backlog', () => {
     data = linkIssue(linkIssue(data, 'BL-1', jira), 'BL-1', { ...jira, title: 'New' });
     data = linkIssue(data, 'BL-1', { id: 'GH-3', source: 'github:o/r', url: 'https://github.com/o/r/issues/3', title: 'Bug' });
     const item = data.items.find((i) => i.id === 'BL-1')!;
-    expect(item.links?.map((l) => [l.id, l.title])).toEqual([['ABC-7', 'New'], ['GH-3', 'Bug']]);
+    expect(item.links?.map((l) => [l.id, l.title])).toEqual([
+      ['ABC-7', 'New'],
+      ['GH-3', 'Bug'],
+    ]);
     expect(linkedItem(data, 'GH-3')?.id).toBe('BL-1');
     expect(linkedItem(data, 'GH-4')).toBeUndefined();
     // Branches named after a linked issue work on the item.
@@ -173,7 +204,11 @@ describe('LocalBacklog', () => {
     expect(git(repo, 'status', '--porcelain')).toBe('');
 
     const item = data.items[0];
-    await store.writeTicket(item.id, { title: 'first', description: 'Why and what.', activity: [{ date: '2026-10-10 12:00', author: 'You', body: 'A comment' }] });
+    await store.writeTicket(item.id, {
+      title: 'first',
+      description: 'Why and what.',
+      activity: [{ date: '2026-10-10 12:00', author: 'You', body: 'A comment' }],
+    });
     expect(await store.readTicket(item)).toMatchObject({ description: 'Why and what.', activity: [{ author: 'You', body: 'A comment' }] });
     const image = await store.saveImage(item.id, 'Screen shot.PNG', new Uint8Array([1, 2]));
     expect(image).toBe('BL-1/Screen-shot.png');
@@ -192,7 +227,8 @@ describe('LocalBacklog', () => {
 
 describe('tickets', () => {
   it('parses and writes description and activity', () => {
-    const text = '# Login limit\n\nLock out after 5 tries.\n\n![](BL-3/a.png)\n\n## Activity\n\n### 2026-10-10 14:03 · You\nPlease also log it.\n\n### 2026-10-10 14:10 · Agent\nDone:\n- counter\n';
+    const text =
+      '# Login limit\n\nLock out after 5 tries.\n\n![](BL-3/a.png)\n\n## Activity\n\n### 2026-10-10 14:03 · You\nPlease also log it.\n\n### 2026-10-10 14:10 · Agent\nDone:\n- counter\n';
     const ticket = parseTicket(text);
     expect(ticket.title).toBe('Login limit');
     expect(ticket.description).toBe('Lock out after 5 tries.\n\n![](BL-3/a.png)');

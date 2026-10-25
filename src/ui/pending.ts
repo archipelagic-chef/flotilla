@@ -29,5 +29,3 @@ export function removalToRun(
   if (samePath(removal.mainRoot, mainRoot) && samePath(currentRoot, removal.mainRoot)) return { run: removal, clear: true };
   return { run: undefined, clear: false };
 }
-
-

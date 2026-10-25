@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   describeDebugProfile,
   fakesArg,
@@ -31,7 +37,7 @@ function installed(folder: string, name: string, body = 'x') {
 }
 
 describe('findClaudeCode', () => {
-  it('picks the newest version, and this platform\'s build over a universal one of the same version', () => {
+  it("picks the newest version, and this platform's build over a universal one of the same version", () => {
     const a = path.join(tmp, 'a');
     const b = path.join(tmp, 'b');
     for (const name of [
@@ -51,13 +57,13 @@ describe('findClaudeCode', () => {
     expect(found?.path).toBe(path.join(a, 'anthropic.claude-code-2.1.296-linux-x64'));
   });
 
-  it('prefers a universal build to another platform\'s', () => {
+  it("prefers a universal build to another platform's", () => {
     fs.mkdirSync(path.join(tmp, 'anthropic.claude-code-1.0.0-win32-x64'), { recursive: true });
     fs.mkdirSync(path.join(tmp, 'anthropic.claude-code-1.0.0'), { recursive: true });
     expect(findClaudeCode([tmp], 'linux', 'x64')?.name).toBe('anthropic.claude-code-1.0.0');
   });
 
-  it('is undefined when Claude Code isn\'t installed, and skips folders that do not exist', () => {
+  it("is undefined when Claude Code isn't installed, and skips folders that do not exist", () => {
     fs.mkdirSync(path.join(tmp, 'archipelagic.flotilla-0.2.0'));
     expect(findClaudeCode([tmp, path.join(tmp, 'missing')], 'linux', 'x64')).toBeUndefined();
   });

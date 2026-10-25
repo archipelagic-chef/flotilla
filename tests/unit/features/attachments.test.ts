@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentKey, diagramRefs, gatherAttachments, mediaRefs } from '../../../src/features/backlog/attachments';
+import {
+  attachmentKey,
+  diagramRefs,
+  gatherAttachments,
+  mediaRefs,
+} from '../../../src/features/backlog/attachments';
 
 describe('mediaRefs', () => {
   it('finds Markdown images and html images and videos, in order, but not in code', () => {

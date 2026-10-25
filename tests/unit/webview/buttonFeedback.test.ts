@@ -38,7 +38,9 @@ const INSTANT = new Set([
 const root = join(__dirname, '../../../src/webview');
 
 function files(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.tsx') ? [join(dir, e.name)] : []));
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.tsx') ? [join(dir, e.name)] : [],
+  );
 }
 
 /** The handler of each onClick and onSelect in a file: the balanced braces' text after it. */
@@ -65,9 +67,14 @@ function handlers(source: string): Array<{ line: number; code: string }> {
 /** Every send in a click, as "file:line type[:op]". */
 function plainSends(): string[] {
   return files(root).flatMap((file) =>
-    handlers(readFileSync(file, 'utf8')).flatMap(({ line, code }) =>
-      [...code.matchAll(/\bsend\(\{\s*type: '(\w+)'(?:, op: '(\w+)')?/g)].map((s) => ({ at: `${relative(root, file)}:${line}`, kind: s[2] ? `${s[1]}:${s[2]}` : s[1] })),
-    ).map((s) => `${s.at} ${s.kind}`),
+    handlers(readFileSync(file, 'utf8'))
+      .flatMap(({ line, code }) =>
+        [...code.matchAll(/\bsend\(\{\s*type: '(\w+)'(?:, op: '(\w+)')?/g)].map((s) => ({
+          at: `${relative(root, file)}:${line}`,
+          kind: s[2] ? `${s[1]}:${s[2]}` : s[1],
+        })),
+      )
+      .map((s) => `${s.at} ${s.kind}`),
   );
 }
 

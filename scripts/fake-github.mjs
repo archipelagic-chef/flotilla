@@ -53,7 +53,11 @@ const WORKFLOWS = [
     path: '.github/workflows/ci.yml',
     dispatch: false,
     jobs: [
-      { name: 'test', steps: ['Set up job', 'Run actions/checkout@v4', 'Run actions/setup-node@v4', 'Install dependencies', 'Run tests', 'Complete job'], failsAt: 'Run tests' },
+      {
+        name: 'test',
+        steps: ['Set up job', 'Run actions/checkout@v4', 'Run actions/setup-node@v4', 'Install dependencies', 'Run tests', 'Complete job'],
+        failsAt: 'Run tests',
+      },
       { name: 'lint', steps: ['Set up job', 'Run actions/checkout@v4', 'Install dependencies', 'Run npm run lint', 'Complete job'] },
     ],
   },
@@ -76,8 +80,17 @@ const notFound = () => json(404, { message: 'Not Found', documentation_url: 'htt
 /** The commit's subject, or undefined when the repository doesn't have the branch. */
 function gitBranch(dir, branch) {
   const run = (args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  // A branch pushed by its commit only (the merge train's) is known by origin's remote-tracking ref.
+  const ref = (r) => {
+    try {
+      return run(['rev-parse', '--verify', '-q', `${r}^{commit}`]);
+    } catch {
+      return '';
+    }
+  };
   try {
-    const sha = run(['rev-parse', '--verify', '-q', `refs/heads/${branch}^{commit}`]);
+    const sha = ref(`refs/heads/${branch}`) || ref(`refs/remotes/origin/${branch}`);
+    if (!sha) return undefined;
     return { sha, title: run(['log', '-1', '--format=%s', sha]) };
   } catch {
     return undefined;
@@ -215,16 +228,17 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     for (const name of def.steps) {
       line(`##[group]${name}`);
       line('##[endgroup]');
-      const output = {
-        'Set up job': ["Current runner version: '2.319.1'", 'Operating System: Ubuntu 24.04.1 LTS'],
-        'Run actions/checkout@v4': [`Syncing repository: ${run.repo}`, `Checking out the ref ${run.branch}`],
-        'Run actions/setup-node@v4': ['Found in cache @ /opt/hostedtoolcache/node/22.16.0/x64'],
-        'Install dependencies': ['added 214 packages, and audited 215 packages in 6s', 'found 0 vulnerabilities'],
-        'Run tests': run.outcome === 'failure' && def.failsAt === name ? FAILING_TESTS : ['Test Files  2 passed (2)', '     Tests  5 passed (5)'],
-        'Run npm run lint': ['> app@1.0.0 lint', '> eslint .'],
-        'Deploy to production': [`Deployed ${run.sha.slice(0, 7)} to production.`],
-        'Complete job': ['Cleaning up orphan processes'],
-      }[name] ?? [];
+      const output =
+        {
+          'Set up job': ["Current runner version: '2.319.1'", 'Operating System: Ubuntu 24.04.1 LTS'],
+          'Run actions/checkout@v4': [`Syncing repository: ${run.repo}`, `Checking out the ref ${run.branch}`],
+          'Run actions/setup-node@v4': ['Found in cache @ /opt/hostedtoolcache/node/22.16.0/x64'],
+          'Install dependencies': ['added 214 packages, and audited 215 packages in 6s', 'found 0 vulnerabilities'],
+          'Run tests': run.outcome === 'failure' && def.failsAt === name ? FAILING_TESTS : ['Test Files  2 passed (2)', '     Tests  5 passed (5)'],
+          'Run npm run lint': ['> app@1.0.0 lint', '> eslint .'],
+          'Deploy to production': [`Deployed ${run.sha.slice(0, 7)} to production.`],
+          'Complete job': ['Cleaning up orphan processes'],
+        }[name] ?? [];
       for (const text of output) line(text);
     }
     return `${lines.join('\n')}\n`;
@@ -290,7 +304,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
   /** The actions API of one repository: `rest` is the path after /repos/{owner}/{repo}/actions. */
   function api({ method, repo, rest, query, at, body }) {
     let m;
-    if (method === 'GET' && rest === '/workflows') return json(200, { total_count: WORKFLOWS.length, workflows: WORKFLOWS.map((wf) => workflowJson(wf, repo)) });
+    if (method === 'GET' && rest === '/workflows')
+      return json(200, { total_count: WORKFLOWS.length, workflows: WORKFLOWS.map((wf) => workflowJson(wf, repo)) });
     if (method === 'GET' && (m = /^\/workflows\/([^/]+)$/.exec(rest))) {
       const wf = findWorkflow(m[1]);
       return wf ? json(200, workflowJson(wf, repo)) : notFound();

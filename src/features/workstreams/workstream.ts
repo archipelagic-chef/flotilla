@@ -1,16 +1,42 @@
 import { runGit } from '../../core/git/gitCli';
-import { parseStatusV2, summariseUntracked, type FileChange, type StatusBranch } from '../../core/git/porcelain';
+import {
+  type FileChange,
+  parseStatusV2,
+  type StatusBranch,
+  summariseUntracked,
+} from '../../core/git/porcelain';
 import { isInside, samePath } from '../../core/paths';
 import type { Scope } from '../../core/repository';
-import { claudeHome, homedElsewhere, mergeChats, mostUrgent, readChatRecords, readTranscript, readTranscripts, readUnlinked, type Chat, type TranscriptInfo } from '../chats/chats';
+import {
+  type Chat,
+  claudeHome,
+  homedElsewhere,
+  mergeChats,
+  mostUrgent,
+  readChatRecords,
+  readTranscript,
+  readTranscripts,
+  readUnlinked,
+  type TranscriptInfo,
+} from '../chats/chats';
 import { hooksInstalled } from '../chats/hookInstall';
 import type { ResolvedWorktree } from '../worktrees/resolver';
 import type { WorktreeService } from '../worktrees/worktreeService';
-import { classifyActivity, lastActivity, MAX_PATHS, type ActivityLevel } from './activity';
+import {
+  type ActivityLevel,
+  classifyActivity,
+  lastActivity,
+  MAX_PATHS,
+} from './activity';
 import { readAgentStatus, type AgentStatus } from './agentStatus';
 import { computeAttention, sortByAttention, type AttentionState } from './attention';
 import { isAlive, readHeartbeat, type Heartbeat } from './heartbeat';
-import { computeProgress, resolveBase, resolveCommit, type Progress } from './progress';
+import {
+  computeProgress,
+  type Progress,
+  resolveBase,
+  resolveCommit,
+} from './progress';
 import { isRebuildDue } from './refreshPlan';
 
 export interface WorkstreamSettings {
@@ -126,12 +152,7 @@ async function hasAnyRemote(cwd: string): Promise<boolean> {
   }
 }
 
-async function buildOne(
-  wt: ResolvedWorktree,
-  repo: RepoFacts,
-  opts: BuildOptions,
-  prev: Workstream | undefined,
-): Promise<Workstream> {
+async function buildOne(wt: ResolvedWorktree, repo: RepoFacts, opts: BuildOptions, prev: Workstream | undefined): Promise<Workstream> {
   const { base, baseHead, hasRemote } = repo;
   const gitDir = wt.adminDir;
   const [legacyAgent, heartbeat, records, unlinked, transcripts, hasHooks] = await Promise.all([
@@ -170,7 +191,11 @@ async function buildOne(
     } catch {
       // treat as no changes; the error shows up when the user acts on the worktree
     }
-    last = await lastActivity(wt.path, gitDir, changes.map((c) => c.path));
+    last = await lastActivity(
+      wt.path,
+      gitDir,
+      changes.map((c) => c.path),
+    );
     const next = { head: branch.oid, base, baseHead, changes, last };
     progress = prev && canReuseProgress(prev, next) ? prev.progress : await computeProgress(wt.path, base, baseHead);
   }

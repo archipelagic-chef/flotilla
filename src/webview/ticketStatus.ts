@@ -43,7 +43,10 @@ const WAITING = /^\W*waiting for you\W*$/i;
  * buttons). The question is the rest of the report, without the "Waiting for you." line.
  */
 export function askOf(body: string): Ask {
-  const lines = body.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => !WAITING.test(l.trim()));
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trimEnd())
+    .filter((l) => !WAITING.test(l.trim()));
   let end = lines.length;
   while (end > 0 && !OPTION.test(lines[end - 1])) end--;
   let start = end;
@@ -51,7 +54,10 @@ export function askOf(body: string): Ask {
   const runs = end - start >= 2;
   const options = runs ? lines.slice(start, end).map((l) => OPTION.exec(l)![2]) : [];
   const rest = runs ? [...lines.slice(0, start), ...lines.slice(end)] : lines;
-  const question = rest.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const question = rest
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return { question, options };
 }
 

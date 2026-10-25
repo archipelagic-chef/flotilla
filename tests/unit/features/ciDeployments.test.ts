@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { GitHubDeployments, deploymentState, latestPerEnvironment, webUrl } from '../../../src/features/ci/githubDeployments';
+import {
+  deploymentState,
+  GitHubDeployments,
+  latestPerEnvironment,
+  webUrl,
+} from '../../../src/features/ci/githubDeployments';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 
 /** A fake server: answers by URL prefix (the longest match wins) and records requests. */
@@ -11,7 +16,13 @@ function fakeFetch(routes: Record<string, unknown>) {
       .filter((r) => url.startsWith(r))
       .sort((a, b) => b.length - a.length)[0];
     const found = match !== undefined;
-    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => (found ? JSON.stringify(routes[match]) : '') };
+    return {
+      ok: found,
+      status: found ? 200 : 404,
+      statusText: found ? 'OK' : 'Not Found',
+      json: async () => routes[match!],
+      text: async () => (found ? JSON.stringify(routes[match]) : ''),
+    };
   };
   return { fetch, calls };
 }
@@ -57,14 +68,16 @@ describe('webUrl', () => {
 });
 
 describe('GitHubDeployments', () => {
-  it('lists a branch\'s deployments, one per environment, with their latest status', async () => {
+  it("lists a branch's deployments, one per environment, with their latest status", async () => {
     const { fetch, calls } = fakeFetch({
       [`${API}/deployments`]: [
         { id: 11, sha: 'aaa', environment: 'staging', created_at: '2026-10-10T10:00:00Z' },
         { id: 10, sha: 'bbb', environment: 'staging', created_at: '2026-10-09T10:00:00Z' },
         { id: 12, sha: 'ccc', environment: 'production', created_at: '2026-10-08T10:00:00Z' },
       ],
-      [`${API}/deployments/11/statuses`]: [{ state: 'success', environment_url: 'https://staging.acme.test/', log_url: 'https://github.com/acme/app/actions/runs/1' }],
+      [`${API}/deployments/11/statuses`]: [
+        { state: 'success', environment_url: 'https://staging.acme.test/', log_url: 'https://github.com/acme/app/actions/runs/1' },
+      ],
       [`${API}/deployments/12/statuses`]: [{ state: 'failure', environment_url: 'javascript:alert(1)', log_url: null }],
     });
     const deployments = new GitHubDeployments('acme', 'app', token, fetch);

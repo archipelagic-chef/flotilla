@@ -1,6 +1,11 @@
 import type { BacklogItem } from './backlog';
 import { STATUS_LABEL } from './changes';
-import { entryAnchors, parseReply, summaryOf, type Ticket } from './ticket';
+import {
+  entryAnchors,
+  parseReply,
+  summaryOf,
+  type Ticket,
+} from './ticket';
 
 /**
  * References to other tickets and their comments (BL-130): a ticket's id ("BL-102", or a linked issue's key

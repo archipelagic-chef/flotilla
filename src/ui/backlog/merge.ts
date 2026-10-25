@@ -5,15 +5,33 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentLead, agentName, branchMatches, readyToMerge, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentLead,
+  agentName,
+  type BacklogData,
+  type BacklogItem,
+  branchMatches,
+  readyToMerge,
+} from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { ciStop, type CiStop } from '../../features/backlog/ciStop';
-import { decideCi, failedNote, passedNote, waitingNote, type CiDecision, type CiReader, type MergeChecks } from '../../features/backlog/mergeCi';
+import { pushTrain, trainRef } from '../../features/backlog/trainPush';
+import {
+  type CiDecision,
+  type CiReader,
+  decideCi,
+  failedNote,
+  type MergeChecks,
+  passedNote,
+  waitingNote,
+} from '../../features/backlog/mergeCi';
 import type { CiRun } from '../../features/ci/githubActions';
 import {
   blockingItems,
   checkBranch,
   checkCommand,
+  type ChecksRunRecord,
   commitsTouching,
   conflictedFiles,
   fastForward,
@@ -28,23 +46,55 @@ import {
   mergeOrder,
   mergeResult,
   mergeRoot,
+  type MergeState,
   outputTail,
   removeMergeWorktree,
   resolvePrompt,
   timeoutsOnly,
-  type ChecksRunRecord,
-  type MergeState,
 } from '../../features/backlog/merge';
-import { buildTrain, dequeue, enqueue, landing, mergeAgain, ordinal, queuedItems, recordResolution, startTrainMerge, trainIsCurrent, trainOnto, trainState, type MergeTrain } from '../../features/backlog/mergeTrain';
+import {
+  type MergeStyle,
+  mergeStyle,
+  rebaseInDir,
+  rebaseInWorktree,
+  rebaseResult,
+} from '../../features/backlog/linearHistory';
+import {
+  buildTrain,
+  dequeue,
+  enqueue,
+  landing,
+  mergeAgain,
+  type MergeTrain,
+  ordinal,
+  queuedItems,
+  recordRebaseResolution,
+  recordResolution,
+  startTrainMerge,
+  type TrainEntry,
+  trainIsCurrent,
+  trainOnto,
+  trainState,
+} from '../../features/backlog/mergeTrain';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { MergeQueueView } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { readSettings } from '../settings';
-import { agentChoice, describeChoice, runAgentHeadless, type AgentRun } from './agentRunner';
+import {
+  agentChoice,
+  type AgentRun,
+  describeChoice,
+  runAgentHeadless,
+} from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
-import { failedTests, recordCiStop, recordConflicts, recordTrainConflicts } from '../../features/metrics/record';
+import {
+  failedTests,
+  recordCiStop,
+  recordConflicts,
+  recordTrainConflicts,
+} from '../../features/metrics/record';
 import { ChecksReader, failureSummary } from '../../features/backlog/checksProgress';
 import { runInBackground } from '../../features/backlog/checksRun';
 import type { MergeChecksView } from '../../webview/ticketProtocol';
@@ -60,11 +110,13 @@ export interface MergeDeps {
   /** Update from Main (BL-55): main into the ticket's branch, which is then pushed, and CI runs again. */
   updateFromMain?(id: string): Promise<void>;
   /** Fix with Agent (BL-7) on a failed CI job of the branch. */
-  fixCi?(branch: string, runId: number, jobId?: number): Promise<void>;
+  fixCi?(branch: string, runId: number, jobId?: number, runBranch?: string): Promise<void>;
   /** Whether this window rebuilds the merge train (BL-140): one window does. None: it does. */
   isLeader?(): boolean;
   /** How often a merge waiting for CI reads its runs again (the tests' is short). */
   ciPollMs?: number;
+  /** Where the answer to pushing the merge train (BL-145) is kept: the workspace's state. None: it's asked each window. */
+  state?: Pick<vscode.Memento, 'get' | 'update'>;
   /** The repository's git folder (the main worktree's .git, where the checks' logs go); none: mainRoot's .git. */
   commonDir?: string;
   /** The environment of a run of the checks (the tests' tells their fake checks how to end); none: the extension's. */
@@ -96,12 +148,22 @@ interface CiWait {
   baseTip: string;
   batch: boolean;
   runs: CiRun[];
+  /**
+   * Landing a train entry (BL-145): its commit there. branch and tip are what CI runs on: the entry's train branch and
+   * commit, or its own branch's tip when that's the same tree; baseTip is what it merges onto.
+   */
+  train?: { id: string; commit: string };
   timer?: ReturnType<typeof setTimeout>;
 }
 
 export { readyToMerge };
 
+/** Where the answer "Push the Train" is kept (BL-145). */
+const PUSH_TRAIN_KEY = 'flotilla.merge.pushTrain';
+
 const settings = () => vscode.workspace.getConfiguration('flotilla');
+/** flotilla.merge.style (BL-181): main fast-forwards to the rebased branch, or a merge commit is made. */
+const style = (): MergeStyle => mergeStyle(settings().get<string>('merge.style', 'fast-forward'));
 
 /**
  * Merges tickets' branches into the base branch from the ticket (see merge.ts): checks the branch, merges it in a
@@ -129,6 +191,8 @@ export class Merger implements vscode.Disposable {
   /** The merge queue and its train as last read (BL-140), for the views. */
   private queueSeen: { queue: string[]; train?: MergeTrain } = { queue: [] };
   private trainTimer?: ReturnType<typeof setTimeout>;
+  /** Your answer to pushing the merge train in this window (BL-145); undefined: not asked yet. */
+  private trainPushAllowed?: boolean;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
   /** Merges' checks running now, by ticket (BL-169). */
@@ -181,7 +245,11 @@ export class Merger implements vscode.Disposable {
     vscode.window.terminals.find((t) => t.name === name)?.dispose();
     const terminal =
       process.platform === 'win32'
-        ? vscode.window.createTerminal({ name, shellPath: 'powershell.exe', shellArgs: ['-NoProfile', '-Command', `Get-Content -Wait -Path '${file.replace(/'/g, "''")}'`] })
+        ? vscode.window.createTerminal({
+            name,
+            shellPath: 'powershell.exe',
+            shellArgs: ['-NoProfile', '-Command', `Get-Content -Wait -Path '${file.replace(/'/g, "''")}'`],
+          })
         : vscode.window.createTerminal({ name, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', file] });
     terminal.show();
   }
@@ -207,14 +275,20 @@ export class Merger implements vscode.Disposable {
   }
 
   private async lastTotal(command: string): Promise<number | undefined> {
-    const stats = await fs.promises.readFile(this.checksStats(), 'utf8').then((t) => JSON.parse(t) as Record<string, { files?: number }>, () => undefined);
+    const stats = await fs.promises.readFile(this.checksStats(), 'utf8').then(
+      (t) => JSON.parse(t) as Record<string, { files?: number }>,
+      () => undefined,
+    );
     const files = stats?.[command]?.files;
     return typeof files === 'number' && files > 0 ? files : undefined;
   }
 
   private async saveTotal(command: string, files: number): Promise<void> {
     const file = this.checksStats();
-    const stats = await fs.promises.readFile(file, 'utf8').then((t) => JSON.parse(t) as Record<string, unknown>, () => ({}));
+    const stats = await fs.promises.readFile(file, 'utf8').then(
+      (t) => JSON.parse(t) as Record<string, unknown>,
+      () => ({}),
+    );
     await fs.promises.mkdir(path.dirname(file), { recursive: true });
     await fs.promises.writeFile(file, JSON.stringify({ ...stats, [command]: { files } }, null, 2));
   }
@@ -224,19 +298,30 @@ export class Merger implements vscode.Disposable {
    * merge, their progress to the ticket. Whether they passed, the end of their output (kept, so a failure can be
    * shown in the ticket and given to an agent), and a failed run's record. Stop stops them (a failure).
    */
-  private async runChecks(id: string, dir: string, command: string, earlier: readonly ChecksRunRecord[]): Promise<{ passed: boolean; output: string; timeouts: number; record?: ChecksRunRecord }> {
+  private async runChecks(
+    id: string,
+    dir: string,
+    command: string,
+    earlier: readonly ChecksRunRecord[],
+  ): Promise<{ passed: boolean; output: string; timeouts: number; record?: ChecksRunRecord }> {
     const n = earlier.length + 1;
     const log = path.join(this.checksDir(id), n === 1 ? 'checks.log' : `checks-${n}.log`);
     const reader = new ChecksReader();
     reader.progress.total = await this.lastTotal(command).catch(() => undefined);
     const live: LiveChecks = { command, started: Date.now(), log, reader, earlier: [...earlier], stop: () => undefined };
-    const run = runInBackground(dir, command, log, (text) => {
-      reader.push(text);
-      live.tick ??= setTimeout(() => {
-        live.tick = undefined;
-        if (this.liveChecks.get(id) === live) this.checksChanged.fire(id);
-      }, 1000);
-    }, this.deps.checksEnv?.(command));
+    const run = runInBackground(
+      dir,
+      command,
+      log,
+      (text) => {
+        reader.push(text);
+        live.tick ??= setTimeout(() => {
+          live.tick = undefined;
+          if (this.liveChecks.get(id) === live) this.checksChanged.fire(id);
+        }, 1000);
+      },
+      this.deps.checksEnv?.(command),
+    );
     live.stop = run.stop;
     this.liveChecks.set(id, live);
     this.changed.fire();
@@ -246,7 +331,14 @@ export class Merger implements vscode.Disposable {
       if (total && !end.stopped) await this.saveTotal(command, total).catch(() => undefined);
       if (end.code === 0) return { passed: true, output: outputTail(end.output), timeouts: 0 };
       const timeouts = end.stopped ? 0 : timeoutsOnly(end.output);
-      const record: ChecksRunRecord = { log, at: new Date().toISOString(), ms: end.ms, ...(end.stopped ? { stopped: true } : {}), timeouts, failures: failureSummary(end.output) };
+      const record: ChecksRunRecord = {
+        log,
+        at: new Date().toISOString(),
+        ms: end.ms,
+        ...(end.stopped ? { stopped: true } : {}),
+        timeouts,
+        failures: failureSummary(end.output),
+      };
       return { passed: false, output: outputTail(end.output), timeouts, record };
     } finally {
       clearTimeout(live.tick);
@@ -385,11 +477,11 @@ export class Merger implements vscode.Disposable {
       const kept = new Set([...queuedItems(d).map((i) => i.id), ...d.items.filter((i) => i.merging?.train).map((i) => i.id)]);
       return (d.mergeQueue ?? []).filter((id) => kept.has(id));
     };
-    if (!o.rebuild && trainIsCurrent(data.mergeTrain, baseTip, entries) && JSON.stringify(keep(data)) === JSON.stringify(data.mergeQueue ?? [])) {
+    if (!o.rebuild && trainIsCurrent(data.mergeTrain, baseTip, entries, style()) && JSON.stringify(keep(data)) === JSON.stringify(data.mergeQueue ?? [])) {
       await this.readQueue();
       return data.mergeTrain;
     }
-    const train = entries.length ? await buildTrain(root, { dir: this.mergeDir('train'), base, baseTip, entries }) : undefined;
+    const train = entries.length ? await buildTrain(root, { dir: this.mergeDir('train'), base, baseTip, entries, style: style() }) : undefined;
     if (train) recordTrainConflicts(root, train, data.mergeTrain);
     await this.deps.backlog.change(
       (d) => {
@@ -399,19 +491,86 @@ export class Merger implements vscode.Disposable {
       },
       { by: 'Flotilla' },
     );
-    this.deps.output.appendLine(`Merge train: ${train ? train.entries.map((e) => `${e.id} ${e.commit ? 'in' : 'conflicts'}`).join(', ') : 'empty'} (on ${base} ${baseTip.slice(0, 7)}).`);
+    this.deps.output.appendLine(
+      `Merge train: ${train ? train.entries.map((e) => `${e.id} ${e.commit ? 'in' : 'conflicts'}`).join(', ') : 'empty'} (on ${base} ${baseTip.slice(0, 7)}).`,
+    );
+    // On origin too, for CI to run on it (BL-145), once you've let it be pushed.
+    await this.syncTrainPush(train);
     await this.readQueue();
     return train;
   }
 
   /**
-   * Whether landing goes by the train: its merge commits are what's checked and landed (BL-140). Not when CI decides
-   * the merge (flotilla.merge.checks ci, with GitHub readable): CI ran on the branch's own tip, so tickets land one by one.
+   * How landing by the train is checked: its merge commits are what's checked and landed (BL-140). With CI deciding
+   * (flotilla.merge.checks ci, GitHub readable), by CI on each one's commit, pushed to origin (BL-145); else by the
+   * local checks, with why CI wasn't used.
    */
-  private async landsByTrain(): Promise<{ localWhy?: string } | undefined> {
+  private async landsByTrain(): Promise<{ localWhy?: string; ci?: CiReader }> {
     if (settings().get<MergeChecks>('merge.checks', 'ci') === 'local') return {};
-    const reader = this.deps.ciReader ? await this.deps.ciReader().catch((e: unknown) => `GitHub couldn't be read: ${e instanceof Error ? e.message : String(e)}`) : "this window doesn't read GitHub's runs.";
-    return typeof reader === 'string' ? { localWhy: reader } : undefined;
+    const reader = this.deps.ciReader
+      ? await this.deps.ciReader().catch((e: unknown) => `GitHub couldn't be read: ${e instanceof Error ? e.message : String(e)}`)
+      : "this window doesn't read GitHub's runs.";
+    return typeof reader === 'string' ? { localWhy: reader } : { ci: reader };
+  }
+
+  /** Whether the merge train may be pushed to origin (BL-145): asked once (yes is kept for the workspace, no for this window). */
+  private async mayPushTrain(): Promise<boolean> {
+    if (this.deps.state?.get<boolean>(PUSH_TRAIN_KEY) || this.trainPushAllowed) return true;
+    if (this.trainPushAllowed === false) return false;
+    const yes = 'Push the Train';
+    const choice = await vscode.window.showWarningMessage(
+      'Push the merge train to origin, for CI to run on it?',
+      {
+        modal: true,
+        detail: `Each queued ticket's merge commit in the train goes to a branch of its own on origin (${trainRef('<ticket>')}), forced, and is deleted once it has landed or left the queue. Each ticket then lands when CI passes on its commit, so main moving on doesn't send it back to Update from Main. Not pushed: the train's commits are checked locally.`,
+      },
+      yes,
+      "Don't Push",
+    );
+    this.trainPushAllowed = choice === yes;
+    if (this.trainPushAllowed) await this.deps.state?.update(PUSH_TRAIN_KEY, true);
+    return this.trainPushAllowed;
+  }
+
+  /** Makes origin's train branches the train's, once it may be pushed and CI decides: the error, if the push failed. */
+  private async syncTrainPush(train: MergeTrain | undefined): Promise<string | undefined> {
+    if (!(this.deps.state?.get<boolean>(PUSH_TRAIN_KEY) || this.trainPushAllowed)) return undefined;
+    if (!(await this.landsByTrain()).ci) return undefined;
+    const result = await pushTrain(this.deps.mainRoot, train);
+    if ('error' in result) {
+      this.deps.output.appendLine(`Merge train: ${result.error}`);
+      return result.error;
+    }
+    if (result.pushed.length || result.deleted.length)
+      this.deps.output.appendLine(
+        `Merge train: pushed ${result.pushed.join(', ') || 'nothing'}${result.deleted.length ? `, deleted ${result.deleted.join(', ')}` : ''} on origin.`,
+      );
+    return undefined;
+  }
+
+  /**
+   * What CI says of a train entry (BL-145): its own branch's CI when the branch has what it merges onto (the same tree,
+   * so CI doesn't run twice); else CI on its commit in the train, pushed to its train branch (asked once).
+   */
+  private async decideTrainCi(
+    item: BacklogItem,
+    e: TrainEntry,
+    onto: string,
+    reader: CiReader,
+    push: () => Promise<{ error?: string } | undefined>,
+  ): Promise<CiDecision> {
+    if (
+      await runGit(['merge-base', '--is-ancestor', onto, e.tip], { cwd: this.deps.mainRoot }).then(
+        () => true,
+        () => false,
+      )
+    ) {
+      const own = await this.decideCi(item, e.branch, { tip: e.tip, baseTip: onto });
+      if (own.kind !== 'local' && own.kind !== 'moved') return own;
+    }
+    const pushed = await push();
+    if (!pushed) return { kind: 'local', why: "the merge train isn't pushed to origin (you chose not to push it)." };
+    return decideCi({ cwd: this.deps.mainRoot, setting: 'ci', branch: trainRef(e.id), tip: e.commit!, baseTip: onto, reader, pushError: pushed.error });
   }
 
   /**
@@ -419,7 +578,7 @@ export class Merger implements vscode.Disposable {
    * ticket at a time (each one's checks on its own merge commit), with those ahead of it first. Undefined: it isn't in
    * the train (it conflicts with what's ahead of it), or you chose to merge it alone: it's merged onto main as it is.
    */
-  private async landByTrain(item: BacklogItem, base: string, batch: boolean, localWhy: string | undefined): Promise<MergeEnd | undefined> {
+  private async landByTrain(item: BacklogItem, base: string, batch: boolean, byTrain: { localWhy?: string; ci?: CiReader }): Promise<MergeEnd | undefined> {
     const root = this.deps.mainRoot;
     await this.changeQueue((q) => enqueue(q, [item.id]));
     const train = await this.currentTrain();
@@ -440,6 +599,10 @@ export class Merger implements vscode.Disposable {
       if (!choice) return 'stopped';
       if (choice !== all) return undefined;
     }
+    // CI decides on each one's train commit, pushed to origin once (BL-145); not pushed, the local checks do.
+    const { localWhy, ci: reader } = byTrain;
+    let pushed: Promise<{ error?: string } | undefined> | undefined;
+    const push = () => (pushed ??= this.mayPushTrain().then(async (yes) => (yes ? { error: await this.syncTrainPush(train) } : undefined)));
     for (const e of target.lands) {
       const it = e.id === item.id ? item : await this.item(e.id);
       if (!it || (e.id !== item.id && !readyToMerge(it))) {
@@ -453,11 +616,31 @@ export class Merger implements vscode.Disposable {
         continue;
       }
       const baseTip = (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root })).trim();
+      const onto = (train && trainOnto(train, e.id)?.commit) ?? baseTip;
+      const ci = reader ? await this.decideTrainCi(it, e, onto, reader, push) : undefined;
+      if (ci?.kind === 'running') {
+        // Waits outside the queue, as Merge to main's: Merge to main is asked again once CI has ended.
+        const known = this.ciWaits.get(item.id);
+        const same = known?.train?.commit === e.commit && known?.tip === ci.tip ? known : undefined;
+        if (same) same.runs = ci.runs;
+        const ref = ci.tip === e.tip ? e.branch : trainRef(e.id);
+        await this.waitForCi(item.id, same ?? { branch: ref, tip: ci.tip, baseTip: onto, batch, runs: ci.runs, train: { id: e.id, commit: e.commit! } });
+        return 'waiting';
+      }
+      if (ci?.kind === 'failed' || ci?.kind === 'moved') {
+        await this.leaveTrainOnCi(it, e, ci, base, batch);
+        return 'stopped';
+      }
       const dir = this.mergeDir(e.id);
       await fs.promises.mkdir(path.dirname(dir), { recursive: true });
       await runGit(['worktree', 'add', '--detach', dir, e.commit!], { cwd: root, timeoutMs: 120_000 });
       this.deps.output.appendLine(`Merge: ${e.id} lands from the merge train (${e.commit!.slice(0, 7)} onto ${base} ${baseTip.slice(0, 7)}).`);
-      const end = await this.complete(it, { dir, branch: e.branch, base, baseTip, commit: e.commit!, localWhy }, batch);
+      const onCi = ci?.kind === 'passed' ? { ci } : { localWhy: ci?.kind === 'local' ? ci.why : localWhy };
+      const end = await this.complete(
+        it,
+        { dir, branch: e.branch, base, baseTip, commit: e.commit!, ...onCi, ...(train.style === 'fast-forward' ? { rebase: true } : {}) },
+        batch,
+      );
       if (end !== 'merged') {
         await this.currentTrain().catch(() => undefined);
         return end;
@@ -469,12 +652,62 @@ export class Merger implements vscode.Disposable {
       (d) => ({
         ...d,
         mergeQueue: dequeue(d.mergeQueue, landed),
-        ...(d.mergeTrain ? { mergeTrain: { ...d.mergeTrain, baseTip: target.commit, entries: d.mergeTrain.entries.filter((e) => !landed.includes(e.id)) } } : {}),
+        ...(d.mergeTrain
+          ? { mergeTrain: { ...d.mergeTrain, baseTip: target.commit, entries: d.mergeTrain.entries.filter((e) => !landed.includes(e.id)) } }
+          : {}),
       }),
       { by: 'Flotilla' },
     );
     await this.readQueue();
+    // The landed tickets' train branches go from origin.
+    if (pushed && (await pushed)) await this.syncTrainPush((await this.deps.backlog.read()).mergeTrain);
     return 'merged';
+  }
+
+  /**
+   * Red CI on a ticket's commit in the train (BL-145): it's taken out of the merge queue, its ticket says which jobs
+   * failed (with Fix with Agent), and the train is rebuilt without it. Nothing lands.
+   */
+  private async leaveTrainOnCi(
+    item: BacklogItem,
+    e: TrainEntry,
+    ci: Extract<CiDecision, { kind: 'failed' | 'moved' }>,
+    base: string,
+    batch: boolean,
+  ): Promise<void> {
+    await this.changeQueue((q) => dequeue(q, [e.id]));
+    if (ci.kind === 'moved') {
+      // Not CI for its commit in the train: the train is rebuilt without it, and Merge to main puts it back.
+      await this.note(
+        e.id,
+        `Not merged: CI's result on \`${ci.tip.slice(0, 7)}\` isn't for ${e.id}'s commit in the merge train, so ${e.id} is out of the merge queue and the train is rebuilt without it. Merge to main puts it back.`,
+      );
+      await this.currentTrain({ rebuild: true });
+      return;
+    }
+    const ref = ci.tip === e.tip ? e.branch : trainRef(e.id);
+    const stop = ciStop(ci, e.branch, base);
+    if (stop?.kind === 'failed') {
+      // It holds while the ticket's branch is where it was; Fix with Agent finds the run on the ref CI ran on.
+      const held = { ...stop, tip: e.tip, ...(ref !== e.branch ? { runBranch: ref } : {}) };
+      this.ciStops.set(e.id, held);
+      recordCiStop(e.id, held);
+    }
+    await this.note(e.id, `${failedNote(ci, ref)}\n\n${e.id} is out of the merge queue: the train is rebuilt without it. Merge to main puts it back.`);
+    await this.currentTrain({ rebuild: true });
+    if (!batch) {
+      this.deps.openTicket(e.id);
+      const first = ci.jobs[0];
+      void vscode.window
+        .showWarningMessage(
+          ref === e.branch
+            ? `CI failed on ${ref}: ${item.id} wasn't merged, and is out of the merge queue.`
+            : `CI failed on ${item.id}'s commit in the merge train (${ref}): it wasn't merged, and is out of the merge queue.`,
+          ...(this.deps.fixCi ? ['Fix with Agent'] : []),
+        )
+        .then((c) => (c ? this.deps.fixCi?.(e.branch, first?.run.id ?? ci.runs[0].id, first?.job.id, ref) : undefined))
+        .then(undefined, showError);
+    }
   }
 
   /** Why the ticket's last Merge to main stopped on CI, while its branch is at the tip it stopped on (BL-112). */
@@ -490,7 +723,7 @@ export class Merger implements vscode.Disposable {
     const stop = this.ciStops.get(id);
     if (stop?.kind !== 'failed') return;
     const first = stop.jobs[0];
-    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId);
+    await this.deps.fixCi?.(stop.branch, first?.runId ?? stop.runs[0].id, first?.jobId, stop.runBranch);
   }
 
   /** One at a time: merges move the base branch. what: what the task does, for those waiting behind it. */
@@ -565,7 +798,10 @@ export class Merger implements vscode.Disposable {
 
   /** A new folder for a merge's worktree, in the OS's temp folder. */
   private mergeDir(id: string): string {
-    const repo = path.basename(this.deps.mainRoot).replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 30);
+    const repo = path
+      .basename(this.deps.mainRoot)
+      .replace(/[^A-Za-z0-9._-]/g, '-')
+      .slice(0, 30);
     return path.join(mergeRoot(os.tmpdir()), `${repo}-${id}-${crypto.randomBytes(4).toString('hex')}`);
   }
 
@@ -627,14 +863,24 @@ export class Merger implements vscode.Disposable {
       return 'stopped';
     }
     const data = await this.deps.backlog.read();
-    const blocking = blockingItems(item, check.commits.map((c) => c.message), data.items);
+    const blocking = blockingItems(
+      item,
+      check.commits.map((c) => c.message),
+      data.items,
+    );
     if (blocking.length) {
       const list = blocking.map((b) => `${b.id} "${b.title}" (${b.status === 'review' ? 'in review' : b.status === 'doing' ? 'in progress' : 'to do'})`);
-      void vscode.window.showErrorMessage(`${branch} can't be merged: it has commits of ${blocking.length === 1 ? 'another ticket that isn\'t' : 'other tickets that aren\'t'} done.`, {
-        modal: !batch,
-        detail: `${list.join('\n')}\n\nMerge ${blocking.length === 1 ? 'it' : 'them'} first, or take ${blocking.length === 1 ? 'its' : 'their'} commits out of ${branch}.`,
-      });
-      await this.note(id, `The merge was refused: \`${branch}\` has commits of ${blocking.map((b) => b.id).join(', ')}, which ${blocking.length === 1 ? "isn't" : "aren't"} done.`);
+      void vscode.window.showErrorMessage(
+        `${branch} can't be merged: it has commits of ${blocking.length === 1 ? "another ticket that isn't" : "other tickets that aren't"} done.`,
+        {
+          modal: !batch,
+          detail: `${list.join('\n')}\n\nMerge ${blocking.length === 1 ? 'it' : 'them'} first, or take ${blocking.length === 1 ? 'its' : 'their'} commits out of ${branch}.`,
+        },
+      );
+      await this.note(
+        id,
+        `The merge was refused: \`${branch}\` has commits of ${blocking.map((b) => b.id).join(', ')}, which ${blocking.length === 1 ? "isn't" : "aren't"} done.`,
+      );
       return 'stopped';
     }
     if (check.superseded) {
@@ -651,9 +897,9 @@ export class Merger implements vscode.Disposable {
       if (choice === 'Move to Done') await this.finish(item, { base, branch, commit: check.baseTip, already: true });
       if (choice !== 'Merge Anyway') return 'stopped';
     }
-    const byTrain = await this.landsByTrain();
-    if (byTrain) {
-      const end = await this.landByTrain(item, base, batch, byTrain.localWhy);
+    {
+      const byTrain = await this.landsByTrain();
+      const end = await this.landByTrain(item, base, batch, byTrain);
       if (end) return end;
     }
     const ci = await this.decideCi(item, branch, check);
@@ -665,11 +911,14 @@ export class Merger implements vscode.Disposable {
     if (ci.kind === 'moved') {
       await this.note(
         id,
-        `Not merged: \`${base}\` has moved on since \`${branch}\` took it in, so CI checked another tree than the merge's. Update from Main merges it into the branch, which is pushed, and CI runs again; then Merge to main.`,
+        `Not merged: \`${base}\` has moved on since \`${branch}\` took it in, so CI checked another tree than the merge's. Update from Main rebases the branch onto it, which is pushed, and CI runs again; then Merge to main.`,
       );
       if (!batch)
         void vscode.window
-          .showWarningMessage(`${base} has moved on since ${branch} took it in: CI's result isn't for the merge. Update from Main, then merge when CI passes.`, 'Update from Main')
+          .showWarningMessage(
+            `${base} has moved on since ${branch} took it in: CI's result isn't for the merge. Update from Main, then merge when CI passes.`,
+            'Update from Main',
+          )
           .then((c) => (c ? this.deps.updateFromMain?.(id) : undefined))
           .then(undefined, showError);
       return 'stopped';
@@ -694,21 +943,35 @@ export class Merger implements vscode.Disposable {
     const message = mergeMessage(item);
     this.deps.output.appendLine(`Merge: ${branch} into ${base} in ${dir}.`);
     recordEvent('merge-started', { ticket: id, data: { into: base, branch } });
-    const outcome = await mergeInWorktree(root, { dir, baseTip: check.baseTip, branch, message });
+    // Fast-forward (BL-181): the branch rebased onto the base (when it isn't on it already), and the base moved to its tip.
+    const rebase = style() === 'fast-forward';
+    const outcome = rebase
+      ? await rebaseInWorktree(root, { dir, baseTip: check.baseTip, branch })
+      : await mergeInWorktree(root, { dir, baseTip: check.baseTip, branch, message });
+    const doing = rebase ? `Rebasing \`${branch}\` onto \`${base}\`` : `Merging \`${branch}\` into \`${base}\``;
     if (outcome.kind === 'conflicts') {
       recordConflicts(id, root, check.baseTip, branch, outcome.files);
-      const state: MergeState = { dir, branch, base, baseTip: check.baseTip, state: 'failed', reason: conflictsReason(outcome.files), started: new Date().toISOString() };
+      const state: MergeState = {
+        dir,
+        branch,
+        base,
+        baseTip: check.baseTip,
+        ...(rebase ? { rebase } : {}),
+        state: 'failed',
+        reason: conflictsReason(outcome.files),
+        started: new Date().toISOString(),
+      };
       if (batch) {
         await this.setMerge(id, state);
-        await this.note(id, `Merging \`${branch}\` into \`${base}\` stopped on conflicts in ${outcome.files.map((f) => `\`${f}\``).join(', ')}: resolve them with an agent, or cancel.`);
+        await this.note(id, `${doing} stopped on conflicts in ${outcome.files.map((f) => `\`${f}\``).join(', ')}: resolve them with an agent, or cancel.`);
         this.deps.openTicket(id);
         return 'stopped';
       }
       const choice = await vscode.window.showWarningMessage(
-        `Merging ${branch} into ${base} has conflicts.`,
+        rebase ? `Rebasing ${branch} onto ${base} has conflicts.` : `Merging ${branch} into ${base} has conflicts.`,
         {
           modal: true,
-          detail: `${outcome.files.join('\n')}\n\nResolve with Agent: an agent resolves them in the merge's temporary worktree, keeping both sides' intent, and reports in the ticket for you to approve. Cancel: nothing changes.`,
+          detail: `${outcome.files.join('\n')}\n\nResolve with Agent: an agent resolves them in the merge's temporary worktree${rebase ? ', commit by commit' : ''}, keeping both sides' intent, and reports in the ticket for you to approve. Cancel: nothing changes.`,
         },
         'Resolve with Agent',
       );
@@ -720,8 +983,14 @@ export class Merger implements vscode.Disposable {
       await this.startResolver(id);
       return 'stopped';
     }
+    if (rebase && outcome.commit === check.baseTip) {
+      // Rebased onto the base, none of its commits is left: the base has its changes already.
+      await this.removeDir(dir);
+      await this.finish(item, { base, branch, commit: check.baseTip, already: true });
+      return 'merged';
+    }
     const onCi = ci.kind === 'passed' ? { ci } : { localWhy: ci.why };
-    return this.complete(item, { dir, branch, base, baseTip: check.baseTip, commit: outcome.commit, ...onCi }, batch);
+    return this.complete(item, { dir, branch, base, baseTip: check.baseTip, commit: outcome.commit, ...onCi, ...(rebase ? { rebase } : {}) }, batch);
   }
 
   /** What the merge decides on (BL-105): CI's result for the branch's pushed tip, or the local checks. */
@@ -749,11 +1018,36 @@ export class Merger implements vscode.Disposable {
     if (this.ciWaits.get(id) !== wait) return;
     const root = this.deps.mainRoot;
     const item = await this.item(id);
+    if (wait.train) return this.pollTrainCi(id, item, wait as CiWait & { train: { id: string; commit: string } });
     const tip = (await runGit(['rev-parse', `refs/heads/${wait.branch}`], { cwd: root }).catch(() => '')).trim();
     const base = await this.baseBranch().catch(() => undefined);
     const baseTip = base && (await runGit(['rev-parse', `refs/heads/${base}`], { cwd: root }).catch(() => '')).trim();
     // The same commits as when it was asked: CI's result decides; anything that moved is decided again by Merge to main.
-    const ci = item && tip === wait.tip && baseTip === wait.baseTip ? await this.decideCi(item, wait.branch, { tip, baseTip }).catch(() => undefined) : undefined;
+    const ci =
+      item && tip === wait.tip && baseTip === wait.baseTip ? await this.decideCi(item, wait.branch, { tip, baseTip }).catch(() => undefined) : undefined;
+    if (this.ciWaits.get(id) !== wait) return;
+    if (ci?.kind === 'running') {
+      wait.runs = ci.runs;
+      await this.waitForCi(id, wait);
+      return;
+    }
+    this.ciWaits.delete(id);
+    this.changed.fire();
+    if (!item || !readyToMerge(item)) {
+      if (item) await this.note(id, `Stopped waiting for CI: ${id} isn't ready to merge any more. Nothing was merged.`);
+      return;
+    }
+    await this.merge(id, { batch: wait.batch });
+  }
+
+  /** A wait for CI on a train entry (BL-145): while the train still has its commit, CI's runs are read again. */
+  private async pollTrainCi(id: string, item: BacklogItem | undefined, wait: CiWait & { train: { id: string; commit: string } }): Promise<void> {
+    const entry = (await this.deps.backlog.read()).mergeTrain?.entries.find((e) => e.id === wait.train.id);
+    const reader = (await this.landsByTrain()).ci;
+    const ci =
+      item && reader && entry?.commit === wait.train.commit
+        ? await decideCi({ cwd: this.deps.mainRoot, setting: 'ci', branch: wait.branch, tip: wait.tip, baseTip: wait.baseTip, reader }).catch(() => undefined)
+        : undefined;
     if (this.ciWaits.get(id) !== wait) return;
     if (ci?.kind === 'running') {
       wait.runs = ci.runs;
@@ -803,6 +1097,8 @@ export class Merger implements vscode.Disposable {
       earlier?: NonNullable<MergeState['checks']>;
       /** Made again onto the base, which had moved (BL-149): moving again, it isn't made again a second time. */
       remerged?: boolean;
+      /** The branch rebased onto the base, not merged (fast-forward, BL-181): a merge kept for a fix says so. */
+      rebase?: boolean;
     },
     batch: boolean,
   ): Promise<MergeEnd> {
@@ -834,7 +1130,10 @@ export class Merger implements vscode.Disposable {
       if (!checks.passed && checks.timeouts && !earlier) {
         // Only timeouts: often a loaded machine, not the merge. Once more, before an agent looks at it (BL-124).
         earlier = { command, output: checks.output, at: new Date().toISOString(), runs: [...runs] };
-        await this.note(item.id, `The checks failed on the merge only with timeouts (${plural(checks.timeouts, 'test')} timed out): running them once more before stopping.`);
+        await this.note(
+          item.id,
+          `The checks failed on the merge only with timeouts (${plural(checks.timeouts, 'test')} timed out): running them once more before stopping.`,
+        );
         checks = await run();
       }
       if (checks.passed && earlier) {
@@ -845,13 +1144,24 @@ export class Merger implements vscode.Disposable {
         const stopped = !!checks.record?.stopped;
         const current = (await this.item(item.id))?.merging;
         const state: MergeState = {
-          ...(current ?? { dir: m.dir, branch: m.branch, base: m.base, baseTip: m.baseTip, started: new Date().toISOString() }),
+          ...(current ?? {
+            dir: m.dir,
+            branch: m.branch,
+            base: m.base,
+            baseTip: m.baseTip,
+            ...(m.rebase ? { rebase: true } : {}),
+            started: new Date().toISOString(),
+          }),
           state: 'failed',
           reason: stopped ? `you stopped the checks (\`${command}\`).` : `the checks failed (\`${command}\`).`,
           checks: { command, output: checks.output, at: new Date().toISOString(), runs },
         };
         await this.setMerge(item.id, state);
-        if (!stopped) recordEvent('merge-checks-failed', { ticket: item.id, data: { failure: checks.timeouts ? 'timeout' : 'assertion', tests: failedTests(checks.output) } });
+        if (!stopped)
+          recordEvent('merge-checks-failed', {
+            ticket: item.id,
+            data: { failure: checks.timeouts ? 'timeout' : 'assertion', tests: failedTests(checks.output) },
+          });
         const again = m.resolved || earlier ? ' again' : '';
         await this.note(
           item.id,
@@ -861,9 +1171,12 @@ export class Merger implements vscode.Disposable {
         );
         if (!batch && !stopped) {
           this.deps.openTicket(item.id);
-          void vscode.window.showWarningMessage(`The checks failed${again} on the merge of ${item.id}: nothing changed. Fix with Agent from its ticket, or cancel.`, 'Fix with Agent').then(
-            (c) => c && void this.resolveWithAgent(item.id).catch(showError),
-          );
+          void vscode.window
+            .showWarningMessage(
+              `The checks failed${again} on the merge of ${item.id}: nothing changed. Fix with Agent from its ticket, or cancel.`,
+              'Fix with Agent',
+            )
+            .then((c) => c && void this.resolveWithAgent(item.id).catch(showError));
         }
         return 'stopped';
       }
@@ -881,7 +1194,10 @@ export class Merger implements vscode.Disposable {
             );
         if (retry) continue;
         await keep(`${m.base} is checked out in ${where}, which has uncommitted changes.`);
-        await this.note(item.id, `Merging \`${m.branch}\` into \`${m.base}\` stopped: ${m.base} is checked out in ${where}, which has uncommitted changes. Nothing changed.`);
+        await this.note(
+          item.id,
+          `Merging \`${m.branch}\` into \`${m.base}\` stopped: ${m.base} is checked out in ${where}, which has uncommitted changes. Nothing changed.`,
+        );
         return 'stopped';
       }
       break;
@@ -889,7 +1205,13 @@ export class Merger implements vscode.Disposable {
     this.finishing.add(item.id);
     try {
       try {
-        await fastForward(this.deps.mainRoot, { base: m.base, baseTip: m.baseTip, commit: m.commit, worktree: holder?.worktree.path, message: mergeMessage(item) });
+        await fastForward(this.deps.mainRoot, {
+          base: m.base,
+          baseTip: m.baseTip,
+          commit: m.commit,
+          worktree: holder?.worktree.path,
+          message: mergeMessage(item),
+        });
       } catch (error) {
         // The base moved during the checks: a resolved merge is made again onto it, once (BL-149).
         const now = await this.tip(m.base);
@@ -905,7 +1227,17 @@ export class Merger implements vscode.Disposable {
       }
       await this.removeDir(m.dir);
       await this.removeChecksLogs(item.id);
-      await this.finish(item, { base: m.base, branch: m.branch, commit: m.commit, merge: m.merge, fixes: m.fixes, checks: command, ci: m.ci, localWhy: m.localWhy });
+      await this.finish(item, {
+        base: m.base,
+        branch: m.branch,
+        commit: m.commit,
+        merge: m.merge,
+        fixes: m.fixes,
+        checks: command,
+        ci: m.ci,
+        localWhy: m.localWhy,
+        onto: m.baseTip,
+      });
       return 'merged';
     } finally {
       this.finishing.delete(item.id);
@@ -933,11 +1265,18 @@ export class Merger implements vscode.Disposable {
       already?: boolean;
       ci?: { tip: string; runs: CiRun[] };
       localWhy?: string;
+      /** Where the base was before: a fast-forward to the branch's commits (no merge commit) counts them from there. */
+      onto?: string;
     },
   ): Promise<void> {
     const root = this.deps.mainRoot;
     const merge = m.merge ?? m.commit;
-    const count = m.already ? 0 : Number((await runGit(['rev-list', '--count', `${merge}^1..${merge}^2`], { cwd: root }).catch(() => '0')).trim());
+    // A line of the ticket's commits on top of the base (fast-forward, BL-181), or a merge commit.
+    const linear =
+      !m.already && !!m.onto && (await runGit(['rev-list', '--parents', '-n', '1', merge], { cwd: root }).catch(() => '')).trim().split(/\s+/).length === 2;
+    const range = linear ? `${m.onto}..${m.commit}` : `${merge}^1..${merge}^2`;
+    const count = m.already ? 0 : Number((await runGit(['rev-list', '--count', range], { cwd: root }).catch(() => '0')).trim());
+    const moved = linear ? await this.moveBranchTo(m.branch, m.commit) : '';
     const fixes = m.fixes?.length ? ` On top of it, the fix${m.fixes.length === 1 ? '' : 'es'} of the checks: ${m.fixes.map((f) => `"${f}"`).join(', ')}.` : '';
     await this.deps.backlog.change(
       (d) => ({
@@ -956,7 +1295,9 @@ export class Merger implements vscode.Disposable {
       item.id,
       m.already
         ? `\`${m.base}\` has \`${m.branch}\`'s work already: nothing was merged.`
-        : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${merge.slice(0, 7)} ("${mergeMessage(item)}").${fixes}${m.ci ? ` ${passedNote(m.ci)}` : m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'}${m.localWhy ? ` CI wasn't used: ${m.localWhy}` : ''} Nothing was pushed.`,
+        : linear
+          ? `Merged \`${m.branch}\` into \`${m.base}\`: \`${m.base}\` fast-forwarded to ${m.commit.slice(0, 7)}, ${count} commit${count === 1 ? '' : 's'} of ${item.id}, no merge commit.${moved}${m.ci ? ` ${passedNote(m.ci)}` : m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'}${m.localWhy ? ` CI wasn't used: ${m.localWhy}` : ''} Nothing was pushed.`
+          : `Merged \`${m.branch}\` into \`${m.base}\`: ${count} commit${count === 1 ? '' : 's'}, merge commit ${merge.slice(0, 7)} ("${mergeMessage(item)}").${fixes}${m.ci ? ` ${passedNote(m.ci)}` : m.checks ? ` The checks passed (\`${m.checks}\`).` : ' No checks ran (set flotilla.merge.checkCommand).'}${m.localWhy ? ` CI wasn't used: ${m.localWhy}` : ''} Nothing was pushed.`,
     );
     if (m.already) return;
     const ws = this.deps.repository.current.find((w) => !w.worktree.isMain && w.worktree.branch === m.branch);
@@ -967,6 +1308,28 @@ export class Merger implements vscode.Disposable {
     });
   }
 
+  /**
+   * After a fast-forward to the branch rebased (BL-181), the branch is moved to what landed, so it's merged as it is:
+   * in its worktree when that has no uncommitted changes (`git reset --keep`), else its ref (only from where it was).
+   * What the note says about it ('' when it was there already).
+   */
+  private async moveBranchTo(branch: string, commit: string): Promise<string> {
+    const tip = await this.tip(branch);
+    if (!tip || tip === commit) return '';
+    const holder = this.worktreeOn(branch)?.worktree.path;
+    try {
+      if (holder) {
+        if (await hasUncommittedChanges(holder))
+          return ` \`${branch}\` was left where it was (its worktree has uncommitted changes): it has the same changes, rebased.`;
+        await runGit(['reset', '-q', '--keep', commit], { cwd: holder });
+      } else await runGit(['update-ref', '-m', 'flotilla: rebased onto the base, as merged', `refs/heads/${branch}`, commit, tip], { cwd: this.deps.mainRoot });
+    } catch (error) {
+      this.deps.output.appendLine(`Merge: ${branch} not moved to ${commit.slice(0, 7)}: ${error instanceof Error ? error.message : String(error)}`);
+      return ` \`${branch}\` was left where it was: it has the same changes, rebased.`;
+    }
+    return ` \`${branch}\` was moved to it too (it was rebased, from ${tip.slice(0, 7)}).`;
+  }
+
   /** Merges every ticket ready to merge, dependencies first; stops at the first that needs a decision. */
   mergeAllReady(): Promise<void> {
     const job = { what: 'Merge All Ready' };
@@ -975,7 +1338,9 @@ export class Merger implements vscode.Disposable {
       const base = await this.baseBranch();
       const ready = (await this.deps.backlog.read()).items.filter(readyToMerge);
       if (!ready.length || !base) {
-        void vscode.window.showInformationMessage(base ? 'No tickets are ready to merge (approved, in review).' : "Can't tell which branch to merge into: set flotilla.defaultBase.");
+        void vscode.window.showInformationMessage(
+          base ? 'No tickets are ready to merge (approved, in review).' : "Can't tell which branch to merge into: set flotilla.defaultBase.",
+        );
         return;
       }
       // Each one's branch tip, for the order: a branch that has another's tip goes after it.
@@ -991,16 +1356,33 @@ export class Merger implements vscode.Disposable {
           const ta = tips.get(a.id);
           const tb = tips.get(b.id);
           if (a === b || !ta || !tb || ta === tb) continue;
-          ancestor.set(`${a.id} ${b.id}`, await runGit(['merge-base', '--is-ancestor', tb, ta], { cwd: root }).then(() => true, () => false));
+          ancestor.set(
+            `${a.id} ${b.id}`,
+            await runGit(['merge-base', '--is-ancestor', tb, ta], { cwd: root }).then(
+              () => true,
+              () => false,
+            ),
+          );
         }
       }
       // The queue's order first (BL-140), then the others, dependencies first; they all join the queue.
       const queued = queuedItems({ items: ready, mergeQueue: (await this.deps.backlog.read()).mergeQueue });
-      const order = [...queued, ...mergeOrder(ready.filter((i) => !queued.includes(i)), (a, b) => !!ancestor.get(`${a.id} ${b.id}`))];
-      await this.changeQueue((q) => enqueue(q, order.map((i) => i.id)));
+      const order = [
+        ...queued,
+        ...mergeOrder(
+          ready.filter((i) => !queued.includes(i)),
+          (a, b) => !!ancestor.get(`${a.id} ${b.id}`),
+        ),
+      ];
+      await this.changeQueue((q) =>
+        enqueue(
+          q,
+          order.map((i) => i.id),
+        ),
+      );
       const merged: string[] = [];
       // By the train, a ticket that conflicts with the ones ahead of it waits, and the others go on (BL-140).
-      const train = (await this.landsByTrain()) ? await this.currentTrain() : undefined;
+      const train = await this.currentTrain();
       const waiting = order.filter((i) => train?.entries.find((e) => e.id === i.id)?.conflicts).map((i) => i.id);
       for (const item of order) {
         if (waiting.includes(item.id) || (await this.item(item.id))?.status === 'done') continue;
@@ -1010,19 +1392,23 @@ export class Merger implements vscode.Disposable {
         // Waiting for CI holds up none of the others: it merges when CI passes.
         if (end === 'waiting') continue;
         if (end !== 'merged') {
-          void vscode.window.showWarningMessage(
-            `Merge All Ready stopped at ${item.id}${merged.length ? `, after merging ${merged.join(', ')}` : ''}: it needs you. Its ticket says why.`,
-            'Open',
-          ).then((c) => c && this.deps.openTicket(item.id));
+          void vscode.window
+            .showWarningMessage(
+              `Merge All Ready stopped at ${item.id}${merged.length ? `, after merging ${merged.join(', ')}` : ''}: it needs you. Its ticket says why.`,
+              'Open',
+            )
+            .then((c) => c && this.deps.openTicket(item.id));
           return;
         }
         merged.push(item.id);
       }
       if (waiting.length)
-        void vscode.window.showWarningMessage(
-          `Merge All Ready ${merged.length ? `merged ${merged.join(', ')}` : 'merged nothing'}. ${waiting.join(', ')} ${waiting.length === 1 ? 'waits: it conflicts' : 'wait: they conflict'} with the tickets ahead in the merge queue. Resolve with Agent in its ticket resolves them in the train; Merge to main merges one onto ${base} as it is.`,
-          'Open',
-        ).then((c) => c && this.deps.openTicket(waiting[0]));
+        void vscode.window
+          .showWarningMessage(
+            `Merge All Ready ${merged.length ? `merged ${merged.join(', ')}` : 'merged nothing'}. ${waiting.join(', ')} ${waiting.length === 1 ? 'waits: it conflicts' : 'wait: they conflict'} with the tickets ahead in the merge queue. Resolve with Agent in its ticket resolves them in the train; Merge to main merges one onto ${base} as it is.`,
+            'Open',
+          )
+          .then((c) => c && this.deps.openTicket(waiting[0]));
     });
   }
 
@@ -1045,14 +1431,31 @@ export class Merger implements vscode.Disposable {
       }
       const dir = this.mergeDir(id);
       await fs.promises.mkdir(path.dirname(dir), { recursive: true });
-      const files = await startTrainMerge(this.deps.mainRoot, { dir, onto: onto.commit, branch: entry.branch, message: mergeMessage(item) });
+      const rebase = train.style === 'fast-forward';
+      const files = await startTrainMerge(this.deps.mainRoot, {
+        dir,
+        onto: onto.commit,
+        branch: entry.branch,
+        message: mergeMessage(item),
+        style: train.style,
+      });
       if (!files.length) {
         void vscode.window.showInformationMessage(`${id}'s merge in the merge train has no conflicts now: the train is rebuilt.`);
         await this.currentTrain({ rebuild: true });
         return;
       }
       this.deps.output.appendLine(`Merge: ${id}'s merge in the merge train (onto ${[base, ...onto.ahead].join(' + ')}, ${onto.commit.slice(0, 7)}) in ${dir}.`);
-      await this.setMerge(id, { dir, branch: entry.branch, base, baseTip: onto.commit, train: { ahead: onto.ahead }, state: 'failed', reason: conflictsReason(files), started: new Date().toISOString() });
+      await this.setMerge(id, {
+        dir,
+        branch: entry.branch,
+        base,
+        baseTip: onto.commit,
+        train: { ahead: onto.ahead },
+        ...(rebase ? { rebase } : {}),
+        state: 'failed',
+        reason: conflictsReason(files),
+        started: new Date().toISOString(),
+      });
       await this.startResolver(id);
       await this.readQueue();
     });
@@ -1068,13 +1471,17 @@ export class Merger implements vscode.Disposable {
     const m = item?.merging;
     if (!item || !m || this.runs.has(id)) return;
     if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
+    // Paused by Pause All (BL-164): it goes on in its chat.
+    if (m.paused && m.session) return this.resumeResolver(item, { ...m, session: m.session });
     const root = this.deps.mainRoot;
     const files = await conflictedFiles(m.dir);
     const start = (await runGit(['merge-base', m.baseTip, `refs/heads/${m.branch}`], { cwd: root })).trim();
     const failedChecks = !files.length ? m.checks : undefined;
     // Stopped because the base moved (BL-149): it's made again onto the base as it is now.
     const moved = !files.length && !failedChecks && !m.train && (await this.tip(m.base)) !== m.baseTip;
-    const touched = files.length ? files : (await runGit(['diff', '--name-only', `${start}`, m.baseTip], { cwd: root })).split('\n').filter(Boolean).slice(0, 20);
+    const touched = files.length
+      ? files
+      : (await runGit(['diff', '--name-only', `${start}`, m.baseTip], { cwd: root })).split('\n').filter(Boolean).slice(0, 20);
     const [theirs, ours] = await Promise.all([
       commitsTouching(root, start, `refs/heads/${m.branch}`, touched),
       // Failing checks can come from any of the base's changes: all its commits since the branch started.
@@ -1084,11 +1491,19 @@ export class Merger implements vscode.Disposable {
     ]);
     // The tickets of the base's side, from its commits' messages.
     const data = await this.deps.backlog.read();
-    const otherIds = idsIn(ours.join('\n'), data.items.filter((i) => i.id !== id).map((i) => i.id));
+    const otherIds = idsIn(
+      ours.join('\n'),
+      data.items.filter((i) => i.id !== id).map((i) => i.id),
+    );
     const others = await Promise.all(
       data.items
         .filter((i) => otherIds.includes(i.id))
-        .map(async (i) => ({ id: i.id, title: i.title, description: (await this.deps.backlog.readTicket(i)).description, ticket: this.deps.backlog.docPath(i.id) })),
+        .map(async (i) => ({
+          id: i.id,
+          title: i.title,
+          description: (await this.deps.backlog.readTicket(i)).description,
+          ticket: this.deps.backlog.docPath(i.id),
+        })),
     );
     const taken = this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? c.agent ?? '')).filter(Boolean);
     const agent = m.agent ?? agentName(taken);
@@ -1096,12 +1511,22 @@ export class Merger implements vscode.Disposable {
     if (checks) await linkDependencies(m.dir, this.worktreeOn(m.base)?.worktree.path ?? root).catch(() => undefined);
     // A merge in the train goes onto the base and the tickets ahead of it there (BL-146).
     const onto = m.train ? [m.base, ...m.train.ahead].join(' + ') : m.base;
-    const common = { item, agent, ticket: this.deps.backlog.docPath(id), branch: m.branch, base: onto, start, description: (await this.deps.backlog.readTicket(item)).description, ours, others };
+    const common = {
+      item,
+      agent,
+      ticket: this.deps.backlog.docPath(id),
+      branch: m.branch,
+      base: onto,
+      start,
+      description: (await this.deps.backlog.readTicket(item)).description,
+      ours,
+      others,
+    };
     const prompt = [
       agentLead(item, agent),
       failedChecks
-        ? fixChecksPrompt({ ...common, checks: failedChecks })
-        : resolvePrompt({ ...common, files, theirs, checks, ...(files.length ? {} : { problem: m.reason, moved }) }),
+        ? fixChecksPrompt({ ...common, checks: failedChecks, rebase: m.rebase })
+        : resolvePrompt({ ...common, files, theirs, checks, rebase: m.rebase, ...(files.length ? {} : { problem: m.reason, moved }) }),
     ].join('\n\n');
     // The tip it starts from: a fix is a commit on top of it.
     const from = failedChecks ? (await runGit(['rev-parse', 'HEAD'], { cwd: m.dir })).trim() : undefined;
@@ -1115,8 +1540,84 @@ export class Merger implements vscode.Disposable {
       : failedChecks
         ? `fix the checks that fail on the merge (\`${failedChecks.command}\`), keeping both sides' intent`
         : `fix the merge (${m.reason ?? 'it stopped'})`;
-    await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. It reports here for you to approve.`);
+    await this.note(
+      id,
+      `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. It reports here for you to approve.`,
+    );
     void run.done.then((result) => this.afterResolver(id, run, result.error));
+  }
+
+  /** A merge's agent Pause All paused, resumed in its chat in the merge's worktree (BL-164). */
+  private async resumeResolver(item: BacklogItem, m: MergeState & { session: string }): Promise<void> {
+    const id = item.id;
+    const agent = m.agent ?? 'The agent';
+    const prompt = 'You were paused, and are resumed now. Go on where you left off, then report in the ticket as asked.';
+    if (!this.resolverStarted.has(id)) this.resolverStarted.set(id, Date.now());
+    const run = runAgentHeadless({
+      cwd: m.dir,
+      prompt,
+      name: `${id} merge`,
+      choice: agentChoice(item),
+      resume: m.session,
+      output: this.deps.output,
+      track: { ticket: id, agent, role: 'merge' },
+    });
+    this.runs.set(id, run);
+    const { paused: _paused, ...rest } = m;
+    await this.setMerge(id, { ...rest, state: 'resolving', session: run.sessionId });
+    await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: resumed ${agent} in its chat, where it was paused.`);
+    void run.done.then((result) => this.afterResolver(id, run, result.error));
+  }
+
+  /**
+   * Pause All (BL-164): the agent this window runs on its merge stops, its chat kept (the merge shows it paused), for
+   * Resume All. Its session; undefined when no agent of this window resolves it. Outside the queue: a merge's checks
+   * running there don't hold it up.
+   */
+  pauseForAll(id: string): Promise<string | undefined> {
+    return this.pauseResolver(id, 'all');
+  }
+
+  /** The merge panel's Pause (BL-164): as Pause All does, for this merge alone; its Resume (Resolve with Agent) goes on. */
+  async pause(id: string): Promise<void> {
+    await this.pauseResolver(id, 'you');
+  }
+
+  private async pauseResolver(id: string, by: 'all' | 'you'): Promise<string | undefined> {
+    const run = this.runs.get(id);
+    const m = (await this.item(id))?.merging;
+    if (!run || m?.state !== 'resolving') return undefined;
+    this.runs.delete(id);
+    run.stop();
+    await this.setMerge(id, { ...m, session: run.sessionId, paused: new Date().toISOString() });
+    const agent = m.agent ?? 'the agent';
+    await this.note(
+      id,
+      by === 'all'
+        ? `Pause All paused ${agent} working on the merge: its chat is kept, and Resume All goes on with it.`
+        : `You paused ${agent} working on the merge: its chat is kept, and Resume goes on with it.`,
+    );
+    return run.sessionId;
+  }
+
+  /** Merges' agents and checks this window runs now: Pause All pauses those (BL-164), so the views offer it. */
+  get pausable(): number {
+    return this.runs.size + this.liveChecks.size;
+  }
+
+  /** Resume All (BL-164): a merge's agent Pause All paused goes on in that chat; undefined when it isn't paused there any more. */
+  async resumeForAll(id: string, session: string | undefined): Promise<'running' | undefined> {
+    const item = await this.item(id);
+    const m = item?.merging;
+    if (!item || !m?.paused || !m.session || this.runs.has(id) || (session && m.session !== session)) return undefined;
+    if (!isMergeDir(m.dir, os.tmpdir())) return undefined;
+    await this.resumeResolver(item, { ...m, session: m.session });
+    return 'running';
+  }
+
+  /** The tickets whose merge's checks run now (BL-164: Pause All asks about them). */
+  checksRunning(): string[] {
+    return [...this.liveChecks.keys()];
   }
 
   private async afterResolver(id: string, run: AgentRun, error: string | undefined): Promise<void> {
@@ -1126,12 +1627,14 @@ export class Merger implements vscode.Disposable {
     if (!m) return;
     const agent = m.agent ?? 'The agent';
     const again = m.checks ? 'Fix with Agent' : 'Resolve with Agent';
-    const result = await mergeResult(m.dir, m.baseTip, id, redoOf(m)).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
+    const result = await this.resultOf(m, id).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
     if ('problem' in result) {
       const reason = `${agent} stopped before the merge was ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}${error ? ` (${error.slice(0, 200)})` : ''}`;
       await this.setMerge(id, { ...m, state: 'failed', reason });
       await this.note(id, `${reason} ${again} again, or cancel the merge.`);
-      void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`, 'Open').then((c) => c && this.deps.openTicket(id));
+      void vscode.window
+        .showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`, 'Open')
+        .then((c) => c && this.deps.openTicket(id));
       return;
     }
     if (m.checks && result.commit === m.from) {
@@ -1144,7 +1647,9 @@ export class Merger implements vscode.Disposable {
       if (!now || now.state !== 'failed') return;
       const reason = `${agent} committed no fix, and the checks still fail: its report says why (it may ask you something). Answer there, then ${again} again; or cancel the merge.`;
       await this.setMerge(id, { ...now, reason });
-      void vscode.window.showWarningMessage(`${agent} didn't fix the checks on the merge of ${id}: its report in the ticket says why.`, 'Open').then((c) => c && this.deps.openTicket(id));
+      void vscode.window
+        .showWarningMessage(`${agent} didn't fix the checks on the merge of ${id}: its report in the ticket says why.`, 'Open')
+        .then((c) => c && this.deps.openTicket(id));
       return;
     }
     // A merge the agent made again onto the base as it is now: its base is that (BL-149).
@@ -1169,7 +1674,7 @@ export class Merger implements vscode.Disposable {
         const m = item?.merging;
         if (!item || !m || this.runs.has(id)) return 'stopped';
         if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
-        const result = await mergeResult(m.dir, m.baseTip, id, redoOf(m));
+        const result = await this.resultOf(m, id);
         if ('problem' in result) {
           await this.setMerge(id, { ...m, state: 'failed', reason: `the merge isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}` });
           void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
@@ -1194,18 +1699,23 @@ export class Merger implements vscode.Disposable {
    * ticket landed from the train, as Merge to main does. Runs inside a task.
    */
   private async landResolved(item: BacklogItem, m: MergeState, merge: string): Promise<MergeEnd> {
-    const files = await recordResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge, message: mergeMessage(item) });
+    const files = m.rebase
+      ? await recordRebaseResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge })
+      : await recordResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge, message: mergeMessage(item) });
     await this.removeDir(m.dir);
     await this.setMerge(item.id, undefined);
     const onto = [m.base, ...(m.train?.ahead ?? [])].join(' + ');
     await this.note(
       item.id,
-      `You approved the resolution of its merge onto ${onto} in the merge train: it's recorded (${files.map((f) => `\`${f}\``).join(', ') || 'no conflicts to record'}), so the train reuses it when it's rebuilt. \`${m.branch}\` wasn't changed.`,
+      `You approved the resolution of its ${m.rebase ? 'rebase' : 'merge'} onto ${onto} in the merge train: it's recorded (${files.map((f) => `\`${f}\``).join(', ') || 'no conflicts to record'}), so the train reuses it when it's rebuilt. \`${m.branch}\` wasn't changed.`,
     );
     const train = await this.currentTrain({ rebuild: true });
     const entry = train?.entries.find((e) => e.id === item.id);
     if (!entry?.commit) {
-      await this.note(item.id, `The merge train still doesn't take it: ${(train && trainState(train, item.id)) ?? "it isn't in the merge queue."} Resolve with Agent again, or Merge to main merges it onto ${m.base} as it is.`);
+      await this.note(
+        item.id,
+        `The merge train still doesn't take it: ${(train && trainState(train, item.id)) ?? "it isn't in the merge queue."} Resolve with Agent again, or Merge to main merges it onto ${m.base} as it is.`,
+      );
       return 'stopped';
     }
     return this.doMerge(item.id, false);
@@ -1216,8 +1726,15 @@ export class Merger implements vscode.Disposable {
    * keeping its resolution and fixes. Clean, the checks run and the base moves to it, as on approval; conflicts the
    * resolution doesn't cover go to an agent. Runs inside a task.
    */
-  private async mergeOntoMoved(item: BacklogItem, m: MergeState, done: { onto: string; merge: string; commit: string }, now: string, batch: boolean): Promise<MergeEnd> {
+  private async mergeOntoMoved(
+    item: BacklogItem,
+    m: MergeState,
+    done: { onto: string; merge: string; commit: string },
+    now: string,
+    batch: boolean,
+  ): Promise<MergeEnd> {
     const was = `it was at ${done.onto.slice(0, 7)}, it's at ${now.slice(0, 7)}`;
+    if (m.rebase) return this.rebaseOntoMoved(item, m, now, was, batch);
     this.deps.output.appendLine(`Merge: ${item.id}'s merge again onto ${m.base} ${now.slice(0, 7)} (${was}).`);
     const outcome = await mergeAgain(m.dir, { from: done.onto, onto: now, merge: done.merge, commit: done.commit, message: mergeMessage(item) });
     if (outcome.kind === 'conflicts') {
@@ -1230,8 +1747,13 @@ export class Merger implements vscode.Disposable {
       await this.startResolver(item.id);
       return 'stopped';
     }
-    const skipped = outcome.skipped.length ? ` These fixes on top of it don't apply onto the new merge and were left out: ${outcome.skipped.map((f) => `"${f}"`).join(', ')}.` : '';
-    await this.note(item.id, `\`${m.base}\` moved since the merge was made (${was}): \`${m.branch}\` is merged again onto it, with the resolution already made.${skipped}`);
+    const skipped = outcome.skipped.length
+      ? ` These fixes on top of it don't apply onto the new merge and were left out: ${outcome.skipped.map((f) => `"${f}"`).join(', ')}.`
+      : '';
+    await this.note(
+      item.id,
+      `\`${m.base}\` moved since the merge was made (${was}): \`${m.branch}\` is merged again onto it, with the resolution already made.${skipped}`,
+    );
     await this.setMerge(item.id, { ...m, baseTip: now, state: 'resolved', reason: undefined, checks: undefined, from: undefined });
     const fixes = await mergeResult(m.dir, now, item.id).then((r) => ('problem' in r ? [] : r.fixes));
     return this.complete(
@@ -1239,6 +1761,38 @@ export class Merger implements vscode.Disposable {
       { dir: m.dir, branch: m.branch, base: m.base, baseTip: now, commit: outcome.commit, merge: outcome.merge, fixes, resolved: true, remerged: true },
       batch,
     );
+  }
+
+  /** Whether a merge in its worktree is finished (mergeResult), or its rebase (rebaseResult: the tip is the "merge"). */
+  private async resultOf(m: MergeState, id: string): Promise<{ commit: string; merge: string; onto: string; fixes: string[] } | { problem: string }> {
+    if (!m.rebase) return mergeResult(m.dir, m.baseTip, id, redoOf(m));
+    const r = await rebaseResult(m.dir, m.baseTip, id);
+    return 'problem' in r ? r : { commit: r.commit, merge: r.commit, onto: m.baseTip, fixes: [] };
+  }
+
+  /**
+   * mergeOntoMoved for a rebase (BL-181): the resolved branch rebased again onto the base's tip (now), its resolution
+   * kept in its commits. Clean, the checks run and the base moves to it; new conflicts go to an agent.
+   */
+  private async rebaseOntoMoved(item: BacklogItem, m: MergeState, now: string, was: string, batch: boolean): Promise<MergeEnd> {
+    this.deps.output.appendLine(`Merge: ${item.id}'s rebase again onto ${m.base} ${now.slice(0, 7)} (${was}).`);
+    const outcome = await rebaseInDir(m.dir, now);
+    if (outcome.kind === 'conflicts') {
+      recordConflicts(item.id, this.deps.mainRoot, now, m.branch, outcome.files);
+      await this.setMerge(item.id, { ...m, baseTip: now, state: 'failed', reason: conflictsReason(outcome.files), checks: undefined, from: undefined });
+      await this.note(
+        item.id,
+        `\`${m.base}\` moved since \`${m.branch}\` was rebased onto it (${was}): rebasing it again conflicts anew, in ${outcome.files.map((f) => `\`${f}\``).join(', ')}. An agent resolves those.`,
+      );
+      await this.startResolver(item.id);
+      return 'stopped';
+    }
+    await this.note(
+      item.id,
+      `\`${m.base}\` moved since \`${m.branch}\` was rebased onto it (${was}): it's rebased again onto it, with the resolution already made.`,
+    );
+    await this.setMerge(item.id, { ...m, baseTip: now, state: 'resolved', reason: undefined, checks: undefined, from: undefined });
+    return this.complete(item, { dir: m.dir, branch: m.branch, base: m.base, baseTip: now, commit: outcome.commit, resolved: true, remerged: true }, batch);
   }
 
   /** Where a local branch is now; undefined if it isn't there. */
@@ -1257,7 +1811,7 @@ export class Merger implements vscode.Disposable {
         const m = item?.merging;
         if (!item || !m?.checks || m.state === 'resolving' || this.runs.has(id)) return 'stopped';
         if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
-        const result = await mergeResult(m.dir, m.baseTip, id, redoOf(m));
+        const result = await this.resultOf(m, id);
         if ('problem' in result) {
           await this.setMerge(id, { ...m, state: 'failed', reason: `the merge isn't fixed: ${result.problem}` });
           void vscode.window.showWarningMessage(`The merge of ${id} isn't fixed: ${result.problem}`);
@@ -1267,7 +1821,17 @@ export class Merger implements vscode.Disposable {
         if (!m.train && now && now !== result.onto) return this.mergeOntoMoved(item, m, result, now, quiet);
         return this.complete(
           item,
-          { dir: m.dir, branch: m.branch, base: m.base, baseTip: result.onto, commit: result.commit, merge: result.merge, fixes: result.fixes, resolved: true, earlier: m.checks },
+          {
+            dir: m.dir,
+            branch: m.branch,
+            base: m.base,
+            baseTip: result.onto,
+            commit: result.commit,
+            merge: result.merge,
+            fixes: result.fixes,
+            resolved: true,
+            earlier: m.checks,
+          },
           quiet,
         );
       }),
@@ -1403,7 +1967,10 @@ export class Merger implements vscode.Disposable {
 /** Output without terminal colours, its lines as written last (a carriage return writes over one). */
 function plainOutput(text: string): string {
   // eslint-disable-next-line no-control-regex
-  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g, '').replace(/\r\n/g, '\n').replace(/^.*\r/gm, '');
+  return text
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/^.*\r/gm, '');
 }
 
 const showError = (e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
@@ -1415,7 +1982,9 @@ function plural(n: number, what: string): string {
 /** The failure the checks passed after, for the ticket: "8 tests timing out (Oct 19, 20:16)". */
 function earlierFailure(earlier: NonNullable<MergeState['checks']>): string {
   const timeouts = timeoutsOnly(earlier.output);
-  const when = earlier.at ? ` (${new Date(earlier.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })})` : '';
+  const when = earlier.at
+    ? ` (${new Date(earlier.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })})`
+    : '';
   return `${timeouts ? `${plural(timeouts, 'test')} timing out` : `\`${earlier.command}\` failing`}${when}, not the merge`;
 }
 

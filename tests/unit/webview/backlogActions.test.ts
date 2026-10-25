@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { backlogActionKey, BusyActions, withMoves, type BacklogMessage } from '../../../src/webview/backlogActions';
+import {
+  backlogActionKey,
+  type BacklogMessage,
+  BusyActions,
+  withMoves,
+} from '../../../src/webview/backlogActions';
 
 const approve: BacklogMessage = { type: 'backlog', op: 'approve', id: 'BL-3' };
 
@@ -44,13 +49,24 @@ describe('backlog busy actions (BL-117)', () => {
 });
 
 describe('a card dropped in a lane (BL-118)', () => {
-  const item = (id: string, status: 'todo' | 'doing' | 'done', proposed?: boolean) => ({ id, title: id, status, created: '', ...(proposed ? { proposed: {} } : {}) }) as never;
+  const item = (id: string, status: 'todo' | 'doing' | 'done', proposed?: boolean) =>
+    ({ id, title: id, status, created: '', ...(proposed ? { proposed: {} } : {}) }) as never;
   const ids = (items: Array<{ id: string; status: string }>) => items.map((i) => `${i.id}:${i.status}`);
 
   it("shows there at once: before the card it was dropped on, else after its lane's last", () => {
     const items = [item('BL-1', 'todo'), item('BL-2', 'todo'), item('BL-3', 'doing'), item('BL-4', 'done')];
-    expect(ids(withMoves(items, [{ type: 'backlog', op: 'move', id: 'BL-4', status: 'todo', before: 'BL-2' }]))).toEqual(['BL-1:todo', 'BL-4:todo', 'BL-2:todo', 'BL-3:doing']);
-    expect(ids(withMoves(items, [{ type: 'backlog', op: 'move', id: 'BL-1', status: 'doing' }]))).toEqual(['BL-2:todo', 'BL-3:doing', 'BL-1:doing', 'BL-4:done']);
+    expect(ids(withMoves(items, [{ type: 'backlog', op: 'move', id: 'BL-4', status: 'todo', before: 'BL-2' }]))).toEqual([
+      'BL-1:todo',
+      'BL-4:todo',
+      'BL-2:todo',
+      'BL-3:doing',
+    ]);
+    expect(ids(withMoves(items, [{ type: 'backlog', op: 'move', id: 'BL-1', status: 'doing' }]))).toEqual([
+      'BL-2:todo',
+      'BL-3:doing',
+      'BL-1:doing',
+      'BL-4:done',
+    ]);
   });
 
   it('is pending until the host is done, a proposal shown accepted', () => {

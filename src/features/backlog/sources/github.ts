@@ -1,5 +1,13 @@
 import { priorityFromName } from '../backlog';
-import { fetchJson, type Fetch, type IntegrationConfig, type IssueSource, type RemoteDetails, type RemoteEditOptions, type RemoteIssue } from './source';
+import {
+  type Fetch,
+  fetchJson,
+  type IntegrationConfig,
+  type IssueSource,
+  type RemoteDetails,
+  type RemoteEditOptions,
+  type RemoteIssue,
+} from './source';
 
 type GitHubConfig = Extract<IntegrationConfig, { kind: 'github' }>;
 
@@ -85,7 +93,9 @@ export class GitHubSource implements IssueSource {
   async list(): Promise<RemoteIssue[]> {
     const headers = await this.headers();
     const [open, closed] = await Promise.all(
-      ['open', 'closed'].map((state) => fetchJson<GitHubIssue[]>(this.fetch, `${this.base}/issues?state=${state}&per_page=${state === 'open' ? 100 : 20}&sort=updated`, { headers })),
+      ['open', 'closed'].map((state) =>
+        fetchJson<GitHubIssue[]>(this.fetch, `${this.base}/issues?state=${state}&per_page=${state === 'open' ? 100 : 20}&sort=updated`, { headers }),
+      ),
     );
     return [...open, ...closed].filter((i) => !i.pull_request).map((i) => this.issue(i));
   }
@@ -139,7 +149,11 @@ export class GitHubSource implements IssueSource {
   }
 
   async create(_target: unknown, title: string, description: string): Promise<RemoteIssue> {
-    const i = await fetchJson<GitHubIssue>(this.fetch, `${this.base}/issues`, { method: 'POST', headers: await this.headers(), body: { title, body: description } });
+    const i = await fetchJson<GitHubIssue>(this.fetch, `${this.base}/issues`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: { title, body: description },
+    });
     return this.issue(i);
   }
 }

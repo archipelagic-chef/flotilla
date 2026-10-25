@@ -39,21 +39,21 @@ export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldPro
             {autopilot.pausedAll !== undefined
               ? `· ${pausedAllLabel(autopilot.pausedAll)}: it holds until you resume.`
               : autopilot.elsewhere
-              ? 'runs in another window.'
-              : autopilot.waitingUntil
-                ? autopilot.triedAt
-                  ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
-                  : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
-                : autopilot.waitingForMemory
-                  ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                  : autopilot.idle && !autopilot.running
-                    ? `· Idle: ${autopilot.idle}.`
-                    : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+                ? 'runs in another window.'
+                : autopilot.waitingUntil
+                  ? autopilot.triedAt
+                    ? `· Still limited: tried at ${shortTime(autopilot.triedAt)}; next try at ${shortTime(autopilot.waitingUntil)}.`
+                    : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
+                  : autopilot.waitingForMemory
+                    ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
+                    : autopilot.idle && !autopilot.running
+                      ? `· Idle: ${autopilot.idle}.`
+                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
             {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
           </span>
         </button>
         {!open && autopilot.waitingUntil && !autopilot.elsewhere && <TryNow />}
-        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />}
         <Switch on />
       </div>
       {open && <Details autopilot={autopilot} titles={titles} live={live} />}
@@ -112,7 +112,7 @@ export function AgentCount({ label, autopilot, titles, live, open, setOpen }: Fo
           <i class="codicon codicon-hubot" />
           <span>{label}</span>
         </button>
-        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />}
         {open && <Switch on={false} />}
       </div>
       {open && <Details autopilot={autopilot} titles={titles} live={live} />}
@@ -139,7 +139,15 @@ function Line({ line }: { line: DetailLine }) {
 }
 
 /** What the autopilot is doing (BL-153): live, as the bar is; the durations tick each half minute, each second with agents' statuses. */
-function Details({ autopilot, titles, live }: { autopilot: AutopilotState; titles: ReadonlyMap<string, string>; live?: ReadonlyMap<string, readonly CardAgent[]> }) {
+function Details({
+  autopilot,
+  titles,
+  live,
+}: {
+  autopilot: AutopilotState;
+  titles: ReadonlyMap<string, string>;
+  live?: ReadonlyMap<string, readonly CardAgent[]>;
+}) {
   const [now, setNow] = useState(() => new Date());
   const statuses = (autopilot.agents ?? []).some((g) => live?.get(g.id)?.some((c) => c.activity));
   useEffect(() => {
@@ -191,10 +199,14 @@ function Details({ autopilot, titles, live }: { autopilot: AutopilotState; title
         />
         {d.tryNow && <TryNow />}
       </div>
-      {(autopilot.pausedAll !== undefined || autopilot.running > 0) && (
+      {(autopilot.pausedAll !== undefined || autopilot.running + (autopilot.merging ?? 0) > 0) && (
         <div class="pause-all-row">
-          <span>{autopilot.pausedAll !== undefined ? `${pausedAllLabel(autopilot.pausedAll)}: nothing starts until you resume.` : 'Pause every agent working, their chats kept:'}</span>
-          <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />
+          <span>
+            {autopilot.pausedAll !== undefined
+              ? `${pausedAllLabel(autopilot.pausedAll)}: nothing starts until you resume.`
+              : 'Pause every agent working, their chats kept:'}
+          </span>
+          <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />
         </div>
       )}
     </div>

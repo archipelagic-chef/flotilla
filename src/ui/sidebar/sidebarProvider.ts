@@ -9,13 +9,19 @@ import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import { compareRefs, listRefs } from '../../features/diffs/compare';
-import { acceptItem, moveItem, removeItem, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  acceptItem,
+  type BacklogItem,
+  moveItem,
+  removeItem,
+  updateItem,
+} from '../../features/backlog/backlog';
 import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
 import { needOf, queuedNeed } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
-import { summaryOf } from '../../features/backlog/ticket';
+import { cardSummaryOf } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -27,7 +33,17 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
 import { baseLabel, dependsOn, waitingFor } from '../../features/backlog/mainDrift';
-import { ALL, type BacklogItemView, type HostMessage, type MachineState, type RefComparison, type SearchGroup, type Tool, type VcView, type WebviewMessage } from '../../webview/protocol';
+import {
+  ALL,
+  type BacklogItemView,
+  type HostMessage,
+  type MachineState,
+  type RefComparison,
+  type SearchGroup,
+  type Tool,
+  type VcView,
+  type WebviewMessage,
+} from '../../webview/protocol';
 import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
@@ -140,7 +156,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }).dispose,
       },
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('files.watcherExclude') || e.affectsConfiguration('search.exclude') || e.affectsConfiguration('git.repositoryScanIgnoredFolders')) this.postExclusions();
+        if (
+          e.affectsConfiguration('files.watcherExclude') ||
+          e.affectsConfiguration('search.exclude') ||
+          e.affectsConfiguration('git.repositoryScanIgnoredFolders')
+        )
+          this.postExclusions();
         if (e.affectsConfiguration('flotilla.backlog.cards')) void this.postBacklog();
       }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
@@ -237,7 +258,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const ticket = await store.readTicketCached(item);
         const linked = item.links?.map((l) => {
           const now = issues.find((i) => i.id === l.id);
-          return { id: l.id, kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const), title: now?.title ?? l.title, url: l.url, statusName: now?.statusName };
+          return {
+            id: l.id,
+            kind: l.source.startsWith('github:') ? ('github' as const) : ('jira' as const),
+            title: now?.title ?? l.title,
+            url: l.url,
+            statusName: now?.statusName,
+          };
         });
         const merge = this.merges?.get(item.id);
         const queued = this.queue?.queuedFor(item.id);
@@ -255,7 +282,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
-          summary: summaryOf(ticket.description),
+          summary: cardSummaryOf(ticket.description),
           activity: ticket.activity.length,
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
@@ -274,19 +301,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // Issues from integrations follow the local items, in their tracker's order; linked ones show with their item.
     const linkedIds = new Set(data.items.flatMap((i) => (i.links ?? []).map((l) => l.id)));
     const remote: BacklogItemView[] = sources.flatMap((s) =>
-      s.issues.filter((i) => !linkedIds.has(i.id)).map((i) => ({
-        id: i.id,
-        title: i.title,
-        status: i.status,
-        priority: i.priority,
-        created: '',
-        activity: 0,
-        source: { kind: s.config.kind, label: s.label, url: i.url, statusName: i.statusName },
-      })),
+      s.issues
+        .filter((i) => !linkedIds.has(i.id))
+        .map((i) => ({
+          id: i.id,
+          title: i.title,
+          status: i.status,
+          priority: i.priority,
+          created: '',
+          activity: 0,
+          source: { kind: s.config.kind, label: s.label, url: i.url, statusName: i.statusName },
+        })),
     );
     const problems = sources.filter((s) => s.error).map((s) => ({ label: s.label, error: s.error! }));
     const queue = this.merger?.queueView();
-    this.post({ type: 'backlog', items: [...items, ...remote], problems, integrations: sources.length, detailedCards: vscode.workspace.getConfiguration('flotilla').get<string>('backlog.cards') === 'detailed', ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}), ...(queue?.entries.length ? { mergeQueue: queue } : {}) });
+    this.post({
+      type: 'backlog',
+      items: [...items, ...remote],
+      problems,
+      integrations: sources.length,
+      detailedCards: vscode.workspace.getConfiguration('flotilla').get<string>('backlog.cards') === 'detailed',
+      ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}),
+      ...(queue?.entries.length ? { mergeQueue: queue } : {}),
+    });
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {

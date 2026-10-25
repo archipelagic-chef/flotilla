@@ -43,7 +43,11 @@ function LogActions({ log }: { log: string }) {
         <button class="text-button" onClick={showAll} title="The whole log, in the ticket: Ctrl+F finds in it">
           <i class={`codicon codicon-${open ? 'fold' : 'unfold'}`} /> {open ? 'Hide the Log' : 'Show All'}
         </button>
-        <button class="text-button" onClick={() => send({ type: 'mergeChecksTerminal', log })} title="The same log, followed as it's written, in a terminal named after the ticket">
+        <button
+          class="text-button"
+          onClick={() => send({ type: 'mergeChecksTerminal', log })}
+          title="The same log, followed as it's written, in a terminal named after the ticket"
+        >
           <i class="codicon codicon-terminal" /> Open in Terminal
         </button>
       </span>
@@ -80,7 +84,12 @@ export function ChecksRunning({ checks }: { checks: MergeChecksView }) {
             <code>{checks.command}</code>
           </span>
         </span>
-        <ActionButton class="button secondary" message={{ type: 'mergeChecksStop' }} working="Stopping…" title="Stops the checks: the merge stops, kept for you to run them again or cancel">
+        <ActionButton
+          class="button secondary"
+          message={{ type: 'mergeChecksStop' }}
+          working="Stopping…"
+          title="Stops the checks: the merge stops, kept for you to run them again or cancel"
+        >
           <i class="codicon codicon-debug-stop" /> Stop
         </ActionButton>
       </div>

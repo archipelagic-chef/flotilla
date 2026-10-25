@@ -5,3 +5,6 @@ out/
 *.vsix
 .playground/
 .playground.old-*/
+
+# A demo step that failed leaves its screenshot (BL-190)
+demos/*.failed.png

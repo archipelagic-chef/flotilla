@@ -4,8 +4,22 @@ import * as vscode from 'vscode';
 import { runGit, GitError } from '../core/git/gitCli';
 import { pathKey } from '../core/paths';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
-import { cleanUpInProgress, needsPacking, packRepository, PACKING_CHECK_MS, parseLooseCount } from '../features/storage/packing';
-import { parseMountInfo, probeReadMs, slowStorageText, SLOW_STORAGE_DOCS, storageReport, type MountEntry, type StorageReport } from '../features/storage/storage';
+import {
+  cleanUpInProgress,
+  needsPacking,
+  PACKING_CHECK_MS,
+  packRepository,
+  parseLooseCount,
+} from '../features/storage/packing';
+import {
+  type MountEntry,
+  parseMountInfo,
+  probeReadMs,
+  SLOW_STORAGE_DOCS,
+  slowStorageText,
+  type StorageReport,
+  storageReport,
+} from '../features/storage/storage';
 
 export interface StorageDeps {
   mainRoot: string;

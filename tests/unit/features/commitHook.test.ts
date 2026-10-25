@@ -1,7 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { installCommitHook, markWorktree, PREVIOUS_HOOK } from '../../../src/features/backlog/commitHook';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
 

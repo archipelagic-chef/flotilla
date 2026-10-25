@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { TicketView } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
-import { act, ActionButton, send, UpdateFromButton } from './actions';
+import {
+  act,
+  ActionButton,
+  send,
+  UpdateFromButton,
+} from './actions';
 import { LANE_ICON } from './header';
 import { ago } from './agents';
 import './work.css';
@@ -151,7 +156,7 @@ export function Work({ ticket }: { ticket: TicketView }) {
             <UpdateFromButton
               class="text-button work-head-action"
               base={ticket.updateFromMain.base}
-              title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
+              title={`Rebases its branch onto ${ticket.updateFromMain.base}; when that conflicts, its agent does it and resolves the conflicts`}
             />
           )}
         </div>
@@ -186,7 +191,12 @@ export function Work({ ticket }: { ticket: TicketView }) {
           <div key={b} class="work-row dim">
             <span class="work-main">{b}</span>
             <span class="muted">branch, no worktree</span>
-            <ActionButton class="text-button work-action" message={{ type: 'checkout', branch: b }} working="Creating the worktree…" title="Create a worktree for this branch">
+            <ActionButton
+              class="text-button work-action"
+              message={{ type: 'checkout', branch: b }}
+              working="Creating the worktree…"
+              title="Create a worktree for this branch"
+            >
               <i class="codicon codicon-add" /> Worktree
             </ActionButton>
           </div>

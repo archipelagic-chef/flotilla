@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { checksEnv, runInBackground } from '../../../src/features/backlog/checksRun';
 import { makeTempDir, removeDir } from '../../helpers/gitRepo';
 

@@ -4,6 +4,18 @@ import { send } from './actions';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
 import './description.css';
 
+/** A new description starts from its shape: the user (or an agent) fills it in (BL-137). */
+export const DESCRIPTION_SKELETON = "**When it's done:** \n\n**Why:** \n\nAcceptance criteria:\n- [ ] \n";
+
+/** The empty description's placeholder: the shape a description takes. */
+const DESCRIPTION_PLACEHOLDER =
+  "**When it's done:** what you see and can do, in 1–4 lines.\n\n**Why:** what's wrong today, and its cause.\n\nAcceptance criteria:\n- [ ] …\n\nIn Markdown. Paste or drop images and videos. Ctrl+Enter saves.";
+
+/** What the editor starts with: the description, or the shape for a local ticket without one. */
+function startDraft(ticket: TicketView): string {
+  return ticket.description.trim() || ticket.remote ? ticket.description : DESCRIPTION_SKELETON;
+}
+
 export function Description({ ticket }: { ticket: TicketView }) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const editable = !ticket.remote || !!ticket.remote.edit?.canEditDescription;
@@ -13,13 +25,16 @@ export function Description({ ticket }: { ticket: TicketView }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const text = useRef<HTMLDivElement>(null);
+  // Folded, a description with "When it's done" lines shows those, in place of its first lines (BL-137).
+  const folded = foldable && !expanded;
   useLayoutEffect(() => {
     // Measured while folded only: unfolded, it always fits.
     const el = text.current;
     if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [ticket.descriptionHtml, foldable, expanded]);
   const save = () => {
-    if (draft !== undefined && draft !== ticket.description) send({ type: 'description', text: draft });
+    if (draft !== undefined && draft !== ticket.description && !(draft === DESCRIPTION_SKELETON && !ticket.description.trim()))
+      send({ type: 'description', text: draft });
     setDraft(undefined);
   };
   return (
@@ -28,7 +43,7 @@ export function Description({ ticket }: { ticket: TicketView }) {
         <h2>Description</h2>
         <span class="head-actions">
           {draft === undefined && editable && !ticket.loading && (
-            <button class="text-button" onClick={() => setDraft(ticket.description)}>
+            <button class="text-button" onClick={() => setDraft(startDraft(ticket))}>
               <i class="codicon codicon-edit" /> Edit
             </button>
           )}
@@ -43,10 +58,18 @@ export function Description({ ticket }: { ticket: TicketView }) {
         <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
       ) : draft === undefined ? (
         <>
-          <div ref={text} class={foldable && !expanded ? 'description folded' : 'description'} onDblClick={() => editable && setDraft(ticket.description)}>
-            <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or discuss it with an agent.'} />
+          <div
+            ref={text}
+            class={folded ? (ticket.whenDoneHtml ? 'description when-done' : 'description folded') : 'description'}
+            onDblClick={() => editable && setDraft(startDraft(ticket))}
+          >
+            {folded && ticket.whenDoneHtml ? (
+              <Rendered html={ticket.whenDoneHtml} empty="" />
+            ) : (
+              <Rendered html={ticket.descriptionHtml} empty={ticket.remote ? 'No description.' : 'No description yet. Edit it, or discuss it with an agent.'} />
+            )}
           </div>
-          {foldable && (overflows || expanded) && (
+          {foldable && (overflows || expanded || !!ticket.whenDoneHtml) && (
             <button class="text-button fold-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
               <i class={`codicon codicon-chevron-${expanded ? 'up' : 'down'}`} /> {expanded ? 'Fold the description' : 'Show the whole description'}
             </button>
@@ -62,7 +85,7 @@ export function Description({ ticket }: { ticket: TicketView }) {
                 ? 'In Jira formatting (h2. Heading, *bold*, * list). Ctrl+Enter saves it in Jira.'
                 : ticket.remote
                   ? 'Markdown. Ctrl+Enter saves it in GitHub.'
-                  : 'What and why, in Markdown. Paste or drop images and videos. Ctrl+Enter saves.'
+                  : DESCRIPTION_PLACEHOLDER
             }
             label="Description"
             onSubmit={save}

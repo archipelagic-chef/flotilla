@@ -43,7 +43,11 @@ export function markdownToJira(markdown: string): string {
     // Tables: the header row gets ||, the |---| separator goes.
     if (/^\s*\|.*\|\s*$/.test(line)) {
       if (/^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(line)) continue;
-      const cells = line.trim().slice(1, -1).split('|').map((c) => inline(c.trim()));
+      const cells = line
+        .trim()
+        .slice(1, -1)
+        .split('|')
+        .map((c) => inline(c.trim()));
       const header = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(lines[i + 1] ?? '');
       out.push(header ? `||${cells.join('||')}||` : `|${cells.join('|')}|`);
       continue;

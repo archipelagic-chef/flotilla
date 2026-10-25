@@ -1,6 +1,17 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { commitChanges, readLog, ticketCommits } from '../../../src/features/history/log';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

@@ -1,5 +1,11 @@
 import { entryAgent } from './backlog';
-import { parseVerdict, saysReadyForReview, saysWaitingForUser, type ReviewState, type Verdict } from './review';
+import {
+  parseVerdict,
+  type ReviewState,
+  saysReadyForReview,
+  saysWaitingForUser,
+  type Verdict,
+} from './review';
 
 /**
  * Folding a review's rounds in a ticket's activity. A review is agents talking to each other: the reviewer's verdicts,
@@ -131,11 +137,7 @@ function makeFold<T>(items: T[], parts: RoundInfo[], current?: CurrentReview): R
 export function foldTitle(fold: Pick<RoundFold<unknown>, 'reviewer' | 'rounds' | 'from' | 'outcome'>): string {
   const by = fold.reviewer ? `Reviewed by ${fold.reviewer}` : 'Reviewed';
   const last = (fold.from ?? 1) + fold.rounds - 1;
-  const span = !fold.from
-    ? `${fold.rounds} round${fold.rounds === 1 ? '' : 's'}`
-    : fold.rounds === 1
-      ? `round ${fold.from}`
-      : `rounds ${fold.from}–${last}`;
+  const span = !fold.from ? `${fold.rounds} round${fold.rounds === 1 ? '' : 's'}` : fold.rounds === 1 ? `round ${fold.from}` : `rounds ${fold.from}–${last}`;
   return `${by} in ${span} → ${fold.outcome}`;
 }
 

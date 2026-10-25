@@ -62,7 +62,11 @@ export function obsoleteFolders(text: string | undefined): Set<string> {
   try {
     const parsed: unknown = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object') return new Set();
-    return new Set(Object.entries(parsed as Record<string, unknown>).filter(([, v]) => v === true).map(([k]) => k));
+    return new Set(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, v]) => v === true)
+        .map(([k]) => k),
+    );
   } catch {
     return new Set();
   }
@@ -77,7 +81,10 @@ export function describeNewer(newer: NewerInstall, running: string): string {
 
 /** The notification: what's installed, and what reloading does to the agents running in this window. */
 export function newerMessage(newer: NewerInstall, running: string, agents: number): string {
-  const stops = agents === 0 ? '' : ` Reloading stops the ${agents === 1 ? 'agent' : `${agents} agents`} running in this window (${agents === 1 ? 'its chat is' : 'their chats are'} kept to resume).`;
+  const stops =
+    agents === 0
+      ? ''
+      : ` Reloading stops the ${agents === 1 ? 'agent' : `${agents} agents`} running in this window (${agents === 1 ? 'its chat is' : 'their chats are'} kept to resume).`;
   return `${describeNewer(newer, running)}: agents start the old way until you reload the window.${stops}`;
 }
 

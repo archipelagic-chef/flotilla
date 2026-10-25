@@ -15,7 +15,9 @@ export async function checkAllTickets(checker: TicketChecker, tickets: Pick<Tick
   const claims = [...found.values()].reduce((n, c) => n + c.length, 0);
   if (!glitched.length && !repo.length) {
     void vscode.window.showInformationMessage(
-      claims ? `Checked ${claims} thing${claims === 1 ? '' : 's'} going on in ${found.size} ticket${found.size === 1 ? '' : 's'}: all as they say.` : 'Checked the tickets: none says anything is going on.',
+      claims
+        ? `Checked ${claims} thing${claims === 1 ? '' : 's'} going on in ${found.size} ticket${found.size === 1 ? '' : 's'}: all as they say.`
+        : 'Checked the tickets: none says anything is going on.',
     );
     return;
   }

@@ -1,15 +1,36 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { appendAgentTurn, seedChats, seedCreating, seedPlayground } from '../../../scripts/playground-seed.mjs';
+import {
+  appendAgentTurn,
+  seedChats,
+  seedCreating,
+  seedPlayground,
+} from '../../../scripts/playground-seed.mjs';
 import { CreatingWorktrees, creatingDir, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
-import { isHeadless, mergeChats, readChatRecords, readTranscripts, readUnlinked } from '../../../src/features/chats/chats';
+import {
+  isHeadless,
+  mergeChats,
+  readChatRecords,
+  readTranscripts,
+  readUnlinked,
+} from '../../../src/features/chats/chats';
 import { transcriptMarkdown } from '../../../src/features/chats/transcriptMarkdown';
 import { childrenOf, ID_PATTERN } from '../../../src/features/backlog/backlog';
 import { descriptionHash } from '../../../src/features/backlog/changes';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { fixesFor, readyReport, userAnswer, verdictReport } from '../../../src/features/backlog/review';
+import {
+  fixesFor,
+  readyReport,
+  userAnswer,
+  verdictReport,
+} from '../../../src/features/backlog/review';
 import { latestRun, placedRunBlocks } from '../../../src/features/backlog/runBlocks';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';

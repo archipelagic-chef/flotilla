@@ -45,7 +45,11 @@ describe('needOf', () => {
 
   it('shows a start the autopilot couldn’t make, while the item is still To Do', () => {
     const failed = { message: 'no worktree free.', since: '2026-10-12T09:00:00.000Z' };
-    expect(needOf(item({ status: 'todo', startFailed: failed }), [])).toEqual({ kind: 'failed', since: failed.since, line: "Couldn't start: no worktree free." });
+    expect(needOf(item({ status: 'todo', startFailed: failed }), [])).toEqual({
+      kind: 'failed',
+      since: failed.since,
+      line: "Couldn't start: no worktree free.",
+    });
     expect(needOf(item({ status: 'doing', startFailed: failed }), [])).toBeUndefined();
   });
 

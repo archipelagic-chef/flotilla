@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { demoCommand, demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, runLabel, withRunButtons } from '../../../src/features/backlog/runBlocks';
+import {
+  demoCommand,
+  demoPath,
+  demoRun,
+  isReport,
+  latestRun,
+  parseRunBlocks,
+  pickRunBlock,
+  placedRunBlocks,
+  runLabel,
+  withRunButtons,
+} from '../../../src/features/backlog/runBlocks';
 
 describe('run blocks', () => {
   it('reads each kind, with its title or name', () => {
@@ -84,7 +95,7 @@ describe('run blocks', () => {
     expect(latestRun(entries.slice(2), (e) => e.date)).toBeUndefined();
   });
 
-  it('puts a Run button on each block of rendered code, and leaves the html alone when they don\'t match', () => {
+  it("puts a Run button on each block of rendered code, and leaves the html alone when they don't match", () => {
     const html = '<p>Try:</p><pre><code class="language-run">npm test\n</code></pre><pre><code class="language-ts">x</code></pre>';
     const blocks = parseRunBlocks('```run Tests\nnpm test\n```\n```ts\nx\n```');
     expect(blocks).toHaveLength(1);
@@ -105,7 +116,7 @@ describe('run blocks', () => {
     expect(out).not.toContain('<pre>');
   });
 
-  it('matches the renderer\'s attributes on the pre and the code (VS Code adds data-line, class and dir)', () => {
+  it("matches the renderer's attributes on the pre and the code (VS Code adds data-line, class and dir)", () => {
     const html = '<pre class="hljs code-line" dir="auto" data-line="3"><code class="hljs language-run">npm test\n</code></pre>';
     const out = withRunButtons(html, parseRunBlocks('```run T\nnpm test\n```'), 'k');
     expect(out).toContain('data-run-index="0"');

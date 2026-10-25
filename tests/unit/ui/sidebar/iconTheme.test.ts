@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 vi.mock('vscode', () => ({}));
 const { buildIconMap, cssId, parseJsonc } = await import('../../../../src/ui/sidebar/iconTheme');

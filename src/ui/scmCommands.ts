@@ -206,7 +206,12 @@ export function scmCommands(ctx: ScmContext, withWs: WithWorkstream): Commands {
     'flotilla.unstage': withWs((ws, arg) => unstagePaths(ctx, ws, targetPaths(arg))),
     'flotilla.discard': withWs((ws, arg) => {
       const paths = new Set(targetPaths(arg));
-      if (paths.size) return discardChanges(ctx, ws, ws.unstaged.filter((c) => paths.has(c.path)));
+      if (paths.size)
+        return discardChanges(
+          ctx,
+          ws,
+          ws.unstaged.filter((c) => paths.has(c.path)),
+        );
     }),
     'flotilla.stageAll': withWs((ws) => stageAll(ctx, ws)),
     'flotilla.unstageAll': withWs((ws) => unstageAll(ctx, ws)),

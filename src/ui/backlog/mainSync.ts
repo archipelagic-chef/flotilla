@@ -5,7 +5,18 @@ import type { Repository } from '../../core/repository';
 import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { recordEvent } from '../../features/metrics/events';
-import { baseLabel, branchesToCheck, capitalize, conflictsOf, driftNotes, isOpen, mergeBasePrompt, reusable, type BranchCheck, type MainCheck } from '../../features/backlog/mainDrift';
+import {
+  baseLabel,
+  type BranchCheck,
+  branchesToCheck,
+  capitalize,
+  conflictsOf,
+  driftNotes,
+  isOpen,
+  type MainCheck,
+  mergeBasePrompt,
+  reusable,
+} from '../../features/backlog/mainDrift';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase, resolveCommit } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -25,7 +36,7 @@ export interface MainSyncDeps {
 /**
  * Keeps open tickets' branches current with main (BL-55). When main or a branch moves, each open ticket's branch is
  * merged with main in memory; what it finds is kept on the item (its card and ticket show it) and a branch that comes
- * to conflict, or stops conflicting, is noted in its ticket. Update from Main merges main into a ticket's branch, or
+ * to conflict, or stops conflicting, is noted in its ticket. Update from Main rebases a ticket's branch onto main, or
  * has its agent do it when that conflicts.
  */
 export class MainSync implements vscode.Disposable {
@@ -116,22 +127,23 @@ export class MainSync implements vscode.Disposable {
       const notes = driftNotes(before.get(id), next);
       for (const b of next.branches) {
         const was = before.get(id)?.branches.find((w) => w.branch === b.branch)?.conflicts ?? [];
-        if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0')) recordEvent('branch-conflicts', { ticket: id, data: { branch: b.branch, files: b.conflicts } });
+        if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0'))
+          recordEvent('branch-conflicts', { ticket: id, data: { branch: b.branch, files: b.conflicts } });
       }
       if (notes.length) await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: notes.join('\n\n') });
     }
   }
 
   /**
-   * Update from Main: merges main into the item's branch in its worktree. When that conflicts (known from the last
-   * check, or found by the merge), the merge is left to the ticket's agent: its chat resumed with the task.
+   * Update from Main: rebases the item's branch onto main in its worktree (BL-181). When that conflicts (known from the
+   * last check, or found by the rebase), the rebase is left to the ticket's agent: its chat resumed with the task.
    */
   async update(id: string): Promise<void> {
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if (!item) return;
     const ws = this.worktreeOf(item);
     if (!ws?.worktree.path || !ws.worktree.branch) {
-      void vscode.window.showWarningMessage(`${id} has no worktree to merge main into: check out its branch first.`);
+      void vscode.window.showWarningMessage(`${id} has no worktree to rebase onto main: check out its branch first.`);
       return;
     }
     const cwd = ws.worktree.path;
@@ -155,17 +167,21 @@ export class MainSync implements vscode.Disposable {
       return;
     }
     try {
-      const out = await runGit(['merge', '--no-edit', '-m', `${id}: Merge ${label} into ${branch}`, base], { cwd, timeoutMs: 300_000 });
-      const upToDate = /Already up to date/i.test(out);
-      const note = upToDate ? `\`${branch}\` is already up to date with ${label}.` : `Merged ${label} into \`${branch}\` (Update from ${capitalize(label)}).`;
+      // Rebased, not merged (BL-181): the branch stays a line of its own commits on top of main.
+      const upToDate = await runGit(['merge-base', '--is-ancestor', base, 'HEAD'], { cwd }).then(
+        () => true,
+        () => false,
+      );
+      if (!upToDate) await runGit(['rebase', base], { cwd, timeoutMs: 300_000, env: { GIT_EDITOR: ':' } });
+      const note = upToDate ? `\`${branch}\` is already up to date with ${label}.` : `Rebased \`${branch}\` onto ${label} (Update from ${capitalize(label)}).`;
       await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
-      void vscode.window.showInformationMessage(`${id}: ${upToDate ? `${branch} is already up to date with ${label}.` : `Merged ${label} into ${branch}.`}`);
+      void vscode.window.showInformationMessage(`${id}: ${upToDate ? `${branch} is already up to date with ${label}.` : `Rebased ${branch} onto ${label}.`}`);
       this.schedule(0);
     } catch (e) {
       // Conflicts: back to where it was, and the agent takes it. Anything else (a hook refusing it): the user sees why.
       const conflicted = await conflictedFiles(cwd);
-      await runGit(['merge', '--abort'], { cwd }).catch(() => undefined);
-      if (!conflicted.length) throw e instanceof GitError ? new Error(`Merging ${label} into ${branch} failed: ${e.stderr.trim() || e.message}`) : e;
+      await runGit(['rebase', '--abort'], { cwd }).catch(() => undefined);
+      if (!conflicted.length) throw e instanceof GitError ? new Error(`Rebasing ${branch} onto ${label} failed: ${e.stderr.trim() || e.message}`) : e;
       await this.handToAgent(item, base, branch, conflicted);
     }
   }
@@ -174,17 +190,19 @@ export class MainSync implements vscode.Disposable {
     const label = baseLabel(base);
     const handed = await this.deps.reviews.handToImplementer(item.id, {
       prompt: mergeBasePrompt({ id: item.id, base, branch, files, ticket: this.deps.backlog.docPath(item.id) }),
-      why: `merging ${label} into \`${branch}\` conflicts`,
+      why: `rebasing \`${branch}\` onto ${label} conflicts`,
       aside: true,
     });
-    const conflicts = `${item.id}: merging ${label} into ${branch} conflicts (${files.join(', ')})`;
-    if (handed) void vscode.window.showInformationMessage(`${conflicts}, so its agent is merging it and resolving the conflicts.`);
+    const conflicts = `${item.id}: rebasing ${branch} onto ${label} conflicts (${files.join(', ')})`;
+    if (handed) void vscode.window.showInformationMessage(`${conflicts}, so its agent is rebasing it and resolving the conflicts.`);
     else void vscode.window.showWarningMessage(`${conflicts}, and an agent is already working on it: update it from ${label} when it's done.`);
   }
 
   /** The item's worktree: the review's, else its first. */
   private worktreeOf(item: BacklogItem): Workstream | undefined {
-    const all = this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch));
+    const all = this.deps.repository.current.filter(
+      (w) => !w.worktree.isMain && w.worktree.path && w.worktree.branch && branchMatches(item, w.worktree.branch),
+    );
     return all.find((w) => w.key === item.review?.worktree) ?? all[0];
   }
 }
@@ -203,7 +221,7 @@ async function branchHeads(cwd: string): Promise<Map<string, string>> {
   );
 }
 
-/** The files a merge in progress left conflicted. */
+/** The files a rebase (or merge) in progress left conflicted. */
 async function conflictedFiles(cwd: string): Promise<string[]> {
   const out = await runGit(['diff', '--name-only', '--diff-filter=U', '-z'], { cwd }).catch(() => '');
   return out.split('\0').filter(Boolean);

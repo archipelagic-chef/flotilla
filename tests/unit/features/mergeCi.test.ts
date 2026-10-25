@@ -1,9 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
-import { commitRuns, decideCi, failedNote, passedNote, runsVerdict, type CiDecision } from '../../../src/features/backlog/mergeCi';
+import {
+  type CiDecision,
+  commitRuns,
+  decideCi,
+  failedNote,
+  passedNote,
+  runsVerdict,
+} from '../../../src/features/backlog/mergeCi';
 import { GitHubActions, type CiRun } from '../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 // The fake's timeline (scripts/fake-github.mjs): a branch's first read makes its runs; the CI run then waits 6 s, runs
 // for 25 s and fails in its tests. Run again, it passes.
@@ -11,11 +30,28 @@ const DONE_MS = 40_000;
 const T0 = Date.parse('2026-10-12T16:00:00Z');
 const BRANCH = 'feature/BL-1-one';
 
-const run = (over: Partial<CiRun>): CiRun => ({ id: 1, workflow: 'CI', number: 1, title: '', event: 'push', status: 'success', url: '', sha: 'a', attempt: 1, created: '', ...over });
+const run = (over: Partial<CiRun>): CiRun => ({
+  id: 1,
+  workflow: 'CI',
+  number: 1,
+  title: '',
+  event: 'push',
+  status: 'success',
+  url: '',
+  sha: 'a',
+  attempt: 1,
+  created: '',
+  ...over,
+});
 
 describe("the runs that decide a commit's CI", () => {
   it('takes the latest run of each workflow on the commit, and none of other commits', () => {
-    const runs = [run({ id: 1, number: 1, status: 'failure' }), run({ id: 2, number: 2 }), run({ id: 3, workflow: 'Lint', number: 7, status: 'running' }), run({ id: 4, number: 3, sha: 'b', status: 'failure' })];
+    const runs = [
+      run({ id: 1, number: 1, status: 'failure' }),
+      run({ id: 2, number: 2 }),
+      run({ id: 3, workflow: 'Lint', number: 7, status: 'running' }),
+      run({ id: 4, number: 3, sha: 'b', status: 'failure' }),
+    ];
 
     expect(commitRuns(runs, 'a').map((r) => r.id)).toEqual([2, 3]);
   });
@@ -96,7 +132,9 @@ describe('Merge to main deciding on CI, against the fake GitHub', () => {
     const passed = await decide();
     expect(passed.kind).toBe('passed');
     if (passed.kind !== 'passed') return;
-    expect(passedNote(passed)).toBe(`CI passed on \`${passed.tip.slice(0, 7)}\`: [CI #3](${passed.runs[0].url}), [Deploy #1](${passed.runs[1].url}); no checks ran locally.`);
+    expect(passedNote(passed)).toBe(
+      `CI passed on \`${passed.tip.slice(0, 7)}\`: [CI #3](${passed.runs[0].url}), [Deploy #1](${passed.runs[1].url}); no checks ran locally.`,
+    );
   });
 
   it("doesn't decide on CI once main has moved on since the branch took it in", async () => {

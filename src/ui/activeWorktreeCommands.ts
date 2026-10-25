@@ -34,7 +34,10 @@ export async function selectWorktree(arg: unknown, repository: Repository<Workst
       return { label: `${w.key === active.key ? '$(check) ' : ''}${workstreamLabel(w)}`, description, detail: describeWorkstream(w, now), key: w.key };
     }),
   ];
-  const picked = await vscode.window.showQuickPick(items, { title: 'Active worktree', placeHolder: 'Files, search, version control, chats and new terminals use the active worktree' });
+  const picked = await vscode.window.showQuickPick(items, {
+    title: 'Active worktree',
+    placeHolder: 'Files, search, version control, chats and new terminals use the active worktree',
+  });
   if (picked) active.set(picked.key);
 }
 
@@ -56,7 +59,12 @@ export async function worktreeTerminalOptions(
     type Item = vscode.QuickPickItem & { ws: Workstream };
     const items: Item[] = reachable
       .sort((a, b) => Number(b.key === active.key) - Number(a.key === active.key))
-      .map((w) => ({ label: `$(git-branch) ${workstreamLabel(w)}`, description: w.key === active.key ? 'active' : undefined, detail: describeWorkstream(w, now), ws: w }));
+      .map((w) => ({
+        label: `$(git-branch) ${workstreamLabel(w)}`,
+        description: w.key === active.key ? 'active' : undefined,
+        detail: describeWorkstream(w, now),
+        ws: w,
+      }));
     const picked = await vscode.window.showQuickPick(items, { title: 'New Terminal in Worktree', placeHolder: 'Which worktree should the terminal start in?' });
     if (!picked) return undefined;
     ws = picked.ws;
@@ -153,7 +161,10 @@ export function closeTabs(arg: unknown, repository: Repository<Workstream>, acti
   const order = tabOrder(repository.current).map((w) => w.key);
   if (others) {
     active.set(key);
-    active.close(order.filter((k) => k !== key), order);
+    active.close(
+      order.filter((k) => k !== key),
+      order,
+    );
   } else {
     active.close([key], order);
   }

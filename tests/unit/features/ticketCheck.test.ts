@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
-import { checkChat, checkMerge, checkReview, glitchLine, parsePs, processOf, STUCK_MS, type ChatFacts } from '../../../src/features/backlog/ticketCheck';
+import {
+  type ChatFacts,
+  checkChat,
+  checkMerge,
+  checkReview,
+  glitchLine,
+  parsePs,
+  processOf,
+  STUCK_MS,
+} from '../../../src/features/backlog/ticketCheck';
 
 const S = '2f6a1c3e-1111-4222-8333-944445555666';
 const now = new Date('2026-10-21T16:16:00');
 const at = (msAgo: number) => new Date(now.getTime() - msAgo);
-const chat = (o: Partial<ChatFacts> = {}): ChatFacts => ({ session: S, agent: 'Orbit-2', gitDirs: ['/g'], state: 'working', lastWrite: at(6 * 60_000), runsHere: false, ...o });
+const chat = (o: Partial<ChatFacts> = {}): ChatFacts => ({
+  session: S,
+  agent: 'Orbit-2',
+  gitDirs: ['/g'],
+  state: 'working',
+  lastWrite: at(6 * 60_000),
+  runsHere: false,
+  ...o,
+});
 
 describe('finding the process of a chat', () => {
   const ps = parsePs(
@@ -26,7 +43,12 @@ describe('finding the process of a chat', () => {
   });
 
   it("doesn't take a shell that only mentions it, or another session, for it", () => {
-    expect(processOf(ps.filter((p) => p.pid !== 101), S)).toBeUndefined();
+    expect(
+      processOf(
+        ps.filter((p) => p.pid !== 101),
+        S,
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -67,7 +89,13 @@ describe("checking a chat that says it's working", () => {
 });
 
 describe("checking a ticket's review", () => {
-  const review = (o: Partial<NonNullable<BacklogItem['review']>>): BacklogItem['review'] => ({ round: 1, reviewer: 'Orbit-2', implementer: 'Iris-3', state: 'reviewing', ...o });
+  const review = (o: Partial<NonNullable<BacklogItem['review']>>): BacklogItem['review'] => ({
+    round: 1,
+    reviewer: 'Orbit-2',
+    implementer: 'Iris-3',
+    state: 'reviewing',
+    ...o,
+  });
 
   it('claims nothing when nothing runs', () => {
     expect(checkReview(undefined, { runs: false }, now)).toBeUndefined();
@@ -106,6 +134,8 @@ describe('checking a merge in progress', () => {
 
   it('is a glitch when its agent runs nowhere: Resolve with Agent offered', () => {
     expect(checkMerge(merging, { runs: false, dirExists: true })).toMatchObject({ ok: false, cleanup: { kind: 'merge-lost' } });
+    // Paused by Pause All (BL-164): it isn't lost.
+    expect(checkMerge({ ...merging, paused: 'x' }, { runs: false, dirExists: true })?.ok).toBe(true);
   });
 
   it('waits for the user when resolved, and is fine without an agent', () => {

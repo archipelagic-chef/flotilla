@@ -1,7 +1,18 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { formatBytes, freedBytes, removalDecision, removeTopLevelLinks, type RemovalInput } from '../../../src/features/storage/finished';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  formatBytes,
+  freedBytes,
+  removalDecision,
+  type RemovalInput,
+  removeTopLevelLinks,
+} from '../../../src/features/storage/finished';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];

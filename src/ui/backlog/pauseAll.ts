@@ -1,7 +1,17 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { mergePaused, pausedMessage, resumedMessage, resumeOrder, type PausedAgent, type PausedAllStore } from '../../features/backlog/pausedAll';
+import type { Merger } from './merge';
+import {
+  checksDetail,
+  checksQuestion,
+  mergePaused,
+  type PausedAgent,
+  type PausedAllStore,
+  pausedMessage,
+  resumedMessage,
+  resumeOrder,
+} from '../../features/backlog/pausedAll';
 import type { ReviewLoop } from './reviewLoop';
 import type { Shaping } from './shaping';
 
@@ -9,6 +19,8 @@ export interface PauseAllDeps {
   backlog: LocalBacklog;
   reviews: Pick<ReviewLoop, 'pauseForAll' | 'resumeForAll'>;
   shaping?: Pick<Shaping, 'isRunning' | 'control'>;
+  /** Merges' agents and checks (BL-164). */
+  merges?: Pick<Merger, 'pauseForAll' | 'resumeForAll' | 'checksRunning' | 'stopChecks'>;
   store: PausedAllStore;
   /** The hold is lifted (Resume All, here or in another window): the queue and the autopilot go on. */
   lifted?(): void;
@@ -54,16 +66,22 @@ export class PauseAll implements vscode.Disposable {
     return this.deps.store.read()?.agents.length;
   }
 
-  /** Pauses every agent working on a ticket, top of the backlog first; the set is added to one already paused. */
-  async pause(): Promise<PauseAllResult> {
+  /**
+   * Pauses every agent working on a ticket (merges' too), top of the backlog first; the set is added to one already
+   * paused. stopChecks: merges' checks running now stop as well (their merges can be run again); else they finish.
+   */
+  async pause(o: { stopChecks?: boolean } = {}): Promise<PauseAllResult> {
     const before = this.deps.store.read()?.agents ?? [];
     // Held first: nothing starts while the agents are paused one by one.
     await this.deps.store.write({ at: new Date().toISOString(), agents: before });
     this.refresh();
     const paused: PausedAgent[] = [];
     const inChats: PauseAllResult['inChats'] = [];
+    if (o.stopChecks) for (const id of this.deps.merges?.checksRunning() ?? []) this.deps.merges?.stopChecks(id);
     for (const item of (await this.deps.backlog.read()).items) {
       try {
+        const merge = item.merging?.state === 'resolving' ? await this.deps.merges?.pauseForAll(item.id) : undefined;
+        if (merge) paused.push({ id: item.id, kind: 'merge', session: merge });
         if (item.shaping && !item.shaping.held && this.deps.shaping?.isRunning(item.id)) {
           await this.deps.shaping.control(item.id, 'pause');
           paused.push({ id: item.id, kind: 'discussion' });
@@ -97,6 +115,10 @@ export class PauseAll implements vscode.Disposable {
         resumed++;
         continue;
       }
+      if (a.kind === 'merge') {
+        if ((await this.deps.merges?.resumeForAll(a.id, a.session)) === 'running') resumed++;
+        continue;
+      }
       const r = await this.deps.reviews.resumeForAll(a.id, a.session);
       if (r === 'running') resumed++;
       else if (r === 'waiting') waiting++;
@@ -107,9 +129,20 @@ export class PauseAll implements vscode.Disposable {
     return { resumed, waiting };
   }
 
-  /** The command: pauses, and says what it did (with Open Chat for the agents it couldn't pause). */
+  /**
+   * The command: asks first while merges' checks run (let them finish, or stop them), pauses, and says what it did
+   * (with Open Chat for the agents it couldn't pause).
+   */
   async pauseCommand(): Promise<void> {
-    const { paused, inChats } = await this.pause();
+    const checks = this.deps.merges?.checksRunning() ?? [];
+    let stopChecks = false;
+    if (checks.length) {
+      const finish = 'Let Them Finish';
+      const choice = await vscode.window.showWarningMessage(checksQuestion(checks), { modal: true, detail: checksDetail(checks) }, finish, 'Stop Them');
+      if (!choice) return;
+      stopChecks = choice !== finish;
+    }
+    const { paused, inChats } = await this.pause({ stopChecks });
     const chat = inChats[0];
     // Not awaited: the button stops working when the agents are paused, not when the message goes.
     void vscode.window

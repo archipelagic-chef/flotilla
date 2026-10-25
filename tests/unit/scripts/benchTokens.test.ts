@@ -39,7 +39,7 @@ describe('sessionOf', () => {
     expect(s.readPerTurn).toBe(2500);
   });
 
-  it("stops counting a tool result as re-read once a compaction summarized it away", () => {
+  it('stops counting a tool result as re-read once a compaction summarized it away', () => {
     // 400 characters, about 100 tokens, re-read on turns 2 and 3; not on turn 4, after the compaction.
     expect(s.kinds.Read).toEqual({ results: 1, tokens: 100, reread: 200 });
   });

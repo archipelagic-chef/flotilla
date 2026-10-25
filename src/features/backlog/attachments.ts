@@ -43,7 +43,11 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]
 const INLINE_CODE = /(`+)[^`\n]+?\1/g;
 const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 const HTML_MEDIA = /<(img|video)\b([^>]*)>/gi;
-const attr = (attributes: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(attributes)?.slice(1).find((v) => v !== undefined);
+const attr = (attributes: string, name: string) =>
+  new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i')
+    .exec(attributes)
+    ?.slice(1)
+    .find((v) => v !== undefined);
 
 /** The media a Markdown text shows, in order: its source, alt text and kind. */
 export function mediaRefs(markdown: string): Array<{ src: string; alt?: string; kind: MediaKind }> {
@@ -57,7 +61,12 @@ export function mediaRefs(markdown: string): Array<{ src: string; alt?: string; 
     const src = attr(m[2], 'src');
     if (!src) continue;
     const alt = attr(m[2], 'alt') ?? attr(m[2], 'title');
-    found.push({ at: m.index, src, ...(alt?.trim() ? { alt: alt.trim() } : {}), kind: m[1].toLowerCase() === 'video' ? 'video' : (mediaType(src)?.kind ?? 'image') });
+    found.push({
+      at: m.index,
+      src,
+      ...(alt?.trim() ? { alt: alt.trim() } : {}),
+      kind: m[1].toLowerCase() === 'video' ? 'video' : (mediaType(src)?.kind ?? 'image'),
+    });
   }
   return found
     .filter((f) => !/^data:/i.test(f.src))
@@ -151,5 +160,8 @@ export function gatherAttachments(
   }
   // Newest first; the description's (no date) last, in their order. The sort is stable: an entry's keep theirs.
   const rank = (a: Attachment) => a.date ?? '';
-  return found.map((a, i) => ({ a, i })).sort((x, y) => rank(y.a).localeCompare(rank(x.a)) || x.i - y.i).map((x) => x.a);
+  return found
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => rank(y.a).localeCompare(rank(x.a)) || x.i - y.i)
+    .map((x) => x.a);
 }

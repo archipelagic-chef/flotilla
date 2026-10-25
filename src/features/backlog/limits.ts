@@ -21,8 +21,11 @@ export interface UsageLimit {
 
 /** How long to wait when the reset isn't said. */
 const WAIT_UNKNOWN_MS = { usage: 30 * 60_000, rate: 5 * 60_000, overloaded: 5 * 60_000 };
-/** Retries that keep failing wait longer each time, up to this. */
+/** Retries that keep failing wait longer each time, up to this... */
 const RETRY_CAP_MS = 60 * 60_000;
+/** ...and up to this once the wait has lasted an hour, so a lift isn't missed for long (BL-179). */
+const RETRY_CAP_LONG_MS = 15 * 60_000;
+const LONG_WAIT_MS = 60 * 60_000;
 /** A little after the reset, so it's surely over. */
 const MARGIN_MS = 60_000;
 /** A reset time this recently past is the one just hit (the output read a little late), not tomorrow's. */
@@ -31,7 +34,8 @@ const JUST_PAST_MS = 5 * 60_000;
 const SAID_MAX = 200;
 
 /** The plan's limits, in Claude Code's wordings. */
-const USAGE = /usage limit|limit reached|hit your (?:[\w-]+ )?limit|\b(?:session|weekly|daily|5-hour|opus|sonnet) limit|limit will reset|out of (?:extra )?usage/i;
+const USAGE =
+  /usage limit|limit reached|hit your (?:[\w-]+ )?limit|\b(?:session|weekly|daily|5-hour|opus|sonnet) limit|limit will reset|out of (?:extra )?usage/i;
 const OVERLOADED = /overloaded|\b529\b/i;
 const RATE = /rate.?limit|\b429\b|too many requests/i;
 
@@ -42,7 +46,15 @@ function zonedTime(y: number, mo: number, d: number, h: number, mi: number, zone
   const guess = new Date(y, mo, d, h, mi);
   if (!zone) return guess;
   try {
-    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
     // How the zone's clock differs from the local one at that moment, applied once (and once more across a DST change).
     let at = guess;
     for (let i = 0; i < 2; i++) {
@@ -104,7 +116,12 @@ function saidText(output: string, wording: RegExp): string | undefined {
   let text = line.trim();
   try {
     const j = JSON.parse(text) as { result?: unknown; error?: { message?: unknown } | unknown };
-    const said = typeof j.result === 'string' ? j.result : typeof (j.error as { message?: unknown })?.message === 'string' ? (j.error as { message: string }).message : undefined;
+    const said =
+      typeof j.result === 'string'
+        ? j.result
+        : typeof (j.error as { message?: unknown })?.message === 'string'
+          ? (j.error as { message: string }).message
+          : undefined;
     if (said && wording.test(said)) text = said;
   } catch {
     // Not JSON: the line as it is.
@@ -115,9 +132,9 @@ function saidText(output: string, wording: RegExp): string | undefined {
 
 /**
  * How long to wait before the next try when the reset isn't said and `tries` tries have failed since: the first wait,
- * doubled each time (5, 10, 20, 40 minutes…), up to an hour.
+ * doubled each time (5, 10, 20, 40 minutes…), up to an hour; once it has `waited` an hour, up to 15 minutes.
  */
-export function retryDelay(kind: UsageLimit['kind'], tries: number): number {
+export function retryDelay(kind: UsageLimit['kind'], tries: number, waited = 0): number {
   const first = WAIT_UNKNOWN_MS[kind];
-  return Math.min(first * 2 ** Math.max(0, Math.min(tries, 10)), Math.max(first, RETRY_CAP_MS));
+  return Math.min(first * 2 ** Math.max(0, Math.min(tries, 10)), waited >= LONG_WAIT_MS ? RETRY_CAP_LONG_MS : Math.max(first, RETRY_CAP_MS));
 }

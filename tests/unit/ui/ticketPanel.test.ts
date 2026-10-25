@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const vscode = vi.hoisted(() => ({ commands: { executeCommand: vi.fn(async () => undefined) }, window: { showWarningMessage: vi.fn(async () => undefined) } }));
 vi.mock('vscode', () => vscode);
@@ -42,7 +47,12 @@ describe('the Attachments section, folded', () => {
 
 /** A tab as the host sees it: what it's sent is recorded. */
 function tab() {
-  return { webview: { postMessage: vi.fn(async (_message: unknown) => true), cspSource: '', asWebviewUri: (u: unknown) => u }, reveal: vi.fn(), dispose: vi.fn(), onDidDispose: () => ({ dispose: vi.fn() }) };
+  return {
+    webview: { postMessage: vi.fn(async (_message: unknown) => true), cspSource: '', asWebviewUri: (u: unknown) => u },
+    reveal: vi.fn(),
+    dispose: vi.fn(),
+    onDidDispose: () => ({ dispose: vi.fn() }),
+  };
 }
 
 /** Ticket panels over a backlog whose one item's writes fail (or not): only what onMessage needs is there. */
@@ -181,25 +191,28 @@ describe('the buttons that wait on the host (BL-118)', () => {
     expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: threw });
   });
 
-  it.each([{ type: 'askNew' }, { type: 'askStop' }, { type: 'askPost', index: 0 }])('the Ask chat\'s $type gets its done, also after a throw', async (message) => {
-    const panels = panelsWith(async () => undefined) as unknown as {
-      panels: Map<string, unknown>;
-      asks: Map<string, unknown>;
-      onAskMessage: (id: string, panel: unknown, m: unknown) => Promise<void>;
-    };
-    const t = tab();
-    panels.panels.set('BL-1', t);
-    panels.asks.set('BL-1', { reset: () => undefined, stop: () => undefined, answered: () => undefined });
-    await panels.onAskMessage('BL-1', t, message);
-    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: false });
-    t.webview.postMessage.mockClear();
-    const broke = () => {
-      throw new Error('it broke');
-    };
-    panels.asks.set('BL-1', { reset: broke, stop: broke, answered: broke });
-    await expect(panels.onAskMessage('BL-1', t, message)).rejects.toThrow('it broke');
-    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: true });
-  });
+  it.each([{ type: 'askNew' }, { type: 'askStop' }, { type: 'askPost', index: 0 }])(
+    "the Ask chat's $type gets its done, also after a throw",
+    async (message) => {
+      const panels = panelsWith(async () => undefined) as unknown as {
+        panels: Map<string, unknown>;
+        asks: Map<string, unknown>;
+        onAskMessage: (id: string, panel: unknown, m: unknown) => Promise<void>;
+      };
+      const t = tab();
+      panels.panels.set('BL-1', t);
+      panels.asks.set('BL-1', { reset: () => undefined, stop: () => undefined, answered: () => undefined });
+      await panels.onAskMessage('BL-1', t, message);
+      expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: false });
+      t.webview.postMessage.mockClear();
+      const broke = () => {
+        throw new Error('it broke');
+      };
+      panels.asks.set('BL-1', { reset: broke, stop: broke, answered: broke });
+      await expect(panels.onAskMessage('BL-1', t, message)).rejects.toThrow('it broke');
+      expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'done', message, failed: true });
+    },
+  );
 });
 
 describe('Open Chat (BL-131)', () => {

@@ -1,8 +1,19 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { git, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  afterAll,
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  git,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 // scripts/playground.mjs, run in a scratch directory: it creates .playground under the working directory.
 const script = path.join(process.cwd(), 'scripts', 'playground.mjs');
@@ -26,7 +37,10 @@ function scratch(): string {
 
 /** The moved-aside playgrounds in `cwd`, oldest name first. */
 function movedAside(cwd: string): string[] {
-  return fs.readdirSync(cwd).filter((name) => /^\.playground\.old-/.test(name)).sort();
+  return fs
+    .readdirSync(cwd)
+    .filter((name) => /^\.playground\.old-/.test(name))
+    .sort();
 }
 
 // Each test builds whole playgrounds (a worktree per seeded ticket): slow under a full, parallel run.

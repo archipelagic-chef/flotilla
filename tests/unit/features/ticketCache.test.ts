@@ -1,9 +1,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { mentioningCommits, movesSince, ticketCommits } from '../../../src/features/history/log';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -105,7 +116,11 @@ describe('cached ticket reads', () => {
     const dir = makeTempDir();
     cleanup.push(dir);
     const backlog = new LocalBacklog(dir, path.join(dir, '.git'));
-    expect(await backlog.readTicketCached({ id: 'BL-2', title: 'Missing', notes: 'Notes.' })).toEqual({ title: 'Missing', description: 'Notes.', activity: [] });
+    expect(await backlog.readTicketCached({ id: 'BL-2', title: 'Missing', notes: 'Notes.' })).toEqual({
+      title: 'Missing',
+      description: 'Notes.',
+      activity: [],
+    });
   });
 });
 

@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
 import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  type ChatRecord,
   encodeProjectDir,
   finishChatRecords,
   homedElsewhere,
@@ -16,10 +22,9 @@ import {
   readUnlinked,
   tagTranscriptTitle,
   titleAgent,
+  type TranscriptInfo,
   transcriptPath,
   unlinkChat,
-  type ChatRecord,
-  type TranscriptInfo,
 } from '../../../../src/features/chats/chats';
 import { makeTempDir, removeDir } from '../../../helpers/gitRepo';
 
@@ -27,7 +32,14 @@ const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
 const now = new Date('2026-10-10T12:00:00Z');
 const ago = (min: number) => new Date(now.getTime() - min * 60_000);
-const rec = (o: Partial<ChatRecord> & { sessionId: string }): ChatRecord => ({ source: 'claude-code', state: 'done', linkedBy: 'cwd', linkedDirs: [], updatedAt: ago(1), ...o });
+const rec = (o: Partial<ChatRecord> & { sessionId: string }): ChatRecord => ({
+  source: 'claude-code',
+  state: 'done',
+  linkedBy: 'cwd',
+  linkedDirs: [],
+  updatedAt: ago(1),
+  ...o,
+});
 const opts = { now, openHours: 8, staleMinutes: 10 };
 
 describe('chat records', () => {
@@ -72,7 +84,15 @@ describe('chat records', () => {
     fs.mkdirSync(path.join(owner, 'flotilla', 'chats'), { recursive: true });
     fs.writeFileSync(
       path.join(owner, 'flotilla', 'chats', 's2.json'),
-      JSON.stringify({ sessionId: 's2', state: 'working', linkedBy: 'cwd', cwd: '/r', firstPrompt: 'Original', linkedDirs: ['/x/.git'], updatedAt: now.toISOString() }),
+      JSON.stringify({
+        sessionId: 's2',
+        state: 'working',
+        linkedBy: 'cwd',
+        cwd: '/r',
+        firstPrompt: 'Original',
+        linkedDirs: ['/x/.git'],
+        updatedAt: now.toISOString(),
+      }),
     );
     await linkChat({ sessionId: 's2', ownerGitDir: owner, cwd: '/r', targetGitDir: target, title: 'Ignored' });
     expect((await readChatRecords(owner))[0]).toMatchObject({ state: 'working', firstPrompt: 'Original', linkedDirs: ['/x/.git', target] });
@@ -175,9 +195,16 @@ describe('a chat that went quiet (BL-131)', () => {
   });
 
   it("takes a chat's agent from the title Flotilla gave it, over the hook's name", () => {
-    const [chat] = mergeChats([rec({ sessionId: 's', agent: 'Astro-4' })], [{ sessionId: 's', title: 'Orbit-2 · review BL-132', updatedAt: ago(1) }], new Set(), opts);
+    const [chat] = mergeChats(
+      [rec({ sessionId: 's', agent: 'Astro-4' })],
+      [{ sessionId: 's', title: 'Orbit-2 · review BL-132', updatedAt: ago(1) }],
+      new Set(),
+      opts,
+    );
     expect(chat.agent).toBe('Orbit-2');
-    expect(mergeChats([rec({ sessionId: 's', agent: 'Astro-4' })], [{ sessionId: 's', title: 'Fix the login', updatedAt: ago(1) }], new Set(), opts)[0].agent).toBe('Astro-4');
+    expect(
+      mergeChats([rec({ sessionId: 's', agent: 'Astro-4' })], [{ sessionId: 's', title: 'Fix the login', updatedAt: ago(1) }], new Set(), opts)[0].agent,
+    ).toBe('Astro-4');
     expect(titleAgent('Fix CI · feature/x')).toBeUndefined();
   });
 
@@ -218,7 +245,10 @@ describe('tagTranscriptTitle', () => {
     expect(await tagTranscriptTitle(file, 's', 'feature/login')).toBe('hasCustomTitle');
     // Flotilla shows its own tag without the worktree; a title the user chose wins.
     expect(parseTranscript('s', fs.readFileSync(file, 'utf8'), now).title).toBe('Add validation');
-    expect(parseTranscript('s', `${JSON.stringify({ type: 'ai-title', aiTitle: 'A' })}\n${JSON.stringify({ type: 'custom-title', customTitle: 'Mine' })}\n`, now).title).toBe('Mine');
+    expect(
+      parseTranscript('s', `${JSON.stringify({ type: 'ai-title', aiTitle: 'A' })}\n${JSON.stringify({ type: 'custom-title', customTitle: 'Mine' })}\n`, now)
+        .title,
+    ).toBe('Mine');
     expect(await tagTranscriptTitle(path.join(dir, 'none.jsonl'), 'x', 'y')).toBe('missing');
   });
 });
@@ -227,7 +257,10 @@ describe('removeChatCopies', () => {
   /** What opening a chat from worktree a in a window on /r did before BL-121: a copy in /r's project, linked by hand. */
   async function copied(home: string, gits: { main: string; a: string }, entrypoint: string) {
     const { transcriptPath } = await import('../../../../src/features/chats/chats');
-    const lines = [{ type: 'user', entrypoint, message: { content: 'Fix it' } }, { type: 'assistant', entrypoint, message: { content: [{ type: 'text', text: 'Fixed.' }] } }];
+    const lines = [
+      { type: 'user', entrypoint, message: { content: 'Fix it' } },
+      { type: 'assistant', entrypoint, message: { content: [{ type: 'text', text: 'Fixed.' }] } },
+    ];
     const original = transcriptPath('/r/.worktrees/a', 's1', home);
     fs.mkdirSync(path.dirname(original), { recursive: true });
     fs.writeFileSync(original, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
@@ -244,7 +277,10 @@ describe('removeChatCopies', () => {
     const gits = { main: makeTempDir(), a: makeTempDir() };
     cleanup.push(home, gits.main, gits.a);
     const { original, copy } = await copied(home, gits, 'sdk-cli');
-    const worktrees = [{ root: '/r', gitDir: gits.main }, { root: '/r/.worktrees/a', gitDir: gits.a }];
+    const worktrees = [
+      { root: '/r', gitDir: gits.main },
+      { root: '/r/.worktrees/a', gitDir: gits.a },
+    ];
 
     expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual(['s1']);
     expect(fs.existsSync(copy)).toBe(false);
@@ -265,7 +301,10 @@ describe('removeChatCopies', () => {
     cleanup.push(home, gits.main, gits.a);
     const { original, copy } = await copied(home, gits, 'claude-vscode');
     fs.appendFileSync(copy, `${JSON.stringify({ type: 'user', message: { content: 'And the tests' } })}\n`);
-    const worktrees = [{ root: '/r', gitDir: gits.main }, { root: '/r/.worktrees/a', gitDir: gits.a }];
+    const worktrees = [
+      { root: '/r', gitDir: gits.main },
+      { root: '/r/.worktrees/a', gitDir: gits.a },
+    ];
     expect(await removeChatCopies({ root: '/r', gitDir: gits.main, worktrees, home })).toEqual([]);
     expect(fs.existsSync(copy)).toBe(true);
     fs.rmSync(original);
@@ -280,7 +319,16 @@ describe("an agent's chat", () => {
     const { transcriptMarkdown } = await import('../../../../src/features/chats/transcriptMarkdown');
     const raw = [
       { type: 'user', entrypoint: 'sdk-cli', message: { content: 'You are agent Nova-7' } },
-      { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hm' }, { type: 'text', text: 'Looking.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls <dir>' } }] } },
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'hm' },
+            { type: 'text', text: 'Looking.' },
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls <dir>' } },
+          ],
+        },
+      },
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a.ts\n```x```' }] } },
       { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'A subagent' }] } },
       { type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } },
@@ -415,9 +463,9 @@ describe('reading only what is new in a growing transcript', () => {
     const raw = lines.join('');
     fs.writeFileSync(file, '');
     let seed = 7;
-    const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2147483648) % n);
+    const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
     let done = '';
-    for (let at = 0; at < raw.length; ) {
+    for (let at = 0; at < raw.length;) {
       const size = 1 + rnd(40);
       const piece = Buffer.from(raw).subarray(at, at + size);
       fs.appendFileSync(file, piece);

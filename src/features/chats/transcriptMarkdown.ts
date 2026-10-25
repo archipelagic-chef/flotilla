@@ -38,14 +38,18 @@ function folded(summary: string, body: string): string {
 function callSummary(part: Part): string {
   const name = typeof part.name === 'string' ? part.name : 'Tool';
   const input = (part.input && typeof part.input === 'object' ? part.input : {}) as Record<string, unknown>;
-  const what = ['description', 'command', 'file_path', 'pattern', 'url', 'query', 'prompt'].map((k) => input[k]).find((v) => typeof v === 'string') as string | undefined;
+  const what = ['description', 'command', 'file_path', 'pattern', 'url', 'query', 'prompt'].map((k) => input[k]).find((v) => typeof v === 'string') as
+    string | undefined;
   return what ? `${name}: ${what.split('\n')[0]!.slice(0, 120)}` : name;
 }
 
 function resultText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
-  return (content as Part[]).map((p) => (p?.type === 'text' && typeof p.text === 'string' ? p.text : p?.type === 'image' ? '[image]' : '')).filter(Boolean).join('\n');
+  return (content as Part[])
+    .map((p) => (p?.type === 'text' && typeof p.text === 'string' ? p.text : p?.type === 'image' ? '[image]' : ''))
+    .filter(Boolean)
+    .join('\n');
 }
 
 function parts(content: unknown): Part[] {
@@ -74,7 +78,14 @@ export function transcriptMarkdown(raw: string, title: string): string {
     for (const part of parts(entry.message?.content)) {
       if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
         if (entry.type === 'assistant') say('assistant', part.text);
-        else if (entry.isMeta !== true) say('user', part.text.split('\n').map((l) => `> ${l}`).join('\n'));
+        else if (entry.isMeta !== true)
+          say(
+            'user',
+            part.text
+              .split('\n')
+              .map((l) => `> ${l}`)
+              .join('\n'),
+          );
       } else if (part.type === 'tool_use') {
         say('assistant', folded(callSummary(part), fenced(cut(JSON.stringify(part.input ?? {}, null, 2)), 'json')));
       } else if (part.type === 'tool_result') {

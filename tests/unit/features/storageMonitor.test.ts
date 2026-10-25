@@ -1,11 +1,23 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { runGit } from '../../../src/core/git/gitCli';
 import { parseLooseCount } from '../../../src/features/storage/packing';
 import type { MountEntry } from '../../../src/features/storage/storage';
-import { git, initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const showWarningMessage = vi.fn(async (..._args: string[]) => undefined as string | undefined);
 const openExternal = vi.fn(async (_uri: string) => true);
@@ -43,7 +55,7 @@ async function load() {
 function memento(): { get<T>(k: string): T | undefined; update(k: string, v: unknown): Promise<void> } {
   const store = new Map<string, unknown>();
   return {
-    get: <T,>(k: string) => store.get(k) as T | undefined,
+    get: <T>(k: string) => store.get(k) as T | undefined,
     update: async (k, v) => void store.set(k, v),
   };
 }
@@ -60,7 +72,9 @@ function repoWithLooseObjects(): string {
     fs.writeFileSync(file, `object ${i}\n`);
     files.push(file);
   }
-  const ids = execFileSync('git', ['hash-object', '-w', '--stdin-paths'], { cwd: repo, input: files.join('\n') + '\n', encoding: 'utf8' }).trim().split('\n');
+  const ids = execFileSync('git', ['hash-object', '-w', '--stdin-paths'], { cwd: repo, input: files.join('\n') + '\n', encoding: 'utf8' })
+    .trim()
+    .split('\n');
   // Reachable from a branch, so that gc packs them on any git (before 2.37, it leaves unreachable ones loose).
   const tree = execFileSync('git', ['mktree'], { cwd: repo, input: ids.map((id, i) => `100644 blob ${id}\tf${i}\n`).join(''), encoding: 'utf8' }).trim();
   const commit = execFileSync('git', ['commit-tree', tree, '-m', 'loose'], { cwd: repo, encoding: 'utf8' }).trim();

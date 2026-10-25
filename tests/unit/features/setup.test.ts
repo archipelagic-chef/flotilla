@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { copySetupFiles, linkFolders, shareLinkedFolder } from '../../../src/features/worktrees/setup';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
@@ -71,7 +76,13 @@ describe('linkFolders', () => {
     const linked = (rel: string) => fs.statSync(path.join(wt, rel)).ino === fs.statSync(path.join(main, rel)).ino;
     expect(linked('node_modules/plain/package.json')).toBe(true);
     expect(linked('node_modules/@esbuild/win32-x64/esbuild.exe')).toBe(true);
-    for (const rel of ['node_modules/.package-lock.json', 'node_modules/.vite/vitest/results.json', 'node_modules/esbuild/bin/esbuild', 'node_modules/@vscode/vsce-sign/bin/vsce-sign', 'node_modules/native/binding.gyp']) {
+    for (const rel of [
+      'node_modules/.package-lock.json',
+      'node_modules/.vite/vitest/results.json',
+      'node_modules/esbuild/bin/esbuild',
+      'node_modules/@vscode/vsce-sign/bin/vsce-sign',
+      'node_modules/native/binding.gyp',
+    ]) {
       expect(linked(rel), rel).toBe(false);
     }
     // What an install in the devcontainer does: writes in place.

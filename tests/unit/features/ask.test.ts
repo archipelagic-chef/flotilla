@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { askArgs, askContextText, askEvent, askSettings, earlierText, interruptRequest, LineBuffer, postedAnswer, toolLabel, userMessage } from '../../../src/features/backlog/ask';
+import {
+  askArgs,
+  askContextText,
+  askEvent,
+  askSettings,
+  earlierText,
+  interruptRequest,
+  LineBuffer,
+  postedAnswer,
+  toolLabel,
+  userMessage,
+} from '../../../src/features/backlog/ask';
 
 describe('askArgs', () => {
   const args = askArgs({ model: 'sonnet', instructions: 'Be brief.', plugins: ['superpowers@official'] });
@@ -21,7 +32,15 @@ describe('askArgs', () => {
   it('only reads: the reading tools, and git log, diff, show and status', () => {
     expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
     // The allowed list is last (variadic): nothing after it is taken for a rule.
-    expect(args.slice(args.indexOf('--allowedTools') + 1)).toEqual(['Read', 'Grep', 'Glob', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(git show:*)', 'Bash(git status:*)']);
+    expect(args.slice(args.indexOf('--allowedTools') + 1)).toEqual([
+      'Read',
+      'Grep',
+      'Glob',
+      'Bash(git log:*)',
+      'Bash(git diff:*)',
+      'Bash(git show:*)',
+      'Bash(git status:*)',
+    ]);
     expect(args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--tools'))).toEqual(['Bash(git *--output*)', 'Bash(git *--ext-diff*)']);
   });
 
@@ -43,7 +62,12 @@ describe('askContextText', () => {
   };
 
   it('gives the description, the latest entries and the branch', () => {
-    const text = askContextText({ ...base, base: 'main', diffStat: ' src/ask.ts | 10 +++', worktree: { path: '/wt', branch: 'feature/BL-80', changes: ' M src/ask.ts' } });
+    const text = askContextText({
+      ...base,
+      base: 'main',
+      diffStat: ' src/ask.ts | 10 +++',
+      worktree: { path: '/wt', branch: 'feature/BL-80', changes: ' M src/ask.ts' },
+    });
     expect(text).toContain('# BL-80: Ask about a ticket');
     expect(text).toContain('Do the thing.');
     expect(text).toContain('4 of 5 entries');
@@ -73,7 +97,9 @@ describe('askEvent', () => {
   it('reads the stream: text as it comes, tools, and the result', () => {
     expect(askEvent(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'x' }))).toEqual({ kind: 'ready' });
     expect(askEvent(JSON.stringify({ type: 'stream_event', event: { type: 'message_start', message: {} } }))).toEqual({ kind: 'message' });
-    expect(askEvent(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } } }))).toEqual({
+    expect(
+      askEvent(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } } })),
+    ).toEqual({
       kind: 'text',
       text: 'Hi',
     });
@@ -81,7 +107,10 @@ describe('askEvent', () => {
       askEvent(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'src/a.ts' } }] } })),
     ).toEqual({ kind: 'tool', label: 'Reading src/a.ts' });
     expect(askEvent(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Done.' }))).toEqual({ kind: 'result', text: 'Done.' });
-    expect(askEvent(JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true }))).toEqual({ kind: 'result', error: 'error_during_execution' });
+    expect(askEvent(JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true }))).toEqual({
+      kind: 'result',
+      error: 'error_during_execution',
+    });
     expect(askEvent(JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1760572800' }))).toEqual({
       kind: 'result',
       error: 'Claude AI usage limit reached|1760572800',
@@ -118,6 +147,8 @@ describe('the rest', () => {
   it('gives the chat so far, and a posted answer with its question', () => {
     expect(earlierText([])).toBe('');
     expect(earlierText([{ question: 'Why?', answer: 'Because.' }])).toContain('Q: Why?\n\nA: Because.');
-    expect(postedAnswer('What is it for?\nAnd why?', 'For this.', 'sonnet')).toBe('Asked about this ticket (Ask, sonnet):\n\n> What is it for?\n> And why?\n\nFor this.');
+    expect(postedAnswer('What is it for?\nAnd why?', 'For this.', 'sonnet')).toBe(
+      'Asked about this ticket (Ask, sonnet):\n\n> What is it for?\n> And why?\n\nFor this.',
+    );
   });
 });

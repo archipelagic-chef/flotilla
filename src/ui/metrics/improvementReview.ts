@@ -4,10 +4,24 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentName } from '../../features/backlog/backlog';
 import { INBOX } from '../../features/backlog/inbox';
+import { criteriaCount } from '../../features/metrics/productivity';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { eventsDir, readEvents } from '../../features/metrics/events';
-import { checkFix, fixesMarkdown, readImproves, type FixCheck } from '../../features/metrics/improves';
-import { listReviews, reviewBlocked, reviewDay, reviewDue, reviewPrompt, reviewsDir, reviewTools } from '../../features/metrics/review';
+import {
+  checkFix,
+  type FixCheck,
+  fixesMarkdown,
+  readImproves,
+} from '../../features/metrics/improves';
+import {
+  listReviews,
+  reviewBlocked,
+  reviewDay,
+  reviewDue,
+  reviewPrompt,
+  reviewsDir,
+  reviewTools,
+} from '../../features/metrics/review';
 import { metricsSummary, summaryMarkdown } from '../../features/metrics/summary';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { AutopilotView } from '../backlog/autopilot';
@@ -131,10 +145,15 @@ export class ImprovementReview implements vscode.Disposable {
       void run.done.then(async (result) => {
         this.run = undefined;
         this.deps.giveBack(slot);
-        const written = await fs.promises.stat(reviewFile).then((s) => s.mtimeMs >= started, () => false);
+        const written = await fs.promises.stat(reviewFile).then(
+          (s) => s.mtimeMs >= started,
+          () => false,
+        );
         if (written) return;
         // No page: the reply (or why it stopped) is the page, so the review isn't due again at once.
-        const body = result.reply?.trim() || `${agent} stopped without a review (${result.limit ? `a ${result.limit.kind} limit` : (result.error?.slice(0, 200) ?? `exit code ${result.code}`)}).`;
+        const body =
+          result.reply?.trim() ||
+          `${agent} stopped without a review (${result.limit ? `a ${result.limit.kind} limit` : (result.error?.slice(0, 200) ?? `exit code ${result.code}`)}).`;
         await fs.promises.writeFile(reviewFile, `# Improvement review ${day}\n\n${body}\n`).catch(() => undefined);
       });
       return undefined;
@@ -151,15 +170,17 @@ export class ImprovementReview implements vscode.Disposable {
     const events = await readEvents(this.deps.commonDir);
     const data = await this.deps.backlog.read();
     const checks: FixCheck[] = [];
+    const criteria = new Map<string, number>();
     for (const item of data.items.filter((i) => i.status === 'done')) {
       const { description } = await this.deps.backlog.readTicketCached(item).catch(() => ({ description: '' }));
+      criteria.set(item.id, criteriaCount(description));
       for (const improves of readImproves(description)) {
         const c = checkFix(events, { ticket: item.id, title: item.title, improves, now });
         if (c.landed) checks.push(c);
       }
     }
     return {
-      summary: summaryMarkdown(metricsSummary(events, { to: now, days: every() || 7 })),
+      summary: summaryMarkdown(metricsSummary(events, { to: now, days: every() || 7, criteria })),
       fixes: fixesMarkdown(checks),
       openTickets: data.items.filter((i) => i.status !== 'done').map((i) => `${i.id} (${i.status}${i.proposed ? ', proposed' : ''}): ${i.title}`),
     };

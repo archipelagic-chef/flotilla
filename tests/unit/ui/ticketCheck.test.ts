@@ -1,12 +1,24 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 import { STUCK_MS, type ProcessInfo } from '../../../src/features/backlog/ticketCheck';
 import { transcriptPath } from '../../../src/features/chats/chats';
 import { TicketChecker } from '../../../src/ui/backlog/ticketCheck';
-import { git, initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const S = '2f6a1c3e-1111-4222-8333-944445555666';
 const now = new Date('2026-10-21T16:16:00');
@@ -42,7 +54,9 @@ function chat(msAgo: number, state = 'working'): void {
   fs.utimesSync(t, ago(msAgo), ago(msAgo));
 }
 
-function checker(o: { item?: Partial<BacklogItem>; ps?: ProcessInfo[]; here?: boolean; alive?: boolean; data?: Partial<BacklogData>; mainRoot?: string; busy?: boolean } = {}) {
+function checker(
+  o: { item?: Partial<BacklogItem>; ps?: ProcessInfo[]; here?: boolean; alive?: boolean; data?: Partial<BacklogData>; mainRoot?: string; busy?: boolean } = {},
+) {
   const item = { id: 'BL-1', title: 'One', status: 'doing', priority: 'medium', branch: 'feature/BL-1-one', ...o.item } as BacklogItem;
   const data = { items: [item, { id: 'BL-2', title: 'Two', status: 'todo', priority: 'medium' } as BacklogItem], ...o.data } as BacklogData;
   const reviews = { runsAgentOf: vi.fn(() => false), stopForCheck: vi.fn(async () => true), clearWorktreeForCheck: vi.fn(async () => true) };
@@ -234,7 +248,7 @@ describe('Check of the merge queue and train, and orphaned merge worktrees (BL-1
     expect(notes[0].body).toContain('rebuilt the merge queue and train');
   });
 
-  it("finds a train entry whose branch is gone", async () => {
+  it('finds a train entry whose branch is gone', async () => {
     git(repo, 'branch', '-D', 'feature/BL-1-one');
     const { c } = checker({ item: approved, mainRoot: repo, data: { mergeQueue: ['BL-1'], mergeTrain: train([{ id: 'BL-1' }]) } });
     expect((await c.check('BL-1'))[0]).toMatchObject({ ok: false, text: expect.stringContaining('the branch is gone') });
@@ -247,7 +261,15 @@ describe('Check of the merge queue and train, and orphaned merge worktrees (BL-1
   });
 
   it('keeps the place of a ticket whose train conflict is being resolved', async () => {
-    const merging = { dir: path.join(root, 'nowhere'), branch: 'feature/BL-1-one', base: 'main', baseTip: tip, state: 'resolving', started: now.toISOString(), train: { ahead: [] } };
+    const merging = {
+      dir: path.join(root, 'nowhere'),
+      branch: 'feature/BL-1-one',
+      base: 'main',
+      baseTip: tip,
+      state: 'resolving',
+      started: now.toISOString(),
+      train: { ahead: [] },
+    };
     const { c } = checker({ item: { ...approved, merging } as Partial<BacklogItem>, mainRoot: repo, data: { mergeQueue: ['BL-1'] } });
     expect((await c.check('BL-1')).find((x) => x.key === 'queue')).toMatchObject({ ok: true });
   });

@@ -1,6 +1,17 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 vi.mock('vscode', () => ({}));
 const { worktreeFiles } = await import('../../../src/ui/quickOpen');

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { askOf, pendingReport, ticketStatus, type StatusInput } from '../../../src/webview/ticketStatus';
+import {
+  askOf,
+  pendingReport,
+  type StatusInput,
+  ticketStatus,
+} from '../../../src/webview/ticketStatus';
 
 const NOW = Date.parse('2026-10-12T22:45:00');
 const base: StatusInput = { status: 'doing', agents: [], activity: [], hasWork: true, now: NOW };
@@ -67,7 +72,10 @@ describe('ticketStatus', () => {
   });
 
   it('shows the prompt of an agent waiting in its chat', () => {
-    const status = ticketStatus({ ...base, agents: [{ agent: 'Zinc-2', state: 'waiting-for-input', started: new Date(NOW).toISOString(), message: 'Claude needs permission to run tests' }] });
+    const status = ticketStatus({
+      ...base,
+      agents: [{ agent: 'Zinc-2', state: 'waiting-for-input', started: new Date(NOW).toISOString(), message: 'Claude needs permission to run tests' }],
+    });
     expect(status).toEqual({ tone: 'waiting', title: 'Waiting for your answer: Zinc-2', detail: 'Claude needs permission to run tests' });
   });
 

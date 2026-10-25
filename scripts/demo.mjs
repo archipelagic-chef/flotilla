@@ -4,8 +4,13 @@
 //
 //   npm run demo -- record <name> --out <file.gif>   records it (agents put it next to the ticket: <backlog>/<id>/demo.gif)
 //        [--still <file.png>]                        and saves its last frame, to check how it ends
+//   npm run demo -- check <name>                     plays its steps fast, without recording: the dry run before one
 //   npm run demo -- play <name>                      plays it in the window, live, and leaves the window open
 //   npm run demo -- list                             the demos there are
+//
+// Before it starts, it builds when dist/ is behind src/ and makes the demo profile's settings plain JSON. A step that
+// fails saves a screenshot next to the demo (demos/<name>.failed.png) and prints the visible elements most like what it
+// looked for. Its last line says how it went: "Demo saved: …", "Demo checked: …" or "Demo failed: …".
 //
 // The window is never the user's: it's VS Code's test download (.vscode-test, as npm run test:vscode uses), with a profile
 // of its own (.vscode-test/demo-profile: no accounts, no secrets), the fake Claude and a fake GitHub started here, and it
@@ -18,10 +23,38 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EXTENSIONS_DIR, extensionFolders, findClaudeCode, installClaudeCode, writeProfileSettings } from './debug-profile.mjs';
+import {
+  EXTENSIONS_DIR,
+  extensionFolders,
+  findClaudeCode,
+  installClaudeCode,
+  writeProfileSettings,
+} from './debug-profile.mjs';
 import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
 import { recordEvent, ticketOfBranch } from './record-event.mjs';
-import { DEMO_TAG, GIF_MAX_MS, TITLE_MARKER, demoDisplay, demoFile, frameGate, freeDisplay, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from './demo-kit.mjs';
+import {
+  DEMOS_DIR,
+  DEMO_TAG,
+  GIF_MAX_MS,
+  TITLE_MARKER,
+  demoDisplay,
+  commandMatches,
+  demoFile,
+  failureReason,
+  frameGate,
+  freeDisplay,
+  encodeGif,
+  gapStats,
+  listDemos,
+  nearestElements,
+  parseDemo,
+  plainSettings,
+  resultLine,
+  staleBuild,
+  stepsToPlay,
+  timeline,
+  unsafeFrame,
+} from './demo-kit.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
@@ -93,29 +126,46 @@ const DEMO_OWN_FILE = path.join(PROFILE_DIR, 'demo-settings.json');
 /** The demo profile, made ready: Claude Code copied in, the fakes on (pointing at `githubUrl`), the demo's settings. */
 function prepareProfile(githubUrl, own = {}) {
   installClaudeCode(findClaudeCode(extensionFolders())?.path, path.join(root, EXTENSIONS_DIR));
-  const result = writeProfileSettings(PROFILE_DIR, { root, fakes: true });
-  if (result.unreadable) throw new Error(`${PROFILE_DIR}/User/settings.json isn't plain JSON: delete .vscode-test/demo-profile and try again`);
-  if (!result.applied.includes('fake Claude') || !result.applied.includes('fake GitHub')) throw new Error('the fakes (scripts/fake-claude.mjs, scripts/fake-github.mjs) are missing');
   const file = path.join(PROFILE_DIR, 'User', 'settings.json');
+  // Settings with comments (VS Code writes them so) read as they are; a broken file is set aside and started afresh.
+  if (plainSettings(file) === 'moved')
+    console.log(`The demo profile's settings.json wasn't JSON: moved to ${path.relative(root, file)}.broken, and started afresh.`);
+  const result = writeProfileSettings(PROFILE_DIR, { root, fakes: true });
+  if (result.unreadable) throw new Error(`${file} isn't JSON: delete .vscode-test/demo-profile and try again`);
+  if (!result.applied.includes('fake Claude') || !result.applied.includes('fake GitHub')) {
+    throw new Error(`the fakes aren't in this worktree (${path.join(root, 'scripts', 'fake-claude.mjs')}, ${path.join(root, 'scripts', 'fake-github.mjs')})`);
+  }
   const settings = { ...JSON.parse(fs.readFileSync(file, 'utf8')), ...DEMO_SETTINGS, 'flotilla.dev.githubApi': githubUrl };
-  const last = fs.existsSync(DEMO_OWN_FILE) ? JSON.parse(fs.readFileSync(DEMO_OWN_FILE, 'utf8')) : [];
+  let last = [];
+  try {
+    last = JSON.parse(fs.readFileSync(DEMO_OWN_FILE, 'utf8'));
+  } catch {
+    // None yet (or unreadable): no settings of the last demo's to take out.
+  }
   for (const key of Array.isArray(last) ? last : []) delete settings[key];
   Object.assign(settings, own);
   fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
   fs.writeFileSync(DEMO_OWN_FILE, `${JSON.stringify(Object.keys(own))}\n`);
+  // What the last demo left in the playground's window (the sidebar's state: a fold open, a filter on; the editors and
+  // views open) goes: each demo starts from the same window, so a toggle it clicks toggles the same way every time.
+  fs.rmSync(path.join(PROFILE_DIR, 'User', 'workspaceStorage'), { recursive: true, force: true });
 }
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('Usage: npm run demo -- record <name> --out <file.gif> | play <name> | try <name> | list');
+  console.error('Usage: npm run demo -- record <name> --out <file.gif> | check <name> | play <name> | try <name> | list');
   process.exit(1);
 }
+
+/** A check (`npm run demo -- check`): the steps without their pauses, pointer moves and typing delays. */
+const pace = { fast: false };
 
 /** When the recording started (Date.now()), and the pointer's moves since then ([from, to] in ms): to measure them. */
 const recorded = { start: 0, moves: [] };
 
 /** A pointer drawn over the workbench, so a viewer sees where each click goes (screenshots have no mouse). */
 async function pointer(page, x, y) {
+  if (pace.fast) return;
   const from = Date.now() - recorded.start;
   await page.evaluate(
     ({ x, y, ms }) => {
@@ -124,9 +174,20 @@ async function pointer(page, x, y) {
         dot = document.createElement('div');
         dot.id = 'flotilla-demo-pointer';
         Object.assign(dot.style, {
-          position: 'fixed', left: '0', top: '0', width: '22px', height: '22px', margin: '-11px 0 0 -11px', borderRadius: '50%',
-          background: 'rgba(255, 196, 0, 0.55)', border: '2px solid rgba(255, 255, 255, 0.9)', boxShadow: '0 0 6px rgba(0,0,0,0.6)',
-          zIndex: '2147483647', pointerEvents: 'none', transition: `transform ${ms}ms ease-in-out`, transform: `translate(${innerWidth / 2}px, ${innerHeight / 2}px)`,
+          position: 'fixed',
+          left: '0',
+          top: '0',
+          width: '22px',
+          height: '22px',
+          margin: '-11px 0 0 -11px',
+          borderRadius: '50%',
+          background: 'rgba(255, 196, 0, 0.55)',
+          border: '2px solid rgba(255, 255, 255, 0.9)',
+          boxShadow: '0 0 6px rgba(0,0,0,0.6)',
+          zIndex: '2147483647',
+          pointerEvents: 'none',
+          transition: `transform ${ms}ms ease-in-out`,
+          transform: `translate(${innerWidth / 2}px, ${innerHeight / 2}px)`,
         });
         document.body.appendChild(dot);
         void dot.offsetWidth;
@@ -148,9 +209,19 @@ async function caption(page, text) {
       box = document.createElement('div');
       box.id = 'flotilla-demo-caption';
       Object.assign(box.style, {
-        position: 'fixed', left: '50%', bottom: '48px', transform: 'translateX(-50%)', maxWidth: '80%', padding: '10px 18px',
-        borderRadius: '8px', background: 'rgba(20, 20, 20, 0.85)', color: '#fff', font: '600 18px system-ui, sans-serif',
-        zIndex: '2147483646', pointerEvents: 'none', textAlign: 'center',
+        position: 'fixed',
+        left: '50%',
+        bottom: '48px',
+        transform: 'translateX(-50%)',
+        maxWidth: '80%',
+        padding: '10px 18px',
+        borderRadius: '8px',
+        background: 'rgba(20, 20, 20, 0.85)',
+        color: '#fff',
+        font: '600 18px system-ui, sans-serif',
+        zIndex: '2147483646',
+        pointerEvents: 'none',
+        textAlign: 'center',
       });
       document.body.appendChild(box);
     }
@@ -198,14 +269,59 @@ async function screencast(page, onFrame) {
 }
 
 /**
- * Waits until the window is ready for the demo: the workbench shown, Flotilla's view in the activity bar (the extension
- * loaded), and nothing changed on screen (`drawnAt`: when the last frame came) for QUIET_MS, as extensions and the
+ * The visible elements of the workbench and its webviews (`{ tag, text, label, classes }`): those a step may look for
+ * (labelled, clickable, list items, headings), to print the ones nearest a selector that found nothing.
+ */
+async function visibleElements(page) {
+  const all = [];
+  for (const frame of page.frames()) {
+    const found = await frame
+      .evaluate(() => {
+        const out = [];
+        for (const el of document.querySelectorAll('[aria-label], [title], button, a, input, textarea, select, [role], h1, h2, h3, li')) {
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+          // A container's text is all of its children's: only an element's own short text says what it is.
+          const all = (el.innerText ?? el.value ?? '').trim().replace(/\s+/g, ' ');
+          const text = all.length <= 100 ? all : '';
+          const label = el.getAttribute('aria-label') ?? el.getAttribute('title') ?? undefined;
+          if (!text && !label) continue;
+          out.push({
+            tag: el.tagName.toLowerCase(),
+            text: text || undefined,
+            label: label || undefined,
+            classes: typeof el.className === 'string' ? el.className : undefined,
+          });
+          if (out.length >= 600) break;
+        }
+        return out;
+      })
+      .catch(() => []);
+    all.push(...found);
+  }
+  return all;
+}
+
+/**
+ * Waits until the window is ready for the demo: the workbench shown, Flotilla's view in the activity bar, Flotilla's
+ * status bar item (shown once the extension has started, so its commands are there), and nothing changed on screen (`drawnAt`: when the last frame came) for QUIET_MS, as extensions and the
  * first git scan settle. A window that never settles fails the demo, rather than recording one still loading.
  */
 async function ready(page, drawnAt) {
   const end = Date.now() + READY_MS;
   await page.locator('.monaco-workbench').waitFor({ timeout: READY_MS });
-  await page.locator('.activitybar [aria-label^="Flotilla"]').first().waitFor({ timeout: Math.max(1000, end - Date.now()) });
+  await page
+    .locator('.activitybar [aria-label^="Flotilla"]')
+    .first()
+    .waitFor({ timeout: Math.max(1000, end - Date.now()) });
+  // The activity bar's icon is there before the extension starts; its status bar item only once it has.
+  await page
+    .locator('.statusbar-item[id$="flotilla.current"]')
+    .first()
+    .waitFor({ timeout: Math.max(1000, end - Date.now()) })
+    .catch(() => {
+      throw new Error(`Flotilla didn't start in the window (no status bar item after ${READY_MS / 1000} s)`);
+    });
   while (Date.now() - drawnAt() < QUIET_MS) {
     if (Date.now() > end) throw new Error(`the window didn't settle (its screen still changing after ${READY_MS / 1000} s)`);
     await page.waitForTimeout(100);
@@ -220,8 +336,15 @@ async function play(page, step) {
       await page.keyboard.press('F1');
       const input = page.locator('.quick-input-widget input');
       await input.waitFor({ state: 'visible', timeout });
-      await input.pressSequentially(step.value, { delay: 35 });
-      await page.waitForTimeout(400);
+      await input.pressSequentially(step.value, { delay: pace.fast ? 0 : 35 });
+      await page.waitForTimeout(pace.fast ? 150 : 400);
+      // With no match, the palette offers "similar commands", and Enter would run one: the next step then fails far
+      // from why. Say so here.
+      const row = page.locator('.quick-input-widget .quick-input-list .monaco-list-row.focused').first();
+      const label = await row.getAttribute('aria-label', { timeout: 2000 }).catch(() => undefined);
+      if (!commandMatches(step.value, label)) {
+        throw new Error(`no command "${step.value}" in the command palette (${label ? `it offers "${label.split(',')[0]}"` : 'it lists none'})`);
+      }
       await page.keyboard.press('Enter');
       break;
     }
@@ -250,7 +373,7 @@ async function play(page, step) {
       break;
     }
     case 'type':
-      await page.keyboard.type(step.value, { delay: 45 });
+      await page.keyboard.type(step.value, { delay: pace.fast ? 0 : 45 });
       break;
     case 'press':
       await page.keyboard.press(step.value);
@@ -271,7 +394,7 @@ async function play(page, step) {
       break;
     }
   }
-  await page.waitForTimeout(PACE_MS);
+  await page.waitForTimeout(pace.fast ? 100 : PACE_MS);
 }
 
 /**
@@ -313,14 +436,40 @@ function save(captures, endMs, out, name) {
       list.push(`file '${frames.length - 1}.png'`);
       fs.writeFileSync(path.join(dir, 'frames.txt'), `${list.join('\n')}\n`);
       const mp4 = out.replace(/\.[^./\\]+$/, '') + '.mp4';
-      execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'frames.txt', '-vf', 'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-metadata', `comment=${DEMO_TAG}${name}`, path.resolve(mp4)], { cwd: dir, stdio: 'inherit' });
+      execFileSync(
+        ffmpeg,
+        [
+          '-y',
+          '-loglevel',
+          'error',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          'frames.txt',
+          '-vf',
+          'scale=trunc(min(iw\\,1280)/2)*2:-2,fps=25',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:v',
+          'libx264',
+          '-metadata',
+          `comment=${DEMO_TAG}${name}`,
+          path.resolve(mp4),
+        ],
+        { cwd: dir, stdio: 'inherit' },
+      );
       return { file: mp4, note: '' };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
   fs.writeFileSync(out, encodeGif(frames, { name }));
-  const note = endMs > GIF_MAX_MS ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.` : '';
+  const note =
+    endMs > GIF_MAX_MS
+      ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.`
+      : '';
   return { file: out, note };
 }
 
@@ -331,7 +480,8 @@ async function main() {
     console.log(names.length ? names.join('\n') : `No demos yet: they're ${path.join('demos', '<name>.json')}.`);
     return;
   }
-  if (mode !== 'record' && mode !== 'play' && mode !== 'try') usage();
+  if (mode !== 'record' && mode !== 'play' && mode !== 'try' && mode !== 'check') usage();
+  pace.fast = mode === 'check';
   const file = demoFile(root, name);
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
   const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), name), name };
@@ -341,18 +491,28 @@ async function main() {
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4)');
 
-  const built = ['extension.js', 'webview.js', 'ticket.js'].map((f) => path.join(root, 'dist', f));
-  if (!built.every((f) => fs.existsSync(f))) throw new Error('build first: npm run build');
-  // An old build plays an old sidebar, whose elements the demo's steps may not find.
-  const builtAt = Math.min(...built.map((f) => fs.statSync(f).mtimeMs));
-  const changed = fs.readdirSync(path.join(root, 'src'), { recursive: true }).find((f) => fs.statSync(path.join(root, 'src', f)).mtimeMs > builtAt);
-  if (changed) throw new Error(`build first: src/${changed} changed since the last build (npm run build)`);
   // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
   const display = demoDisplay(process.env);
-  await withLock(LOCK_FILE, () => show(mode, demo, out, still, display), {
+  await withLock(LOCK_FILE, () => (build(), show(mode, demo, out, still, display)), {
     staleMs: Number.POSITIVE_INFINITY,
     onWait: () => console.log('Another demo is running in this worktree: waiting for it to finish (or close its window)…'),
   });
+}
+
+/** Builds when dist/ is behind src/ (staleBuild), under the demo's lock, so two demos here don't build at once. */
+function build() {
+  const stale = staleBuild(root);
+  if (!stale) return;
+  console.log(`Building first (${stale})…`);
+  try {
+    execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '-s', 'build'], {
+      cwd: root,
+      stdio: ['ignore', 'ignore', 'inherit'],
+      shell: process.platform === 'win32',
+    });
+  } catch {
+    throw new Error('the build failed (npm run build): fix it and try again');
+  }
 }
 
 /**
@@ -385,7 +545,12 @@ function startXvfbOn(n) {
     xvfb.stderr.on('data', (d) => (stderr = (stderr + d).slice(-2000)));
     xvfb.on('error', (error) => {
       if (error.code !== 'ENOENT') return reject(new Error(`Xvfb didn't start: ${error.message}`));
-      reject(Object.assign(new Error("Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"), { missing: true }));
+      reject(
+        Object.assign(
+          new Error("Xvfb isn't installed, and a demo an agent runs opens on a virtual display, never on the user's screen: install it (apt-get install xvfb)"),
+          { missing: true },
+        ),
+      );
     });
     xvfb.on('exit', (code) => reject(new Error(`Xvfb stopped on :${n} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`)));
     // It writes the display's number to fd 3 once it's ready for clients.
@@ -419,39 +584,50 @@ async function show(mode, demo, out, still, display) {
 
   const xvfb = display === 'virtual' ? await startXvfb() : undefined;
   console.log(
-    `${mode === 'record' ? 'Recording' : mode === 'try' ? 'Setting up' : 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
+    `${{ record: 'Recording', try: 'Setting up', check: 'Checking' }[mode] ?? 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
   );
-  const app = await _electron.launch({
-    executablePath: executable,
-    args: [
-      `--extensionDevelopmentPath=${root}`,
-      `--user-data-dir=${PROFILE_DIR}`,
-      `--extensions-dir=${path.join(root, EXTENSIONS_DIR)}`,
-      '--skip-welcome',
-      '--skip-release-notes',
-      '--disable-workspace-trust',
-      '--new-window',
-      // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
-      '--disable-dev-shm-usage',
-      // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
-      '--password-store=basic',
-      playground,
-    ],
-    // The user's VS Code session variables would make this window talk to theirs.
-    env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDE_CONFIG_DIR' && !(xvfb && k === 'WAYLAND_DISPLAY'))),
-      HOME: HOME_DIR,
-      USERPROFILE: HOME_DIR,
-      // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
-      ...(xvfb ? { DISPLAY: xvfb.display } : {}),
-    },
-    timeout: 60_000,
-  }).catch((error) => {
-    xvfb?.stop();
-    throw error;
-  });
-  // Kept now: once the window is closed, app.process() no longer answers.
-  const child = app.process();
+  const app = await _electron
+    .launch({
+      executablePath: executable,
+      args: [
+        `--extensionDevelopmentPath=${root}`,
+        `--user-data-dir=${PROFILE_DIR}`,
+        `--extensions-dir=${path.join(root, EXTENSIONS_DIR)}`,
+        '--skip-welcome',
+        '--skip-release-notes',
+        '--disable-workspace-trust',
+        '--new-window',
+        // /dev/shm is small in containers (64 MB): with another demo window open, the renderer crashed for want of it.
+        '--disable-dev-shm-usage',
+        // Secrets (the autopilot's key) in the profile, not the system keyring: a virtual display has none, and a read waited forever.
+        '--password-store=basic',
+        playground,
+      ],
+      // The user's VS Code session variables would make this window talk to theirs.
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            ([k]) => !k.startsWith('VSCODE_') && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDE_CONFIG_DIR' && !(xvfb && k === 'WAYLAND_DISPLAY'),
+          ),
+        ),
+        HOME: HOME_DIR,
+        USERPROFILE: HOME_DIR,
+        // On the virtual display (Wayland, dropped above, would put the window on the user's screen).
+        ...(xvfb ? { DISPLAY: xvfb.display } : {}),
+      },
+      timeout: 60_000,
+    })
+    .catch((error) => {
+      xvfb?.stop();
+      throw error;
+    });
+  // Kept now: once the window is closed, app.process() no longer answers (it throws "reading '_object'").
+  let child;
+  try {
+    child = app.process();
+  } catch {
+    // Closed already: the first thing done with it says so.
+  }
   let failed;
   try {
     const argv = await app.evaluate(() => process.argv);
@@ -478,14 +654,19 @@ async function show(mode, demo, out, still, display) {
       start = Date.now();
       recorded.start = start;
       // Try it yourself (BL-135): the window as the demo starts, its steps left to you.
-      for (const [n, step] of stepsToPlay(demo, mode).entries()) {
+      const steps = stepsToPlay(demo, mode);
+      for (const [n, step] of steps.entries()) {
         if (gate.unsafe) break;
+        const label = `step ${n + 1} (${step.action} ${JSON.stringify(step.value)}${step.to ? ` to ${JSON.stringify(step.to)}` : ''})`;
+        const at = Date.now();
         try {
           await play(page, step);
         } catch (error) {
-          throw new Error(`step ${n + 1} (${step.action} ${JSON.stringify(step.value)}): ${error.message.split('\n')[0]}`);
+          throw await stepFailed(page, demo, n + 1, label, step, error);
         }
+        if (mode === 'check') console.log(`  ok ${label} (${Date.now() - at} ms)`);
       }
+      fs.rmSync(failedShot(demo), { force: true });
     } finally {
       end = Date.now();
       recording = false;
@@ -500,26 +681,44 @@ async function show(mode, demo, out, still, display) {
     if (mode === 'record') {
       const endMs = end - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
-      const gaps = gapStats(timeline(captures, endMs).map((f) => f.at), recorded.moves);
-      if (gaps) console.log(`While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`);
+      const gaps = gapStats(
+        timeline(captures, endMs).map((f) => f.at),
+        recorded.moves,
+      );
+      if (gaps)
+        console.log(
+          `While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`,
+        );
       const saved = save(captures, endMs, out, demo.name);
       // For the metrics (BL-157, BL-133): how smooth the recording was.
       const commonDir = gitCommonDir();
-      const data = { name: demo.name, frames: captures.length, ms: endMs, ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}) };
+      const data = {
+        name: demo.name,
+        frames: captures.length,
+        ms: endMs,
+        ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}),
+      };
       recordEvent(commonDir, 'demo-recorded', { ticket: ticketOfBranch(gitBranch()), data });
-      console.log(`Saved ${saved.file} (${(endMs / 1000).toFixed(1)} s).${saved.note}`);
+      if (saved.note) console.log(saved.note.trim());
       if (still && captures.length) {
         fs.writeFileSync(still, captures[captures.length - 1].png);
         console.log(`Its last frame: ${still}`);
       }
+      console.log(resultLine({ saved: saved.file, bytes: fs.statSync(saved.file).size, ms: endMs }));
+    } else if (mode === 'check') {
+      recordEvent(gitCommonDir(), 'demo-checked', {
+        ticket: ticketOfBranch(gitBranch()),
+        data: { name: demo.name, steps: demo.steps.length, ms: end - start },
+      });
+      console.log(resultLine({ checked: demo.steps.length, ms: end - start }));
     } else if (xvfb) {
       console.log('Done. The window was on a virtual display, so it closes now.');
     } else if (mode === 'try') {
       console.log(`Ready: "${demo.title}" as it starts. Try it yourself; close the window when you are done.`);
-      await new Promise((resolve) => child.once('exit', resolve));
+      if (child) await new Promise((resolve) => child.once('exit', resolve));
     } else {
       console.log('Done. The window stays open to look around; close it when you are done.');
-      await new Promise((resolve) => child.once('exit', resolve));
+      if (child) await new Promise((resolve) => child.once('exit', resolve));
     }
   } catch (error) {
     failed = error;
@@ -527,18 +726,48 @@ async function show(mode, demo, out, still, display) {
     // VS Code may take a while to quit (or not at all, when something holds it): it's stopped after a few seconds.
     // Nothing here may hide the error a step ended with.
     await Promise.race([app.close().catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
-    if (child.exitCode === null && child.signalCode === null) child.kill();
+    if (child && child.exitCode === null && child.signalCode === null) child.kill();
     await github.close().catch(() => undefined);
     xvfb?.stop();
   }
   if (failed) throw failed;
 }
 
+/** Where a demo's failed step leaves its screenshot: next to the demo (git ignores it), gone once a run passes. */
+function failedShot(demo) {
+  return path.join(root, DEMOS_DIR, `${demo.name}.failed.png`);
+}
+
+/**
+ * The error a step failed with, made one to fix the demo by: why (failureReason), a screenshot of the window as it
+ * was, and the visible elements most like what the step looked for.
+ */
+async function stepFailed(page, demo, number, label, step, error) {
+  const reason = failureReason(error);
+  const shot = failedShot(demo);
+  const screenshot = await page.screenshot({ path: shot }).then(
+    () => path.relative(process.cwd(), shot),
+    () => undefined,
+  );
+  const selector = [step.value, step.to].filter((v) => typeof v === 'string').join(' ');
+  if (['click', 'hover', 'drag', 'waitFor'].includes(step.action)) {
+    const near = nearestElements(selector, await visibleElements(page));
+    if (near.length) console.error(`On screen, nearest ${selector}:\n${near.map((line) => `  ${line}`).join('\n')}`);
+  }
+  return Object.assign(new Error(`${label}: ${reason}`), { step: label, number, reason, screenshot });
+}
+
 // Exits when done: connections the window left open (the fake GitHub's) would keep it running.
+const [modeArg, nameArg] = process.argv.slice(2);
 main().then(
   () => process.exit(0),
   (error) => {
-    console.error(`Demo failed: ${error.message}`);
+    const reason = error.reason ?? failureReason(error);
+    if (nameArg && modeArg !== 'list') {
+      const data = { name: nameArg, mode: modeArg, ...(error.number ? { step: error.number } : {}), reason: reason.slice(0, 200) };
+      recordEvent(gitCommonDir(), 'demo-failed', { ticket: ticketOfBranch(gitBranch()), data });
+    }
+    console.error(resultLine({ step: error.step, reason, screenshot: error.screenshot }));
     process.exit(1);
   },
 );

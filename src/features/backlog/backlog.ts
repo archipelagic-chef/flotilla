@@ -72,6 +72,8 @@ export interface BacklogItem {
   /** A clean-up of its commit history in progress, and the histories kept from earlier clean-ups (oldest first). */
   rewrite?: HistoryRewrite;
   history?: HistoryVersion[];
+  /** Agents' replies to your comments (Ask an Agent, BL-127) that came while its ticket wasn't open: its card says so until it's opened. */
+  unseenReplies?: number;
   /** The autopilot couldn't start an agent on it (why, and when): it waits for the user to start it (Run). */
   startFailed?: { message: string; /** ISO 8601. */ since: string };
   /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
@@ -315,7 +317,11 @@ export function branchFor(item: Pick<BacklogItem, 'id' | 'title'>, pattern: stri
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/, '');
-  return pattern.replace(/\{id\}/g, item.id).replace(/\{slug\}/g, slug || 'work').replace(/-{2,}/g, '-').replace(/[-/]+$/, '');
+  return pattern
+    .replace(/\{id\}/g, item.id)
+    .replace(/\{slug\}/g, slug || 'work')
+    .replace(/-{2,}/g, '-')
+    .replace(/[-/]+$/, '');
 }
 
 /** The branches started for an item (including the one older backlogs recorded). */
@@ -372,10 +378,53 @@ export function sameAgent(a: string | undefined, b: string | undefined): boolean
 
 /** Names for agents: short and friendly, robot-like with their number ("Nova-7"), so they're easy to tell apart. */
 export const AGENT_NAMES = [
-  'Ada', 'Astro', 'Atlas', 'Bolt', 'Byte', 'Cog', 'Comet', 'Cosmo', 'Dash', 'Dex', 'Echo', 'Ember', 'Flux', 'Gizmo',
-  'Halo', 'Hex', 'Ion', 'Iris', 'Jet', 'Juno', 'Kit', 'Lumen', 'Mica', 'Neon', 'Nova', 'Onyx', 'Orbit', 'Pip',
-  'Pixel', 'Quill', 'Rex', 'Rivet', 'Rune', 'Sage', 'Servo', 'Spark', 'Sprocket', 'Tango', 'Tesla', 'Tink', 'Vega',
-  'Volt', 'Watt', 'Wren', 'Zephyr', 'Ziggy', 'Zinc',
+  'Ada',
+  'Astro',
+  'Atlas',
+  'Bolt',
+  'Byte',
+  'Cog',
+  'Comet',
+  'Cosmo',
+  'Dash',
+  'Dex',
+  'Echo',
+  'Ember',
+  'Flux',
+  'Gizmo',
+  'Halo',
+  'Hex',
+  'Ion',
+  'Iris',
+  'Jet',
+  'Juno',
+  'Kit',
+  'Lumen',
+  'Mica',
+  'Neon',
+  'Nova',
+  'Onyx',
+  'Orbit',
+  'Pip',
+  'Pixel',
+  'Quill',
+  'Rex',
+  'Rivet',
+  'Rune',
+  'Sage',
+  'Servo',
+  'Spark',
+  'Sprocket',
+  'Tango',
+  'Tesla',
+  'Tink',
+  'Vega',
+  'Volt',
+  'Watt',
+  'Wren',
+  'Zephyr',
+  'Ziggy',
+  'Zinc',
 ];
 
 /**

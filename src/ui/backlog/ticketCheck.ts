@@ -5,22 +5,37 @@ import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import type { BacklogData, BacklogItem } from '../../features/backlog/backlog';
 import { transcriptBusy } from '../../features/backlog/busy';
-import { clearCreatingRecord, creatingDir, pidAlive, readCreatingRecords } from '../../features/backlog/creatingWorktrees';
+import {
+  clearCreatingRecord,
+  creatingDir,
+  pidAlive,
+  readCreatingRecords,
+} from '../../features/backlog/creatingWorktrees';
 import { isMergeDir, removeMergeWorktree } from '../../features/backlog/merge';
 import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
 import {
+  type ChatFacts,
   checkChat,
   checkMerge,
   checkReview,
-  parsePs,
-  processOf,
-  type ChatFacts,
   type Claim,
+  parsePs,
   type ProcessInfo,
+  processOf,
 } from '../../features/backlog/ticketCheck';
 import { checkBranchWorktrees, checkCreating, checkReviewWorktree } from '../../features/backlog/worktreeClaims';
-import { checkOrphan, checkQueue, checkQueueIds, ORPHAN_MS } from '../../features/backlog/queueCheck';
-import { markChatDone, readChatRecords, readTranscript, transcriptPath } from '../../features/chats/chats';
+import {
+  checkOrphan,
+  checkQueue,
+  checkQueueIds,
+  ORPHAN_MS,
+} from '../../features/backlog/queueCheck';
+import {
+  markChatDone,
+  readChatRecords,
+  readTranscript,
+  transcriptPath,
+} from '../../features/chats/chats';
 import { branchMatches } from '../../features/backlog/backlog';
 import { linkedWorktrees } from './cardMenu';
 
@@ -185,7 +200,11 @@ export class TicketChecker {
   private async checkItem(item: BacklogItem, ps: ProcessInfo[]): Promise<Claim[]> {
     const now = this.now();
     const worktrees = linkedWorktrees(item, this.deps.repository.current);
-    const chats = await this.workingChats(worktrees.map((w) => ({ gitDir: w.worktree.adminDir, cwd: w.worktree.path! })), ps, now);
+    const chats = await this.workingChats(
+      worktrees.map((w) => ({ gitDir: w.worktree.adminDir, cwd: w.worktree.path! })),
+      ps,
+      now,
+    );
     const claims = chats.map((c) => checkChat(c, now));
 
     const r = item.review;
@@ -193,14 +212,29 @@ export class TicketChecker {
     const session = r?.state === 'reviewing' ? r.reviewerSession : r?.state === 'working' || r?.state === 'revising' ? r.implementerSession : undefined;
     const pausedChatExists = r?.state === 'paused' && r.paused && cwd ? fs.existsSync(transcriptPath(cwd, r.paused.session, this.deps.claudeHome)) : undefined;
     const chat = session ? (chats.find((c) => c.session === session) ?? (cwd ? await this.chatFacts(session, cwd, ps) : undefined)) : undefined;
-    const review = checkReview(r, { runs: !!this.deps.reviews?.runsAgentOf(item.id), chat, process: session ? processOf(ps, session) : undefined, pausedChatExists }, now);
+    const review = checkReview(
+      r,
+      { runs: !!this.deps.reviews?.runsAgentOf(item.id), chat, process: session ? processOf(ps, session) : undefined, pausedChatExists },
+      now,
+    );
     if (review) claims.push(review);
 
     const m = item.merging;
-    const merge = m && checkMerge(m, { runs: !!this.deps.merger?.runsMergeOf(item.id), dirExists: fs.existsSync(m.dir), process: m.session ? processOf(ps, m.session) : undefined });
+    const merge =
+      m &&
+      checkMerge(m, {
+        runs: !!this.deps.merger?.runsMergeOf(item.id),
+        dirExists: fs.existsSync(m.dir),
+        process: m.session ? processOf(ps, m.session) : undefined,
+      });
     if (merge) claims.push(merge);
 
-    claims.push(...checkBranchWorktrees(worktrees.map((w) => w.worktree), (p) => fs.existsSync(p)));
+    claims.push(
+      ...checkBranchWorktrees(
+        worktrees.map((w) => w.worktree),
+        (p) => fs.existsSync(p),
+      ),
+    );
     const all = this.deps.repository.current.map((w) => w.worktree);
     const named = checkReviewWorktree(r?.worktree, all, (b) => branchMatches(item, b));
     if (named) claims.push(named);

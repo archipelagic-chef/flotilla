@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AskTurn, AskView } from '../../features/backlog/ask';
-import { act, ActionButton, send, useWorking } from './actions';
+import {
+  act,
+  ActionButton,
+  send,
+  useWorking,
+} from './actions';
 import { Rendered } from './markdownBox';
 import { modelName } from './agents';
 import './ask.css';
@@ -92,7 +97,9 @@ export function AskPane({ ask }: { ask?: AskView }) {
         <button class="ask-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
           <i class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
           <h2>Ask</h2>
-          <span class="muted">{open ? "Off the record: it isn't written to the ticket, and agents don't see it" : 'A quick question about this ticket, off the record'}</span>
+          <span class="muted">
+            {open ? "Off the record: it isn't written to the ticket, and agents don't see it" : 'A quick question about this ticket, off the record'}
+          </span>
         </button>
         {open && turns.length > 0 && (
           <span class="head-actions">
@@ -112,7 +119,11 @@ export function AskPane({ ask }: { ask?: AskView }) {
               ref={box}
               rows={2}
               value={draft}
-              placeholder={turns.length ? 'A follow-up… (Enter asks, Shift+Enter starts a new line)' : "What's this for? How far is it? Which files does it touch? (Enter asks)"}
+              placeholder={
+                turns.length
+                  ? 'A follow-up… (Enter asks, Shift+Enter starts a new line)'
+                  : "What's this for? How far is it? Which files does it touch? (Enter asks)"
+              }
               aria-label="Ask about this ticket"
               onInput={(e) => setDraft(e.currentTarget.value)}
               onKeyDown={(e) => {
@@ -123,7 +134,12 @@ export function AskPane({ ask }: { ask?: AskView }) {
               }}
             />
             {busy ? (
-              <button class="button secondary" disabled={stopping} onClick={() => act({ type: 'askStop' }, 'Stopping…')} title="Stops the answer; what it wrote so far stays">
+              <button
+                class="button secondary"
+                disabled={stopping}
+                onClick={() => act({ type: 'askStop' }, 'Stopping…')}
+                title="Stops the answer; what it wrote so far stays"
+              >
                 <i class="codicon codicon-debug-stop" /> {stopping ? 'Stopping…' : 'Stop'}
               </button>
             ) : (

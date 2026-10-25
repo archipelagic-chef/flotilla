@@ -38,7 +38,10 @@ export function parseConflictRegions(text: string): ConflictedFile['regions'] {
 export async function conflictRegions(cwd: string, ours: string, theirs: string): Promise<ConflictedFile[]> {
   let out: string;
   try {
-    await runGit(['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', ours, theirs], { cwd, timeoutMs: 120_000 });
+    await runGit(['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', ours, theirs], {
+      cwd,
+      timeoutMs: 120_000,
+    });
     return [];
   } catch (e) {
     // Exit 1: conflicts. The output is the tree's id, then the conflicted files (NUL-separated with -z).

@@ -2,10 +2,24 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { recordEvent } from '../metrics/events';
-import { EMPTY_BACKLOG, entryAgent, ID_PATTERN, isBacklogData, type BacklogData, type BacklogItem } from './backlog';
+import { recordEvent, recordEventOf } from '../metrics/events';
+import { criteriaCount } from '../metrics/productivity';
+import {
+  type BacklogData,
+  type BacklogItem,
+  EMPTY_BACKLOG,
+  entryAgent,
+  ID_PATTERN,
+  isBacklogData,
+} from './backlog';
 import { describeChanges, descriptionHash, lineDelta } from './changes';
-import { entryDate, formatTicket, parseTicket, type Ticket, type TicketEntry } from './ticket';
+import {
+  entryDate,
+  formatTicket,
+  parseTicket,
+  type Ticket,
+  type TicketEntry,
+} from './ticket';
 
 /** The local backlog's folder, in the main worktree; git ignores it (info/exclude), like .worktrees/. */
 export const BACKLOG_DIR = path.join('.flotilla', 'backlog');
@@ -27,7 +41,11 @@ const BLANK_READ_MS = 1000;
  * the rename fails while another program holds the file open (COM Surrogate previewing it, for one): it's retried for a
  * moment, then the file is written in place, so the write isn't lost. The temporary file never stays behind.
  */
-export async function writeAtomic(file: string, text: string, opts: { retryMs?: number; rename?: (from: string, to: string) => Promise<void> } = {}): Promise<void> {
+export async function writeAtomic(
+  file: string,
+  text: string,
+  opts: { retryMs?: number; rename?: (from: string, to: string) => Promise<void> } = {},
+): Promise<void> {
   const rename = opts.rename ?? fs.promises.rename;
   const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fs.promises.writeFile(tmp, text);
@@ -150,20 +168,40 @@ export class LocalBacklog {
       const old = was.get(item.id);
       const lines = old ? describeChanges(old, item, opts.by ?? 'You') : [];
       if (old && old.status !== item.status) {
-        recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(opts.by ?? ''), data: { from: old.status, to: item.status, by: opts.by ?? 'You' } });
+        const data = { from: old.status, to: item.status, by: opts.by ?? 'You' };
+        // Done: with its acceptance criteria then, what it delivered (BL-189).
+        if (item.status === 'done')
+          recordEventOf('ticket-moved', {
+            ticket: item.id,
+            agent: entryAgent(opts.by ?? ''),
+            data: this.readTicket(item).then(
+              (t) => ({ ...data, criteria: criteriaCount(t.description) }),
+              () => data,
+            ),
+          });
+        else recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(opts.by ?? ''), data });
       }
       if (old && old.review?.state !== item.review?.state) {
-        recordEvent('review-state', { ticket: item.id, data: { ...(old.review?.state ? { from: old.review.state } : {}), ...(item.review?.state ? { to: item.review.state } : {}) } });
+        recordEvent('review-state', {
+          ticket: item.id,
+          data: { ...(old.review?.state ? { from: old.review.state } : {}), ...(item.review?.state ? { to: item.review.state } : {}) },
+        });
       }
       if (lines.length) await this.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: lines.join('\n\n') });
     }
     return next;
   }
 
-  /** The ids that have a ticket file or folder, listed in backlog.json or not: a new item doesn't get one of these. */
+  /**
+   * The ids that have a ticket file, listed in backlog.json or not: a new item doesn't get one of these. Each once: a
+   * ticket's folder (its attachments) isn't another ticket (BL-178).
+   */
   async ticketIds(): Promise<string[]> {
     const names = await fs.promises.readdir(this.dir).catch(() => [] as string[]);
-    return names.map((n) => n.replace(/\.md$/, '')).filter((n) => ID_PATTERN.test(n));
+    return names
+      .filter((n) => n.endsWith('.md'))
+      .map((n) => n.slice(0, -3))
+      .filter((n) => ID_PATTERN.test(n));
   }
 
   /** The descriptions last seen, for how much an edit changed (this session only). */
@@ -316,8 +354,16 @@ export class LocalBacklog {
     const folder = path.join(this.dir, id);
     await this.ensureDir();
     await fs.promises.mkdir(folder, { recursive: true });
-    const ext = (path.extname(name).toLowerCase().match(/^\.(png|jpe?g|gif|webp|svg|mp4|webm)$/) ?? ['.png'])[0];
-    const base = path.basename(name, path.extname(name)).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'image';
+    const ext = (path
+      .extname(name)
+      .toLowerCase()
+      .match(/^\.(png|jpe?g|gif|webp|svg|mp4|webm)$/) ?? ['.png'])[0];
+    const base =
+      path
+        .basename(name, path.extname(name))
+        .replace(/[^A-Za-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'image';
     let file = `${base}${ext}`;
     for (let n = 2; fs.existsSync(path.join(folder, file)); n++) file = `${base}-${n}${ext}`;
     await fs.promises.writeFile(path.join(folder, file), bytes);

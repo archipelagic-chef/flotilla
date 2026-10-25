@@ -8,10 +8,10 @@ import {
   driftNotes,
   fileList,
   isOpen,
+  type MainCheck,
   mergeBasePrompt,
   reusable,
   waitingFor,
-  type MainCheck,
 } from '../../../src/features/backlog/mainDrift';
 
 const item = (o: Partial<BacklogItem>): BacklogItem => ({ id: 'BL-1', title: 'T', status: 'doing', created: '2026-10-17T00:00:00Z', ...o });
@@ -30,7 +30,7 @@ describe('which branches are checked against main', () => {
     expect(isOpen(item({ status: 'doing', proposed: {} }))).toBe(false);
   });
 
-  it('checks the ticket\'s branches that exist, at their heads', () => {
+  it("checks the ticket's branches that exist, at their heads", () => {
     const heads = new Map([['feature/BL-1-a', 'c1']]);
     expect(branchesToCheck(item({ branches: ['feature/BL-1-a', 'feature/BL-1-gone'] }), heads)).toEqual([{ branch: 'feature/BL-1-a', head: 'c1' }]);
     expect(branchesToCheck(item({ branch: 'feature/BL-1-a' }), heads)).toEqual([{ branch: 'feature/BL-1-a', head: 'c1' }]);
@@ -45,7 +45,16 @@ describe('which branches are checked against main', () => {
   });
 
   it('lists the branches that conflict', () => {
-    expect(conflictsOf(item({ mainCheck: check([['x', []], ['y', ['a.ts']]]) })).map((b) => b.branch)).toEqual(['y']);
+    expect(
+      conflictsOf(
+        item({
+          mainCheck: check([
+            ['x', []],
+            ['y', ['a.ts']],
+          ]),
+        }),
+      ).map((b) => b.branch),
+    ).toEqual(['y']);
     expect(conflictsOf(item({}))).toEqual([]);
   });
 
@@ -83,7 +92,8 @@ describe('what the ticket says about it', () => {
 
   it('tells the agent to merge, resolve, check, commit with the id and report', () => {
     const prompt = mergeBasePrompt({ id: 'BL-1', base: 'origin/main', branch: 'feature/BL-1-x', files: ['a.ts'], ticket: '/t/BL-1.md' });
-    expect(prompt).toContain('git merge origin/main');
+    expect(prompt).toContain('git rebase origin/main');
+    expect(prompt).not.toContain('git merge');
     expect(prompt).toContain('in a.ts');
     expect(prompt).toContain('"BL-1: "');
     expect(prompt).toContain('Ready for review.');

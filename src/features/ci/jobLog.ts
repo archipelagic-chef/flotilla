@@ -27,7 +27,11 @@ export function checkJobLogRef(value: unknown): JobLogRef {
 
 /** A job's log, as a read-only document. Its path is readable (the job's name); its query says which job. */
 export function makeJobLogUri(ref: JobLogRef): vscode.Uri {
-  const name = ref.jobName.replace(/[^\w .()-]+/g, '-').trim().slice(0, 80) || `job-${ref.jobId}`;
+  const name =
+    ref.jobName
+      .replace(/[^\w .()-]+/g, '-')
+      .trim()
+      .slice(0, 80) || `job-${ref.jobId}`;
   return vscode.Uri.from({ scheme: JOB_LOG_SCHEME, path: `/${name}.log`, query: JSON.stringify(checkJobLogRef(ref)) });
 }
 

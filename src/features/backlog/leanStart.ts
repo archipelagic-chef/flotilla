@@ -23,7 +23,10 @@ export function enabledPlugins(settingsTexts: ReadonlyArray<string | undefined>)
     if (!plugins || typeof plugins !== 'object') continue;
     for (const [id, on] of Object.entries(plugins)) if (typeof on === 'boolean') enabled.set(id, on);
   }
-  return [...enabled].filter(([, on]) => on).map(([id]) => id).sort();
+  return [...enabled]
+    .filter(([, on]) => on)
+    .map(([id]) => id)
+    .sort();
 }
 
 /**

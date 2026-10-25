@@ -10,6 +10,7 @@ npm test               # unit + git integration tests (vitest), queued with the 
 npm run test:related   # only the tests of what changed since main
 npm run typecheck
 npm run build
+npm run format         # Prettier; the pre-commit hook does it for the staged files
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
@@ -98,9 +99,10 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   places.
 - **The ticket tab's host** ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)) builds the view; the
   webview's messages are handled in [src/ui/backlog/ticketMessages/](src/ui/backlog/ticketMessages/), one module per
-  group (`ticket`, `comments`, `files`, `tracker`, `agents`, `review`, `merge`), each a map of handlers by message type.
-  A new message type gets its handler in its group's module (or a new group, listed in `index.ts`); the panel only
-  dispatches.
+  group (`ticket`, `comments`, `files`, `tracker`, `agents`, `review`, `merge`, `check`), each a map of handlers by
+  message type. A new message type is declared in its group's `<group>.messages.ts` and handled in its `<group>.ts`
+  (the typecheck fails until it is); a new group gets both files, and a line in `index.ts` and in
+  `HandledTicketMessage` ([src/webview/ticketProtocol.ts](src/webview/ticketProtocol.ts)). The panel only dispatches.
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
@@ -127,6 +129,42 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   `ticket/ticket.css`, which the entry imports before the parts, so a part's rules come after the shared ones and win
   at the same specificity.
 
+## Additions that merge cleanly
+
+Most merge conflicts here were two tickets adding unrelated lines at the same spot, usually the end of a list (BL-155).
+So:
+
+- **One format.** Prettier ([.prettierrc.json](.prettierrc.json): 160 wide, single quotes) formats the code, TypeScript,
+  JavaScript and CSS; Markdown and `package.json` keep theirs. `npm install` installs a pre-commit hook
+  ([scripts/install-hooks.mjs](scripts/install-hooks.mjs)) that formats the staged files, in every worktree, and
+  `npm test` fails on a file that isn't formatted (`npm run format` fixes it). Don't reformat what you don't change.
+- **Imports.** An import of four names or more lists them one per line, sorted
+  ([scripts/prettier-imports.mjs](scripts/prettier-imports.mjs) does it), so two added names land on different lines.
+  Keep it that way when you add one: Prettier puts it in its place.
+- **Ticket tab messages**: in their group's files, as in "Where a part goes" above.
+- **Commands and settings**: a command's handler in its feature's map (above); its entry, and a setting's, in
+  `package.json` next to the related ones of the same feature, not at the end of the list.
+- **`CHANGELOG.md`**: one entry per ticket under "## Unreleased". It merges with `merge=union`
+  ([.gitattributes](.gitattributes)), which keeps both sides' lines: add a new paragraph rather than editing another
+  ticket's, so the merge doesn't keep two versions of it.
+- **CSS**: in the part's own file (above).
+- **Splitting an epic**: siblings that build the same part get `Depends on:` the earlier one, so they don't build it in
+  parallel and conflict; siblings in separate parts run in parallel.
+
+### Merging main past the reformat
+
+The commit that formatted the whole repository (`4da0391`, listed in [.git-blame-ignore-revs](.git-blame-ignore-revs),
+which `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes `git blame` skip) changes most lines of most
+files, so a branch from before it conflicts all over when it merges main. Merge main in three steps instead:
+
+```bash
+git merge 4da0391^                       # main up to the reformat: your usual conflicts, if any
+npm ci && npm run format && git commit -am "BL-…: Format as main does"
+git merge -s ours 4da0391 && git merge main
+```
+
+Your branch, formatted, is what the reformat would have made of it, so `-s ours` takes it as it is.
+
 ## Buttons that wait
 
 A button that starts something taking a while (git, GitHub, an agent starting, a file write and the backlog's refresh) says it's working from the click until the host is done, and takes no second click meanwhile (BL-116). The webview marks the action busy when it sends it; the host replies "done" for every such message, in a `finally`, whether the action posted, failed (`failed: true`; the error shows as before), was cancelled at a question or returned early. So nothing sticks, and a button whose action asks first (a confirmation, a quick pick) stays working while the question is up.
@@ -143,7 +181,7 @@ What happens to tickets, agents and merges is recorded as events (BL-157), one J
 
 - **To record something**, call `recordEvent(kind, { ticket, agent, data })` ([src/features/metrics/events.ts](src/features/metrics/events.ts)) where it happens. It isn't awaited and never throws: recording doesn't slow or break the step it records. A new kind goes into `EventData` there, with the shape of its `data`, and gets a sample in `tests/unit/features/metrics/events.test.ts` (it doesn't compile without one). Scripts record with `recordEvent(commonDir, kind, …)` of `scripts/record-event.mjs`.
 - **The history** before the log (the tickets' activity notes and the merges replayed from git) is read in once by the leading window, marked `imported` ([src/features/metrics/import.ts](src/features/metrics/import.ts)). A note whose wording changes should still be read there.
-- **The Metrics view** (BL-158: the sidebar's Metrics tool, and *Flotilla: Open Metrics* in an editor tab) counts them in the host: [src/features/metrics/compute.ts](src/features/metrics/compute.ts) turns the log into its numbers and charts for a period and the one before (pure, tested on a fixed log in `tests/unit/features/metrics/compute.test.ts`), and [src/features/metrics/store.ts](src/features/metrics/store.ts) reads only what was appended since its last look. A new number goes into `computeMetrics`, with its rows (what it's made of) and its `empty` line. The playground has a month of events to show (`seedEvents` in `scripts/playground-seed.mjs`, written again before every demo).
+- **The Metrics view** (BL-158: the sidebar's Metrics tool, and *Flotilla: Open Metrics* in an editor tab) counts them in the host: [src/features/metrics/compute.ts](src/features/metrics/compute.ts) turns the log into its numbers and charts for a period and the one before (pure, tested on a fixed log in `tests/unit/features/metrics/compute.test.ts`), and [src/features/metrics/store.ts](src/features/metrics/store.ts) reads only what was appended since its last look. A new number goes into `computeMetrics`, with its rows (what it's made of) and its `empty` line. The playground has a month of events to show (`seedEvents` in `scripts/playground-seed.mjs`, written again before every demo). Its first section, Productivity (BL-189), reads `agent-spend` events: [src/features/metrics/transcriptSpend.ts](src/features/metrics/transcriptSpend.ts) splits a chat's transcript by the prompt that started each part (first pass, review, rework, main, resume, answer, orchestration) and shares its cost records among them, and [src/features/metrics/spendScan.ts](src/features/metrics/spendScan.ts) records what's new every 5 minutes in the leading window (the history imported once, its place kept in `spend-scan.json` next to the events). A new Flotilla prompt gets its purpose in `PROMPTS` there, tested in `tests/unit/features/metrics/transcriptSpend.test.ts`.
 - **After 12 months** a month's events are rolled up into `totals-YYYY-MM.json` ([src/features/metrics/rollup.ts](src/features/metrics/rollup.ts)).
 - **The improvement review** (BL-159) gives its agent the metrics of [src/features/metrics/summary.ts](src/features/metrics/summary.ts), each with a stable id, this period next to the one before. A proposal's `Improves: <id> from X to Y` line names one, and the next review counts it before and after the ticket landed ([src/features/metrics/improves.ts](src/features/metrics/improves.ts)). A new metric is a `metricDefs` entry there (keep the ids: merged tickets name them). The reviews are `.flotilla/backlog/reviews/YYYY-MM-DD.md`.
 
@@ -161,17 +199,19 @@ Flotilla plays `demos/open-ticket.json` and ignores the line, which is there for
 
 The ticket shows the recording and its block as one demo: "Recorded demo · 0:12" over the recording, with **Try it yourself** (`npm run demo -- try <name>`: the demo's window as it starts, its steps left to you) and **Watch it live** (`play`), in the report, the Demo section and the Attachments viewer alike; the block isn't shown again below it. The recorder notes the demo's name in what it records (`flotilla-demo:<name>`, in the GIF's or MP4's comment), so a recording goes with its block wherever the report puts them. Once the ticket's worktree is gone (merged and cleaned up), they run from the main worktree when the demo is there.
 
+Write the demo, check it, and record it once: `check` plays the steps fast, without recording or pauses, and prints each step's result, so a wrong selector costs seconds, not a recording. Record when it passes, at the end of the work, and don't record again unless the work changed since.
+
 ```sh
-npm run build
+npm run demo -- check open-ticket   # the dry run: each step's result, and what failed
 npm run demo -- record open-ticket --out .flotilla/backlog/BL-3/demo.gif --still .vscode-test/last.png
 npm run demo -- play open-ticket    # live, in the window; it stays open until you close it
 npm run demo -- try open-ticket     # its window as the demo starts, its steps left to you (Try it yourself)
 npm run demo -- list
 ```
 
-The recorder refuses a build older than `src/` (it would play an old sidebar, whose elements the steps may not find): run `npm run build` again after a change.
+Before it starts, the recorder makes ready what it needs: it builds (`npm run build`) when `dist/` is older than `src/` (an old build plays an old sidebar, whose elements the steps may not find), and reads the demo profile's `settings.json` as JSON with comments, moving a broken one aside (`settings.json.broken`) to start afresh. Each demo starts from the same window: what the last one left in the profile's workspace storage (the sidebar's state, a fold left open, the views and editors open) is cleared first, so a toggle a demo clicks goes the same way every run. A step that fails saves a screenshot of the window next to the demo (`demos/<name>.failed.png`, ignored by git, gone once it passes) and prints the visible elements most like what it looked for, their labels and text: `[aria-label="Backlogs"]` lists `button aria-label="Backlog"`. A `command` step whose command the palette doesn't have fails there, rather than running one of the "similar commands" it offers. The last line says how it went, for an agent to read: `Demo saved: <file> (<size>, <length>)`, `Demo checked: all <n> steps passed`, or `Demo failed: step <n> (…): <why> (screenshot: <file>)`. Checks and failures are events too (`demo-checked`, `demo-failed`), next to `demo-recorded`.
 
-The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are that window's page as Chromium draws it: its screencast through the debugging port (playwright-core), never the screen. Each frame comes when the page changes, with the time it was drawn, and the recording keeps 25 a second, so the pointer glides rather than jumps, also when the machine is busy. Recording starts once the window is ready: the workbench shown, Flotilla's view in the activity bar, and nothing changed on screen for a second (a window that doesn't settle within a minute fails the demo). A frame is kept only once a check after it finds that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`), checked four times a second. If a check fails, nothing is saved, and the recorder says why. A GIF holds only what changed from one frame to the next, so a 15 s demo stays well under 2 MB; a longer one becomes an MP4 at 25 fps. Recording prints how far apart the frames were while the pointer moved (the `pointer-sweep` demo is there to measure it). `--still` saves the last frame as a PNG, to check how the demo ends. `--still` saves the last frame as a PNG, to check how the demo ends. One demo runs at a time in a worktree, as it holds that profile: a second one started there says so and waits for the first to finish (or its window to be closed); demos in other worktrees run alongside.
+The window is never yours: it's VS Code's test download (in the main worktree's `.vscode-test`, as `npm run test:vscode` uses), started with a profile of its own (`.vscode-test/demo-profile`), a home folder of its own (`.vscode-test/demo-home`: none of your git config, keys or VS Code's shared state), the fake Claude and a fake GitHub started for it, on this worktree's `.playground` (made if it's missing). Frames are that window's page as Chromium draws it: its screencast through the debugging port (playwright-core), never the screen. Each frame comes when the page changes, with the time it was drawn, and the recording keeps 25 a second, so the pointer glides rather than jumps, also when the machine is busy. Recording starts once the window is ready: the workbench shown, Flotilla's view in the activity bar, Flotilla's status bar item (there once the extension has started, so its commands are), and nothing changed on screen for a second (a window that doesn't settle within a minute fails the demo). A frame is kept only once a check after it finds that window: VS Code started with the demo profile, and the window's title, which only that profile sets (`Flotilla demo · …`), checked four times a second. If a check fails, nothing is saved, and the recorder says why. A GIF holds only what changed from one frame to the next, so a 15 s demo stays well under 2 MB; a longer one becomes an MP4 at 25 fps. Recording prints how far apart the frames were while the pointer moved (the `pointer-sweep` demo is there to measure it). `--still` saves the last frame as a PNG, to check how the demo ends. One demo runs at a time in a worktree, as it holds that profile: a second one started there says so and waits for the first to finish (or its window to be closed); demos in other worktrees run alongside.
 
 An agent's demos never open on your screen: when the recorder or player runs in an agent's command (Claude Code sets `CLAUDECODE` there, for agents Flotilla starts and any other), the window opens on a virtual display of its own, an Xvfb started for it on the first display from `:99` up with neither an X socket nor a lock (a dev container serves `:0`–`:2` without locks) and stopped when it's done. Frames are the window's page either way, so the recording is the same size (1280 × 800) and quality. Played there, the window closes when the demo ends, as nobody sees it. Where Xvfb isn't installed, the demo says so and stops; it never falls back to your screen. `DEMO_DISPLAY=virtual` or `DEMO_DISPLAY=screen` chooses either way by hand (agents don't set it). Your run blocks play in a terminal of yours, so they show on your screen.
 
@@ -222,7 +262,7 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
 
 ## Releasing
 
-1. Update `CHANGELOG.md` and bump `version` in `package.json`.
+1. Move the entries under "## Unreleased" to the new version's heading, and bump `version` in `package.json`.
 2. `npm run typecheck && npm test && npm run build`
 3. `npm run package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…). It packages a copy of
    `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository

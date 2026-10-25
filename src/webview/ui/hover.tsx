@@ -1,5 +1,10 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { ciState, ciSummary } from '../../features/ci/summary';
 import type { CiView, WorkstreamView } from '../protocol';
 import { ATTENTION_ICON } from './section';

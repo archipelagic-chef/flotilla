@@ -1,0 +1,16 @@
+# Prettier formats the code: TypeScript, JavaScript and CSS. The rest keeps its own format (package.json is npm's,
+# Markdown is prose, the tickets are Flotilla's).
+*.*
+!*.ts
+!*.tsx
+!*.mts
+!*.mjs
+!*.js
+!*.cjs
+!*.css
+dist/
+out/
+.vscode-test/
+.playground/
+.worktrees/
+.flotilla/

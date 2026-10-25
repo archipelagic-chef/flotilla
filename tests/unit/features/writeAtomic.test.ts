@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { LocalBacklog, writeAtomic } from '../../../src/features/backlog/localBacklog';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
@@ -58,7 +63,12 @@ describe('LocalBacklog.read', () => {
     const root = makeTempDir();
     cleanup.push(root);
     const backlog = new LocalBacklog(root, path.join(root, '.git'));
-    const whole = JSON.stringify({ version: 1, next: 2, counters: { BL: 1 }, items: [{ id: 'BL-1', title: 'One', status: 'todo', priority: 'medium', created: '' }] });
+    const whole = JSON.stringify({
+      version: 1,
+      next: 2,
+      counters: { BL: 1 },
+      items: [{ id: 'BL-1', title: 'One', status: 'todo', priority: 'medium', created: '' }],
+    });
     writeFile(root, '.flotilla/backlog/backlog.json', whole.slice(0, 20));
     setTimeout(() => fs.writeFileSync(backlog.file, whole), 10);
     expect((await backlog.read()).items.map((i) => i.id)).toEqual(['BL-1']);

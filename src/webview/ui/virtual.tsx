@@ -1,6 +1,17 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { FIRST_VIEW, offsetsOf, ROW_HEIGHT, visibleRange } from './windowing';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import {
+  FIRST_VIEW,
+  offsetsOf,
+  ROW_HEIGHT,
+  visibleRange,
+} from './windowing';
 
 /** The nearest ancestor that scrolls vertically: the .content area (every tab scrolls there). */
 function scrollerOf(el: HTMLElement): HTMLElement | undefined {

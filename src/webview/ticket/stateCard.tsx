@@ -22,12 +22,7 @@ function AskBlock({ ask, title, agent, local, stoppable }: { ask: Ask; title: st
         {local && ask.options.length > 0 && (
           <div class="ask-options">
             {ask.options.map((option, i) => (
-              <button
-                key={option}
-                class={`button${i ? ' secondary' : ''}`}
-                onClick={() => sendComment(option)}
-                title="Sends this as the answer"
-              >
+              <button key={option} class={`button${i ? ' secondary' : ''}`} onClick={() => sendComment(option)} title="Sends this as the answer">
                 {option}
               </button>
             ))}
@@ -74,13 +69,7 @@ export function StateCard({ ticket }: { ticket: TicketView }) {
   return (
     <>
       {status.ask && (
-        <AskBlock
-          ask={status.ask}
-          title={status.title}
-          agent={ticket.review?.implementer ?? chat?.agent}
-          local={!ticket.remote}
-          stoppable={asking}
-        />
+        <AskBlock ask={status.ask} title={status.title} agent={ticket.review?.implementer ?? chat?.agent} local={!ticket.remote} stoppable={asking} />
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
       {ticket.queued && <QueuedPanel queued={ticket.queued} />}

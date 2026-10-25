@@ -10,7 +10,13 @@ import * as path from 'node:path';
 import * as gifencModule from 'gifenc';
 import { tagGif } from './demo-kit.mjs';
 // The app's own code (src/features/backlog/seedKit.ts, built by npm run build), so the seed writes what the app reads.
-import { actionable, descriptionHash, entryDate, entryKey, formatTicket } from '../dist/playground-seed-kit.mjs';
+import {
+  actionable,
+  descriptionHash,
+  entryDate,
+  entryKey,
+  formatTicket,
+} from '../dist/playground-seed-kit.mjs';
 
 // Node loads gifenc's CommonJS build (its functions on the default export), as demo-kit.mjs does.
 const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
@@ -59,8 +65,13 @@ const TICKETS = [
     daysAgo: 6,
     branch: 'feature/BL-1-show-a-run-button-on-review-cards',
     description: [
-      'A review card shows a Run button when its ticket has a run block, so the board can try the work.',
+      "**When it's done:** A review card shows a Run button when its ticket has a run block, so you try the work from the",
+      'board, without opening the ticket.',
       '',
+      "**Why:** to try a ticket's work today, you open the ticket, find its last report and copy its commands into a",
+      'terminal. The card knows the ticket, but not its run block.',
+      '',
+      'Acceptance criteria:',
       "- [ ] The card's Run button runs the ticket's run block: the last one its reports have.",
       '- [ ] Each kind of run block (shell, launch, task, open a URL, open a file) does what it says.',
     ].join('\n'),
@@ -240,7 +251,12 @@ const TICKETS = [
     title: 'Attach any file to a ticket',
     status: 'doing',
     daysAgo: 14,
-    description: ['Tickets take files of any kind, not only images, in parts.', '', '- [ ] Every part below is done.', '- [ ] A file that is too big says so.'].join('\n'),
+    description: [
+      'Tickets take files of any kind, not only images, in parts.',
+      '',
+      '- [ ] Every part below is done.',
+      '- [ ] A file that is too big says so.',
+    ].join('\n'),
     activity: [
       { ago: 400, author: 'Flotilla', body: 'You moved it from **To Do** to **In Progress**.' },
       { ago: 390, author: 'You', body: 'Drag and drop first, then the file list.' },
@@ -283,7 +299,8 @@ const TICKETS = [
     status: 'done',
     priority: 'low',
     daysAgo: 20,
-    description: "The status bar shows Claude's usage limit, and when it resets.\n\n- [ ] Shown while the limit is reached.\n- [ ] Hidden when there is no limit.",
+    description:
+      "The status bar shows Claude's usage limit, and when it resets.\n\n- [ ] Shown while the limit is reached.\n- [ ] Hidden when there is no limit.",
     activity: [
       {
         ago: 1500,
@@ -367,7 +384,9 @@ const TICKETS = [
     commits: [
       {
         message: 'BL-10: Remember the last open ticket',
-        files: { 'src/last.js': '// The last ticket opened in this window.\nexport function rememberTicket(state, id) {\n  return { ...state, lastTicket: id };\n}\n' },
+        files: {
+          'src/last.js': '// The last ticket opened in this window.\nexport function rememberTicket(state, id) {\n  return { ...state, lastTicket: id };\n}\n',
+        },
       },
     ],
     // Its folder (BL-110's Attachments): the report's pictures, and a sketch nothing references.
@@ -401,7 +420,10 @@ const TICKETS = [
       reason: 'the reviewer gave no verdict.',
       stop: {
         kind: 'no-verdict',
-        task: { prompt: 'Add the test for removing a worktree, as the reviewer asked, then report.', why: 'the reviewer asked for a test, and gave no verdict' },
+        task: {
+          prompt: 'Add the test for removing a worktree, as the reviewer asked, then report.',
+          why: 'the reviewer asked for a test, and gave no verdict',
+        },
       },
     },
     activity: [
@@ -478,7 +500,10 @@ const TICKETS = [
     commits: [
       {
         message: 'BL-12: Warn on a big diff before review',
-        files: { 'src/diff-size.js': '// How many lines a review may look at before it warns.\nexport function warnsAbout(lines, limit = 800) {\n  return lines > limit;\n}\n' },
+        files: {
+          'src/diff-size.js':
+            '// How many lines a review may look at before it warns.\nexport function warnsAbout(lines, limit = 800) {\n  return lines > limit;\n}\n',
+        },
       },
     ],
   },
@@ -490,7 +515,8 @@ const TICKETS = [
     branch: 'feature/BL-13-say-hi-in-the-greeting',
     // Pushed to the playground's origin (a local bare repository with a GitHub-like path): its ticket shows its CI from the fake GitHub (BL-106).
     published: true,
-    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.',
+    // Its merge's agent (Fix with Agent) works long enough to be paused by Pause All (demos/pause-all-merge.json).
+    description: 'The greeting says hi: "Hi Ada!" instead of "Hello, Ada!".\n\n- [ ] The CLI and the server say hi.\n\nfake: wait 30s',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Vega-2' },
     activity: [
       {
@@ -513,7 +539,8 @@ const TICKETS = [
     title: 'Show the backlog as a board',
     status: 'done',
     daysAgo: 4,
-    description: "The backlog shows as a board: a column per status, cards moved by dragging.\n\n- [ ] Dragging a card moves it.\n- [ ] The board remembers its scroll.",
+    description:
+      'The backlog shows as a board: a column per status, cards moved by dragging.\n\n- [ ] Dragging a card moves it.\n- [ ] The board remembers its scroll.',
     review: { round: 1, state: 'approved', reviewer: 'Iris-4', implementer: 'Nova-7' },
     // Reports that lead with their pictures and diagrams (BL-114's demo): the older ones fold, each with its strip.
     activity: [
@@ -612,7 +639,10 @@ const TICKETS = [
     commits: [
       {
         message: 'BL-15: Remember the last open tab',
-        files: { 'src/last.js': '// The last tab opened per ticket.\nexport function rememberTab(state, id, tab) {\n  return { ...state, tabs: { ...state.tabs, [id]: tab } };\n}\n' },
+        files: {
+          'src/last.js':
+            '// The last tab opened per ticket.\nexport function rememberTab(state, id, tab) {\n  return { ...state, tabs: { ...state.tabs, [id]: tab } };\n}\n',
+        },
       },
     ],
   },
@@ -756,7 +786,7 @@ const MODEL = 'claude-opus-5-5';
 /** Vega-2's todo list (TodoWrite), with its first `done` steps done and the next in progress. */
 const PLAN = [
   ['Read the ticket and find where chats are saved', 'Reading the ticket'],
-  ['Add chatOf, to find a worktree\'s chat again', 'Adding chatOf'],
+  ["Add chatOf, to find a worktree's chat again", 'Adding chatOf'],
   ['Read the store when the window starts', 'Reading the store on start'],
   ['Run the chat tests', 'Running the chat tests'],
   ['Report in the ticket', 'Reporting in the ticket'],
@@ -772,8 +802,16 @@ const AGENT_TURNS = [
   {
     say: 'You are agent Vega-2, working on backlog item BL-3: "Keep chats when a window reloads". Read its ticket, then go on.',
     tools: [
-      { name: 'Read', input: { file_path: '.flotilla/backlog/BL-3.md' }, result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again." },
-      { name: 'Grep', input: { pattern: 'saveChat', description: 'Find where chats are saved' }, result: 'src/chats.js:1:export function saveChat(store, worktree, id) {' },
+      {
+        name: 'Read',
+        input: { file_path: '.flotilla/backlog/BL-3.md' },
+        result: "# Keep chats when a window reloads\n\nA window that reloads finds its agents' chats again.",
+      },
+      {
+        name: 'Grep',
+        input: { pattern: 'saveChat', description: 'Find where chats are saved' },
+        result: 'src/chats.js:1:export function saveChat(store, worktree, id) {',
+      },
       { name: 'TodoWrite', input: { todos: plan(1) }, result: 'Todos have been modified successfully.' },
     ],
     reply: "The chat's id is saved with its worktree in `src/chats.js`, but nothing reads it back after a reload.",
@@ -821,9 +859,20 @@ function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
     lines.push({ type: 'assistant', ...base(), uuid: id('a', i), message: { id: id('m', i), role: 'assistant', model: MODEL, content: [call], usage } });
     // A call without a result still runs.
     if (tool.result === undefined) break;
-    lines.push({ type: 'user', ...base(), uuid: id('r', i), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] } });
+    lines.push({
+      type: 'user',
+      ...base(),
+      uuid: id('r', i),
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: tool.result }] },
+    });
   }
-  if (turn.reply) lines.push({ type: 'assistant', ...base(), uuid: id('a', 'end'), message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage } });
+  if (turn.reply)
+    lines.push({
+      type: 'assistant',
+      ...base(),
+      uuid: id('a', 'end'),
+      message: { id: id('m', 'end'), role: 'assistant', model: MODEL, content: [{ type: 'text', text: turn.reply }], usage },
+    });
   return lines.map((l) => `${JSON.stringify(l)}\n`).join('');
 }
 
@@ -855,7 +904,15 @@ export function seedChats(dir, claudeHome, now = new Date()) {
     fs.writeFileSync(file, `${lines}${JSON.stringify({ type: 'custom-title', sessionId: c.sessionId, customTitle: c.title })}\n`);
     const updatedAt = c.quietFor ? new Date(now.getTime() - c.quietFor * 60_000) : now;
     if (c.quietFor) fs.utimesSync(file, updatedAt, updatedAt);
-    const record = { sessionId: c.sessionId, state: c.state, cwd, linkedBy: 'cwd', firstPrompt: c.turns[0].say.slice(0, 200), startedAt: startedAt.toISOString(), updatedAt: updatedAt.toISOString() };
+    const record = {
+      sessionId: c.sessionId,
+      state: c.state,
+      cwd,
+      linkedBy: 'cwd',
+      firstPrompt: c.turns[0].say.slice(0, 200),
+      startedAt: startedAt.toISOString(),
+      updatedAt: updatedAt.toISOString(),
+    };
     if (c.agent) record.agent = c.agent;
     fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
     return file;
@@ -922,11 +979,30 @@ export function seedEvents(dir, now = new Date()) {
   const end = now.getTime();
   const events = [];
   const add = (t, kind, data, ticket, agent) => {
-    if (t <= end) events.push({ at: new Date(t).toISOString(), kind, ...(ticket ? { ticket } : {}), ...(agent ? { agent } : {}), data, imported: true, seeded: true });
+    if (t <= end)
+      events.push({ at: new Date(t).toISOString(), kind, ...(ticket ? { ticket } : {}), ...(agent ? { agent } : {}), data, imported: true, seeded: true });
   };
   const agents = ['Vega-2', 'Nova-7', 'Orbit-2', 'Atlas-8', 'Onyx-4'];
   const files = ['src/greet.js', 'src/server.js', 'README.md', 'src/last.js', 'package.json', 'test/greet.test.js'];
   const tokens = (k) => ({ input: Math.round(k * 300), output: Math.round(k * 120), cacheRead: Math.round(k * 2400), cacheCreation: Math.round(k * 200) });
+  // A run's spend, split by purpose as the transcripts are (BL-189): its turns' context and its tools' output.
+  const spend = (t, minutes, purpose, usd, s, id, agent) => {
+    const turns = Math.max(1, Math.round(minutes / 5));
+    const contextK = Array.from({ length: turns }, (_, i) => Math.round(30 + (i / turns) * between(60, 200)));
+    const tools = {
+      code: Math.round(minutes * between(2000, 5000)),
+      git: Math.round(minutes * between(300, 1500)),
+      tests: Math.round(minutes * between(100, 800)),
+      other: Math.round(minutes * 200),
+    };
+    add(
+      t,
+      'agent-spend',
+      { session: s, purpose, to: new Date(t + minutes * M).toISOString(), tokens: tokens(minutes), costUsd: Math.round(usd * 100) / 100, contextK, tools },
+      id,
+      agent,
+    );
+  };
   let n = 0;
   let session = 0;
   // A ticket's way, from its start at t: work, review (sent back now and then), your approval, its merge.
@@ -939,15 +1015,30 @@ export function seedEvents(dir, now = new Date()) {
       const s = `seed-${session++}`;
       const work = between(30, 140) * M;
       add(t, round === 1 ? 'agent-started' : 'agent-resumed', { role: 'work', session: s, model: 'opus' }, id, worker);
+      spend(t, work / M, round === 1 ? 'first' : 'rework', (work / M) * 0.06, s, id, worker);
+      if (random() < 0.15) spend(t + work / 2, between(3, 15), 'resume', between(0.2, 0.9), s, id, worker);
       t += work;
-      add(t, 'agent-ended', { role: 'work', session: s, code: 0, ok: true, minutes: Math.round(work / M), tokens: tokens(work / M), costUsd: Math.round(work / M) * 0.06 }, id, worker);
+      add(
+        t,
+        'agent-ended',
+        { role: 'work', session: s, code: 0, ok: true, minutes: Math.round(work / M), tokens: tokens(work / M), costUsd: Math.round(work / M) * 0.06 },
+        id,
+        worker,
+      );
       add(t, 'ticket-moved', { from: 'doing', to: 'review', by: 'Flotilla' }, id);
       t += between(5, 60) * M;
       const r = `seed-${session++}`;
       const review = between(10, 35) * M;
       add(t, 'agent-started', { role: 'review', session: r, model: 'opus' }, id, reviewer);
+      spend(t, review / M, 'review', (review / M) * 0.05, r, id, reviewer);
       t += review;
-      add(t, 'agent-ended', { role: 'review', session: r, code: 0, ok: true, minutes: Math.round(review / M), tokens: tokens(review / M), costUsd: Math.round(review / M) * 0.05 }, id, reviewer);
+      add(
+        t,
+        'agent-ended',
+        { role: 'review', session: r, code: 0, ok: true, minutes: Math.round(review / M), tokens: tokens(review / M), costUsd: Math.round(review / M) * 0.05 },
+        id,
+        reviewer,
+      );
       const back = round < 3 && random() < 0.25;
       add(t, 'review-verdict', { verdict: back ? 'changes' : 'approved', round, by: `Agent ${reviewer}` }, id, reviewer);
       if (!back) break;
@@ -968,7 +1059,22 @@ export function seedEvents(dir, now = new Date()) {
       const m = `seed-${session++}`;
       const resolve = between(4, 20) * M;
       add(t + M, 'agent-started', { role: 'merge', session: m }, id, worker);
-      add(t + M + resolve, 'agent-ended', { role: 'merge', session: m, code: 0, ok: true, minutes: Math.round(resolve / M), tokens: tokens(resolve / M), costUsd: Math.round(resolve / M) * 0.04 }, id, worker);
+      spend(t + M, resolve / M, 'main', (resolve / M) * 0.04, m, id, worker);
+      add(
+        t + M + resolve,
+        'agent-ended',
+        {
+          role: 'merge',
+          session: m,
+          code: 0,
+          ok: true,
+          minutes: Math.round(resolve / M),
+          tokens: tokens(resolve / M),
+          costUsd: Math.round(resolve / M) * 0.04,
+        },
+        id,
+        worker,
+      );
       add(t + M + resolve, 'merge-resolved', { minutes: Math.round(resolve / M), by: `Agent ${worker}` }, id, worker);
       t += M + resolve + between(2, 40) * M;
       add(t, 'merge-approved', { by: 'You' }, id);
@@ -980,19 +1086,38 @@ export function seedEvents(dir, now = new Date()) {
       add(t + 2 * M, 'merge-started', { into: 'main', branch: `feature/${id}` }, id);
     }
     t += between(3, 9) * M;
-    add(t, 'merge-landed', { into: 'main', commit: Math.floor(random() * 0xffffff).toString(16).padStart(7, '0') }, id);
-    add(t, 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla' }, id);
+    add(
+      t,
+      'merge-landed',
+      {
+        into: 'main',
+        commit: Math.floor(random() * 0xffffff)
+          .toString(16)
+          .padStart(7, '0'),
+      },
+      id,
+    );
+    add(t, 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla', criteria: Math.ceil(between(2, 8)) }, id);
   };
   // Two to four tickets start a day, the last ones still under way now.
   for (let day = 30; day >= 0; day--) {
     const midnight = new Date(end - day * 86_400_000);
     midnight.setHours(0, 0, 0, 0);
     const starts = Math.floor(between(2, 5));
+    // Your own chats with Claude: orchestration, not a ticket's.
+    const chat = between(10, 60);
+    spend(midnight.getTime() + between(8, 11) * 60 * M, chat, 'orchestration', chat * 0.07, `seed-own-${day}`);
     for (let i = 0; i < starts; i++) ticket(midnight.getTime() + between(8, 18) * 60 * M);
     // An idle evening: what waits is held back by what isn't merged yet.
     add(midnight.getTime() + 21 * 60 * M, 'autopilot-idle', { reason: random() < 0.6 ? 'BL-5 waits for BL-2 (In Progress)' : 'nothing left in To Do' });
     if (random() < 0.2) add(midnight.getTime() + 22 * 60 * M, 'autopilot-idle', { reason: '1 merge failed (BL-13): it needs you' });
-    if (random() < 0.5) add(midnight.getTime() + between(9, 19) * 60 * M, 'click-waited', { button: random() < 0.5 ? 'backlog:approve' : 'backlog:start', ms: Math.round(between(1000, 6000)) }, `BL-${Math.ceil(between(1, 15))}`);
+    if (random() < 0.5)
+      add(
+        midnight.getTime() + between(9, 19) * 60 * M,
+        'click-waited',
+        { button: random() < 0.5 ? 'backlog:approve' : 'backlog:start', ms: Math.round(between(1000, 6000)) },
+        `BL-${Math.ceil(between(1, 15))}`,
+      );
     if (day % 9 === 4) {
       const hit = midnight.getTime() + 16 * 60 * M;
       add(hit, 'limit-hit', { limit: 'five-hour', until: new Date(hit + 90 * M).toISOString(), known: true });
@@ -1008,7 +1133,10 @@ export function seedEvents(dir, now = new Date()) {
   }
   for (const name of fs.readdirSync(metrics).filter((f) => /^events-\d{4}-\d{2}\.jsonl$/.test(f))) {
     const file = path.join(metrics, name);
-    const kept = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim() && !l.includes(SEEDED));
+    const kept = fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim() && !l.includes(SEEDED));
     fs.writeFileSync(file, kept.length ? `${kept.join('\n')}\n` : '');
   }
   for (const [month, text] of byMonth) fs.appendFileSync(path.join(metrics, `events-${month}.jsonl`), text);

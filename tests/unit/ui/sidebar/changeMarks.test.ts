@@ -32,7 +32,7 @@ describe('the change marks of the Files tab', () => {
     expect(changeMarks([], [{ path: 'gen/', kind: 'untracked' }], new Set(['']))).toEqual({ gen: 'untracked' });
   });
 
-  it("gives a folder its own mark before those of the changes inside it", () => {
+  it('gives a folder its own mark before those of the changes inside it', () => {
     const marks = changeMarks([m('dir/inner/a.txt')], [{ path: 'dir/inner/', kind: 'untracked' }], new Set(['dir']));
     expect(marks).toEqual({ 'dir/inner': 'untracked' });
   });

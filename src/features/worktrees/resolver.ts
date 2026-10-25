@@ -2,7 +2,13 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { isInside, pathKey, samePath } from '../../core/paths';
 import { worktreesRoot } from './layout';
-import { isLocked, isPortable, readBackPointer, readGitFile, resolveGitdir } from './portability';
+import {
+  isLocked,
+  isPortable,
+  readBackPointer,
+  readGitFile,
+  resolveGitdir,
+} from './portability';
 
 export interface RepoRoots {
   mainRoot: string;
@@ -79,7 +85,10 @@ export async function resolveWorktrees(roots: RepoRoots): Promise<ResolvedWorktr
   let ids: string[] = [];
   try {
     const entries = await fs.readdir(path.join(roots.commonDir, 'worktrees'), { withFileTypes: true });
-    ids = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    ids = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
   } catch {
     return result;
   }

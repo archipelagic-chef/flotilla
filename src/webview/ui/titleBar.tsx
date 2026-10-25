@@ -5,14 +5,19 @@ import './titleBar.css';
 
 /** How long something has waited, short: "5m", "3h", "2d". */
 /** The backlog's title bar: its name and the actions on the whole backlog. */
-export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly, detailed, setDetailed }: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly' | 'detailed' | 'setDetailed'>) {
+export function TitleBar({
+  integrations,
+  autopilot,
+  workingOnly,
+  setWorkingOnly,
+  detailed,
+  setDetailed,
+}: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly' | 'detailed' | 'setDetailed'>) {
   return (
     <div class="tool-title backlog-title">
       <span>Backlog</span>
       <span class="title-actions">
-        {integrations > 0 && (
-          <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />
-        )}
+        {integrations > 0 && <BusyButton class="icon" aria-label="Refresh Issues" message={{ type: 'backlog', op: 'refresh' }} icon="refresh" />}
         {autopilot && (
           <BusyButton
             class={`icon autopilot-toggle${autopilot.enabled ? ' on' : ''}`}
@@ -29,7 +34,9 @@ export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly,
         <button
           class={`icon working-filter${workingOnly ? ' on' : ''}`}
           aria-pressed={workingOnly}
-          aria-label={workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'}
+          aria-label={
+            workingOnly ? 'Showing only tickets being worked on: click to show them all' : 'Show only tickets being worked on (an agent runs or is paused)'
+          }
           onClick={() => setWorkingOnly(!workingOnly)}
         >
           <i class={`codicon codicon-${workingOnly ? 'filter-filled' : 'filter'}`} />
@@ -37,7 +44,11 @@ export function TitleBar({ integrations, autopilot, workingOnly, setWorkingOnly,
         <button
           class={`icon cards-detail${detailed ? ' on' : ''}`}
           aria-pressed={detailed}
-          aria-label={detailed ? 'Detailed Cards: every detail on each card. Click for Compact cards' : 'Compact Cards: the title, a status line and the next step. Click for Detailed cards'}
+          aria-label={
+            detailed
+              ? 'Detailed Cards: every detail on each card. Click for Compact cards'
+              : 'Compact Cards: the title, a status line and the next step. Click for Detailed cards'
+          }
           onClick={() => setDetailed(!detailed)}
         >
           <i class={`codicon codicon-${detailed ? 'list-flat' : 'list-selection'}`} />

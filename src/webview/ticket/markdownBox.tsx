@@ -1,11 +1,29 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { showAnchor } from './attachments';
-import { type Format, formatEdit, type Markup, pasteLink, type TextEdit } from './format';
+import {
+  type Format,
+  formatEdit,
+  type Markup,
+  pasteLink,
+  type TextEdit,
+} from './format';
 import { demoLength } from '../../features/backlog/demo';
 import { act, send } from './actions';
-import { matchEntries, matchTickets, pickSuggestion, suggestQuery, type SuggestQuery, type TicketSuggestion } from './suggest';
+import {
+  matchEntries,
+  matchTickets,
+  pickSuggestion,
+  type SuggestQuery,
+  suggestQuery,
+  type TicketSuggestion,
+} from './suggest';
 import type { EntrySuggestion } from '../ticketProtocol';
 import './markdownBox.css';
 
@@ -18,7 +36,6 @@ let nextPreview = 1;
 /** The answers to the comment box's requests for a ticket's entries (BL-130), by request. */
 export const entryReplies = new Map<number, (entries: EntrySuggestion[]) => void>();
 let nextEntries = 1;
-
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -104,6 +121,8 @@ export function MarkdownBox({
   placeholder,
   label,
   onSubmit,
+  onCancel,
+  onSubmitShift,
   autoFocus,
   minRows = 3,
   images = true,
@@ -116,6 +135,10 @@ export function MarkdownBox({
   placeholder: string;
   label: string;
   onSubmit(): void;
+  /** Escape: the box is closed without its text (an edit, BL-128). */
+  onCancel?(): void;
+  /** Ctrl+Shift+Enter, when it does something else than Ctrl+Enter (Comment and Ask an Agent). */
+  onSubmitShift?(): void;
   autoFocus?: boolean;
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
@@ -172,7 +195,14 @@ export function MarkdownBox({
         if (suggesting.key(e)) return;
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          onSubmit();
+          if (e.shiftKey && onSubmitShift) onSubmitShift();
+          else onSubmit();
+          return;
+        }
+        if (e.key === 'Escape' && onCancel) {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
           return;
         }
         const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());
@@ -313,7 +343,13 @@ type SuggestItem = { reference: string; label: string; detail: string };
  * The suggestions while typing (BL-130): what the text before the caret asks for (suggest.ts), the items, the one
  * picked with the arrows, and the keys that move and pick (Enter or Tab) or close (Escape).
  */
-function useSuggestions(area: { current: HTMLTextAreaElement | null }, value: string, setValue: (text: string) => void, prefix: string, suggest?: { tickets: TicketSuggestion[]; self: string }) {
+function useSuggestions(
+  area: { current: HTMLTextAreaElement | null },
+  value: string,
+  setValue: (text: string) => void,
+  prefix: string,
+  suggest?: { tickets: TicketSuggestion[]; self: string },
+) {
   const [query, setQuery] = useState<SuggestQuery | undefined>(undefined);
   const [active, setActive] = useState(0);
   const [entries, setEntries] = useState<{ id: string; entries?: EntrySuggestion[] }>();
@@ -371,7 +407,19 @@ function useSuggestions(area: { current: HTMLTextAreaElement | null }, value: st
 }
 
 /** The list of suggestions under the box: a click picks one (the box keeps its focus). */
-function Suggestions({ items, active, loading, entry, pick }: { items: SuggestItem[]; active: number; loading: boolean; entry: boolean; pick(item: SuggestItem): void }) {
+function Suggestions({
+  items,
+  active,
+  loading,
+  entry,
+  pick,
+}: {
+  items: SuggestItem[];
+  active: number;
+  loading: boolean;
+  entry: boolean;
+  pick(item: SuggestItem): void;
+}) {
   return (
     <ul class="md-suggest" role="listbox" aria-label={entry ? 'Comments' : 'Tickets'}>
       {loading && <li class="md-suggest-empty">Reading its comments…</li>}

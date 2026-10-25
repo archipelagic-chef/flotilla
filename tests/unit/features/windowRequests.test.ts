@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { sendWindowRequest, takeWindowRequests } from '../../../src/features/workstreams/windowRequests';
 import { makeTempDir, removeDir } from '../../helpers/gitRepo';
 

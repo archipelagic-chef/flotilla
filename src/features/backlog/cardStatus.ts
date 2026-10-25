@@ -29,7 +29,22 @@ export interface CardStep {
 
 export type CardStatusItem = Pick<
   BacklogItemView,
-  'status' | 'proposed' | 'review' | 'source' | 'merging' | 'merge' | 'checks' | 'mainCheck' | 'supersededBy' | 'startFailed' | 'clash' | 'waitsFor' | 'creating' | 'base' | 'agent'
+  | 'status'
+  | 'proposed'
+  | 'review'
+  | 'source'
+  | 'merging'
+  | 'merge'
+  | 'checks'
+  | 'mainCheck'
+  | 'supersededBy'
+  | 'startFailed'
+  | 'clash'
+  | 'waitsFor'
+  | 'creating'
+  | 'base'
+  | 'agent'
+  | 'unseenReplies'
 >;
 
 const OPEN: CardStep = { op: 'open', label: 'Open', icon: 'go-to-file' };
@@ -51,6 +66,9 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   if (stuck) return { text: `${stuck.name} looks stuck: ${strip(stuck.stuck!)}`, mark: 'warning', next: OPEN };
   if (unmergedWarning(item, item.merge)) return { text: "Done, but its work isn't merged", mark: 'warning', next: OPEN };
   if (conflictsOf(item).length > 0) return { text: `Conflicts with ${main}`, mark: 'error', next: OPEN };
+  // An agent answered a comment of yours while the ticket wasn't open (BL-127): until it's opened.
+  const replies = typeof item.unseenReplies === 'number' && item.unseenReplies > 0 ? Math.floor(item.unseenReplies) : 0;
+  if (replies) return { text: `${replies} ${replies === 1 ? 'reply' : 'replies'}`, mark: 'question', next: { op: 'open', label: 'Read', icon: 'comment' } };
   const r = item.review;
   const turn = turnOf(item);
   if (turn) {
@@ -59,7 +77,8 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         return { text: 'Waiting for you: answer', mark: 'question', next: { op: 'comment', label: 'Answer', icon: 'comment' } };
       case 'yours':
         if (queuedBehind) return { text: 'Approved · in the merge queue', next: { op: 'mergeNext', label: 'Merge Next', icon: 'git-merge' } };
-        if (readyToMerge(item)) return { text: `Approved${r?.reviewer ? ` by ${r.reviewer}` : ''} · ready to merge`, next: { op: 'merge', label: 'Merge', icon: 'git-merge' } };
+        if (readyToMerge(item))
+          return { text: `Approved${r?.reviewer ? ` by ${r.reviewer}` : ''} · ready to merge`, next: { op: 'merge', label: 'Merge', icon: 'git-merge' } };
         return { text: 'Waiting for you: review', mark: 'question', next: { op: 'approve', label: 'Approve', icon: 'check' } };
       case 'agent-review':
         return { text: `In review · ${turn.who} reviewing${r?.round ? ` · ${rounds(r.round)}` : ''}`, working: true };

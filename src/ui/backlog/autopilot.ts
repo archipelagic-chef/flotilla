@@ -3,8 +3,21 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { branchMatches, childrenOf, setStartFailed, type BacklogData, type BacklogItem } from '../../features/backlog/backlog';
-import { changedFiles, clashFiles, codeMap, findClash, type Clash, type CodeMap } from '../../features/backlog/codeMap';
+import {
+  type BacklogData,
+  type BacklogItem,
+  branchMatches,
+  childrenOf,
+  setStartFailed,
+} from '../../features/backlog/backlog';
+import {
+  changedFiles,
+  type Clash,
+  clashFiles,
+  type CodeMap,
+  codeMap,
+  findClash,
+} from '../../features/backlog/codeMap';
 import { resolveBase } from '../../features/workstreams/progress';
 import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
@@ -13,11 +26,17 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
+import type { Merger } from './merge';
 import type { PauseAll } from './pauseAll';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
-import { awayLine, finished, idleReason, wasOvernight } from '../../features/backlog/autopilotIdle';
+import {
+  awayLine,
+  finished,
+  idleReason,
+  wasOvernight,
+} from '../../features/backlog/autopilotIdle';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -30,6 +49,8 @@ export interface AutopilotDeps {
   output: vscode.OutputChannel;
   /** Pause All (BL-160): while it holds, the autopilot starts nothing (it stays on). */
   pauseAll?: Pick<PauseAll, 'pausedCount' | 'onDidChange'>;
+  /** Merges' agents and checks (BL-164): Pause All covers them, so the views offer it while they run. */
+  merges?: Pick<Merger, 'pausable' | 'onDidChange'>;
   /**
    * The key that signs the switch (from VS Code's secret storage): agents can write the backlog's folder, but can't
    * turn the autopilot on.
@@ -44,6 +65,8 @@ export interface AutopilotView {
   enabled: boolean;
   /** Agents working now (for any work), and the most at once (flotilla.agents.maxRunning). */
   running: number;
+  /** Merges' agents and checks running in this window (BL-164): Pause All pauses them too. */
+  merging?: number;
   max: number;
   /** Starts waiting for a free slot (or for memory): they go on when there's room, reviews and resumes first. */
   waiting: number;
@@ -119,6 +142,7 @@ export class Autopilot implements vscode.Disposable {
           void this.tick();
         }),
       );
+    if (deps.merges) this.subscriptions.push(deps.merges.onDidChange(() => this.changed.fire()));
     void this.refresh().then(() => this.tick());
   }
 
@@ -174,6 +198,7 @@ export class Autopilot implements vscode.Disposable {
     return {
       enabled: this.enabled,
       running: this.deps.reviews.running,
+      ...(this.deps.merges?.pausable ? { merging: this.deps.merges.pausable } : {}),
       max: this.deps.reviews.limit,
       waiting: this.deps.reviews.waitingCount,
       ...(this.waitingUntil && this.waitingUntil.getTime() > Date.now()
@@ -374,7 +399,11 @@ export class Autopilot implements vscode.Disposable {
       // Preparing the worktree moved it to In Progress: if it's moved on since (the user did), the start is given up.
       if (fresh.status !== 'doing') {
         this.deps.reviews.giveBack(slot);
-        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.' });
+        await this.deps.backlog.appendActivity(item, {
+          date: entryDate(new Date()),
+          author: 'Flotilla',
+          body: 'The autopilot gave up its start: the ticket moved on while its worktree was prepared.',
+        });
         return;
       }
       await this.deps.reviews.startWork(fresh, ws, { slot });

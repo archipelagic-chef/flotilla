@@ -154,7 +154,11 @@ const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g
  * block. `recording`: what a source (a recording of the ticket's) is; undefined for anything else.
  */
 export function withDemoUnits(html: string, recording: (src: string) => Recording | undefined): string {
-  const blocks = [...html.matchAll(DEMO_RUN)].map((m) => ({ whole: m[0], name: m[1], actions: /<span class="demo-actions">([\s\S]*?)<\/span><\/div>/.exec(m[0])?.[1] ?? '' }));
+  const blocks = [...html.matchAll(DEMO_RUN)].map((m) => ({
+    whole: m[0],
+    name: m[1],
+    actions: /<span class="demo-actions">([\s\S]*?)<\/span><\/div>/.exec(m[0])?.[1] ?? '',
+  }));
   if (!blocks.length) return html;
   const media = [...html.matchAll(MEDIA)].flatMap((m) => {
     const src = srcOf(m[1]);
@@ -164,7 +168,8 @@ export function withDemoUnits(html: string, recording: (src: string) => Recordin
   let out = html;
   const used = new Set<string>();
   for (const block of blocks) {
-    const paired = media.find((m) => !used.has(m.whole) && m.name === block.name) ?? (blocks.length === 1 ? media.find((m) => !used.has(m.whole) && !m.name) : undefined);
+    const paired =
+      media.find((m) => !used.has(m.whole) && m.name === block.name) ?? (blocks.length === 1 ? media.find((m) => !used.has(m.whole) && !m.name) : undefined);
     if (!paired) continue;
     used.add(paired.whole);
     // A video plays as a GIF does: muted (as every video is), looping, at once.

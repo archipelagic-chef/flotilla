@@ -2,19 +2,40 @@ import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside, samePath, toGitPath } from '../core/paths';
-import { claudeHome, isHeadless, linkChat, removeChatCopies, readChatRecords, readTranscript, readTranscripts, tagTranscriptTitle, transcriptPath, unlinkChat } from '../features/chats/chats';
+import {
+  claudeHome,
+  isHeadless,
+  linkChat,
+  readChatRecords,
+  readTranscript,
+  readTranscripts,
+  removeChatCopies,
+  tagTranscriptTitle,
+  transcriptPath,
+  unlinkChat,
+} from '../features/chats/chats';
 import { hooksPresent, installHooks } from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import type { AgentChoice } from '../features/backlog/backlog';
-import { choiceArgs, isRunningHeadless, runAgentInTerminal, type AgentTrack } from './backlog/agentRunner';
+import {
+  type AgentTrack,
+  choiceArgs,
+  isRunningHeadless,
+  runAgentInTerminal,
+} from './backlog/agentRunner';
 import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
 import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';
 import { claudeHookConfig } from './claudeHooks';
-import { isTarget, type Arg, type Commands, type WithWorkstream } from './commandSet';
+import {
+  type Arg,
+  type Commands,
+  isTarget,
+  type WithWorkstream,
+} from './commandSet';
 
 const CLAUDE_EXTENSION = 'anthropic.claude-code';
 const CLAUDE_OPEN = 'claude-vscode.editor.open';
@@ -105,7 +126,13 @@ export async function newChat(ctx: ChatContext, ws: Workstream, task = '', lead 
  * a model or an effort is chosen (which the panel can't be started with), as an interactive Claude Code session in a
  * terminal in the worktree, the task sent at once.
  */
-export async function startAgent(ctx: ChatContext, ws: Workstream, task: string, lead: string, o: { choice: AgentChoice; name: string; track?: AgentTrack }): Promise<'panel' | 'terminal'> {
+export async function startAgent(
+  ctx: ChatContext,
+  ws: Workstream,
+  task: string,
+  lead: string,
+  o: { choice: AgentChoice; name: string; track?: AgentTrack },
+): Promise<'panel' | 'terminal'> {
   const args = choiceArgs(o.choice);
   if (!args.length || !ws.worktree.path) {
     await newChat(ctx, ws, task, lead);
@@ -214,7 +241,9 @@ export async function removeCopiedChats(ctx: ChatContext): Promise<void> {
   const restored = await removeChatCopies({ root: ctx.currentRoot, gitDir: ctx.currentGitDir, worktrees });
   await ctx.extension.globalState.update(key, true);
   if (!restored.length) return;
-  ctx.output.appendLine(`Removed ${restored.length} copied chat(s) from this folder's Claude Code project; they're back in their worktrees: ${restored.join(', ')}`);
+  ctx.output.appendLine(
+    `Removed ${restored.length} copied chat(s) from this folder's Claude Code project; they're back in their worktrees: ${restored.join(', ')}`,
+  );
   await ctx.refresh();
 }
 
@@ -300,7 +329,9 @@ export async function installChatHooks(ctx: ChatContext, only?: Workstream): Pro
     if (choice) ctx.output.show();
   } else {
     void vscode.window.showInformationMessage(
-      installed ? `Installed the Claude Code hooks in ${installed} worktree(s). Chats started from now on report their state.` : 'The Claude Code hooks are already installed.',
+      installed
+        ? `Installed the Claude Code hooks in ${installed} worktree(s). Chats started from now on report their state.`
+        : 'The Claude Code hooks are already installed.',
     );
   }
 }
@@ -334,7 +365,7 @@ export async function maybeOfferHooks(ctx: ChatContext): Promise<void> {
   if (!candidates.length) return;
   await ctx.extension.globalState.update(key, true);
   const choice = await vscode.window.showInformationMessage(
-    'Show whether each Claude Code chat is working, waiting for you or finished? Flotilla adds hooks to each worktree\'s .claude/settings.local.json (not committed).',
+    "Show whether each Claude Code chat is working, waiting for you or finished? Flotilla adds hooks to each worktree's .claude/settings.local.json (not committed).",
     'Install Hooks',
     'Not Now',
   );

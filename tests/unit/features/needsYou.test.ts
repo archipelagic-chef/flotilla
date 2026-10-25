@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { ReviewState } from '../../../src/features/backlog/review';
-import { needsYouList, needsYouMessage, newNeeds, type NeedsYouWorktree } from '../../../src/features/needsYou';
+import {
+  needsYouList,
+  needsYouMessage,
+  type NeedsYouWorktree,
+  newNeeds,
+} from '../../../src/features/needsYou';
 
 function item(id: string, extra: Partial<BacklogItem> = {}): BacklogItem {
   return { id, title: `Title of ${id}`, status: 'review', priority: 'medium', created: '2026-10-12T09:00:00Z', ...extra } as BacklogItem;
@@ -85,7 +90,10 @@ describe('needsYouMessage', () => {
   });
 
   it('names three in a group with commas and "and"', () => {
-    const list = needsYouList([item('BL-1', { review: review('yours') }), item('BL-2', { review: review('yours') }), item('BL-3', { review: review('yours') })], []);
+    const list = needsYouList(
+      [item('BL-1', { review: review('yours') }), item('BL-2', { review: review('yours') }), item('BL-3', { review: review('yours') })],
+      [],
+    );
     expect(needsYouMessage(list)).toBe('3 tickets need you: BL-1, BL-2 and BL-3 are ready for your review.');
   });
 

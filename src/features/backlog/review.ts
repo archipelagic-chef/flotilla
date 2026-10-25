@@ -1,5 +1,7 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
+import { DESCRIPTION_CHECK, KEEP_WHEN_DONE } from './descriptionShape';
+import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 
@@ -129,7 +131,13 @@ export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'work
 export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
   switch (fix) {
     case 'retry':
-      return kind === 'no-report' || kind === 'runaway' ? 'Resume It' : kind === 'busy' ? 'Try Again' : kind === 'no-verdict' || kind === 'user' || !kind ? 'Review Again' : 'Try Again';
+      return kind === 'no-report' || kind === 'runaway'
+        ? 'Resume It'
+        : kind === 'busy'
+          ? 'Try Again'
+          : kind === 'no-verdict' || kind === 'user' || !kind
+            ? 'Review Again'
+            : 'Try Again';
     case 'newAgent':
       return 'New Agent';
     case 'inChat':
@@ -262,7 +270,7 @@ export function showNotes(o: { id: string; backlogDir: string }): string {
  */
 export function reviewNotes(o: { id: string; backlogDir: string }): string {
   const folder = `${o.backlogDir}/${o.id}`;
-  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\`, \`open\` or \`demo\`, which read as the kind. \`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree, and \`run demo <name>\` plays a recorded demo again. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. ${showNotes(o)} When the work changes something you see or click (a button, a panel, a flow) and the repository records demos (its package.json has a \`demo\` script; its CONTRIBUTING says how to write one), show it working: write a demo, record it with \`npm run demo -- record <name> --out ${folder}/demo.gif\`, show it with ![What it shows](${o.id}/demo.gif) (or demo.mp4, when it says it saved that), and give its run block: \`run demo <name>\`, with the line \`npm run demo -- play <name>\` in it (a Flotilla that doesn't know demo blocks runs that line instead). The ticket shows the recording and that block as one demo, with Try it yourself and Watch it live: the recorder notes the demo's name in the file, so they go together wherever the report puts them. A demo that can't be recorded safely isn't: say why in the report.`;
+  return `That report says how to review the work, under a heading "#### How to review": what to look at, in the order to look at it (the files and lines that matter, what changed there and why), how to try it, and what's risky or still open. Where there's something to run or open to try the work (a build, a test window, a local page, a file), say how as a run block: a fenced code block whose info string starts with \`run\`, then an optional kind and a title. Its lines are shell commands, one after the other (the default); a shell title doesn't start with \`launch\`, \`task\`, \`open\` or \`demo\`, which read as the kind. \`run launch <name>\` starts a debug configuration of .vscode/launch.json by name, \`run task <name>\` a task of .vscode/tasks.json, and \`run open <url or file>\` opens a URL (e.g. http://localhost:5173) or a file in the worktree, and \`run demo <name>\` plays a recorded demo again. Keep it short and safe to run again: no deploys, no deleting data. Link every file you mention by its path from the repository root, with the lines: [src/api/limit.ts:42](src/api/limit.ts#L42), or #L42-L60 for a range; the ticket opens them. ${showNotes(o)} When the work changes something you see or click (a button, a panel, a flow) and the repository records demos (its package.json has a \`demo\` script; its CONTRIBUTING says how to write one), show it working: write a demo, check it with \`npm run demo -- check <name>\` (a quick dry run: it says which step fails, with a screenshot and what's on screen instead) until it passes, then record it once, at the end, with \`npm run demo -- record <name> --out ${folder}/demo.gif\` (don't record it again unless the work changed since), show it with ![What it shows](${o.id}/demo.gif) (or demo.mp4, when it says it saved that), and give its run block: \`run demo <name>\`, with the line \`npm run demo -- play <name>\` in it (a Flotilla that doesn't know demo blocks runs that line instead). The ticket shows the recording and that block as one demo, with Try it yourself and Watch it live: the recorder notes the demo's name in the file, so they go together wherever the report puts them. A demo that can't be recorded safely isn't: say why in the report.`;
 }
 
 /**
@@ -292,6 +300,7 @@ export function reviewerPrompt(o: {
     `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time). Start the entry with your verdict as a line, exactly "Verdict: approved" or "Verdict: changes requested", then at most 3 lines right under it, with no blank line between (what's good, and what must change); then a blank line and the details: what must change, as a checklist, specific enough to act on; what you ran and what it gave (or why you didn't run it); and any files the run left changed in \`git status\`.`,
     `If the work changes what the user sees (the UI), the report must show it: a screenshot, before and after, or a demo GIF or video. When it doesn't, request one in your checklist.`,
     `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
+    DESCRIPTION_CHECK,
     `Never change issue trackers (Jira, GitHub Issues), and don't push.`,
   ].join('\n\n');
 }
@@ -301,7 +310,8 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
   return [
     `${o.reviewer}, an agent reviewing ${o.item.id}, requested changes (review round ${o.round}). Read its review at the end of the ticket ${o.ticket}.`,
     MAY_ASK,
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket as before, saying what you changed for each request. Report it in the same shape (a summary, then "Needs from you: nothing"), and end that report with a line "Ready for review." so it's reviewed again.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: ", or are \`fixup!\` commits of those), then report in the ticket as before, saying what you changed for each request. Report it in the same shape (a summary, then "Needs from you: nothing"), and end that report with a line "Ready for review." so it's reviewed again.`,
+    fixupNote(o.item.id),
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
     `If you disagree with a request, say why in your report instead of making the change.`,
   ].join('\n\n');
@@ -309,7 +319,7 @@ export function revisionPrompt(o: { item: Pick<BacklogItem, 'id'>; reviewer: str
 
 /** The ticket's description stays what's to be done: the implementer works the user's requests into it. */
 const UPDATE_DESCRIPTION = (ticket: string) =>
-  `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. Edit only the description there, and leave the activity as it is.`;
+  `Keep the ticket's description what's to be done: as you take up what the user asks (here, and in their answers), work it into the description in ${ticket} (between the "# Title" and "## Activity"), usually as acceptance criteria. ${KEEP_WHEN_DONE} Edit only the description there, and leave the activity as it is.`;
 
 /** How the implementer may ask the user before (or instead of) making changes, when it needs to. */
 const MAY_ASK = `If you need more context to do it well (what's asked is unclear, or there's a choice only the user can make), ask first: report in the ticket with your questions in its "Needs from you:" line, and stop without changing anything. You're resumed with the answer. Otherwise start on it directly.`;
@@ -323,7 +333,8 @@ export function userRevisionPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: s
     `Read the ticket ${o.ticket} for the context (the description, and the activity).`,
     MAY_ASK,
     UPDATE_DESCRIPTION(o.ticket),
-    `Make the changes, commit them (messages start with "${o.item.id}: "), then report in the ticket, in the same shape (a summary, then "Needs from you: nothing"), saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    `Make the changes, commit them (messages start with "${o.item.id}: ", or are \`fixup!\` commits of those), then report in the ticket, in the same shape (a summary, then "Needs from you: nothing"), saying what you changed for each request. End that report with a line "Ready for review." so the user reviews it again. If you disagree with a request, say why in your report instead of making the change.`,
+    fixupNote(o.item.id),
     reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
   ].join('\n\n');
 }
@@ -367,8 +378,8 @@ export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
 
 /** What an agent started by hand from its ticket is told, after the usual start: it runs without a window too (BL-122). */
 export const HAND_START_NOTE =
-  'You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
+  "You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can't go on without a decision only the user can make, ask in the ticket, in your report's \"Needs from you:\" line, and stop; you're resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.";
 
 /** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
 export const AUTOPILOT_NOTE =
-  'Flotilla\'s autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
+  "Flotilla's autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can't go on without a decision only the user can make, ask in the ticket, in your report's \"Needs from you:\" line, and stop; you're resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.";

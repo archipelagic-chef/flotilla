@@ -11,7 +11,13 @@ import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { mergeActions, type MergeAction } from '../../../src/features/backlog/mergeStates';
 import type { AgentRun } from '../../../src/ui/backlog/agentRunner';
 import type { Merger } from '../../../src/ui/backlog/merge';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 import { fakeChecksEnv, resetUi, ui } from './fakeVscode';
 
 /** The checks: they print what the scenario's next result says, and exit with it. */
@@ -82,7 +88,14 @@ function commitResolved(dir: string): void {
   const files = git(dir, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
   for (const file of files) {
     const text = fs.readFileSync(path.join(dir, file), 'utf8');
-    writeFile(dir, file, text.split('\n').filter((l) => !/^(<<<<<<<|=======|>>>>>>>)/.test(l)).join('\n'));
+    writeFile(
+      dir,
+      file,
+      text
+        .split('\n')
+        .filter((l) => !/^(<<<<<<<|=======|>>>>>>>)/.test(l))
+        .join('\n'),
+    );
   }
   git(dir, 'add', '.');
   git(dir, 'commit', '-q', '--no-edit');
@@ -93,7 +106,13 @@ function ticketOf(dir: string): string {
   return /-(BL-\d+)-[0-9a-f]+$/.exec(path.basename(dir))?.[1] ?? /[A-Z]+-\d+/.exec(git(dir, 'log', '-1', '--format=%s', '--merges'))?.[0] ?? 'BL-0';
 }
 
-const approved = (id: string): BacklogItem => ({ id, title: `Item ${id}`, status: 'review', created: '', review: { round: 1, state: 'approved', reviewer: 'Rex-1' } });
+const approved = (id: string): BacklogItem => ({
+  id,
+  title: `Item ${id}`,
+  status: 'review',
+  created: '',
+  review: { round: 1, state: 'approved', reviewer: 'Rex-1' },
+});
 
 /** Where a ticket's merge is: its state (none, or merged), and what the ticket offers to click next. */
 /** What a ticket offers to click: a merge's buttons, or Merge to main. */
@@ -122,7 +141,8 @@ export class World {
 
   static async create(ids: string[]): Promise<World> {
     const world = new World();
-    resetUi({ 'merge.checkCommand': FAKE_CHECKS });
+    // The scenarios follow merge commits (merge-commit); fast-forward (BL-181) has its own tests in merger.test.ts.
+    resetUi({ 'merge.checkCommand': FAKE_CHECKS, 'merge.style': 'merge-commit' });
     agents.scripts = [];
     agents.started = [];
     agents.waiting = [];
@@ -139,7 +159,14 @@ export class World {
     this.merger?.dispose();
     const { Merger } = await import('../../../src/ui/backlog/merge');
     const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: this.repo, isMain: true }, chats: [] }] };
-    const merger = new Merger({ backlog: this.backlog, repository, mainRoot: this.repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv } as never);
+    const merger = new Merger({
+      backlog: this.backlog,
+      repository,
+      mainRoot: this.repo,
+      output: { appendLine() {} },
+      openTicket() {},
+      checksEnv: fakeChecksEnv,
+    } as never);
     // An agent's end runs on its own (not in the merger's queue): the scenario waits for it.
     const own = merger as unknown as { afterResolver(...a: unknown[]): Promise<void> };
     const original = own.afterResolver.bind(merger);
@@ -262,12 +289,22 @@ export class World {
   approve = (id: string) => this.step(id, `Approve ${id}`, () => this.merger.approveResolution(id));
   recheck = (id: string) => this.step(id, `Run the Checks Again ${id}`, () => this.merger.recheck(id));
   cancel = (id: string) => this.step(id, `Cancel ${id}`, () => this.merger.cancel(id));
+  pause = (id: string) => this.step(id, `Pause ${id}`, () => this.merger.pause(id));
+  resume = (id: string) => this.step(id, `Resume ${id}`, () => this.merger.resolveWithAgent(id));
 
   /** Clicks what the ticket offers next, as a user who follows it would. */
   async next(id: string): Promise<Snapshot> {
     const { next } = await this.snapshot(id);
     expect(next, `${id} offers nothing to click`).toBeDefined();
-    const click = { merge: this.merge, resolve: this.resolve, approve: this.approve, recheck: this.recheck, cancel: this.cancel }[next!];
+    const click = {
+      merge: this.merge,
+      resolve: this.resolve,
+      approve: this.approve,
+      recheck: this.recheck,
+      cancel: this.cancel,
+      pause: this.pause,
+      resume: this.resume,
+    }[next!];
     return click(id);
   }
 }

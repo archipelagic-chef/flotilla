@@ -115,7 +115,14 @@ export function parseReply(body: string): { to: string; label: string; text: str
   const at = lines.findIndex((l) => l.trim() !== '');
   const m = at >= 0 ? REPLY.exec(lines[at]) : null;
   if (!m) return undefined;
-  return { to: m[2], label: m[1].trim(), text: lines.slice(at + 1).join('\n').trim() };
+  return {
+    to: m[2],
+    label: m[1].trim(),
+    text: lines
+      .slice(at + 1)
+      .join('\n')
+      .trim(),
+  };
 }
 
 /** An entry's place in the threads: its anchor; for a reply, whom it answers and the top-level entry it shows under. */
@@ -159,11 +166,37 @@ export function entryDate(now: Date): string {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
 }
 
+/**
+ * The "**When it's done:**" lines a description opens with (BL-137): what the work does once done, as Markdown,
+ * without the label; undefined when it has none. They run to the first blank line.
+ */
+export function whenItsDone(description: string): string | undefined {
+  const m = /^[ \t]*(?:\*\*|__)When it(?:'|’)s done:?(?:\*\*|__):?[ \t]*([^]*?)(?:\r?\n[ \t]*\r?\n|(?![^]))/im.exec(description);
+  const text = m?.[1].trim();
+  return text || undefined;
+}
+
+/** What a card's hover says of a ticket: its "When it's done" lines on one line, or else its description's first line. */
+export function cardSummaryOf(description: string): string | undefined {
+  const done = whenItsDone(description);
+  if (!done) return summaryOf(description);
+  const line = done
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return line.length > 400 ? `${line.slice(0, 399)}…` : line;
+}
+
 /** The first line of a description, shortened, to show under an item's title. */
 export function summaryOf(description: string): string | undefined {
   const line = description
     .split(/\r?\n/)
-    .map((l) => l.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/^[\s>*#-]+|\[[ xX]\]\s*/g, '').trim())
+    .map((l) =>
+      l
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+        .replace(/^[\s>*#-]+|\[[ xX]\]\s*/g, '')
+        .trim(),
+    )
     .find(Boolean);
   return line && (line.length > 140 ? `${line.slice(0, 139)}…` : line);
 }

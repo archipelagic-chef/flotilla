@@ -2,17 +2,24 @@
  * Messages between the extension host and a ticket editor tab. Type-only: imported by both sides, so it must not
  * import vscode, node or DOM APIs.
  */
-import type { AgentChoice, AgentEffort, BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type {
+  AgentChoice,
+  BacklogItem,
+  BacklogPriority,
+  BacklogStatus,
+} from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
 import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
 import type { MergeInfo } from '../features/backlog/merged';
-import type { ReviewFix, ReviewState } from '../features/backlog/review';
+import type { ReviewState } from '../features/backlog/review';
 import type { Question } from '../features/backlog/report';
 import type { MediaKind } from '../features/backlog/media';
+import type { AnswerView } from '../features/backlog/askAgent';
 import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
 import type { AgentActivity, StuckRules } from '../features/chats/activity';
+import type { AgentSummary } from '../features/chats/summary';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -21,6 +28,14 @@ import type { CiStatus } from '../features/ci/githubActions';
 import type { CiStop } from '../features/backlog/ciStop';
 import type { ChecksProgress } from '../features/backlog/checksProgress';
 import type { ChecksRunRecord } from '../features/backlog/merge';
+import type { AgentsMessage } from '../ui/backlog/ticketMessages/agents.messages';
+import type { CheckMessage } from '../ui/backlog/ticketMessages/check.messages';
+import type { CommentsMessage } from '../ui/backlog/ticketMessages/comments.messages';
+import type { FilesMessage } from '../ui/backlog/ticketMessages/files.messages';
+import type { MergeMessage } from '../ui/backlog/ticketMessages/merge.messages';
+import type { ReviewMessage } from '../ui/backlog/ticketMessages/review.messages';
+import type { TicketMessage } from '../ui/backlog/ticketMessages/ticket.messages';
+import type { TrackerMessage } from '../ui/backlog/ticketMessages/tracker.messages';
 
 /** A merge's checks running in the background (BL-169). */
 export interface MergeChecksView {
@@ -69,6 +84,8 @@ export type AgentChatView =
       tokens?: { label: string; tip: string; reRead: number };
       /** What it's doing, from its transcript (BL-175); `updated` is when it last wrote it. */
       activity?: AgentActivity;
+      /** Its status in two lines, from a small model (BL-180): the latest asked, or the one being written. */
+      summary?: AgentSummary;
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
@@ -138,6 +155,8 @@ export interface TicketView {
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
+  /** Its "When it's done" lines, rendered (BL-137): the folded description shows them in place of its first lines. */
+  whenDoneHtml?: string;
   /**
    * key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. anchor: its
    * id in the ticket file, to reply to it; reply: whom a reply answers (its body is without the reply line), and root:
@@ -155,6 +174,14 @@ export interface TicketView {
       anchor?: string;
       reply?: { to: string; author: string; date: string; label: string };
       root?: number;
+      /** One of your comments: you can edit and delete it (BL-128). Its body is its text (without its mark). */
+      own?: boolean;
+      /** When it was edited, and the agents that answered the version before. */
+      edited?: string;
+      readBefore?: string[];
+      /** When it was deleted: it shows "Comment deleted", with its replies; hidden: it has none (kept for its anchor). */
+      deleted?: string;
+      hidden?: boolean;
     }
   >;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
@@ -265,6 +292,9 @@ export interface TicketView {
   dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
+  /** Your comments can be answered by an agent now (Ask an Agent, BL-127), and those asked about, by their anchors. */
+  canAsk?: boolean;
+  asked?: Record<string, AnswerView>;
   /** Its discussion with an agent: whether the agent is replying now, and whether it says the ticket is ready to start. */
   shaping?: {
     agent: string;
@@ -326,110 +356,12 @@ export type TicketHostMessage =
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
+/** The messages of a ticket tab that ticketMessages/ handles, one group per module, each declared next to its handlers. */
+export type HandledTicketMessage =
+  AgentsMessage | CheckMessage | CommentsMessage | FilesMessage | MergeMessage | ReviewMessage | TicketMessage | TrackerMessage;
+
 export type TicketWebviewMessage =
-  | { type: 'ready' }
-  | { type: 'title'; title: string }
-  | { type: 'description'; text: string }
-  /** replyTo: the anchor of the entry it answers (BL-126). */
-  | { type: 'comment'; text: string; replyTo?: string }
-  | { type: 'status'; status: BacklogStatus }
-  /** null clears it. */
-  | { type: 'priority'; priority: BacklogPriority | null }
-  /** A pasted or dropped image or video, base64. */
-  | { type: 'image'; requestId: number; name: string; data: string }
-  /** A pasted or dropped file over its kind's size limit, not sent (the host says so). */
-  | { type: 'mediaRefused'; name: string; kind: MediaKind; size: number }
-  /** Renders a Markdown box's text for its Preview tab (BL-129); answered with previewed. */
-  | { type: 'preview'; requestId: number; text: string }
-  /** A ticket's entries to suggest (BL-130); answered with entries. */
-  | { type: 'entries'; requestId: number; id: string }
-  /** Puts a reference to an entry on the clipboard (BL-130). */
-  | { type: 'copyText'; text: string }
-  /** Create (or show) the item's worktree; with agent, also start an agent there. */
-  | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
-  /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
-  | { type: 'discuss' }
-  | { type: 'keepDiscussing' }
-  | { type: 'openFile' }
-  | { type: 'openRemote' }
-  /** Link the item to an issue (asks which), unlink it, or open a linked one. */
-  | { type: 'link' }
-  | { type: 'unlink'; id: string }
-  | { type: 'openLink'; id: string }
-  | { type: 'openWorktree'; key: string }
-  /** Move an issue in its tracker's workflow. */
-  | { type: 'transition'; id: string }
-  /** Set an issue's priority, by the tracker's name for it. */
-  | { type: 'remotePriority'; name: string }
-  /** Post a local activity entry (an agent's report) to an issue, after asking. */
-  | { type: 'postEntry'; key: string }
-  /** Create an issue for a local item in a connected tracker, and link it. */
-  | { type: 'createIssue' }
-  /** Accept or dismiss an agent's proposal; open another ticket (a parent, a sub-ticket). */
-  | { type: 'startReview' }
-  /** The user's own review: approve, or request changes (an agent picks them up). */
-  | { type: 'userReview'; verdict: 'approved' | 'changes'; text: string }
-  | { type: 'stopReview' }
-  /** Pause, stop or resume an agent: the one with that chat, else the one working on it. */
-  | { type: 'agent'; action: 'pause' | 'stop' | 'resume'; session?: string }
-  /** Merge main into its branch, or have its agent do it when that conflicts (BL-55). */
-  | { type: 'updateFromMain' }
-  /** Check what the ticket says is going on (BL-163); Clean Up its glitches (one, by key, or all). */
-  | { type: 'check' }
-  | { type: 'checkCleanUp'; key?: string }
-  /** Fix with Agent on the red CI Merge to main stopped on (BL-112). */
-  | { type: 'mergeCiFix' }
-  /** Fix a stopped review: go on, hand it to a new agent, give it in the implementer's chat… */
-  | { type: 'reviewFix'; fix: ReviewFix }
-  /** The queued start of this ticket: start it now (see ReviewLoop.prioritize). */
-  | { type: 'prioritize' }
-  | { type: 'accept' }
-  | { type: 'dismiss' }
-  | { type: 'openTicket'; id: string }
-  /** A link in a description or an entry: a file in the repository (path#L10-L20), or a web page. */
-  | { type: 'openHref'; href: string }
-  /** The model and effort agents use on it: null is the default; 'other' asks for a model's name. */
-  | { type: 'agentModel'; model: string | null }
-  | { type: 'agentEffort'; effort: AgentEffort | null }
-  /** Open an agent's chat in Claude Code. */
-  | { type: 'openChat'; key: string; id: string }
-  /** Open what a commit changed. */
-  | { type: 'openCommit'; hash: string }
-  /** Clean up the history of its branch; and the clean-up's actions. */
-  | { type: 'cleanUp' }
-  | { type: 'finishCleanUp' }
-  | { type: 'cancelCleanUp' }
-  | { type: 'compareCleanUp' }
-  /** Merge it into the base branch; a merge's decisions; push the base branch after. */
-  | { type: 'merge' }
-  | { type: 'mergeResolve' }
-  | { type: 'mergeApprove' }
-  | { type: 'mergeRecheck' }
-  | { type: 'mergeCancel' }
-  /** Stop waiting for CI to pass (BL-105): nothing is merged. */
-  | { type: 'mergeCiCancel' }
-  /** A merge's checks (BL-169): Stop them; the whole log of a run (Show All); the log, followed, in a terminal. */
-  | { type: 'mergeChecksStop' }
-  | { type: 'mergeChecksLog'; requestId: number; log: string }
-  | { type: 'mergeChecksTerminal'; log: string }
-  | { type: 'mergeQueueRemove' }
-  /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
-  | { type: 'mergeQueueResolve' }
-  /** Merge Next (BL-144): to the front of the merge queue. */
-  | { type: 'mergeNext' }
-  | { type: 'push' }
-  /** Create a worktree for a branch of the item that has none. */
-  | { type: 'checkout'; branch: string }
-  /** Done with unmerged work: a sibling ticket to merge a branch (asks which, unless given); or dismiss the warning. */
-  | { type: 'mergeSibling'; branch?: string }
-  | { type: 'dismissUnmerged' }
-  /** Run a run block of an agent's report (after asking): the Run buttons. */
-  /** try: a demo block's window set up as the demo starts, its steps not played (Try it yourself, BL-135). */
-  | { type: 'run'; key: string; index: number; try?: boolean }
-  /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
-  | { type: 'showActivity'; shown: boolean }
-  /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
-  | { type: 'foldAttachments'; folded: boolean }
+  | HandledTicketMessage
   /** The Ask chat (BL-80): a question, stop the answer, start over, post an answer to the ticket as a comment. */
   | { type: 'ask'; text: string }
   | { type: 'askStop' }

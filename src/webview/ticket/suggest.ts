@@ -22,8 +22,8 @@ export interface TicketSuggestion {
 export function suggestQuery(text: string, caret: number, prefix: string): SuggestQuery | undefined {
   const before = text.slice(0, caret);
   // Not in code: an odd number of "`" on the line, or an open fence.
-  if (((before.slice(before.lastIndexOf('\n') + 1).match(/`/g) ?? []).length % 2) === 1) return undefined;
-  if (((before.match(/^ {0,3}(```|~~~)/gm) ?? []).length % 2) === 1) return undefined;
+  if ((before.slice(before.lastIndexOf('\n') + 1).match(/`/g) ?? []).length % 2 === 1) return undefined;
+  if ((before.match(/^ {0,3}(```|~~~)/gm) ?? []).length % 2 === 1) return undefined;
   const entry = /(?:^|[\s([])([A-Z][A-Z0-9]*-\d+)#([\w-]*)$/.exec(before);
   if (entry) return { kind: 'entry', start: caret - entry[1].length - entry[2].length - 1, id: entry[1], query: entry[2] };
   const hash = /(?:^|[\s([])#([^\s#]*)$/.exec(before);

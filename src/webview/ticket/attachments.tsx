@@ -82,11 +82,7 @@ export function Diagram({ code, label, class: cls = 'attachment-diagram' }: { co
       live = false;
     };
   }, [code]);
-  return error ? (
-    <div class="media-note">This diagram can't be drawn: {error}</div>
-  ) : (
-    <div class={cls} ref={el} role="img" aria-label={label} />
-  );
+  return error ? <div class="media-note">This diagram can't be drawn: {error}</div> : <div class={cls} ref={el} role="img" aria-label={label} />;
 }
 
 /** The diagram, large: a click zooms in (to twice its size, to scroll around in), and out again. */
@@ -163,7 +159,19 @@ function ViewerVideo({ a }: { a: Shown }) {
 }
 
 /** One attachment large, over the ticket: Escape (or the backdrop) closes it, the arrows go to the next and previous. */
-function Viewer({ list, at, go, close, demo }: { list: Shown[]; at: number; go: (n: number) => void; close: () => void; demo: (a: AttachmentView) => JSX.Element }) {
+function Viewer({
+  list,
+  at,
+  go,
+  close,
+  demo,
+}: {
+  list: Shown[];
+  at: number;
+  go: (n: number) => void;
+  close: () => void;
+  demo: (a: AttachmentView) => JSX.Element;
+}) {
   const a = list[at];
   const many = list.length > 1;
   useEffect(() => {

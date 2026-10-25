@@ -23,8 +23,25 @@ const FOREIGN_MAX_AGE_MS = 2 * 60 * 60_000;
 const POLL_MS = 1000;
 /** vitest options that take a value as the next argument (not a file filter). */
 const VALUE_OPTIONS = new Set([
-  '-t', '--testNamePattern', '-c', '--config', '-r', '--root', '--dir', '--project', '--reporter', '--outputFile',
-  '--pool', '--shard', '--bail', '--retry', '--maxWorkers', '--environment', '--exclude', '--mode', '--testTimeout',
+  '-t',
+  '--testNamePattern',
+  '-c',
+  '--config',
+  '-r',
+  '--root',
+  '--dir',
+  '--project',
+  '--reporter',
+  '--outputFile',
+  '--pool',
+  '--shard',
+  '--bail',
+  '--retry',
+  '--maxWorkers',
+  '--environment',
+  '--exclude',
+  '--mode',
+  '--testTimeout',
 ]);
 
 /** Changes that every test may depend on: a related run of them is the full suite. */
@@ -158,7 +175,9 @@ export async function takeSlot({ dir, n, label, first, onWait = () => undefined,
 
 function git(args, cwd) {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n');
+    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .trim()
+      .split('\n');
   } catch {
     return undefined;
   }

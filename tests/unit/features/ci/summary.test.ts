@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ciState, ciSummary, failedWorkflows, scopeState, scopeSummary } from '../../../../src/features/ci/summary';
+import {
+  ciState,
+  ciSummary,
+  failedWorkflows,
+  scopeState,
+  scopeSummary,
+} from '../../../../src/features/ci/summary';
 import type { CiRunView, CiView } from '../../../../src/webview/protocol';
 
 const run = (workflow: string, status: CiRunView['status'], id = 1): CiRunView => ({
@@ -19,7 +25,7 @@ const run = (workflow: string, status: CiRunView['status'], id = 1): CiRunView =
 const runs = (...rs: CiRunView[]): CiView => ({ kind: 'runs', repo: 'acme/app', branch: 'feat', runs: rs, deployments: [] });
 
 describe('ciState and failedWorkflows', () => {
-  it('takes the worst of each workflow\'s latest run, and names the workflows whose latest run failed', () => {
+  it("takes the worst of each workflow's latest run, and names the workflows whose latest run failed", () => {
     // Runs are newest first: the latest CI failed, the older one passed; Deploy's latest passed.
     const view = runs(run('CI', 'failure', 4), run('CI', 'success', 2), run('Deploy', 'success', 1));
     expect(ciState(view)).toBe('failure');

@@ -1,5 +1,14 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { askEvent, earlierText, interruptRequest, LineBuffer, userMessage, type AskEvent, type AskTurn, type AskView } from './ask';
+import {
+  type AskEvent,
+  askEvent,
+  type AskTurn,
+  type AskView,
+  earlierText,
+  interruptRequest,
+  LineBuffer,
+  userMessage,
+} from './ask';
 import { parseUsageLimit } from './limits';
 
 /** What a ticket's Ask chat needs from its tab: how to start its process, and where its changes go. */

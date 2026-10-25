@@ -18,9 +18,7 @@ export const CHANGE_LETTER: Record<ChangeKind, string> = {
 };
 
 /** An inline name box: a new file or folder in dir, or a rename of path. */
-export type Editing =
-  | { key: string; kind: 'file' | 'folder'; dir: string; error?: string }
-  | { key: string; kind: 'rename'; path: string; error?: string };
+export type Editing = { key: string; kind: 'file' | 'folder'; dir: string; error?: string } | { key: string; kind: 'rename'; path: string; error?: string };
 
 const DRAG_TYPE = 'application/x-flotilla-files';
 const NO_MARKS: Record<string, ChangeKind> = {};
@@ -49,7 +47,21 @@ export function dropTarget(key: string, dir: string) {
   };
 }
 
-function NameBox({ initial, icon, depth, error, onSubmit, onCancel }: { initial: string; icon: string; depth: number; error?: string; onSubmit(name: string): void; onCancel(): void }) {
+function NameBox({
+  initial,
+  icon,
+  depth,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  initial: string;
+  icon: string;
+  depth: number;
+  error?: string;
+  onSubmit(name: string): void;
+  onCancel(): void;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const done = useRef(false);
   useLayoutEffect(() => {
@@ -215,7 +227,11 @@ export function FilesBody({ ws, files, expanded, update }: Props) {
   const row = (r: TreeRow) => {
     switch (r.kind) {
       case 'loading':
-        return <div class="row muted" style={{ paddingLeft: `${8 + r.depth * 8 + 16}px` }}>Loading…</div>;
+        return (
+          <div class="row muted" style={{ paddingLeft: `${8 + r.depth * 8 + 16}px` }}>
+            Loading…
+          </div>
+        );
       case 'empty':
         return <div class="empty">This worktree has no files.</div>;
       case 'create':
@@ -255,7 +271,8 @@ export function FilesBody({ ws, files, expanded, update }: Props) {
       // Tab into the tree lands on its selected row (or the first one drawn) when nothing in it is selected yet.
       tabIndex={files.selection?.key === ws.key ? -1 : 0}
       onFocus={(e) => {
-        if (e.target === e.currentTarget) focusRow((e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"], [role="treeitem"]') ?? undefined);
+        if (e.target === e.currentTarget)
+          focusRow((e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"], [role="treeitem"]') ?? undefined);
       }}
       onFocusIn={() => {
         hasFocus.current = true;
@@ -323,7 +340,14 @@ function EntryRow({
     const kind = changes[rel];
     return (
       <div role="none" {...dropTarget(ws.key, rel)}>
-        <button class={`row${selected ? ' selected' : ''}${ignored ? ' ignored' : ''}`} role="treeitem" aria-expanded={isOpen} style={{ paddingLeft: `${indent}px` }} {...common} onClick={(e) => click(e, () => toggle(rel))}>
+        <button
+          class={`row${selected ? ' selected' : ''}${ignored ? ' ignored' : ''}`}
+          role="treeitem"
+          aria-expanded={isOpen}
+          style={{ paddingLeft: `${indent}px` }}
+          {...common}
+          onClick={(e) => click(e, () => toggle(rel))}
+        >
           <i class={`codicon codicon-chevron-${isOpen ? 'down' : 'right'} chev`} />
           <i class={folderIcon(entry.name, isOpen)} />
           <span class={`name${kind ? ` k-${kind}` : ''}`}>{entry.name}</span>

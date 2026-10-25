@@ -14,7 +14,12 @@ export function CheckResult({ check }: { check: TicketCheckView }) {
     return (
       <div class="error-note check-note">
         <i class="codicon codicon-pulse" /> {glitchLine(bad)} ·{' '}
-        <ActionButton class="text-button" message={{ type: 'check' }} working="Checking…" title="Checks what the ticket says is going on, to clean up what isn't">
+        <ActionButton
+          class="text-button"
+          message={{ type: 'check' }}
+          working="Checking…"
+          title="Checks what the ticket says is going on, to clean up what isn't"
+        >
           Check
         </ActionButton>
       </div>
@@ -32,7 +37,12 @@ export function CheckResult({ check }: { check: TicketCheckView }) {
               ? `: ${bad.length} of ${check.claims.length} ${check.claims.length === 1 ? "isn't" : "aren't"} what ${check.claims.length === 1 ? 'it says' : 'they say'}.`
               : ': all as it says.'}
         {bad.length > 1 && (
-          <ActionButton class="button" message={{ type: 'checkCleanUp' }} working="Cleaning up…" title="Cleans up every ✗ below (asks before stopping a process), with a note in the activity">
+          <ActionButton
+            class="button"
+            message={{ type: 'checkCleanUp' }}
+            working="Cleaning up…"
+            title="Cleans up every ✗ below (asks before stopping a process), with a note in the activity"
+          >
             Clean Up All
           </ActionButton>
         )}
@@ -43,8 +53,14 @@ export function CheckResult({ check }: { check: TicketCheckView }) {
             <span class="check-mark">{c.ok ? '✓' : '✗'}</span> {c.text}
             {!c.ok && c.fix && (
               <>
-                {' '}→{' '}
-                <ActionButton class="text-button" message={{ type: 'checkCleanUp', key: c.key }} working="Cleaning up…" title={`Clean Up: ${c.fix}, with a note in the activity`}>
+                {' '}
+                →{' '}
+                <ActionButton
+                  class="text-button"
+                  message={{ type: 'checkCleanUp', key: c.key }}
+                  working="Cleaning up…"
+                  title={`Clean Up: ${c.fix}, with a note in the activity`}
+                >
                   Clean Up
                 </ActionButton>
               </>

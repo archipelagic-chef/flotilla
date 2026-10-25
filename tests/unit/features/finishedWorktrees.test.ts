@@ -1,5 +1,12 @@
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
@@ -80,7 +87,9 @@ async function setup(o: {
   const deleted: string[] = [];
   const output: string[] = [];
   const activity: Array<[string, string]> = [];
-  const state = memento({ ...(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {}), ...(o.kept ? { 'flotilla.finishedWorktrees.kept': o.kept } : {}),
+  const state = memento({
+    ...(o.introduced ? { 'flotilla.finishedWorktrees.introduced': true } : {}),
+    ...(o.kept ? { 'flotilla.finishedWorktrees.kept': o.kept } : {}),
     ...(o.keptLeftovers ? { 'flotilla.finishedWorktrees.keptLeftovers': o.keptLeftovers } : {}),
   });
   const removeAnyway = vi.fn(async () => undefined);
@@ -173,7 +182,11 @@ describe('FinishedWorktrees', () => {
     await cleaner.sweep();
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(showInformationMessage).toHaveBeenCalledWith("BL-1 is done, but its worktree wasn't removed: it has 2 uncommitted or untracked files.", 'Remove Anyway', 'Keep');
+    expect(showInformationMessage).toHaveBeenCalledWith(
+      "BL-1 is done, but its worktree wasn't removed: it has 2 uncommitted or untracked files.",
+      'Remove Anyway',
+      'Keep',
+    );
     expect(state.data['flotilla.finishedWorktrees.kept']).toEqual(['BL-1']);
     await cleaner.sweep();
     expect(showInformationMessage).toHaveBeenCalledTimes(1);

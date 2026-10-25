@@ -1,9 +1,16 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
+import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { eventsDir } from '../../features/metrics/events';
+import { criteriaCount } from '../../features/metrics/productivity';
 import { MetricsStore } from '../../features/metrics/store';
-import type { MetricsHostMessage, MetricsPeriod, MetricsView, MetricsWebviewMessage } from '../../webview/metricsProtocol';
+import type {
+  MetricsHostMessage,
+  MetricsPeriod,
+  MetricsView,
+  MetricsWebviewMessage,
+} from '../../webview/metricsProtocol';
 
 /** Events come in bursts (a merge records several): the views are counted again this long after the last. */
 const SETTLE_MS = 2000;
@@ -27,17 +34,30 @@ export class Metrics implements vscode.Disposable {
   private watcher: fs.FSWatcher | undefined;
   private timer: NodeJS.Timeout | undefined;
   private panel: { panel: vscode.WebviewPanel; period: MetricsPeriod } | undefined;
+  /** The acceptance criteria of the tickets done, by id (BL-189): a done ticket's description is read once. */
+  private readonly criteria = new Map<string, number>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly commonDir: string,
+    private readonly backlog?: LocalBacklog,
   ) {
     this.store = new MetricsStore(commonDir);
   }
 
-  view(period: MetricsPeriod): Promise<MetricsView> {
+  async view(period: MetricsPeriod): Promise<MetricsView> {
     this.watch();
-    return this.store.view(period, Date.now(), { limit: agentLimit() });
+    await this.readCriteria().catch(() => undefined);
+    return this.store.view(period, Date.now(), { limit: agentLimit(), criteria: this.criteria });
+  }
+
+  /** Counts the criteria of the done tickets not counted yet: for those done before the move recorded them. */
+  private async readCriteria(): Promise<void> {
+    if (!this.backlog) return;
+    for (const item of (await this.backlog.read()).items) {
+      if (item.status !== 'done' || this.criteria.has(item.id)) continue;
+      this.criteria.set(item.id, criteriaCount((await this.backlog.readTicket(item)).description));
+    }
   }
 
   /** The message to answer a Metrics webview's request with: the view, or why it couldn't be counted. */
@@ -76,7 +96,11 @@ export class Metrics implements vscode.Disposable {
       return;
     }
     const dist = vscode.Uri.joinPath(this.extensionUri, 'dist');
-    const panel = vscode.window.createWebviewPanel('flotilla.metrics', 'Metrics', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [dist] });
+    const panel = vscode.window.createWebviewPanel('flotilla.metrics', 'Metrics', vscode.ViewColumn.Active, {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [dist],
+    });
     panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'flotilla.svg');
     this.panel = { panel, period };
     panel.webview.html = html(panel.webview, dist, period);

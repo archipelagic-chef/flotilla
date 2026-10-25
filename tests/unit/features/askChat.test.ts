@@ -26,9 +26,7 @@ class FakeClaude extends EventEmitter {
   }
   /** The texts of the user messages it got. */
   get questions(): string[] {
-    return this.written
-      .filter((m) => m.type === 'user')
-      .map((m) => ((m.message as { content: Array<{ text: string }> }).content[0].text));
+    return this.written.filter((m) => m.type === 'user').map((m) => (m.message as { content: Array<{ text: string }> }).content[0].text);
   }
 }
 

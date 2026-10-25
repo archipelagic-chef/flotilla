@@ -1,15 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { awayLine, finished, idleReason, wasOvernight } from '../../../src/features/backlog/autopilotIdle';
+import {
+  awayLine,
+  finished,
+  idleReason,
+  wasOvernight,
+} from '../../../src/features/backlog/autopilotIdle';
 import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
 
 const at = '2026-10-21T00:00:00Z';
 const item = (id: string, status: BacklogItem['status'], more: Partial<BacklogItem> = {}): BacklogItem => ({ id, title: id, status, created: at, ...more });
 const data = (...items: BacklogItem[]): BacklogData => ({ version: 1, next: 99, items });
 
-describe("why the autopilot is idle (BL-142)", () => {
+describe('why the autopilot is idle (BL-142)', () => {
   it('names the ticket that waits, and for which, with where that one stands', () => {
     const d = data(item('BL-126', 'review'), item('BL-130', 'todo'), item('BL-131', 'todo'));
-    const waits = new Map([['BL-130', ['BL-126']], ['BL-131', ['BL-126']]]);
+    const waits = new Map([
+      ['BL-130', ['BL-126']],
+      ['BL-131', ['BL-126']],
+    ]);
     expect(idleReason(d, waits, new Set())).toBe('BL-130 waits for BL-126 (in review) (and 1 more wait)');
   });
 
@@ -23,10 +31,12 @@ describe("why the autopilot is idle (BL-142)", () => {
     const d = data(item('BL-120', 'review', failed), item('BL-121', 'review', failed), item('BL-122', 'review', failed), item('BL-123', 'review', failed));
     expect(idleReason(d, new Map(), new Set())).toBe('4 merges failed (BL-120, BL-121, …): they need you');
     const waiting = data(...d.items, item('BL-130', 'todo'));
-    expect(idleReason(waiting, new Map([['BL-130', ['BL-120']]]), new Set())).toBe('BL-130 waits for BL-120 (merge failed) · 4 merges failed (BL-120, BL-121, …): they need you');
+    expect(idleReason(waiting, new Map([['BL-130', ['BL-120']]]), new Set())).toBe(
+      'BL-130 waits for BL-120 (merge failed) · 4 merges failed (BL-120, BL-121, …): they need you',
+    );
   });
 
-  it("says when nothing is left, and when a start failed", () => {
+  it('says when nothing is left, and when a start failed', () => {
     expect(idleReason(data(item('BL-1', 'done'), item('BL-2', 'todo', { proposed: {} })), new Map(), new Set())).toBe('nothing left in To Do');
     expect(idleReason(data(item('BL-3', 'todo')), new Map(), new Set(['BL-3']))).toBe("BL-3 couldn't start: start it yourself");
   });

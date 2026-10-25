@@ -7,7 +7,11 @@ import type { FileMatches, LineMatch } from '../../features/search/matcher';
  */
 export type HistoryRow = { key: string; commit: CommitView } & ({ kind: 'commit' } | { kind: 'details' } | { kind: 'file'; change: FileChangeView });
 
-export function historyRows(commits: readonly CommitView[], expanded: ReadonlySet<string>, files: (hash: string) => { files: FileChangeView[] } | undefined): HistoryRow[] {
+export function historyRows(
+  commits: readonly CommitView[],
+  expanded: ReadonlySet<string>,
+  files: (hash: string) => { files: FileChangeView[] } | undefined,
+): HistoryRow[] {
   const rows: HistoryRow[] = [];
   for (const commit of commits) {
     rows.push({ key: `commit:${commit.hash}`, commit, kind: 'commit' });

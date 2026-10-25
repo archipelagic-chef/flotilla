@@ -3,11 +3,21 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { parseTicket } from '../../../src/features/backlog/ticket';
 import { parseVerdict, saysReadyForReview, saysWaitingForUser } from '../../../src/features/backlog/review';
 import { parseUsageLimit } from '../../../src/features/backlog/limits';
-import { git, initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const SCRIPT = fileURLToPath(new URL('../../../scripts/fake-claude.mjs', import.meta.url));
 
@@ -132,7 +142,7 @@ describe('the fake claude', () => {
     expect(Math.round((limit!.until.getTime() - Date.now()) / 60_000)).toBe(3);
     expect(commits(s)).toBe('1');
 
-    const resumed = run(s, { prompt: 'Claude\'s usage limit stopped you; it has reset. Go on.', resume: true });
+    const resumed = run(s, { prompt: "Claude's usage limit stopped you; it has reset. Go on.", resume: true });
     expect(resumed.code).toBe(0);
     expect(commits(s)).toBe('2');
   });

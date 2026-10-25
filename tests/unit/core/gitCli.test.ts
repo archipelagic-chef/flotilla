@@ -1,6 +1,18 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { GitError, getGitVersion, MIN_GIT_VERSION, parseGitVersion, runGit, versionAtLeast } from '../../../src/core/git/gitCli';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  getGitVersion,
+  GitError,
+  MIN_GIT_VERSION,
+  parseGitVersion,
+  runGit,
+  versionAtLeast,
+} from '../../../src/core/git/gitCli';
 import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];

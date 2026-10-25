@@ -1755,6 +1755,19 @@
           "default": "agents",
           "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
         },
+        "flotilla.merge.style": {
+          "type": "string",
+          "enum": [
+            "fast-forward",
+            "merge-commit"
+          ],
+          "enumDescriptions": [
+            "Main fast-forwards to the ticket's branch: Merge to main rebases it onto main (squashing its fixup! commits) when it isn't on top of it, runs the checks on that tip and moves main there. The history stays linear, with no merge commits.",
+            "A merge commit (`git merge --no-ff`) for each ticket, as before."
+          ],
+          "default": "fast-forward",
+          "markdownDescription": "How a ticket lands on main (Merge to main, and the merge train)."
+        },
         "flotilla.merge.checkCommand": {
           "type": "string",
           "default": "",
@@ -1764,11 +1777,11 @@
           "type": "string",
           "enum": ["ci", "local"],
           "enumDescriptions": [
-            "When GitHub Actions runs on the branch's pushed tip, Merge to main decides on CI's result (it waits while CI runs, and never merges past red CI); the checks run locally only when there's no CI.",
+            "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
             "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
           ],
           "default": "ci",
-          "markdownDescription": "What Merge to main decides on: CI's result for the branch's pushed tip, or the local checks."
+          "markdownDescription": "What Merge to main decides on: CI's result for what lands (the branch's pushed tip, or the ticket's commit in the merge train), or the local checks."
         },
         "flotilla.checks.maxParallel": {
           "type": "number",
@@ -2082,6 +2095,7 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
+    "format": "prettier --write .",
     "test": "node scripts/test.mjs",
     "test:related": "node scripts/test.mjs --related",
     "test:vscode": "npm run build && node tests/vscode/prepareFixture.mjs && tsc -p tsconfig.vscode-test.json && vscode-test",
@@ -2093,6 +2107,8 @@
     "debug-profile": "node scripts/debug-profile.mjs",
     "demo": "node scripts/demo.mjs",
     "fake-github": "node scripts/fake-github.mjs",
+    "merge-replay": "node scripts/merge-replay.mjs",
+    "prepare": "node scripts/install-hooks.mjs",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
@@ -2107,6 +2123,7 @@
     "esbuild": "^0.28.2",
     "gifenc": "^1.0.3",
     "playwright-core": "^1.64.1",
+    "prettier": "3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },

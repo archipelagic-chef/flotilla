@@ -1,6 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isLocalUrl, pushBranch, pushHint, pushNote, pushOnApproval, runsOnPush } from '../../../src/features/backlog/branchPush';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  isLocalUrl,
+  pushBranch,
+  pushHint,
+  pushNote,
+  pushOnApproval,
+  runsOnPush,
+} from '../../../src/features/backlog/branchPush';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -58,7 +77,7 @@ describe('pushing an approved branch to origin', () => {
     expect(r.kind).toBe('identity');
     expect(git(origin, 'branch', '--list', BRANCH)).toBe('');
     const note = pushNote(r)!;
-    expect(note).toContain('another identity than the repository\'s (`Test <test@example.com>`)');
+    expect(note).toContain("another identity than the repository's (`Test <test@example.com>`)");
     expect(note).toContain(`\`${stranger.slice(0, 7)}\` BL-1: two: author \`Someone <someone@example.com>\``);
   });
 
@@ -71,7 +90,10 @@ describe('pushing an approved branch to origin', () => {
     commit('three');
     git(repo, '-c', 'user.name=Other', '-c', 'user.email=o@example.com', 'commit', '-q', '--amend', '--no-edit');
     const r = await pushBranch(repo, BRANCH);
-    expect(r).toMatchObject({ kind: 'identity', strangers: [{ subject: 'BL-1: three', author: 'Test <test@example.com>', committer: 'Other <o@example.com>' }] });
+    expect(r).toMatchObject({
+      kind: 'identity',
+      strangers: [{ subject: 'BL-1: three', author: 'Test <test@example.com>', committer: 'Other <o@example.com>' }],
+    });
     expect(pushNote(r)).toContain('author `Test <test@example.com>`, committer `Other <o@example.com>`');
   });
 
@@ -87,6 +109,24 @@ describe('pushing an approved branch to origin', () => {
     expect(pushNote(r)).toContain('would take a force push, which Flotilla never does');
   });
 
+  it('pushes a branch rewritten over its own last push with --force-with-lease (BL-181)', async () => {
+    commit('one');
+    const first = await pushBranch(repo, BRANCH);
+    expect(first.kind).toBe('pushed');
+    git(repo, 'reset', '-q', '--hard', 'main');
+    commit('rewritten');
+    const tip = git(repo, 'rev-parse', 'HEAD');
+    const r = await pushBranch(repo, BRANCH, { leased: first.commit });
+    expect(r).toMatchObject({ kind: 'pushed', rewritten: true, commit: tip });
+    expect(git(origin, 'rev-parse', `refs/heads/${BRANCH}`)).toBe(tip);
+    expect(pushNote(r)).toContain('--force-with-lease');
+    // Someone pushed over it since: not forced.
+    git(repo, 'reset', '-q', '--hard', 'main');
+    commit('again');
+    expect((await pushBranch(repo, BRANCH, { leased: first.commit })).kind).toBe('force');
+    expect(git(origin, 'rev-parse', `refs/heads/${BRANCH}`)).toBe(tip);
+  });
+
   it('notes a failed push with what to do', async () => {
     commit('one');
     git(repo, 'remote', 'set-url', 'origin', `${origin}-gone`);
@@ -99,7 +139,14 @@ describe('pushing an approved branch to origin', () => {
   });
 
   it('tells a local origin from one on the network', () => {
-    for (const u of ['/tmp/origin.git', '../origin', 'C:\\repos\\app.git', 'C:/repos/app.git', 'file:///tmp/o.git', '/x/.git/origin/github.com/playground/app.git'])
+    for (const u of [
+      '/tmp/origin.git',
+      '../origin',
+      'C:\\repos\\app.git',
+      'C:/repos/app.git',
+      'file:///tmp/o.git',
+      '/x/.git/origin/github.com/playground/app.git',
+    ])
       expect(isLocalUrl(u), u).toBe(true);
     for (const u of ['', 'https://github.com/o/r.git', 'ssh://git@host/r.git', 'git@github.com:o/r.git', 'host:repo.git']) expect(isLocalUrl(u), u).toBe(false);
   });

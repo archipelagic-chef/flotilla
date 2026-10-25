@@ -1,4 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
 import { GitHubActions } from '../../../../src/features/ci/githubActions';
 import { latestCi, tookLabel } from '../../../../src/features/ci/summary';

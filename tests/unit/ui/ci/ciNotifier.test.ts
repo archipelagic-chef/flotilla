@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { CiNotifier } from '../../../../src/ui/ci/ciNotifier';
 import type { CiJob, CiRun } from '../../../../src/features/ci/githubActions';
 import type { FinishedRun } from '../../../../src/features/ci/notify';
@@ -116,7 +122,7 @@ describe('CiNotifier', () => {
     expect(vs.warning).toHaveBeenLastCalledWith(expect.stringContaining('No job of CI #42 failed'));
   });
 
-  it('shows a pass only with the all setting, and Show opens the worktree\'s CI/CD view', async () => {
+  it("shows a pass only with the all setting, and Show opens the worktree's CI/CD view", async () => {
     const { notifier, show } = setup();
     notifier.notify([finishedRun('success')]);
     expect(vs.info).not.toHaveBeenCalled();

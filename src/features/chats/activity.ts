@@ -42,7 +42,11 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 
 /** A text on one line: its first non-empty line, shortened. */
 export function oneLine(text: string, max = LINE_CHARS): string {
-  const line = text.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  const line =
+    text
+      .split('\n')
+      .map((l) => l.trim())
+      .find(Boolean) ?? '';
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 

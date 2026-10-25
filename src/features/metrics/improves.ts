@@ -1,5 +1,10 @@
 import type { FlotillaEvent } from './events';
-import { eventsBetween, formatValue, metricDefs, trend } from './summary';
+import {
+  eventsBetween,
+  formatValue,
+  metricDefs,
+  trend,
+} from './summary';
 
 /**
  * A ticket's `Improves:` line (BL-159): the metric its fix should move (a summary metric's id), and the value it aims
@@ -74,7 +79,8 @@ export function checkFix(
   const out = { ...base, landed: landed.toISOString(), before, after, unit: def.unit };
   if (o.now.getTime() - landed.getTime() < (o.minDays ?? 3) * DAY_MS) return { ...out, verdict: 'early' };
   const t = trend({ value: after, previous: before, better: def.better });
-  const reached = after === undefined || o.improves.target === undefined ? undefined : def.better === 'lower' ? after <= o.improves.target : after >= o.improves.target;
+  const reached =
+    after === undefined || o.improves.target === undefined ? undefined : def.better === 'lower' ? after <= o.improves.target : after >= o.improves.target;
   return { ...out, verdict: t === 'better' ? 'helped' : (t ?? 'unknown'), ...(reached !== undefined ? { reached } : {}) };
 }
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { currentGitPriority, inBackground, MAX_GIT_PROCESSES, ProcessQueue } from '../../../src/core/git/gitQueue';
+import {
+  currentGitPriority,
+  inBackground,
+  MAX_GIT_PROCESSES,
+  ProcessQueue,
+} from '../../../src/core/git/gitQueue';
 
 /** A task that stays running until released, and records when it started. */
 function gated(started: string[], name: string) {

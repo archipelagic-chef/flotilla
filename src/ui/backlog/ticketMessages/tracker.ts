@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { linkIssue, unlinkIssue } from '../../../features/backlog/backlog';
 import type { Handlers } from './context';
+import type { TrackerMessage } from './tracker.messages';
 
 /** The issue tracker (Jira, GitHub Issues): the linked issue, its workflow and priority, and creating one. */
-export const trackerHandlers: Handlers = {
+export const trackerHandlers: Handlers<TrackerMessage> = {
   openRemote: async ({ item }) => {
     if (item.remote) await vscode.env.openExternal(vscode.Uri.parse(item.remote.url));
   },

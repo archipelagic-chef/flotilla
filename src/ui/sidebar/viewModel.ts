@@ -8,7 +8,15 @@ import type { FileChange } from '../../core/git/porcelain';
 import { BIG_CHAT_HINT, formatTokens, usageTip } from '../../features/chats/usage';
 import type { ChatView, FileChangeView, WorkstreamView } from '../../webview/protocol';
 import { tabLabel } from './tabLabel';
-import { ATTENTION_LABEL, describeSync, describeWorkstream, formatAge, syncKind, workstreamContext, workstreamLabel } from '../format';
+import {
+  ATTENTION_LABEL,
+  describeSync,
+  describeWorkstream,
+  formatAge,
+  syncKind,
+  workstreamContext,
+  workstreamLabel,
+} from '../format';
 
 /** Two letters for a rail tile: initials of the last branch segment's words ("feature/login-form" → "lf"), or its first two letters. */
 export function initials(branch: string): string {
@@ -75,7 +83,16 @@ export function changedViews(views: readonly WorkstreamView[], sent: Map<string,
   return { changed, keys: views.map((v) => v.key) };
 }
 
-export function toWorkstreamView(ws: Workstream, all: readonly Workstream[], now: Date, inWorkspace: boolean, labelPattern: string | undefined, changesLimit: number, bigContext = 200_000, rules: StuckRules = DEFAULT_STUCK_RULES): WorkstreamView {
+export function toWorkstreamView(
+  ws: Workstream,
+  all: readonly Workstream[],
+  now: Date,
+  inWorkspace: boolean,
+  labelPattern: string | undefined,
+  changesLimit: number,
+  bigContext = 200_000,
+  rules: StuckRules = DEFAULT_STUCK_RULES,
+): WorkstreamView {
   // The limit is per worktree, across both lists: staged changes first (they're what a commit takes).
   const staged = capChanges(ws.staged, changesLimit);
   const unstaged = capChanges(ws.unstaged, changesLimit - staged.items.length);

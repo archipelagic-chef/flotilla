@@ -1,7 +1,8 @@
 import type { Handlers } from './context';
+import type { ReviewMessage } from './review.messages';
 
 /** Shaping and reviewing: discussing the ticket, the review loop, and updating its branch from main. */
-export const reviewHandlers: Handlers = {
+export const reviewHandlers: Handlers<ReviewMessage> = {
   discuss: async ({ id, item, panels }) => {
     if (!item.remote) await panels.shaping?.discuss(id);
   },

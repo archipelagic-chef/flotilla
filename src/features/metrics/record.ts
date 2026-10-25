@@ -31,7 +31,8 @@ export function recordTrainConflicts(cwd: string, train: MergeTrain, was: MergeT
 
 /** Records Merge to main stopping on CI (BL-168): failed, with the failed jobs, or main moved on. */
 export function recordCiStop(ticket: string, stop: CiStop): void {
-  const data = stop.kind === 'failed' ? { reason: stop.kind, branch: stop.branch, jobs: stop.jobs.map((j) => j.name) } : { reason: stop.kind, branch: stop.branch };
+  const data =
+    stop.kind === 'failed' ? { reason: stop.kind, branch: stop.branch, jobs: stop.jobs.map((j) => j.name) } : { reason: stop.kind, branch: stop.branch };
   recordEvent('merge-ci-stopped', { ticket, data });
 }
 

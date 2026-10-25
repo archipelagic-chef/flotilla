@@ -2,7 +2,15 @@ import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
 import { itemBranches, type BacklogItem } from '../../features/backlog/backlog';
-import { isLocalUrl, pushBranch, pushedInfo, pushNote, pushOnApproval, PUSH_REMOTE, type PushSetting } from '../../features/backlog/branchPush';
+import {
+  isLocalUrl,
+  PUSH_REMOTE,
+  pushBranch,
+  pushedInfo,
+  pushNote,
+  pushOnApproval,
+  type PushSetting,
+} from '../../features/backlog/branchPush';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -96,14 +104,12 @@ export class BranchPush implements vscode.Disposable {
         const last = item.pushed?.find((p) => p.branch === branch);
         if (last?.commit === tip && !fresh.has(item.id)) continue;
         this.deps.output.appendLine(`Push: ${branch} (${item.id}) to origin.`);
-        const result = await pushBranch(cwd, branch);
+        const result = await pushBranch(cwd, branch, { leased: last && !last.error ? last.commit : undefined });
         this.deps.output.appendLine(`Push: ${branch}: ${result.kind}${result.kind === 'failed' ? `: ${result.reason}` : ''}`);
         await this.deps.backlog.change(
           (d) => ({
             ...d,
-            items: d.items.map((i) =>
-              i.id === item.id ? { ...i, pushed: [...(i.pushed ?? []).filter((p) => p.branch !== branch), pushedInfo(result)] } : i,
-            ),
+            items: d.items.map((i) => (i.id === item.id ? { ...i, pushed: [...(i.pushed ?? []).filter((p) => p.branch !== branch), pushedInfo(result)] } : i)),
           }),
           { by: 'Flotilla' },
         );
