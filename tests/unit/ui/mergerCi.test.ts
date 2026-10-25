@@ -195,10 +195,12 @@ describe('Merge to main on CI (BL-105)', () => {
     clock += DONE_MS;
     await fetch(`${fake.url}/repos/playground/app/actions/runs/${ci.id}/rerun`, { method: 'POST' });
     clock += DONE_MS;
-    await until(async () => (await item('BL-1')).status === 'done');
+    // The merge's note comes after the status (finish moves it to Done first): it's what's waited for.
+    const notPushed = "CI wasn't used: the merge train isn't pushed to origin (you chose not to push it).";
+    await until(async () => (await activity('BL-1')).includes(notPushed));
+    expect(await activity('BL-1')).toContain(notPushed);
     expect((await item('BL-1')).status).toBe('done');
     expect(ui.checks).toEqual([CHECKS, CHECKS]);
-    expect(await activity('BL-1')).toContain("CI wasn't used: the merge train isn't pushed to origin (you chose not to push it).");
     expect(await activity('BL-1')).not.toContain('has moved on');
     merger.dispose();
   });
