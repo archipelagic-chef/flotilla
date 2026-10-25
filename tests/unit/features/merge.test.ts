@@ -167,7 +167,7 @@ describe('merging in a temporary worktree', () => {
     expect(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8')).toBe('a\n');
     await removeMergeWorktree(repo, dir);
     expect(fs.existsSync(dir)).toBe(false);
-    expect(git(repo, 'worktree', 'list')).not.toContain('m1');
+    expect(git(repo, 'worktree', 'list')).not.toMatch(/[\\/]m1\s/);
   });
 
   it('moves a base no worktree has, only from where it was', async () => {
