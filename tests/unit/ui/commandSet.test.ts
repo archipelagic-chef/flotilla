@@ -69,7 +69,7 @@ describe('commands', () => {
 
   it('extension.ts registers the features’ lists, and no command of its own', () => {
     const source = fs.readFileSync(path.join(root, 'src/extension.ts'), 'utf8');
-    for (const name of Object.keys(features)) expect(source, name).toMatch(new RegExp(`registerAll\\(context\\.subscriptions, ${name}\\(`));
+    for (const name of Object.keys(features)) expect(source, name).toMatch(new RegExp(`registerAll\\(\\s*context\\.subscriptions,\\s*${name}\\(`));
     expect(source).not.toMatch(/commands\.registerCommand\(/);
   });
 

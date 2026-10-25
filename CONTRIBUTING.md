@@ -142,11 +142,12 @@ So:
   ([scripts/prettier-imports.mjs](scripts/prettier-imports.mjs) does it), so two added names land on different lines.
   Keep it that way when you add one: Prettier puts it in its place.
 - **Ticket tab messages**: in their group's files, as in "Where a part goes" above.
-- **Settings and commands in `package.json`**: next to the related ones of the same feature, not at the end of the list.
+- **Commands and settings**: a command's handler in its feature's map (above); its entry, and a setting's, in
+  `package.json` next to the related ones of the same feature, not at the end of the list.
 - **`CHANGELOG.md`**: one entry per ticket under "## Unreleased". It merges with `merge=union`
   ([.gitattributes](.gitattributes)), which keeps both sides' lines: add a new paragraph rather than editing another
   ticket's, so the merge doesn't keep two versions of it.
-- **CSS**: with the rules of the part it styles, not at the end of the file.
+- **CSS**: in the part's own file (above).
 - **Splitting an epic**: siblings that build the same part get `Depends on:` the earlier one, so they don't build it in
   parallel and conflict; siblings in separate parts run in parallel.
 
