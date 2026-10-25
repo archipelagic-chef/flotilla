@@ -63,6 +63,13 @@ export function TitleBar({
         <button class="icon" aria-label="Integrations (Jira, GitHub Issues)…" onClick={() => send({ type: 'backlog', op: 'integrations' })}>
           <i class="codicon codicon-plug" />
         </button>
+        <button
+          class="icon"
+          aria-label="New Note: write a request in the editor, and an agent turns it into ticket proposals"
+          onClick={() => send({ type: 'note', op: 'new' })}
+        >
+          <i class="codicon codicon-note" />
+        </button>
         <button class="icon" aria-label="Add Item" onClick={() => send({ type: 'backlog', op: 'new' })}>
           <i class="codicon codicon-add" />
         </button>

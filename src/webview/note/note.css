@@ -1,0 +1,18 @@
+/* The New Note tab (BL-182): the comment box of a ticket, on a page of its own. */
+.note-page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 16px 20px;
+}
+.note-page h1 {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.note-intro {
+  color: var(--vscode-descriptionForeground);
+  margin: 0 0 12px;
+}
