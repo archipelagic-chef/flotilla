@@ -8,6 +8,7 @@ import type { BacklogStatus } from './backlog';
  */
 export type StepOp =
   | 'start'
+  | 'resume'
   | 'openChat'
   | 'stop'
   | 'reviewMyself'
@@ -51,6 +52,11 @@ export interface StepState {
   unpushed?: boolean;
   /** It has a worktree. */
   hasWorktree?: boolean;
+  /**
+   * Its agent stopped without a question, to be resumed (BL-198): the tickets it said it waits for, those not merged
+   * yet and those merged.
+   */
+  asking?: { waits: readonly string[]; merged: readonly string[] };
   /** Update from Main and Merge is under way: the part it's at. */
   chained?: 'updating' | 'resolving' | 'checks' | 'merging';
 }
@@ -65,6 +71,7 @@ export interface NextSteps {
 /** Each step's button: its label and codicon. */
 export const STEP: Record<StepOp, { label: string; icon: string }> = {
   start: { label: 'Start an Agent', icon: 'play' },
+  resume: { label: 'Resume', icon: 'debug-continue' },
   openChat: { label: 'Open Chat', icon: 'comment-discussion' },
   stop: { label: 'Stop', icon: 'debug-stop' },
   reviewMyself: { label: 'Review It Myself', icon: 'eye' },
@@ -105,6 +112,8 @@ export function nextSteps(s: StepState): NextSteps {
       others: ['reviewMyself', ...run.filter((r) => r === 'run')],
       status: `${s.reviewerWorking} reviews it: Approve and Request Changes come when it's done`,
     };
+  // Resume goes on in its chat; Start an Agent starts afresh. It's offered while it waits too: you may know better.
+  if (s.asking) return { main: 'resume', others: ['start', ...run], status: resumeStatus(s.asking) };
   const conflicts = s.conflicts?.length ? `Conflicts with ${main} in ${files(s.conflicts.length)}` : undefined;
   if (s.yours) return { main: 'approve', others: ['requestChanges', ...run], status: chained ? `${chained} It merges once you approve` : conflicts };
   if (s.canMerge) {
@@ -119,6 +128,14 @@ export function nextSteps(s: StepState): NextSteps {
   }
   if (s.status === 'todo' || s.status === 'doing') return { main: 'start', others: run };
   return { others: run };
+}
+
+const list = (ids: readonly string[]) => (ids.length > 1 ? `${ids.slice(0, -1).join(', ')} and ${ids.at(-1)}` : (ids[0] ?? ''));
+
+function resumeStatus(a: NonNullable<StepState['asking']>): string | undefined {
+  if (a.waits.length) return `Waits for ${list(a.waits)} to be merged`;
+  if (a.merged.length) return `${list(a.merged)} ${a.merged.length > 1 ? 'are' : 'is'} merged: resume it`;
+  return undefined;
 }
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

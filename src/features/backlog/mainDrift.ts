@@ -103,6 +103,30 @@ export function dependsOn(description: string, self?: string): string[] {
   return [...ids];
 }
 
+const TICKET = String.raw`[A-Za-z][A-Za-z0-9]{0,9}-\d{1,7}`;
+const TICKETS = String.raw`${TICKET}(?:\s*(?:,|&|and|or)\s*${TICKET})*`;
+/** "BL-182 is merged", "BL-182 and BL-183 are merged", "BL-135 merges", "BL-1 has landed"; "waiting for BL-182". */
+const WAIT_PHRASES = [
+  new RegExp(String.raw`\b(${TICKETS})\s+(?:(?:is|are|has|have|gets|get)\s+)?(?:been\s+)?(?:merged|merges|merge|landed|lands|land)\b`, 'gi'),
+  new RegExp(String.raw`\bwait(?:s|ing)?\s+(?:on|for)\s+(${TICKETS})\b`, 'gi'),
+];
+
+/**
+ * The tickets a report says its agent waits for to be merged (BL-198): "Resume me once BL-182 is merged", "after
+ * BL-135 merges", "Waiting for BL-182". Not itself.
+ */
+export function resumeWaits(text: string, self?: string): string[] {
+  const ids = new Set<string>();
+  for (const phrase of WAIT_PHRASES) {
+    for (const m of text.matchAll(phrase)) {
+      for (const [id] of m[1].matchAll(new RegExp(String.raw`\b${TICKET}\b`, 'g'))) {
+        if (ID_PATTERN.test(id) && id.toUpperCase() !== self?.toUpperCase()) ids.add(id.toUpperCase());
+      }
+    }
+  }
+  return [...ids];
+}
+
 /** The tickets of those it depends on that aren't done yet (merged): what it waits for. Unknown ids are ignored. */
 export function waitingFor(data: BacklogData, deps: readonly string[]): Array<Pick<BacklogItem, 'id' | 'title' | 'status'>> {
   return deps.flatMap((id) => {

@@ -10,6 +10,7 @@ import {
   isOpen,
   type MainCheck,
   mergeBasePrompt,
+  resumeWaits,
   reusable,
   waitingFor,
 } from '../../../src/features/backlog/mainDrift';
@@ -120,5 +121,20 @@ describe('tickets that depend on others', () => {
       items: [item({ id: 'BL-2', status: 'done' }), item({ id: 'BL-3', status: 'review', title: 'Three' })],
     };
     expect(waitingFor(data, ['BL-2', 'BL-3', 'BL-99'])).toEqual([{ id: 'BL-3', title: 'Three', status: 'review' }]);
+  });
+});
+
+describe('tickets a report waits for to be merged', () => {
+  it('reads them from what the report says', () => {
+    expect(resumeWaits('Needs from you: nothing. Resume me once BL-182 is merged.')).toEqual(['BL-182']);
+    expect(resumeWaits('Pick it up after bl-135 merges.')).toEqual(['BL-135']);
+    expect(resumeWaits('Resume me when BL-1 and BL-2 are merged, or once BL-3 has been merged.')).toEqual(['BL-1', 'BL-2', 'BL-3']);
+    expect(resumeWaits('resume this ticket at least 7 days after BL-190 merges.')).toEqual(['BL-190']);
+    expect(resumeWaits("Waiting for BL-182: its notes aren't on main yet.")).toEqual(['BL-182']);
+  });
+
+  it('ignores other mentions, and the ticket itself', () => {
+    expect(resumeWaits('Builds on BL-12, like BL-13 did.')).toEqual([]);
+    expect(resumeWaits('Resume me once BL-7 and BL-8 are merged.', 'bl-7')).toEqual(['BL-8']);
   });
 });

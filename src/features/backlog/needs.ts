@@ -1,6 +1,8 @@
 import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
 import { ordinal } from './agentQueue';
+import { resumeWaits } from './mainDrift';
+import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 import { turnOf } from './turn';
 
@@ -54,6 +56,25 @@ export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undef
   }
   if (item.startFailed && item.status === 'todo') return { kind: 'failed', since: item.startFailed.since, line: `Couldn't start: ${item.startFailed.message}` };
   return undefined;
+}
+
+/**
+ * An asking ticket that's resumed, not answered (BL-198): its implementer's latest report asks no question (no
+ * question blocks, no "Waiting for you."), so Resume goes on in its chat. waits: the tickets that report says it waits
+ * for to be merged ("Resume me once BL-182 is merged"), from its summary and its "Needs from you" line.
+ */
+export function resumeAsk(
+  item: Pick<BacklogItem, 'id' | 'review'>,
+  activity: ReadonlyArray<Pick<TicketEntry, 'author' | 'body'>>,
+): { waits: string[] } | undefined {
+  const r = item.review;
+  if (r?.state !== 'asking') return undefined;
+  const report = activity.filter((e) => sameAgent(entryAgent(e.author), r.implementer)).at(-1);
+  if (!report) return undefined;
+  const parts = parseReport(report.body);
+  if (parts.questions.length || /waiting for (you|the user|your answer)[.!]?\W*$/i.test(report.body.trim())) return undefined;
+  const said = parts.summary !== undefined ? [parts.summary, parts.needs ?? ''].join('\n') : report.body;
+  return { waits: resumeWaits(said, item.id) };
 }
 
 /** A user's reply waiting for an agent (see agentQueue.ts): Prioritize starts it now. */

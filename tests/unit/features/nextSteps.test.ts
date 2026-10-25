@@ -6,6 +6,25 @@ const approved: StepState = { status: 'review', canMerge: true, reviewing: true,
 /** Each state, and the buttons it shows: the main one first. */
 const table: Array<[string, StepState, string[], string?]> = [
   ['to do', { status: 'todo' }, ['Start an Agent']],
+  ['its agent stopped to go on later, naming no ticket', { status: 'doing', asking: { waits: [], merged: [] } }, ['Resume', 'Start an Agent']],
+  [
+    "its agent waits for a ticket that isn't merged",
+    { status: 'doing', asking: { waits: ['BL-182'], merged: [] } },
+    ['Resume', 'Start an Agent'],
+    'Waits for BL-182 to be merged',
+  ],
+  [
+    'its agent waits for tickets that are all merged',
+    { status: 'doing', asking: { waits: [], merged: ['BL-182', 'BL-183'] } },
+    ['Resume', 'Start an Agent'],
+    'BL-182 and BL-183 are merged: resume it',
+  ],
+  [
+    'its agent waits for two tickets, one merged',
+    { status: 'review', reviewing: true, hasRunBlock: true, asking: { waits: ['BL-183'], merged: ['BL-182'] } },
+    ['Resume', 'Start an Agent', 'Run'],
+    'Waits for BL-183 to be merged',
+  ],
   ['an agent working on it', { status: 'doing', agentWorking: 'Rex-3' }, ['Open Chat', 'Stop'], 'Rex-3 is working on it'],
   [
     'in review with an agent reviewer working',

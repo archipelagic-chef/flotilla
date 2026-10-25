@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setStartFailed, type BacklogData, type BacklogItem } from '../../../src/features/backlog/backlog';
-import { needOf, oldestFirst } from '../../../src/features/backlog/needs';
+import { needOf, oldestFirst, resumeAsk } from '../../../src/features/backlog/needs';
 import { stampWaiting, type ReviewState } from '../../../src/features/backlog/review';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
@@ -98,5 +98,27 @@ describe('setStartFailed', () => {
     const failed = setStartFailed(data, 'BL-2', { message: 'busy', since: 'T' });
     expect(failed.items.map((i) => i.startFailed)).toEqual([undefined, { message: 'busy', since: 'T' }]);
     expect(setStartFailed(failed, 'BL-2').items[1]).not.toHaveProperty('startFailed');
+  });
+});
+
+describe('an agent that stopped to be resumed (BL-198)', () => {
+  const asking = item({ review: review({ state: 'asking', implementer: 'Nova-7' }) });
+  const report = (body: string) => [entry('Agent Nova-7', body)];
+
+  it('is resumed when its latest report asks nothing, with the tickets it waits for', () => {
+    const body =
+      "Waiting for BL-182: its notes aren't on main.\n\nNeeds from you: nothing. Resume me once BL-182 is merged.\n\nDetails: BL-9 is merged already.";
+    expect(resumeAsk(asking, report(body))).toEqual({ waits: ['BL-182'] });
+    expect(resumeAsk(asking, report('Stopped here.\n\nNeeds from you: nothing'))).toEqual({ waits: [] });
+  });
+
+  it('is answered, not resumed, when the report asks a question or waits for the user', () => {
+    expect(resumeAsk(asking, report('Which?\n\nNeeds from you: a choice\n\n```question\nWhich one?\n- A\n- B\n```'))).toBeUndefined();
+    expect(resumeAsk(asking, report('Which one, A or B?\n\nWaiting for you.'))).toBeUndefined();
+  });
+
+  it('is only for a ticket whose agent asks', () => {
+    expect(resumeAsk(item({ review: review({ state: 'yours', implementer: 'Nova-7' }) }), report('Done.\n\nNeeds from you: nothing'))).toBeUndefined();
+    expect(resumeAsk(asking, [])).toBeUndefined();
   });
 });
