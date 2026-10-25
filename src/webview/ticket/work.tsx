@@ -151,7 +151,7 @@ export function Work({ ticket }: { ticket: TicketView }) {
             <UpdateFromButton
               class="text-button work-head-action"
               base={ticket.updateFromMain.base}
-              title={`Merges ${ticket.updateFromMain.base} into its branch; when that conflicts, its agent does it and resolves the conflicts`}
+              title={`Rebases its branch onto ${ticket.updateFromMain.base}; when that conflicts, its agent does it and resolves the conflicts`}
             />
           )}
         </div>

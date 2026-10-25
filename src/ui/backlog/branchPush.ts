@@ -96,7 +96,7 @@ export class BranchPush implements vscode.Disposable {
         const last = item.pushed?.find((p) => p.branch === branch);
         if (last?.commit === tip && !fresh.has(item.id)) continue;
         this.deps.output.appendLine(`Push: ${branch} (${item.id}) to origin.`);
-        const result = await pushBranch(cwd, branch);
+        const result = await pushBranch(cwd, branch, { leased: last && !last.error ? last.commit : undefined });
         this.deps.output.appendLine(`Push: ${branch}: ${result.kind}${result.kind === 'failed' ? `: ${result.reason}` : ''}`);
         await this.deps.backlog.change(
           (d) => ({

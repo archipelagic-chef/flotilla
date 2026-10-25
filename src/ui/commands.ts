@@ -7,6 +7,7 @@ import { isInside, resolveInside, samePath } from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
+import { tidyNotes } from '../features/backlog/tidyNotes';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -576,8 +577,11 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
   return ws;
 }
 
-/** How agents keep their branch current with main, and what they do when they need another ticket's work (BL-55). */
-export const MERGE_NOTES = `Before you report "Ready for review.", merge main (the branch work merges into) into your branch, resolve any conflicts, and run the project's checks (build, tests), so the work merges cleanly as it is. Merge only main into your branch, never another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
+/**
+ * How agents keep their branch current with main (rebased and tidied, BL-181), and what they do when they need another
+ * ticket's work (BL-55).
+ */
+export const mergeNotes = (id: string): string => `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
 
 /** Agents keep a todo list, so the ticket shows how far they are (BL-175). */
 export const PLAN_NOTE =
@@ -597,7 +601,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | '
     PLAN_NOTE,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
     ...(level ? [level] : []),
-    MERGE_NOTES,
+    mergeNotes(item.id),
     reviewNotes({ id: item.id, backlogDir: path.dirname(guide) }),
     `If the work turns out to be several tickets' worth, or you find other work worth doing, add tickets to the backlog as ${guide} explains (parent: ${item.id} for parts of this one; agent: ${agent}). Mention them in your report.`,
     `Never change issue trackers yourself (Jira, GitHub Issues or others): no API calls, CLIs or tools that comment on, edit, move or create issues. The ticket is your only channel; the user decides what gets posted to the tracker.`,

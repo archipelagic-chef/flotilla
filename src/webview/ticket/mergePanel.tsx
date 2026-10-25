@@ -46,7 +46,7 @@ export function MergeStop({ stop }: { stop: CiStop }) {
           <strong>Not merged:</strong> {stop.base} has moved on since <code>{stop.branch}</code> took it in, so CI checked another tree than the merge's. Update
           from {capitalize(stop.base)}, then merge when CI passes.
         </span>
-        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Merges ${stop.base} into the branch, which is pushed, and CI runs again`}>
+        <ActionButton class="button" message={{ type: 'updateFromMain' }} working="Updating…" title={`Rebases the branch onto ${stop.base}; it's pushed, and CI runs again`}>
           <i class="codicon codicon-sync" /> Update from {capitalize(stop.base)}
         </ActionButton>
       </div>
@@ -368,7 +368,7 @@ export function MergePanel({ ticket }: { ticket: TicketView }) {
 
 /**
  * How the work stands against main (BL-55): its branches that conflict with main, and the tickets it waits for
- * ("Depends on: BL-12" in its description). Update from Main merges main into its branch (its agent resolves conflicts).
+ * ("Depends on: BL-12" in its description). Update from Main rebases its branch onto main (its agent resolves conflicts).
  */
 export function MainState({ ticket }: { ticket: TicketView }) {
   const conflicts = conflictsOf(ticket.item);

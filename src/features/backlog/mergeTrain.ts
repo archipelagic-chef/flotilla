@@ -1,5 +1,7 @@
 import { runGit } from '../../core/git/gitCli';
 import { readyToMerge, type BacklogData, type BacklogItem } from './backlog';
+import { rebaseInDir, rebasing } from './linearHistory';
+import type { MergeStyle } from './tidyNotes';
 import { conflictedFiles, removeMergeWorktree } from './merge';
 
 /**
@@ -7,6 +9,8 @@ import { conflictedFiles, removeMergeWorktree } from './merge';
  * (flotilla/train) made of the base with each queued ticket's branch merged on, `--no-ff`, in queue order. A ticket
  * that conflicts with the train ahead of it is left out of it (the ones behind it are merged as if it weren't there).
  * Landing a ticket moves the base forward to its merge commit in the train: what was merged and checked is what lands.
+ * With flotilla.merge.style fast-forward (BL-181), each ticket's branch is rebased onto the one before instead, and its
+ * commit in the train is its rebased tip: the train, and so the base, stays a line of the tickets' own commits.
  */
 
 /** The branch the train is kept on. */
@@ -35,6 +39,8 @@ export interface MergeTrain {
   /** ISO 8601. */
   built: string;
   entries: TrainEntry[];
+  /** How it was built: rebased (fast-forward), or merge commits (merge-commit, also when missing: before BL-181). */
+  style?: MergeStyle;
 }
 
 /** The queue as it stands: the saved order, without tickets that aren't ready to merge any more. */
@@ -56,8 +62,13 @@ export function dequeue(queue: readonly string[] | undefined, ids: readonly stri
 }
 
 /** Whether the train was built on these tips: the base's, and each queued branch's, in this order. */
-export function trainIsCurrent(train: MergeTrain | undefined, baseTip: string, entries: ReadonlyArray<{ id: string; branch: string; tip: string }>): boolean {
-  if (!train || train.baseTip !== baseTip || train.entries.length !== entries.length) return false;
+export function trainIsCurrent(
+  train: MergeTrain | undefined,
+  baseTip: string,
+  entries: ReadonlyArray<{ id: string; branch: string; tip: string }>,
+  style: MergeStyle = 'merge-commit',
+): boolean {
+  if (!train || train.baseTip !== baseTip || train.entries.length !== entries.length || (train.style ?? 'merge-commit') !== style) return false;
   return entries.every((e, i) => train.entries[i].id === e.id && train.entries[i].branch === e.branch && train.entries[i].tip === e.tip);
 }
 
@@ -107,12 +118,21 @@ export function trainOnto(train: MergeTrain, id: string): { commit: string; ahea
 /** git's options that record and reuse resolutions (rerere), for the train's merges only. */
 const RERERE = ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=true'];
 const MERGE_ENV = { GIT_MERGE_AUTOEDIT: 'no', GIT_EDITOR: ':' };
+const REBASE_ENV = { ...MERGE_ENV, GIT_SEQUENCE_EDITOR: ':' };
 
 /**
  * Starts merging a train entry in a new temporary worktree at dir, detached at onto (the train's commit before it),
  * with rerere on: the conflicted files, left there to resolve (BL-146). Any other outcome removes the worktree.
  */
-export async function startTrainMerge(cwd: string, o: { dir: string; onto: string; branch: string; message: string }): Promise<string[]> {
+export async function startTrainMerge(cwd: string, o: { dir: string; onto: string; branch: string; message: string; style?: MergeStyle }): Promise<string[]> {
+  if (o.style === 'fast-forward') {
+    // Rebased onto the train before it: detached at the branch's tip, the rebase stopped on its conflicts.
+    await runGit(['worktree', 'add', '--detach', o.dir, `refs/heads/${o.branch}`], { cwd, timeoutMs: 120_000 });
+    const outcome = await rebaseInDir(o.dir, o.onto, { rerere: true }).catch(() => undefined);
+    const files = outcome?.kind === 'conflicts' ? outcome.files : [];
+    if (!files.length) await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
+    return files;
+  }
   await runGit(['worktree', 'add', '--detach', o.dir, o.onto], { cwd, timeoutMs: 120_000 });
   const merged = await runGit([...RERERE, 'merge', '--no-ff', '--no-edit', '-m', o.message, `refs/heads/${o.branch}`], { cwd: o.dir, timeoutMs: 120_000, env: MERGE_ENV }).then(
     () => true,
@@ -148,6 +168,45 @@ export async function recordResolution(dir: string, o: { onto: string; tip: stri
     await runGit(['checkout', '-q', '--detach', '--force', o.resolved], { cwd: dir }).catch(() => undefined);
   }
   return files;
+}
+
+/**
+ * Records a resolved train rebase for rerere (BL-181), as recordResolution does a merge's: in dir, tip is rebased onto
+ * onto again, and at each commit it stops on, the conflicted files are taken as they are in the approved rebase
+ * (resolved): in its commit of the same subject, else its tip. A rebuild of the train then rebases the entry with it.
+ * The files recorded; dir is left at resolved.
+ */
+export async function recordRebaseResolution(dir: string, o: { onto: string; tip: string; resolved: string }): Promise<string[]> {
+  const git = (args: string[]) => runGit(args, { cwd: dir, timeoutMs: 120_000, env: REBASE_ENV });
+  const rerere = ['-c', 'rerere.enabled=true'];
+  const picked = (await git(['log', '--reverse', '--format=%H%x00%s', `${o.onto}..${o.resolved}`])).split('\n').filter(Boolean).map((l) => l.split('\0'));
+  const recorded: string[] = [];
+  await git(['checkout', '-q', '--detach', '--force', o.tip]);
+  try {
+    await git([...rerere, 'rebase', '--empty=drop', o.onto]).catch(() => undefined);
+    for (let i = 0; i < 1000 && (await rebasing(dir)); i++) {
+      const files = await conflictedFiles(dir).catch(() => []);
+      if (files.length) {
+        const subject = (await git(['log', '-1', '--format=%s', 'REBASE_HEAD']).catch(() => '')).trim();
+        const at = picked.findIndex(([, s]) => s === subject);
+        const from = at >= 0 ? picked.splice(at, 1)[0][0] : o.resolved;
+        await git([...rerere, 'rerere', 'forget', '--', ...files]).catch(() => undefined);
+        for (const f of files) {
+          const kept = await git(['cat-file', '-e', `${from}:${f}`]).then(() => true, () => false);
+          await git(kept ? ['checkout', from, '--', f] : ['rm', '-q', '--force', '--', f]);
+        }
+        await git([...rerere, 'rerere']);
+        recorded.push(...files.filter((f) => !recorded.includes(f)));
+      }
+      await git(['add', '-u']);
+      const went = await git([...rerere, 'rebase', '--continue']).then(() => true, () => false);
+      if (!went && !(await conflictedFiles(dir).catch(() => [])).length && (await rebasing(dir))) await git(['rebase', '--skip']).catch(() => undefined);
+    }
+  } finally {
+    if (await rebasing(dir)) await git(['rebase', '--abort']).catch(() => undefined);
+    await git(['checkout', '-q', '--detach', '--force', o.resolved]).catch(() => undefined);
+  }
+  return recorded;
 }
 
 /**
@@ -202,8 +261,9 @@ export async function mergeAgain(
  */
 export async function buildTrain(
   cwd: string,
-  o: { dir: string; base: string; baseTip: string; entries: ReadonlyArray<{ id: string; branch: string; message: string }>; now?: Date },
+  o: { dir: string; base: string; baseTip: string; entries: ReadonlyArray<{ id: string; branch: string; message: string }>; now?: Date; style?: MergeStyle },
 ): Promise<MergeTrain> {
+  const style = o.style ?? 'merge-commit';
   const entries: TrainEntry[] = [];
   const env = MERGE_ENV;
   const rerere = RERERE;
@@ -216,6 +276,10 @@ export async function buildTrain(
       const tip = (await runGit(['rev-parse', `refs/heads/${e.branch}^{commit}`], { cwd })).trim();
       if (await runGit(['merge-base', '--is-ancestor', tip, 'HEAD'], { cwd: o.dir }).then(() => true, () => false)) {
         entries.push({ id: e.id, branch: e.branch, tip, commit: await head(o.dir), contained: true });
+        continue;
+      }
+      if (style === 'fast-forward') {
+        entries.push(await rebaseEntry(o.dir, e, tip));
         continue;
       }
       const merged = await runGit([...rerere, 'merge', '--no-ff', '--no-edit', '-m', e.message, tip], { cwd: o.dir, timeoutMs: 120_000, env }).then(
@@ -240,10 +304,28 @@ export async function buildTrain(
     }
     const tip = await head(o.dir);
     await runGit(['update-ref', '-m', 'flotilla: merge train', `refs/heads/${TRAIN_BRANCH}`, tip], { cwd });
-    return { base: o.base, baseTip: o.baseTip, tip, built: (o.now ?? new Date()).toISOString(), entries };
+    return { base: o.base, baseTip: o.baseTip, tip, built: (o.now ?? new Date()).toISOString(), entries, ...(style === 'fast-forward' ? { style } : {}) };
   } finally {
     await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
   }
+}
+
+/**
+ * A train entry rebased onto the train so far (what's checked out in dir): its branch's commits on top of it, the
+ * fixup! ones squashed; commits the train has already (a ticket ahead of it, rebased) are dropped. Conflicts that
+ * rerere doesn't resolve leave it out, dir back where it was.
+ */
+async function rebaseEntry(dir: string, e: { id: string; branch: string }, tip: string): Promise<TrainEntry> {
+  const before = await head(dir);
+  await runGit(['checkout', '-q', '--detach', '--force', tip], { cwd: dir });
+  const outcome = await rebaseInDir(dir, before, { rerere: true }).catch((error: unknown) => ({ kind: 'failed' as const, error }));
+  if (outcome.kind === 'rebased') {
+    const commit = outcome.commit;
+    return commit === before ? { id: e.id, branch: e.branch, tip, commit, contained: true } : { id: e.id, branch: e.branch, tip, commit };
+  }
+  if (await rebasing(dir)) await runGit(['rebase', '--abort'], { cwd: dir }).catch(() => undefined);
+  await runGit(['checkout', '-q', '--detach', '--force', before], { cwd: dir });
+  return { id: e.id, branch: e.branch, tip, conflicts: outcome.kind === 'conflicts' && outcome.files.length ? outcome.files : ['(the rebase failed)'] };
 }
 
 const head = async (dir: string) => (await runGit(['rev-parse', 'HEAD'], { cwd: dir })).trim();

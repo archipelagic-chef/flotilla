@@ -87,6 +87,24 @@ describe('pushing an approved branch to origin', () => {
     expect(pushNote(r)).toContain('would take a force push, which Flotilla never does');
   });
 
+  it('pushes a branch rewritten over its own last push with --force-with-lease (BL-181)', async () => {
+    commit('one');
+    const first = await pushBranch(repo, BRANCH);
+    expect(first.kind).toBe('pushed');
+    git(repo, 'reset', '-q', '--hard', 'main');
+    commit('rewritten');
+    const tip = git(repo, 'rev-parse', 'HEAD');
+    const r = await pushBranch(repo, BRANCH, { leased: first.commit });
+    expect(r).toMatchObject({ kind: 'pushed', rewritten: true, commit: tip });
+    expect(git(origin, 'rev-parse', `refs/heads/${BRANCH}`)).toBe(tip);
+    expect(pushNote(r)).toContain('--force-with-lease');
+    // Someone pushed over it since: not forced.
+    git(repo, 'reset', '-q', '--hard', 'main');
+    commit('again');
+    expect((await pushBranch(repo, BRANCH, { leased: first.commit })).kind).toBe('force');
+    expect(git(origin, 'rev-parse', `refs/heads/${BRANCH}`)).toBe(tip);
+  });
+
   it('notes a failed push with what to do', async () => {
     commit('one');
     git(repo, 'remote', 'set-url', 'origin', `${origin}-gone`);

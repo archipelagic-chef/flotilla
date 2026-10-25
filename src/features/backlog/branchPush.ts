@@ -4,8 +4,9 @@ import { GitError, runGit } from '../../core/git/gitCli';
 import { gitHubRepo } from './sources/github';
 
 /**
- * Pushes an approved ticket's branch to origin, so CI runs on it before it's merged (BL-104). Only to origin, never
- * forced, and only commits with the repository's own (anonymous) identity as author and committer.
+ * Pushes an approved ticket's branch to origin, so CI runs on it before it's merged (BL-104). Only to origin, and only
+ * commits with the repository's own (anonymous) identity as author and committer. Never forced, but for a branch its
+ * agent rewrote (rebased, tidied: BL-181) over what Flotilla pushed itself: `--force-with-lease` on that commit.
  */
 
 /** The only remote a ticket's branch is pushed to. */
@@ -23,7 +24,7 @@ export interface PushedInfo {
 }
 
 export type PushResult =
-  | { kind: 'pushed'; branch: string; commit: string; count: number }
+  | { kind: 'pushed'; branch: string; commit: string; count: number; rewritten?: boolean }
   | { kind: 'up-to-date'; branch: string; commit: string }
   | { kind: 'identity'; branch: string; commit: string; identity: string; strangers: Array<{ commit: string; subject: string; author: string; committer: string }> }
   | { kind: 'force'; branch: string; commit: string; remoteCommit: string }
@@ -86,9 +87,10 @@ export function pushHint(error: string): string {
 /**
  * Pushes a branch to origin (setting its upstream): fetches origin, checks every commit origin doesn't have yet was
  * authored and committed with the repository's configured identity, and that origin's branch (if any) is in the
- * branch's history: a push that would need force isn't made.
+ * branch's history: a push that would need force isn't made, unless origin's branch is where Flotilla pushed it
+ * (leased: its last push) and the branch was rewritten since: that one goes with `--force-with-lease` on it.
  */
-export async function pushBranch(cwd: string, branch: string): Promise<PushResult> {
+export async function pushBranch(cwd: string, branch: string, o: { leased?: string } = {}): Promise<PushResult> {
   const commit = (await runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`], { cwd }).catch(() => '')).trim();
   if (!commit) return { kind: 'failed', branch, commit: '', reason: `There's no branch \`${branch}\`.`, hint: 'Nothing to push.' };
   const failed = (reason: string, hint = pushHint(reason)): PushResult => ({ kind: 'failed', branch, commit, reason, hint });
@@ -121,16 +123,18 @@ export async function pushBranch(cwd: string, branch: string): Promise<PushResul
     await runGit(['branch', `--set-upstream-to=${PUSH_REMOTE}/${branch}`, branch], { cwd }).catch(() => undefined);
     return { kind: 'up-to-date', branch, commit };
   }
-  if (remoteCommit && !(await runGit(['merge-base', '--is-ancestor', remoteCommit, commit], { cwd }).then(() => true, () => false)))
-    return { kind: 'force', branch, commit, remoteCommit };
+  const rewritten = !!remoteCommit && !(await runGit(['merge-base', '--is-ancestor', remoteCommit, commit], { cwd }).then(() => true, () => false));
+  // Rewritten over someone else's push (or one Flotilla doesn't know): never forced.
+  if (rewritten && remoteCommit !== o.leased) return { kind: 'force', branch, commit, remoteCommit };
 
   try {
-    // --force-with-lease would allow what this must never do: a plain push, refused by git when it isn't a fast-forward.
-    await runGit(['push', '--set-upstream', PUSH_REMOTE, `refs/heads/${branch}:refs/heads/${branch}`], { cwd, timeoutMs: 120_000 });
+    // Otherwise a plain push, refused by git when it isn't a fast-forward; a rewritten branch only over Flotilla's own push.
+    const lease = rewritten ? [`--force-with-lease=refs/heads/${branch}:${remoteCommit}`] : [];
+    await runGit(['push', '--set-upstream', ...lease, PUSH_REMOTE, `refs/heads/${branch}:refs/heads/${branch}`], { cwd, timeoutMs: 120_000 });
   } catch (e) {
     return failed(`Pushing failed: ${message(e)}`);
   }
-  return { kind: 'pushed', branch, commit, count: log.length };
+  return { kind: 'pushed', branch, commit, count: log.length, ...(rewritten ? { rewritten } : {}) };
 }
 
 /** The ticket's note of a push (none when origin already had it). */
@@ -138,7 +142,9 @@ export function pushNote(r: PushResult): string | undefined {
   const b = `\`${r.branch}\``;
   switch (r.kind) {
     case 'pushed':
-      return `Pushed ${b} to origin at \`${short(r.commit)}\` (${r.count} new commit${r.count === 1 ? '' : 's'}), so CI runs on it.`;
+      return r.rewritten
+        ? `Pushed ${b} to origin at \`${short(r.commit)}\`, replacing its rewritten history (\`--force-with-lease\` on Flotilla's last push), so CI runs on it.`
+        : `Pushed ${b} to origin at \`${short(r.commit)}\` (${r.count} new commit${r.count === 1 ? '' : 's'}), so CI runs on it.`;
     case 'up-to-date':
       return undefined;
     case 'identity':
@@ -151,7 +157,7 @@ export function pushNote(r: PushResult): string | undefined {
         "Rewrite them with the repository's identity (or push yourself, if that's intended). Merge to main runs the checks locally.",
       ].join('\n');
     case 'force':
-      return `Didn't push ${b} to origin: origin's \`${r.branch}\` (\`${short(r.remoteCommit)}\`) isn't in the branch's history, so it would take a force push, which Flotilla never does. Merge origin's commits into the branch (or remove the branch on origin), and it's pushed again on the branch's next commit.`;
+      return `Didn't push ${b} to origin: origin's \`${r.branch}\` (\`${short(r.remoteCommit)}\`) isn't in the branch's history and isn't what Flotilla pushed, so it would take a force push, which Flotilla never does over others' commits. Take origin's commits into the branch (or remove the branch on origin), and it's pushed again on the branch's next commit.`;
     case 'failed':
       return `Couldn't push ${b} to origin: ${r.reason}\n\n${r.hint} Merge to main runs the checks locally.`;
   }

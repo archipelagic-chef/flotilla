@@ -55,7 +55,7 @@ afterEach(() => cleanup.splice(0).forEach(removeDir));
 beforeEach(() => {
   ui.answers = [];
   ui.messages = [];
-  ui.settings = { 'merge.checkCommand': CHECKS };
+  ui.settings = { 'merge.checkCommand': CHECKS, 'merge.style': 'merge-commit' };
   ui.checksExit = 0;
   ui.checks = [];
 });
