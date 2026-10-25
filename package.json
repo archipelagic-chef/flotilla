@@ -93,6 +93,12 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "flotilla.stopPushingTrain",
+        "title": "Stop Pushing the Merge Train…",
+        "category": "Flotilla",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "flotilla.refresh",
         "title": "Refresh",
         "category": "Flotilla",
@@ -709,6 +715,10 @@
           "when": "flotilla.state == ready"
         },
         {
+          "command": "flotilla.stopPushingTrain",
+          "when": "flotilla.state == ready"
+        },
+        {
           "command": "flotilla.shareLinkedFolders",
           "when": "flotilla.state == ready"
         },
@@ -1164,6 +1174,11 @@
           "command": "flotilla.mergeAllReady",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogReadyToMerge",
           "group": "1_merge@3"
+        },
+        {
+          "command": "flotilla.stopPushingTrain",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogQueued",
+          "group": "1_merge@4"
         },
         {
           "command": "flotilla.runBacklogItem",
@@ -1777,7 +1792,7 @@
           "type": "string",
           "enum": ["ci", "local"],
           "enumDescriptions": [
-            "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
+            "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once; **Flotilla: Stop Pushing the Merge Train** takes it back). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
             "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
           ],
           "default": "ci",

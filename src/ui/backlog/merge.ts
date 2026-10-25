@@ -549,6 +549,38 @@ export class Merger implements vscode.Disposable {
   }
 
   /**
+   * Takes back "Push the Train" (BL-196): once you confirm, the answer is forgotten (the next landing by the train asks
+   * again) and origin's train branches are deleted. Whether it stopped.
+   */
+  async stopPushingTrain(): Promise<boolean> {
+    const stop = 'Stop Pushing';
+    const choice = await vscode.window.showWarningMessage(
+      'Stop pushing the merge train to origin?',
+      {
+        modal: true,
+        detail: `Origin's train branches (${trainRef('<ticket>')}) are deleted, a push to origin. Merge to main asks again before it pushes the train next time.`,
+      },
+      stop,
+    );
+    if (choice !== stop) return false;
+    return this.serial({ what: 'stopping pushing the merge train' }, async () => {
+      this.trainPushAllowed = undefined;
+      await this.deps.state?.update(PUSH_TRAIN_KEY, undefined);
+      const result = await pushTrain(this.deps.mainRoot, undefined);
+      if ('error' in result) {
+        this.deps.output.appendLine(`Merge train: ${result.error}`);
+        void vscode.window.showErrorMessage(`The merge train isn't pushed any more, but ${result.error}`);
+        return true;
+      }
+      if (result.deleted.length) this.deps.output.appendLine(`Merge train: deleted ${result.deleted.join(', ')} on origin.`);
+      void vscode.window.showInformationMessage(
+        `The merge train isn't pushed to origin any more${result.deleted.length ? `: ${result.deleted.length} train branch(es) deleted there` : ''}.`,
+      );
+      return true;
+    });
+  }
+
+  /**
    * What CI says of a train entry (BL-145): its own branch's CI when the branch has what it merges onto (the same tree,
    * so CI doesn't run twice); else CI on its commit in the train, pushed to its train branch (asked once).
    */
