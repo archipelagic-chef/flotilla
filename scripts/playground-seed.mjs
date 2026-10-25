@@ -204,6 +204,7 @@ const TICKETS = [
       unstaged: {
         'src/chats.js':
           'export function saveChat(store, worktree, id) {\n  store[worktree] = id;\n  return store;\n}\n\nexport function chatOf(store, worktree) {\n  return store[worktree];\n}\n\n// TODO: read the store on start.\n',
+        'src/reload.js': "// What a window does when it reloads: its worktrees are read again, then their views.\nimport { readWorktrees } from './worktrees.js';\nimport { chatOf } from './chats.js';\n\nexport async function reload(window) {\n  const worktrees = await readWorktrees(window.root);\n  for (const worktree of worktrees) {\n    window.views.add(worktree.path, {\n      branch: worktree.branch,\n      title: worktree.title,\n      chat: chatOf(window.chats, worktree.path),\n    });\n  }\n  window.views.sort((a, b) => a.branch.localeCompare(b.branch));\n  window.status.set(`${worktrees.length} worktrees`);\n  return worktrees;\n}\n\nexport function forget(window, worktree) {\n  window.views.delete(worktree.path);\n  window.status.set(`${window.views.size} worktrees`);\n}\n\nexport function restore(window, saved) {\n  for (const [path, view] of Object.entries(saved)) {\n    window.views.add(path, { ...view, chat: chatOf(window.chats, path) });\n  }\n  window.status.set('Restored, chats and all');\n}\n",
       },
       untracked: { 'notes.txt': 'Reload: check the chat id is the same after it.\n' },
     },
@@ -761,6 +762,38 @@ function exclude(dir, lines) {
   if (missing.length) fs.appendFileSync(file, `${current && !current.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`);
 }
 
+/** src/reload.js on main, as the seed's second commit has it. */
+const RELOAD = [
+  '// What a window does when it reloads: its worktrees are read again, then their views.',
+  'import { readWorktrees } from \'./worktrees.js\';',
+  '',
+  'export async function reload(window) {',
+  '  const worktrees = await readWorktrees(window.root);',
+  '  for (const worktree of worktrees) {',
+  '    window.views.add(worktree.path, {',
+  '      branch: worktree.branch,',
+  '      title: worktree.title,',
+  '    });',
+  '  }',
+  '  window.views.sort((a, b) => a.branch.localeCompare(b.branch));',
+  '  window.status.set(`${worktrees.length} worktrees`);',
+  '  return worktrees;',
+  '}',
+  '',
+  'export function forget(window, worktree) {',
+  '  window.views.delete(worktree.path);',
+  '  window.status.set(`${window.views.size} worktrees`);',
+  '}',
+  '',
+  'export function restore(window, saved) {',
+  '  for (const [path, view] of Object.entries(saved)) {',
+  '    window.views.add(path, view);',
+  '  }',
+  '  window.status.set(\'Restored\');',
+  '}',
+  '',
+].join('\n');
+
 /**
  * Seeds dir (a git repo, on main, with its first commit) with the backlog and the worktrees, unless it has a backlog
  * already. Returns whether it seeded.
@@ -772,7 +805,11 @@ export function seedPlayground(dir, now = new Date()) {
   const first = git(dir, 'rev-parse', 'HEAD');
   for (const t of TICKETS.filter((t) => t.from === 'first' && t.branch)) branchWorktree(dir, t, first);
   // main moves on past the first commit, so the branches started from it are behind.
-  commit(dir, 'Say what the playground is for', { 'NOTES.md': '# Playground notes\n\nMade by scripts/playground.mjs: a place to try Flotilla.\n' });
+  commit(dir, 'Say what the playground is for', {
+    'NOTES.md': '# Playground notes\n\nMade by scripts/playground.mjs: a place to try Flotilla.\n',
+    // What BL-3 changes in two places far apart (BL-171's demo: the full view folds what's between).
+    'src/reload.js': RELOAD,
+  });
   const main = git(dir, 'rev-parse', 'HEAD');
   for (const t of TICKETS.filter((t) => t.branch && t.from !== 'first')) branchWorktree(dir, t, main);
   writeBacklog(backlog, now);
