@@ -293,3 +293,48 @@ describe('Expand in Changes (BL-171)', () => {
     expect(await panels.ticketVc('BL-404')).toBeUndefined();
   });
 });
+
+describe('Open in Version Control (BL-173)', () => {
+  const ws = { key: '/repo/.git/worktrees/bl-1', worktree: { branch: 'feature/BL-1-a-ticket', path: '/repo/.worktrees/bl-1', isMain: false } };
+  const main = { key: '/repo/.git', worktree: { branch: 'main', path: '/repo', isMain: true } };
+  const file = { path: 'src/reload.js', kind: 'modified', added: 4, deleted: 1 };
+  const commits = [{ hash: 'b'.repeat(40), short: 'bbbbbbb', subject: 'BL-1: Second', author: 'A', date: '2026-10-25T10:00:00Z', branches: [] }];
+  function openable(stage: string, group: Record<string, unknown>) {
+    const deps = { showTicketChanges: vi.fn(async () => undefined), showCompare: vi.fn(async () => undefined), showCommits: vi.fn(async () => undefined) };
+    const panels = panelsWith(async () => undefined, { workstreams: [ws, main], deps }) as ReturnType<typeof panelsWith> & {
+      changesShown: () => Promise<unknown>;
+      work: () => Promise<unknown>;
+    };
+    panels.changesShown = async () => ({ stage, files: 1, added: 4, deleted: 1, groups: [{ label: 'x', compared: '', files: [file], ...group }] });
+    panels.work = async () => ({ commits });
+    return { panels, ...deps };
+  }
+
+  it("opens the worktree's Version Control on the ticket's Changes, the file selected", async () => {
+    const { panels, showTicketChanges } = openable('work', { dir: ws.worktree.path, left: 'abc', right: 'WORKING' });
+    await panels.onMessage('BL-1', tab(), { type: 'openInVc', group: 0, path: 'src/reload.js' });
+    expect(showTicketChanges).toHaveBeenCalledWith(ws.key, 'BL-1', 'src/reload.js');
+    await panels.onMessage('BL-1', tab(), { type: 'openInVc' });
+    expect(showTicketChanges).toHaveBeenLastCalledWith(ws.key, 'BL-1', undefined);
+  });
+
+  it("opens Version Control's compare on a merged ticket's merge commit", async () => {
+    const { panels, showCompare } = openable('merged', { dir: '/repo', left: 'p1', right: 'merge' });
+    await panels.onMessage('BL-1', tab(), { type: 'openInVc', group: 0, path: 'src/reload.js' });
+    expect(showCompare).toHaveBeenCalledWith('p1', 'merge', 'BL-1', 'src/reload.js');
+  });
+
+  it("opens main's history with the ticket's commits highlighted when they're spread on main", async () => {
+    const { panels, showCommits } = openable('commits', { dir: '/repo', left: 'p0', right: 'b'.repeat(40) });
+    await panels.onMessage('BL-1', tab(), { type: 'openInVc' });
+    expect(showCommits).toHaveBeenCalledWith(main.key, 'BL-1', [commits[0].hash], commits[0].hash);
+  });
+
+  it("opens the worktree's history on the commits picked in its Changes, the latest selected (BL-174)", async () => {
+    const { panels, showCommits } = openable('picked', { dir: '/repo', left: 'p0', right: 'c2' });
+    const shown = panels.changesShown;
+    panels.changesShown = async () => ({ ...((await shown()) as object), picked: ['c1', 'c2'] });
+    await panels.onMessage('BL-1', tab(), { type: 'openInVc' });
+    expect(showCommits).toHaveBeenCalledWith(ws.key, 'BL-1', ['c1', 'c2'], 'c2');
+  });
+});

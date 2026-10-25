@@ -275,7 +275,9 @@ export type HostMessage =
   /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** Expand in a ticket's Changes (BL-171): Version Control on the ticket's Changes in its worktree, that file selected. */
-  | { type: 'showTicketChanges'; key: string; ticket: string; path: string }
+  | { type: 'showTicketChanges'; key: string; ticket: string; path?: string }
+  /** Open in Version Control on a ticket with no worktree for it (BL-173): Compare base with head, for that ticket, that file selected. */
+  | { type: 'showCompare'; base: string; head: string; ticket: string; path?: string }
   /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
   /** The active worktree changed outside the webview (shortcut, status bar). */

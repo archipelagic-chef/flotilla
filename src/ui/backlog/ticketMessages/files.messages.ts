@@ -11,6 +11,8 @@ export type FilesMessage =
   /** Expand (BL-171): the sidebar's Version Control on the ticket's Changes, that file selected (the tab shows its diff). */
   | { type: 'expandChange'; group: number; path: string }
   /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
+  /** Open in Version Control (BL-173): the section's (no path), or a file's of a group (see vcTarget). */
+  | { type: 'openInVc'; group?: number; path?: string }
   | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
   /** Open All Changes: those the path filter leaves (filter, BL-174), else all. */
   | { type: 'openAllChanges'; filter?: string }

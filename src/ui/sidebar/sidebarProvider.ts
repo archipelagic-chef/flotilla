@@ -592,9 +592,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   /** Shows a worktree's Version Control on its ticket's Changes, that file selected (Expand in the ticket, BL-171). */
-  async showTicketChanges(key: string, ticket: string, path: string): Promise<void> {
+  async showTicketChanges(key: string, ticket: string, path?: string): Promise<void> {
     await this.showKeepingFocus();
-    this.act({ type: 'showTicketChanges', key, ticket, path });
+    this.act({ type: 'showTicketChanges', key, ticket, ...(path ? { path } : {}) });
+  }
+
+  /** Shows Version Control's compare of two refs for a ticket that has no worktree for it (Open in Version Control, BL-173). */
+  async showCompare(base: string, head: string, ticket: string, path?: string): Promise<void> {
+    await this.showKeepingFocus();
+    this.act({ type: 'showCompare', base, head, ticket, ...(path ? { path } : {}) });
   }
 
   /** Brings the sidebar into view, the focus staying in the editor (the ticket). */

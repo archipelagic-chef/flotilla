@@ -54,7 +54,8 @@ const STAGE: Record<string, string> = {
  * folds by folder, each with its lines added and deleted; a file unfolds its diff inline (the preview); Expand (on a
  * file, or a hunk's head, at that line) shows the whole file's diff in the ticket's tab instead of the ticket
  * (DiffView, its header leading back here), and selects it in the sidebar's Version Control, on the ticket's Changes;
- * Open All Changes opens them all in the multi-file diff editor beside the ticket. The file expanded last stays marked
+ * Open All Changes opens them all in the multi-file diff editor beside the ticket; Open in Version Control (on the
+ * section, or a file) shows the same change in the sidebar's Version Control (BL-173). The file expanded last stays marked
  * (marked), and Back to Ticket in a diff editor's title bar comes back here too.
  */
 export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand: (at: FullAt) => void; marked?: string }) {
@@ -151,6 +152,16 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
             title="Open them all in the multi-file diff editor, beside the ticket"
           >
             <i class="codicon codicon-diff-multiple" /> Open All Changes
+          </ActionButton>
+        )}
+        {change && change.files > 0 && (
+          <ActionButton
+            class="text-button"
+            message={{ type: 'openInVc' }}
+            working="Opening…"
+            title="In the sidebar's Version Control: its worktree's, on these Changes (a merged ticket: its merge, in Compare)"
+          >
+            <i class="codicon codicon-source-control" /> Open in Version Control
           </ActionButton>
         )}
       </div>
@@ -393,6 +404,15 @@ function Row({
         )}
         <Counts added={f.added} deleted={f.deleted} binary={f.binary} />
       </button>
+      <ActionButton
+        class="change-action icon"
+        message={{ type: 'openInVc', group: row.group, path: f.path }}
+        working="Opening…"
+        title="Open in Version Control: the sidebar's, on these Changes, this file selected"
+        aria-label="Open in Version Control"
+      >
+        <i class="codicon codicon-source-control" />
+      </ActionButton>
       <button class="change-action icon" onClick={() => expand({ group: row.group, path: f.path })} title="Expand: the whole file's diff" aria-label="Expand">
         <i class="codicon codicon-screen-full" />
       </button>

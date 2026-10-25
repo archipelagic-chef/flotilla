@@ -243,3 +243,21 @@
 .ticket-commits-note .name {
   flex: 1;
 }
+
+/* Open Ticket (BL-173): a ticket's commit or comparison leads to the ticket. */
+.open-ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  cursor: pointer;
+}
+.open-ticket:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}

@@ -5,6 +5,7 @@ import {
   useState,
 } from 'preact/hooks';
 import type {
+  BacklogItemView,
   ChangeGroup,
   CommitView,
   FileChangeView,
@@ -19,6 +20,7 @@ import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
 import { Virtual } from './virtual';
 import { ago } from './ago';
+import { ticketOfCommit, ticketOfComparison } from './ticketOf';
 import './vc.css';
 
 export { ago };
@@ -275,6 +277,27 @@ interface HistoryProps {
   requestFiles(key: string, hash: string): void;
   highlight?: CommitHighlight;
   clearHighlight(): void;
+  /** For Open Ticket on a ticket's commits (BL-173). */
+  backlog: BacklogItemView[] | undefined;
+}
+
+type TicketRef = Pick<BacklogItemView, 'id' | 'title'>;
+
+/** Open Ticket (BL-173): what in Version Control is a ticket's leads to the ticket, at its Changes (at that file). */
+function OpenTicket({ item, path }: { item: TicketRef; path?: string }) {
+  return (
+    <button
+      class="open-ticket"
+      data-tip={`Open ${item.id}, at its Changes${path ? ` (${path.split('/').pop()})` : ''}: ${item.title}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({ type: 'backToTicket', id: item.id, ...(path ? { path } : {}) });
+      }}
+    >
+      <i class="codicon codicon-issues" />
+      {item.id}
+    </button>
+  );
 }
 
 /** A ticket's commits, highlighted in a history; selected: the one clicked on the ticket. */
@@ -288,7 +311,7 @@ export interface CommitHighlight {
 /** How many pages a history loads, at most, to find a commit to show. */
 const FIND_PAGES = 10;
 
-export function HistoryBody({ ws, log, requestLog, files, requestFiles, highlight, clearHighlight }: HistoryProps) {
+export function HistoryBody({ ws, log, requestLog, files, requestFiles, highlight, clearHighlight, backlog }: HistoryProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const toggle = (hash: string) => {
     const open = !expanded.has(hash);
@@ -353,8 +376,9 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles, highligh
         reveal={found ? highlight?.selected : undefined}
         render={(row) => {
           const { commit } = row;
-          if (row.kind === 'file') return <CommitFileRow ws={ws} commit={commit} change={row.change} />;
-          if (row.kind === 'details') return <CommitDetails commit={commit} files={files(commit.hash)} />;
+          const ticket = ticketOfCommit(commit, backlog);
+          if (row.kind === 'file') return <CommitFileRow ws={ws} commit={commit} change={row.change} ticket={ticket} />;
+          if (row.kind === 'details') return <CommitDetails commit={commit} files={files(commit.hash)} ticket={ticket} />;
           return (
             <CommitRow
               ws={ws}
@@ -362,6 +386,7 @@ export function HistoryBody({ ws, log, requestLog, files, requestFiles, highligh
               open={expanded.has(commit.hash)}
               onToggle={() => toggle(commit.hash)}
               mark={highlight?.selected === commit.hash ? 'selected' : highlight?.hashes.has(commit.hash) ? 'ticket' : undefined}
+              ticket={ticket}
             />
           );
         }}
@@ -384,6 +409,7 @@ function CommitRow({
   open,
   onToggle,
   mark,
+  ticket,
 }: {
   ws: WorkstreamView;
   commit: CommitView;
@@ -391,6 +417,7 @@ function CommitRow({
   onToggle(): void;
   /** Part of a highlighted ticket, or the one selected on it. */
   mark?: 'ticket' | 'selected';
+  ticket?: TicketRef;
 }) {
   const icon = commit.parents.length > 1 ? 'git-merge' : 'git-commit';
   return (
@@ -421,6 +448,11 @@ function CommitRow({
         ))}
       <span class="desc">{commit.author}</span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+        {ticket && (
+          <button class="icon" aria-label={`Open ${ticket.id}`} onClick={() => send({ type: 'backToTicket', id: ticket.id })}>
+            <i class="codicon codicon-issues" />
+          </button>
+        )}
         <button class="icon" aria-label="Open All Changes" onClick={() => send({ type: 'openCommit', key: ws.key, hash: commit.hash })}>
           <i class="codicon codicon-diff-multiple" />
         </button>
@@ -436,7 +468,7 @@ function CommitRow({
  * Under an expanded commit: the rest of its message and who and when. Its changed files follow as rows of their own
  * (or, while they're read or when there are none, a note here).
  */
-function CommitDetails({ commit, files }: { commit: CommitView; files: CommitFiles | undefined }) {
+function CommitDetails({ commit, files, ticket }: { commit: CommitView; files: CommitFiles | undefined; ticket?: TicketRef }) {
   const date = new Date(commit.date);
   return (
     <div class="commit-details" role="group" aria-label={commit.subject}>
@@ -448,6 +480,7 @@ function CommitDetails({ commit, files }: { commit: CommitView; files: CommitFil
           {commit.short}
         </button>
         {commit.outgoing && <span class="outgoing-note">not pushed yet</span>}
+        {ticket && <OpenTicket item={ticket} />}
       </div>
       {files?.error && <div class="row group-empty error">{files.error}</div>}
       {!files?.error && !files?.files.length && <div class="row group-empty">{!files || files.loading ? 'Loading…' : 'No file changes'}</div>}
@@ -455,7 +488,7 @@ function CommitDetails({ commit, files }: { commit: CommitView; files: CommitFil
   );
 }
 
-function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: CommitView; change: FileChangeView }) {
+function CommitFileRow({ ws, commit, change, ticket }: { ws: WorkstreamView; commit: CommitView; change: FileChangeView; ticket?: TicketRef }) {
   const parts = change.path.split('/');
   const name = parts.pop()!;
   const open = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path });
@@ -465,6 +498,11 @@ function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: Com
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
+        {ticket && (
+          <button class="icon" aria-label={`Open ${ticket.id} at This File`} onClick={() => send({ type: 'backToTicket', id: ticket.id, path: change.path })}>
+            <i class="codicon codicon-issues" />
+          </button>
+        )}
         {change.kind !== 'deleted' && (
           <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: ws.key, path: change.path })}>
             <i class="codicon codicon-go-to-file" />
@@ -502,6 +540,9 @@ export interface CompareChoice {
   uncommitted: boolean;
   /** Shows only its header. */
   collapsed?: boolean;
+  /** The ticket it was opened for (Open in Version Control, BL-173), and the file selected there; dropped as its refs change. */
+  ticket?: string;
+  path?: string;
 }
 
 /** Adds a comparison to the UI state and shows it. */
@@ -642,13 +683,14 @@ interface CompareViewProps {
   add(): void;
   requestRefs(): void;
   compare(id: number, request: RefComparison): void;
+  backlog: BacklogItemView[] | undefined;
 }
 
 /**
  * Version Control › Compare: what differs between two branches (or tags, or commits), whichever tab is active.
  * Several comparisons can be open; closing the last one hides this view again.
  */
-export function CompareView({ workstreams, colors, comparisons, refs, results, choose, close, add, requestRefs, compare }: CompareViewProps) {
+export function CompareView({ workstreams, colors, comparisons, refs, results, choose, close, add, requestRefs, compare, backlog }: CompareViewProps) {
   useEffect(() => {
     if (!refs) requestRefs();
   }, [refs, requestRefs]);
@@ -671,6 +713,7 @@ export function CompareView({ workstreams, colors, comparisons, refs, results, c
           choose={(change) => choose(c.id, change)}
           close={() => close(c.id)}
           compare={(request) => compare(c.id, request)}
+          ticket={ticketOfComparison(c, backlog)}
         />
       ))}
     </div>
@@ -686,9 +729,11 @@ interface CardProps {
   choose(change: Partial<CompareChoice>): void;
   close(): void;
   compare(request: RefComparison): void;
+  /** The ticket it's for: Open Ticket on it (BL-173). */
+  ticket: Pick<BacklogItemView, 'id' | 'title'> | undefined;
 }
 
-function ComparisonCard({ workstreams, colors, choice, refs, result, choose, close, compare }: CardProps) {
+function ComparisonCard({ workstreams, colors, choice, refs, result, choose, close, compare, ticket }: CardProps) {
   const base = choice.base ?? refs?.defaultBase ?? '';
   const head = choice.head ?? '';
   const worktree = workstreams.find((w) => w.reachable && w.branch === head);
@@ -724,6 +769,7 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
         <span class="name" data-tip={title} data-tip-if-cut>
           {title}
         </span>
+        {ticket && <OpenTicket item={ticket} path={choice.path} />}
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
           <button class="icon" aria-label="Open All Changes" disabled={!files.length} onClick={() => open()}>
             <i class="codicon codicon-diff-multiple" />
@@ -747,11 +793,17 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
       {!choice.collapsed && (
         <>
           <div class="compare-pick">
-            <RefPicker value={base} placeholder="Pick a branch" groups={groups} colorOf={colorOf} onPick={(r) => choose({ base: r })} />
-            <button class="icon compare-swap" aria-label="Swap" disabled={!base || !head} onClick={() => choose({ base: head, head: base })}>
+            <RefPicker value={base} placeholder="Pick a branch" groups={groups} colorOf={colorOf} onPick={(r) => choose({ base: r, ticket: undefined })} />
+            <button class="icon compare-swap" aria-label="Swap" disabled={!base || !head} onClick={() => choose({ base: head, head: base, ticket: undefined })}>
               <i class="codicon codicon-arrow-swap" />
             </button>
-            <RefPicker value={head} placeholder="Pick a branch to compare" groups={groups} colorOf={colorOf} onPick={(r) => choose({ head: r })} />
+            <RefPicker
+              value={head}
+              placeholder="Pick a branch to compare"
+              groups={groups}
+              colorOf={colorOf}
+              onPick={(r) => choose({ head: r, ticket: undefined })}
+            />
             {worktree && (
               <label class="check">
                 <input type="checkbox" checked={choice.uncommitted} onChange={(e) => choose({ uncommitted: (e.target as HTMLInputElement).checked })} />
@@ -762,7 +814,14 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
           {base && head && result?.error && <div class="row group-empty error">{result.error}</div>}
           {base && head && !result?.error && !files.length && <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>}
           {files.map((f) => (
-            <CompareRow key={f.path} worktree={worktree?.key} change={f} open={() => open(f.path)} />
+            <CompareRow
+              key={f.path}
+              worktree={worktree?.key}
+              change={f}
+              open={() => open(f.path)}
+              ticket={ticket?.id}
+              selected={!!ticket && choice.path === f.path}
+            />
           ))}
         </>
       )}
@@ -770,19 +829,50 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
   );
 }
 
-function CompareRow({ worktree, change, open }: { worktree: string | undefined; change: FileChangeView; open(): void }) {
+function CompareRow({
+  worktree,
+  change,
+  open,
+  ticket,
+  selected,
+}: {
+  worktree: string | undefined;
+  change: FileChangeView;
+  open(): void;
+  ticket?: string;
+  selected?: boolean;
+}) {
   const parts = change.path.split('/');
   const name = parts.pop()!;
+  const row = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
   return (
-    <div class="row change" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
+    <div
+      ref={row}
+      class={`row change${selected ? ' selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-current={selected ? 'true' : undefined}
+      onClick={open}
+      onKeyDown={(e) => e.key === 'Enter' && open()}
+    >
       <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>
-      {worktree && change.kind !== 'deleted' && (
+      {((worktree && change.kind !== 'deleted') || ticket) && (
         <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-          <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: worktree, path: change.path })}>
-            <i class="codicon codicon-go-to-file" />
-          </button>
+          {ticket && (
+            <button class="icon" aria-label={`Open ${ticket} at This File`} onClick={() => send({ type: 'backToTicket', id: ticket, path: change.path })}>
+              <i class="codicon codicon-issues" />
+            </button>
+          )}
+          {worktree && change.kind !== 'deleted' && (
+            <button class="icon" aria-label="Open File" onClick={() => run('flotilla.openFile', { key: worktree, path: change.path })}>
+              <i class="codicon codicon-go-to-file" />
+            </button>
+          )}
         </span>
       )}
       <span class={`letter k-${change.kind}`}>{CHANGE_LETTER[change.kind]}</span>

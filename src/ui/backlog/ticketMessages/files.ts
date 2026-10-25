@@ -58,6 +58,9 @@ export const filesHandlers: Handlers<FilesMessage> = {
   expandChange: async ({ item, panels }, m) => {
     await panels.expandChange(item, m.group, m.path);
   },
+  openInVc: async ({ item, panels }, m) => {
+    await panels.openInVc(item, m.group !== undefined && m.path ? { group: m.group, path: m.path } : undefined);
+  },
   readChangeDiff: async ({ item, panel, panels }, m) => {
     const g = (await panels.changesShown(item)).groups[m.group];
     const f = g?.files.find((x) => x.path === m.path);

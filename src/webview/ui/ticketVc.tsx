@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { BacklogItemView, TicketVcView, WorkstreamView } from '../protocol';
 import type { ChangedFile } from '../ticketProtocol';
 import type { TicketCommit } from '../../features/history/log';
-import { branchMatches } from '../../features/backlog/backlog';
 import { run, send } from './api';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
@@ -15,12 +14,6 @@ import './ticketVc.css';
  * own: its Changes (every file it changes, as the ticket's Changes section lists them, in full) and its Commits (one at
  * a time, stepped through with Previous and Next).
  */
-
-/** The ticket a worktree works on: the local item whose branch it's on. */
-export function ticketOf(ws: WorkstreamView | undefined, backlog: BacklogItemView[] | undefined): BacklogItemView | undefined {
-  if (!ws || ws.isMain || !ws.branch) return undefined;
-  return backlog?.find((i) => !i.source && !i.proposed && branchMatches(i, ws.branch));
-}
 
 /** Above the worktree's header in every Version Control view: the ticket, and Back to it. */
 export function TicketHeader({ item, path }: { item: Pick<BacklogItemView, 'id' | 'title'>; path?: string }) {

@@ -284,6 +284,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     revealWorktree: (key) => sidebar.reveal(key, undefined, 'files'),
     showCommits: (key, ticket, hashes, selected) => sidebar.showCommits(key, ticket, hashes, selected),
     showTicketChanges: (key, ticket, path) => sidebar.showTicketChanges(key, ticket, path),
+    showCompare: (base, head, ticket, path) => sidebar.showCompare(base, head, ticket, path),
     memento: context.globalState,
     output,
     ci: sidebar.ci,

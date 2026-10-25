@@ -77,6 +77,7 @@ import { movesSince, ticketCommits, versionCommits } from '../../features/histor
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
 import { pickedChange, ticketChange } from '../../features/diffs/ticketChange';
+import { vcTarget } from '../../features/diffs/vcTarget';
 import { focusBeside, TicketDiffs, type DiffOrigin } from './ticketDiffs';
 import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
@@ -174,7 +175,9 @@ export interface TicketDeps {
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
   /** Shows the ticket's Changes in a worktree's Version Control in the sidebar, that file selected (BL-171). */
-  showTicketChanges(key: string, ticket: string, path: string): Promise<void>;
+  showTicketChanges(key: string, ticket: string, path?: string): Promise<void>;
+  /** Shows Version Control's compare of two refs in the sidebar, for a ticket (Open Ticket on it), that file selected (BL-173). */
+  showCompare(base: string, head: string, ticket: string, path?: string): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
@@ -716,6 +719,31 @@ export class TicketPanels implements vscode.Disposable {
     if (!g?.files.some((f) => f.path === path)) return;
     const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
     if (ws) await this.deps.showTicketChanges(ws.key, item.id, path);
+  }
+
+  /**
+   * Open in Version Control on the ticket's Changes, or on one of its files (BL-173): the sidebar's Version Control
+   * on the same change (see vcTarget), that file selected.
+   */
+  async openInVc(item: BacklogItem, at?: { group: number; path: string }): Promise<void> {
+    const target = vcTarget(item.id, await this.changesShown(item), at);
+    if (target.kind === 'changes') {
+      const ws = this.worktreesOf(item).find((w) => w.worktree.path === target.dir);
+      if (ws) return this.deps.showTicketChanges(ws.key, item.id, target.path);
+      void vscode.window.showInformationMessage(`${item.id}'s worktree isn't open in Flotilla.`);
+      return;
+    }
+    if (target.kind === 'compare') return this.deps.showCompare(target.base, target.head, item.id, target.path);
+    if (target.kind === 'commits') {
+      // Its own commits on main: main's history; commits picked (BL-174): its worktree's, which has them all, else main's.
+      const hashes = target.hashes ?? (await this.work(item)).commits.map((c) => c.hash);
+      const main = this.deps.repository.current.find((w) => w.worktree.isMain);
+      const ws = (target.hashes && this.worktreesOf(item).find((w) => w.worktree.path)) || main;
+      if (ws && hashes.length) return this.deps.showCommits(ws.key, item.id, hashes, target.hashes ? hashes[hashes.length - 1] : hashes[0]);
+      void vscode.window.showInformationMessage(`${item.id}'s commits aren't in main's history.`);
+      return;
+    }
+    void vscode.window.showInformationMessage(target.why);
   }
 
   /** A ticket as the sidebar's Version Control shows it (BL-171): its changes and commits; undefined when there's no such item. */

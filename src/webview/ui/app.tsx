@@ -51,12 +51,8 @@ import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
-import {
-  TicketChangesBody,
-  TicketCommitsBody,
-  TicketHeader,
-  ticketOf,
-} from './ticketVc';
+import { TicketChangesBody, TicketCommitsBody, TicketHeader } from './ticketVc';
+import { ticketOf } from './ticketOf';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -449,13 +445,17 @@ export function App() {
         case 'showTicketChanges':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'ticketChanges' }));
-          setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path }));
+          // Open in Version Control on the section (no path) selects none.
+          setTicketFile(({ [m.ticket]: _, ...rest }) => (m.path ? { ...rest, [m.ticket]: m.path } : rest));
           send({ type: 'ticketVc', id: m.ticket });
           return;
         case 'showCommits':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
           setHighlight({ key: m.key, ticket: m.ticket, hashes: new Set(m.hashes), selected: m.selected });
+          return;
+        case 'showCompare':
+          update((prev) => withComparison(prev, { base: m.base, head: m.head, uncommitted: false, ticket: m.ticket, ...(m.path ? { path: m.path } : {}) }));
           return;
         case 'reveal': {
           if (m.path === undefined) {
@@ -621,6 +621,7 @@ export function App() {
           requestLog={requestLog}
           files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
           requestFiles={requestCommitFiles}
+          backlog={backlog}
         />
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
@@ -685,6 +686,7 @@ export function App() {
         add={addComparison}
         requestRefs={requestRefs}
         compare={compare}
+        backlog={backlog}
       />
     );
   } else if (tool === 'metrics') {
