@@ -1,0 +1,21 @@
+{
+  "title": "A note whose agent hits the usage limit waits for it, and goes on by itself when it lifts",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".note-page .comment-box textarea" },
+    { "wait": 800 },
+    { "type": "Tags on tickets, to filter the board fake: limit 5s" },
+    { "wait": 600 },
+    { "press": "Control+Enter" },
+    { "waitFor": ".note-status:has-text(\"waiting for the usage limit\")", "timeout": 60000 },
+    { "caption": "Its agent hit Claude's usage limit: the note waits for the reset, and doesn't ask you" },
+    { "wait": 3000 },
+    { "caption": "When the limit lifts, its agent goes on in its chat by itself" },
+    { "waitFor": ".proposed-lane:has-text(\"Tags on tickets\")", "timeout": 120000 },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}

@@ -13,7 +13,8 @@
 //   fake: crash             its first run dies without reporting; the resumed run goes on
 //
 // As a note agent (BL-182), it proposes a ticket per note through the inbox, after 3 s; a note with "fake: ask" in it
-// gets a question first, and its proposal once the user has answered.
+// gets a question first, and its proposal once the user has answered; one with "fake: limit 10s" hits a usage limit that
+// resets that long after (and a minute's margin) on its first run, and proposes once resumed.
 // Run as Summarize runs it (a system prompt that summarizes "where a coding agent stands", the transcript on stdin), it
 // answers with two lines after a second: what the agent did last, and that nothing looks wrong.
 //
@@ -127,6 +128,12 @@ async function handleNotes() {
   const inbox = /a Markdown file per ticket in (\S+?)\/ /.exec(prompt)?.[1];
   await new Promise((r) => setTimeout(r, 3000));
   const texts = notes.map((n) => ({ ...n, text: fs.existsSync(n.file) ? fs.readFileSync(n.file, 'utf8') : '' }));
+  const limit = texts.map((n) => /fake: limit(?: (\S+))?/.exec(n.text)).find(Boolean);
+  if (limit && resume === undefined) {
+    reply(`Claude AI usage limit reached|${Math.floor((Date.now() + (duration(limit[1], 'm') ?? 120_000)) / 1000)}`, true);
+    process.exitCode = 1;
+    return;
+  }
   if (texts.some((n) => /fake: ask/.test(n.text) && !hasEntryBy(n.text, 'You'))) {
     reply(
       'I read the code and the backlog: this can go two ways.\n\nNeeds from you: which way\n\n```question\nOne ticket, or an epic with a ticket per part?\n- One ticket (recommended)\n- An epic with parts\n```',
@@ -144,7 +151,7 @@ async function handleNotes() {
     const title =
       first
         .replace(/^#\s+/, '')
-        .replace(/\s*fake: ask\s*/, '')
+        .replace(/\s*fake: (?:ask|limit(?: \S+)?)\s*/, '')
         .trim() || n.id;
     const name = `fake-${n.id.toLowerCase()}`;
     if (inbox) {

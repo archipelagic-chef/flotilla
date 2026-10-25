@@ -305,6 +305,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     pausedAll: () => pausedAll.held,
     isLeader: () => leader.isLeader,
+    limitLifted: () => void notes.limitLifted(),
     onApproved: (id, by) => {
       pushes.approved(id);
       merger.approved(id, by);
