@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { setStartFailed, type BacklogData, type BacklogItem } from '../../../src/features/backlog/backlog';
-import { needOf, oldestFirst, resumeAsk } from '../../../src/features/backlog/needs';
+import {
+  needOf,
+  needsYouRows,
+  noteNeed,
+  oldestFirst,
+  resumeAsk,
+} from '../../../src/features/backlog/needs';
 import { stampWaiting, type ReviewState } from '../../../src/features/backlog/review';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
@@ -120,5 +126,35 @@ describe('an agent that stopped to be resumed (BL-198)', () => {
   it('is only for a ticket whose agent asks', () => {
     expect(resumeAsk(item({ review: review({ state: 'yours', implementer: 'Nova-7' }) }), report('Done.\n\nNeeds from you: nothing'))).toBeUndefined();
     expect(resumeAsk(asking, [])).toBeUndefined();
+  });
+});
+
+describe('notes in Needs you (BL-192)', () => {
+  const note = (id: string, over: Partial<Parameters<typeof noteNeed>[0]> = {}) => ({ id, status: 'asking', agent: 'Vega-2', ...over });
+
+  it('lists a note whose agent asks, with who asks and since its reply', () => {
+    expect(noteNeed(note('NOTE-3', { asks: { since: '2026-10-25T12:00:00.000Z' } }))).toEqual({
+      kind: 'asking',
+      since: '2026-10-25T12:00:00.000Z',
+      line: 'Vega-2 asks you',
+    });
+    expect(noteNeed(note('NOTE-3', { agent: undefined }))?.line).toBe('Its agent asks you');
+  });
+
+  it('leaves out notes that ask nothing, and those handled with the one that asks', () => {
+    for (const status of ['open', 'working', 'handled']) expect(noteNeed(note('NOTE-1', { status }))).toBeUndefined();
+    expect(noteNeed(note('NOTE-2', { with: 'NOTE-1' }))).toBeUndefined();
+  });
+
+  it('puts asking notes among the tickets, oldest waiting first, one entry each', () => {
+    const items = [
+      { id: 'BL-1', need: { kind: 'yours' as const, since: '2026-10-25T10:00:00.000Z', line: 'Ready for your review' } },
+      { id: 'BL-2' },
+      { id: 'BL-3', need: { kind: 'approved' as const, since: '2026-10-25T13:00:00.000Z', line: 'Approved' } },
+    ];
+    const notes = [note('NOTE-1', { asks: { since: '2026-10-25T11:00:00.000Z' } }), note('NOTE-2', { with: 'NOTE-1' }), note('NOTE-4', { status: 'working' })];
+    const rows = needsYouRows(items, notes);
+    expect(rows.map((r) => r.item?.id ?? r.note?.id)).toEqual(['BL-1', 'NOTE-1', 'BL-3']);
+    expect(rows[1].need?.line).toBe('Vega-2 asks you');
   });
 });

@@ -1,9 +1,10 @@
 import { useState } from 'preact/hooks';
-import { type NeedKind, oldestFirst } from '../../features/backlog/needs';
+import { type Need, type NeedKind, needsYouRows } from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
-import type { BacklogItemView as BacklogItem } from '../protocol';
+import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
+import { showNote } from './notes';
 import './needsYou.css';
 
 function waited(since: string | undefined): string | undefined {
@@ -32,12 +33,13 @@ const NEED_TITLE: Record<NeedKind, string> = {
 };
 
 /**
- * What waits on the user, across the backlog, oldest first: an agent's question, work ready for review, approved
- * work, a stopped review, a start that failed. Each row has the actions for it; folded away when there's nothing.
+ * What waits on the user, across the backlog, oldest first: an agent's question (on a ticket or a note), work ready
+ * for review, approved work, a stopped review, a start that failed. Each row has the actions for it; folded away when
+ * there's nothing.
  */
-export function NeedsYou({ items }: { items: BacklogItem[] }) {
+export function NeedsYou({ items, notes = [] }: { items: BacklogItem[]; notes?: NoteView[] }) {
   const [open, setOpen] = useState(true);
-  const rows = oldestFirst(items);
+  const rows = needsYouRows(items, notes);
   if (!rows.length) return null;
   return (
     <div class="group lane needs-lane">
@@ -48,11 +50,40 @@ export function NeedsYou({ items }: { items: BacklogItem[] }) {
       </div>
       {open && (
         <div class="lane-body">
-          {rows.map((item) => (
-            <NeedRow key={item.id} item={item} />
-          ))}
+          {rows.map((row) => (row.note ? <NoteNeedRow key={row.note.id} note={row.note} need={row.need!} /> : <NeedRow key={row.item.id} item={row.item} />))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A note whose agent asks: Answer goes to its card in the Notes lane, where its questions are; Open opens the note. */
+function NoteNeedRow({ note, need }: { note: NoteView; need: Need }) {
+  const age = waited(need.since);
+  const open = () => send({ type: 'note', op: 'open', id: note.id });
+  return (
+    <div
+      class={`row backlog-item need need-${need.kind} need-note`}
+      tabIndex={0}
+      title="Its agent has a question for you"
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) open();
+      }}
+    >
+      <i class={`codicon codicon-${NEED_ICON[need.kind]} need-icon`} />
+      <span class="item-id">{note.id}</span>
+      <span class="name">{note.title}</span>
+      <span class="need-line">{need.line}</span>
+      {age && <span class="need-age">{age}</span>}
+      <span class="need-actions" onClick={(e) => e.stopPropagation()}>
+        <button class="button" onClick={() => showNote(note.id)} title="Goes to the note's card, with its agent's questions: answer there">
+          <i class="codicon codicon-comment" /> Answer
+        </button>
+        <button class="button secondary" onClick={open}>
+          Open
+        </button>
+      </span>
     </div>
   );
 }

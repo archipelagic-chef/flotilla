@@ -20,6 +20,16 @@
 .note-card.note-asking {
   border-left-color: var(--waiting);
 }
+/* Answer in Needs you went to it (BL-192): marked a moment. */
+.note-card.note-shown {
+  animation: note-shown 1.6s ease-out;
+}
+@keyframes note-shown {
+  from {
+    outline: 1px solid var(--vscode-focusBorder);
+    background: var(--vscode-list-hoverBackground);
+  }
+}
 .note-head {
   display: flex;
   align-items: center;

@@ -156,10 +156,26 @@ function Became({ note }: { note: NoteView }) {
   );
 }
 
+const cardId = (id: string) => `note-card-${id}`;
+
+/**
+ * Goes to a note's card in the Notes lane (Answer in Needs you): scrolls to it, marks it a moment, and focuses its
+ * first answer. Where the lane isn't shown (Working only), opens the note instead.
+ */
+export function showNote(id: string): void {
+  const card = document.getElementById(cardId(id));
+  if (!card) return send({ type: 'note', op: 'open', id });
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  card.classList.remove('note-shown');
+  void card.offsetWidth; // restarts the mark's animation when it's shown again
+  card.classList.add('note-shown');
+  card.querySelector<HTMLElement>('.note-question input, .note-question button, .note-asks textarea')?.focus({ preventScroll: true });
+}
+
 function NoteCard({ note, followers }: { note: NoteView; followers: NoteView[] }) {
   const status = STATUS[note.status];
   return (
-    <div class={`note-card note-${note.status}`}>
+    <div id={cardId(note.id)} class={`note-card note-${note.status}`}>
       <div class="note-head">
         <button
           class="link note-id"
