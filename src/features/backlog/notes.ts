@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { GUIDE, INBOX } from './inbox';
 import { writeAtomic } from './localBacklog';
+import type { UsageLimit } from './limits';
 import { parseReport, type Question } from './report';
 import {
   entryDate,
@@ -58,6 +59,12 @@ export interface NoteState {
   with?: string;
   /** When it was handled (ISO 8601). */
   handled?: string;
+  /**
+   * Its agent stopped on Claude's limit (BL-203): the note stays open, with its session, and goes on in that chat when
+   * it lifts (`until`, ISO 8601; sooner when the ticket agents' limit lifts). `known`: the reset was said, not guessed;
+   * a guessed one tries again, waiting longer each time (`tries`, since `since`).
+   */
+  limit?: { until: string; known: boolean; kind: UsageLimit['kind']; tries?: number; since?: string };
 }
 
 export interface NoteOutcome {
@@ -111,7 +118,9 @@ export function noteTitle(text: string): string {
  * chat goes on, with the notes that came with it), else the oldest open row, once its newest note has settled.
  */
 export function nextNotes(notes: readonly Note[], busy: ReadonlySet<string>, now: number): Note[] | undefined {
-  const open = notes.filter((n) => n.status === 'open' && !n.with && !busy.has(n.id)).sort((a, b) => a.created.localeCompare(b.created));
+  const open = notes
+    .filter((n) => n.status === 'open' && !n.with && !busy.has(n.id) && !(n.limit && Date.parse(n.limit.until) > now))
+    .sort((a, b) => a.created.localeCompare(b.created));
   const lead = open[0];
   if (!lead) return undefined;
   if (lead.session) return [lead, ...notes.filter((n) => lead.group?.includes(n.id))];
@@ -122,6 +131,15 @@ export function nextNotes(notes: readonly Note[], busy: ReadonlySet<string>, now
   }
   const last = Math.max(...row.map((n) => Date.parse(n.edited ?? n.created)));
   return now - last < SETTLE_MS ? undefined : row;
+}
+
+/** Flotilla's line in a note whose agent stopped on a limit before BL-203: it asked you to answer, so nothing went on. */
+const STOPPED_ON_LIMIT = /^\S+ stopped on a limit \([a-z]+\)\. Answer here and it goes on\.$/;
+
+/** Whether a note asks only because its agent stopped on a limit (before BL-203), unanswered: it's put back to open. */
+export function askedForLimit(note: Pick<Note, 'status' | 'activity'>): boolean {
+  const last = note.activity.at(-1);
+  return note.status === 'asking' && last?.author === 'Flotilla' && STOPPED_ON_LIMIT.test(last.body.trim());
 }
 
 /** The questions of the agent's newest reply in a note that asks you. */

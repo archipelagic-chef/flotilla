@@ -71,6 +71,8 @@ export interface NoteView {
   with?: string;
   /** What its agent asks: its words, its questions to click, and since when (ISO 8601). */
   asks?: { reply: string; questions: Question[]; since?: string };
+  /** Open, its agent waits for Claude's limit to lift (BL-203): until when (ISO 8601), whether the reset was said. */
+  waits?: { until: string; known: boolean; kind: 'usage' | 'rate' | 'overloaded' };
   became: NoteOutcome[];
   handled?: string;
 }

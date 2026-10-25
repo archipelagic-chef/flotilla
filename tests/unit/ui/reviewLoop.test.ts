@@ -646,10 +646,14 @@ describe('the agent limit', () => {
     pauseOn(4, later);
     pauseOn(1, later);
     pauseOn(3, later);
+    const lifted = vi.fn();
+    (loop as unknown as { deps: { limitLifted?(): void } }).deps.limitLifted = lifted;
     const result = await loop.tryPausedNow();
     await settle();
     expect(probe).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ resumed: 3 });
+    // The note agents waiting on the limit go on too (BL-203).
+    expect(lifted).toHaveBeenCalledTimes(1);
     expect(result?.limited).toBeUndefined();
     // Two slots: BL-2 and BL-4 go on, BL-5 waits for one.
     expect(spawn.mock.calls.map((c) => (c[0] as { resume?: string }).resume)).toEqual(['session-p1', 'session-p3']);
@@ -669,10 +673,13 @@ describe('the agent limit', () => {
     probe.mockResolvedValue({ until: sooner, known: true, kind: 'usage' });
     pauseOn(1, later);
     pauseOn(2, later);
+    const lifted = vi.fn();
+    (loop as unknown as { deps: { limitLifted?(): void } }).deps.limitLifted = lifted;
     const result = await loop.tryPausedNow();
     await settle();
     expect(probe).toHaveBeenCalledTimes(1);
     expect(started()).toHaveLength(0);
+    expect(lifted).not.toHaveBeenCalled();
     expect(result).toMatchObject({ resumed: 0, limited: sooner });
     expect(data.items[1].review).toMatchObject({ state: 'paused', paused: { until: sooner.toISOString() } });
     expect(data.items[2].review).toMatchObject({ state: 'paused', paused: { until: later } });

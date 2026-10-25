@@ -7,6 +7,7 @@ import { INBOX } from '../../features/backlog/inbox';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import {
   addedTo,
+  askedForLimit,
   asksUser,
   becameText,
   nextNotes,
@@ -18,6 +19,7 @@ import {
   type NoteStore,
   noteTools,
 } from '../../features/backlog/notes';
+import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
 import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
@@ -85,8 +87,11 @@ export class NoteAgents implements vscode.Disposable {
       working = now;
     });
     // A draft whose tab went with its window (a reload, a crash) is dropped a day later.
-    void deps.notes.list().then((all) => {
+    void deps.notes.list().then(async (all) => {
       for (const n of all) if (n.status === 'draft' && Date.now() - Date.parse(n.created) > DRAFT_KEPT_MS) void deps.notes.drop(n.id);
+      // Stopped on a limit before BL-203, they asked you instead of going on: open again, they go on in their chats.
+      for (const n of all.filter(askedForLimit))
+        for (const id of [n.id, ...(n.group ?? [])]) await deps.notes.setState(id, (s) => (s.status === 'asking' ? { ...s, status: 'open' } : s));
     });
     this.subscriptions.push({ dispose: () => (watch.dispose(), clearInterval(timer), chats.dispose()) }, this.changed);
   }
@@ -100,6 +105,7 @@ export class NoteAgents implements vscode.Disposable {
       .map((n) => {
         const agent = this.agentOf(n.id) ?? chats.get(n.with ?? n.id);
         const asks = noteQuestion(n);
+        const waits = n.status === 'open' && !agent && n.limit && Date.parse(n.limit.until) > Date.now() ? n.limit : undefined;
         return {
           id: n.id,
           title: n.title,
@@ -109,6 +115,7 @@ export class NoteAgents implements vscode.Disposable {
           ...((agent ?? n.agent) ? { agent: agent ?? n.agent } : {}),
           ...(n.with ? { with: n.with } : {}),
           ...(asks ? { asks } : {}),
+          ...(waits ? { waits: { until: waits.until, known: waits.known, kind: waits.kind } } : {}),
           became: n.became,
           ...(n.handled ? { handled: n.handled } : {}),
         };
@@ -179,6 +186,16 @@ export class NoteAgents implements vscode.Disposable {
     for (const n of [lead, ...group]) await this.deps.notes.setState(n, (s) => (s.status === 'handled' ? s : { ...s, status: 'open' }));
     this.changed.fire();
     void this.tick();
+  }
+
+  /** Claude takes work again (ReviewLoop found the limit lifted, or Try Again Now did): the notes waiting on it go on. */
+  async limitLifted(): Promise<void> {
+    const now = new Date().toISOString();
+    for (const n of await this.deps.notes.list())
+      if (n.status === 'open' && n.limit && n.limit.until > now)
+        await this.deps.notes.setState(n.id, (s) => (s.limit ? { ...s, limit: { ...s.limit, until: now } } : s));
+    this.changed.fire();
+    await this.tick();
   }
 
   /**
@@ -280,8 +297,11 @@ export class NoteAgents implements vscode.Disposable {
     // Its notes stay taken (in runs) until their state says what's next: open meanwhile, a tick would resume them.
     try {
       const reply = result.reply?.trim();
+      // Stopped on a limit, it waits for it as a ticket's agent does, and goes on in its chat (BL-203).
+      if (!reply && result.limit) return void (await this.waitForLimit(lead, agent, result.limit));
+      await this.deps.notes.setState(lead, (s) => (s.limit ? { ...s, limit: undefined } : s));
       if (!reply) {
-        const why = result.limit ? `on a limit (${result.limit.kind})` : result.error ? `without a reply (${result.error.slice(0, 200)})` : 'without a reply';
+        const why = result.error ? `without a reply (${result.error.slice(0, 200)})` : 'without a reply';
         await this.deps.notes.append(lead, { author: 'Flotilla', body: `${agent} stopped ${why}. Answer here and it goes on.` });
         for (const id of ids) await this.deps.notes.setState(id, (s) => ({ ...s, status: 'asking' }));
         return;
@@ -306,6 +326,32 @@ export class NoteAgents implements vscode.Disposable {
       this.changed.fire();
       void this.tick();
     }
+  }
+
+  /**
+   * The lead note's agent stopped on a limit: its notes stay open, with its session, until it lifts. A guessed-at reset
+   * hit again waits longer each time (see retryDelay); the note says so the first time.
+   */
+  private async waitForLimit(lead: string, agent: string, limit: UsageLimit): Promise<void> {
+    const before = (await this.deps.notes.read(lead))?.limit;
+    const again = before && !limit.known ? { tries: (before.tries ?? 0) + 1, since: before.since ?? new Date().toISOString() } : undefined;
+    const until = again ? new Date(Date.now() + retryDelay(limit.kind, again.tries, Date.now() - Date.parse(again.since))) : limit.until;
+    await this.deps.notes.setState(lead, (s) => ({
+      ...s,
+      limit: {
+        until: until.toISOString(),
+        known: limit.known,
+        kind: limit.kind,
+        ...(limit.known ? {} : { tries: again?.tries ?? 0, since: again?.since ?? new Date().toISOString() }),
+      },
+    }));
+    if (before) return;
+    const what = limit.kind === 'usage' ? "Claude's usage limit" : limit.kind === 'rate' ? "Claude's rate limit" : 'Claude being overloaded';
+    const when = until.toLocaleString();
+    await this.deps.notes.append(lead, {
+      author: 'Flotilla',
+      body: `${agent} stopped on ${what}. It goes on by itself ${limit.known ? `when it resets (${when})` : `at ${when}, and tries again after that if it must`}.`,
+    });
   }
 
   /** Waits (a while at most) until the inbox has taken in what's in it. */

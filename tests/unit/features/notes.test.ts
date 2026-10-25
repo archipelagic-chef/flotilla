@@ -11,6 +11,7 @@ import { parseProposal, takeInbox } from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import {
   addedTo,
+  askedForLimit,
   asksUser,
   becameText,
   DRAFT_HINT,
@@ -179,6 +180,23 @@ describe('picking notes up', () => {
     ];
     expect(nextNotes(notes, new Set(), settled)?.map((n) => n.id)).toEqual(['NOTE-3', 'NOTE-4']);
     expect(nextNotes(notes, new Set(['NOTE-3']), settled)?.map((n) => n.id)).toEqual(['NOTE-5']);
+  });
+
+  it('leaves a note whose agent waits for a limit until it lifts, then goes on in its chat (BL-203)', () => {
+    const limit = { until: new Date(settled + 60_000).toISOString(), known: true, kind: 'usage' as const };
+    const notes = [note('NOTE-1', T0, { session: 's', group: ['NOTE-2'], limit }), note('NOTE-2', T0 + 1000, { with: 'NOTE-1' }), note('NOTE-3', T0 + 2000)];
+    expect(nextNotes(notes, new Set(), settled)?.map((n) => n.id)).toEqual(['NOTE-3']);
+    expect(nextNotes(notes, new Set(), settled + 60_000)?.map((n) => n.id)).toEqual(['NOTE-1', 'NOTE-2']);
+  });
+
+  it('finds notes that asked only because their agent stopped on a limit, before BL-203', () => {
+    const entry = (author: string, body: string) => ({ author, date: '2026-10-25 15:11', body });
+    const stopped = entry('Flotilla', 'Nova-3 stopped on a limit (usage). Answer here and it goes on.');
+    expect(askedForLimit(note('NOTE-1', T0, { status: 'asking', activity: [stopped] }))).toBe(true);
+    expect(askedForLimit(note('NOTE-1', T0, { status: 'asking', activity: [stopped, entry('You', 'Go on')] }))).toBe(false);
+    expect(askedForLimit(note('NOTE-1', T0, { status: 'open', activity: [stopped] }))).toBe(false);
+    const error = entry('Flotilla', 'Nova-3 stopped without a reply (boom). Answer here and it goes on.');
+    expect(askedForLimit(note('NOTE-1', T0, { status: 'asking', activity: [error] }))).toBe(false);
   });
 });
 

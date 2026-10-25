@@ -40,8 +40,23 @@ function useWorking(key: string): boolean {
   return pending.has(key);
 }
 
+/** The limit a note's agent waits for (BL-203). */
+const LIMIT: Record<NonNullable<NoteView['waits']>['kind'], string> = {
+  usage: 'the usage limit',
+  rate: 'the rate limit',
+  overloaded: 'Claude to take work again',
+};
+
 const STATUS: Record<NoteView['status'], { icon: string; label: (n: NoteView) => string }> = {
-  open: { icon: 'clock', label: (n) => (n.agent ? `Waiting for ${n.agent} to go on` : 'Waiting for an agent') },
+  open: {
+    icon: 'clock',
+    label: (n) =>
+      n.waits
+        ? `${n.agent ?? 'Its agent'} is waiting for ${LIMIT[n.waits.kind]} (${n.waits.known ? 'resets' : 'tries again'} at ${new Date(n.waits.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+        : n.agent
+          ? `Waiting for ${n.agent} to go on`
+          : 'Waiting for an agent',
+  },
   working: { icon: 'loading codicon-modifier-spin', label: (n) => `${n.agent ?? 'An agent'} is turning it into tickets` },
   asking: { icon: 'comment-discussion', label: (n) => `${n.agent ?? 'Its agent'} asks you` },
   handled: { icon: 'pass', label: () => 'Handled' },

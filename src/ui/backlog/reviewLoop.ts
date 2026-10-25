@@ -106,6 +106,8 @@ export interface ReviewDeps {
   onApproved?(id: string, by: string | undefined): void;
   /** Whether Pause All holds every agent (BL-160): nothing starts on its own, starts wait in the queue. */
   pausedAll?(): boolean;
+  /** Claude takes work again (the limit the paused agents wait on lifted): the note agents waiting on it go on too (BL-203). */
+  limitLifted?(): void;
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
@@ -713,6 +715,7 @@ export class ReviewLoop implements vscode.Disposable {
    * as queued starts at the head of the queue. `found` says how, in their tickets (not in the one it was found for).
    */
   private async limitLiftedFor(group: Array<{ item: BacklogItem; p: NonNullable<ReviewState['paused']> }>, found: string, foundFor?: string): Promise<void> {
+    this.deps.limitLifted?.();
     // Read again: the probe took a while, and one may have gone on (Resume now) or been stopped meanwhile.
     const items = (await this.deps.backlog.read()).items;
     for (const { item, p } of oldestFirst(group)) {
@@ -819,6 +822,7 @@ export class ReviewLoop implements vscode.Disposable {
       this.scheduleResume();
       return { tried, resumed: 0, limited: await this.pausedUntil() };
     }
+    this.deps.limitLifted?.();
     let resumed = 0;
     // Read again: the probe took a while, and one may have gone on (or been stopped) meanwhile.
     for (const item of (await this.deps.backlog.read()).items.filter(limitPaused)) {
