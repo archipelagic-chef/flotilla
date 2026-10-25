@@ -45,10 +45,11 @@ const { metricsCommands } = await import('../../../src/ui/metrics/metricsCommand
 const { viewCommands } = await import('../../../src/ui/sidebar/viewCommands');
 const { activeWorktreeCommands } = await import('../../../src/ui/activeWorktreeCommands');
 const { hygieneCommands } = await import('../../../src/ui/hygiene');
+const { noteCommands } = await import('../../../src/ui/backlog/notes');
 
 const root = path.join(__dirname, '../../..');
 /** The features' command lists extension.ts registers (BL-185): a new feature's goes here too. */
-const features = { mergeCommands, agentCommands, autopilotCommands, metricsCommands, viewCommands, activeWorktreeCommands, hygieneCommands };
+const features = { mergeCommands, agentCommands, autopilotCommands, metricsCommands, viewCommands, activeWorktreeCommands, hygieneCommands, noteCommands };
 
 describe('commands', () => {
   it('registers every command of package.json, each once', () => {

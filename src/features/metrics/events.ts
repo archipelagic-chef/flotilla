@@ -13,7 +13,7 @@ import type { SpendPurpose, ToolKind } from './transcriptSpend';
 export const METRICS_DIR = path.join('flotilla', 'metrics');
 
 /** An agent's role: working on a ticket, reviewing it, resolving a merge, discussing it while it's shaped, replying, or writing an improvement review (BL-159). */
-export type AgentRole = 'work' | 'review' | 'merge' | 'discuss' | 'reply' | 'improve';
+export type AgentRole = 'work' | 'review' | 'merge' | 'discuss' | 'reply' | 'improve' | 'note';
 
 /** Each kind of event, and what its `data` holds. */
 export interface EventData {
