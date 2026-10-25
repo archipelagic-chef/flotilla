@@ -6,7 +6,7 @@ import { entryAgent, type BacklogItem, type BacklogStatus } from './backlog';
  * an accepted proposal, branches, the agents' model and effort. The review loop and history clean-ups write their own
  * notes; links are noted where they're made.
  */
-const STATUS: Record<BacklogStatus, string> = { todo: 'To Do', doing: 'In Progress', review: 'In Review', done: 'Done' };
+export const STATUS_LABEL: Record<BacklogStatus, string> = { todo: 'To Do', doing: 'In Progress', review: 'In Review', done: 'Done' };
 const PRIORITY: Record<string, string> = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
 
 /** Who made a change, as its sentence starts: "You", "Nova-7 (an agent)", or nothing for Flotilla itself. */
@@ -30,7 +30,7 @@ export function describeChanges(before: BacklogItem, after: BacklogItem, by: str
   const say = (verb: string) => out.push(sentence(by, verb));
   if (before.proposed && !after.proposed) say('accepted it into the backlog.');
   if (!before.merged && after.merged) say(`merged it into **${after.merged.into}** (${after.merged.commit.slice(0, 7)}).`);
-  if (before.status !== after.status) say(`moved it from **${STATUS[before.status]}** to **${STATUS[after.status]}**.`);
+  if (before.status !== after.status) say(`moved it from **${STATUS_LABEL[before.status]}** to **${STATUS_LABEL[after.status]}**.`);
   if (before.priority !== after.priority) {
     if (!after.priority) say(`cleared its priority (was ${PRIORITY[before.priority!] ?? before.priority}).`);
     else if (!before.priority) say(`set its priority to **${PRIORITY[after.priority] ?? after.priority}**.`);

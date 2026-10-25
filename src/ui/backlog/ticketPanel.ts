@@ -20,10 +20,10 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type { IssueSource, RemoteDetails, RemoteEditOptions, RemoteIssue } from '../../features/backlog/sources/source';
 import type { BacklogIntegrations } from './integrations';
-import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import { entryAnchors, entryDate, entryThreads, parseReply, replyLine, summaryOf, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
 import { LocalBacklog as Store } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { AgentChatView, AttachmentView, MediaThumb, ReportView, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type { AgentChatView, AttachmentView, EntrySuggestion, FocusTarget, MediaThumb, ReportView, TicketCheckView, TicketHostMessage, TicketView, TicketWebviewMessage } from '../../webview/ticketProtocol';
 import { ATTENTION_LABEL, workstreamLabel } from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
@@ -60,6 +60,7 @@ import { openTarget } from '../../features/backlog/runTarget';
 import { demoPlace, runFingerprint, runPlaces, type RunPlace } from '../../features/backlog/runWorktree';
 import { folderFor, missingName, startLaunch, startTask, type RunApprovals, type RunTerminals } from './runBlock';
 import { creatingWorktrees } from '../../features/backlog/creatingWorktrees';
+import { linkReferences, mentionsIn, parseReferenceLink, referenceLookup, resolveEntry, type Mention, type ReferenceLookup } from '../../features/backlog/references';
 import type { CiRuns } from '../ci/ciRuns';
 import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
@@ -140,6 +141,9 @@ function realPath(p: string): string {
 const rendered = new Map<string, string>();
 const RENDERED_MAX = 2000;
 
+/** The tickets references are linked to (BL-130): the backlog's, set by the ticket panels. */
+let references: (() => Promise<ReferenceLookup>) | undefined;
+
 /** Renders Markdown with VS Code's own renderer (the built-in Markdown extension); plain text if it's unavailable. */
 export async function renderMarkdown(text: string, webview: vscode.Webview, dir: string, roots: readonly string[] = []): Promise<string> {
   if (!text.trim()) return '';
@@ -155,6 +159,7 @@ export async function renderMarkdown(text: string, webview: vscode.Webview, dir:
     }
   }
   html = stripStyles(html);
+  if (references) html = linkReferences(html, await references());
   // Task list items ("- [ ] …") as checkboxes, like GitHub shows them.
   html = html.replace(/(<li\b[^>]*>)\s*\[([ xX])\]\s+/g, (_m, li: string, mark: string) => `${li}<span class="task${mark === ' ' ? '' : ' checked'}"></span>`);
   return replaceMedia(html, (src) => resolveMedia(src, webview, dir, roots));
@@ -461,7 +466,66 @@ export class TicketPanels implements vscode.Disposable {
   /** The tickets' CI (BL-106), when there's a CI/CD view to read it. */
   readonly ci: TicketCi | undefined;
 
+  /** The backlog's tickets by id and linked issue key, for references (BL-130): read again when the backlog changes. */
+  private lookup?: Promise<ReferenceLookup>;
+
+  references(): Promise<ReferenceLookup> {
+    return (this.lookup ??= this.deps.backlog.read().then((d) => referenceLookup(d.items)));
+  }
+
+  /** A ticket's mentions of others, by the parsed ticket (a new one when its file changes) and the lookup they were found with. */
+  private readonly mentionCache = new WeakMap<Ticket, { lookup: ReferenceLookup; mentions: Map<string, Mention[]> }>();
+
+  /** Where other tickets mention a ticket (BL-130), oldest first; their descriptions' mentions first. */
+  async mentionsOf(id: string): Promise<NonNullable<TicketView['mentions']>> {
+    const lookup = await this.references();
+    const known = (ref: string) => !!lookup(ref);
+    const data = await this.deps.backlog.read();
+    const found: NonNullable<TicketView['mentions']> = [];
+    for (const item of data.items) {
+      if (item.id === id) continue;
+      const ticket = await this.deps.backlog.readTicketCached(item).catch(() => undefined);
+      if (!ticket) continue;
+      let cached = this.mentionCache.get(ticket);
+      if (cached?.lookup !== lookup) this.mentionCache.set(ticket, (cached = { lookup, mentions: mentionsIn(item.id, ticket, known) }));
+      // A linked issue's key mentions the item too.
+      const mine = [...cached.mentions].flatMap(([ref, ms]) => (lookup(ref)?.id === id ? ms : []));
+      for (const m of new Map(mine.map((m) => [m.anchor ?? '', m])).values()) found.push({ ...m, title: item.title });
+    }
+    return found.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** A ticket's comments and reports, newest first, to suggest after "BL-102#" (BL-130). */
+  async entrySuggestions(id: string): Promise<EntrySuggestion[]> {
+    const target = (await this.references())(id);
+    const item = target && (await this.item(target.id));
+    if (!item || item.remote) return [];
+    const ticket = await this.deps.backlog.readTicketCached(item).catch(() => undefined);
+    if (!ticket) return [];
+    const anchors = entryAnchors(ticket.activity);
+    return ticket.activity
+      .map((e, i) => ({ anchor: anchors[i], author: e.author, date: e.date, text: summaryOf(parseReply(e.body)?.text ?? e.body) ?? '' }))
+      .filter((e) => e.author !== 'Flotilla')
+      .reverse();
+  }
+
+  /** Opens the ticket a reference names, at the comment it names (BL-130); false when it isn't a ticket. */
+  async openReference(ref: { id: string; anchor?: string }): Promise<boolean> {
+    const target = (await this.references())(ref.id);
+    if (!target) return false;
+    if (!ref.anchor) {
+      await this.open(target.id);
+      return true;
+    }
+    const item = await this.item(target.id);
+    const ticket = item && !item.remote ? await this.deps.backlog.readTicketCached(item).catch(() => undefined) : undefined;
+    const gone = !ticket || resolveEntry(ticket, ref.anchor) === undefined;
+    await this.open(target.id, { focus: { entry: ref.anchor.toLowerCase(), ...(gone ? { gone: true } : {}) } });
+    return true;
+  }
+
   constructor(readonly deps: TicketDeps) {
+    references = () => this.references();
     this.ci = deps.ci && new TicketCi({ ci: deps.ci, showCi: (key) => deps.showCi?.(key), memento: deps.memento, mainRoot: deps.mainRoot });
     if (this.ci) this.subscriptions.push(this.ci);
     this.subscriptions.push(
@@ -488,9 +552,9 @@ export class TicketPanels implements vscode.Disposable {
    * Panels to focus their comment box in, once their view is shown (a ticket opened to answer or to request changes),
    * or to show their Demo section in (opened from a review card's demo mark, BL-135).
    */
-  private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, 'comment' | 'demo'>();
+  private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, FocusTarget>();
 
-  async open(id: string, o: { focus?: 'comment' | 'demo' } = {}): Promise<void> {
+  async open(id: string, o: { focus?: FocusTarget } = {}): Promise<void> {
     // An issue linked to a local item is part of it.
     id = linkedItem(await this.deps.backlog.read(), id)?.id ?? id;
     const existing = this.panels.get(id);
@@ -885,6 +949,7 @@ export class TicketPanels implements vscode.Disposable {
    * parts, whose lists show it). Other open tickets keep their view.
    */
   private async backlogChanged(files: ReadonlySet<string>): Promise<void> {
+    this.lookup = undefined;
     const data = await this.deps.backlog.read();
     const sigs = new Map(data.items.map((i) => [i.id, JSON.stringify(i)]));
     const changed = new Set<string>();
@@ -1076,6 +1141,8 @@ export class TicketPanels implements vscode.Disposable {
           attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
           ...(await this.mainView(plain, ticket.description)),
+          mentions: await this.mentionsOf(plain.id),
+          references: (await this.deps.backlog.read()).items.map((i) => ({ id: i.id, title: i.title, status: i.status })),
         });
       }
     } catch (error) {
@@ -1254,6 +1321,9 @@ export class TicketPanels implements vscode.Disposable {
   }
 
   async openHref(item: BacklogItem, href: string): Promise<void> {
+    // A reference to a ticket, or to a comment in one (BL-130).
+    const ref = parseReferenceLink(href, item.id);
+    if (ref && (await this.openReference(ref))) return;
     // A note's link to a discussion's chat (BL-188).
     if (href.startsWith(CHAT_LINK)) {
       if (!(await this.shaping?.openSession(href.slice(CHAT_LINK.length)))) void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in any worktree.`);

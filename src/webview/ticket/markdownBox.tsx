@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { fileKind, tooLarge } from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
+import { showAnchor } from './attachments';
 import { type Format, formatEdit, type Markup, pasteLink, type TextEdit } from './format';
 import { demoLength } from '../../features/backlog/demo';
 import { act, send } from './actions';
+import { matchEntries, matchTickets, pickSuggestion, suggestQuery, type SuggestQuery, type TicketSuggestion } from './suggest';
+import type { EntrySuggestion } from '../ticketProtocol';
 import './markdownBox.css';
 
 /** Replies to pasted or dropped images, by request id. */
@@ -12,6 +15,10 @@ let nextImage = 1;
 /** Replies to a Markdown box's Preview, by request id. */
 export const previewReplies = new Map<number, (html: string) => void>();
 let nextPreview = 1;
+/** The answers to the comment box's requests for a ticket's entries (BL-130), by request. */
+export const entryReplies = new Map<number, (entries: EntrySuggestion[]) => void>();
+let nextEntries = 1;
+
 
 function readAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -102,6 +109,7 @@ export function MarkdownBox({
   images = true,
   format,
   mention = '',
+  suggest,
 }: {
   value: string;
   setValue(text: string): void;
@@ -116,9 +124,12 @@ export function MarkdownBox({
   format?: Markup;
   /** What the Mention button inserts: the ticket ids' prefix. */
   mention?: string;
+  /** Tickets (and their comments) to suggest as references while typing (BL-130); self is the ticket's own id. */
+  suggest?: { tickets: TicketSuggestion[]; self: string };
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState<string | undefined>(undefined);
+  const suggesting = useSuggestions(area, value, setValue, mention, suggest);
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
@@ -151,8 +162,14 @@ export function MarkdownBox({
       value={value}
       placeholder={placeholder}
       aria-label={label}
-      onInput={(e) => setValue((e.target as HTMLTextAreaElement).value)}
+      onInput={(e) => {
+        setValue((e.target as HTMLTextAreaElement).value);
+        suggesting.update();
+      }}
+      onClick={suggesting.update}
+      onBlur={() => setTimeout(suggesting.close, 150)}
       onKeyDown={(e) => {
+        if (suggesting.key(e)) return;
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           onSubmit();
@@ -190,7 +207,14 @@ export function MarkdownBox({
       }}
     />
   );
-  if (!format) return box;
+  const list = suggesting.list && <Suggestions {...suggesting.list} pick={suggesting.pick} />;
+  if (!format)
+    return (
+      <div class="md-suggest-anchor">
+        {box}
+        {list}
+      </div>
+    );
   const key = (k?: string) => (k ? ` (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}${k.toUpperCase()})` : '');
   return (
     <div class="md-editor">
@@ -223,7 +247,10 @@ export function MarkdownBox({
           </span>
         )}
       </div>
-      {box}
+      <div class="md-suggest-anchor">
+        {box}
+        {list}
+      </div>
       {preview !== undefined && (
         <div class="md-preview" style={{ minHeight: `${minRows * 1.5 + 1}em` }}>
           {preview || !value.trim() ? <Rendered html={preview} empty="Nothing to preview." /> : <div class="rendered empty-text">Rendering…</div>}
@@ -265,9 +292,105 @@ export function Rendered({ html, empty }: { html: string; empty: string }) {
     }
     const a = (e.target as HTMLElement).closest('a');
     const href = a?.getAttribute('href');
-    if (!href || href.startsWith('#')) return;
+    if (!href) return;
+    // A link to an entry of this ticket (a reply's parent, BL-126; a comment's reference, BL-130).
+    if (href.startsWith('#')) {
+      if (href.length > 1) {
+        e.preventDefault();
+        showAnchor(decodeURIComponent(href.slice(1)));
+      }
+      return;
+    }
     e.preventDefault();
     send({ type: 'openHref', href });
   };
   return <div ref={el} class="rendered" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+type SuggestItem = { reference: string; label: string; detail: string };
+
+/**
+ * The suggestions while typing (BL-130): what the text before the caret asks for (suggest.ts), the items, the one
+ * picked with the arrows, and the keys that move and pick (Enter or Tab) or close (Escape).
+ */
+function useSuggestions(area: { current: HTMLTextAreaElement | null }, value: string, setValue: (text: string) => void, prefix: string, suggest?: { tickets: TicketSuggestion[]; self: string }) {
+  const [query, setQuery] = useState<SuggestQuery | undefined>(undefined);
+  const [active, setActive] = useState(0);
+  const [entries, setEntries] = useState<{ id: string; entries?: EntrySuggestion[] }>();
+  const closed = useRef<number | undefined>(undefined);
+  const update = () => {
+    const el = area.current;
+    if (!el || !suggest) return;
+    const q = el.selectionStart === el.selectionEnd ? suggestQuery(el.value, el.selectionStart, prefix) : undefined;
+    // Escape closes it until what it's for changes.
+    setQuery(q && q.start !== closed.current ? q : undefined);
+    if (!q || q.start !== closed.current) closed.current = undefined;
+    setActive(0);
+  };
+  useEffect(update, [value]);
+  const entryId = query?.kind === 'entry' ? query.id : undefined;
+  useEffect(() => {
+    if (!entryId || entries?.id === entryId) return;
+    const requestId = nextEntries++;
+    setEntries({ id: entryId });
+    entryReplies.set(requestId, (found) => setEntries((shown) => (shown?.id === entryId ? { id: entryId, entries: found } : shown)));
+    send({ type: 'entries', requestId, id: entryId });
+  }, [entryId]);
+  const items: SuggestItem[] = !query
+    ? []
+    : query.kind === 'ticket'
+      ? matchTickets(suggest?.tickets ?? [], query.query, suggest?.self).map((t) => ({ reference: t.id, label: t.id, detail: t.title }))
+      : matchEntries(entries?.id === query.id ? (entries.entries ?? []) : [], query.query).map((e) => ({
+          reference: `${query.id}#${e.anchor}`,
+          label: `${e.author.replace(/^Agent /, '') || 'Note'}, ${e.date}`,
+          detail: e.text,
+        }));
+  const pick = (item: SuggestItem) => {
+    const el = area.current;
+    if (!el || !query) return;
+    editArea(el, pickSuggestion(el.value, el.selectionStart, query.start, item.reference), setValue);
+    setQuery(undefined);
+  };
+  const close = () => {
+    if (query) closed.current = query.start;
+    setQuery(undefined);
+  };
+  const key = (e: KeyboardEvent): boolean => {
+    if (!items.length) return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length);
+    else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) || e.key === 'Tab') pick(items[Math.min(active, items.length - 1)]);
+    else if (e.key === 'Escape') close();
+    else return false;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  };
+  const loading = query?.kind === 'entry' && entries?.id === query.id && !entries.entries;
+  const list = query && (items.length || loading) ? { items, active: Math.min(active, items.length - 1), loading, entry: query.kind === 'entry' } : undefined;
+  return { update, close, key, pick, list };
+}
+
+/** The list of suggestions under the box: a click picks one (the box keeps its focus). */
+function Suggestions({ items, active, loading, entry, pick }: { items: SuggestItem[]; active: number; loading: boolean; entry: boolean; pick(item: SuggestItem): void }) {
+  return (
+    <ul class="md-suggest" role="listbox" aria-label={entry ? 'Comments' : 'Tickets'}>
+      {loading && <li class="md-suggest-empty">Reading its comments…</li>}
+      {items.map((item, i) => (
+        <li
+          key={item.reference}
+          role="option"
+          aria-selected={i === active}
+          class={i === active ? 'active' : undefined}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            pick(item);
+          }}
+          title={item.reference}
+        >
+          <span class="md-suggest-label">{item.label}</span>
+          <span class="md-suggest-detail">{item.detail}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }

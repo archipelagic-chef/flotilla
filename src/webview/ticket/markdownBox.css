@@ -64,3 +64,46 @@
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 4px;
 }
+/* Suggestions while typing a reference (BL-130): a list under the box, the one the arrows picked marked. */
+.md-suggest-anchor {
+  position: relative;
+}
+.md-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  margin: 2px 0 0;
+  padding: 2px 0;
+  list-style: none;
+  max-height: 16em;
+  overflow-y: auto;
+  background: var(--vscode-editorSuggestWidget-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, transparent));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+.md-suggest li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.md-suggest li.active {
+  background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
+}
+.md-suggest-label {
+  font-weight: 600;
+}
+.md-suggest-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+.md-suggest-empty {
+  opacity: 0.7;
+  cursor: default;
+}

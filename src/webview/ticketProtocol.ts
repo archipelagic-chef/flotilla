@@ -198,6 +198,10 @@ export interface TicketView {
   }>;
   /** The ticket's run: the last run block its agents and Flotilla wrote (the Run button in review runs it). */
   run?: RunBlockRef;
+  /** Where other tickets refer to it (BL-130): the ticket and its entry (none: its description), by whom, when. */
+  mentions?: Array<{ from: string; title: string; anchor?: string; author: string; date: string; text?: string }>;
+  /** The backlog's tickets, to suggest in the comment box (BL-130). */
+  references?: Array<{ id: string; title: string; status: BacklogStatus }>;
   /** Its review loop, and whether an agent of it is running now. */
   review?: ReviewState & { running: boolean };
   /** Its agent waits for a free slot (or for memory) before it starts. */
@@ -305,12 +309,14 @@ export type TicketHostMessage =
   /** An action (the webview's message, as it was sent) is finished, its view posted: failed if it threw. */
   | { type: 'done'; message: TicketWebviewMessage; failed?: boolean }
   /** Puts the cursor in the comment box (a ticket opened to answer a question, or to request changes). */
-  /** The comment box, or the Demo section (BL-135). */
-  | { type: 'focus'; target: 'comment' | 'demo' }
+  /** The comment box, the Demo section (BL-135), or an entry a reference named (BL-130). */
+  | { type: 'focus'; target: FocusTarget }
   /** An image was saved next to the ticket; markdown links it. */
   | { type: 'imageSaved'; requestId: number; markdown: string }
   /** A Markdown box's Preview (BL-129): its text rendered as the activity shows it. */
   | { type: 'previewed'; requestId: number; html: string }
+  /** A ticket's entries, to suggest after "BL-102#" in the comment box (BL-130); none for a ticket without them. */
+  | { type: 'entries'; requestId: number; entries: EntrySuggestion[] }
   /** The Ask chat changed (BL-80). */
   | { type: 'ask'; ask: AskView }
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
@@ -335,6 +341,10 @@ export type TicketWebviewMessage =
   | { type: 'mediaRefused'; name: string; kind: MediaKind; size: number }
   /** Renders a Markdown box's text for its Preview tab (BL-129); answered with previewed. */
   | { type: 'preview'; requestId: number; text: string }
+  /** A ticket's entries to suggest (BL-130); answered with entries. */
+  | { type: 'entries'; requestId: number; id: string }
+  /** Puts a reference to an entry on the clipboard (BL-130). */
+  | { type: 'copyText'; text: string }
   /** Create (or show) the item's worktree; with agent, also start an agent there. */
   | { type: 'start'; agent: boolean; /** The Create Worktree button: a new worktree at once, named without asking or in a box. */ newWorktree?: 'auto' | 'named' }
   /** Discuss the ticket with an agent (BL-45), without a comment first; Keep discussing dismisses "ready to start". */
@@ -429,3 +439,14 @@ export type TicketWebviewMessage =
   | ({ type: 'ci' } & CiRequest)
   | { type: 'ciOpen'; open: boolean }
   | { type: 'ciShow'; key: string };
+
+/** Where an opened ticket goes: its comment box, its Demo section, or an entry (gone: the reference's entry isn't there). */
+export type FocusTarget = 'comment' | 'demo' | { entry: string; gone?: true };
+
+/** An entry of a ticket, as the comment box suggests it after "BL-102#" (BL-130). */
+export interface EntrySuggestion {
+  anchor: string;
+  author: string;
+  date: string;
+  text: string;
+}

@@ -6,7 +6,7 @@ import type { TicketCiView, TicketHostMessage, TicketView, TicketWebviewMessage 
 // The shared rules first: each section's own CSS, imported by its module, comes after them.
 import '../ui/priority.css';
 import './ticket.css';
-import { Attachments } from './attachments';
+import { Attachments, showAnchor } from './attachments';
 import { DEMO_SECTION, DemoSection } from './demo';
 import { applyTicketParts } from '../ticketParts';
 import { activeAgents } from '../activeAgents';
@@ -14,7 +14,7 @@ import { PriorityPicker } from '../ui/priority';
 import { TicketCi } from './ci';
 import { ActionButton, finished, send, useWorkingChanges, workingLabel } from './actions';
 import { showingEntries } from './comments';
-import { imageReplies, previewReplies } from './markdownBox';
+import { entryReplies, imageReplies, previewReplies } from './markdownBox';
 import { checksLogReplies } from './checksPanel';
 import { AgentPicker, RemotePriority, STATUSES, StatusMenu, Title } from './header';
 import { Description } from './description';
@@ -80,6 +80,9 @@ function App() {
       } else if (m.type === 'done') {
         finished(m.message, !!m.failed);
         if (m.message.type === 'status' || m.message.type === 'priority') setPicked({});
+      } else if (m.type === 'focus' && typeof m.target === 'object') {
+        const { entry, gone } = m.target;
+        setTimeout(() => showAnchor(entry, gone));
       } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
       else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
@@ -90,6 +93,9 @@ function App() {
       } else if (m.type === 'checksLog') {
         checksLogReplies.get(m.requestId)?.(m.text);
         checksLogReplies.delete(m.requestId);
+      } else if (m.type === 'entries') {
+        entryReplies.get(m.requestId)?.(m.entries);
+        entryReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
         previewReplies.delete(m.requestId);

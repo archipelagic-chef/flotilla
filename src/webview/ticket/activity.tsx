@@ -4,7 +4,7 @@ import { entryRound, type FeedGroup, foldRounds, foldTitle, openEntry, type Roun
 import { type Answer, answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { ReportView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
-import { Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
+import { Diagram, diagramsIn, openMedia, SHOW_ANCHOR, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
 import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from './actions';
 import { REPLY_TO, sendComment, useSending } from './comments';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
@@ -243,6 +243,15 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
             <i class="codicon codicon-reply" /> Reply
           </button>
         )}
+        {!ticket.remote && e.anchor && kind !== 'history' && (
+          <button
+            class="text-button copy-link"
+            onClick={() => send({ type: 'copyText', text: `${ticket.item.id}#${e.anchor}` })}
+            title={`Copy Link: copies ${ticket.item.id}#${e.anchor}, which opens this entry wherever a ticket shows it`}
+          >
+            <i class="codicon codicon-link" /> Copy Link
+          </button>
+        )}
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
             <i class="codicon codicon-chevron-up" /> Fold
@@ -376,9 +385,37 @@ const ASK_FOR_RUN =
   'Please end your report with a run block: a fenced block with the info string `run`, and the commands that try the work (or a `launch`, `task` or `open` block), so it can be run from here.';
 
 /** Flotilla's notes and the commits, in time order: what happened, behind "Show activity". */
+type Mentioned = NonNullable<TicketView['mentions']>[number];
+
+/** "Mentioned in BL-125, by You, 16:20" (BL-130): a click opens that ticket at the entry. */
+function MentionRow({ m }: { m: Mentioned }) {
+  const by = m.anchor ? `, by ${entryAgent(m.author) ?? (m.author || 'Note')}${m.date ? `, ${m.date.slice(11)}` : ''}` : ', in its description';
+  return (
+    <li class="timeline-row">
+      <button
+        class="timeline-item mention"
+        onClick={() => send({ type: 'openHref', href: `flotilla-ref:${m.from}${m.anchor ? `#${m.anchor}` : ''}` })}
+        title={`${m.from}: ${m.title}${m.text ? `\n${m.text}` : ''}\nClick to open it there`}
+      >
+        <i class="codicon codicon-mention" />
+        {m.date && <span class="muted">{m.date}</span>}
+        <span class="timeline-text">
+          Mentioned in <span class="ticket-ref">{m.from}</span>
+          {by}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 function Timeline({ ticket }: { ticket: TicketView }) {
   const notes = ticket.activity.filter((e) => kindOf(e.author) === 'history');
-  const rows = withCommits(notes, ticket.commits);
+  // Where other tickets mention it (BL-130) go with the notes, by their dates; a description's has none and goes first.
+  const mentions = (ticket.mentions ?? []).map((m) => ({ ...m, mention: true as const }));
+  const rows = withCommits<(typeof notes)[number] | (typeof mentions)[number]>(
+    [...notes, ...mentions].sort((a, b) => a.date.localeCompare(b.date)),
+    ticket.commits,
+  );
   if (!rows.length) return <div class="empty-text">Nothing has happened yet.</div>;
   return (
     <ol class="timeline">
@@ -401,6 +438,7 @@ function Timeline({ ticket }: { ticket: TicketView }) {
             </li>
           );
         }
+        if ('mention' in f) return <MentionRow key={`mention-${f.from}-${f.anchor ?? ''}`} m={f} />;
         const e = f;
         const chat = e.chat && !('pending' in e.chat) ? e.chat : undefined;
         return (
@@ -473,6 +511,27 @@ export function Activity({ ticket }: { ticket: TicketView }) {
     window.addEventListener(SHOW_ENTRY, show);
     return () => window.removeEventListener(SHOW_ENTRY, show);
   }, [ticket.activity]);
+  // A reference to an entry (BL-130): it shows as "Show in activity" does it; one that's gone says so.
+  const [gone, setGone] = useState<string>();
+  useEffect(() => {
+    const show = (event: Event) => {
+      const { anchor, gone } = (event as CustomEvent<{ anchor: string; gone?: boolean }>).detail;
+      const e = gone ? undefined : ticket.activity.find((a) => a.anchor === anchor);
+      if (!e?.key) {
+        setGone(anchor);
+        requestAnimationFrame(() => document.querySelector('.reference-gone')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+        return;
+      }
+      setGone(undefined);
+      if (kindOf(e.author) === 'history') {
+        setTimeline(true);
+        return;
+      }
+      showEntry(e.key);
+    };
+    window.addEventListener(SHOW_ANCHOR, show);
+    return () => window.removeEventListener(SHOW_ANCHOR, show);
+  }, [ticket.activity]);
   useEffect(() => {
     const reply = (event: Event) => {
       setReplyTo((event as CustomEvent<ActivityEntry>).detail);
@@ -536,6 +595,14 @@ export function Activity({ ticket }: { ticket: TicketView }) {
       <div class="block-head">
         <h2>Activity</h2>
       </div>
+      {gone && (
+        <div class="reference-gone" role="status">
+          <i class="codicon codicon-warning" /> The comment a link pointed to ({ticket.item.id}#{gone}) is gone from this ticket.
+          <button class="icon-button" onClick={() => setGone(undefined)} title="Dismiss" aria-label="Dismiss">
+            <i class="codicon codicon-close" />
+          </button>
+        </div>
+      )}
       <div class="tabs" role="tablist" aria-label="Show">
         {TABS.map((t) => {
           const count = ticket.activity.filter((e) => kindOf(e.author) !== 'history' && (!t.kind || kindOf(e.author) === t.kind)).length;
@@ -621,6 +688,7 @@ export function Activity({ ticket }: { ticket: TicketView }) {
           images={!ticket.remote}
           format="markdown"
           mention={mentionPrefix(ticket.item.id)}
+          {...(!ticket.remote && ticket.references ? { suggest: { tickets: ticket.references, self: ticket.item.id } } : {})}
         />
         <div class="actions-row">
           {reviewable && (

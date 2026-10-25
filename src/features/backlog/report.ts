@@ -60,10 +60,15 @@ const KINDS: Record<string, QuestionKind> = { one: 'one', several: 'several', te
 export const REPLY_RULE =
   'To answer a comment (or any entry) in the ticket, write your entry as a reply to it: its first line is "↩ [Reply to <its author>, <its date>](#<its anchor>)", then your answer. The anchor is its heading\'s date, time and author, lowercased, with other characters as "-" ("### 2026-10-20 16:04 · You" is `2026-10-20-1604-you`), and "-2", "-3"… for the second and later entries by that author in that minute. A report that answers nothing in particular is no reply.';
 
+/** How an agent refers to other tickets and their comments (BL-130): the ticket view links what it writes so. */
+export const REFERENCE_RULE =
+  'Refer to another ticket by its id, as plain text (BL-102), and to a comment in one by that id, "#" and the entry\'s anchor (BL-102#2026-10-20-1604-you, the anchor as for a reply): the ticket links them (not in code spans), and the other ticket shows where it\'s mentioned.';
+
 export const REPORT_FORMAT = [
   'Start each report with a summary of at most 3 lines, then a line "Needs from you: nothing", or "Needs from you:" and what you need. The details (how to review, findings) follow it: the ticket folds them under the summary, so keep the summary to what matters most. Where a diagram says it better than words (the steps of a plan, a flow, a structure), draw it in the report as a ```mermaid block.',
   'To ask the user, put the questions after that line, each in a block fenced with ```question: its first line is the question, then the choices as "- " lines, with the one you suggest marked "(recommended)". The user clicks an answer: one choice (the default), or "choose: several" for checkboxes. "Other…" is there for a free answer. With no choices, the question gets a text box; "choose: yes/no" gives Yes and No. Ask only what you can\'t decide yourself, and stop until you\'re resumed with the answer.',
   REPLY_RULE,
+  REFERENCE_RULE,
 ].join('\n\n');
 
 /** Parses a report's Markdown (an agent's entry in a ticket's activity). */

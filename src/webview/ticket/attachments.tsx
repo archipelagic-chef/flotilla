@@ -21,6 +21,13 @@ export function showEntry(key: string, diagram?: number): void {
   window.dispatchEvent(new CustomEvent<string>(SHOW_ENTRY, { detail: key }));
 }
 
+/** The window event a reference to an entry sends (BL-130): its detail is the entry's anchor, and whether it's gone. */
+export const SHOW_ANCHOR = 'flotilla-show-anchor';
+
+export function showAnchor(anchor: string, gone?: boolean): void {
+  window.dispatchEvent(new CustomEvent<{ anchor: string; gone?: boolean }>(SHOW_ANCHOR, { detail: { anchor, ...(gone ? { gone } : {}) } }));
+}
+
 /** What the viewer shows: an attachment, or a folded entry's medium that isn't one (BL-114). */
 export type Shown = Omit<AttachmentView, 'src' | 'from' | 'demo'> & {
   src?: string;

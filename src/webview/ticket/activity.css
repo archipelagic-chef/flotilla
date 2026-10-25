@@ -409,3 +409,22 @@ button.timeline-item:hover .timeline-text {
   outline-offset: 2px;
   transition: outline-color 0.4s;
 }
+/* References to tickets and comments (BL-130): a link with the ticket's title and status on hover. */
+.ticket-ref {
+  white-space: nowrap;
+}
+.timeline-item.mention .ticket-ref {
+  color: var(--vscode-textLink-foreground);
+}
+.reference-gone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+}
+.reference-gone .icon-button {
+  margin-left: auto;
+}

@@ -32,6 +32,13 @@ export const commentsHandlers: Handlers = {
     const html = await renderMarkdown(m.text, panel.webview, panels.deps.backlog.dir, panels.roots(item));
     void panel.webview.postMessage({ type: 'previewed', requestId: m.requestId, html } satisfies TicketHostMessage);
   },
+  entries: async ({ panel, panels }, m) => {
+    void panel.webview.postMessage({ type: 'entries', requestId: m.requestId, entries: await panels.entrySuggestions(m.id) } satisfies TicketHostMessage);
+  },
+  copyText: async (_, m) => {
+    await vscode.env.clipboard.writeText(m.text);
+    void vscode.window.setStatusBarMessage(`Copied ${m.text}`, 3000);
+  },
   mediaRefused: async (_, m) => {
     void vscode.window.showWarningMessage(tooLargeNote(m.name, m.kind, m.size));
   },
