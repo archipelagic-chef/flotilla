@@ -152,14 +152,14 @@ So:
 
 ### Merging main past the reformat
 
-The commit that formatted the whole repository changes most lines of most files, so a branch from before it conflicts
-when it merges main. Merge main in three steps instead (`<reformat>` is the commit in
-[.git-blame-ignore-revs](.git-blame-ignore-revs)):
+The commit that formatted the whole repository (`4da0391`, listed in [.git-blame-ignore-revs](.git-blame-ignore-revs),
+which `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes `git blame` skip) changes most lines of most
+files, so a branch from before it conflicts all over when it merges main. Merge main in three steps instead:
 
 ```bash
-git merge <reformat>^                    # main up to the reformat: your usual conflicts, if any
-npx prettier --write . && git commit -am "BL-…: Format as main does"
-git merge -s ours <reformat> && git merge main
+git merge 4da0391^                       # main up to the reformat: your usual conflicts, if any
+npm ci && npm run format && git commit -am "BL-…: Format as main does"
+git merge -s ours 4da0391 && git merge main
 ```
 
 Your branch, formatted, is what the reformat would have made of it, so `-s ours` takes it as it is.
