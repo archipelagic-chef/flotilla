@@ -212,10 +212,15 @@ export function notePrompt(o: { agent: string; notes: ReadonlyArray<Pick<Note, '
   ].join('\n\n');
 }
 
-/** A message to a note agent whose chat goes on: the user answered in the note. */
-export function noteFollowUp(o: { agent: string; notes: ReadonlyArray<{ id: string; file: string }>; backlogDir: string }): string {
+/** A message to a note agent whose chat goes on: the user answered in the note, or Pause All paused it (BL-193). */
+export function noteFollowUp(
+  o: { agent: string; notes: ReadonlyArray<{ id: string; file: string }>; backlogDir: string },
+  why: 'answered' | 'paused' = 'answered',
+): string {
   return [
-    `The user answered in the note since your last reply: read the entries at the end of its "## Activity" section, and go on with it.`,
+    why === 'paused'
+      ? `You were paused (Pause All) and are resumed now: go on with the note where you left off.`
+      : `The user answered in the note since your last reply: read the entries at the end of its "## Activity" section, and go on with it.`,
     ...rules(o),
   ].join('\n\n');
 }

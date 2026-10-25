@@ -1512,6 +1512,24 @@ describe('Pause All and Resume All (BL-160)', () => {
     loop.dispose();
   });
 
+  it('pauses the note agents running with the others, saved as kind note, and resumes them (BL-193)', async () => {
+    const calls: string[] = [];
+    const notes = {
+      pauseForAll: async () => (calls.push('pause notes'), [{ id: 'N-1', kind: 'note' as const, session: 'note-session' }]),
+      resumeForAll: async (id: string, session?: string) => (calls.push(`resume ${id} ${session}`), 'running' as const),
+    };
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const withNotes = new PauseAll({ backlog: backlog as never, reviews: loop as never, store, notes });
+    const { paused } = await withNotes.pause();
+    expect(paused).toContainEqual({ id: 'N-1', kind: 'note', session: 'note-session' });
+    expect(store.read()?.agents).toContainEqual({ id: 'N-1', kind: 'note', session: 'note-session' });
+    expect(await withNotes.resume()).toEqual({ resumed: 3, waiting: 1 });
+    expect(calls).toEqual(['pause notes', 'resume N-1 note-session']);
+    withNotes.dispose();
+    all.dispose();
+    loop.dispose();
+  });
+
   it('holds and resumes after a restart: the set is read from the repository', async () => {
     await all.pause();
     all.dispose();

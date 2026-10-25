@@ -369,11 +369,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(answers);
   tickets.useAnswers(answers);
-  const pauseAll = new PauseAll({ backlog, reviews, shaping, merges: merger, store: pausedAll, lifted: () => reviews.dispatchQueued() });
-  context.subscriptions.push(pauseAll);
-  // After Install Main's reload (BL-161): the agents it paused go on.
-  resumeAfterInstall(context, location.commonDir, pauseAll);
-  registerAll(context.subscriptions, agentCommands({ backlog, tickets, reviews, shaping, checker }));
   // Notes (BL-182): requests jotted down in the backlog, which an agent turns into ticket proposals.
   const noteStore = new NoteStore(backlog.dir);
   const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, noteStore);
@@ -393,6 +388,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(notes);
   registerAll(context.subscriptions, noteCommands(notes));
   sidebar.useNotes(notes);
+  const pauseAll = new PauseAll({
+    backlog,
+    reviews,
+    shaping,
+    merges: merger,
+    notes,
+    store: pausedAll,
+    lifted: () => (reviews.dispatchQueued(), void notes.tick()),
+  });
+  context.subscriptions.push(pauseAll);
+  // After Install Main's reload (BL-161): the agents it paused go on.
+  resumeAfterInstall(context, location.commonDir, pauseAll);
+  registerAll(context.subscriptions, agentCommands({ backlog, tickets, reviews, shaping, checker }));
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
     extension: context,

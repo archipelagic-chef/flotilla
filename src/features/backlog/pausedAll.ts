@@ -4,10 +4,13 @@ import * as path from 'node:path';
 /** Pause All's record (BL-160), in the repository's .git/flotilla/: every window sees it, and it survives a restart. */
 export const PAUSED_ALL_FILE = 'paused-all.json';
 
-/** An agent Pause All paused: a ticket's agent (its chat), its discussion (BL-45), or its merge's agent (BL-164). */
+/**
+ * An agent Pause All paused: a ticket's agent (its chat), its discussion (BL-45), its merge's agent (BL-164), or a
+ * note's agent (BL-193; id is the note's).
+ */
 export interface PausedAgent {
   id: string;
-  kind: 'agent' | 'discussion' | 'merge';
+  kind: 'agent' | 'discussion' | 'merge' | 'note';
   /** The chat it goes on in: Resume All resumes it only while the ticket is still paused in that chat. */
   session?: string;
 }
@@ -76,7 +79,7 @@ export function parsePausedAll(text: string): PausedAll {
   const r = (raw ?? {}) as { at?: unknown; agents?: unknown };
   const agents = Array.isArray(r.agents)
     ? r.agents.flatMap((a: { id?: unknown; kind?: unknown; session?: unknown }): PausedAgent[] =>
-        typeof a?.id === 'string' && (a.kind === 'agent' || a.kind === 'discussion' || a.kind === 'merge')
+        typeof a?.id === 'string' && (a.kind === 'agent' || a.kind === 'discussion' || a.kind === 'merge' || a.kind === 'note')
           ? [{ id: a.id, kind: a.kind, ...(typeof a.session === 'string' ? { session: a.session } : {}) }]
           : [],
       )

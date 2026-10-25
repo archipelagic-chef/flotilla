@@ -18,6 +18,7 @@ import {
   type NoteStore,
   noteTools,
 } from '../../features/backlog/notes';
+import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
 import { showError, type Commands } from '../commandSet';
@@ -63,7 +64,7 @@ const DRAFT_KEPT_MS = 24 * 60 * 60_000;
  */
 export class NoteAgents implements vscode.Disposable {
   /** The agents running, by the note that leads: its notes and its run. */
-  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun }>();
+  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; paused?: boolean }>();
   private ticking = false;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
@@ -180,9 +181,31 @@ export class NoteAgents implements vscode.Disposable {
     void this.tick();
   }
 
+  /**
+   * Pause All (BL-193): stops the agents running, once they've stopped; their notes stay open with their sessions, so
+   * they resume in their chats once the hold is lifted. The paused, by the note that leads.
+   */
+  async pauseForAll(): Promise<PausedAgent[]> {
+    const paused = [...this.runs].filter(([, r]) => !r.paused);
+    for (const [, r] of paused) {
+      r.paused = true;
+      r.run.stop();
+    }
+    await Promise.all(paused.map(([, r]) => r.run.done));
+    return paused.map(([id, r]) => ({ id, kind: 'note', session: r.run.sessionId }));
+  }
+
+  /** Resume All: whether the note's agent goes on (its note still open in that chat); it does once the hold's lifted. */
+  async resumeForAll(id: string, session?: string): Promise<'running' | undefined> {
+    const note = await this.deps.notes.read(id);
+    return note?.status === 'open' && note.session === session ? 'running' : undefined;
+  }
+
   /** Starts agents for the notes that are due, while slots are free. */
   async tick(): Promise<void> {
-    if (this.ticking || !this.deps.isLeader() || this.deps.pausedAll?.()) return;
+    if (this.ticking || !this.deps.isLeader()) return;
+    // Paused in another window too: the agents running here stop.
+    if (this.deps.pausedAll?.()) return void this.pauseForAll();
     this.ticking = true;
     try {
       for (;;) {
@@ -212,7 +235,8 @@ export class NoteAgents implements vscode.Disposable {
     const o = { agent, notes: files, backlogDir: this.deps.backlog.dir };
     const run = runAgentHeadless({
       cwd: this.deps.mainRoot,
-      prompt: resume ? noteFollowUp(o) : notePrompt(o),
+      // Resumed after Pause All, unless the user's answer is the last word.
+      prompt: resume ? noteFollowUp(o, lead.activity.at(-1)?.author === 'You' ? 'answered' : 'paused') : notePrompt(o),
       resume,
       name: `${agent} · handling ${lead.id}`,
       track: { ticket: lead.id, agent, role: 'note' },
@@ -247,6 +271,12 @@ export class NoteAgents implements vscode.Disposable {
    */
   private async finished(lead: string, ids: string[], agent: string, result: AgentResult, slot: number): Promise<void> {
     this.deps.giveBack(slot);
+    // Paused (Pause All): its notes stay open, with their session, as they are.
+    if (this.runs.get(lead)?.paused) {
+      this.runs.delete(lead);
+      this.changed.fire();
+      return;
+    }
     // Its notes stay taken (in runs) until their state says what's next: open meanwhile, a tick would resume them.
     try {
       const reply = result.reply?.trim();
