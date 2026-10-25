@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ConflictedFile } from '../../core/git/conflictRegions';
+import type { SpendPurpose, ToolKind } from './transcriptSpend';
 
 /**
  * What Flotilla does and sees, as events (BL-157): one JSON object per line in
@@ -16,10 +17,23 @@ export type AgentRole = 'work' | 'review' | 'merge' | 'discuss' | 'reply' | 'imp
 
 /** Each kind of event, and what its `data` holds. */
 export interface EventData {
-  'ticket-moved': { from: string; to: string; by: string };
+  'ticket-moved': { from: string; to: string; by: string; criteria?: number };
   'agent-started': { role: AgentRole; model?: string; effort?: string; session: string };
   'agent-resumed': { role: AgentRole; model?: string; effort?: string; session: string };
   'agent-paused': { role: AgentRole; session: string; reason: 'limit' | 'user' | 'slot'; until?: string };
+  /** A part of a chat's spend (BL-189), from its transcript: what it was for, from `at` to `to`. */
+  'agent-spend': {
+    session: string;
+    purpose: SpendPurpose;
+    to: string;
+    tokens: Tokens;
+    costUsd: number;
+    /** Each turn's context, in thousands of tokens. */
+    contextK: number[];
+    /** Tool output by kind, in characters. */
+    tools: Partial<Record<ToolKind, number>>;
+    priced?: true;
+  };
   'agent-ended': { role: AgentRole; session: string; code: number | null; ok: boolean; minutes: number; tokens?: Tokens; costUsd?: number; model?: string };
   /** A ticket's review state changed (BL-158): the waits for you (asking, yours, approved, stopped) are its spans. */
   'review-state': { from?: string; to?: string };

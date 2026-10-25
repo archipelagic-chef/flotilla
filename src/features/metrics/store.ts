@@ -24,7 +24,7 @@ export class MetricsStore {
     return next;
   }
 
-  async view(period: MetricsPeriod, now = Date.now(), opts: { limit?: number } = {}): Promise<MetricsView> {
+  async view(period: MetricsPeriod, now = Date.now(), opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {}): Promise<MetricsView> {
     await this.refresh();
     return computeMetrics(this.index, period, now, opts);
   }

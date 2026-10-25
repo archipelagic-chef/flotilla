@@ -178,7 +178,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   // The Metrics view (BL-158): the sidebar's tool and its editor tab, counted from the event log.
-  const metrics = new Metrics(context.extensionUri, location.commonDir);
+  const metrics = new Metrics(context.extensionUri, location.commonDir, backlog);
   context.subscriptions.push(metrics);
   const sidebar = new SidebarProvider({
     metrics,

@@ -1,4 +1,5 @@
 import type { FlotillaEvent } from './events';
+import { quantile } from './productivity';
 
 /**
  * The numbers an improvement review is given (BL-159): each metric over a period, next to the period before it, so
@@ -67,12 +68,30 @@ function leadTimes(events: readonly FlotillaEvent[], all: readonly FlotillaEvent
  * The metrics, in the order a review reads them. `all` is every event (a ticket started before the period and done in
  * it still has its lead time).
  */
-export function metricDefs(all: readonly FlotillaEvent[]): MetricDef[] {
+export function metricDefs(all: readonly FlotillaEvent[], criteria: ReadonlyMap<string, number> = new Map()): MetricDef[] {
   const conflicted = (es: readonly FlotillaEvent[]) => of(es, 'merge-conflicted');
   const regions = (es: readonly FlotillaEvent[]) => conflicted(es).flatMap((e) => e.data.files.flatMap((f) => f.regions));
   const ended = (es: readonly FlotillaEvent[]) => of(es, 'agent-ended');
   const done = (es: readonly FlotillaEvent[]) => of(es, 'ticket-moved').filter((e) => e.data.to === 'done').length;
+  // Productivity (BL-189): the acceptance criteria of the tickets done (as recorded then, else as their descriptions
+  // have them now), for the chats' spend.
+  const spend = (es: readonly FlotillaEvent[]) => of(es, 'agent-spend');
+  const usd = (es: readonly FlotillaEvent[]) => sum(spend(es).map((e) => e.data.costUsd));
+  const tokens = (es: readonly FlotillaEvent[]) => sum(spend(es).map((e) => e.data.tokens.input + e.data.tokens.output + e.data.tokens.cacheRead + e.data.tokens.cacheCreation));
+  const delivered = (es: readonly FlotillaEvent[]) => {
+    const by = new Map<string, number>();
+    for (const e of of(es, 'ticket-moved')) if (e.data.to === 'done' && e.ticket) by.set(e.ticket, e.data.criteria ?? criteria.get(e.ticket) ?? 0);
+    return sum([...by.values()]);
+  };
+  const contexts = (es: readonly FlotillaEvent[]) => spend(es).flatMap((e) => e.data.contextK).sort((a, b) => a - b);
+  const ifSpent = (f: (es: readonly FlotillaEvent[]) => number | undefined) => (es: readonly FlotillaEvent[]) => (spend(es).length ? f(es) : undefined);
   return [
+    { id: 'criteria-per-usd', label: 'Acceptance criteria done per $ spent', better: 'higher', value: ifSpent((es) => ratio(delivered(es), usd(es))) },
+    { id: 'criteria-per-mtok', label: 'Acceptance criteria done per million tokens', better: 'higher', value: ifSpent((es) => ratio(delivered(es), tokens(es) / 1e6)) },
+    { id: 'spend-outside-tickets', label: 'Share of the spend in chats not tied to a ticket', better: 'lower', value: ifSpent((es) => ratio(sum(spend(es).filter((e) => e.data.purpose === 'orchestration').map((e) => e.data.costUsd)), usd(es))) },
+    { id: 'spend-rework-share', label: 'Share of the spend on rework, resuming and keeping up with main', better: 'lower', value: ifSpent((es) => ratio(sum(spend(es).filter((e) => ['rework', 'resume', 'main'].includes(e.data.purpose)).map((e) => e.data.costUsd)), usd(es))) },
+    { id: 'context-median-k', label: 'Median context per turn (thousands of tokens)', better: 'lower', value: ifSpent((es) => quantile(contexts(es), 0.5)) },
+    { id: 'context-p90-k', label: 'p90 context per turn (thousands of tokens)', better: 'lower', value: ifSpent((es) => quantile(contexts(es), 0.9)) },
     { id: 'tickets-done', label: 'Tickets done', better: 'higher', value: done },
     { id: 'lead-time-hours', label: 'Median hours from In Progress to Done', better: 'lower', unit: 'h', value: (es) => median(leadTimes(es, all)) },
     {
@@ -118,7 +137,7 @@ export function eventsBetween(events: readonly FlotillaEvent[], from: Date, to: 
 }
 
 /** The metrics of the `days` before `to`, each next to the same span before it. */
-export function metricsSummary(all: readonly FlotillaEvent[], o: { to: Date; days: number }): MetricsSummary {
+export function metricsSummary(all: readonly FlotillaEvent[], o: { to: Date; days: number; criteria?: ReadonlyMap<string, number> }): MetricsSummary {
   const from = new Date(o.to.getTime() - o.days * DAY_MS);
   const before = new Date(from.getTime() - o.days * DAY_MS);
   const now = eventsBetween(all, from, o.to);
@@ -128,7 +147,7 @@ export function metricsSummary(all: readonly FlotillaEvent[], o: { to: Date; day
     to: o.to.toISOString(),
     events: now.length,
     imported: now.filter((e) => e.imported).length,
-    metrics: metricDefs(all).map((d) => ({ id: d.id, label: d.label, better: d.better, unit: d.unit, value: d.value(now), previous: d.value(prev) })),
+    metrics: metricDefs(all, o.criteria).map((d) => ({ id: d.id, label: d.label, better: d.better, unit: d.unit, value: d.value(now), previous: d.value(prev) })),
   };
 }
 

@@ -1,5 +1,6 @@
 import type { MetricBar, MetricChart, MetricNumber, MetricRow, MetricSection, MetricsPeriod, MetricsView } from '../../webview/metricsProtocol';
 import type { AgentRole, EventKind, FlotillaEvent } from './events';
+import { productivitySection } from './productivity';
 
 /**
  * The Metrics view's numbers (BL-158), counted from the event log (BL-157) for a period and the one before. Pure: the
@@ -499,7 +500,7 @@ function byValue(rows: MetricRow[]): MetricRow[] {
 const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
 
 /** The Metrics view of the period ending at now, each number compared with the period before. */
-export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: number, opts: { limit?: number } = {}): MetricsView {
+export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: number, opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {}): MetricsView {
   const len = PERIOD_DAYS[period] * DAY;
   const cur: Range = { from: now - len, to: now };
   const prev: Range = { from: now - 2 * len, to: now - len };
@@ -507,6 +508,9 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
   const b = count(index, prev, now);
   const when = PERIOD_NAME[period];
   const cols = buckets(period, cur.from, cur.to);
+
+  // Productivity (BL-189): first, what was delivered for what was spent.
+  const productivity = productivitySection(index, { period, cur, prev, cols, when, ...(opts.criteria ? { criteria: opts.criteria } : {}) });
 
   // Flow.
   const flowTotal = (c: Counted) => average(c.flows.map((f) => f.end! - f.start!));
@@ -643,7 +647,7 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     ],
   };
 
-  return { period, from: new Date(cur.from).toISOString(), to: new Date(cur.to).toISOString(), sections: [flow, merges, agents, cost, you], events: index.size };
+  return { period, from: new Date(cur.from).toISOString(), to: new Date(cur.to).toISOString(), sections: [productivity, flow, merges, agents, cost, you], events: index.size };
 }
 
 /** The tickets that landed among events: merged, or moved to Done. */
