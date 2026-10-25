@@ -40,10 +40,15 @@ vi.mock('vscode', () => {
 });
 
 /** The resolving agent: never started for real; the test does its work in the merge's worktree. */
-const agents = { prompts: [] as string[] };
+const agents = { prompts: [] as string[], runs: [] as Array<{ cwd: string; resume?: string; stopped: boolean }> };
 vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/ui/backlog/agentRunner')>()),
-  runAgentHeadless: (o: { prompt: string }) => (agents.prompts.push(o.prompt), { sessionId: 'session', done: new Promise(() => undefined), stop() {} }),
+  runAgentHeadless: (o: { prompt: string; cwd: string; resume?: string }) => {
+    agents.prompts.push(o.prompt);
+    const r = { cwd: o.cwd, resume: o.resume, stopped: false };
+    agents.runs.push(r);
+    return { sessionId: o.resume ?? 'session', done: new Promise(() => undefined), stop: () => void (r.stopped = true) };
+  },
 }));
 
 /** The checks: they print a failure and exit with ui.checksExit. */
@@ -452,6 +457,36 @@ describe('Merge to main', () => {
     expect(git(repo, 'status', '--porcelain')).toBe('');
     expect(worktrees()).toBe(1);
     expect((await item('BL-1')).merging).toBeUndefined();
+    merger.dispose();
+  });
+
+  it('Pause All pauses a resolving merge agent, keeping its chat, and Resume All resumes it in the merge worktree (BL-164)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 'a.txt', 'one\n', 'BL-1: a');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 'a.txt', 'two\n', 'other: a');
+    agents.runs = [];
+    ui.answers = ['Resolve with Agent'];
+    expect(await merger.merge('BL-1')).toBe('stopped');
+    await merger.resolveWithAgent('BL-1');
+    const dir = (await item('BL-1')).merging!.dir;
+    cleanup.push(dir);
+    expect(merger.isRunning('BL-1')).toBe(true);
+
+    expect(await merger.pauseForAll('BL-1')).toBe('session');
+    expect(agents.runs[0].stopped).toBe(true);
+    expect(merger.isRunning('BL-1')).toBe(false);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session', paused: expect.any(String) });
+    expect(await merger.pauseForAll('BL-1')).toBeUndefined(); // paused already
+
+    expect(await merger.resumeForAll('BL-1', 'other-session')).toBeUndefined(); // not paused in that chat
+    expect(await merger.resumeForAll('BL-1', 'session')).toBe('running');
+    expect(agents.runs[1]).toMatchObject({ cwd: dir, resume: 'session', stopped: false });
+    expect(merger.isRunning('BL-1')).toBe(true);
+    expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session' });
+    expect((await item('BL-1')).merging!.paused).toBeUndefined();
+    await merger.cancel('BL-1');
     merger.dispose();
   });
 

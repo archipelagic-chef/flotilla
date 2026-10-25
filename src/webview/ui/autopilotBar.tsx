@@ -53,7 +53,7 @@ export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldPro
           </span>
         </button>
         {!open && autopilot.waitingUntil && !autopilot.elsewhere && <TryNow />}
-        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />}
         <Switch on />
       </div>
       {open && <Details autopilot={autopilot} titles={titles} live={live} />}
@@ -112,7 +112,7 @@ export function AgentCount({ label, autopilot, titles, live, open, setOpen }: Fo
           <i class="codicon codicon-hubot" />
           <span>{label}</span>
         </button>
-        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />}
+        {!open && <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />}
         {open && <Switch on={false} />}
       </div>
       {open && <Details autopilot={autopilot} titles={titles} live={live} />}
@@ -191,10 +191,10 @@ function Details({ autopilot, titles, live }: { autopilot: AutopilotState; title
         />
         {d.tryNow && <TryNow />}
       </div>
-      {(autopilot.pausedAll !== undefined || autopilot.running > 0) && (
+      {(autopilot.pausedAll !== undefined || autopilot.running + (autopilot.merging ?? 0) > 0) && (
         <div class="pause-all-row">
           <span>{autopilot.pausedAll !== undefined ? `${pausedAllLabel(autopilot.pausedAll)}: nothing starts until you resume.` : 'Pause every agent working, their chats kept:'}</span>
-          <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running} />
+          <PauseOrResume pausedAll={autopilot.pausedAll} running={autopilot.running + (autopilot.merging ?? 0)} />
         </div>
       )}
     </div>

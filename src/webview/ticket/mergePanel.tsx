@@ -189,6 +189,8 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
         : m.train
           ? ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: it's recorded, the merge train is rebuilt with it, and the ticket lands from the train.`]
           : ['pass', 'waiting', `${agent} resolved the conflicts (its report is below). Approve the resolution: the checks run, then ${m.base} moves to the merge.`]
+      : m.state === 'resolving' && m.paused
+        ? ['debug-pause', 'waiting', `${agent} is paused ${work}; its chat is kept. Resume goes on with it there.`]
       : m.state === 'resolving'
         ? ['debug-pause', 'stopped', `${agent} isn't running anymore, and the ${checks ? 'checks aren\'t fixed' : 'conflicts aren\'t resolved'}.`]
         : checks && m.reason?.startsWith('the checks failed')
@@ -205,6 +207,16 @@ export function MergingPanel({ ticket }: { ticket: TicketView }) {
         <ActionButton class="button secondary" message={{ type: 'mergeCancel' }} working="Cancelling…" title="Stops its agent and removes the temporary worktree; nothing changes">
           <i class="codicon codicon-close" /> Cancel
         </ActionButton>
+        {actions.includes('pause') && (
+          <ActionButton class="button secondary" message={{ type: 'mergePause' }} working="Pausing…" title="Pauses its agent: its chat is kept, and Resume goes on with it there">
+            <i class="codicon codicon-debug-pause" /> Pause
+          </ActionButton>
+        )}
+        {actions.includes('resume') && (
+          <ActionButton class="button" message={{ type: 'mergeResume' }} working="Resuming…" title="Its agent goes on in its chat, in the merge's temporary worktree">
+            <i class="codicon codicon-debug-continue" /> Resume
+          </ActionButton>
+        )}
         {actions.includes('resolve') && (
           <ActionButton
             class="button"

@@ -31,6 +31,13 @@ export const mergeHandlers: Handlers = {
   mergeCancel: async ({ id, panels }) => {
     await panels.merger?.cancel(id);
   },
+  mergePause: async ({ id, panels }) => {
+    await panels.merger?.pause(id);
+  },
+  // A paused agent's Resolve with Agent goes on in its chat.
+  mergeResume: async ({ id, panels }) => {
+    await panels.merger?.resolveWithAgent(id);
+  },
   mergeCiCancel: async ({ id, panels }) => {
     await panels.merger?.cancelCiWait(id);
   },

@@ -214,6 +214,7 @@ export function checkMerge(merging: BacklogItem['merging'], f: MergeFacts): Clai
   const agent = merging.agent ?? 'Its agent';
   if (f.runs) return { key: 'merge', ok: true, text: `${agent} is resolving the merge (run by this window)` };
   if (f.process) return { key: 'merge', ok: true, text: `${agent} is resolving the merge (process ${f.process.pid})` };
+  if (merging.paused) return { key: 'merge', ok: true, text: `${agent} is paused resolving the merge: Resume goes on with it` };
   return {
     key: 'merge',
     ok: false,

@@ -303,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(shaping);
   tickets.useShaping(shaping);
-  const pauseAll = new PauseAll({ backlog, reviews, shaping, store: pausedAll, lifted: () => reviews.dispatchQueued() });
+  const pauseAll = new PauseAll({ backlog, reviews, shaping, merges: merger, store: pausedAll, lifted: () => reviews.dispatchQueued() });
   context.subscriptions.push(pauseAll);
   // After Install Main's reload (BL-161): the agents it paused go on.
   resumeAfterInstall(context, location.commonDir, pauseAll);
@@ -378,6 +378,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     leader,
     output,
     pauseAll,
+    merges: merger,
     prepareWorktree: (item) => prepareItemWorktree(ctx, item),
     // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
     key: () =>

@@ -39,7 +39,8 @@ const started = Date.now();
 // "Ada-3 · BL-33" (an implementer), "Ada-3 · review BL-33" (a reviewer): the name Flotilla gives the chat.
 const who = name.split('·')[0].trim() || 'Fake';
 const reviewer = /·\s*review\s/.test(name);
-const item = /·\s*(?:review\s+)?([A-Z]+-\d+)\s*$/.exec(name)?.[1] ?? /backlog item ([A-Z]+-\d+)/.exec(prompt)?.[1];
+// "BL-33 merge": a merge's agent, whose resumed chat's prompt doesn't name the item.
+const item = /·\s*(?:review\s+)?([A-Z]+-\d+)\s*$/.exec(name)?.[1] ?? /^([A-Z]+-\d+) merge$/.exec(name)?.[1] ?? /backlog item ([A-Z]+-\d+)/.exec(prompt)?.[1];
 
 const reply = (result, isError = false) => {
   const out = { type: 'result', subtype: isError ? 'error_during_execution' : 'success', is_error: isError, duration_ms: Date.now() - started, num_turns: 1, result, session_id: session, total_cost_usd: 0 };

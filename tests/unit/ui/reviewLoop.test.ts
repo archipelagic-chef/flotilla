@@ -1410,6 +1410,34 @@ describe('Pause All and Resume All (BL-160)', () => {
     loop.dispose();
   });
 
+  it("pauses a merge's agent with the others, saved as kind merge, and resumes it in its chat (BL-164)", async () => {
+    data.items[4].merging = { dir: '/tmp/m', branch: 'feature/BL-5', base: 'main', baseTip: 'abc', state: 'resolving', started: at };
+    const calls: string[] = [];
+    let checks = ['BL-5'];
+    const merges = {
+      pauseForAll: async (id: string) => (calls.push(`pause ${id}`), 'merge-session'),
+      resumeForAll: async (id: string, session?: string) => (calls.push(`resume ${id} ${session}`), 'running' as const),
+      checksRunning: () => checks,
+      stopChecks: (id: string) => void (calls.push(`stop checks ${id}`), (checks = [])),
+    };
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const withMerges = new PauseAll({ backlog: backlog as never, reviews: loop as never, store, merges });
+    // Let Them Finish: the checks go on.
+    const { paused } = await withMerges.pause();
+    expect(paused).toContainEqual({ id: 'BL-5', kind: 'merge', session: 'merge-session' });
+    expect(store.read()?.agents).toContainEqual({ id: 'BL-5', kind: 'merge', session: 'merge-session' });
+    expect(calls).toEqual(['pause BL-5']);
+    expect(await withMerges.resume()).toEqual({ resumed: 3, waiting: 1 }); // a merge's agent isn't held by the limit
+    expect(calls).toEqual(['pause BL-5', 'resume BL-5 merge-session']);
+    // Stop Them: the checks stop first.
+    calls.length = 0;
+    await withMerges.pause({ stopChecks: true });
+    expect(calls).toEqual(['stop checks BL-5', 'pause BL-5']);
+    withMerges.dispose();
+    all.dispose();
+    loop.dispose();
+  });
+
   it('holds and resumes after a restart: the set is read from the repository', async () => {
     await all.pause();
     all.dispose();
