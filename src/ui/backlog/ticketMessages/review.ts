@@ -14,6 +14,8 @@ export const reviewHandlers: Handlers<ReviewMessage> = {
   },
   userReview: async ({ id, panels }, m) => {
     await panels.reviews?.userReview(id, m.verdict, m.text);
+    // Update from Main and Merge waiting for this approval goes on now, not at its next poll.
+    if (m.verdict === 'approved' && panels.merger?.chainOf(id)) await panels.merger.checkChains();
   },
   reviewFix: async ({ id, panels }, m) => {
     await panels.reviews?.fix(id, m.fix);

@@ -4,22 +4,68 @@
     "flotilla.merge.checks": "local"
   },
   "steps": [
-    { "command": "Focus on Flotilla View" },
-    { "click": "[aria-label=\"Backlog\"]" },
-    { "click": ".backlog-item:has-text(\"Say how to run the playground\") .name" },
-    { "waitFor": "h1:has-text(\"Say how to run the playground\")" },
-    { "waitFor": ".review-panel button:has-text(\"Update from Main and Merge\")", "timeout": 60000 },
-    { "caption": "BL-16 is approved, but its branch conflicts with main: Merge to main can't work" },
-    { "hover": ".review-panel button:has-text(\"Update from Main and Merge\")" },
-    { "wait": 1500 },
-    { "caption": "In its place, the step that can: Update from Main and Merge" },
-    { "wait": 1500 },
-    { "click": ".review-panel button:has-text(\"Update from Main and Merge\")" },
-    { "caption": "Its agent rebases the branch onto main and resolves the conflict; the review checks it" },
-    { "waitFor": ".step-status", "timeout": 30000 },
-    { "waitFor": ".review-panel:has-text(\"Merged into main\")", "timeout": 120000 },
-    { "caption": "Then it merges, the checks first: merged into main, without a dialog" },
-    { "wait": 2500 },
-    { "caption": "" }
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say how to run the playground\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say how to run the playground\")"
+    },
+    {
+      "waitFor": ".review-panel button:has-text(\"Update from Main and Merge\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "BL-16 is approved, but its branch conflicts with main: Merge to main can't work"
+    },
+    {
+      "hover": ".review-panel button:has-text(\"Update from Main and Merge\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "In its place, the step that can: Update from Main and Merge"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".review-panel button:has-text(\"Update from Main and Merge\")"
+    },
+    {
+      "caption": "Its agent rebases the branch onto main and resolves the conflict; the review checks it"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"It merges once you approve\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "Its agent resolved them: the part that needs you stops with one button, Approve"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"Merged into main\")",
+      "timeout": 120000
+    },
+    {
+      "caption": "Then it merges, the checks first: merged into main, without a dialog"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
   ]
 }

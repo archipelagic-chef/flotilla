@@ -404,7 +404,7 @@ export class Merger implements vscode.Disposable {
    * The chains whose agent is resolving: each merges once its agent is done, the work approved again (its hand-off goes
    * through review: an approval waiting for you holds it there) and its branch takes main in cleanly.
    */
-  private async checkChains(): Promise<void> {
+  async checkChains(): Promise<void> {
     const base = await this.baseBranch().catch(() => undefined);
     for (const [id, chain] of this.chains) {
       if (chain !== 'resolving' || this.deps.agentWorking?.(id)) continue;
@@ -418,7 +418,7 @@ export class Merger implements vscode.Disposable {
         continue;
       }
       this.setChain(id);
-      const why = !going ? "its review stopped" : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
+      const why = !going ? 'its review stopped' : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
       await this.note(id, `Update from Main and Merge stopped: ${why}. Nothing was merged.`);
     }
     if (![...this.chains.values()].includes('resolving')) {
