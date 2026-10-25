@@ -7,6 +7,7 @@ import type { ReportView, TicketView, TicketWebviewMessage } from '../ticketProt
 import { Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
 import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from './actions';
 import { REPLY_TO, sendComment, useSending } from './comments';
+import { AskButton, AskLine } from './askAgent';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
 import { ago, ChatCard, chatState } from './agents';
 import './activity.css';
@@ -243,6 +244,7 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
             <i class="codicon codicon-reply" /> Reply
           </button>
         )}
+        <AskButton e={e} ticket={ticket} />
         {onFold && (
           <button class="text-button fold-entry" aria-expanded={true} onClick={onFold}>
             <i class="codicon codicon-chevron-up" /> Fold
@@ -277,6 +279,8 @@ function FeedRowView({ f, ticket, onFold, nest }: { f: FeedRow; ticket: TicketVi
           ))}
         </ol>
       )}
+      {/* Where its reply will show: what the agent asked to answer it is at (BL-127). */}
+      <AskLine e={e} ticket={ticket} />
     </li>
   );
 }
@@ -496,9 +500,9 @@ export function Activity({ ticket }: { ticket: TicketView }) {
   const unconfirmed = sending.filter((p) => !ticket.activity.slice(p.at).some((e) => e.author === 'You' && e.body.trim() === p.text.trim()));
   const changesBusy = useWorking({ type: 'userReview', verdict: 'changes', text: '' });
   const approveBusy = useWorking({ type: 'userReview', verdict: 'approved', text: '' });
-  const post = () => {
+  const post = (ask = false) => {
     if (!comment.trim()) return;
-    sendComment(comment, replying?.anchor);
+    sendComment(comment, replying?.anchor, ask);
     setComment('');
     setReplyTo(undefined);
     if (tab && tab !== 'comment') setTab(undefined);
@@ -617,7 +621,8 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 : 'Add a comment (Markdown; paste or drop images and videos; Ctrl+Enter posts)'
           }
           label="Comment"
-          onSubmit={post}
+          onSubmit={() => post()}
+          onSubmitShift={ticket.canAsk && !asking ? () => post(true) : undefined}
           images={!ticket.remote}
           format="markdown"
           mention={mentionPrefix(ticket.item.id)}
@@ -667,7 +672,12 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 )}
               </>
             ))}
-          <button class="button" disabled={!comment.trim()} onClick={post}>
+          {ticket.canAsk && !asking && (
+            <button class="button secondary" disabled={!comment.trim()} onClick={() => post(true)} title="Posts your comment, and an agent answers it now, as a reply (Ctrl+Shift+Enter)">
+              <i class="codicon codicon-sparkle" /> Comment and Ask an Agent
+            </button>
+          )}
+          <button class="button" disabled={!comment.trim()} onClick={() => post()}>
             {asking ? 'Answer' : 'Comment'}
           </button>
         </div>

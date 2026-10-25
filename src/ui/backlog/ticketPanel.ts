@@ -53,6 +53,7 @@ import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
 import { readTranscript } from '../../features/chats/chats';
 import type { Shaping } from './shaping';
+import type { AskAgent } from './askAgent';
 import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
 import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
 import { gifSeconds, recordedDemo, withDemoUnits, type Recording } from '../../features/backlog/demo';
@@ -392,6 +393,19 @@ export class TicketPanels implements vscode.Disposable {
     this.mainSync = mainSync;
   }
 
+  answers: AskAgent | undefined;
+
+  /** Ask an Agent (BL-127): agents answering your comments. */
+  useAnswers(answers: AskAgent): void {
+    this.answers = answers;
+    this.subscriptions.push(answers.onDidChange((id) => this.refresh(new Set([id]))));
+  }
+
+  /** Whether a ticket's tab is open. */
+  isOpen(id: string): boolean {
+    return this.panels.has(id);
+  }
+
   /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
   useShaping(shaping: Shaping): void {
     this.shaping = shaping;
@@ -512,6 +526,10 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
+    // Its agents' replies are seen now (BL-127): its card no longer says so.
+    if (item.unseenReplies) {
+      await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? (({ unseenReplies: _, ...rest }) => rest)(i) : i)) }));
+    }
     if (o.focus) this.focusOnPost.set(panel, o.focus);
     const ci = this.ci?.open(id, panel);
     const live = setInterval(() => void this.liveActivity(panel), LIVE_MS);
@@ -1178,6 +1196,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
+      ...(!remote && this.answers ? { canAsk: true, asked: this.answers.viewsOf(plain.id) } : {}),
       dependsOn: [],
       ...(this.shaping && !remote && discussable(plain) && plain.shaping
         ? { shaping: { agent: plain.shaping.agent, running: this.shaping.isRunning(plain.id), ready: !!plain.shaping.ready, ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}), ...this.discussionChat(plain) } }

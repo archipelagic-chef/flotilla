@@ -10,10 +10,10 @@ const sendingListeners = new Set<() => void>();
 let shownEntries = 0;
 
 /** Sends a comment (from anywhere in the ticket): it shows at once, marked as sending, until the host is done with it. */
-export function sendComment(text: string, replyTo?: string) {
+export function sendComment(text: string, replyTo?: string, ask = false) {
   sendingComments = [...sendingComments, { text, date: entryDate(new Date()), at: shownEntries }];
   sendingListeners.forEach((f) => f());
-  act({ type: 'comment', text, ...(replyTo ? { replyTo } : {}) }, 'Sending…');
+  act({ type: 'comment', text, ...(replyTo ? { replyTo } : {}), ...(ask ? { ask } : {}) }, 'Sending…');
 }
 
 /** The window event a Reply button sends (BL-126): the comment box replies to that entry (its detail). */

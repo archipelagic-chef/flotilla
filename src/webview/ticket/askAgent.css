@@ -1,0 +1,43 @@
+/* Ask an Agent (BL-127): its button beside Reply, and the line under a comment asked about. */
+.ask-agent {
+  font-size: 11px;
+}
+.ask-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-left: 2px solid var(--vscode-textLink-foreground);
+  background: var(--vscode-editor-inactiveSelectionBackground, transparent);
+}
+.ask-line.ask-failed,
+.ask-line.ask-stopped {
+  border-left-color: var(--vscode-editorWarning-foreground, var(--muted));
+}
+.ask-line.ask-answered {
+  border-left-color: var(--vscode-testing-iconPassed, var(--muted));
+}
+.ask-label {
+  flex: none;
+}
+.ask-now {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.ask-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.ask-line .text-button {
+  font-size: 11px;
+}
+.ask-label + .text-button,
+.ask-time + .text-button {
+  margin-left: auto;
+}

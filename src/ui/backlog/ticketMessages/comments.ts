@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { entryAnchors } from '../../../features/backlog/ticket';
 import { mediaType, tooLarge, tooLargeNote } from '../../../features/backlog/media';
 import type { TicketHostMessage } from '../../../webview/ticketProtocol';
 import { inMarkup, renderMarkdown } from '../ticketPanel';
@@ -7,15 +8,26 @@ import type { Handlers } from './context';
 
 /** The activity: comments, the images and videos pasted into them, previews, and posting an entry to the tracker. */
 export const commentsHandlers: Handlers = {
-  comment: async ({ id, item, panels }, m) => {
+  comment: async ({ id, item, panels, backlog }, m) => {
     if (!m.text.trim()) return;
     if (item.remote) {
       await panels.writeRemote(id, (s) => s.comment(id, inMarkup(s, m.text)));
       return;
     } else {
-      // A comment starts no agent by itself: Discuss opens a chat for that (BL-188).
+      // A comment starts no agent by itself (Discuss opens a chat for that, BL-188), unless you ask one to answer it (BL-127).
       await panels.addActivity(id, 'You', await panels.withReplyLine(item, m.text, m.replyTo));
+      if (m.ask && panels.answers) {
+        const activity = (await backlog.readTicket(item)).activity;
+        const anchor = entryAnchors(activity).at(-1);
+        if (anchor) await panels.answers.ask(id, anchor);
+      }
     }
+  },
+  askAgent: async ({ id, item, panels }, m) => {
+    if (!item.remote) await panels.answers?.ask(id, m.anchor, { now: m.now });
+  },
+  askAgentStop: async ({ id, panels }, m) => {
+    panels.answers?.stop(id, m.anchor);
   },
   image: async ({ id, panel, backlog }, m) => {
     const bytes = Buffer.from(m.data, 'base64');

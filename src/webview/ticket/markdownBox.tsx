@@ -97,6 +97,7 @@ export function MarkdownBox({
   placeholder,
   label,
   onSubmit,
+  onSubmitShift,
   autoFocus,
   minRows = 3,
   images = true,
@@ -108,6 +109,8 @@ export function MarkdownBox({
   placeholder: string;
   label: string;
   onSubmit(): void;
+  /** Ctrl+Shift+Enter, when it does something else than Ctrl+Enter (Comment and Ask an Agent). */
+  onSubmitShift?(): void;
   autoFocus?: boolean;
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
@@ -155,7 +158,8 @@ export function MarkdownBox({
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          onSubmit();
+          if (e.shiftKey && onSubmitShift) onSubmitShift();
+          else onSubmit();
           return;
         }
         const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());

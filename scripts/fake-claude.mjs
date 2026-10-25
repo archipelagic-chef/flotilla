@@ -12,6 +12,8 @@
 //   fake: limit 2m          its first run hits a usage limit that resets in 2 minutes; the resumed run goes on
 //   fake: crash             its first run dies without reporting; the resumed run goes on
 //
+// Asked to answer a comment (Ask an Agent), it answers in its final message, quoting the comment, and changes nothing.
+//
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
 // word by word over a few seconds, and stops (a second later) when it's interrupted.
 //
@@ -128,8 +130,15 @@ async function main() {
     return;
   }
 
+  // Ask an Agent (BL-127): it answers the comment in its final message, which Flotilla writes as the reply.
+  if (/asks you to answer their comment/.test(prompt)) return answerComment();
   if (reviewer) return review(file, text, hints, item);
   return implement(file, text, hints, item);
+}
+
+function answerComment() {
+  const asked = /^> (.*)$/m.exec(prompt)?.[1]?.trim() ?? 'your comment';
+  reply(`Fake answer to "${asked.slice(0, 80)}": a real agent would read the ticket and the code, and answer it here, briefly.`);
 }
 
 function review(file, text, hints, id) {
