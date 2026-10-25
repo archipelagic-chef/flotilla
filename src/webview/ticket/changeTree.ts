@@ -1,4 +1,9 @@
-import type { ChangedFile, DiffLine, FileDiff, TicketChange } from '../ticketProtocol';
+import type {
+  ChangedFile,
+  DiffLine,
+  FileDiff,
+  TicketChange,
+} from '../ticketProtocol';
 
 /** A folder of the Changes tree: its name (a chain of folders with nothing else in them, as one: "src/core/git"). */
 interface Folder {
@@ -144,7 +149,7 @@ export function fullRows(lines: readonly DiffLine[], shown: ReadonlySet<number>,
   }
   const rows: FullRow[] = [];
   const line = (i: number) => rows.push({ kind: 'line', key: `l${i}`, line: lines[i] });
-  for (let i = 0; i < n; ) {
+  for (let i = 0; i < n;) {
     if (near[i]) {
       line(i++);
       continue;

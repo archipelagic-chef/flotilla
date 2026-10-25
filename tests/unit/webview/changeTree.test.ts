@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { changeRows, fullRows, rowWindow, withDiffs } from '../../../src/webview/ticket/changeTree';
+import {
+  changeRows,
+  fullRows,
+  rowWindow,
+  withDiffs,
+} from '../../../src/webview/ticket/changeTree';
 import type { ChangeGroup, ChangedFile, TicketChange } from '../../../src/webview/ticketProtocol';
 
 const file = (p: string, added = 1, deleted = 0): ChangedFile => ({ path: p, kind: 'modified', added, deleted });
@@ -16,7 +21,9 @@ const group = (label: string, files: ChangedFile[]): ChangeGroup => ({
 });
 const change = (...groups: ChangeGroup[]): TicketChange => ({ stage: 'work', groups, files: 0, added: 0, deleted: 0 });
 const show = (rows: ReturnType<typeof changeRows>) =>
-  rows.map((r) => `${'  '.repeat(r.kind === 'group' ? 0 : r.depth)}${r.kind === 'group' ? `[${r.group}]` : r.kind === 'folder' ? `${r.name}/ +${r.added}` : r.name}`);
+  rows.map(
+    (r) => `${'  '.repeat(r.kind === 'group' ? 0 : r.depth)}${r.kind === 'group' ? `[${r.group}]` : r.kind === 'folder' ? `${r.name}/ +${r.added}` : r.name}`,
+  );
 
 describe('changeRows', () => {
   it('folders first, chains of single folders as one, with their counts', () => {
@@ -61,7 +68,15 @@ describe('withDiffs', () => {
       ['0:c.png', { note: 'A binary file' }],
     ]);
     const out = withDiffs(rows, new Set(['0:a.ts', '0:b.ts', '0:c.png']), diffs).map((r) =>
-      r.kind === 'hunk' ? `${r.label} @${r.line}` : r.kind === 'line' ? `${r.line.kind} ${r.line.text}` : r.kind === 'note' ? `(${r.text})` : r.kind === 'file' ? r.name : r.kind,
+      r.kind === 'hunk'
+        ? `${r.label} @${r.line}`
+        : r.kind === 'line'
+          ? `${r.line.kind} ${r.line.text}`
+          : r.kind === 'note'
+            ? `(${r.text})`
+            : r.kind === 'file'
+              ? r.name
+              : r.kind,
     );
     expect(out).toEqual(['a.ts', '@@ −3,2 +3,2 @@ @3', 'context x', 'deleted y', 'added z', 'b.ts', '(Reading its diff…)', 'c.png', '(A binary file)']);
     expect(withDiffs(rows, new Set(), diffs)).toHaveLength(3);

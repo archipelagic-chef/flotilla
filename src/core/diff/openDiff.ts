@@ -50,7 +50,9 @@ export async function openChangeEntries(
 ): Promise<void> {
   const resources = entries.map(({ worktreeDir, change, leftRef, rightRef }) => {
     const toUri = (side: DiffSide) =>
-      side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
+      side.ref === WORKING
+        ? toWorkspaceUri(reference, path.join(worktreeDir, side.path))
+        : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
     const { left, right } = sideRefsFor(change, leftRef, rightRef);
     return [toWorkspaceUri(reference, path.join(worktreeDir, change.path)), toUri(left), toUri(right)];
   });

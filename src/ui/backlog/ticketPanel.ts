@@ -902,7 +902,9 @@ export class TicketPanels implements vscode.Disposable {
     const cwd = this.deps.mainRoot;
     const base = await resolveBase(cwd, readSettings().defaultBase);
     const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
-    const worktrees = new Map(this.worktreesOf(item).flatMap((w) => (w.worktree.branch && w.worktree.path ? [[w.worktree.branch, w.worktree.path] as const] : [])));
+    const worktrees = new Map(
+      this.worktreesOf(item).flatMap((w) => (w.worktree.branch && w.worktree.path ? [[w.worktree.branch, w.worktree.path] as const] : [])),
+    );
     const branches = base ? local.filter((b) => b !== base && branchMatches(item, b)).map((b) => ({ branch: b, worktree: worktrees.get(b) })) : [];
     return ticketChange(cwd, { id: item.id, base: base ?? 'HEAD', branches, ...(item.merged ? { merged: item.merged } : {}) });
   }

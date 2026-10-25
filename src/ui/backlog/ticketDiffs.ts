@@ -69,7 +69,8 @@ export class TicketDiffs implements vscode.Disposable {
       if (!open.some((t) => t.input instanceof vscode.TabInputTextDiff && t.input.modified.toString() === key)) this.diffs.delete(key);
       return;
     }
-    for (const [title] of this.lists) if (tab.label === title || tab.label.startsWith(`${title} (`)) if (!open.some((t) => t.label === tab.label)) this.lists.delete(title);
+    for (const [title] of this.lists)
+      if (tab.label === title || tab.label.startsWith(`${title} (`)) if (!open.some((t) => t.label === tab.label)) this.lists.delete(title);
   }
 
   private update(): void {

@@ -60,7 +60,12 @@ export const filesHandlers: Handlers<FilesMessage> = {
   readChangeDiff: async ({ item, panel, panels }, m) => {
     const g = (await panels.changesShown(item)).groups[m.group];
     const f = g?.files.find((x) => x.path === m.path);
-    const diff: FileDiff = !g || !f ? { note: 'No longer in its changes.' } : await fileDiff(g.dir, f, f.left ?? g.left, f.right ?? g.right, m.whole ? WHOLE_FILE : 3).catch((e: Error) => ({ note: `Couldn't read its diff: ${e.message}` }));
+    const diff: FileDiff =
+      !g || !f
+        ? { note: 'No longer in its changes.' }
+        : await fileDiff(g.dir, f, f.left ?? g.left, f.right ?? g.right, m.whole ? WHOLE_FILE : 3).catch((e: Error) => ({
+            note: `Couldn't read its diff: ${e.message}`,
+          }));
     void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff } satisfies TicketHostMessage);
   },
   openAllChanges: async ({ item, panels }) => {

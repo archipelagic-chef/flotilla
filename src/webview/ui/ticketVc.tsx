@@ -26,7 +26,11 @@ export function ticketOf(ws: WorkstreamView | undefined, backlog: BacklogItemVie
 export function TicketHeader({ item, path }: { item: Pick<BacklogItemView, 'id' | 'title'>; path?: string }) {
   return (
     <div class="ticket-vc-head">
-      <button class="ticket-back" data-tip={`Back to ${item.id}, its Changes${path ? ` at ${path.split('/').pop()}` : ''}`} onClick={() => send({ type: 'backToTicket', id: item.id, ...(path ? { path } : {}) })}>
+      <button
+        class="ticket-back"
+        data-tip={`Back to ${item.id}, its Changes${path ? ` at ${path.split('/').pop()}` : ''}`}
+        onClick={() => send({ type: 'backToTicket', id: item.id, ...(path ? { path } : {}) })}
+      >
         <i class="codicon codicon-arrow-left" />
         Back to {item.id}
       </button>

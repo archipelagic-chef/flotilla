@@ -51,7 +51,12 @@ import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
-import { TicketChangesBody, TicketCommitsBody, TicketHeader, ticketOf } from './ticketVc';
+import {
+  TicketChangesBody,
+  TicketCommitsBody,
+  TicketHeader,
+  ticketOf,
+} from './ticketVc';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -529,7 +534,10 @@ export function App() {
   // Compare shows only while there are comparisons, a ticket's views only for a ticket's worktree.
   const ticket = shownTicket;
   const vcView =
-    (persisted.vcView === 'compare' && !persisted.comparisons.length) || ((persisted.vcView === 'ticketChanges' || persisted.vcView === 'ticketCommits') && !ticket) ? 'changes' : persisted.vcView;
+    (persisted.vcView === 'compare' && !persisted.comparisons.length) ||
+    ((persisted.vcView === 'ticketChanges' || persisted.vcView === 'ticketCommits') && !ticket)
+      ? 'changes'
+      : persisted.vcView;
   const vcViews = [
     ...VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0),
     ...(ticket
