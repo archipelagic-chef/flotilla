@@ -19,6 +19,7 @@ import {
   type NoteView,
   type RefComparison,
   type SlowStorageView,
+  type TicketVcView,
   type Tool,
   type VcView,
   type WorkstreamView,
@@ -50,6 +51,7 @@ import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
+import { TicketChangesBody, TicketCommitsBody, TicketHeader, ticketOf } from './ticketVc';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -208,6 +210,11 @@ export function App() {
   }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
+  /** Tickets' changes and commits, for Version Control's ticket views (BL-171), by id (null: not a ticket). */
+  const [ticketVcs, setTicketVcs] = useState<ReadonlyMap<string, TicketVcView | null>>(new Map());
+  /** The file selected in a ticket's Changes (the one Expand was on), and the commit shown of its Commits, by id. */
+  const [ticketFile, setTicketFile] = useState<Record<string, string>>({});
+  const [ticketCommit, setTicketCommit] = useState<Record<string, string>>({});
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
   /** Request ids: the latest per comparison, and which comparison each one is for. */
   const compareRequests = useRef({ next: 0, latest: new Map<number, number>(), owner: new Map<number, number>() });
@@ -431,6 +438,15 @@ export function App() {
         case 'progress':
           setProgress(m.tools);
           return;
+        case 'ticketVc':
+          setTicketVcs((prev) => new Map(prev).set(m.id, m.view ?? null));
+          return;
+        case 'showTicketChanges':
+          setActive(m.key);
+          update((prev) => ({ ...prev, tool: 'vc', vcView: 'ticketChanges' }));
+          setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path }));
+          send({ type: 'ticketVc', id: m.ticket });
+          return;
         case 'showCommits':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
@@ -499,11 +515,31 @@ export function App() {
   const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
   useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
 
+  // The active worktree's ticket, for Version Control's header and ticket views: read again as its worktree changes.
+  const shownWs = active === ALL ? undefined : workstreams?.find((w) => w.key === active);
+  const shownTicket = ticketOf(shownWs, backlog);
+  const ticketShown = persisted.tool === 'vc' && !!shownTicket;
+  useEffect(() => {
+    if (ticketShown && shownTicket) send({ type: 'ticketVc', id: shownTicket.id });
+  }, [ticketShown, shownTicket?.id, shownWs]);
+
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
   const { tool } = persisted;
-  // Compare shows only while there are comparisons.
-  const vcView = persisted.vcView === 'compare' && !persisted.comparisons.length ? 'changes' : persisted.vcView;
+  // Compare shows only while there are comparisons, a ticket's views only for a ticket's worktree.
+  const ticket = shownTicket;
+  const vcView =
+    (persisted.vcView === 'compare' && !persisted.comparisons.length) || ((persisted.vcView === 'ticketChanges' || persisted.vcView === 'ticketCommits') && !ticket) ? 'changes' : persisted.vcView;
+  const vcViews = [
+    ...VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0),
+    ...(ticket
+      ? [
+          { id: 'ticketChanges' as const, label: `${ticket.id}'s Changes`, icon: 'diff-multiple' },
+          { id: 'ticketCommits' as const, label: `${ticket.id}'s Commits`, icon: 'git-commit' },
+        ]
+      : []),
+  ];
+  const ticketView = ticket ? (ticketVcs.get(ticket.id) ?? undefined) : undefined;
   // With the active worktree's branch, unless that's the base (main, or the All tab): then it's left to pick.
   const addComparison = () =>
     update((p) => withComparison(p, { base: refs?.defaultBase, head: activeWs && activeWs.branch !== refs?.defaultBase ? activeWs.branch : undefined }));
@@ -580,6 +616,19 @@ export function App() {
         />
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
+      {tool === 'vc' && vcView === 'ticketChanges' && ticket && (
+        <TicketChangesBody view={ticketView} selected={ticketFile[ticket.id]} select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))} />
+      )}
+      {tool === 'vc' && vcView === 'ticketCommits' && ticket && (
+        <TicketCommitsBody
+          ws={ws}
+          view={ticketView}
+          selected={ticketCommit[ticket.id]}
+          select={(hash) => setTicketCommit((prev) => ({ ...prev, [ticket.id]: hash }))}
+          files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
+          requestFiles={requestCommitFiles}
+        />
+      )}
       {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );
@@ -682,6 +731,7 @@ export function App() {
     content = (
       <div class="single" data-section={activeWs.key}>
         {tool === 'chats' && <HooksNotice missing={activeWs.reachable && !activeWs.hasHooks ? 1 : 0} />}
+        {tool === 'vc' && ticket && <TicketHeader item={ticket} path={ticketFile[ticket.id]} />}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>
@@ -828,7 +878,7 @@ export function App() {
                 </button>
                 {t.id === 'vc' && tool === 'vc' && (
                   <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
-                    {VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0).map((v) => (
+                    {vcViews.map((v) => (
                       <button
                         key={v.id}
                         class="sub-tool"

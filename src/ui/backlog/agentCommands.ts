@@ -52,6 +52,8 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
           : undefined,
       );
     },
+    // Back from a diff opened from a ticket's Changes (BL-171), in its title bar and the status bar.
+    'flotilla.backToTicket': () => tickets.diffs.back().catch(showError),
     'flotilla.pauseAgent': controlAgent('pause'),
     'flotilla.resumeAgent': controlAgent('resume'),
     'flotilla.stopAgent': controlAgent('stop'),

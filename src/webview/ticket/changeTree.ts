@@ -1,4 +1,4 @@
-import type { ChangedFile, TicketChange } from '../ticketProtocol';
+import type { ChangedFile, DiffLine, FileDiff, TicketChange } from '../ticketProtocol';
 
 /** A folder of the Changes tree: its name (a chain of folders with nothing else in them, as one: "src/core/git"). */
 interface Folder {
@@ -83,6 +83,78 @@ export function changeRows(change: TicketChange, folded: ReadonlySet<string>): C
     };
     walk(compact(folderOf(g.files)), headers ? 1 : 0);
   });
+  return rows;
+}
+
+/** A row of a file's diff, unfolded inline under it: a hunk's head (opens the diff beside at it), a line, a note. */
+export type DiffRow =
+  | { kind: 'hunk'; key: string; group: number; path: string; depth: number; line: number; label: string }
+  | { kind: 'line'; key: string; depth: number; line: DiffLine }
+  | { kind: 'note'; key: string; group: number; path: string; depth: number; text: string };
+
+/**
+ * The rows with the diffs of the unfolded files (by their row's key) under them: each hunk's head, then its lines. A
+ * diff not read yet (none in diffs) shows as "Reading its diff…".
+ */
+export function withDiffs(rows: readonly ChangeRow[], unfolded: ReadonlySet<string>, diffs: ReadonlyMap<string, FileDiff>): Array<ChangeRow | DiffRow> {
+  const out: Array<ChangeRow | DiffRow> = [];
+  for (const r of rows) {
+    out.push(r);
+    if (r.kind !== 'file' || !unfolded.has(r.key)) continue;
+    const { group } = r;
+    const { path } = r.file;
+    const depth = r.depth + 1;
+    const diff = diffs.get(r.key);
+    if (!diff || 'note' in diff) {
+      out.push({ kind: 'note', key: `${r.key}#note`, group, path, depth, text: diff ? diff.note : 'Reading its diff…' });
+      continue;
+    }
+    diff.hunks.forEach((h, i) => {
+      const old = h.lines.filter((l) => l.kind !== 'added').length;
+      const next = h.lines.filter((l) => l.kind !== 'deleted').length;
+      const label = `@@ −${h.oldStart},${old} +${h.newStart},${next} @@`;
+      out.push({ kind: 'hunk', key: `${r.key}#${i}`, group, path, depth, line: Math.max(1, h.newStart), label });
+      h.lines.forEach((line, j) => out.push({ kind: 'line', key: `${r.key}#${i}:${j}`, depth, line }));
+    });
+  }
+  return out;
+}
+
+/** A row of a file's full view: a line, or a stretch of unchanged lines folded (its first line's index in lines). */
+export type FullRow = { kind: 'line'; key: string; line: DiffLine } | { kind: 'gap'; key: string; index: number; count: number };
+
+/**
+ * The rows of a file's full view (BL-171): all its lines, where unchanged stretches further than `context` lines from
+ * a change fold into one row ("42 unchanged lines"), unless their first line's index is in shown. A stretch too short
+ * to be worth folding shows.
+ */
+export function fullRows(lines: readonly DiffLine[], shown: ReadonlySet<number>, context = 3): FullRow[] {
+  const n = lines.length;
+  // Distance to the nearest change, before and after.
+  const near = new Array<boolean>(n).fill(false);
+  let last = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (lines[i].kind !== 'context') last = i;
+    near[i] = i - last <= context;
+  }
+  last = Infinity;
+  for (let i = n - 1; i >= 0; i--) {
+    if (lines[i].kind !== 'context') last = i;
+    if (last - i <= context) near[i] = true;
+  }
+  const rows: FullRow[] = [];
+  const line = (i: number) => rows.push({ kind: 'line', key: `l${i}`, line: lines[i] });
+  for (let i = 0; i < n; ) {
+    if (near[i]) {
+      line(i++);
+      continue;
+    }
+    let j = i;
+    while (j < n && !near[j]) j++;
+    if (j - i <= 3 || shown.has(i)) for (let k = i; k < j; k++) line(k);
+    else rows.push({ kind: 'gap', key: `g${i}`, index: i, count: j - i });
+    i = j;
+  }
   return rows;
 }
 

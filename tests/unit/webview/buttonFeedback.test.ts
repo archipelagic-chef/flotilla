@@ -9,6 +9,10 @@ import { describe, expect, it } from 'vitest';
  */
 const INSTANT = new Set([
   // Opening things: they show their result.
+  'openChange',
+  'expandChange',
+  'openTicketChange',
+  'backToTicket',
   'openChat',
   'openCommit',
   'openFile',

@@ -73,7 +73,7 @@ const STATES: Record<string, [status: string, review?: string]> = {
 const BRANCHES: Record<string, { ahead: number; behind: number; status: string[] }> = {
   'BL-1': { ahead: 2, behind: 0, status: [] },
   'BL-2': { ahead: 1, behind: 1, status: [] },
-  'BL-3': { ahead: 2, behind: 0, status: ['A  src/chat-store.js', ' M src/chats.js', '?? notes.txt'] },
+  'BL-3': { ahead: 2, behind: 0, status: ['A  src/chat-store.js', ' M src/chats.js', ' M src/reload.js', '?? notes.txt'] },
   'BL-10': { ahead: 1, behind: 0, status: [] },
   'BL-11': { ahead: 1, behind: 0, status: ['?? scratch.txt'] },
   'BL-12': { ahead: 1, behind: 0, status: [] },
