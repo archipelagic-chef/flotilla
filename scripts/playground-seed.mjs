@@ -1046,8 +1046,19 @@ export function seedEvents(dir, now = new Date()) {
   const files = ['src/greet.js', 'src/server.js', 'README.md', 'src/last.js', 'package.json', 'test/greet.test.js'];
   const tokens = (k) => ({ input: Math.round(k * 300), output: Math.round(k * 120), cacheRead: Math.round(k * 2400), cacheCreation: Math.round(k * 200) });
   // A run's spend, split by purpose as the transcripts are (BL-189): its turns' context and its tools' output.
-  const spend = (t, minutes, purpose, usd, s, id, agent) => {
+  const spend = (t, minutes, purpose, usd, s, id, agent, title) => {
     const turns = Math.max(1, Math.round(minutes / 5));
+    // Hour by hour (BL-202): each local hour's share of the part, by the minutes in it.
+    const hours = [];
+    for (let from = t; from < Math.min(t + minutes * M, end);) {
+      const hour = new Date(from);
+      hour.setMinutes(0, 0, 0);
+      const to = Math.min(hour.getTime() + 60 * M, t + minutes * M, end);
+      const share = (to - from) / (minutes * M);
+      const k = minutes * share;
+      hours.push({ at: hour.toISOString(), tokens: tokens(k), costUsd: Math.round(usd * share * 1e4) / 1e4, turns: Math.max(1, Math.round(turns * share)) });
+      from = to;
+    }
     const contextK = Array.from({ length: turns }, (_, i) => Math.round(30 + (i / turns) * between(60, 200)));
     const tools = {
       code: Math.round(minutes * between(2000, 5000)),
@@ -1058,7 +1069,17 @@ export function seedEvents(dir, now = new Date()) {
     add(
       t,
       'agent-spend',
-      { session: s, purpose, to: new Date(t + minutes * M).toISOString(), tokens: tokens(minutes), costUsd: Math.round(usd * 100) / 100, contextK, tools },
+      {
+        session: s,
+        purpose,
+        to: new Date(t + minutes * M).toISOString(),
+        tokens: tokens(minutes),
+        costUsd: Math.round(usd * 100) / 100,
+        contextK,
+        tools,
+        hours,
+        ...(title ? { title } : {}),
+      },
       id,
       agent,
     );
@@ -1166,7 +1187,17 @@ export function seedEvents(dir, now = new Date()) {
     const starts = Math.floor(between(2, 5));
     // Your own chats with Claude: orchestration, not a ticket's.
     const chat = between(10, 60);
-    spend(midnight.getTime() + between(8, 11) * 60 * M, chat, 'orchestration', chat * 0.07, `seed-own-${day}`);
+    const titles = ['Which process used my tokens', 'Plan the release', 'Why did the merge fail', 'Shape the next tickets'];
+    spend(
+      midnight.getTime() + between(8, 11) * 60 * M,
+      chat,
+      'orchestration',
+      chat * 0.07,
+      `seed-own-${day}`,
+      undefined,
+      undefined,
+      titles[day % titles.length],
+    );
     for (let i = 0; i < starts; i++) ticket(midnight.getTime() + between(8, 18) * 60 * M);
     // An idle evening: what waits is held back by what isn't merged yet.
     add(midnight.getTime() + 21 * 60 * M, 'autopilot-idle', { reason: random() < 0.6 ? 'BL-5 waits for BL-2 (In Progress)' : 'nothing left in To Do' });

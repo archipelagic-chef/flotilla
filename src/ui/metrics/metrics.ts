@@ -37,16 +37,22 @@ export class Metrics implements vscode.Disposable {
   /** The acceptance criteria of the tickets done, by id (BL-189): a done ticket's description is read once. */
   private readonly criteria = new Map<string, number>();
 
+  /** Called as a view is counted (BL-202): the chats' spend is read again soon, so a running chat's latest turns show. */
+  onView?: () => void;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly commonDir: string,
     private readonly backlog?: LocalBacklog,
+    /** Opens a chat in the worktree it ran in (BL-202). */
+    private readonly chatOpener?: (session: string, cwd: string | undefined) => void,
   ) {
     this.store = new MetricsStore(commonDir);
   }
 
   async view(period: MetricsPeriod): Promise<MetricsView> {
     this.watch();
+    this.onView?.();
     await this.readCriteria().catch(() => undefined);
     return this.store.view(period, Date.now(), { limit: agentLimit(), criteria: this.criteria });
   }
@@ -67,6 +73,11 @@ export class Metrics implements vscode.Disposable {
     } catch (error) {
       return { type: 'metricsError', message: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  /** Opens a chat of the Spend over time chart. */
+  openChat(session: string, cwd: string | undefined): void {
+    this.chatOpener?.(session, cwd);
   }
 
   /** Watches the log's directory, once something shows the view (made when it's missing, so it can be watched). */
@@ -116,6 +127,7 @@ export class Metrics implements vscode.Disposable {
         this.panel.period = m.period;
         void this.post(m.period);
       } else if (m.type === 'metricsOpen') void vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);
+      else if (m.type === 'metricsOpenChat') this.openChat(m.session, m.cwd);
     });
   }
 

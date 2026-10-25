@@ -315,3 +315,28 @@
     height: 120px;
   }
 }
+
+/* Spend over time (BL-202): its window and unit, and a legend whose chats list what they spent. */
+.spend-over-time .metrics-bar {
+  margin-bottom: 6px;
+}
+
+.spend-over-time .spend-unit {
+  flex: 0 0 auto;
+}
+
+.metrics .spend-legend {
+  padding: 0 2px;
+  border-radius: 2px;
+  color: inherit;
+  font-size: inherit;
+}
+
+.metrics .spend-legend:hover,
+.metrics .spend-legend.open {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.spend-over-time .metrics-column .stack span:last-child {
+  border-radius: 2px 2px 0 0;
+}

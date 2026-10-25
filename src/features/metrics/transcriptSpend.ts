@@ -93,6 +93,22 @@ export function priceOf(model: string, u: Usage): number {
   return (u.tokens.input * p.input + u.tokens.output * p.output + u.tokens.cacheRead * p.read + write5m * p.write5m + u.write1h * p.write1h) / 1e6;
 }
 
+/** What a chat spent in an hour (BL-202): its turns there, each counted in the local hour of its timestamp. */
+export interface SpendHour {
+  /** The hour's start, in local time (as an ISO time). */
+  at: string;
+  tokens: Tokens;
+  costUsd: number;
+  turns: number;
+}
+
+/** The start of the local hour a time is in, as an ISO time. */
+export function hourOf(at: string | number): string {
+  const d = new Date(at);
+  d.setMinutes(0, 0, 0);
+  return d.toISOString();
+}
+
 /** One part of a chat: its purpose, and what it spent from `at` to `to`. */
 export interface SpendPart {
   purpose: SpendPurpose;
@@ -104,6 +120,8 @@ export interface SpendPart {
   contextK: number[];
   /** Tool output, in characters, by kind. */
   tools: Partial<Record<ToolKind, number>>;
+  /** What it spent hour by hour. */
+  hours: SpendHour[];
   /** Some of its cost is from the price table: the chat has no cost record for it (yet). */
   priced?: true;
 }
@@ -112,15 +130,23 @@ export interface TranscriptSpend {
   session?: string;
   ticket?: string;
   agent?: string;
+  /** The chat's title (the user's, or Claude's), and the folder it ran in. */
+  title?: string;
+  cwd?: string;
   parts: SpendPart[];
   /** The time of the last entry counted: the next read counts what's after it. */
   last?: string;
   /** Entries after `last` wait for a cost record (or for the chat to be settled). */
   open?: true;
+  /** Those entries' parts, priced from the table: what a running chat spent since its last cost record. */
+  live?: SpendPart[];
 }
 
 type Entry = {
   type?: string;
+  cwd?: string;
+  aiTitle?: string;
+  customTitle?: string;
   isSidechain?: boolean;
   isMeta?: boolean;
   isCompactSummary?: boolean;
@@ -161,36 +187,49 @@ function resultSize(content: unknown): number {
  * one and the next shared among the messages between them by their price; messages after the last record are counted
  * only when `settled` (the chat ended without one, or is idle), at the price table's price. `ticket`: the ticket of the
  * chat's folder, for a chat whose prompts don't name one. `seen`: the messages counted in other chats' transcripts (a
- * resumed chat's copies of them aren't counted again); this one's are added to it.
+ * resumed chat's copies of them aren't counted again); this one's are added to it. `until`: what's after it isn't counted
+ * (for reading in the hours of what was counted before they were kept).
  */
-export function transcriptSpend(text: string, o: { after?: string; settled?: boolean; ticket?: string; seen?: Set<string> } = {}): TranscriptSpend {
+export function transcriptSpend(
+  text: string,
+  o: { after?: string; until?: string; settled?: boolean; ticket?: string; seen?: Set<string> } = {},
+): TranscriptSpend {
   // A chat resumed into a new session starts with a copy of the old one's messages, dated before it started: they were
   // the old session's spend, and counted there.
   const started = Number(/"type":"cost-state"[^\n]*?"startTime":(\d+)/.exec(text)?.[1] ?? NaN);
   const after = Math.max(o.after ? Date.parse(o.after) : -Infinity, Number.isFinite(started) ? started - 1000 : -Infinity);
+  const until = o.until ? Date.parse(o.until) : Infinity;
+  let aiTitle: string | undefined;
+  let customTitle: string | undefined;
   const out: TranscriptSpend = { parts: [], ...(o.ticket ? { ticket: o.ticket } : {}) };
   let purpose: SpendPurpose | undefined;
   let agentChat = false;
   const tools = new Map<string, ToolKind>();
   const seen = new Set<string>();
   // The messages since the last cost record, waiting for their share of the next.
-  let open: Array<{ part: SpendPart | undefined; weight: number }> = [];
+  let open: Array<{ part: SpendPart | undefined; hour?: SpendHour; weight: number }> = [];
   let total = 0;
   let pending: SpendPart[] = [];
   let current: SpendPart | undefined;
   let lastOpen: string | undefined;
+  // What waits for a cost record, at the price table's price.
+  const priceOpen = () => {
+    for (const m of open)
+      if (m.part) {
+        m.part.costUsd += m.weight;
+        m.part.priced = true;
+        if (m.hour) m.hour.costUsd += m.weight;
+      }
+  };
   const settle = (cost: number | undefined) => {
     if (cost !== undefined) {
       const weights = open.reduce((n, m) => n + m.weight, 0);
       open.forEach((m, i) => {
-        if (m.part) m.part.costUsd += weights ? (cost * m.weight) / weights : i === open.length - 1 ? cost : 0;
+        const share = weights ? (cost * m.weight) / weights : i === open.length - 1 ? cost : 0;
+        if (m.part) m.part.costUsd += share;
+        if (m.hour) m.hour.costUsd += share;
       });
-    } else
-      for (const m of open)
-        if (m.part) {
-          m.part.costUsd += m.weight;
-          m.part.priced = true;
-        }
+    } else priceOpen();
     open = [];
     out.parts.push(...pending);
     pending = [];
@@ -209,13 +248,14 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
       costUsd: 0,
       contextK: [],
       tools: {},
+      hours: [],
     };
     pending.push(current);
     return current;
   };
   for (const line of text.split('\n')) {
     // Most lines are API requests and attachments: only these three kinds count.
-    if (!line.includes('"type":"assistant"') && !line.includes('"type":"user"') && !line.includes('"type":"cost-state"')) continue;
+    if (!line.includes('"type":"assistant"') && !line.includes('"type":"user"') && !line.includes('"type":"cost-state"') && !line.includes('-title"')) continue;
     let e: Entry;
     try {
       e = JSON.parse(line) as Entry;
@@ -229,9 +269,12 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
       total = t;
       continue;
     }
+    if (e.type === 'ai-title' && typeof e.aiTitle === 'string') aiTitle = e.aiTitle;
+    if (e.type === 'custom-title' && typeof e.customTitle === 'string') customTitle = e.customTitle;
     if (e.sessionId && !out.session) out.session = e.sessionId;
+    if (typeof e.cwd === 'string' && !out.cwd) out.cwd = e.cwd;
     const at = typeof e.timestamp === 'string' ? e.timestamp : undefined;
-    const counted = at !== undefined && Date.parse(at) > after;
+    const counted = at !== undefined && Date.parse(at) > after && Date.parse(at) <= until;
     if (e.type === 'user') {
       const prompt = promptText(e);
       if (prompt !== undefined) {
@@ -286,11 +329,25 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
     const part = partAt(at!);
     part.to = at!;
     lastOpen = at;
-    for (const k of ['input', 'output', 'cacheRead', 'cacheCreation'] as const) part.tokens[k] += usage.tokens[k];
+    const hourAt = hourOf(at!);
+    let hour = part.hours[part.hours.length - 1];
+    if (hour?.at !== hourAt) part.hours.push((hour = { at: hourAt, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, turns: 0 }));
+    hour.turns++;
+    for (const k of ['input', 'output', 'cacheRead', 'cacheCreation'] as const) {
+      part.tokens[k] += usage.tokens[k];
+      hour.tokens[k] += usage.tokens[k];
+    }
     part.contextK.push(Math.round((usage.tokens.input + usage.tokens.cacheRead + usage.tokens.cacheCreation) / 1000));
-    open.push({ part, weight });
+    open.push({ part, hour, weight });
   }
+  // A title the user set wins; Flotilla's own "<worktree>: <AI title>" tag is shown as the AI title.
+  const title = customTitle && !(aiTitle && customTitle.endsWith(`: ${aiTitle}`)) ? customTitle : aiTitle;
+  if (title) out.title = title;
   if (o.settled) settle(undefined);
-  else if (lastOpen) out.open = true;
+  else if (lastOpen) {
+    out.open = true;
+    priceOpen();
+    out.live = pending;
+  }
   return out;
 }

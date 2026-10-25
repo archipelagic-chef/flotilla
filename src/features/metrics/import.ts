@@ -160,7 +160,7 @@ async function dropImported(commonDir: string): Promise<string | undefined> {
   let first: string | undefined;
   for (const file of await eventFiles(commonDir)) {
     const text = await fs.promises.readFile(file, 'utf8').catch(() => '');
-    const live = parseEvents(text).filter((e) => !e.imported || e.kind === 'agent-spend');
+    const live = parseEvents(text).filter((e) => !e.imported || e.kind === 'agent-spend' || e.kind === 'spend-hours');
     for (const e of live) if (!e.imported && (!first || e.at < first)) first = e.at;
     const tmp = `${file}.${process.pid}.tmp`;
     await fs.promises.writeFile(tmp, live.map((e) => `${JSON.stringify(e)}\n`).join(''));

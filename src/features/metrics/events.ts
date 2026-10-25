@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ConflictedFile } from '../../core/git/conflictRegions';
-import type { SpendPurpose, ToolKind } from './transcriptSpend';
+import type { SpendHour, SpendPurpose, ToolKind } from './transcriptSpend';
 
 /**
  * What Flotilla does and sees, as events (BL-157): one JSON object per line in
@@ -33,7 +33,17 @@ export interface EventData {
     /** Tool output by kind, in characters. */
     tools: Partial<Record<ToolKind, number>>;
     priced?: true;
+    /** What it spent hour by hour (BL-202; not in the parts recorded before). */
+    hours?: SpendHour[];
+    /** The chat's title and folder, to name it and open it. */
+    title?: string;
+    cwd?: string;
   };
+  /**
+   * The hours of a part recorded before they were kept (BL-202), read in once from its transcript: the parts' hours up
+   * to where the scans had counted then.
+   */
+  'spend-hours': { session: string; purpose: SpendPurpose; hours: SpendHour[]; title?: string; cwd?: string };
   'agent-ended': { role: AgentRole; session: string; code: number | null; ok: boolean; minutes: number; tokens?: Tokens; costUsd?: number; model?: string };
   /** A ticket's review state changed (BL-158): the waits for you (asking, yours, approved, stopped) are its spans. */
   'review-state': { from?: string; to?: string };

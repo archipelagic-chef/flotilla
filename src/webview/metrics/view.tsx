@@ -8,6 +8,7 @@ import type {
   MetricUnit,
 } from '../metricsProtocol';
 import './metrics.css';
+import { SpendOverTime } from './spendChart';
 
 /**
  * The Metrics view (BL-158): the event log's numbers for a period, each compared with the period before. A number or
@@ -73,13 +74,15 @@ interface Props {
   period: MetricsPeriod;
   setPeriod(period: MetricsPeriod): void;
   openTicket(id: string): void;
+  /** Opens a chat of the Spend over time chart, in the folder it ran in. */
+  openChat(session: string, cwd?: string): void;
   /** Opens the view in an editor tab (in the sidebar only). */
   openEditor?(): void;
   /** In the editor tab: the sections side by side when there's room. */
   wide?: boolean;
 }
 
-export function MetricsBody({ view, error, period, setPeriod, openTicket, openEditor, wide }: Props) {
+export function MetricsBody({ view, error, period, setPeriod, openTicket, openChat, openEditor, wide }: Props) {
   const [opened, setOpened] = useState<Opened | undefined>();
   // What was opened belongs to the numbers it was opened from.
   useEffect(() => setOpened(undefined), [period]);
@@ -151,6 +154,7 @@ export function MetricsBody({ view, error, period, setPeriod, openTicket, openEd
                   {list(`${s.id}.c.${c.id}:`)}
                 </div>
               ))}
+              {s.id === 'cost' && view.spend && <SpendOverTime timeline={view.spend} now={Date.parse(view.to)} openTicket={openTicket} openChat={openChat} />}
             </section>
           ))}
       </div>

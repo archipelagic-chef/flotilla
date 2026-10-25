@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import type { MetricsPeriod, MetricsView } from '../../webview/metricsProtocol';
 import { computeMetrics, EventIndex } from './compute';
 import { eventsDir, parseEvents } from './events';
+import { readLiveSpend } from './spendScan';
 
 /**
  * The event log as the Metrics view reads it (BL-158): each month's file is read once, and then only what was appended
@@ -26,7 +27,9 @@ export class MetricsStore {
 
   async view(period: MetricsPeriod, now = Date.now(), opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {}): Promise<MetricsView> {
     await this.refresh();
-    return computeMetrics(this.index, period, now, opts);
+    // The running chats' latest turns, as the last scan found them (BL-202).
+    const live = await readLiveSpend(this.commonDir).catch(() => []);
+    return computeMetrics(this.index, period, now, { ...opts, live });
   }
 
   private async readNew(): Promise<void> {

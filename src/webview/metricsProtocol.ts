@@ -59,6 +59,40 @@ export interface MetricSection {
   charts: MetricChart[];
 }
 
+/** A chat that spent tokens (BL-202): an agent's (named by agent and ticket) or the user's own (by its title). */
+export interface SpendChat {
+  /** Its session. */
+  id: string;
+  label: string;
+  ticket?: string;
+  /** The folder it ran in: it opens there. */
+  cwd?: string;
+  /** An agent's chat: it opens its ticket. */
+  agent?: true;
+  /** It's running: its latest turns are counted at the price table's price. */
+  running?: true;
+}
+
+/** What a chat spent in an hour. */
+export interface SpendCell {
+  /** Its chat, in the timeline's chats. */
+  chat: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd: number;
+  turns: number;
+  /** What its parts there were for (PURPOSE_LABEL's). */
+  purposes: string[];
+}
+
+/** The chats' spend hour by hour over the last 7 days (BL-202): the hours with spend, oldest first. */
+export interface SpendTimeline {
+  chats: SpendChat[];
+  hours: Array<{ at: string; cells: SpendCell[] }>;
+}
+
 export interface MetricsView {
   period: MetricsPeriod;
   /** The period's start and end (ISO). */
@@ -67,6 +101,8 @@ export interface MetricsView {
   sections: MetricSection[];
   /** How many events the view was counted from (all of the log). */
   events: number;
+  /** The chats' spend over time, for the Spend over time chart (its own window: 6 hours to 7 days). */
+  spend?: SpendTimeline;
 }
 
 /** From a Metrics webview (the sidebar's tool, or the editor tab). */
@@ -76,6 +112,8 @@ export type MetricsWebviewMessage =
   /** The sidebar left its Metrics tool: no need to count for it any more. */
   | { type: 'metricsClosed' }
   | { type: 'metricsOpen'; ticket: string }
+  /** Open a chat (BL-202): in the worktree it ran in. */
+  | { type: 'metricsOpenChat'; session: string; cwd?: string }
   | { type: 'metricsEditor'; period: MetricsPeriod };
 
 /** To a Metrics webview. */

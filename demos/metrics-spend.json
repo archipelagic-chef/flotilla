@@ -1,0 +1,23 @@
+{
+  "title": "Spend over time: which chats spent tokens, hour by hour",
+  "steps": [
+    {"command": "Flotilla: Open Metrics"},
+    {"waitFor": ".metrics-chart:has-text(\"Spend over time\")"},
+    {"caption": "Spend over time: the last 24 hours' tokens, stacked by the chat that spent them"},
+    {"wait": 2500},
+    {"caption": "Hovering an hour says which chats spent in it"},
+    {"hover": ".spend-over-time .metrics-column:not([disabled])"},
+    {"wait": 2500},
+    {"caption": "Picking it lists them: tokens by kind, turns, purpose and cost; each opens its ticket or chat"},
+    {"click": ".spend-over-time .metrics-column:not([disabled])"},
+    {"wait": 3000},
+    {"caption": "A chat in the legend lists what it spent, hour by hour"},
+    {"click": ".spend-over-time .spend-legend"},
+    {"wait": 3000},
+    {"caption": "Over 7 days, by day, in dollars"},
+    {"click": ".spend-over-time [role=radio]:has-text(\"7 days\")"},
+    {"click": ".spend-over-time [role=radio]:has-text(\"$\")"},
+    {"wait": 3000},
+    {"caption": ""}
+  ]
+}
