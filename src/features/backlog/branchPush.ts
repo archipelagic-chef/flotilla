@@ -38,7 +38,16 @@ export type PushResult =
   | { kind: 'failed'; branch: string; commit: string; reason: string; hint: string };
 
 const short = (c: string) => c.slice(0, 7);
-const message = (e: unknown) => (e instanceof GitError ? e.stderr || e.message : e instanceof Error ? e.message : String(e)).trim();
+/** A URL's user and password, and GitHub's tokens: what git's output may carry when a remote's URL has them. */
+const CREDENTIALS = /(?<=[a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@|\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/gi;
+
+/** Text without credentials, for the output channel and the ticket. */
+export const withoutCredentials = (text: string): string => text.replace(CREDENTIALS, (m) => (m.endsWith('@') ? '***@' : '***'));
+
+/** What a git command's failure says (its stderr), without credentials. */
+export const gitMessage = (e: unknown): string =>
+  withoutCredentials((e instanceof GitError ? e.stderr || e.message : e instanceof Error ? e.message : String(e)).trim());
+const message = gitMessage;
 
 /** A workflow's push trigger's filters, as written (each one there only when the workflow has it). */
 export interface PushTrigger {

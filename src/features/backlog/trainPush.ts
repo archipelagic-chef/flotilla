@@ -1,5 +1,5 @@
-import { GitError, runGit } from '../../core/git/gitCli';
-import { PUSH_REMOTE } from './branchPush';
+import { runGit } from '../../core/git/gitCli';
+import { gitMessage as message, PUSH_REMOTE } from './branchPush';
 import type { MergeTrain } from './mergeTrain';
 
 /**
@@ -20,8 +20,6 @@ export function trainPushes(train: MergeTrain | undefined): Map<string, string> 
 }
 
 export type TrainPushResult = { pushed: string[]; deleted: string[] } | { error: string };
-
-const message = (e: unknown) => (e instanceof GitError ? e.stderr || e.message : e instanceof Error ? e.message : String(e)).trim();
 
 /** Makes origin's train branches the train's: changed ones forced, new ones made, stale ones deleted. */
 export async function pushTrain(cwd: string, train: MergeTrain | undefined): Promise<TrainPushResult> {
