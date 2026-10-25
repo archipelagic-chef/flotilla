@@ -70,3 +70,29 @@ export function oldestFirst<T extends { need?: Need }>(items: readonly T[]): T[]
   const at = (i: T) => (i.need?.since ? Date.parse(i.need.since) : Number.POSITIVE_INFINITY);
   return items.filter((i) => i.need).sort((a, b) => at(a) - at(b));
 }
+
+/**
+ * The row a note has in "Needs you": one whose agent asks you (BL-192). Notes handled with another are in the one that
+ * leads, which asks for them all.
+ */
+export function noteNeed(note: { status: string; agent?: string; with?: string; asks?: { since?: string } }): Need | undefined {
+  if (note.status !== 'asking' || note.with) return undefined;
+  return { kind: 'asking', ...(note.asks?.since ? { since: note.asks.since } : {}), line: `${note.agent ?? 'Its agent'} asks you` };
+}
+
+/**
+ * The rows of the backlog's "Needs you", oldest waiting first: the tickets waiting on the user (their need), and the
+ * notes whose agent asks.
+ */
+export function needsYouRows<I extends { need?: Need }, N extends Parameters<typeof noteNeed>[0]>(
+  items: readonly I[],
+  notes: readonly N[],
+): ({ need?: Need } & ({ item: I; note?: undefined } | { note: N; item?: undefined }))[] {
+  return oldestFirst([
+    ...items.map((item) => ({ item, ...(item.need ? { need: item.need } : {}) })),
+    ...notes.map((note) => {
+      const need = noteNeed(note);
+      return { note, ...(need ? { need } : {}) };
+    }),
+  ]);
+}

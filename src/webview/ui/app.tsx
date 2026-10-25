@@ -46,6 +46,7 @@ import {
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
 import { noteFinished } from './notes';
+import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
@@ -527,8 +528,8 @@ export function App() {
     ...(approvals ? [`${approvals} chat${approvals === 1 ? ' needs' : 's need'} your approval`] : []),
     ...(replies ? [`${replies} chat${replies === 1 ? ' waits' : 's wait'} for your reply`] : []),
   ];
-  // The backlog's badge counts what waits on the user ("Needs you") and the agents' proposals.
-  const backlogCount = (backlog ?? []).filter((i) => i.need || i.proposed).length;
+  // The backlog's badge counts what waits on the user ("Needs you": tickets, and notes whose agent asks) and the agents' proposals.
+  const backlogCount = (backlog ?? []).filter((i) => i.need || i.proposed).length + notes.filter((n) => noteNeed(n)).length;
   const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
   const busyFor = (id: Tool): string[] => [...(progress[id] ?? []), ...(id === 'search' && searching ? ['Searching…'] : [])];

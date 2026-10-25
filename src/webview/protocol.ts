@@ -67,8 +67,8 @@ export interface NoteView {
   agent?: string;
   /** Handled with another note, which leads (its questions and answers are there). */
   with?: string;
-  /** What its agent asks: its words, and its questions to click. */
-  asks?: { reply: string; questions: Question[] };
+  /** What its agent asks: its words, its questions to click, and since when (ISO 8601). */
+  asks?: { reply: string; questions: Question[]; since?: string };
   became: NoteOutcome[];
   handled?: string;
 }

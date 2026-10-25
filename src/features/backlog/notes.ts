@@ -125,12 +125,18 @@ export function nextNotes(notes: readonly Note[], busy: ReadonlySet<string>, now
 }
 
 /** The questions of the agent's newest reply in a note that asks you. */
-export function noteQuestion(note: Pick<Note, 'status' | 'activity' | 'agent'>): { reply: string; questions: Question[] } | undefined {
+export function noteQuestion(note: Pick<Note, 'status' | 'activity' | 'agent'>): { reply: string; questions: Question[]; since?: string } | undefined {
   if (note.status !== 'asking') return undefined;
   const reply = [...note.activity].reverse().find((e) => /^agent\s/i.test(e.author));
   if (!reply) return undefined;
   const parts = parseReport(reply.body);
-  return { reply: (parts.summary ?? reply.body).replace(/^(`{3,})question[\s\S]*?^\1\s*$/gm, '').trim(), questions: parts.questions };
+  // Its heading's local "YYYY-MM-DD HH:MM", as ISO 8601: when the note began waiting on you.
+  const at = new Date(reply.date.replace(' ', 'T'));
+  return {
+    reply: (parts.summary ?? reply.body).replace(/^(`{3,})question[\s\S]*?^\1\s*$/gm, '').trim(),
+    questions: parts.questions,
+    ...(Number.isNaN(at.getTime()) ? {} : { since: at.toISOString() }),
+  };
 }
 
 /** Whether an agent's reply asks the user (a question block, or a "Needs from you:" line with something). */

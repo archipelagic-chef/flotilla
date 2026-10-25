@@ -213,6 +213,10 @@ describe("the agent's prompt and reply", () => {
     expect(asksUser('Proposed BL-180 and BL-181.')).toBe(false);
     const q = noteQuestion({ status: 'asking', agent: 'Vega-2', activity: [{ date: '', author: 'Agent Vega-2', body: asking }] });
     expect(q?.reply).toBe('Two ways to do it.');
+    expect(q?.since).toBeUndefined();
+    expect(noteQuestion({ status: 'asking', activity: [{ date: '2026-10-25 14:05', author: 'Agent Vega-2', body: asking }] })?.since).toBe(
+      new Date('2026-10-25T14:05').toISOString(),
+    );
     expect(q?.questions.map((x) => [x.text, x.options.map((o) => o.text)])).toEqual([['Which?', ['A', 'B']]]);
   });
 

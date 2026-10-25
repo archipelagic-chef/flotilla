@@ -163,7 +163,7 @@ export function BacklogView({
           </span>
         </button>
       ))}
-      <NeedsYou items={items ?? []} />
+      <NeedsYou items={items ?? []} notes={notes} />
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && (
         <div class="empty">
