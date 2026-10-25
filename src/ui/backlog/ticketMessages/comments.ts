@@ -17,6 +17,12 @@ export const commentsHandlers: Handlers = {
       await panels.addActivity(id, 'You', await panels.withReplyLine(item, m.text, m.replyTo));
     }
   },
+  editComment: async ({ id, panels }, m) => {
+    if (m.text.trim()) await panels.changeComment(id, m.anchor, m.text);
+  },
+  deleteComment: async ({ id, panels }, m) => {
+    await panels.changeComment(id, m.anchor, undefined);
+  },
   image: async ({ id, panel, backlog }, m) => {
     const bytes = Buffer.from(m.data, 'base64');
     const kind = mediaType(m.name)?.kind ?? 'image';

@@ -155,6 +155,14 @@ export interface TicketView {
       anchor?: string;
       reply?: { to: string; author: string; date: string; label: string };
       root?: number;
+      /** One of your comments: you can edit and delete it (BL-128). Its body is its text (without its mark). */
+      own?: boolean;
+      /** When it was edited, and the agents that answered the version before. */
+      edited?: string;
+      readBefore?: string[];
+      /** When it was deleted: it shows "Comment deleted", with its replies; hidden: it has none (kept for its anchor). */
+      deleted?: string;
+      hidden?: boolean;
     }
   >;
   /** For an issue from an integration: where it lives, and what can be changed from here (as its tracker allows). */
@@ -326,6 +334,9 @@ export type TicketWebviewMessage =
   | { type: 'description'; text: string }
   /** replyTo: the anchor of the entry it answers (BL-126). */
   | { type: 'comment'; text: string; replyTo?: string }
+  /** Edit one of your comments (BL-128), by its anchor; delete it (after asking). */
+  | { type: 'editComment'; anchor: string; text: string }
+  | { type: 'deleteComment'; anchor: string }
   | { type: 'status'; status: BacklogStatus }
   /** null clears it. */
   | { type: 'priority'; priority: BacklogPriority | null }

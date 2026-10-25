@@ -97,6 +97,7 @@ export function MarkdownBox({
   placeholder,
   label,
   onSubmit,
+  onCancel,
   autoFocus,
   minRows = 3,
   images = true,
@@ -108,6 +109,8 @@ export function MarkdownBox({
   placeholder: string;
   label: string;
   onSubmit(): void;
+  /** Escape: the box is closed without its text (an edit, BL-128). */
+  onCancel?(): void;
   autoFocus?: boolean;
   minRows?: number;
   /** Pasted and dropped images are saved next to the ticket (not for issues that live in a tracker). */
@@ -156,6 +159,12 @@ export function MarkdownBox({
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           onSubmit();
+          return;
+        }
+        if (e.key === 'Escape' && onCancel) {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
           return;
         }
         const key = format && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && FORMATS.find((f) => f.key === e.key.toLowerCase());
