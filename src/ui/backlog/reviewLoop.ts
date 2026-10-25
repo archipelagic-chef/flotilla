@@ -395,6 +395,8 @@ export class ReviewLoop implements vscode.Disposable {
   private launched(id: string, slot: number, live: Running): void {
     this.starting.delete(slot);
     this.runs.set(id, live);
+    // A run that goes on in a session this window ended before (a revision, a later round, a limit resume) works again (BL-199).
+    this.ended.delete(live.run.sessionId);
     void readTranscript(live.cwd, live.run.sessionId)
       .catch(() => undefined)
       .then((t) => (live.base = t?.usage ?? NO_USAGE));
@@ -984,7 +986,7 @@ export class ReviewLoop implements vscode.Disposable {
     const sessions = new Set([...this.runs.values()].map((r) => r.run.sessionId));
     for (const ws of this.deps.repository.current)
       for (const chat of ws.chats)
-        if (chat.state === 'working' && countsAsAgent(chat.firstPrompt) && !this.ended.has(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
+        if (chat.state === 'working' && countsAsAgent(chat.firstPrompt) && !this.isEnded(chat.id) && !this.held.has(chat.id)) sessions.add(chat.id);
     return sessions.size + this.starting.size;
   }
 
@@ -999,7 +1001,7 @@ export class ReviewLoop implements vscode.Disposable {
     for (const ws of this.deps.repository.current)
       for (const chat of ws.chats) {
         const of = agentChatItem(chat.firstPrompt);
-        if (chat.state !== 'working' || !of || !countsAsAgent(chat.firstPrompt) || this.ended.has(chat.id) || this.held.has(chat.id) || sessions.has(chat.id))
+        if (chat.state !== 'working' || !of || !countsAsAgent(chat.firstPrompt) || this.isEnded(chat.id) || this.held.has(chat.id) || sessions.has(chat.id))
           continue;
         sessions.add(chat.id);
         agents.push({ id: of.item, agent: of.agent, doing: 'work', since: (chat.startedAt ?? chat.updatedAt).toISOString() });
@@ -1015,7 +1017,8 @@ export class ReviewLoop implements vscode.Disposable {
 
   /**
    * The sessions of runs this window ended: a stopped process doesn't record "done" in its chat (until the record goes
-   * stale), so its chat still says "working". A session that runs again is counted through its run. Known gap: a chat
+   * stale), so its chat still says "working". A session that runs again here (a run launched, or a reply to a comment)
+   * isn't ended while it runs: see isEnded. Known gap: a chat
    * this window ended, which the user then resumes in Claude Code (not through Flotilla), isn't counted while it works,
    * until its record goes stale.
    */
@@ -1023,7 +1026,12 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Whether this window ended a chat's run (its chat may still say it's working). */
   hasEnded(session: string): boolean {
-    return this.ended.has(session);
+    return this.isEnded(session);
+  }
+
+  /** Ended, and not running again without a window now (a reply to a comment resumes it outside the loop's runs). */
+  private isEnded(session: string): boolean {
+    return this.ended.has(session) && !isRunningHeadless(session);
   }
 
   /** The sessions of agents the user paused or stopped, in any window (as of the last scan): they take no slot. */
@@ -1435,7 +1443,7 @@ export class ReviewLoop implements vscode.Disposable {
             : undefined;
     if (own && (!session || own.session === session)) return { ...own, where: isRunningInTerminal(own.session) ? 'terminal' : (own.where ?? 'headless') };
     const busy = (c: { id: string; state: string }) =>
-      isRunningInTerminal(c.id) || ((c.state === 'working' || c.state === 'waiting-for-input') && !this.ended.has(c.id));
+      isRunningInTerminal(c.id) || ((c.state === 'working' || c.state === 'waiting-for-input') && !this.isEnded(c.id));
     const chats = this.deps.repository.current.flatMap((w) => w.chats);
     const chat = session ? chats.find((c) => c.id === session) : chats.find((c) => c.open && busy(c) && agentChatItem(c.firstPrompt)?.item === item.id);
     if (!chat || !busy(chat)) return undefined;

@@ -1330,6 +1330,27 @@ describe('agents lost to a reload (BL-87)', () => {
     expect(review().state).toBe('revising');
     loop.dispose();
   });
+  it('a session that ended counts as busy again while a revision resumes it, and as ended once that run ends (BL-199)', async () => {
+    const finish: Array<(r: object) => void> = [];
+    spawn.mockImplementation(() => ({ sessionId: session, done: new Promise((resolve) => finish.push(resolve)), stop() {} }));
+    const revise = loop as unknown as { startRevision(item: unknown, task: unknown): Promise<void>; hasEnded(s: string): boolean };
+    const task = { prompt: 'Rename it.', why: 'you requested changes' };
+    await revise.startRevision(structuredClone(data.items[0]), task);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(revise.hasEnded(session)).toBe(false);
+    finish[0]({});
+    await tick();
+    expect(revise.hasEnded(session)).toBe(true);
+
+    await revise.startRevision(structuredClone(data.items[0]), task);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(spawn.mock.calls[1][0]).toMatchObject({ resume: session });
+    expect(revise.hasEnded(session)).toBe(false);
+    finish[1]({});
+    await tick();
+    expect(revise.hasEnded(session)).toBe(true);
+    loop.dispose();
+  });
   it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
     const check = loop as unknown as { stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> };
     expect(await check.stopForCheck('BL-1', 'paused-gone', 'gone')).toBe(false); // it isn't paused
