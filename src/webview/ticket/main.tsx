@@ -40,6 +40,7 @@ import { ActiveAgents, Agents, RESUME_TIP } from './agents';
 import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
 import { changeDiffReplies, Changes } from './changes';
+import { DiffView, type FullAt } from './diffView';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';
@@ -86,6 +87,24 @@ function App() {
   const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   const [ask, setAsk] = useState<AskView>();
   const [ci, setCi] = useState<TicketCiView>();
+  /**
+   * A file of its Changes expanded to the whole tab (BL-171), over the ticket, which stays as it was underneath (its
+   * folds, drafts); Back shows it again where it was scrolled to, the file marked.
+   */
+  const [full, setFull] = useState<FullAt>();
+  const [marked, setMarked] = useState<string>();
+  const scrolled = useRef<number>();
+  const expand = (at: FullAt) => {
+    if (!full) scrolled.current = window.scrollY;
+    setFull(at);
+    setMarked(at.path);
+  };
+  const back = () => setFull(undefined);
+  useEffect(() => {
+    if (full || scrolled.current === undefined) return;
+    window.scrollTo(0, scrolled.current);
+    scrolled.current = undefined;
+  }, [full]);
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;
@@ -106,7 +125,11 @@ function App() {
       } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
       else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
-      else if (m.type === 'ci') setCi(m.ci);
+      // Back from VS Code's diff editor: the ticket at its Changes (which scroll there themselves).
+      else if (m.type === 'showChange') {
+        scrolled.current = undefined;
+        setFull(undefined);
+      } else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
@@ -153,171 +176,175 @@ function App() {
   // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
   const resume = steps.main === 'resume';
   return (
-    <main class="ticket">
-      <header>
-        <div class="meta">
-          <span class="ticket-id">{ticket.item.id}</span>
-          {ticket.remote ? (
-            <div class="remote-meta">
-              <StatusMenu ticket={ticket} />
-              <button class="source" onClick={() => send({ type: 'openRemote' })} title={`Open it in ${ticket.remote.label}`}>
-                <i class={`codicon codicon-${ticket.remote.kind === 'github' ? 'github' : 'issues'}`} />
-                {ticket.remote.label}
-                <i class="codicon codicon-link-external" />
-              </button>
-            </div>
-          ) : (
-            <div class="segmented" role="radiogroup" aria-label="Status">
-              {STATUSES.map((s) => (
-                <button
-                  key={s.status}
-                  role="radio"
-                  aria-checked={ticket.item.status === s.status}
-                  onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}
-                >
-                  <i class={`codicon codicon-${s.icon}`} /> {s.label}
+    <>
+      {full && <DiffView ticket={ticket} at={full} back={back} go={expand} />}
+      <main class="ticket" hidden={!!full}>
+        <header>
+          <div class="meta">
+            <span class="ticket-id">{ticket.item.id}</span>
+            {ticket.remote ? (
+              <div class="remote-meta">
+                <StatusMenu ticket={ticket} />
+                <button class="source" onClick={() => send({ type: 'openRemote' })} title={`Open it in ${ticket.remote.label}`}>
+                  <i class={`codicon codicon-${ticket.remote.kind === 'github' ? 'github' : 'issues'}`} />
+                  {ticket.remote.label}
+                  <i class="codicon codicon-link-external" />
                 </button>
-              ))}
+              </div>
+            ) : (
+              <div class="segmented" role="radiogroup" aria-label="Status">
+                {STATUSES.map((s) => (
+                  <button
+                    key={s.status}
+                    role="radio"
+                    aria-checked={ticket.item.status === s.status}
+                    onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}
+                  >
+                    <i class={`codicon codicon-${s.icon}`} /> {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {ticket.item.proposed && (
+            <div class="proposal-banner">
+              <i class="codicon codicon-lightbulb" />
+              <span>
+                {ticket.item.proposed.by ? `${ticket.item.proposed.by} (an agent)` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss
+                it.
+              </span>
+              <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
+                <i class="codicon codicon-check" /> Accept
+              </ActionButton>
+              <ActionButton class="button secondary" message={{ type: 'dismiss' }} working="Dismissing…">
+                Dismiss
+              </ActionButton>
             </div>
           )}
-        </div>
-        {ticket.item.proposed && (
-          <div class="proposal-banner">
-            <i class="codicon codicon-lightbulb" />
-            <span>
-              {ticket.item.proposed.by ? `${ticket.item.proposed.by} (an agent)` : 'An agent'} proposed this ticket. Accept it into the backlog, or dismiss it.
-            </span>
-            <ActionButton class="button" message={{ type: 'accept' }} working="Accepting…">
-              <i class="codicon codicon-check" /> Accept
-            </ActionButton>
-            <ActionButton class="button secondary" message={{ type: 'dismiss' }} working="Dismissing…">
-              Dismiss
-            </ActionButton>
+          <Title ticket={ticket} />
+          <div class="properties">
+            {ticket.parent && (
+              <button
+                class="parent-link"
+                onClick={() => send({ type: 'openTicket', id: ticket.parent!.id })}
+                title={`Part of ${ticket.parent.id}: ${ticket.parent.title}`}
+              >
+                <i class="codicon codicon-type-hierarchy-super" />
+                Part of <strong>{ticket.parent.id}</strong> <span class="muted">{ticket.parent.title}</span>
+              </button>
+            )}
+            {ticket.remote?.edit?.priorities ? (
+              <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
+            ) : (
+              <PriorityPicker
+                value={ticket.item.priority}
+                onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })}
+              />
+            )}
+            {!ticket.remote && <AgentPicker ticket={ticket} />}
+            <LinkChips links={ticket.links} />
+            {!ticket.remote && (
+              <ActionButton class="add-link" message={{ type: 'link' }} working="Linking…" title="Link it to an issue in Jira or GitHub Issues">
+                <i class="codicon codicon-link" /> {ticket.links.length ? 'Link' : 'Link Issue'}
+              </ActionButton>
+            )}
+          </div>
+          <StateCard ticket={withCiStop(ticket, ci)} ci={ci} />
+          <div class="toolbar">
+            {/* Not while an agent works on it (BL-154): its chat opens from the state above, and Stop is there. */}
+            {resume && (
+              <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
+                <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
+              </ActionButton>
+            )}
+            {!done && !working && (
+              <ActionButton
+                class={resume ? 'button secondary' : 'button'}
+                message={{ type: 'start', agent: true }}
+                working="Starting…"
+                disabled={ticket.creating}
+                title={
+                  ticket.remote
+                    ? 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
+                    : 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen. It runs in the background, without a window (in the agent queue, as the autopilot’s agents do), and reports below'
+                }
+              >
+                <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
+              </ActionButton>
+            )}
+            {!done && <CreateWorktreeButton creating={!!ticket.creating} another={worktrees.length > 0} />}
+            {!ticket.remote && (
+              <>
+                {ticket.canDiscuss && (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'discuss' }}
+                    working="Opening…"
+                    title={
+                      ticket.shaping?.chat && ticket.shaping.chat !== 'pending'
+                        ? "Opens the discussion's chat again: it goes on there"
+                        : "Opens a chat with an agent beside the ticket: it talks it through with you, and writes what's agreed into the description"
+                    }
+                  >
+                    <i class="codicon codicon-comment-discussion" /> Discuss
+                  </ActionButton>
+                )}
+                <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
+                  <i class="codicon codicon-go-to-file" /> Open as Markdown
+                </button>
+                <ActionButton
+                  class="button secondary"
+                  message={{ type: 'check' }}
+                  working="Checking…"
+                  title="Checks each thing the ticket says is going on (agents working, a review, a merge) against what really runs; nothing changes until you Clean Up"
+                >
+                  <i class="codicon codicon-pulse" /> Check
+                </ActionButton>
+                {ticket.canReview && !ticket.review && (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'startReview' }}
+                    working="Starting the review…"
+                    title="Another agent reviews the work and gives a verdict here"
+                  >
+                    <i class="codicon codicon-eye" /> Start Review
+                  </ActionButton>
+                )}
+                {ticket.canCreateIssue && !ticket.links.length && (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'createIssue' }}
+                    working="Creating the issue…"
+                    title="Creates an issue from this ticket in Jira or GitHub (asks first) and links it"
+                  >
+                    <i class="codicon codicon-cloud-upload" /> Create Issue…
+                  </ActionButton>
+                )}
+              </>
+            )}
+          </div>
+        </header>
+        {ticket.check && <CheckResult check={ticket.check} />}
+        {ticket.error && (
+          <div class="error-note">
+            <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}
           </div>
         )}
-        <Title ticket={ticket} />
-        <div class="properties">
-          {ticket.parent && (
-            <button
-              class="parent-link"
-              onClick={() => send({ type: 'openTicket', id: ticket.parent!.id })}
-              title={`Part of ${ticket.parent.id}: ${ticket.parent.title}`}
-            >
-              <i class="codicon codicon-type-hierarchy-super" />
-              Part of <strong>{ticket.parent.id}</strong> <span class="muted">{ticket.parent.title}</span>
-            </button>
-          )}
-          {ticket.remote?.edit?.priorities ? (
-            <RemotePriority current={ticket.remote.priorityName} names={ticket.remote.edit.priorities} />
-          ) : (
-            <PriorityPicker
-              value={ticket.item.priority}
-              onChange={ticket.remote ? undefined : (priority) => pick({ priority }, { type: 'priority', priority })}
-            />
-          )}
-          {!ticket.remote && <AgentPicker ticket={ticket} />}
-          <LinkChips links={ticket.links} />
-          {!ticket.remote && (
-            <ActionButton class="add-link" message={{ type: 'link' }} working="Linking…" title="Link it to an issue in Jira or GitHub Issues">
-              <i class="codicon codicon-link" /> {ticket.links.length ? 'Link' : 'Link Issue'}
-            </ActionButton>
-          )}
-        </div>
-        <StateCard ticket={withCiStop(ticket, ci)} ci={ci} />
-        <div class="toolbar">
-          {/* Not while an agent works on it (BL-154): its chat opens from the state above, and Stop is there. */}
-          {resume && (
-            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
-              <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
-            </ActionButton>
-          )}
-          {!done && !working && (
-            <ActionButton
-              class={resume ? 'button secondary' : 'button'}
-              message={{ type: 'start', agent: true }}
-              working="Starting…"
-              disabled={ticket.creating}
-              title={
-                ticket.remote
-                  ? 'Creates its worktree if needed and starts a Claude Code agent there; it reports below'
-                  : 'Creates its worktree if needed and starts a Claude Code agent there, with the model and effort chosen. It runs in the background, without a window (in the agent queue, as the autopilot’s agents do), and reports below'
-              }
-            >
-              <i class="codicon codicon-play" /> {worktrees.length ? 'Start an Agent' : 'Start with an Agent'}
-            </ActionButton>
-          )}
-          {!done && <CreateWorktreeButton creating={!!ticket.creating} another={worktrees.length > 0} />}
-          {!ticket.remote && (
-            <>
-              {ticket.canDiscuss && (
-                <ActionButton
-                  class="button secondary"
-                  message={{ type: 'discuss' }}
-                  working="Opening…"
-                  title={
-                    ticket.shaping?.chat && ticket.shaping.chat !== 'pending'
-                      ? "Opens the discussion's chat again: it goes on there"
-                      : "Opens a chat with an agent beside the ticket: it talks it through with you, and writes what's agreed into the description"
-                  }
-                >
-                  <i class="codicon codicon-comment-discussion" /> Discuss
-                </ActionButton>
-              )}
-              <button class="button secondary" onClick={() => send({ type: 'openFile' })} title="Edit the whole ticket as Markdown">
-                <i class="codicon codicon-go-to-file" /> Open as Markdown
-              </button>
-              <ActionButton
-                class="button secondary"
-                message={{ type: 'check' }}
-                working="Checking…"
-                title="Checks each thing the ticket says is going on (agents working, a review, a merge) against what really runs; nothing changes until you Clean Up"
-              >
-                <i class="codicon codicon-pulse" /> Check
-              </ActionButton>
-              {ticket.canReview && !ticket.review && (
-                <ActionButton
-                  class="button secondary"
-                  message={{ type: 'startReview' }}
-                  working="Starting the review…"
-                  title="Another agent reviews the work and gives a verdict here"
-                >
-                  <i class="codicon codicon-eye" /> Start Review
-                </ActionButton>
-              )}
-              {ticket.canCreateIssue && !ticket.links.length && (
-                <ActionButton
-                  class="button secondary"
-                  message={{ type: 'createIssue' }}
-                  working="Creating the issue…"
-                  title="Creates an issue from this ticket in Jira or GitHub (asks first) and links it"
-                >
-                  <i class="codicon codicon-cloud-upload" /> Create Issue…
-                </ActionButton>
-              )}
-            </>
-          )}
-        </div>
-      </header>
-      {ticket.check && <CheckResult check={ticket.check} />}
-      {ticket.error && (
-        <div class="error-note">
-          <i class="codicon codicon-warning" /> {ticket.remote ? `Couldn't read it from ${ticket.remote.label}` : "Couldn't load it"}: {ticket.error}
-        </div>
-      )}
-      <MainState ticket={ticket} />
-      <TicketCi ci={ci} send={send} />
-      {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
-      {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
-      <Description ticket={ticket} />
-      <DemoSection ticket={ticket} Action={ActionButton} />
-      <Attachments ticket={ticket} send={send} Action={ActionButton} />
-      <AskPane ask={ask} />
-      <Activity ticket={ticket} />
-      {ticket.children.length > 0 && <Parts ticket={ticket} />}
-      {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
-      <Changes ticket={ticket} />
-      {ticket.agents.length > 0 && <Agents ticket={ticket} />}
-    </main>
+        <MainState ticket={ticket} />
+        <TicketCi ci={ci} send={send} />
+        {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
+        {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
+        <Description ticket={ticket} />
+        <DemoSection ticket={ticket} Action={ActionButton} />
+        <Attachments ticket={ticket} send={send} Action={ActionButton} />
+        <AskPane ask={ask} />
+        <Activity ticket={ticket} />
+        {ticket.children.length > 0 && <Parts ticket={ticket} />}
+        {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
+        <Changes ticket={ticket} expand={expand} marked={marked} />
+        {ticket.agents.length > 0 && <Agents ticket={ticket} />}
+      </main>
+    </>
   );
 }
 

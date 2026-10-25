@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeRows, rowWindow, withDiffs } from '../../../src/webview/ticket/changeTree';
+import { changeRows, fullRows, rowWindow, withDiffs } from '../../../src/webview/ticket/changeTree';
 import type { ChangeGroup, ChangedFile, TicketChange } from '../../../src/webview/ticketProtocol';
 
 const file = (p: string, added = 1, deleted = 0): ChangedFile => ({ path: p, kind: 'modified', added, deleted });
@@ -65,5 +65,16 @@ describe('withDiffs', () => {
     );
     expect(out).toEqual(['a.ts', '@@ −3,2 +3,2 @@ @3', 'context x', 'deleted y', 'added z', 'b.ts', '(Reading its diff…)', 'c.png', '(A binary file)']);
     expect(withDiffs(rows, new Set(), diffs)).toHaveLength(3);
+  });
+});
+
+describe('fullRows', () => {
+  const ctx = (i: number) => ({ kind: 'context' as const, text: `c${i}` });
+  const show = (rows: ReturnType<typeof fullRows>) => rows.map((r) => (r.kind === 'gap' ? `(${r.count} at ${r.index})` : r.line.text));
+  it('folds unchanged stretches past the context around changes, and shows one asked for, or one too short to fold', () => {
+    const lines = [...Array.from({ length: 10 }, (_, i) => ctx(i)), { kind: 'added' as const, text: '+' }, ...Array.from({ length: 6 }, (_, i) => ctx(11 + i))];
+    expect(show(fullRows(lines, new Set(), 2))).toEqual(['(8 at 0)', 'c8', 'c9', '+', 'c11', 'c12', '(4 at 13)']);
+    expect(show(fullRows(lines, new Set([0, 13]), 2))).toHaveLength(17);
+    expect(show(fullRows([{ kind: 'added', text: 'a' }], new Set()))).toEqual(['a']);
   });
 });
