@@ -1,7 +1,17 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
 import { fileDiff, parseHunks } from '../../../src/features/diffs/fileDiff';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -11,7 +21,20 @@ const lines = (d: Awaited<ReturnType<typeof fileDiff>>) =>
 
 describe('parseHunks', () => {
   it('numbers each line on its sides, across hunks, past "No newline"', () => {
-    const out = ['diff --git a/a b/a', '--- a/a', '+++ b/a', '@@ -1,2 +1,2 @@ fn', ' one', '-two', '+TWO', '\\ No newline at end of file', '@@ -10 +10,2 @@', ' ten', '+eleven', ''].join('\n');
+    const out = [
+      'diff --git a/a b/a',
+      '--- a/a',
+      '+++ b/a',
+      '@@ -1,2 +1,2 @@ fn',
+      ' one',
+      '-two',
+      '+TWO',
+      '\\ No newline at end of file',
+      '@@ -10 +10,2 @@',
+      ' ten',
+      '+eleven',
+      '',
+    ].join('\n');
     const hunks = parseHunks(out);
     expect(hunks.map((h) => [h.oldStart, h.newStart, h.lines.length])).toEqual([
       [1, 1, 3],
@@ -33,7 +56,12 @@ describe('fileDiff', () => {
     writeFile(r, 'a.ts', 'one\nTWO\nthree\n');
     writeFile(r, 'new.md', 'hi\nthere\n');
 
-    expect(lines(await fileDiff(r, { path: 'a.ts', kind: 'modified', added: 1, deleted: 1 }, base, WORKING))).toEqual(['1 1 c one', '2 . d two', '. 2 a TWO', '3 3 c three']);
+    expect(lines(await fileDiff(r, { path: 'a.ts', kind: 'modified', added: 1, deleted: 1 }, base, WORKING))).toEqual([
+      '1 1 c one',
+      '2 . d two',
+      '. 2 a TWO',
+      '3 3 c three',
+    ]);
     expect(lines(await fileDiff(r, { path: 'new.md', kind: 'untracked', added: 2, deleted: 0 }, base, WORKING))).toEqual(['. 1 a hi', '. 2 a there']);
     expect(lines(await fileDiff(r, { path: 'i.png', kind: 'added', added: 0, deleted: 0, binary: true }, base, WORKING))).toContain('binary');
     expect(lines(await fileDiff(r, { path: 'a.ts', kind: 'modified', added: 3000, deleted: 0 }, base, WORKING))).toContain('3,000 changed lines');

@@ -246,7 +246,13 @@ describe('Open Chat (BL-131)', () => {
 describe('Expand in Changes (BL-171)', () => {
   const ws = { key: '/repo/.git/worktrees/bl-1', worktree: { branch: 'feature/BL-1-a-ticket', path: '/repo/.worktrees/bl-1', isMain: false } };
   const file = { path: 'src/reload.js', kind: 'modified', added: 4, deleted: 1 };
-  const change = { stage: 'In progress', files: 1, added: 4, deleted: 1, groups: [{ label: 'feature/BL-1-a-ticket', dir: ws.worktree.path, left: 'main', right: 'WORKING', compared: '', files: [file] }] };
+  const change = {
+    stage: 'In progress',
+    files: 1,
+    added: 4,
+    deleted: 1,
+    groups: [{ label: 'feature/BL-1-a-ticket', dir: ws.worktree.path, left: 'main', right: 'WORKING', compared: '', files: [file] }],
+  };
   const commits = [{ hash: 'b'.repeat(40), short: 'bbbbbbb', subject: 'Second', author: 'A', date: '2026-10-25T10:00:00Z', branches: [] }];
   function expandable() {
     const showTicketChanges = vi.fn(async () => undefined);

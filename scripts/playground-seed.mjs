@@ -204,7 +204,8 @@ const TICKETS = [
       unstaged: {
         'src/chats.js':
           'export function saveChat(store, worktree, id) {\n  store[worktree] = id;\n  return store;\n}\n\nexport function chatOf(store, worktree) {\n  return store[worktree];\n}\n\n// TODO: read the store on start.\n',
-        'src/reload.js': "// What a window does when it reloads: its worktrees are read again, then their views.\nimport { readWorktrees } from './worktrees.js';\nimport { chatOf } from './chats.js';\n\nexport async function reload(window) {\n  const worktrees = await readWorktrees(window.root);\n  for (const worktree of worktrees) {\n    window.views.add(worktree.path, {\n      branch: worktree.branch,\n      title: worktree.title,\n      chat: chatOf(window.chats, worktree.path),\n    });\n  }\n  window.views.sort((a, b) => a.branch.localeCompare(b.branch));\n  window.status.set(`${worktrees.length} worktrees`);\n  return worktrees;\n}\n\nexport function forget(window, worktree) {\n  window.views.delete(worktree.path);\n  window.status.set(`${window.views.size} worktrees`);\n}\n\nexport function restore(window, saved) {\n  for (const [path, view] of Object.entries(saved)) {\n    window.views.add(path, { ...view, chat: chatOf(window.chats, path) });\n  }\n  window.status.set('Restored, chats and all');\n}\n",
+        'src/reload.js':
+          "// What a window does when it reloads: its worktrees are read again, then their views.\nimport { readWorktrees } from './worktrees.js';\nimport { chatOf } from './chats.js';\n\nexport async function reload(window) {\n  const worktrees = await readWorktrees(window.root);\n  for (const worktree of worktrees) {\n    window.views.add(worktree.path, {\n      branch: worktree.branch,\n      title: worktree.title,\n      chat: chatOf(window.chats, worktree.path),\n    });\n  }\n  window.views.sort((a, b) => a.branch.localeCompare(b.branch));\n  window.status.set(`${worktrees.length} worktrees`);\n  return worktrees;\n}\n\nexport function forget(window, worktree) {\n  window.views.delete(worktree.path);\n  window.status.set(`${window.views.size} worktrees`);\n}\n\nexport function restore(window, saved) {\n  for (const [path, view] of Object.entries(saved)) {\n    window.views.add(path, { ...view, chat: chatOf(window.chats, path) });\n  }\n  window.status.set('Restored, chats and all');\n}\n",
       },
       untracked: { 'notes.txt': 'Reload: check the chat id is the same after it.\n' },
     },
@@ -765,7 +766,7 @@ function exclude(dir, lines) {
 /** src/reload.js on main, as the seed's second commit has it. */
 const RELOAD = [
   '// What a window does when it reloads: its worktrees are read again, then their views.',
-  'import { readWorktrees } from \'./worktrees.js\';',
+  "import { readWorktrees } from './worktrees.js';",
   '',
   'export async function reload(window) {',
   '  const worktrees = await readWorktrees(window.root);',
@@ -789,7 +790,7 @@ const RELOAD = [
   '  for (const [path, view] of Object.entries(saved)) {',
   '    window.views.add(path, view);',
   '  }',
-  '  window.status.set(\'Restored\');',
+  "  window.status.set('Restored');",
   '}',
   '',
 ].join('\n');

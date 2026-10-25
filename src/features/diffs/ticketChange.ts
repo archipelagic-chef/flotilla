@@ -86,7 +86,9 @@ async function branchGroup(cwd: string, base: string, b: { branch: string; workt
       runGit(['ls-files', '--others', '--exclude-standard', '-z'], { cwd: dir, env }).then((out) => out.split('\0').filter(Boolean)),
     ]);
     const marked = tracked.map((f) => (uncommitted.has(f.path) || (f.origPath && uncommitted.has(f.origPath)) ? { ...f, uncommitted: true as const } : f));
-    const added = await Promise.all(untracked.map(async (p) => ({ path: p, kind: 'untracked' as const, uncommitted: true as const, ...(await countLines(path.join(dir, p))) })));
+    const added = await Promise.all(
+      untracked.map(async (p) => ({ path: p, kind: 'untracked' as const, uncommitted: true as const, ...(await countLines(path.join(dir, p))) })),
+    );
     return [...marked, ...added];
   });
   return group({ label: b.branch, branch: b.branch, dir, left: mergeBase, right: WORKING, compared: `${compared}, with its uncommitted changes`, files });
@@ -106,7 +108,14 @@ async function mergedGroup(cwd: string, id: string, merged: { commit: string; in
       const right = log.split('\n')[0].split('\t')[0];
       const files = await diffFiles(cwd, [ps[0], right]);
       const onTop = fixes ? `, with the ${fixes === 1 ? 'fix' : `${fixes} fixes`} on top of it` : '';
-      return group({ label: `merged into ${baseName(merged.into)}`, dir: cwd, left: ps[0], right, compared: `the merge ${short(hash)} into ${baseName(merged.into)}${onTop}, against its first parent`, files });
+      return group({
+        label: `merged into ${baseName(merged.into)}`,
+        dir: cwd,
+        left: ps[0],
+        right,
+        compared: `the merge ${short(hash)} into ${baseName(merged.into)}${onTop}, against its first parent`,
+        files,
+      });
     }
     if (!own(subject)) return undefined;
     fixes++;
@@ -142,7 +151,9 @@ async function commitsGroup(cwd: string, id: string, base: string): Promise<Chan
   const counted: ChangedFile[] = [];
   for (const list of pairs.values()) {
     const { left, right } = list[0];
-    const counts = parseNumstat(await runGit(['diff', '--numstat', '-z', '-M', left, right, '--', ...list.flatMap((f) => (f.origPath ? [f.origPath, f.path] : [f.path]))], { cwd }));
+    const counts = parseNumstat(
+      await runGit(['diff', '--numstat', '-z', '-M', left, right, '--', ...list.flatMap((f) => (f.origPath ? [f.origPath, f.path] : [f.path]))], { cwd }),
+    );
     for (const f of list) counted.push({ ...f, ...(counts.get(f.path) ?? { added: 0, deleted: 0 }) });
   }
   const n = commits.length;

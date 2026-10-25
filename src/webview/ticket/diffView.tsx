@@ -1,8 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import type { FileDiff, TicketView } from '../ticketProtocol';
 import { send } from './actions';
 import { changeDiffReplies } from './changes';
-import { changeLetter, changeRows, fullRows, rowWindow } from './changeTree';
+import {
+  changeLetter,
+  changeRows,
+  fullRows,
+  rowWindow,
+} from './changeTree';
 import './diffView.css';
 
 const ROW = 20;
@@ -67,7 +78,9 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
     const target = `${at.group}:${at.path}:${at.line ?? ''}`;
     if (!rows.length || opened.current === target || !body.current) return;
     opened.current = target;
-    const i = at.line ? rows.findIndex((r) => r.kind === 'line' && (r.line.new ?? 0) >= at.line!) : rows.findIndex((r) => r.kind === 'line' && r.line.kind !== 'context');
+    const i = at.line
+      ? rows.findIndex((r) => r.kind === 'line' && (r.line.new ?? 0) >= at.line!)
+      : rows.findIndex((r) => r.kind === 'line' && r.line.kind !== 'context');
     body.current.scrollTop = Math.max(0, i * ROW - height / 3);
   }, [rows, at]);
   const { start, end } = rowWindow(rows.length, scrollTop, height, ROW);

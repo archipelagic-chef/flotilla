@@ -1,9 +1,21 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
 import { combine, parseNumstat, ticketChange } from '../../../src/features/diffs/ticketChange';
-import { git, initRepo, makeStatDirty, removeDir, restatInPast, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  makeStatDirty,
+  removeDir,
+  restatInPast,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));
@@ -132,15 +144,36 @@ describe('ticketChange', () => {
   it('no work: none', async () => {
     const r = repo();
     git(r, 'branch', 'BL-5');
-    expect(await ticketChange(r, { id: 'BL-5', base: 'main', branches: [{ branch: 'BL-5' }] })).toEqual({ stage: 'none', groups: [], files: 0, added: 0, deleted: 0 });
+    expect(await ticketChange(r, { id: 'BL-5', base: 'main', branches: [{ branch: 'BL-5' }] })).toEqual({
+      stage: 'none',
+      groups: [],
+      files: 0,
+      added: 0,
+      deleted: 0,
+    });
   });
 });
 
 describe('combine', () => {
   it('follows renames, and drops a file added and then deleted', () => {
     const files = combine([
-      { hash: 'c1', parent: 'p', changes: [{ path: 'a', kind: 'added' }, { path: 'm', kind: 'modified' }, { path: 'old', kind: 'modified' }] },
-      { hash: 'c2', parent: 'c1', changes: [{ path: 'a', kind: 'deleted' }, { path: 'new', origPath: 'old', kind: 'renamed' }] },
+      {
+        hash: 'c1',
+        parent: 'p',
+        changes: [
+          { path: 'a', kind: 'added' },
+          { path: 'm', kind: 'modified' },
+          { path: 'old', kind: 'modified' },
+        ],
+      },
+      {
+        hash: 'c2',
+        parent: 'c1',
+        changes: [
+          { path: 'a', kind: 'deleted' },
+          { path: 'new', origPath: 'old', kind: 'renamed' },
+        ],
+      },
       { hash: 'c3', parent: 'x', changes: [{ path: 'm', kind: 'modified' }] },
     ]);
     expect(files).toEqual([

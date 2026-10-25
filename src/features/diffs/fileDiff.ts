@@ -2,7 +2,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { WORKING } from '../../core/diff/refs';
-import type { ChangedFile, DiffHunk, DiffLine, FileDiff } from '../../webview/ticketProtocol';
+import type {
+  ChangedFile,
+  DiffHunk,
+  DiffLine,
+  FileDiff,
+} from '../../webview/ticketProtocol';
 
 export type { DiffHunk, DiffLine, FileDiff };
 
@@ -28,7 +33,9 @@ export async function fileDiff(dir: string, file: ChangedFile, left: string, rig
     return { hunks: lines.length ? [{ oldStart: 0, newStart: 1, lines: lines.map((t, i) => ({ kind: 'added', text: t, new: i + 1 })) }] : [] };
   }
   const paths = file.origPath ? [file.origPath, file.path] : [file.path];
-  const out = await runGit(['diff', '--no-color', '--no-ext-diff', `-U${context}`, '-M', left, ...(right === WORKING ? [] : [right]), '--', ...paths], { cwd: dir });
+  const out = await runGit(['diff', '--no-color', '--no-ext-diff', `-U${context}`, '-M', left, ...(right === WORKING ? [] : [right]), '--', ...paths], {
+    cwd: dir,
+  });
   const hunks = parseHunks(out);
   if (!hunks.length) return { note: file.kind === 'renamed' ? 'Renamed, its lines unchanged.' : 'No lines changed.' };
   return { hunks };

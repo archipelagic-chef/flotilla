@@ -1,8 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ChangedFile, FileDiff, TicketHostMessage, TicketView } from '../ticketProtocol';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import type {
+  ChangedFile,
+  FileDiff,
+  TicketHostMessage,
+  TicketView,
+} from '../ticketProtocol';
 import { ActionButton, send } from './actions';
 import './changes.css';
-import { changeLetter, changeRows, rowWindow, withDiffs, type ChangeRow, type DiffRow } from './changeTree';
+import {
+  changeLetter,
+  type ChangeRow,
+  changeRows,
+  type DiffRow,
+  rowWindow,
+  withDiffs,
+} from './changeTree';
 import type { FullAt } from './diffView';
 
 const ROW = 22;
@@ -120,7 +137,12 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
           )}
         </h2>
         {change && change.files > 0 && (
-          <ActionButton class="text-button" message={{ type: 'openAllChanges' }} working="Opening…" title="Open them all in the multi-file diff editor, beside the ticket">
+          <ActionButton
+            class="text-button"
+            message={{ type: 'openAllChanges' }}
+            working="Opening…"
+            title="Open them all in the multi-file diff editor, beside the ticket"
+          >
             <i class="codicon codicon-diff-multiple" /> Open All Changes
           </ActionButton>
         )}
@@ -198,7 +220,13 @@ function Row({
   const indent = { paddingLeft: `${8 + row.depth * 14}px` };
   if (row.kind === 'folder') {
     return (
-      <button class="change-row" style={{ ...style, ...indent }} onClick={() => toggle(row.key)} aria-expanded={row.open} title={`${row.count} file${row.count === 1 ? '' : 's'}`}>
+      <button
+        class="change-row"
+        style={{ ...style, ...indent }}
+        onClick={() => toggle(row.key)}
+        aria-expanded={row.open}
+        title={`${row.count} file${row.count === 1 ? '' : 's'}`}
+      >
         <i class={`codicon codicon-chevron-${row.open ? 'down' : 'right'}`} />
         <i class="codicon codicon-folder" />
         <span class="change-name">{row.name}</span>
@@ -210,7 +238,11 @@ function Row({
     return (
       <div class="change-row change-hunk" style={{ ...style, ...indent }}>
         <span class="change-name">{row.label}</span>
-        <button class="change-action" onClick={() => expand({ group: row.group, path: row.path, line: row.line })} title={`Expand: the whole file's diff, at line ${row.line}`}>
+        <button
+          class="change-action"
+          onClick={() => expand({ group: row.group, path: row.path, line: row.line })}
+          title={`Expand: the whole file's diff, at line ${row.line}`}
+        >
           <i class="codicon codicon-screen-full" /> Expand
         </button>
       </div>
@@ -241,7 +273,11 @@ function Row({
   const letter = changeLetter(f);
   const isOpen = unfolded.has(row.key);
   return (
-    <div class={`change-row change-file${f.path === current ? ' current' : ''}`} style={{ ...style, ...indent }} aria-current={f.path === current ? 'true' : undefined}>
+    <div
+      class={`change-row change-file${f.path === current ? ' current' : ''}`}
+      style={{ ...style, ...indent }}
+      aria-current={f.path === current ? 'true' : undefined}
+    >
       <button
         class="change-unfold"
         onClick={() => unfold(row.key, row.group, f.path)}
