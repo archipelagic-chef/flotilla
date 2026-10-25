@@ -1,0 +1,27 @@
+{
+  "title": "A note whose agent asks is in the notifications' Needs you; picking it shows its card",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".note-page .comment-box textarea" },
+    { "wait": 800 },
+    { "type": "Tags on tickets, to filter the board fake: ask" },
+    { "wait": 600 },
+    { "press": "Control+Enter" },
+    { "waitFor": ".needs-lane .need-note", "timeout": 60000 },
+    { "caption": "The note's agent asks. Away from the backlog, you still hear of it" },
+    { "click": "[aria-label=\"Files\"]" },
+    { "wait": 1200 },
+    { "command": "Flotilla: Show Needs You…" },
+    { "waitFor": ".quick-input-widget .quick-input-list-row:has-text(\"Tags on tickets\")" },
+    { "caption": "The status bar's and notifications' Needs you list the note, as asking a question" },
+    { "wait": 2500 },
+    { "click": ".quick-input-widget .quick-input-list-row:has-text(\"Tags on tickets\")" },
+    { "caption": "Picking it shows the note's card in the backlog, where you answer" },
+    { "waitFor": ".note-card.note-shown" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
