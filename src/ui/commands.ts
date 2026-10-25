@@ -8,6 +8,7 @@ import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import { addBranch, agentChatItem, agentLead, agentName, branchFor, branchMatches, itemBranches, linkIssue, removeItem, setStartFailed, updateItem, type BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
+import { KEEP_WHEN_DONE } from '../features/backlog/descriptionShape';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
 import type { TicketPanels } from './backlog/ticketPanel';
@@ -593,7 +594,7 @@ export function agentPrompt(item: Pick<BacklogItem, 'id' | 'title' | 'links' | '
     CONTEXT_NOTES,
     ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
-    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria).`,
+    `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria). ${KEEP_WHEN_DONE}`,
     PLAN_NOTE,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
     ...(level ? [level] : []),

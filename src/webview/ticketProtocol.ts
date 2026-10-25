@@ -138,6 +138,8 @@ export interface TicketView {
   /** Markdown, for editing. */
   description: string;
   descriptionHtml: string;
+  /** Its "When it's done" lines, rendered (BL-137): the folded description shows them in place of its first lines. */
+  whenDoneHtml?: string;
   /**
    * key: a local entry (a comment or an agent's report), which can be posted to an issue; posted: to which. anchor: its
    * id in the ticket file, to reply to it; reply: whom a reply answers (its body is without the reply line), and root:

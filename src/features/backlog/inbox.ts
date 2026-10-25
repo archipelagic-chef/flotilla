@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { addBranch, addItem, entryAgent, ID_PATTERN, nextId, priorityFromName, updateItem, type BacklogData, type BacklogItem } from './backlog';
+import { DESCRIPTION_SHAPE, KEEP_WHEN_DONE } from './descriptionShape';
 import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
 import { entryDate, parseTicket } from './ticket';
@@ -217,7 +218,7 @@ explanations that change nothing don't need one.
    finish. ${REPORT_FORMAT}
 5. Keep its description what's to be done: when the user asks for more or for something else (in the chat, or in
    comments and reviews in the ticket), work it into the description (between "# Title" and "## Activity"), usually as
-   acceptance criteria. Edit only the description; leave the activity as it is.
+   acceptance criteria. ${KEEP_WHEN_DONE} Edit only the description; leave the activity as it is.
 6. When the work is done, end your final report with a line \`Ready for review.\` It's then reviewed: by another
    agent, or by the user. ${reviewNotes({ id: '<id>', backlogDir })}
 7. Keep your branch current with main: before you report \`Ready for review.\`, merge main (the branch work merges
@@ -247,9 +248,9 @@ branch: feature/x   # ...on this branch (your current one: git branch --show-cur
 agent: Nova-7       # your agent name
 level: light        # optional: only for small, mechanical work (a rename, a setting, a text): a lighter model does it
 ---
-# A short title
+# The behaviour, in a sentence ("Open Chat opens the agent's chat")
 
-What and why, and how to tell it's done (a checklist of acceptance criteria).
+${DESCRIPTION_SHAPE}
 \`\`\`
 
 To claim an existing ticket, the file needs only front matter:
