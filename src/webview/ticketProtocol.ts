@@ -375,6 +375,24 @@ export interface TicketChange {
   deleted: number;
 }
 
+/** A line of a file's inline diff: its numbers on the left side (old) and the right (new), where it has them. */
+export interface DiffLine {
+  kind: 'context' | 'added' | 'deleted';
+  text: string;
+  old?: number;
+  new?: number;
+}
+
+/** A hunk of a file's inline diff: where it starts on each side, and its lines. */
+export interface DiffHunk {
+  oldStart: number;
+  newStart: number;
+  lines: DiffLine[];
+}
+
+/** A file's diff, shown inline in the ticket's Changes (BL-171): its hunks, or why it isn't shown (binary, too big). */
+export type FileDiff = { hunks: DiffHunk[] } | { note: string };
+
 export type TicketHostMessage =
   | { type: 'ticket'; ticket: TicketView }
   /**
@@ -405,7 +423,9 @@ export type TicketHostMessage =
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
   | { type: 'ci'; ci: TicketCiView }
   /** A run's whole log, for Show All (BL-169). */
-  | { type: 'checksLog'; requestId: number; text: string };
+  | { type: 'checksLog'; requestId: number; text: string }
+  /** A file's inline diff (BL-171), for readChangeDiff. */
+  | { type: 'changeDiff'; requestId: number; diff: FileDiff };
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 

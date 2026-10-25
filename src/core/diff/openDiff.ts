@@ -13,12 +13,14 @@ export async function openChangeDiff(
   leftRef: string,
   rightRef: string,
   label: string,
+  line?: number,
 ): Promise<vscode.Uri> {
   const { left, right } = sideRefsFor(change, leftRef, rightRef);
   const toUri = (side: DiffSide) =>
     side.ref === WORKING ? toWorkspaceUri(reference, path.join(worktreeDir, side.path)) : makeGitUri({ worktree: worktreeDir, ref: side.ref, path: side.path });
   const modified = toUri(right);
-  await vscode.commands.executeCommand('vscode.diff', toUri(left), modified, `${path.posix.basename(change.path)} (${label})`);
+  const at = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : {};
+  await vscode.commands.executeCommand('vscode.diff', toUri(left), modified, `${path.posix.basename(change.path)} (${label})`, at);
   return modified;
 }
 

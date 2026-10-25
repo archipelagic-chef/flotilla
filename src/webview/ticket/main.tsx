@@ -39,7 +39,7 @@ import { AskPane } from './ask';
 import { ActiveAgents, Agents, RESUME_TIP } from './agents';
 import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
-import { Changes } from './changes';
+import { changeDiffReplies, Changes } from './changes';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';
@@ -116,6 +116,9 @@ function App() {
       } else if (m.type === 'entries') {
         entryReplies.get(m.requestId)?.(m.entries);
         entryReplies.delete(m.requestId);
+      } else if (m.type === 'changeDiff') {
+        changeDiffReplies.get(m.requestId)?.(m.diff);
+        changeDiffReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
         previewReplies.delete(m.requestId);

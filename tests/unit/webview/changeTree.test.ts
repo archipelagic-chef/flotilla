@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeRows, rowWindow } from '../../../src/webview/ticket/changeTree';
+import { changeRows, rowWindow, withDiffs } from '../../../src/webview/ticket/changeTree';
 import type { ChangeGroup, ChangedFile, TicketChange } from '../../../src/webview/ticketProtocol';
 
 const file = (p: string, added = 1, deleted = 0): ChangedFile => ({ path: p, kind: 'modified', added, deleted });
@@ -35,5 +35,35 @@ describe('rowWindow', () => {
   it('renders only the rows in view, and some either side', () => {
     expect(rowWindow(5000, 22 * 1000, 440, 22)).toEqual({ start: 990, end: 1030 });
     expect(rowWindow(5, 0, 110, 22)).toEqual({ start: 0, end: 5 });
+  });
+});
+
+describe('withDiffs', () => {
+  it('puts an unfolded file’s hunks and lines under it, and says so while it’s read or when it isn’t shown', () => {
+    const rows = changeRows(change(group('b', [file('a.ts'), file('b.ts'), file('c.png')])), new Set());
+    const diffs = new Map([
+      [
+        '0:a.ts',
+        {
+          hunks: [
+            {
+              oldStart: 3,
+              newStart: 3,
+              lines: [
+                { kind: 'context' as const, text: 'x', old: 3, new: 3 },
+                { kind: 'deleted' as const, text: 'y', old: 4 },
+                { kind: 'added' as const, text: 'z', new: 4 },
+              ],
+            },
+          ],
+        },
+      ],
+      ['0:c.png', { note: 'A binary file' }],
+    ]);
+    const out = withDiffs(rows, new Set(['0:a.ts', '0:b.ts', '0:c.png']), diffs).map((r) =>
+      r.kind === 'hunk' ? `${r.label} @${r.line}` : r.kind === 'line' ? `${r.line.kind} ${r.line.text}` : r.kind === 'note' ? `(${r.text})` : r.kind === 'file' ? r.name : r.kind,
+    );
+    expect(out).toEqual(['a.ts', '@@ −3,2 +3,2 @@ @3', 'context x', 'deleted y', 'added z', 'b.ts', '(Reading its diff…)', 'c.png', '(A binary file)']);
+    expect(withDiffs(rows, new Set(), diffs)).toHaveLength(3);
   });
 });

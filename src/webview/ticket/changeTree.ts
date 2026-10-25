@@ -1,4 +1,4 @@
-import type { ChangedFile, TicketChange } from '../ticketProtocol';
+import type { ChangedFile, DiffLine, FileDiff, TicketChange } from '../ticketProtocol';
 
 /** A folder of the Changes tree: its name (a chain of folders with nothing else in them, as one: "src/core/git"). */
 interface Folder {
@@ -84,6 +84,40 @@ export function changeRows(change: TicketChange, folded: ReadonlySet<string>): C
     walk(compact(folderOf(g.files)), headers ? 1 : 0);
   });
   return rows;
+}
+
+/** A row of a file's diff, unfolded inline under it: a hunk's head (opens the diff beside at it), a line, a note. */
+export type DiffRow =
+  | { kind: 'hunk'; key: string; group: number; path: string; depth: number; line: number; label: string }
+  | { kind: 'line'; key: string; depth: number; line: DiffLine }
+  | { kind: 'note'; key: string; group: number; path: string; depth: number; text: string };
+
+/**
+ * The rows with the diffs of the unfolded files (by their row's key) under them: each hunk's head, then its lines. A
+ * diff not read yet (none in diffs) shows as "Reading its diff…".
+ */
+export function withDiffs(rows: readonly ChangeRow[], unfolded: ReadonlySet<string>, diffs: ReadonlyMap<string, FileDiff>): Array<ChangeRow | DiffRow> {
+  const out: Array<ChangeRow | DiffRow> = [];
+  for (const r of rows) {
+    out.push(r);
+    if (r.kind !== 'file' || !unfolded.has(r.key)) continue;
+    const { group } = r;
+    const { path } = r.file;
+    const depth = r.depth + 1;
+    const diff = diffs.get(r.key);
+    if (!diff || 'note' in diff) {
+      out.push({ kind: 'note', key: `${r.key}#note`, group, path, depth, text: diff ? diff.note : 'Reading its diff…' });
+      continue;
+    }
+    diff.hunks.forEach((h, i) => {
+      const old = h.lines.filter((l) => l.kind !== 'added').length;
+      const next = h.lines.filter((l) => l.kind !== 'deleted').length;
+      const label = `@@ −${h.oldStart},${old} +${h.newStart},${next} @@`;
+      out.push({ kind: 'hunk', key: `${r.key}#${i}`, group, path, depth, line: Math.max(1, h.newStart), label });
+      h.lines.forEach((line, j) => out.push({ kind: 'line', key: `${r.key}#${i}:${j}`, depth, line }));
+    });
+  }
+  return out;
 }
 
 /** The letter of a file's change, as Source Control shows it. */

@@ -6,8 +6,10 @@ export type FilesMessage =
   | { type: 'openHref'; href: string }
   /** Open what a commit changed. */
   | { type: 'openCommit'; hash: string }
-  /** A file of its Changes in the diff editor (group: its index), or all of them in the multi-file diff editor. */
-  | { type: 'openChange'; group: number; path: string }
+  /** A file of its Changes in the diff editor (group: its index; line: on its right side, else its left), or all of them in the multi-file diff editor. */
+  | { type: 'openChange'; group: number; path: string; line?: number }
+  /** A file's diff, to show inline (answered with changeDiff). */
+  | { type: 'readChangeDiff'; requestId: number; group: number; path: string }
   | { type: 'openAllChanges' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }

@@ -11,7 +11,7 @@ const CONTEXT = 'flotilla.ticketDiff';
 
 /**
  * The diffs opened from tickets' Changes (BL-171), so a diff leads back to its ticket: while one is the active tab,
- * its title bar has Back to Ticket, which shows the ticket at that file. A file's diff is known by its right side; the
+ * its title bar (and the status bar) has Back to Ticket, which shows the ticket at that file. A file's diff is known by its right side; the
  * multi-file diff editor (no public tab input) by its title.
  */
 export class TicketDiffs implements vscode.Disposable {
@@ -19,17 +19,26 @@ export class TicketDiffs implements vscode.Disposable {
   private readonly lists = new Map<string, DiffOrigin>();
   private current: DiffOrigin | undefined;
   private readonly subscriptions: vscode.Disposable[];
+  /** Back to Ticket in the status bar too, with the ticket's id: easier to see than the title bar's arrow. */
+  private readonly backItem = vscode.window.createStatusBarItem('flotilla.backToTicket', vscode.StatusBarAlignment.Left, 1000);
 
   constructor(private readonly showTicket: (origin: DiffOrigin) => Promise<void>) {
+    this.backItem.name = 'Back to Its Ticket';
+    this.backItem.command = 'flotilla.backToTicket';
     this.subscriptions = [
+      this.backItem,
       vscode.window.tabGroups.onDidChangeTabs((e) => {
         // A diff whose tab closed is forgotten (not one whose tab isn't there yet: it's noted as it opens).
         for (const tab of e.closed) this.forget(tab);
         this.update();
       }),
       vscode.window.tabGroups.onDidChangeTabGroups(() => this.update()),
-      vscode.commands.registerCommand('flotilla.backToTicket', () => (this.current ? this.showTicket(this.current) : undefined)),
     ];
+  }
+
+  /** Back to Ticket (flotilla.backToTicket): the ticket of the diff in the active tab, at its file. */
+  async back(): Promise<void> {
+    if (this.current) await this.showTicket(this.current);
   }
 
   /** A file's diff, opened from a ticket (modified: its right side). */
@@ -68,6 +77,11 @@ export class TicketDiffs implements vscode.Disposable {
     if (current?.id === this.current?.id && current?.path === this.current?.path) return;
     this.current = current;
     void vscode.commands.executeCommand('setContext', CONTEXT, !!current);
+    if (current) {
+      this.backItem.text = `$(arrow-left) Back to ${current.id}`;
+      this.backItem.tooltip = `Back to ${current.id}'s Changes${current.path ? `, at ${current.path}` : ''}`;
+      this.backItem.show();
+    } else this.backItem.hide();
   }
 
   dispose(): void {

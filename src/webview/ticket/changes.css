@@ -80,3 +80,89 @@
   background: var(--vscode-list-inactiveSelectionBackground);
   color: var(--vscode-list-inactiveSelectionForeground, inherit);
 }
+/* A file's row: unfolding its diff here (most of the row), and Open Diff Beside, shown on hover. */
+.change-file {
+  padding-right: 4px;
+}
+.change-unfold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.change-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.change-action:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.change-file .change-action.icon {
+  visibility: hidden;
+}
+.change-file:hover .change-action.icon,
+.change-file.current .change-action.icon,
+.change-file:focus-within .change-action.icon {
+  visibility: visible;
+}
+/* A file's diff, unfolded inline: hunk heads, then its lines, coloured as the diff editor colours them. */
+.change-hunk {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-diffEditor-unchangedRegionBackground, rgba(128, 128, 128, 0.08));
+}
+.change-note {
+  font-style: italic;
+}
+.change-line {
+  gap: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size, 12px);
+  white-space: pre;
+}
+.change-line:hover {
+  background: none;
+}
+.change-line.added {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+.change-line.deleted {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+}
+.line-no {
+  flex: none;
+  width: 34px;
+  padding-right: 6px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--vscode-editorLineNumber-foreground);
+}
+.line-sign {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+.line-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
