@@ -11,6 +11,7 @@ import {
   INBOX,
   takeInbox,
 } from '../../features/backlog/inbox';
+import type { NoteStore } from '../../features/backlog/notes';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { commitPrefixMode } from '../commands';
@@ -33,6 +34,8 @@ export class BacklogInbox implements vscode.Disposable {
     private readonly integrations: BacklogIntegrations,
     private readonly repository: Repository<Workstream>,
     private readonly roots: { mainRoot: string; commonDir: string },
+    /** The notes (BL-182): a proposal from one is recorded in it. */
+    private readonly notes?: NoteStore,
   ) {
     void this.writeGuide();
     this.timer = setInterval(() => void this.take(), 2000);
@@ -77,6 +80,7 @@ export class BacklogInbox implements vscode.Disposable {
           await markWorktree(ws.worktree.adminDir, item.id);
           await installCommitHook(this.roots.mainRoot, this.roots.commonDir, commitPrefixMode()).catch(() => undefined);
         },
+        onFromNotes: async (notes, item) => this.notes?.recordBecame(notes, { id: item.id, kind: 'proposal' }),
       });
     } catch {
       // try again on the next round
