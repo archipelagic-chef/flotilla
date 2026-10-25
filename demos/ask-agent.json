@@ -1,25 +1,51 @@
 {
   "title": "Ask an agent to reply to a comment now",
   "steps": [
-    { "command": "Focus on Flotilla View" },
-    { "click": "[aria-label=\"Backlog\"]" },
-    { "wait": 800 },
-    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
-    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
-    { "click": ".comment-box textarea" },
-    { "type": "Should a reload also reopen the chats that were closed?" },
-    { "caption": "Comment and Ask an Agent (Ctrl+Shift+Enter): an agent answers it now" },
-    { "click": "button:has-text(\"Comment and Ask an Agent\")" },
-    { "waitFor": ".ask-line.ask-waiting" },
-    { "caption": "Its implementer, Vega-2, is busy: the comment waits for its turn to end" },
-    { "wait": 2000 },
-    { "caption": "Answer Now: a separate agent answers instead" },
-    { "click": ".ask-line button:has-text(\"Answer Now\")" },
-    { "waitFor": ".ask-line.ask-thinking" },
-    { "caption": "It's thinking, with the time since it started, and Stop" },
-    { "waitFor": ".ask-line.ask-answered", "timeout": 20000 },
-    { "caption": "Its answer shows as a reply to the comment; Retry asks for a new one" },
-    { "wait": 2500 },
-    { "caption": "" }
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Sort the backlog by priority\")"
+    },
+    {
+      "click": ".comment-box textarea"
+    },
+    {
+      "type": "Should items without a priority go last?"
+    },
+    {
+      "caption": "Comment and Ask an Agent (Ctrl+Shift+Enter): an agent answers it now"
+    },
+    {
+      "click": "button:has-text(\"Comment and Ask an Agent\")"
+    },
+    {
+      "waitFor": ".ask-line.ask-thinking"
+    },
+    {
+      "caption": "It's thinking, with the time since it started, and Stop"
+    },
+    {
+      "waitFor": ".ask-line.ask-answered",
+      "timeout": 20000
+    },
+    {
+      "caption": "Its answer shows as a reply to your comment; Retry asks for a new one"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "caption": ""
+    }
   ]
 }

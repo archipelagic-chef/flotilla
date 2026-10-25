@@ -560,7 +560,9 @@ export function Activity({ ticket }: { ticket: TicketView }) {
           const replies = tab ? 0 : repliesTo(e, ticket).length;
           // The latest agent's entry is open, and so is the entry it replies to.
           const holdsLatest = !!latest && latest.root === i && nested(latest, ticket);
-          if (e !== latest && !holdsLatest && !opened.has(i)) {
+          // A comment an agent is answering stays open: its line shows what the agent is at (BL-127).
+          const answering = !!e.anchor && ['thinking', 'waiting'].includes(ticket.asked?.[e.anchor]?.state ?? '');
+          if (e !== latest && !holdsLatest && !answering && !opened.has(i)) {
             return (
               <li key={i} class={`entry folded kind-${kindOf(e.author)}`} data-entry-key={e.key}>
                 <button class="entry-fold" aria-expanded={false} onClick={() => toggleOpened(i)} title="Open this entry">
