@@ -14,6 +14,7 @@ import {
   pushOnApproval,
   pushTrigger,
   runsOnPush,
+  withoutCredentials,
 } from '../../../src/features/backlog/branchPush';
 import {
   git,
@@ -200,5 +201,26 @@ describe('the pushOnApproval setting', () => {
     writeFile(repo, '.github/workflows/push.yaml', 'on: [push]\n');
     expect(await pushOnApproval(repo, 'auto')).toBe(true);
     expect(await pushOnApproval(repo, 'off')).toBe(false);
+  });
+});
+
+describe("git's output, for the output channel and the ticket", () => {
+  it('drops the user and password of URLs, and GitHub tokens', () => {
+    expect(withoutCredentials("fatal: unable to access 'https://x-access-token:secret@github.com/o/r.git/'")).toBe(
+      "fatal: unable to access 'https://***@github.com/o/r.git/'",
+    );
+    expect(withoutCredentials('remote: token ghp_0123456789abcdefghijABCDEFGHIJ rejected')).toBe('remote: token *** rejected');
+    expect(withoutCredentials('github_pat_11AAAAAAA0123456789_abcdefghijklmnop')).toBe('***');
+    expect(withoutCredentials('git@github.com:o/r.git and https://github.com/o/r')).toBe('git@github.com:o/r.git and https://github.com/o/r');
+  });
+
+  it("keeps a remote URL's credentials out of a failed push's reason", async () => {
+    const repo = initRepo(makeTempDir('push-creds-'));
+    cleanup.push(repo);
+    git(repo, 'checkout', '-q', '-b', BRANCH);
+    git(repo, 'remote', 'add', 'origin', 'https://user:ghp_0123456789abcdefghijABCDEFGHIJ@127.0.0.1:1/o/r.git');
+    const r = await pushBranch(repo, BRANCH);
+    expect(r.kind).toBe('failed');
+    expect(JSON.stringify(r)).not.toContain('ghp_');
   });
 });
