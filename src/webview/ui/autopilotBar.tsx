@@ -157,7 +157,7 @@ function Details({
   const d = autopilotDetails(autopilot, titles, now, live);
   return (
     <div class="autopilot-details">
-      <div class="heading">Working ({d.agents.length})</div>
+      <div class="heading">Working ({d.agents.filter((l) => !l.uncounted).length})</div>
       {d.agents.length ? (
         <ul>
           {d.agents.map((l) => (
