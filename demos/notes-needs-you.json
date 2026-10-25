@@ -1,0 +1,28 @@
+{
+  "title": "A note whose agent asks shows in Needs you; Answer goes to its card",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".note-page .comment-box textarea" },
+    { "wait": 800 },
+    { "type": "Tags on tickets, to filter the board fake: ask" },
+    { "wait": 600 },
+    { "press": "Control+Enter" },
+    { "waitFor": ".needs-lane .need-note", "timeout": 60000 },
+    { "hover": ".needs-lane .need-note" },
+    { "caption": "When a note's agent asks you, the note is in Needs you, next to the tickets waiting for you" },
+    { "wait": 2500 },
+    { "caption": "Its Answer goes to the note's card, with the question" },
+    { "click": ".needs-lane .need-note button:has-text(\"Answer\")" },
+    { "wait": 1500 },
+    { "click": ".note-asking .note-choice:has-text(\"An epic with parts\")" },
+    { "wait": 600 },
+    { "click": ".note-asking button:has-text(\"Answer\")" },
+    { "caption": "Answered: it leaves Needs you, and its agent goes on" },
+    { "waitFor": ".proposed-lane:has-text(\"Tags on tickets\")", "timeout": 60000 },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
