@@ -27,7 +27,7 @@ import {
 import { scopeForChange } from './features/workstreams/refreshPlan';
 import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
-import { toGitPath } from './core/paths';
+import { samePath, toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
 import { registerTranscriptView } from './ui/transcriptView';
 import {
@@ -212,7 +212,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   // The Metrics view (BL-158): the sidebar's tool and its editor tab, counted from the event log.
-  const metrics = new Metrics(context.extensionUri, location.commonDir, backlog);
+  const metrics = new Metrics(context.extensionUri, location.commonDir, backlog, (session, cwd) => {
+    // In the worktree it ran in; one that's gone (a merge's) in the main one's.
+    const ws = (cwd && repository.current.find((w) => w.worktree.path && samePath(w.worktree.path, cwd))) || repository.current.find((w) => w.worktree.isMain);
+    if (ws) void vscode.commands.executeCommand('flotilla.openChat', { key: ws.key, chatId: session });
+  });
   context.subscriptions.push(metrics);
   const sidebar = new SidebarProvider({
     metrics,
@@ -288,7 +292,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // One window acts on its own for the backlog (the autopilot, agents going on after a usage limit).
   const leader = new Leader(backlog.dir);
   // What happens to tickets, agents and merges, recorded as events (BL-157).
-  context.subscriptions.push(startEventLog({ commonDir: location.commonDir, mainRoot: location.mainRoot, backlog, isLeader: () => leader.isLeader, output }));
+  const eventLog = startEventLog({ commonDir: location.commonDir, mainRoot: location.mainRoot, backlog, isLeader: () => leader.isLeader, output });
+  context.subscriptions.push(eventLog);
+  metrics.onView = () => eventLog.scanSoon();
   merger.queueChanged();
   // Pause All's record (BL-160): while it's there, no agent starts on its own, in any window.
   const pausedAll = new PausedAllStore(location.commonDir);

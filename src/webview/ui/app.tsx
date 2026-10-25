@@ -640,6 +640,7 @@ export function App() {
         period={period}
         setPeriod={(p) => update((prev) => ({ ...prev, metricsPeriod: p }))}
         openTicket={(ticket) => send({ type: 'metricsOpen', ticket })}
+        openChat={(session, cwd) => send({ type: 'metricsOpenChat', session, ...(cwd ? { cwd } : {}) })}
         openEditor={() => send({ type: 'metricsEditor', period })}
       />
     );

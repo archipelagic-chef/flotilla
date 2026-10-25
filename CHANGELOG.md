@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Spend over time in Metrics**: which chats spent tokens, hour by hour. The Cost section stacks the last 6 hours, 24 hours or 7 days (by day) by chat, in tokens or $: agents by name and ticket ("reviewer Ziggy-8 · BL-201"), your own chats by title, the smallest as Others. Picking an hour, or a chat in the legend, lists its tokens by kind, turns, purpose and cost, and opens its ticket or chat. A running chat counts up to its latest turn.
+
 - **Merge to main on CI's checks**: an approved ticket's branch is pushed to `origin` (`flotilla.ci.pushOnApproval`, with the repository's identity only, never forced over someone else's push), and Merge to main decides on CI's result for what lands instead of running the checks locally (`flotilla.merge.checks`): it waits while CI runs, and never merges past red CI. The merge train's commits get CI on `flotilla/merge-queue/<ticket>` branches. Without CI, the local checks run as before. The ticket shows its branch's CI live, with the CI/CD view's runs, jobs, logs and actions.
 
 - **CI/CD in Version Control**: a worktree's GitHub Actions runs, with their jobs, steps and logs; Re-run, Re-run Failed Jobs and Cancel; *Run Workflow…* for deploys and releases; the branch's deployments by environment. A dot shows each branch's CI state, a notice says when a run fails (`flotilla.ci.notify`), and **Fix with Agent** hands a failed job to an agent. Uses the GitHub sign-in of GitHub Issues; no new credentials.

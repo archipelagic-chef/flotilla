@@ -649,6 +649,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'metricsOpen':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);
         return;
+      case 'metricsOpenChat':
+        this.deps.metrics?.openChat(m.session, m.cwd);
+        return;
       case 'metricsEditor':
         this.deps.metrics?.openEditor(m.period);
         return;

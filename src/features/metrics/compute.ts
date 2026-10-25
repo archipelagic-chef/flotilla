@@ -9,6 +9,8 @@ import type {
 } from '../../webview/metricsProtocol';
 import type { AgentRole, EventKind, FlotillaEvent } from './events';
 import { productivitySection } from './productivity';
+import type { LiveSpend } from './spendScan';
+import { spendTimeline } from './spendTimeline';
 
 /**
  * The Metrics view's numbers (BL-158), counted from the event log (BL-157) for a period and the one before. Pure: the
@@ -541,7 +543,7 @@ export function computeMetrics(
   index: EventIndex,
   period: MetricsPeriod,
   now: number,
-  opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {},
+  opts: { limit?: number; criteria?: ReadonlyMap<string, number>; live?: readonly LiveSpend[] } = {},
 ): MetricsView {
   const len = PERIOD_DAYS[period] * DAY;
   const cur: Range = { from: now - len, to: now };
@@ -871,6 +873,8 @@ export function computeMetrics(
     to: new Date(cur.to).toISOString(),
     sections: [productivity, flow, merges, agents, cost, you],
     events: index.size,
+    // A part's hours are in the event of its start: a chat's parts start within a month of its turns.
+    spend: spendTimeline(index.between(now - 31 * DAY, now + 1), now, opts.live),
   };
 }
 

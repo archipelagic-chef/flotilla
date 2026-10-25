@@ -45,6 +45,11 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
     contextK: [60, 62],
     tools: { code: 1200 },
   },
+  'spend-hours': {
+    session: 's1',
+    purpose: 'first',
+    hours: [{ at: '2026-10-21T22:00:00.000Z', tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }, costUsd: 0.5, turns: 2 }],
+  },
   'agent-ended': {
     role: 'merge',
     session: 's1',

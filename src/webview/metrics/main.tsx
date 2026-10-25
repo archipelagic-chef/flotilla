@@ -45,6 +45,7 @@ function App() {
       period={period}
       setPeriod={setPeriod}
       openTicket={(ticket) => vscode.postMessage({ type: 'metricsOpen', ticket })}
+      openChat={(session, cwd) => vscode.postMessage({ type: 'metricsOpenChat', session, ...(cwd ? { cwd } : {}) })}
       wide
     />
   );

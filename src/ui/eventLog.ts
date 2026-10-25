@@ -12,6 +12,8 @@ const SETTLE_MS = 60_000;
 const DAY_MS = 86_400_000;
 /** How often the leading window reads what the chats spent since (BL-189): a run's spend is in soon after it ends. */
 const SPEND_SCAN_MS = 5 * 60_000;
+/** While the Metrics view is shown, at most this often (BL-202): a running chat's latest turns show soon. */
+const SPEND_ASKED_MS = 60_000;
 
 /**
  * Records this window's events in the main repository's git dir (BL-157). The leading window reads the history in
@@ -24,7 +26,7 @@ export function startEventLog(o: {
   backlog: LocalBacklog;
   isLeader: () => boolean;
   output: vscode.OutputChannel;
-}): vscode.Disposable {
+}): vscode.Disposable & { scanSoon(): void } {
   setEventLog(o.commonDir, (line) => o.output.appendLine(line));
   const started = new Date();
   const upkeep = async () => {
@@ -54,10 +56,17 @@ export function startEventLog(o: {
       scanning = false;
     }
   };
+  let lastAsked = 0;
   const first = setTimeout(() => void upkeep().then(spend), SETTLE_MS);
   const daily = setInterval(() => void upkeep(), DAY_MS);
   const scans = setInterval(() => void spend(), SPEND_SCAN_MS);
   return {
+    // A view of the spend asks: what's running is read again, at most once a minute (BL-202).
+    scanSoon: () => {
+      if (Date.now() - lastAsked < SPEND_ASKED_MS) return;
+      lastAsked = Date.now();
+      void spend();
+    },
     dispose: () => {
       clearTimeout(first);
       clearInterval(daily);
