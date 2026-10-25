@@ -46,6 +46,10 @@ export function stepState(ticket: TicketView, ci?: TicketCiView): StepState {
     hasRunBlock: !!ticket.run,
     unpushed: !!ticket.unpushed,
     hasWorktree: ticket.worktrees.length > 0,
+    asking: ticket.resume && {
+      waits: ticket.resume.after.filter((d) => !d.merged).map((d) => d.id),
+      merged: ticket.resume.after.filter((d) => d.merged).map((d) => d.id),
+    },
     chained: ticket.chain && ticket.chain === 'merging' && ticket.mergeChecks ? 'checks' : ticket.chain,
   };
 }

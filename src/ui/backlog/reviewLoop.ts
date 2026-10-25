@@ -34,6 +34,7 @@ import {
   resumeAfterLimitPrompt,
   resumeAfterPausePrompt,
   resumeAfterUserPausePrompt,
+  resumeAskingPrompt,
   reviewerPrompt,
   type ReviewFix,
   type ReviewState,
@@ -92,6 +93,7 @@ import type { QueuedView } from '../../webview/ticketProtocol';
 import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { recordEvent } from '../../features/metrics/events';
+import { resumeAsk } from '../../features/backlog/needs';
 
 export interface ReviewDeps {
   /** Whether this window acts on its own (agents going on after a usage limit): one window does. */
@@ -107,6 +109,9 @@ export interface ReviewDeps {
 }
 
 const settings = () => vscode.workspace.getConfiguration('flotilla');
+
+/** Why a resume of an agent that stopped to go on later starts (BL-198): its note says it was resumed, not answered. */
+const RESUMED = 'you resumed it';
 
 /** The item's state that decides whether a start still applies: its status and review (see admitStart). */
 const stateOf = (item: BacklogItem) => JSON.stringify([item.status, item.review?.state, item.review?.round, item.review?.implementer ?? null]);
@@ -1351,6 +1356,8 @@ export class ReviewLoop implements vscode.Disposable {
       if (paused && !paused.byUser) return this.resumePaused(id);
       const held = heldBy(item.review);
       if (held && !this.runs.has(id) && (!session || held.session === session)) await this.resumeHeld(item, held);
+      // Its agent stopped without a question, to go on later (BL-198): it goes on in its chat.
+      else if (item.review?.state === 'asking' && !this.runs.has(id)) await this.resumeAsking(item);
       return;
     }
     // Paused by the user: stopped as it is (see stop).
@@ -1786,6 +1793,26 @@ export class ReviewLoop implements vscode.Disposable {
     );
   }
 
+  /**
+   * Resume on a ticket whose agent stopped without a question (BL-198): its chat goes on, told which of the tickets it
+   * waits for are merged, through the agent queue as an answer does.
+   */
+  private async resumeAsking(item: BacklogItem): Promise<void> {
+    const data = await this.deps.backlog.read();
+    const asks = resumeAsk(item, (await this.deps.backlog.readTicket(item)).activity);
+    const after = (asks?.waits ?? []).flatMap((id) => data.items.find((i) => i.id.toUpperCase() === id) ?? []);
+    const isMerged = (i: BacklogItem) => i.status === 'done' || !!i.merged;
+    const prompt = resumeAskingPrompt({
+      item,
+      ticket: this.deps.backlog.docPath(item.id),
+      merged: after.filter(isMerged).map((i) => i.id),
+      waits: after.filter((i) => !isMerged(i)).map((i) => i.id),
+    });
+    const review: ReviewState = { ...item.review!, state: 'revising' };
+    await this.setReview(item.id, () => review);
+    await this.startRevision({ ...item, review }, { prompt, why: RESUMED, resumeOnly: true }, { reply: true });
+  }
+
   /** Hands the requested changes to the implementer: its chat resumed, or a new agent if it has none. */
   private async startRevision(item: BacklogItem, task: RevisionTask, o: { fresh?: boolean } & StartOptions = {}): Promise<void> {
     const review = item.review!;
@@ -1869,7 +1896,9 @@ export class ReviewLoop implements vscode.Disposable {
       await this.startNote(
         item.id,
         task.resumeOnly
-          ? `You answered ${implementer}'s question; resumed ${where} to go on.`
+          ? task.why === RESUMED
+            ? `You resumed ${implementer}; resumed ${where} to go on where it stopped.`
+            : `You answered ${implementer}'s question; resumed ${where} to go on.`
           : task.aside
             ? `${task.why.charAt(0).toUpperCase()}${task.why.slice(1)}: ${chat ? 'resumed' : 'opened'} ${where} to take care of it.`
             : `Review round ${review.round}: ${task.why}; ${chat ? 'resumed' : 'opened'} ${where} to make them.`,

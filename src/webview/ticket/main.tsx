@@ -36,12 +36,13 @@ import {
 } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
-import { ActiveAgents, Agents } from './agents';
+import { ActiveAgents, Agents, RESUME_TIP } from './agents';
 import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';
+import { STEP } from '../../features/backlog/nextSteps';
 import { CheckResult } from './checkResult';
 
 /**
@@ -143,7 +144,10 @@ function App() {
   const worktrees = ticket.worktrees;
   const active = activeAgents(ticket.agents);
   const done = ticket.item.status === 'done';
-  const working = ticketSteps(ticket, ci).main === 'openChat';
+  const steps = ticketSteps(ticket, ci);
+  const working = steps.main === 'openChat';
+  // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
+  const resume = steps.main === 'resume';
   return (
     <main class="ticket">
       <header>
@@ -218,9 +222,14 @@ function App() {
         <StateCard ticket={withCiStop(ticket, ci)} ci={ci} />
         <div class="toolbar">
           {/* Not while an agent works on it (BL-154): its chat opens from the state above, and Stop is there. */}
+          {resume && (
+            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
+              <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
+            </ActionButton>
+          )}
           {!done && !working && (
             <ActionButton
-              class="button"
+              class={resume ? 'button secondary' : 'button'}
               message={{ type: 'start', agent: true }}
               working="Starting…"
               disabled={ticket.creating}

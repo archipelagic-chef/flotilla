@@ -340,6 +340,11 @@ h2 {
   background: var(--vscode-inputValidation-warningBackground, transparent);
   border: 1px solid var(--vscode-inputValidation-warningBorder, var(--waiting));
 }
+.error-note.resume-after.ready {
+  color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-infoBackground, transparent);
+  border-color: var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
+}
 .properties {
   display: flex;
   align-items: center;

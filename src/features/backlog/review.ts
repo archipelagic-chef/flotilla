@@ -350,6 +350,27 @@ export function answerPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string;
   ].join('\n\n');
 }
 
+/**
+ * What the implementer is told when the user resumes it after it stopped to go on later (BL-198), its chat resumed:
+ * which of the tickets it waits for are merged now, and which aren't yet.
+ */
+export function resumeAskingPrompt(o: { item: Pick<BacklogItem, 'id'>; ticket: string; merged: readonly string[]; waits: readonly string[] }): string {
+  const are = (ids: readonly string[]) => `${ids.join(', ')} ${ids.length > 1 ? 'are' : 'is'}`;
+  const news = [
+    ...(o.merged.length
+      ? [`${are(o.merged)} merged now: rebase your branch onto the branch work merges into to have ${o.merged.length > 1 ? 'their' : 'its'} work.`]
+      : []),
+    ...(o.waits.length ? [`${are(o.waits)} not merged yet, but the user resumed you anyway: go on with what you can.`] : []),
+  ];
+  return [
+    `The user resumed you on ${o.item.id} (the ticket ${o.ticket}).`,
+    ...news,
+    UPDATE_DESCRIPTION(o.ticket),
+    `Go on where you left off. Commit your changes (messages start with "${o.item.id}: "), then report in the ticket in the same shape, ending with a line "Ready for review." If you need the user, ask in its "Needs from you:" line.`,
+    reviewNotes({ id: o.item.id, backlogDir: folderOf(o.ticket) }),
+  ].join('\n\n');
+}
+
 /** What a paused agent is told when it goes on after Flotilla paused it to make room for another ticket. */
 export function resumeAfterPausePrompt(phase: 'review' | 'work'): string {
   return phase === 'review'

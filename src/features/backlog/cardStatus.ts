@@ -23,7 +23,7 @@ export interface CardStatus {
 
 /** A card's next step: a backlog message the card sends, with the button's label. */
 export interface CardStep {
-  op: 'accept' | 'start' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
+  op: 'accept' | 'start' | 'resume' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
   label: string;
   icon: string;
 }
@@ -42,6 +42,7 @@ export type CardStatusItem = Pick<
   | 'startFailed'
   | 'clash'
   | 'waitsFor'
+  | 'resume'
   | 'creating'
   | 'base'
   | 'agent'
@@ -81,8 +82,18 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   const turn = turnOf(item);
   if (turn) {
     switch (turn.kind) {
-      case 'asking':
+      case 'asking': {
+        // Its agent stopped without a question (BL-198): Resume, with what it waits for.
+        if (item.resume) {
+          const steps = nextSteps({ status: item.status, base: main, asking: item.resume });
+          return {
+            text: steps.status ?? 'Waiting for you: resume it',
+            mark: item.resume.waits.length ? undefined : 'question',
+            next: { op: 'resume', label: STEP.resume.label, icon: STEP.resume.icon },
+          };
+        }
         return { text: 'Waiting for you: answer', mark: 'question', next: { op: 'comment', label: 'Answer', icon: 'comment' } };
+      }
       case 'yours':
         if (queuedBehind) return { text: 'Approved · in the merge queue', next: { op: 'mergeNext', label: 'Merge Next', icon: 'git-merge' } };
         if (readyToMerge(item))

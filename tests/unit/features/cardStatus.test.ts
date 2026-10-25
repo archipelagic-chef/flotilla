@@ -44,6 +44,11 @@ describe('cardStatus', () => {
     expect(line(item('doing', { review: review('revising') }))).toEqual(['Revising · Vega-2 · round 2', '', 'working', '']);
     expect(line(item('review', { review: review('yours') }))).toEqual(['Waiting for you: review', 'question', '', 'Approve']);
     expect(line(item('doing', { review: review('asking') }))).toEqual(['Waiting for you: answer', 'question', '', 'Answer']);
+    // Its agent stopped to go on later (BL-198): Resume, with what it waits for.
+    const resume = (waits: string[], merged: string[]) => item('doing', { review: review('asking'), resume: { waits, merged } });
+    expect(line(resume(['BL-182'], []))).toEqual(['Waits for BL-182 to be merged', '', '', 'Resume']);
+    expect(line(resume([], ['BL-182']))).toEqual(['BL-182 is merged: resume it', 'question', '', 'Resume']);
+    expect(line(resume([], []))).toEqual(['Waiting for you: resume it', 'question', '', 'Resume']);
     expect(line(item('review', { review: review('stopped') }))).toEqual(['Stopped: yours to decide', 'warning', '', 'Open']);
     expect(line(item('review', { review: review('paused', { paused: { byUser: 'You' } } as unknown as Partial<ReviewState>) }))).toEqual([
       'Paused',

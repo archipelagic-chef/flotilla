@@ -17,7 +17,7 @@ import {
   updateItem,
 } from '../../features/backlog/backlog';
 import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
-import { needOf, queuedNeed } from '../../features/backlog/needs';
+import { needOf, queuedNeed, resumeAsk } from '../../features/backlog/needs';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
@@ -288,6 +288,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
         // What it waits for, and how its branches merge with main (BL-55).
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
+        // Its agent stopped to be resumed (BL-198): what it waits for, merged or not.
+        const asks = resumeAsk(item, ticket.activity);
+        const after = asks?.waits.flatMap((id) => data.items.find((i) => i.id.toUpperCase() === id) ?? []) ?? [];
+        const isMerged = (i: (typeof after)[number]) => i.status === 'done' || !!i.merged;
+        const resume = asks && { waits: after.filter((i) => !isMerged(i)).map((i) => i.id), merged: after.filter(isMerged).map((i) => i.id) };
         const base = item.mainCheck && baseLabel(item.mainCheck.base);
         // A ticket in review that shows a demo: its card has the demo mark (BL-135).
         const checks = this.merger?.checksView(item.id);
@@ -303,6 +308,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(need ? { need } : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor } : {}),
+          ...(resume ? { resume } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
@@ -442,6 +448,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'updateAndMerge':
         await this.merger?.updateAndMerge(m.id);
+        return;
+      case 'resume':
+        await vscode.commands.executeCommand('flotilla.resumeAgent', m.id);
         return;
       case 'merge':
         await vscode.commands.executeCommand('flotilla.mergeBacklogItem', m.id);

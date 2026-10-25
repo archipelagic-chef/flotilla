@@ -4,6 +4,7 @@ import {
   heldBy,
   type ReviewFix,
 } from '../../features/backlog/review';
+import { STEP } from '../../features/backlog/nextSteps';
 import { reviewOutcome } from '../../features/backlog/rounds';
 import {
   TURN_ICON,
@@ -14,7 +15,7 @@ import {
 import type { QueuedView, TicketCiView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton } from './actions';
-import { PAUSE_TIP, STOP_TIP } from './agents';
+import { PAUSE_TIP, RESUME_TIP, STOP_TIP } from './agents';
 import { MergeStop, QueuePlace } from './mergePanel';
 import { MergeStep, StepStatus, ticketSteps } from './steps';
 
@@ -143,7 +144,15 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
   const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
   // Whose turn it is, said in words with the reviewer and the implementer named, and what the user can do now.
   const turn = turnOf({ status: ticket.item.status, review: r });
-  const said = turn && turnSentence(turn, r);
+  // Its agent stopped without a question (BL-198): it's resumed, not answered.
+  const resume = steps.main === 'resume';
+  const said =
+    turn && resume
+      ? {
+          text: `${r.implementer ?? 'The agent'} stopped, to go on later.`,
+          todo: 'Resume it: it goes on in its chat, where it left off. Start an Agent starts afresh instead.',
+        }
+      : turn && turnSentence(turn, r);
   const pause =
     r.state === 'paused' && r.paused?.byUser
       ? `(${when(r.paused.byUser)}) Its chat is kept, and its work in the worktree as it was.`
@@ -230,26 +239,33 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
             </ActionButton>
           </>
         ) : active ? (
-          // While a reviewer agent works, its Stop is Review It Myself: Approve and Request Changes come back with it (BL-154).
-          steps.others.includes('reviewMyself') ? (
-            <ActionButton
-              class="button secondary"
-              message={{ type: 'stopReview' }}
-              working="Stopping…"
-              title="Stops the reviewer agent: Approve and Request Changes are yours, below"
-            >
-              <i class="codicon codicon-eye" /> Review It Myself
-            </ActionButton>
-          ) : (
-            <ActionButton
-              class="button secondary"
-              message={{ type: 'stopReview' }}
-              working="Stopping…"
-              title={running ? STOP_TIP : 'Stops the review and the handoffs'}
-            >
-              <i class="codicon codicon-debug-stop" /> Stop
-            </ActionButton>
-          )
+          <>
+            {resume && (
+              <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
+                <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
+              </ActionButton>
+            )}
+            {/* While a reviewer agent works, its Stop is Review It Myself: Approve and Request Changes come back with it (BL-154). */}
+            {steps.others.includes('reviewMyself') ? (
+              <ActionButton
+                class="button secondary"
+                message={{ type: 'stopReview' }}
+                working="Stopping…"
+                title="Stops the reviewer agent: Approve and Request Changes are yours, below"
+              >
+                <i class="codicon codicon-eye" /> Review It Myself
+              </ActionButton>
+            ) : (
+              <ActionButton
+                class="button secondary"
+                message={{ type: 'stopReview' }}
+                working="Stopping…"
+                title={running ? STOP_TIP : 'Stops the review and the handoffs'}
+              >
+                <i class="codicon codicon-debug-stop" /> Stop
+              </ActionButton>
+            )}
+          </>
         ) : r.state === 'stopped' ? (
           // Fixes for why it stopped, the first one first.
           fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (

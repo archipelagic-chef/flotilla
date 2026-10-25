@@ -447,7 +447,9 @@ export function MainState({ ticket }: { ticket: TicketView }) {
   const conflicts = conflictsOf(ticket.item);
   const waiting = ticket.dependsOn.filter((d) => d.status !== 'done');
   const update = ticket.updateFromMain;
-  if (!conflicts.length && !waiting.length) return null;
+  // The tickets its agent said it waits for to be merged, to be resumed (BL-198).
+  const resumeAfter = ticket.resume?.after ?? [];
+  if (!conflicts.length && !waiting.length && !resumeAfter.length) return null;
   const label = (s: BacklogStatus) => STATUSES.find((x) => x.status === s)?.label ?? s;
   return (
     <>
@@ -476,6 +478,21 @@ export function MainState({ ticket }: { ticket: TicketView }) {
             </span>
           ))}{' '}
           to be merged: it depends on {waiting.length === 1 ? 'its' : 'their'} work.
+        </div>
+      )}
+      {resumeAfter.length > 0 && (
+        <div class={`error-note main-note resume-after${resumeAfter.every((d) => d.merged) ? ' ready' : ''}`}>
+          <i class={`codicon codicon-${resumeAfter.every((d) => d.merged) ? 'debug-continue' : 'debug-pause'}`} /> Its agent waits for{' '}
+          {resumeAfter.map((d, i) => (
+            <span key={d.id}>
+              {i > 0 && ', '}
+              <button class="text-button" onClick={() => send({ type: 'openTicket', id: d.id })} title={d.title}>
+                {d.id}
+              </button>{' '}
+              ({d.merged ? 'merged' : label(d.status)})
+            </span>
+          ))}{' '}
+          to be merged: Resume goes on in its chat.
         </div>
       )}
     </>

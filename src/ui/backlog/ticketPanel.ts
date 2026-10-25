@@ -76,6 +76,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
 import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
+import { resumeAsk } from '../../features/backlog/needs';
 import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
 import type { Claim } from '../../features/backlog/ticketCheck';
@@ -1300,7 +1301,7 @@ export class TicketPanels implements vscode.Disposable {
           activity: await this.localEntries(item, ticket.activity, panel.webview, attachments),
           attachments,
           run: latestRun(ticket.activity, (e) => Store.entryKey(plain.id, e)),
-          ...(await this.mainView(plain, ticket.description)),
+          ...(await this.mainView(plain, ticket.description, ticket.activity)),
           mentions: await this.mentionsOf(plain.id),
           references: (await this.deps.backlog.read()).items.map((i) => ({ id: i.id, title: i.title, status: i.status })),
         });
@@ -1333,15 +1334,26 @@ export class TicketPanels implements vscode.Disposable {
     }
   }
 
-  /** What it depends on (BL-55), and whether main can be merged into its branch from here. */
-  private async mainView(item: BacklogItem, description: string): Promise<Pick<TicketView, 'dependsOn' | 'updateFromMain'>> {
+  /**
+   * What it depends on (BL-55), what its agent waits for to resume it (BL-198), and whether main can be merged into its
+   * branch from here.
+   */
+  private async mainView(
+    item: BacklogItem,
+    description: string,
+    activity: TicketEntry[],
+  ): Promise<Pick<TicketView, 'dependsOn' | 'updateFromMain' | 'resume'>> {
     const data = await this.deps.backlog.read();
-    const dependsOn = dependsOnIds(description, item.id).flatMap((id) => {
-      const dep = data.items.find((i) => i.id.toUpperCase() === id);
-      return dep ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
-    });
+    const known = (ids: string[]) =>
+      ids.flatMap((id) => {
+        const dep = data.items.find((i) => i.id.toUpperCase() === id);
+        return dep ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
+      });
+    const dependsOn = known(dependsOnIds(description, item.id));
+    const asks = resumeAsk(item, activity);
+    const resume = asks && { after: known(asks.waits).map((d) => ({ ...d, merged: d.status === 'done' || !!data.items.find((i) => i.id === d.id)?.merged })) };
     const base = this.mainSync && isOpen(item) && this.worktreesOf(item).length ? await this.mainSync.base() : undefined;
-    return { dependsOn, ...(base ? { updateFromMain: { base: baseLabel(base) } } : {}) };
+    return { dependsOn, ...(resume ? { resume } : {}), ...(base ? { updateFromMain: { base: baseLabel(base) } } : {}) };
   }
 
   /** A ticket's view without its description and activity. */

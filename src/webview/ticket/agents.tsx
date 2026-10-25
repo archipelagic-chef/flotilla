@@ -84,6 +84,7 @@ export function ChatCard({ chat }: { chat: AgentChatView }) {
 
 export const PAUSE_TIP = 'Stops it now and keeps its chat; its work stays in the worktree as it is. Resume goes on in the same chat';
 export const STOP_TIP = 'Ends it (its chat is kept): resume it later, or hand the work to a new agent';
+export const RESUME_TIP = "Goes on in its agent's chat, where it stopped, told what was merged since. Without a slot free, it waits in the agent queue";
 
 /** The busy agents the review panel doesn't show (started by hand, not by the loop). */
 export function outsideAgents(ticket: TicketView): TicketView['agents'] {

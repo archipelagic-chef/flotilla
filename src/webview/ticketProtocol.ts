@@ -292,6 +292,11 @@ export interface TicketView {
   canDiscuss: boolean;
   /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
   dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
+  /**
+   * Its agent stopped without a question, to be resumed (BL-198): Resume goes on in its chat. after: the tickets its
+   * report says it waits for, and whether each is merged.
+   */
+  resume?: { after: Array<{ id: string; title: string; status: BacklogStatus; merged: boolean }> };
   /** Main can be merged into its branch from here (Update from Main): it's open and has a worktree. base: main's name. */
   updateFromMain?: { base: string };
   /** Your comments can be answered by an agent now (Ask an Agent, BL-127), and those asked about, by their anchors. */

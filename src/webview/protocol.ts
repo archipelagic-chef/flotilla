@@ -43,6 +43,8 @@ export interface BacklogItemView extends BacklogItem {
   need?: Need;
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
+  /** Its agent stopped without a question, to be resumed (BL-198): the tickets it said it waits for, not merged yet and merged. */
+  resume?: { waits: string[]; merged: string[] };
   /** The autopilot holds it back: it would change files this ticket in progress changes (BL-71). */
   clash?: { with: string; files: string[] };
   /** Its merge's checks are running (BL-169): the step, and how far the tests are. */
@@ -459,6 +461,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'mergeNext'; id: string }
   /** Update from Main and Merge (BL-154): a conflicting card's next step. */
   | { type: 'backlog'; op: 'updateAndMerge'; id: string }
+  /** Resume (BL-198): its agent, stopped to be resumed, goes on in its chat. */
+  | { type: 'backlog'; op: 'resume'; id: string }
   /** Compact or Detailed cards (BL-183): saved in flotilla.backlog.cards. */
   | { type: 'backlog'; op: 'cards'; detailed: boolean }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
