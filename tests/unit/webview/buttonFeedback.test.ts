@@ -30,6 +30,7 @@ const INSTANT = new Set([
   'backlog:integrations',
   'ci:signIn',
   'copy',
+  'copyText',
   // Its spinner comes from the host's view (the CI's "starting").
   'runWorkflow',
 ]);

@@ -22,7 +22,6 @@
     { "caption": "A click opens it, and its activity says where it's mentioned" },
     { "click": ".feed a.ticket-ref" },
     { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
-    { "click": "body:has(h1:has-text(\"Sort the backlog by priority\")) .activity-toggle[aria-expanded=\"false\"]" },
     { "waitFor": ".timeline-item.mention" },
     { "wait": 1500 },
     { "caption": "That line goes back to the comment: it opens and is marked" },

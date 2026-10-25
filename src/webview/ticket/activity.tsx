@@ -391,7 +391,7 @@ type Mentioned = NonNullable<TicketView['mentions']>[number];
 function MentionRow({ m }: { m: Mentioned }) {
   const by = m.anchor ? `, by ${entryAgent(m.author) ?? (m.author || 'Note')}${m.date ? `, ${m.date.slice(11)}` : ''}` : ', in its description';
   return (
-    <li class="timeline-row">
+    <li class="mention-row">
       <button
         class="timeline-item mention"
         onClick={() => send({ type: 'openHref', href: `flotilla-ref:${m.from}${m.anchor ? `#${m.anchor}` : ''}` })}
@@ -410,12 +410,7 @@ function MentionRow({ m }: { m: Mentioned }) {
 
 function Timeline({ ticket }: { ticket: TicketView }) {
   const notes = ticket.activity.filter((e) => kindOf(e.author) === 'history');
-  // Where other tickets mention it (BL-130) go with the notes, by their dates; a description's has none and goes first.
-  const mentions = (ticket.mentions ?? []).map((m) => ({ ...m, mention: true as const }));
-  const rows = withCommits<(typeof notes)[number] | (typeof mentions)[number]>(
-    [...notes, ...mentions].sort((a, b) => a.date.localeCompare(b.date)),
-    ticket.commits,
-  );
+  const rows = withCommits(notes, ticket.commits);
   if (!rows.length) return <div class="empty-text">Nothing has happened yet.</div>;
   return (
     <ol class="timeline">
@@ -438,7 +433,6 @@ function Timeline({ ticket }: { ticket: TicketView }) {
             </li>
           );
         }
-        if ('mention' in f) return <MentionRow key={`mention-${f.from}-${f.anchor ?? ''}`} m={f} />;
         const e = f;
         const chat = e.chat && !('pending' in e.chat) ? e.chat : undefined;
         return (
@@ -656,6 +650,14 @@ export function Activity({ ticket }: { ticket: TicketView }) {
             </li>
           ))}
       </ol>
+      {/* Where other tickets mention it (BL-130), oldest first: always shown, so it's found. */}
+      {!tab && !!ticket.mentions?.length && (
+        <ol class="mentions">
+          {ticket.mentions.map((m) => (
+            <MentionRow key={`${m.from}-${m.anchor ?? ''}`} m={m} />
+          ))}
+        </ol>
+      )}
       <button class="text-button activity-toggle" aria-expanded={timeline} onClick={toggleTimeline}>
         <i class={`codicon codicon-chevron-${timeline ? 'down' : 'right'}`} /> {timeline ? 'Hide activity' : 'Show activity'}
       </button>
