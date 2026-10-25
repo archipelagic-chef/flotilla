@@ -8,7 +8,12 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { GitHubSource, gitHubRepo } from '../../features/backlog/sources/github';
 import { JiraSource } from '../../features/backlog/sources/jira';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
-import type { Fetch, IntegrationConfig, IssueSource, RemoteIssue } from '../../features/backlog/sources/source';
+import type {
+  Fetch,
+  IntegrationConfig,
+  IssueSource,
+  RemoteIssue,
+} from '../../features/backlog/sources/source';
 
 interface IntegrationsFile {
   version: 1;
@@ -141,7 +146,9 @@ export class BacklogIntegrations implements vscode.Disposable {
     const target: { project?: string; issueType?: string } = {};
     let where = state.label;
     if (source instanceof JiraSource) {
-      const projects = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Reading Jira projects…' }, () => source.projects());
+      const projects = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Reading Jira projects…' }, () =>
+        source.projects(),
+      );
       const project = await vscode.window.showQuickPick(
         projects.map((p) => ({ label: p.key, description: p.name })),
         { title: `Create a Jira Issue for ${itemId} (1/2)`, placeHolder: 'Project', matchOnDescription: true },
@@ -160,7 +167,8 @@ export class BacklogIntegrations implements vscode.Disposable {
           `${project.label} requires ${missing.join(', ')} on a new ${type.label}, which Flotilla can't fill in. Create it in Jira, then link it.`,
           'Open Jira',
         );
-        if (open) await vscode.env.openExternal(vscode.Uri.parse(`${state.config.kind === 'jira' ? state.config.site : ''}/jira/software/projects/${project.label}`));
+        if (open)
+          await vscode.env.openExternal(vscode.Uri.parse(`${state.config.kind === 'jira' ? state.config.site : ''}/jira/software/projects/${project.label}`));
         return undefined;
       }
       target.project = project.label;
@@ -169,7 +177,7 @@ export class BacklogIntegrations implements vscode.Disposable {
     }
     const confirmed = await vscode.window.showInformationMessage(
       `Create "${title}" in ${where}?`,
-      { modal: true, detail: 'Its description is the ticket\'s. The new issue is linked to the item.' },
+      { modal: true, detail: "Its description is the ticket's. The new issue is linked to the item." },
       'Create',
     );
     if (confirmed !== 'Create') return undefined;
@@ -205,7 +213,8 @@ export class BacklogIntegrations implements vscode.Disposable {
       const typed = v.trim();
       const known = listed.some((i) => i.issue?.id.toLowerCase() === typed.toLowerCase());
       const looksLikeKey = /^[A-Za-z][A-Za-z0-9_]*-\d+$|^#?\d+$/.test(typed);
-      pick.items = looksLikeKey && !known ? [{ label: `$(link) Link ${typed}`, description: 'Look it up in the connected trackers', key: typed }, ...listed] : listed;
+      pick.items =
+        looksLikeKey && !known ? [{ label: `$(link) Link ${typed}`, description: 'Look it up in the connected trackers', key: typed }, ...listed] : listed;
     });
     const chosen = await new Promise<Item | undefined>((resolve) => {
       pick.onDidAccept(() => {
@@ -219,7 +228,9 @@ export class BacklogIntegrations implements vscode.Disposable {
     if (!chosen) return undefined;
     const issue =
       chosen.issue ??
-      (await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Looking up ${chosen.key}…` }, () => this.lookup(chosen.key!)));
+      (await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Looking up ${chosen.key}…` }, () =>
+        this.lookup(chosen.key!),
+      ));
     if (!issue) {
       void vscode.window.showWarningMessage(`${chosen.key} isn't in any connected tracker (or can't be read).`);
       return undefined;
@@ -259,7 +270,10 @@ export class BacklogIntegrations implements vscode.Disposable {
       description: s.error ? '$(warning) not loading' : `${s.issues.length} issue${s.issues.length === 1 ? '' : 's'}`,
       detail: s.error ?? (s.config.kind === 'jira' ? s.config.jql : undefined),
       buttons: [{ iconPath: new vscode.ThemeIcon('debug-disconnect'), tooltip: 'Disconnect' }],
-      run: async () => void (await vscode.env.openExternal(vscode.Uri.parse(s.config.kind === 'jira' ? s.config.site : `https://github.com/${s.config.owner}/${s.config.repo}/issues`))),
+      run: async () =>
+        void (await vscode.env.openExternal(
+          vscode.Uri.parse(s.config.kind === 'jira' ? s.config.site : `https://github.com/${s.config.owner}/${s.config.repo}/issues`),
+        )),
     }));
     const items: Item[] = [
       ...(connected.length ? [{ label: 'Connected', kind: vscode.QuickPickItemKind.Separator }, ...connected] : []),
@@ -308,7 +322,11 @@ export class BacklogIntegrations implements vscode.Disposable {
       validateInput: (v) => (/^https:\/\/[^/\s]+/.test(v.trim()) ? undefined : 'An https:// address, like https://your-company.atlassian.net'),
     });
     if (!site) return;
-    const email = await vscode.window.showInputBox({ title: 'Connect Jira (2/4)', prompt: 'The email address of your Atlassian account', validateInput: (v) => (/.+@.+/.test(v) ? undefined : 'An email address') });
+    const email = await vscode.window.showInputBox({
+      title: 'Connect Jira (2/4)',
+      prompt: 'The email address of your Atlassian account',
+      validateInput: (v) => (/.+@.+/.test(v) ? undefined : 'An email address'),
+    });
     if (!email) return;
     const token = await vscode.window.showInputBox({
       title: 'Connect Jira (3/4)',
@@ -324,7 +342,13 @@ export class BacklogIntegrations implements vscode.Disposable {
       ignoreFocusOut: true,
     });
     if (!jql) return;
-    const config: IntegrationConfig = { kind: 'jira', id: `jira:${site.trim().replace(/\/+$/, '')}:${email.trim()}`, site: site.trim().replace(/\/+$/, ''), email: email.trim(), jql };
+    const config: IntegrationConfig = {
+      kind: 'jira',
+      id: `jira:${site.trim().replace(/\/+$/, '')}:${email.trim()}`,
+      site: site.trim().replace(/\/+$/, ''),
+      email: email.trim(),
+      jql,
+    };
     await this.secrets.store(jiraSecret(config), token.trim());
     await this.add(config);
   }

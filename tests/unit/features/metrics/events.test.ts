@@ -2,20 +2,30 @@ import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   appendEvents,
+  type EventData,
+  type EventKind,
   eventsFile,
   eventsWritten,
+  type FlotillaEvent,
   readEvents,
   recordEvent,
   setEventLog,
-  type EventData,
-  type EventKind,
-  type FlotillaEvent,
 } from '../../../../src/features/metrics/events';
 import { failedTests, recordClickWait } from '../../../../src/features/metrics/record';
-import { addTotals, firstKeptMonth, monthTotals, rollUpOldEvents } from '../../../../src/features/metrics/rollup';
+import {
+  addTotals,
+  firstKeptMonth,
+  monthTotals,
+  rollUpOldEvents,
+} from '../../../../src/features/metrics/rollup';
 import { makeTempDir } from '../../../helpers/gitRepo';
 
 const run = promisify(execFile);
@@ -26,8 +36,24 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'agent-started': { role: 'work', model: 'opus', session: 's1' },
   'agent-resumed': { role: 'review', session: 's1' },
   'agent-paused': { role: 'work', session: 's1', reason: 'limit', until: '2026-10-21T23:00:00.000Z' },
-  'agent-spend': { session: 's1', purpose: 'review', to: '2026-10-21T22:10:00.000Z', tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }, costUsd: 0.5, contextK: [60, 62], tools: { code: 1200 } },
-  'agent-ended': { role: 'merge', session: 's1', code: 0, ok: true, minutes: 3.5, tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 }, costUsd: 0.12 },
+  'agent-spend': {
+    session: 's1',
+    purpose: 'review',
+    to: '2026-10-21T22:10:00.000Z',
+    tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 },
+    costUsd: 0.5,
+    contextK: [60, 62],
+    tools: { code: 1200 },
+  },
+  'agent-ended': {
+    role: 'merge',
+    session: 's1',
+    code: 0,
+    ok: true,
+    minutes: 3.5,
+    tokens: { input: 10, output: 20, cacheRead: 30, cacheCreation: 40 },
+    costUsd: 0.12,
+  },
   'review-verdict': { verdict: 'changes', round: 2, by: 'Ember-6' },
   'merge-started': { into: 'main', branch: 'feature/x' },
   'merge-conflicted': { files: [{ file: 'a.ts', regions: [{ lines: 4, additions: true }] }] },
@@ -73,7 +99,7 @@ describe('recording events', () => {
     await eventsWritten();
   });
 
-  it("never throws: a write that fails is logged once and dropped", async () => {
+  it('never throws: a write that fails is logged once and dropped', async () => {
     const dir = makeTempDir();
     // A file where the folder should be: every write fails.
     fs.writeFileSync(path.join(dir, 'flotilla'), '');
@@ -105,7 +131,7 @@ describe('recording events', () => {
     expect((await readEvents(dir)).map((e) => e.at)).toEqual(['2026-10-01T00:00:00.000Z', '2026-10-01T00:02:00.000Z']);
   });
 
-  it("loses no events when windows and scripts append at once", async () => {
+  it('loses no events when windows and scripts append at once', async () => {
     const dir = makeTempDir();
     setEventLog(dir);
     const script = path.resolve('scripts/record-event.mjs');
@@ -121,9 +147,12 @@ describe('recording events', () => {
     const events = await readEvents(dir);
     expect(events).toHaveLength(600);
     for (const who of ['window', 'p1', 'p2']) {
-      expect(events.filter((e) => (e as FlotillaEvent<'click-waited'>).data.button === who).map((e) => (e as FlotillaEvent<'click-waited'>).data.ms).sort((a, b) => a - b)).toEqual(
-        [...Array(200).keys()],
-      );
+      expect(
+        events
+          .filter((e) => (e as FlotillaEvent<'click-waited'>).data.button === who)
+          .map((e) => (e as FlotillaEvent<'click-waited'>).data.ms)
+          .sort((a, b) => a - b),
+      ).toEqual([...Array(200).keys()]);
     }
   });
 });
@@ -138,7 +167,7 @@ describe('what the events are made of', () => {
     expect((await readEvents(dir)).map((e) => e.data)).toEqual([{ button: 'merge', ms: 2400 }]);
   });
 
-  it("names the tests vitest says failed", () => {
+  it('names the tests vitest says failed', () => {
     const output = ['\x1b[31m FAIL \x1b[39m tests/unit/a.test.ts > merges > keeps both', ' FAIL  tests/unit/b.test.ts', ' ✓ tests/unit/c.test.ts'].join('\n');
     expect(failedTests(output)).toEqual(['tests/unit/a.test.ts > merges > keeps both', 'tests/unit/b.test.ts']);
   });
@@ -156,7 +185,21 @@ describe('keeping 12 months', () => {
     await appendEvents(dir, [
       ended('2025-09-10T00:00:00.000Z', 2),
       ended('2025-09-11T00:00:00.000Z', 3),
-      { at: '2025-09-12T00:00:00.000Z', kind: 'merge-conflicted', data: { files: [{ file: 'a', regions: [{ lines: 3, additions: true }, { lines: 5, additions: false }] }] } },
+      {
+        at: '2025-09-12T00:00:00.000Z',
+        kind: 'merge-conflicted',
+        data: {
+          files: [
+            {
+              file: 'a',
+              regions: [
+                { lines: 3, additions: true },
+                { lines: 5, additions: false },
+              ],
+            },
+          ],
+        },
+      },
       ended('2026-10-01T00:00:00.000Z', 1),
     ]);
     expect(await rollUpOldEvents(dir, new Date('2026-10-21T00:00:00Z'))).toEqual(['2025-09']);

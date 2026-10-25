@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { type AgentChoice, type BacklogItem } from '../../../features/backlog/backlog';
 import { validModel } from '../agentRunner';
 import type { Handlers } from './context';
+import type { AgentsMessage } from './agents.messages';
 
 /** An item with its agent choice (none, when all are the defaults). A model chosen replaces Light, and Light a model. */
 function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
@@ -16,7 +17,7 @@ function withAgent(item: BacklogItem, agent: AgentChoice): BacklogItem {
 }
 
 /** The ticket's agents: starting one, pausing or stopping it, the model and effort they use, and their chats. */
-export const agentsHandlers: Handlers = {
+export const agentsHandlers: Handlers<AgentsMessage> = {
   start: async ({ id }, m) => {
     await vscode.commands.executeCommand('flotilla.startBacklogItem', id, { agent: m.agent, ...(m.newWorktree ? { newWorktree: m.newWorktree } : {}) });
   },
@@ -41,7 +42,10 @@ export const agentsHandlers: Handlers = {
       void vscode.window.showWarningMessage(`"${model}" isn't a model name: an alias (opus, sonnet…) or a model's id (letters, digits, dots and dashes).`);
       return;
     }
-    await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)) }));
+    await backlog.change((d) => ({
+      ...d,
+      items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, model: model || undefined, light: false }) : i)),
+    }));
   },
   agentEffort: async ({ id, item, backlog }, m) => {
     if (item.remote) return;

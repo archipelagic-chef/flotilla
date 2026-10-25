@@ -402,7 +402,14 @@ export function failureReason(error) {
 
 /** The words a selector looks for: its quoted texts, classes, ids and attribute values, lowercased. */
 function selectorWords(selector) {
-  return [...new Set(selector.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && !['has', 'text', 'aria', 'label', 'nth', 'not', 'button', 'div', 'span', 'input'].includes(w)))];
+  return [
+    ...new Set(
+      selector
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((w) => w.length > 1 && !['has', 'text', 'aria', 'label', 'nth', 'not', 'button', 'div', 'span', 'input'].includes(w)),
+    ),
+  ];
 }
 
 /**
@@ -414,7 +421,10 @@ export function nearestElements(selector, elements, count = 8) {
   const scored = elements.map((element) => {
     const hay = [element.label, element.text, element.classes].filter(Boolean).join(' ').toLowerCase();
     // A word found whole counts most; its start (a typo, a plural) still counts.
-    return { element, score: words.reduce((sum, w) => sum + (hay.includes(w) ? 2 : w.length > 4 && hay.includes(w.slice(0, Math.max(4, w.length - 2))) ? 1 : 0), 0) };
+    return {
+      element,
+      score: words.reduce((sum, w) => sum + (hay.includes(w) ? 2 : w.length > 4 && hay.includes(w.slice(0, Math.max(4, w.length - 2))) ? 1 : 0), 0),
+    };
   });
   const matching = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
   const picked = (matching.length ? matching : scored.filter((s) => s.element.label || s.element.text)).slice(0, count);
@@ -469,5 +479,9 @@ export function plainSettings(file) {
 export function commandMatches(typed, label) {
   if (!label) return false;
   const words = label.toLowerCase().split(/[^\p{L}\p{N}]+/u);
-  return String(typed).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).every((w) => words.includes(w));
+  return String(typed)
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .every((w) => words.includes(w));
 }

@@ -1,5 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkJobLogRef, firstErrorLine, JobLogProvider, parseJobLogUri, showJobLog } from '../../../../src/features/ci/jobLog';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  checkJobLogRef,
+  firstErrorLine,
+  JobLogProvider,
+  parseJobLogUri,
+  showJobLog,
+} from '../../../../src/features/ci/jobLog';
 
 const vs = vi.hoisted(() => ({ openTextDocument: vi.fn(), showTextDocument: vi.fn(), showErrorMessage: vi.fn() }));
 

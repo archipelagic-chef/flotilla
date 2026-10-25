@@ -25,7 +25,12 @@ export function demoDisplay(env: Record<string, string | undefined>): 'virtual' 
 export function freeDisplay(exists: (file: string) => boolean, from?: number): number;
 export function decodePng(buffer: Buffer): RgbaImage;
 export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
-export function frameGate<F>(check: () => Promise<string | undefined>): { readonly kept: F[]; readonly unsafe: string | undefined; add(frame: F): void; check(): Promise<string | undefined> };
+export function frameGate<F>(check: () => Promise<string | undefined>): {
+  readonly kept: F[];
+  readonly unsafe: string | undefined;
+  add(frame: F): void;
+  check(): Promise<string | undefined>;
+};
 export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; at: number; ms: number }[];
 export function gapStats(ats: number[], moves: [number, number][]): { median: number; p90: number; count: number } | undefined;
 export const DEMO_TAG: string;
@@ -36,6 +41,8 @@ export const BUILT: string[];
 export function staleBuild(root: string): string | undefined;
 export function failureReason(error: unknown): string;
 export function nearestElements(selector: string, elements: { tag: string; text?: string; label?: string; classes?: string }[], count?: number): string[];
-export function resultLine(result: { saved: string; bytes: number; ms: number } | { checked: number; ms: number } | { step?: string; reason: string; screenshot?: string }): string;
+export function resultLine(
+  result: { saved: string; bytes: number; ms: number } | { checked: number; ms: number } | { step?: string; reason: string; screenshot?: string },
+): string;
 export function plainSettings(file: string): 'kept' | 'rewritten' | 'moved';
 export function commandMatches(typed: string, label: string | undefined | null): boolean;

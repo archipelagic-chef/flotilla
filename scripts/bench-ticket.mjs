@@ -25,7 +25,12 @@ function parseArgs(argv) {
   const opts = { ...DEFAULTS };
   for (let i = 0; i < argv.length; i++) {
     const m = /^--([a-z]+)(?:=(.*))?$/.exec(argv[i]);
-    if (!m || !(m[1] in FLAGS)) throw new Error(`Unknown option ${argv[i]}. Options: ${Object.keys(FLAGS).map((f) => `--${f}`).join(', ')}`);
+    if (!m || !(m[1] in FLAGS))
+      throw new Error(
+        `Unknown option ${argv[i]}. Options: ${Object.keys(FLAGS)
+          .map((f) => `--${f}`)
+          .join(', ')}`,
+      );
     const value = m[2] ?? argv[++i];
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`--${m[1]} needs a whole number, not "${value}"`);
@@ -58,7 +63,14 @@ function buildFixture(main, opts) {
   // The ticket's commits: one fast-import stream, a history of its own (a branch that isn't the ticket's).
   const stream = [];
   for (let i = 1; i <= opts.commits; i++) {
-    stream.push(`commit refs/heads/ticket-history`, `mark :${i}`, `committer Benchmark <b@flotilla.invalid> ${1760000000 + i} +0000`, `data ${`${ID}: step ${i} of the busy ticket\n`.length}`, `${ID}: step ${i} of the busy ticket`, ``);
+    stream.push(
+      `commit refs/heads/ticket-history`,
+      `mark :${i}`,
+      `committer Benchmark <b@flotilla.invalid> ${1760000000 + i} +0000`,
+      `data ${`${ID}: step ${i} of the busy ticket\n`.length}`,
+      `${ID}: step ${i} of the busy ticket`,
+      ``,
+    );
     if (i > 1) stream.push(`from :${i - 1}`);
     stream.push('');
   }
@@ -213,10 +225,19 @@ async function main() {
       ...d,
       items: [...d.items, { id: ID, title: 'A busy ticket', status: 'doing', priority: 'medium', created: '2026-10-01T09:00:00.000Z' }],
     }));
-    await backlog.writeTicket(ID, { title: 'A busy ticket', description: 'The ticket, with a description of a few lines.\n\n- one\n- two', activity: entries(opts.entries) });
+    await backlog.writeTicket(ID, {
+      title: 'A busy ticket',
+      description: 'The ticket, with a description of a few lines.\n\n- one\n- two',
+      activity: entries(opts.entries),
+    });
     // The worktrees the ticket has (as Flotilla lists them), from the real worktree code.
     const service = new WorktreeService({ mainRoot, commonDir: path.join(mainRoot, '.git') }, () => ({ autoAdopt: true }));
-    const workstreams = await buildWorkstreams(service, { currentWorktreeRoot: mainRoot, settings: SETTINGS, now: new Date(), claudeHome: path.join(root, 'claude-home') });
+    const workstreams = await buildWorkstreams(service, {
+      currentWorktreeRoot: mainRoot,
+      settings: SETTINGS,
+      now: new Date(),
+      claudeHome: path.join(root, 'claude-home'),
+    });
     const setupMs = performance.now() - setupStart;
 
     const repository = { current: workstreams, onDidChange: () => ({ dispose: noop }) };
@@ -240,7 +261,9 @@ async function main() {
       memento,
     });
 
-    console.log(`Flotilla ticket benchmark: ${ID} with ${opts.entries} entries and ${opts.commits} commits, ${workstreams.length} worktrees (main + ${opts.worktrees - 0} linked) × ${opts.files} files`);
+    console.log(
+      `Flotilla ticket benchmark: ${ID} with ${opts.entries} entries and ${opts.commits} commits, ${workstreams.length} worktrees (main + ${opts.worktrees - 0} linked) × ${opts.files} files`,
+    );
     console.log(`  node ${process.version}, ${os.cpus()[0]?.model ?? 'unknown CPU'} (${os.cpus().length} cores), ${os.platform()} ${os.release()}`);
     console.log(`  setup ${(setupMs / 1000).toFixed(1)} s (fixture in ${root})`);
     console.log('');
@@ -309,7 +332,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : error);
+    console.error(error instanceof Error ? (error.stack ?? error.message) : error);
     process.exitCode = 1;
   })
   // The tab's watchers keep the process alive; the benchmark is done.

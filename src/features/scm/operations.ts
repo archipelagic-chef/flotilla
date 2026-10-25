@@ -67,7 +67,10 @@ export async function commit(dir: string, message: string, opts: { amend?: boole
 }
 
 export async function listRemotes(dir: string): Promise<string[]> {
-  return (await git(dir, ['remote'])).split('\n').map((r) => r.trim()).filter(Boolean);
+  return (await git(dir, ['remote']))
+    .split('\n')
+    .map((r) => r.trim())
+    .filter(Boolean);
 }
 
 /** Pushes the branch to the remote and makes it the upstream. */

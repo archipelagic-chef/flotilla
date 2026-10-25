@@ -30,9 +30,7 @@ export function HooksNotice({ missing }: { missing: number }) {
   return (
     <div class="notice">
       <i class="codicon codicon-info" />
-      <span>
-        Install the Claude Code hooks to see which chats are working or waiting for you{missing > 1 ? ` (${missing} worktrees without them)` : ''}.
-      </span>
+      <span>Install the Claude Code hooks to see which chats are working or waiting for you{missing > 1 ? ` (${missing} worktrees without them)` : ''}.</span>
       <button class="link" onClick={() => run('flotilla.installClaudeHooks')}>
         Install
       </button>
@@ -58,9 +56,7 @@ export function ChatsBody({ ws, historyOpen, update }: Props) {
           <button
             class="row subhead"
             aria-expanded={historyOpen}
-            onClick={() =>
-              update((p) => ({ ...p, history: p.history.includes(ws.key) ? p.history.filter((k) => k !== ws.key) : [...p.history, ws.key] }))
-            }
+            onClick={() => update((p) => ({ ...p, history: p.history.includes(ws.key) ? p.history.filter((k) => k !== ws.key) : [...p.history, ws.key] }))}
           >
             <i class={`codicon codicon-chevron-${historyOpen ? 'down' : 'right'} chev`} />
             <span class="name">History</span>

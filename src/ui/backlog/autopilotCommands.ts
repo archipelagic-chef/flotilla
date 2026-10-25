@@ -32,8 +32,12 @@ export function autopilotCommands(deps: { autopilot: Autopilot; pauseAll: PauseA
       // With the autopilot off too: it resumes the paused agents, and starts no new tickets.
       const result = await autopilot.tryNow();
       if (!result) void vscode.window.showInformationMessage('No agent waits for a usage limit.');
-      else if (result.limited) void vscode.window.showInformationMessage(`Claude is still limited: no agent was started. They go on by themselves at ${shortTime(result.limited)}.`);
-      else void vscode.window.showInformationMessage(`Claude takes work again: ${result.resumed === 1 ? 'the paused agent goes on' : `${result.resumed} paused agents go on, top of the backlog first`}.`);
+      else if (result.limited)
+        void vscode.window.showInformationMessage(`Claude is still limited: no agent was started. They go on by themselves at ${shortTime(result.limited)}.`);
+      else
+        void vscode.window.showInformationMessage(
+          `Claude takes work again: ${result.resumed === 1 ? 'the paused agent goes on' : `${result.resumed} paused agents go on, top of the backlog first`}.`,
+        );
     },
     'flotilla.pauseAllAgents': () => pauseAll.pauseCommand().catch(showError),
     'flotilla.resumeAllAgents': () => pauseAll.resumeCommand().catch(showError),

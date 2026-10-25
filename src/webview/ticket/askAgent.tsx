@@ -16,7 +16,11 @@ export function askable(e: Entry, ticket: TicketView): boolean {
 export function AskButton({ e, ticket }: { e: Entry; ticket: TicketView }) {
   if (!askable(e, ticket) || ticket.asked?.[e.anchor!]) return null;
   return (
-    <button class="text-button ask-agent" onClick={() => act({ type: 'askAgent', anchor: e.anchor! }, 'Asking…')} title="An agent answers this comment now, as a reply to it">
+    <button
+      class="text-button ask-agent"
+      onClick={() => act({ type: 'askAgent', anchor: e.anchor! }, 'Asking…')}
+      title="An agent answers this comment now, as a reply to it"
+    >
       <i class="codicon codicon-sparkle" /> Ask an Agent
     </button>
   );
@@ -45,7 +49,9 @@ export function AskLine({ e, ticket }: { e: Entry; ticket: TicketView }) {
   const thinking = a.state === 'thinking';
   return (
     <div class={`ask-line ask-${a.state}`} role="status">
-      <i class={`codicon codicon-${thinking ? 'loading codicon-modifier-spin' : a.state === 'waiting' ? 'clock' : a.state === 'answered' ? 'check' : 'warning'}`} />
+      <i
+        class={`codicon codicon-${thinking ? 'loading codicon-modifier-spin' : a.state === 'waiting' ? 'clock' : a.state === 'answered' ? 'check' : 'warning'}`}
+      />
       <span class="ask-label">{askLabel(a)}</span>
       {thinking && a.now && <span class="ask-now">{a.now}</span>}
       {thinking && a.since && <span class="muted ask-time">{clock(now - new Date(a.since).getTime())}</span>}
@@ -55,7 +61,11 @@ export function AskLine({ e, ticket }: { e: Entry; ticket: TicketView }) {
         </button>
       )}
       {a.state === 'waiting' && (
-        <button class="text-button" onClick={() => act({ type: 'askAgent', anchor, now: true }, 'Asking…')} title="A separate agent answers now, instead of waiting">
+        <button
+          class="text-button"
+          onClick={() => act({ type: 'askAgent', anchor, now: true }, 'Asking…')}
+          title="A separate agent answers now, instead of waiting"
+        >
           <i class="codicon codicon-zap" /> Answer Now
         </button>
       )}

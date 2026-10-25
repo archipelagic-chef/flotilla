@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { CANCEL, GO_ON, installMain, noteAction, resumeFromNote, WAIT, type AgentHold, type InstallMainDeps, type InstallNote, type NoteStore } from '../../../src/features/installMain';
+import {
+  type AgentHold,
+  CANCEL,
+  GO_ON,
+  installMain,
+  type InstallMainDeps,
+  type InstallNote,
+  noteAction,
+  type NoteStore,
+  resumeFromNote,
+  WAIT,
+} from '../../../src/features/installMain';
 
 const COMMIT = '814b863a17bea13fdad3f27836dc4ec99cbaf033';
 
@@ -9,7 +20,17 @@ function memoryNotes(note?: InstallNote): NoteStore & { note?: InstallNote } {
 }
 
 /** A fake world: agents running, Pause All that pauses them (after `pauseMs`), an installer and a reload. */
-function world(o: { running?: string[]; pauseMs?: number; build?: 'ok' | 'fail'; install?: 'ok' | 'fail'; answers?: Array<string | undefined>; hold?: boolean; held?: number } = {}) {
+function world(
+  o: {
+    running?: string[];
+    pauseMs?: number;
+    build?: 'ok' | 'fail';
+    install?: 'ok' | 'fail';
+    answers?: Array<string | undefined>;
+    hold?: boolean;
+    held?: number;
+  } = {},
+) {
   const log: string[] = [];
   let running = [...(o.running ?? ['Byte-7', 'Nova-2'])];
   const abort = new AbortController();

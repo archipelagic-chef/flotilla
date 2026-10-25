@@ -33,7 +33,14 @@ export function checkReviewWorktree(
   const fix = "clears the review's worktree (it then works in the ticket's branch's)";
   const where = wt?.path ?? named;
   if (!wt) {
-    return { key: 'worktree:review', ok: false, text: `Its review names worktree ${named}, but there's no such worktree`, cleanup, fix, note: `Check: the review named worktree ${named}, which was gone; cleared it.` };
+    return {
+      key: 'worktree:review',
+      ok: false,
+      text: `Its review names worktree ${named}, but there's no such worktree`,
+      cleanup,
+      fix,
+      note: `Check: the review named worktree ${named}, which was gone; cleared it.`,
+    };
   }
   const on = shortBranch(wt.branch);
   if (!on || !onTicketsBranch(on)) {

@@ -131,7 +131,13 @@ export type ReviewFix = 'retry' | 'newAgent' | 'inChat' | 'anotherRound' | 'work
 export function fixLabel(fix: ReviewFix, kind: ReviewStopKind | undefined): string {
   switch (fix) {
     case 'retry':
-      return kind === 'no-report' || kind === 'runaway' ? 'Resume It' : kind === 'busy' ? 'Try Again' : kind === 'no-verdict' || kind === 'user' || !kind ? 'Review Again' : 'Try Again';
+      return kind === 'no-report' || kind === 'runaway'
+        ? 'Resume It'
+        : kind === 'busy'
+          ? 'Try Again'
+          : kind === 'no-verdict' || kind === 'user' || !kind
+            ? 'Review Again'
+            : 'Try Again';
     case 'newAgent':
       return 'New Agent';
     case 'inChat':
@@ -372,8 +378,8 @@ export function resumeAfterLimitPrompt(phase: 'review' | 'work'): string {
 
 /** What an agent started by hand from its ticket is told, after the usual start: it runs without a window too (BL-122). */
 export const HAND_START_NOTE =
-  'You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
+  "You were started from your ticket and run without a window: nobody is watching this chat, so the ticket is how you talk to the user. If you can't go on without a decision only the user can make, ask in the ticket, in your report's \"Needs from you:\" line, and stop; you're resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.";
 
 /** What an agent the autopilot starts is told, after the usual start: nobody is watching its chat. */
 export const AUTOPILOT_NOTE =
-  'Flotilla\'s autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can\'t go on without a decision only the user can make, ask in the ticket, in your report\'s "Needs from you:" line, and stop; you\'re resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.';
+  "Flotilla's autopilot started you: nobody is watching this chat, so the ticket is how you talk to the user. If you can't go on without a decision only the user can make, ask in the ticket, in your report's \"Needs from you:\" line, and stop; you're resumed with the answer. Otherwise decide sensibly yourself, and say what you decided in your report.";

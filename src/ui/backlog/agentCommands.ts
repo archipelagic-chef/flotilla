@@ -26,10 +26,17 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
     let id = backlogIdOf(card);
     if (!id) {
       const items = (await backlog.read()).items.filter((i) =>
-        action === 'resume' ? heldBy(i.review) || i.review?.state === 'paused' : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
+        action === 'resume'
+          ? heldBy(i.review) || i.review?.state === 'paused'
+          : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
       );
       const title = { pause: 'Pause the agent on…', resume: 'Resume the agent on…', stop: 'Stop the agent on…' }[action];
-      id = (await vscode.window.showQuickPick(items.map((i) => ({ label: i.id, description: i.title })), { title }))?.label;
+      id = (
+        await vscode.window.showQuickPick(
+          items.map((i) => ({ label: i.id, description: i.title })),
+          { title },
+        )
+      )?.label;
     }
     if (id) await tickets.controlAgent(id, action);
   };
@@ -40,7 +47,9 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
       const ref = block as { key?: unknown; index?: unknown; try?: unknown } | undefined;
       return tickets.run(
         id,
-        typeof ref?.key === 'string' && typeof ref.index === 'number' ? { key: ref.key, index: ref.index, ...(ref.try === true ? { try: true } : {}) } : undefined,
+        typeof ref?.key === 'string' && typeof ref.index === 'number'
+          ? { key: ref.key, index: ref.index, ...(ref.try === true ? { try: true } : {}) }
+          : undefined,
       );
     },
     'flotilla.pauseAgent': controlAgent('pause'),
@@ -50,10 +59,12 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
     'flotilla.checkTicket': async (card?: unknown) => {
       const id =
         backlogIdOf(card) ??
-        (await vscode.window.showQuickPick(
-          (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
-          { title: 'Check the ticket…' },
-        ))?.label;
+        (
+          await vscode.window.showQuickPick(
+            (await backlog.read()).items.filter((i) => i.status !== 'done').map((i) => ({ label: i.id, description: i.title })),
+            { title: 'Check the ticket…' },
+          )
+        )?.label;
       if (!id) return;
       await tickets.open(id);
       await tickets.check(id).catch(showError);

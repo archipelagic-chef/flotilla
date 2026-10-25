@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { CiRuns } from '../../../../src/ui/ci/ciRuns';
 import type { Workstream } from '../../../../src/features/workstreams/workstream';
 import type { CiView } from '../../../../src/webview/protocol';
@@ -484,10 +491,7 @@ describe('CiRuns: deployments', () => {
   const deployment = { id: 11, sha: 'abc1234def', environment: 'staging', created_at: '2026-10-10T10:00:00Z' };
 
   it('shows the latest deployment of each environment of the branch, with its state and site', async () => {
-    github(
-      { feat: [apiRun()] },
-      { deployments: { feat: [deployment], 'statuses-11': [{ state: 'success', environment_url: 'https://staging.acme.test/' }] } },
-    );
+    github({ feat: [apiRun()] }, { deployments: { feat: [deployment], 'statuses-11': [{ state: 'success', environment_url: 'https://staging.acme.test/' }] } });
     const { ci, last } = setup();
     ci.update([ws('a')]);
     ci.setVisible(true);
@@ -496,7 +500,9 @@ describe('CiRuns: deployments', () => {
     const view = last().a;
     expect(view.kind).toBe('runs');
     if (view.kind !== 'runs') return;
-    expect(view.deployments).toEqual([expect.objectContaining({ environment: 'staging', state: 'success', sha: 'abc1234def', siteUrl: 'https://staging.acme.test/' })]);
+    expect(view.deployments).toEqual([
+      expect.objectContaining({ environment: 'staging', state: 'success', sha: 'abc1234def', siteUrl: 'https://staging.acme.test/' }),
+    ]);
     expect(view.deploymentsError).toBeUndefined();
     ci.dispose();
   });
@@ -529,7 +535,7 @@ describe('CiRuns: deployments', () => {
     ci.dispose();
   });
 
-  it('shows the runs\' error, and no deployments, when the runs cannot be read', async () => {
+  it("shows the runs' error, and no deployments, when the runs cannot be read", async () => {
     github({ feat: [apiRun()] }, { status: 500 });
     const { ci, last } = setup();
     ci.update([ws('a')]);
@@ -563,7 +569,13 @@ function githubJobs(runs: Record<string, ApiRun[]>, jobs: Record<number, unknown
       const runId = Number(/runs\/(\d+)\/jobs/.exec(parsed.pathname)![1]);
       const ok = options.jobsStatus === undefined;
       const body = JSON.stringify({ jobs: jobs[runId] ?? [] });
-      return { ok, status: options.jobsStatus ?? 200, statusText: ok ? 'OK' : 'Server Error', json: async () => JSON.parse(body), text: async () => (ok ? body : 'boom') };
+      return {
+        ok,
+        status: options.jobsStatus ?? 200,
+        statusText: ok ? 'OK' : 'Server Error',
+        json: async () => JSON.parse(body),
+        text: async () => (ok ? body : 'boom'),
+      };
     }
     const body = JSON.stringify({ workflow_runs: runs[parsed.searchParams.get('branch') ?? ''] ?? [] });
     return { ok: true, status: 200, statusText: 'OK', json: async () => JSON.parse(body), text: async () => body };
@@ -576,7 +588,10 @@ const runsOf = (view: CiView | undefined) => (view?.kind === 'runs' ? view.runs 
 
 describe('CiRuns: a run’s jobs', () => {
   it('reads no jobs until the user expands a run, then shows its jobs with their steps', async () => {
-    const reads = githubJobs({ feat: [apiRun({ id: 1 })] }, { 1: [apiJob({ id: 9, conclusion: 'failure', steps: [{ number: 1, name: 'Run tests', status: 'completed', conclusion: 'failure' }] })] });
+    const reads = githubJobs(
+      { feat: [apiRun({ id: 1 })] },
+      { 1: [apiJob({ id: 9, conclusion: 'failure', steps: [{ number: 1, name: 'Run tests', status: 'completed', conclusion: 'failure' }] })] },
+    );
     const { ci, last } = setup();
     ci.update([ws('a')]);
     ci.setVisible(true);
@@ -588,7 +603,13 @@ describe('CiRuns: a run’s jobs', () => {
     const [run] = runsOf(last().a);
     expect(reads.jobReads()).toBe(1);
     expect(run.jobs).toEqual([
-      { id: 9, name: 'test', status: 'failure', url: 'https://github.com/acme/app/actions/runs/1/job/9', steps: [{ number: 1, name: 'Run tests', status: 'failure' }] },
+      {
+        id: 9,
+        name: 'test',
+        status: 'failure',
+        url: 'https://github.com/acme/app/actions/runs/1/job/9',
+        steps: [{ number: 1, name: 'Run tests', status: 'failure' }],
+      },
     ]);
     ci.dispose();
   });
@@ -622,7 +643,10 @@ describe('CiRuns: a run’s jobs', () => {
   });
 
   it('reads an expanded run’s jobs again while it runs, and once more when it has finished', async () => {
-    const reads = githubJobs({ feat: [apiRun({ id: 1, status: 'in_progress', conclusion: null })] }, { 1: [apiJob({ status: 'in_progress', conclusion: null })] });
+    const reads = githubJobs(
+      { feat: [apiRun({ id: 1, status: 'in_progress', conclusion: null })] },
+      { 1: [apiJob({ status: 'in_progress', conclusion: null })] },
+    );
     const { ci, last } = setup();
     ci.update([ws('a')]);
     ci.setVisible(true);
@@ -656,7 +680,7 @@ describe('CiRuns: a run’s jobs', () => {
   });
 });
 
-describe('CiRuns: a run\'s actions', () => {
+describe("CiRuns: a run's actions", () => {
   /** Reads the worktree 'a' once (on feat), with the given runs, and returns the fake GitHub. */
   async function viewed(runs: ApiRun[]) {
     const reads = github({ feat: runs });
@@ -720,7 +744,16 @@ describe('CiRuns: a run\'s actions', () => {
 
   it('shows what GitHub refused, as a message to act on', async () => {
     const { ci } = await viewed([apiRun({ id: 1 })]);
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({}), text: async () => 'Resource not accessible by integration' })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        json: async () => ({}),
+        text: async () => 'Resource not accessible by integration',
+      })),
+    );
     await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/write access to the repository/);
     ci.dispose();
   });
@@ -739,7 +772,9 @@ describe('CiRuns: the reads after an action', () => {
 
   /** How many reads (GET) have been made of a branch's runs. */
   const readsOf = (fetch: ReturnType<typeof github>['fetch'], branch: string) =>
-    (fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(([url, init]) => init?.method !== 'POST' && new URL(url).searchParams.get('branch') === branch).length;
+    (fetch.mock.calls as unknown as Array<[string, { method?: string }?]>).filter(
+      ([url, init]) => init?.method !== 'POST' && new URL(url).searchParams.get('branch') === branch,
+    ).length;
 
   it('reads a worktree 3 seconds after its action, and a second action in that time still gets its own read', async () => {
     const { ci, reads } = await viewed();
@@ -793,7 +828,13 @@ describe('CiRuns: the reads after an action', () => {
     const body = JSON.stringify({ workflow_runs: [apiRun({ id: 1, status: 'completed', conclusion: 'success' })] });
     const fetch = vi.fn(async (_url: string, init?: { method?: string }) => {
       const refused = init?.method === 'POST';
-      return { ok: !refused, status: refused ? 409 : 200, statusText: refused ? 'Conflict' : 'OK', json: async () => ({}), text: async () => (refused ? 'in progress' : body) };
+      return {
+        ok: !refused,
+        status: refused ? 409 : 200,
+        statusText: refused ? 'Conflict' : 'OK',
+        json: async () => ({}),
+        text: async () => (refused ? 'in progress' : body),
+      };
     });
     vi.stubGlobal('fetch', fetch);
     await expect(ci.act('a', 1, 'rerun')).rejects.toThrow(/still running/);
@@ -850,13 +891,13 @@ describe('CiRuns: finished runs and reading while hidden (for the notices)', () 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(onFinished).toHaveBeenCalledTimes(1);
     const [items] = onFinished.mock.calls[0];
-    expect(items.map((i: { key: string; repo: string; branch: string; run: { id: number; status: string } }) => [i.key, i.repo, i.branch, i.run.id, i.run.status])).toEqual([
-      ['a', 'acme/app', 'feat', 2, 'failure'],
-    ]);
+    expect(
+      items.map((i: { key: string; repo: string; branch: string; run: { id: number; status: string } }) => [i.key, i.repo, i.branch, i.run.id, i.run.status]),
+    ).toEqual([['a', 'acme/app', 'feat', 2, 'failure']]);
     ci.dispose();
   });
 
-  it('reads nothing while hidden, unless it keeps reading for the notices, and stops when it doesn\'t', async () => {
+  it("reads nothing while hidden, unless it keeps reading for the notices, and stops when it doesn't", async () => {
     const { fetch } = github();
     const ci = new CiRuns(vi.fn(), undefined, vi.fn());
     ci.update([ws('a')]);
@@ -1005,7 +1046,10 @@ describe("CiRuns: what's working (BL-119)", () => {
     await ci.act('a', 3, 'cancel');
     expect(runsOf(last().a)[0].busy).toBeUndefined();
 
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({}), text: async () => 'no' })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 403, statusText: 'Forbidden', json: async () => ({}), text: async () => 'no' })),
+    );
     win.showWarningMessage.mockResolvedValueOnce('Cancel run');
     await expect(ci.act('a', 3, 'cancel')).rejects.toThrow();
     // The read again is refused too (the view shows the error): nothing in it is left working.

@@ -1,7 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { guard, guardScript } from '../../../src/features/backlog/agentGuard';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 

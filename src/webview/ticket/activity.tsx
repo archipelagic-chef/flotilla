@@ -1,11 +1,41 @@
 import { useEffect, useState } from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
-import { entryRound, type FeedGroup, foldRounds, foldTitle, openEntry, type RoundFold, type RoundInfo } from '../../features/backlog/rounds';
-import { type Answer, answerComment, answerFromText, answerOf, answersIn, choose, defaultAnswer } from '../../features/backlog/report';
+import {
+  entryRound,
+  type FeedGroup,
+  foldRounds,
+  foldTitle,
+  openEntry,
+  type RoundFold,
+  type RoundInfo,
+} from '../../features/backlog/rounds';
+import {
+  type Answer,
+  answerComment,
+  answerFromText,
+  answerOf,
+  answersIn,
+  choose,
+  defaultAnswer,
+} from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
 import type { ReportView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
-import { Diagram, diagramsIn, openMedia, SHOW_ENTRY, showEntry, shownDiagram } from './attachments';
-import { act, ActionButton, doneListeners, send, useWorking, WorkingTag } from './actions';
+import {
+  Diagram,
+  diagramsIn,
+  openMedia,
+  SHOW_ENTRY,
+  showEntry,
+  shownDiagram,
+} from './attachments';
+import {
+  act,
+  ActionButton,
+  doneListeners,
+  send,
+  useWorking,
+  WorkingTag,
+} from './actions';
 import { REPLY_TO, sendComment, useSending } from './comments';
 import { AskButton, AskLine } from './askAgent';
 import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
@@ -258,7 +288,12 @@ function EntryView({ e, ticket, onFold, nest }: { e: ActivityEntry; ticket: Tick
           </span>
         )}
         {e.key && !e.posted && ticket.postTargets.length > 0 && kind !== 'history' && (
-          <ActionButton class="text-button post-entry" message={{ type: 'postEntry', key: e.key! }} working="Posting…" title="Shows what will be posted and asks first">
+          <ActionButton
+            class="text-button post-entry"
+            message={{ type: 'postEntry', key: e.key! }}
+            working="Posting…"
+            title="Shows what will be posted and asks first"
+          >
             <i class="codicon codicon-comment-unresolved" /> Post to {ticket.postTargets.length === 1 ? ticket.postTargets[0] : 'an Issue'}…
           </ActionButton>
         )}
@@ -275,7 +310,11 @@ function EntryView({ e, ticket, onFold, nest }: { e: ActivityEntry; ticket: Tick
               class="text-button delete-entry"
               message={{ type: 'deleteComment', anchor: e.anchor! }}
               working="Deleting…"
-              title={e.posted ? `Delete your comment here (asks first): the one posted to ${e.posted} stays (only the local copy is deleted)` : 'Delete your comment (asks first)'}
+              title={
+                e.posted
+                  ? `Delete your comment here (asks first): the one posted to ${e.posted} stays (only the local copy is deleted)`
+                  : 'Delete your comment (asks first)'
+              }
             >
               <i class="codicon codicon-trash" /> Delete
             </ActionButton>
@@ -395,7 +434,13 @@ function MediaStrip({ e }: { e: ActivityEntry }) {
   const thumbs = e.thumbs!;
   const open = (at: number) =>
     openMedia(
-      thumbs.map((t) => ({ ...t, name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : (t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? ''), author: e.author, date: e.date, entryKey: e.key })),
+      thumbs.map((t) => ({
+        ...t,
+        name: t.alt ?? (t.kind === 'diagram' ? 'Diagram' : ((t.src ?? '').split(/[/?#]/).filter(Boolean).at(-1) ?? '')),
+        author: e.author,
+        date: e.date,
+        entryKey: e.key,
+      })),
       at,
     );
   return (
@@ -683,7 +728,12 @@ export function Activity({ ticket }: { ticket: TicketView }) {
             <i class="codicon codicon-reply" /> Replying to <strong>{byName(replying)}</strong>
             {replying.date && <span class="muted">{replying.date}</span>}
             <span class="replying-first">{summaryOf(replying.body) ?? ''}</span>
-            <button class="icon-button" onClick={() => setReplyTo(undefined)} title="Cancel the reply: the comment goes at the end" aria-label="Cancel the reply">
+            <button
+              class="icon-button"
+              onClick={() => setReplyTo(undefined)}
+              title="Cancel the reply: the comment goes at the end"
+              aria-label="Cancel the reply"
+            >
               <i class="codicon codicon-close" />
             </button>
           </div>
@@ -695,10 +745,10 @@ export function Activity({ ticket }: { ticket: TicketView }) {
             replying
               ? `Reply to ${byName(replying)} (Markdown; Ctrl+Enter posts the reply)`
               : asking
-              ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
-              : ticket.remote
-                ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
-                : 'Add a comment (Markdown; paste or drop images and videos; Ctrl+Enter posts)'
+                ? `Answer ${asking}'s question (Markdown; Ctrl+Enter sends it, and ${asking} goes on)`
+                : ticket.remote
+                  ? `Comment in ${ticket.remote.kind === 'jira' ? 'Jira (Markdown, converted to Jira formatting' : 'GitHub (Markdown'}; Ctrl+Enter posts it there)`
+                  : 'Add a comment (Markdown; paste or drop images and videos; Ctrl+Enter posts)'
           }
           label="Comment"
           onSubmit={() => post()}
@@ -719,7 +769,12 @@ export function Activity({ ticket }: { ticket: TicketView }) {
                 <i class="codicon codicon-request-changes" /> Request Changes
                 {changesBusy && <WorkingTag label={changesBusy} />}
               </button>
-              <button class="button secondary" disabled={!!changesBusy || !!approveBusy} onClick={() => review('approved')} title="Approves the work, with your comment if you wrote one">
+              <button
+                class="button secondary"
+                disabled={!!changesBusy || !!approveBusy}
+                onClick={() => review('approved')}
+                title="Approves the work, with your comment if you wrote one"
+              >
                 <i class="codicon codicon-check" /> Approve
                 {approveBusy && <WorkingTag label={approveBusy} />}
               </button>
@@ -753,7 +808,12 @@ export function Activity({ ticket }: { ticket: TicketView }) {
               </>
             ))}
           {ticket.canAsk && !asking && (
-            <button class="button secondary" disabled={!comment.trim()} onClick={() => post(true)} title="Posts your comment, and an agent answers it now, as a reply (Ctrl+Shift+Enter)">
+            <button
+              class="button secondary"
+              disabled={!comment.trim()}
+              onClick={() => post(true)}
+              title="Posts your comment, and an agent answers it now, as a reply (Ctrl+Shift+Enter)"
+            >
               <i class="codicon codicon-sparkle" /> Comment and Ask an Agent
             </button>
           )}

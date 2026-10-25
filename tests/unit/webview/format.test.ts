@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatEdit, pasteLink, type Format, type Markup, type TextEdit } from '../../../src/webview/ticket/format';
+import {
+  type Format,
+  formatEdit,
+  type Markup,
+  pasteLink,
+  type TextEdit,
+} from '../../../src/webview/ticket/format';
 
 /** Applies a format to text whose selection is marked with « and » (or a cursor, |); returns it marked the same way. */
 function apply(marked: string, format: Format, markup: Markup = 'markdown', mention = 'BL-'): string {

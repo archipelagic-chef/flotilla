@@ -46,7 +46,10 @@ export function runPlaces(branches: readonly string[], worktrees: readonly Ticke
  * another worktree, asks again.
  */
 export function runFingerprint(id: string, dir: string, block: RunBlock): string {
-  return crypto.createHash('sha256').update(JSON.stringify([id, dir, block.kind, block.title ?? '', block.lines])).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify([id, dir, block.kind, block.title ?? '', block.lines]))
+    .digest('hex');
 }
 
 /** What to say when a launch or task block names one that the worktree doesn't have. */

@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import type { TicketHostMessage } from '../../../webview/ticketProtocol';
 import type { Handlers } from './context';
+import type { MergeMessage } from './merge.messages';
 
 /** Merging: the merge, its queue and checks, pushing, merging a sibling branch, and cleaning up the history. */
-export const mergeHandlers: Handlers = {
+export const mergeHandlers: Handlers<MergeMessage> = {
   cleanUp: async ({ id }) => {
     await vscode.commands.executeCommand('flotilla.cleanUpHistory', id);
   },

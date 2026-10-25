@@ -75,5 +75,9 @@ function buildStamp() {
     }
   };
   const commit = git('rev-parse', 'HEAD');
-  return { commit: commit || undefined, dirty: commit ? git('status', '--porcelain', '--untracked-files=no') !== '' : undefined, builtAt: new Date().toISOString() };
+  return {
+    commit: commit || undefined,
+    dirty: commit ? git('status', '--porcelain', '--untracked-files=no') !== '' : undefined,
+    builtAt: new Date().toISOString(),
+  };
 }

@@ -1,4 +1,12 @@
-import type { MetricBar, MetricChart, MetricNumber, MetricRow, MetricSection, MetricsPeriod, MetricsView } from '../../webview/metricsProtocol';
+import type {
+  MetricBar,
+  MetricChart,
+  MetricNumber,
+  MetricRow,
+  MetricSection,
+  MetricsPeriod,
+  MetricsView,
+} from '../../webview/metricsProtocol';
 import type { AgentRole, EventKind, FlotillaEvent } from './events';
 import { productivitySection } from './productivity';
 
@@ -20,7 +28,13 @@ type Ev<K extends EventKind = EventKind> = FlotillaEvent<K> & { t: number };
 /** A ticket's time from To Do to merged, in phases. */
 export type FlowPhase = 'working' | 'waitReview' | 'review' | 'you' | 'merging';
 export const PHASES: readonly FlowPhase[] = ['working', 'waitReview', 'review', 'you', 'merging'];
-const PHASE_LABEL: Record<FlowPhase, string> = { working: 'Working', waitReview: 'Waiting for review', review: 'In review', you: 'Waiting for you', merging: 'Merging' };
+const PHASE_LABEL: Record<FlowPhase, string> = {
+  working: 'Working',
+  waitReview: 'Waiting for review',
+  review: 'In review',
+  you: 'Waiting for you',
+  merging: 'Merging',
+};
 
 /** What a ticket waits for you to do. */
 export type WaitKind = 'approve' | 'answer' | 'merge' | 'stopped';
@@ -259,7 +273,7 @@ function buckets(period: MetricsPeriod, from: number, to: number): Array<{ from:
     for (let t = from; t < to; t += HOUR) out.push({ from: t, to: Math.min(to, t + HOUR), label: `${String(new Date(t).getHours()).padStart(2, '0')}:00` });
     return out;
   }
-  for (let t = dayStart(from); t < to; ) {
+  for (let t = dayStart(from); t < to;) {
     const d = new Date(t);
     d.setDate(d.getDate() + 1);
     const next = d.getTime();
@@ -325,7 +339,7 @@ function count(index: EventIndex, r: Range, now: number): Counted {
 
   // Done: the tickets that landed (merged, or moved to Done) in the period, with their flow.
   const done = new Set<string>();
-  for (let d = dayStart(r.from); d < r.to; ) {
+  for (let d = dayStart(r.from); d < r.to;) {
     const next = new Date(d);
     next.setDate(next.getDate() + 1);
     const to = next.getTime();
@@ -361,7 +375,13 @@ function count(index: EventIndex, r: Range, now: number): Counted {
           const files = conflict.data.files;
           const regions = files.flatMap((f) => f.regions);
           const pure = regions.length > 0 && regions.every((x) => x.additions);
-          const row = { label: id, ticket: id, detail: `${files.length} file${files.length === 1 ? '' : 's'}${pure ? ', only additions' : ''}`, value: regions.length, unit: 'count' as const };
+          const row = {
+            label: id,
+            ticket: id,
+            detail: `${files.length} file${files.length === 1 ? '' : 's'}${pure ? ', only additions' : ''}`,
+            value: regions.length,
+            unit: 'count' as const,
+          };
           c.conflicted.push(row);
           if (pure) c.additions.push(row);
         }
@@ -385,7 +405,13 @@ function count(index: EventIndex, r: Range, now: number): Counted {
         const x = (c.costByRole[role] ??= { usd: 0, tokens: 0, rows: [] });
         x.usd += d.costUsd ?? 0;
         x.tokens += tokensOf(d);
-        x.rows.push({ label: id || (e.agent ?? 'agent'), ticket: e.ticket, detail: `${e.agent ?? 'agent'} · ${roleOf(d.role)}`, value: d.costUsd ?? 0, unit: 'usd' });
+        x.rows.push({
+          label: id || (e.agent ?? 'agent'),
+          ticket: e.ticket,
+          detail: `${e.agent ?? 'agent'} · ${roleOf(d.role)}`,
+          value: d.costUsd ?? 0,
+          unit: 'usd',
+        });
         if (e.ticket) {
           const t = c.tickets.get(e.ticket) ?? { usd: 0, tokens: 0 };
           t.usd += d.costUsd ?? 0;
@@ -405,7 +431,8 @@ function count(index: EventIndex, r: Range, now: number): Counted {
 
   // Review rounds: the last round of each ticket reviewed in the period.
   const rounds = new Map<string, number>();
-  for (const e of events) if (e.kind === 'review-verdict' && e.ticket) rounds.set(e.ticket, Math.max(rounds.get(e.ticket) ?? 0, (e as Ev<'review-verdict'>).data.round || 1));
+  for (const e of events)
+    if (e.kind === 'review-verdict' && e.ticket) rounds.set(e.ticket, Math.max(rounds.get(e.ticket) ?? 0, (e as Ev<'review-verdict'>).data.round || 1));
   for (const [id, n] of rounds) c.rounds.push({ label: id, ticket: id, value: n, unit: 'count' });
 
   // Waits for you: each ticket's spans of waiting, the part of them in the period.
@@ -463,7 +490,9 @@ function idleTime(index: EventIndex, r: Range, now: number, into: Record<IdleKin
   const from = r.from - DAY;
   const changes = index.between(from, end).filter((e) => ['autopilot-idle', 'limit-hit', 'limit-lifted', 'agent-started', 'agent-resumed'].includes(e.kind));
   const limitEnds = changes.filter((e) => e.kind === 'limit-hit').map((e) => Date.parse((e as Ev<'limit-hit'>).data.until ?? '') || e.t + HOUR);
-  const points = [...new Set([r.from, end, ...changes.map((e) => e.t), ...limitEnds, ...spans.flatMap((s) => [s.from, s.to])])].filter((t) => t >= r.from && t <= end).sort((a, b) => a - b);
+  const points = [...new Set([r.from, end, ...changes.map((e) => e.t), ...limitEnds, ...spans.flatMap((s) => [s.from, s.to])])]
+    .filter((t) => t >= r.from && t <= end)
+    .sort((a, b) => a - b);
   let ci = 0;
   const totals = new Map<string, { kind: IdleKind; ms: number }>();
   for (let i = 0; i < points.length - 1; i++) {
@@ -489,7 +518,15 @@ function idleTime(index: EventIndex, r: Range, now: number, into: Record<IdleKin
   for (const [label, x] of totals) if (x.ms >= MINUTE) into[x.kind].push({ label, value: minutes(x.ms), unit: 'minutes' });
 }
 
-function number(id: string, label: string, unit: MetricNumber['unit'], value: number, previous: number, rows: MetricRow[], lowerIsBetter = false): MetricNumber {
+function number(
+  id: string,
+  label: string,
+  unit: MetricNumber['unit'],
+  value: number,
+  previous: number,
+  rows: MetricRow[],
+  lowerIsBetter = false,
+): MetricNumber {
   return { id, label, unit, value, previous, rows, ...(lowerIsBetter ? { lowerIsBetter } : {}) };
 }
 
@@ -500,7 +537,12 @@ function byValue(rows: MetricRow[]): MetricRow[] {
 const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
 
 /** The Metrics view of the period ending at now, each number compared with the period before. */
-export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: number, opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {}): MetricsView {
+export function computeMetrics(
+  index: EventIndex,
+  period: MetricsPeriod,
+  now: number,
+  opts: { limit?: number; criteria?: ReadonlyMap<string, number> } = {},
+): MetricsView {
   const len = PERIOD_DAYS[period] * DAY;
   const cur: Range = { from: now - len, to: now };
   const prev: Range = { from: now - 2 * len, to: now - len };
@@ -529,12 +571,44 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     title: 'Flow',
     numbers: [
       number('done', 'Tickets done', 'count', a.done.length, b.done.length, a.done),
-      number('toMerged', 'To Do to merged', 'minutes', minutes(flowTotal(a)), minutes(flowTotal(b)), byValue(a.done.filter((r) => r.value !== undefined)), true),
+      number(
+        'toMerged',
+        'To Do to merged',
+        'minutes',
+        minutes(flowTotal(a)),
+        minutes(flowTotal(b)),
+        byValue(a.done.filter((r) => r.value !== undefined)),
+        true,
+      ),
     ],
     charts: [
-      { id: 'donePerDay', label: period === 'day' ? 'Tickets done per hour' : 'Tickets done per day', kind: 'columns', unit: 'count', series: [''], bars: doneDays, empty: `No tickets done ${when}` },
-      { id: 'phases', label: 'Time from To Do to merged (average)', kind: 'rows', unit: 'minutes', series: [''], bars: phaseBars, empty: `No tickets merged ${when}` },
-      { id: 'wip', label: 'Work in progress', kind: 'columns', unit: 'count', series: ['In Progress', 'In Review'], bars: wip, empty: `No work in progress ${when}` },
+      {
+        id: 'donePerDay',
+        label: period === 'day' ? 'Tickets done per hour' : 'Tickets done per day',
+        kind: 'columns',
+        unit: 'count',
+        series: [''],
+        bars: doneDays,
+        empty: `No tickets done ${when}`,
+      },
+      {
+        id: 'phases',
+        label: 'Time from To Do to merged (average)',
+        kind: 'rows',
+        unit: 'minutes',
+        series: [''],
+        bars: phaseBars,
+        empty: `No tickets merged ${when}`,
+      },
+      {
+        id: 'wip',
+        label: 'Work in progress',
+        kind: 'columns',
+        unit: 'count',
+        series: ['In Progress', 'In Review'],
+        bars: wip,
+        empty: `No work in progress ${when}`,
+      },
     ],
   };
 
@@ -544,7 +618,13 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     if (e.kind !== 'merge-conflicted') continue;
     for (const f of (e as Ev<'merge-conflicted'>).data.files) {
       const list = fileCounts.get(f.file) ?? [];
-      list.push({ label: e.ticket ?? '', ticket: e.ticket, value: f.regions.length, unit: 'count', ...(f.regions.length ? { detail: `${f.regions.length} region${f.regions.length === 1 ? '' : 's'}` } : {}) });
+      list.push({
+        label: e.ticket ?? '',
+        ticket: e.ticket,
+        value: f.regions.length,
+        unit: 'count',
+        ...(f.regions.length ? { detail: `${f.regions.length} region${f.regions.length === 1 ? '' : 's'}` } : {}),
+      });
       fileCounts.set(f.file, list);
     }
   }
@@ -556,8 +636,23 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     numbers: [
       number('merges', 'Merges', 'count', a.landed.length, b.landed.length, a.landed),
       number('conflicted', 'Conflicted', 'percent', pct(a.conflicted.length, a.landed.length), pct(b.conflicted.length, b.landed.length), a.conflicted, true),
-      number('additions', 'Of those, only additions', 'percent', pct(a.additions.length, a.conflicted.length), pct(b.additions.length, b.conflicted.length), a.additions),
-      number('approvalToLanded', 'Approval to landed', 'minutes', minutes(average(a.approvalToLanded.map((x) => x.value!)) * MINUTE), minutes(average(b.approvalToLanded.map((x) => x.value!)) * MINUTE), byValue(a.approvalToLanded), true),
+      number(
+        'additions',
+        'Of those, only additions',
+        'percent',
+        pct(a.additions.length, a.conflicted.length),
+        pct(b.additions.length, b.conflicted.length),
+        a.additions,
+      ),
+      number(
+        'approvalToLanded',
+        'Approval to landed',
+        'minutes',
+        minutes(average(a.approvalToLanded.map((x) => x.value!)) * MINUTE),
+        minutes(average(b.approvalToLanded.map((x) => x.value!)) * MINUTE),
+        byValue(a.approvalToLanded),
+        true,
+      ),
       number('checksFailed', 'Checks failed', 'count', a.failures.length, b.failures.length, a.failures, true),
       number('checksTimedOut', 'Checks timed out', 'count', a.timeouts.length, b.timeouts.length, a.timeouts, true),
     ],
@@ -571,11 +666,23 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
         bars: cols.map((k) => {
           const landed = index.between(k.from, k.to).filter((e) => e.kind === 'merge-landed');
           const n = landed.filter((e) => conflicted.has(e.ticket ?? '')).length;
-          return { label: k.label, values: [landed.length - n, n], rows: landed.map((e) => ({ label: e.ticket ?? '', ticket: e.ticket, ...(conflicted.has(e.ticket ?? '') ? { detail: 'conflicted' } : {}) })) };
+          return {
+            label: k.label,
+            values: [landed.length - n, n],
+            rows: landed.map((e) => ({ label: e.ticket ?? '', ticket: e.ticket, ...(conflicted.has(e.ticket ?? '') ? { detail: 'conflicted' } : {}) })),
+          };
         }),
         empty: `No merges ${when}`,
       },
-      { id: 'files', label: 'Most conflicted files', kind: 'rows', unit: 'count', series: [''], bars: files.map(([file, rows]) => ({ label: file, values: [rows.length], rows })), empty: `No conflicts ${when}` },
+      {
+        id: 'files',
+        label: 'Most conflicted files',
+        kind: 'rows',
+        unit: 'count',
+        series: [''],
+        bars: files.map(([file, rows]) => ({ label: file, values: [rows.length], rows })),
+        empty: `No conflicts ${when}`,
+      },
     ],
   };
 
@@ -586,7 +693,17 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     // The most at once in the bucket.
     const points = inside.map((s) => Math.max(s.from, k.from));
     const peak = points.reduce((m, t) => Math.max(m, inside.filter((s) => s.from <= t && s.to > t).length), 0);
-    return { label: k.label, values: [peak], rows: inside.map((s) => ({ label: s.ticket ?? s.agent, ticket: s.ticket, detail: `${s.agent} · ${roleOf(s.role)}`, value: minutes(overlap(s.from, s.to, k.from, k.to)), unit: 'minutes' as const })) };
+    return {
+      label: k.label,
+      values: [peak],
+      rows: inside.map((s) => ({
+        label: s.ticket ?? s.agent,
+        ticket: s.ticket,
+        detail: `${s.agent} · ${roleOf(s.role)}`,
+        value: minutes(overlap(s.from, s.to, k.from, k.to)),
+        unit: 'minutes' as const,
+      })),
+    };
   });
   const idleKinds = Object.keys(IDLE_LABEL) as IdleKind[];
   const idleSum = (c: Counted, k?: IdleKind) => sum((k ? [k] : idleKinds.filter((x) => x !== 'nothing')).flatMap((x) => c.idle[x].map((r) => r.value ?? 0)));
@@ -594,13 +711,46 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     id: 'agents',
     title: 'Agents',
     numbers: [
-      number('idle', 'Idle with work waiting', 'minutes', idleSum(a), idleSum(b), byValue(idleKinds.filter((x) => x !== 'nothing').flatMap((x) => a.idle[x])), true),
-      number('rounds', 'Review rounds per ticket', 'count', Math.round(average(a.rounds.map((r) => r.value!)) * 10) / 10, Math.round(average(b.rounds.map((r) => r.value!)) * 10) / 10, byValue(a.rounds), true),
+      number(
+        'idle',
+        'Idle with work waiting',
+        'minutes',
+        idleSum(a),
+        idleSum(b),
+        byValue(idleKinds.filter((x) => x !== 'nothing').flatMap((x) => a.idle[x])),
+        true,
+      ),
+      number(
+        'rounds',
+        'Review rounds per ticket',
+        'count',
+        Math.round(average(a.rounds.map((r) => r.value!)) * 10) / 10,
+        Math.round(average(b.rounds.map((r) => r.value!)) * 10) / 10,
+        byValue(a.rounds),
+        true,
+      ),
       number('sentBack', 'Tickets sent back', 'count', a.sentBack.length, b.sentBack.length, a.sentBack, true),
     ],
     charts: [
-      { id: 'running', label: 'Agents running (most at once)', kind: 'columns', unit: 'count', series: [''], bars: running, empty: `No agents ran ${when}`, ...(opts.limit ? { limit: opts.limit } : {}) },
-      { id: 'idleWhy', label: 'Idle time, and why', kind: 'rows', unit: 'minutes', series: [''], bars: idleKinds.map((k) => ({ label: IDLE_LABEL[k], values: [idleSum(a, k)], rows: byValue(a.idle[k]) })), empty: `No idle time ${when}` },
+      {
+        id: 'running',
+        label: 'Agents running (most at once)',
+        kind: 'columns',
+        unit: 'count',
+        series: [''],
+        bars: running,
+        empty: `No agents ran ${when}`,
+        ...(opts.limit ? { limit: opts.limit } : {}),
+      },
+      {
+        id: 'idleWhy',
+        label: 'Idle time, and why',
+        kind: 'rows',
+        unit: 'minutes',
+        series: [''],
+        bars: idleKinds.map((k) => ({ label: IDLE_LABEL[k], values: [idleSum(a, k)], rows: byValue(a.idle[k]) })),
+        empty: `No idle time ${when}`,
+      },
     ],
   };
 
@@ -614,7 +764,15 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
   const perRole = (ended: Ev<'agent-ended'>[], f: 'usd' | 'tokens') =>
     COST_ROLES.map((role) => sum(ended.filter((e) => costRole(e.data.role) === role).map((e) => (f === 'usd' ? (e.data.costUsd ?? 0) : tokensOf(e.data)))));
   const endedRows = (ended: Ev<'agent-ended'>[], f: 'usd' | 'tokens'): MetricRow[] =>
-    byValue(ended.map((e) => ({ label: e.ticket ?? e.agent ?? 'agent', ticket: e.ticket, detail: `${e.agent ?? 'agent'} · ${roleOf(e.data.role)}`, value: f === 'usd' ? (e.data.costUsd ?? 0) : tokensOf(e.data), unit: f })));
+    byValue(
+      ended.map((e) => ({
+        label: e.ticket ?? e.agent ?? 'agent',
+        ticket: e.ticket,
+        detail: `${e.agent ?? 'agent'} · ${roleOf(e.data.role)}`,
+        value: f === 'usd' ? (e.data.costUsd ?? 0) : tokensOf(e.data),
+        unit: f,
+      })),
+    );
   const allRows = (c: Counted) => byValue(Object.values(c.costByRole).flatMap((x) => x.rows));
   const cost: MetricSection = {
     id: 'cost',
@@ -624,10 +782,46 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
       number('tokens', 'Tokens', 'tokens', roleSum(a, 'tokens'), roleSum(b, 'tokens'), byValue(allRows(a).map((r) => ({ ...r, value: undefined }))), true),
     ],
     charts: [
-      { id: 'costPerDay', label: period === 'day' ? 'Cost per hour' : 'Cost per day', kind: 'columns', unit: 'usd', series: COST_ROLES.map(roleOf), bars: costDays.map(({ k, ended }) => ({ label: k.label, values: perRole(ended, 'usd'), rows: endedRows(ended, 'usd') })), empty: `No agents' cost recorded ${when}` },
-      { id: 'tokensPerDay', label: period === 'day' ? 'Tokens per hour' : 'Tokens per day', kind: 'columns', unit: 'tokens', series: COST_ROLES.map(roleOf), bars: costDays.map(({ k, ended }) => ({ label: k.label, values: perRole(ended, 'tokens'), rows: endedRows(ended, 'tokens') })), empty: `No tokens recorded ${when}` },
-      { id: 'costPerRole', label: 'Cost per role', kind: 'rows', unit: 'usd', series: [''], bars: COST_ROLES.map((role) => ({ label: roleOf(role), values: [a.costByRole[role]?.usd ?? 0], rows: byValue(a.costByRole[role]?.rows ?? []) })), empty: `No agents' cost recorded ${when}` },
-      { id: 'costliest', label: 'Costliest tickets', kind: 'rows', unit: 'usd', series: [''], bars: costliest.map(([id, x]) => ({ label: id, values: [x.usd], rows: [{ label: id, ticket: id, detail: `${Math.round(x.tokens / 1000)}k tokens`, value: x.usd, unit: 'usd' }] })), empty: `No agents' cost recorded ${when}` },
+      {
+        id: 'costPerDay',
+        label: period === 'day' ? 'Cost per hour' : 'Cost per day',
+        kind: 'columns',
+        unit: 'usd',
+        series: COST_ROLES.map(roleOf),
+        bars: costDays.map(({ k, ended }) => ({ label: k.label, values: perRole(ended, 'usd'), rows: endedRows(ended, 'usd') })),
+        empty: `No agents' cost recorded ${when}`,
+      },
+      {
+        id: 'tokensPerDay',
+        label: period === 'day' ? 'Tokens per hour' : 'Tokens per day',
+        kind: 'columns',
+        unit: 'tokens',
+        series: COST_ROLES.map(roleOf),
+        bars: costDays.map(({ k, ended }) => ({ label: k.label, values: perRole(ended, 'tokens'), rows: endedRows(ended, 'tokens') })),
+        empty: `No tokens recorded ${when}`,
+      },
+      {
+        id: 'costPerRole',
+        label: 'Cost per role',
+        kind: 'rows',
+        unit: 'usd',
+        series: [''],
+        bars: COST_ROLES.map((role) => ({ label: roleOf(role), values: [a.costByRole[role]?.usd ?? 0], rows: byValue(a.costByRole[role]?.rows ?? []) })),
+        empty: `No agents' cost recorded ${when}`,
+      },
+      {
+        id: 'costliest',
+        label: 'Costliest tickets',
+        kind: 'rows',
+        unit: 'usd',
+        series: [''],
+        bars: costliest.map(([id, x]) => ({
+          label: id,
+          values: [x.usd],
+          rows: [{ label: id, ticket: id, detail: `${Math.round(x.tokens / 1000)}k tokens`, value: x.usd, unit: 'usd' }],
+        })),
+        empty: `No agents' cost recorded ${when}`,
+      },
     ],
   };
 
@@ -638,22 +832,53 @@ export function computeMetrics(index: EventIndex, period: MetricsPeriod, now: nu
     id: 'you',
     title: 'You',
     numbers: [
-      number('waitedForYou', 'Tickets waited for you', 'minutes', waitSum(a), waitSum(b), byValue(waitKinds.flatMap((k) => a.waits[k].map((r) => ({ ...r, detail: WAIT_LABEL[k] })))), true),
+      number(
+        'waitedForYou',
+        'Tickets waited for you',
+        'minutes',
+        waitSum(a),
+        waitSum(b),
+        byValue(waitKinds.flatMap((k) => a.waits[k].map((r) => ({ ...r, detail: WAIT_LABEL[k] })))),
+        true,
+      ),
       number('slowClicks', 'Clicks that waited', 'count', a.clicks.length, b.clicks.length, a.clicks, true),
     ],
     charts: [
-      { id: 'waitsByKind', label: 'Time waiting for you, by what for', kind: 'rows', unit: 'minutes', series: [''], bars: waitKinds.map((k) => ({ label: WAIT_LABEL[k], values: [sum(a.waits[k].map((r) => r.value ?? 0))], rows: byValue(a.waits[k]) })), empty: `Nothing waited for you ${when}` },
-      { id: 'clicks', label: 'Clicks that waited longest', kind: 'rows', unit: 'ms', series: [''], bars: a.clicks.slice(0, 10).map((r) => ({ label: r.label, values: [r.value ?? 0], rows: [r] })), empty: `No click waited a second or more ${when}` },
+      {
+        id: 'waitsByKind',
+        label: 'Time waiting for you, by what for',
+        kind: 'rows',
+        unit: 'minutes',
+        series: [''],
+        bars: waitKinds.map((k) => ({ label: WAIT_LABEL[k], values: [sum(a.waits[k].map((r) => r.value ?? 0))], rows: byValue(a.waits[k]) })),
+        empty: `Nothing waited for you ${when}`,
+      },
+      {
+        id: 'clicks',
+        label: 'Clicks that waited longest',
+        kind: 'rows',
+        unit: 'ms',
+        series: [''],
+        bars: a.clicks.slice(0, 10).map((r) => ({ label: r.label, values: [r.value ?? 0], rows: [r] })),
+        empty: `No click waited a second or more ${when}`,
+      },
     ],
   };
 
-  return { period, from: new Date(cur.from).toISOString(), to: new Date(cur.to).toISOString(), sections: [productivity, flow, merges, agents, cost, you], events: index.size };
+  return {
+    period,
+    from: new Date(cur.from).toISOString(),
+    to: new Date(cur.to).toISOString(),
+    sections: [productivity, flow, merges, agents, cost, you],
+    events: index.size,
+  };
 }
 
 /** The tickets that landed among events: merged, or moved to Done. */
 function landedIn(events: readonly Ev[]): Set<string> {
   const ids = new Set<string>();
-  for (const e of events) if (e.ticket && (e.kind === 'merge-landed' || (e.kind === 'ticket-moved' && (e as Ev<'ticket-moved'>).data.to === 'done'))) ids.add(e.ticket);
+  for (const e of events)
+    if (e.ticket && (e.kind === 'merge-landed' || (e.kind === 'ticket-moved' && (e as Ev<'ticket-moved'>).data.to === 'done'))) ids.add(e.ticket);
   return ids;
 }
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { entryAnchors, entryThreads, formatTicket, parseReply, parseTicket, replyLine, type TicketEntry } from '../../../src/features/backlog/ticket';
+import {
+  entryAnchors,
+  entryThreads,
+  formatTicket,
+  parseReply,
+  parseTicket,
+  replyLine,
+  type TicketEntry,
+} from '../../../src/features/backlog/ticket';
 
 const entry = (date: string, author: string, body = 'Text.'): TicketEntry => ({ date, author, body });
 
@@ -60,7 +68,11 @@ describe('replies (BL-126)', () => {
   });
 
   it('to a duplicate minute go to the right entry', () => {
-    const activity = [entry('2026-10-20 16:04', 'You', 'A.'), entry('2026-10-20 16:04', 'You', 'B.'), entry('2026-10-20 16:05', 'You', `${replyLine(comment, '2026-10-20-1604-you-2')}\nOn B.`)];
+    const activity = [
+      entry('2026-10-20 16:04', 'You', 'A.'),
+      entry('2026-10-20 16:04', 'You', 'B.'),
+      entry('2026-10-20 16:05', 'You', `${replyLine(comment, '2026-10-20-1604-you-2')}\nOn B.`),
+    ];
     expect(entryThreads(activity)[2]).toMatchObject({ root: 1, reply: { to: '2026-10-20-1604-you-2' } });
   });
 
@@ -71,7 +83,10 @@ describe('replies (BL-126)', () => {
   });
 
   it('only answer earlier entries', () => {
-    const t = entryThreads([entry('2026-10-20 16:04', 'You', `${replyLine(comment, '2026-10-20-1605-you')}\nLoop.`), entry('2026-10-20 16:05', 'You', 'Later.')]);
+    const t = entryThreads([
+      entry('2026-10-20 16:04', 'You', `${replyLine(comment, '2026-10-20-1605-you')}\nLoop.`),
+      entry('2026-10-20 16:05', 'You', 'Later.'),
+    ]);
     expect(t[0].root).toBeUndefined();
   });
 });

@@ -64,11 +64,15 @@ describe('Repository', () => {
   it('gives the next load the scope of a load that failed', async () => {
     const scopes: unknown[] = [];
     let fail = true;
-    const repo = new Repository<string>(async (scope) => {
-      scopes.push(scope);
-      if (fail) throw new Error('boom');
-      return ['ok'];
-    }, 5, () => undefined);
+    const repo = new Repository<string>(
+      async (scope) => {
+        scopes.push(scope);
+        if (fail) throw new Error('boom');
+        return ['ok'];
+      },
+      5,
+      () => undefined,
+    );
     await repo.refresh(new Set(['a']));
     fail = false;
     await repo.refresh(new Set(['b']));
@@ -79,10 +83,14 @@ describe('Repository', () => {
   it('keeps the previous snapshot and reports errors', async () => {
     let fail = false;
     const errors: unknown[] = [];
-    const repo = new Repository(async () => {
-      if (fail) throw new Error('boom');
-      return ['ok'];
-    }, 5, (e) => errors.push(e));
+    const repo = new Repository(
+      async () => {
+        if (fail) throw new Error('boom');
+        return ['ok'];
+      },
+      5,
+      (e) => errors.push(e),
+    );
     await repo.refresh();
     fail = true;
     await repo.refresh();
@@ -101,7 +109,11 @@ describe('Repository', () => {
 
   it('isolates a throwing listener from other listeners and from load errors', async () => {
     const errors: unknown[] = [];
-    const repo = new Repository(async () => ['ok'], 5, (e) => errors.push(e));
+    const repo = new Repository(
+      async () => ['ok'],
+      5,
+      (e) => errors.push(e),
+    );
     let secondListenerCalls = 0;
     repo.onDidChange(() => {
       throw new Error('listener error');

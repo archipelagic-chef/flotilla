@@ -5,8 +5,18 @@ import { conflictRegions, parseConflictRegions } from '../../../../src/core/git/
 import { parseTicket } from '../../../../src/features/backlog/ticket';
 import { LocalBacklog } from '../../../../src/features/backlog/localBacklog';
 import { appendEvents, readEvents, type FlotillaEvent } from '../../../../src/features/metrics/events';
-import { eventsFromTicket, historyImported, importHistory, replayMerges } from '../../../../src/features/metrics/import';
-import { git, initRepo, makeTempDir, writeFile } from '../../../helpers/gitRepo';
+import {
+  eventsFromTicket,
+  historyImported,
+  importHistory,
+  replayMerges,
+} from '../../../../src/features/metrics/import';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  writeFile,
+} from '../../../helpers/gitRepo';
 
 const TICKET = `# A ticket
 
@@ -74,7 +84,23 @@ function seeded(): string {
 
 describe('conflict regions', () => {
   it('counts each region, and tells pure additions from changes', () => {
-    const text = ['x', '<<<<<<< ours', 'a', 'b', '||||||| base', '=======', 'c', '>>>>>>> theirs', '<<<<<<< ours', 'd', '||||||| base', 'old', '=======', 'e', '>>>>>>> theirs'].join('\n');
+    const text = [
+      'x',
+      '<<<<<<< ours',
+      'a',
+      'b',
+      '||||||| base',
+      '=======',
+      'c',
+      '>>>>>>> theirs',
+      '<<<<<<< ours',
+      'd',
+      '||||||| base',
+      'old',
+      '=======',
+      'e',
+      '>>>>>>> theirs',
+    ].join('\n');
     expect(parseConflictRegions(text)).toEqual([
       { lines: 3, additions: true },
       { lines: 2, additions: false },
@@ -84,7 +110,15 @@ describe('conflict regions', () => {
   it('replays a merge in memory', async () => {
     const repo = seeded();
     const files = await conflictRegions(repo, 'main~2', 'feature/BL-7-x');
-    expect(files).toEqual([{ file: 'list.ts', regions: [{ lines: 2, additions: false }, { lines: 2, additions: true }] }]);
+    expect(files).toEqual([
+      {
+        file: 'list.ts',
+        regions: [
+          { lines: 2, additions: false },
+          { lines: 2, additions: true },
+        ],
+      },
+    ]);
   });
 });
 
@@ -173,7 +207,15 @@ describe('the history read in', () => {
       at: new Date(2026, 9, 19, 9, 0).toISOString(),
       kind: 'agent-spend',
       ticket: 'BL-7',
-      data: { session: 's1', purpose: 'first', to: new Date(2026, 9, 19, 10, 0).toISOString(), tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 }, costUsd: 0.5, contextK: [60], tools: { code: 1200 } },
+      data: {
+        session: 's1',
+        purpose: 'first',
+        to: new Date(2026, 9, 19, 10, 0).toISOString(),
+        tokens: { input: 1, output: 2, cacheRead: 3, cacheCreation: 4 },
+        costUsd: 0.5,
+        contextK: [60],
+        tools: { code: 1200 },
+      },
       imported: true,
     };
     await appendEvents(commonDir, [...doubled, ...doubled, spent, ...live]);

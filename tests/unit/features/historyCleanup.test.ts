@@ -1,6 +1,23 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { branchStart, cleanBranchName, compareRewrite, finishRewrite, historyRef } from '../../../src/features/backlog/history';
-import { git, initRepo, makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  branchStart,
+  cleanBranchName,
+  compareRewrite,
+  finishRewrite,
+  historyRef,
+} from '../../../src/features/backlog/history';
+import {
+  git,
+  initRepo,
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

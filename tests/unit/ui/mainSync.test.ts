@@ -1,5 +1,12 @@
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const warnings = vi.hoisted(() => [] as string[]);
 const infos = vi.hoisted(() => [] as string[]);
@@ -14,7 +21,12 @@ vi.mock('../../../src/ui/settings', () => ({ readSettings: () => ({ defaultBase:
 import { addBranch, addItem, updateItem } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { MainSync } from '../../../src/ui/backlog/mainSync';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => {
@@ -50,7 +62,10 @@ describe('keeping open tickets current with main', () => {
     sync = new MainSync({
       backlog: store,
       repository: { current: [ws], onDidChange: () => ({ dispose() {} }) } as never,
-      reviews: { isRunning: () => false, handToImplementer: async (id: string, t: { prompt: string }) => !agentRunning && handed.push({ id, prompt: t.prompt }) > 0 } as never,
+      reviews: {
+        isRunning: () => false,
+        handToImplementer: async (id: string, t: { prompt: string }) => !agentRunning && handed.push({ id, prompt: t.prompt }) > 0,
+      } as never,
       mainRoot: repo,
       isLeader: () => true,
       output: { appendLine: () => undefined } as never,
@@ -115,7 +130,7 @@ describe('keeping open tickets current with main', () => {
     expect((await activity()).at(-1)).toBe('`feature/BL-1-x` is already up to date with main.');
   });
 
-  it('Update from Main hands a conflicting rebase to the ticket\'s agent, leaving the worktree as it was', async () => {
+  it("Update from Main hands a conflicting rebase to the ticket's agent, leaving the worktree as it was", async () => {
     commitIn(wt, 'one\nTWO\nthree\n');
     commitIn(repo, 'one\n2\nthree\n');
     const head = git(wt, 'rev-parse', 'HEAD');
@@ -136,6 +151,8 @@ describe('keeping open tickets current with main', () => {
     await sync.update('BL-1');
     expect(handed).toHaveLength(0);
     expect(infos).toHaveLength(0);
-    expect(warnings).toEqual(["BL-1: rebasing feature/BL-1-x onto main conflicts (a.txt), and an agent is already working on it: update it from main when it's done."]);
+    expect(warnings).toEqual([
+      "BL-1: rebasing feature/BL-1-x onto main conflicts (a.txt), and an agent is already working on it: update it from main when it's done.",
+    ]);
   });
 });

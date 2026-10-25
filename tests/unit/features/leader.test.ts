@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { Leader } from '../../../src/features/backlog/leader';
 import { makeTempDir, removeDir } from '../../helpers/gitRepo';
 

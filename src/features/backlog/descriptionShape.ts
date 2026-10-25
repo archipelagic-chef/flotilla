@@ -12,8 +12,7 @@ Acceptance criteria:
 - [ ] …`;
 
 /** That shape, in a sentence, for the prompts that write descriptions. */
-export const SHAPE_RULE =
-  `A description opens with a line "**When it's done:**" and 1–4 lines on what the user sees and can do once the work is done, then "**Why:**" (what's wrong today, and its cause), then the acceptance criteria as a checklist.`;
+export const SHAPE_RULE = `A description opens with a line "**When it's done:**" and 1–4 lines on what the user sees and can do once the work is done, then "**Why:**" (what's wrong today, and its cause), then the acceptance criteria as a checklist.`;
 
 /** Keeping the description current covers its "When it's done" lines, not only its criteria. */
 export const KEEP_WHEN_DONE = `Keep its "**When it's done:**" lines (at the top) saying what the work does once done as well, not only the acceptance criteria; add them if the description has none.`;

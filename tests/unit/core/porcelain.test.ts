@@ -1,7 +1,18 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { parseNameStatus, parseStatusV2, summariseUntracked, sumNumstat, UNTRACKED_SUMMARY_AT } from '../../../src/core/git/porcelain';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  parseNameStatus,
+  parseStatusV2,
+  summariseUntracked,
+  sumNumstat,
+  UNTRACKED_SUMMARY_AT,
+} from '../../../src/core/git/porcelain';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
@@ -106,8 +117,7 @@ describe('sumNumstat', () => {
 });
 
 describe('summariseUntracked', () => {
-  const status = (untracked: string[]) =>
-    parseStatusV2(['1 .M N... 100644 100644 100644 a a src/x.ts', ...untracked.map((p) => `? ${p}`), ''].join('\0'));
+  const status = (untracked: string[]) => parseStatusV2(['1 .M N... 100644 100644 100644 a a src/x.ts', ...untracked.map((p) => `? ${p}`), ''].join('\0'));
 
   it('lists thousands of untracked files as their top-level folders, with counts', () => {
     const files = Array.from({ length: UNTRACKED_SUMMARY_AT + 212 }, (_, i) => `node_modules/pkg${i}/index.js`);

@@ -45,7 +45,16 @@ const reviewer = /·\s*review\s/.test(name);
 const item = /·\s*(?:review\s+)?([A-Z]+-\d+)\s*$/.exec(name)?.[1] ?? /^([A-Z]+-\d+) merge$/.exec(name)?.[1] ?? /backlog item ([A-Z]+-\d+)/.exec(prompt)?.[1];
 
 const reply = (result, isError = false) => {
-  const out = { type: 'result', subtype: isError ? 'error_during_execution' : 'success', is_error: isError, duration_ms: Date.now() - started, num_turns: 1, result, session_id: session, total_cost_usd: 0 };
+  const out = {
+    type: 'result',
+    subtype: isError ? 'error_during_execution' : 'success',
+    is_error: isError,
+    duration_ms: Date.now() - started,
+    num_turns: 1,
+    result,
+    session_id: session,
+    total_cost_usd: 0,
+  };
   process.stdout.write(`${JSON.stringify(out)}\n`);
 };
 
@@ -158,7 +167,10 @@ function review(file, text, hints, id) {
 
 function implement(file, text, hints, id) {
   if (directive(hints, 'ask') !== undefined && !hasEntryBy(text, 'You')) {
-    appendEntry(file, `Plan: a small change in \`fake-work/${id}.txt\`.\n\nQuestion: is one line per run enough, or should the fake change be bigger?\n\nWaiting for you.`);
+    appendEntry(
+      file,
+      `Plan: a small change in \`fake-work/${id}.txt\`.\n\nQuestion: is one line per run enough, or should the fake change be bigger?\n\nWaiting for you.`,
+    );
     reply('Fake implementer: asked a question in the ticket.');
     return;
   }
@@ -199,7 +211,10 @@ function chat() {
     emit({ type: 'result', subtype: stopped ? 'error_during_execution' : 'success', is_error: false, result: text, session_id: session, total_cost_usd: 0 });
   };
   const answer = () => {
-    const words = 'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'.split(' ');
+    const words =
+      'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'.split(
+        ' ',
+      );
     let said = '';
     emit({ type: 'stream_event', event: { type: 'message_start' } });
     answering = setInterval(() => {
@@ -243,7 +258,8 @@ function summarize() {
 
 if (option('--input-format') === 'stream-json') chat();
 else if (/where a coding agent stands/.test(option('--system-prompt') ?? '')) summarize();
-else main().catch((e) => {
-  process.stderr.write(`fake-claude: ${e instanceof Error ? e.message : String(e)}\n`);
-  process.exitCode = 1;
-});
+else
+  main().catch((e) => {
+    process.stderr.write(`fake-claude: ${e instanceof Error ? e.message : String(e)}\n`);
+    process.exitCode = 1;
+  });

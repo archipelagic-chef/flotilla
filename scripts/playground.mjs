@@ -54,7 +54,10 @@ const linkedWorktrees = (repo) =>
     .split('\n\n')
     .slice(1)
     .map((block) => ({
-      path: block.split('\n').find((line) => line.startsWith('worktree ')).slice('worktree '.length),
+      path: block
+        .split('\n')
+        .find((line) => line.startsWith('worktree '))
+        .slice('worktree '.length),
       locked: block.split('\n').some((line) => line.startsWith('locked')),
     }));
 
@@ -82,7 +85,9 @@ const moveAside = () => {
   try {
     gitIn(target, 'worktree', 'repair', ...moved);
   } catch (err) {
-    throw new Error(`the old playground was moved to ${target}, but its worktrees couldn't be pointed at their new place (run \`git worktree repair\` there): ${err.stderr?.toString().trim() || err.message}`);
+    throw new Error(
+      `the old playground was moved to ${target}, but its worktrees couldn't be pointed at their new place (run \`git worktree repair\` there): ${err.stderr?.toString().trim() || err.message}`,
+    );
   }
   console.log(`Its ${linked.length} worktree(s) moved with it and still work there: ${moved.join(', ')}`);
 };

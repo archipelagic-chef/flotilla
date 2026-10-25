@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_MB, PENDING_MAX_MS, START_WINDOW_MS, StartingAgents } from '../../../src/features/workstreams/startingAgents';
+import {
+  AGENT_MB,
+  PENDING_MAX_MS,
+  START_WINDOW_MS,
+  StartingAgents,
+} from '../../../src/features/workstreams/startingAgents';
 
 describe('starting agents', () => {
   it('counts each start at about 300 MB until its minute passes', () => {

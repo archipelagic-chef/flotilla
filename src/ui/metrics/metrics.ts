@@ -5,7 +5,12 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { eventsDir } from '../../features/metrics/events';
 import { criteriaCount } from '../../features/metrics/productivity';
 import { MetricsStore } from '../../features/metrics/store';
-import type { MetricsHostMessage, MetricsPeriod, MetricsView, MetricsWebviewMessage } from '../../webview/metricsProtocol';
+import type {
+  MetricsHostMessage,
+  MetricsPeriod,
+  MetricsView,
+  MetricsWebviewMessage,
+} from '../../webview/metricsProtocol';
 
 /** Events come in bursts (a merge records several): the views are counted again this long after the last. */
 const SETTLE_MS = 2000;
@@ -91,7 +96,11 @@ export class Metrics implements vscode.Disposable {
       return;
     }
     const dist = vscode.Uri.joinPath(this.extensionUri, 'dist');
-    const panel = vscode.window.createWebviewPanel('flotilla.metrics', 'Metrics', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [dist] });
+    const panel = vscode.window.createWebviewPanel('flotilla.metrics', 'Metrics', vscode.ViewColumn.Active, {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [dist],
+    });
     panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'flotilla.svg');
     this.panel = { panel, period };
     panel.webview.html = html(panel.webview, dist, period);

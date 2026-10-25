@@ -1,5 +1,10 @@
 import { gitHubName } from '../backlog/sources/github';
-import { fetchJson, fetchText, TIMEOUT_MS, type Fetch } from '../backlog/sources/source';
+import {
+  type Fetch,
+  fetchJson,
+  fetchText,
+  TIMEOUT_MS,
+} from '../backlog/sources/source';
 import { explainRunError, type RunAction } from './runActions';
 
 /** Where a run is: waiting to start, running, or how it ended. */

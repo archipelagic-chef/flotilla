@@ -1,7 +1,19 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { branchNameProblem, ensureExcluded, existingNames, sanitizeName, uniqueName, worktreesRoot } from '../../../src/features/worktrees/layout';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  branchNameProblem,
+  ensureExcluded,
+  existingNames,
+  sanitizeName,
+  uniqueName,
+  worktreesRoot,
+} from '../../../src/features/worktrees/layout';
 import { git, initRepo, removeDir } from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];

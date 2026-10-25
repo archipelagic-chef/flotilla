@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { TicketCi } from '../../../../src/ui/backlog/ticketCi';
 import type { CiRuns } from '../../../../src/ui/ci/ciRuns';
 import type { CiView } from '../../../../src/webview/protocol';
@@ -37,7 +43,10 @@ function panel(visible = true) {
 
 function memento() {
   const data = new Map<string, unknown>();
-  return { get: <T>(key: string, fallback: T) => (data.has(key) ? (data.get(key) as T) : fallback), update: async (key: string, value: unknown) => void data.set(key, value) };
+  return {
+    get: <T>(key: string, fallback: T) => (data.has(key) ? (data.get(key) as T) : fallback),
+    update: async (key: string, value: unknown) => void data.set(key, value),
+  };
 }
 
 let r: ReturnType<typeof reader>;
@@ -51,7 +60,7 @@ beforeEach(() => {
 
 const sent = (p: ReturnType<typeof panel>['p']) => p.webview.postMessage.mock.calls.map(([m]) => m);
 
-describe('TicketCi: a ticket shows its worktrees\' CI (BL-106)', () => {
+describe("TicketCi: a ticket shows its worktrees' CI (BL-106)", () => {
   it('watches its worktrees while its tab is visible, and sends their views, closed at first', () => {
     const { p, setVisible } = panel();
     tickets.open('BL-1', p as never);

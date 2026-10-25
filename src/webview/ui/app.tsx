@@ -1,8 +1,34 @@
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ALL, type BacklogItemView, type BacklogProblem, type CiView, type DirEntry, type HostMessage, type MachineState, type RefComparison, type Tool, type VcView, type WorkstreamView, type AutopilotState, type MergeQueueView, type SlowStorageView } from '../protocol';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import {
+  ALL,
+  type AutopilotState,
+  type BacklogItemView,
+  type BacklogProblem,
+  type CiView,
+  type DirEntry,
+  type HostMessage,
+  type MachineState,
+  type MergeQueueView,
+  type RefComparison,
+  type SlowStorageView,
+  type Tool,
+  type VcView,
+  type WorkstreamView,
+} from '../protocol';
 import type { ChangeKind } from '../../core/git/porcelain';
-import { menuContext, run, send, vscode } from './api';
+import {
+  menuContext,
+  run,
+  send,
+  vscode,
+} from './api';
 import { ChatsBody, HooksNotice } from './chats';
 import { CiBody } from './ci';
 import { FilesBody, type Editing } from './files';
@@ -10,13 +36,29 @@ import { Hover, WorktreeCard } from './hover';
 import { setIconTheme } from './icons';
 import { scopeState, scopeSummary } from '../../features/ci/summary';
 import { Overview } from './overview';
-import { INITIAL_SEARCH, SearchView, type SearchResults, type SearchState } from './search';
+import {
+  INITIAL_SEARCH,
+  type SearchResults,
+  type SearchState,
+  SearchView,
+} from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
 import { finished, pruneBusy } from './backlogBusy';
-import { CompareView, HistoryBody, VcBody, withComparison, type CommitFiles, type CommitHighlight, type CompareChoice, type Comparison, type Log, type Refs } from './vc';
+import {
+  type CommitFiles,
+  type CommitHighlight,
+  type CompareChoice,
+  CompareView,
+  type Comparison,
+  HistoryBody,
+  type Log,
+  type Refs,
+  VcBody,
+  withComparison,
+} from './vc';
 
 /** UI state that survives reloads of the webview (VS Code keeps it per view). */
 export interface Persisted {
@@ -43,7 +85,17 @@ export interface Persisted {
   autopilotOpen?: boolean;
 }
 
-const INITIAL: Persisted = { tool: 'files', collapsed: [], expanded: {}, drafts: {}, history: [], vcView: 'changes', comparisons: [], nextComparison: 1, search: INITIAL_SEARCH };
+const INITIAL: Persisted = {
+  tool: 'files',
+  collapsed: [],
+  expanded: {},
+  drafts: {},
+  history: [],
+  vcView: 'changes',
+  comparisons: [],
+  nextComparison: 1,
+  search: INITIAL_SEARCH,
+};
 
 export type Update = (change: (p: Persisted) => Persisted) => void;
 
@@ -143,7 +195,13 @@ export function App() {
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
   const [progress, setProgress] = useState<Partial<Record<Tool, string[]>>>({});
-  const [backlogInfo, setBacklogInfo] = useState<{ problems: BacklogProblem[]; integrations: number; autopilot?: AutopilotState; mergeQueue?: MergeQueueView; detailedCards?: boolean }>({ problems: [], integrations: 0 });
+  const [backlogInfo, setBacklogInfo] = useState<{
+    problems: BacklogProblem[];
+    integrations: number;
+    autopilot?: AutopilotState;
+    mergeQueue?: MergeQueueView;
+    detailedCards?: boolean;
+  }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
@@ -306,7 +364,13 @@ export function App() {
         case 'backlog':
           pruneBusy(new Set(m.items.map((i) => i.id)));
           setBacklog(m.items);
-          setBacklogInfo({ problems: m.problems, integrations: m.integrations, autopilot: m.autopilot, mergeQueue: m.mergeQueue, detailedCards: !!m.detailedCards });
+          setBacklogInfo({
+            problems: m.problems,
+            integrations: m.integrations,
+            autopilot: m.autopilot,
+            mergeQueue: m.mergeQueue,
+            detailedCards: !!m.detailedCards,
+          });
           return;
         case 'backlogDone':
           finished(m.message);
@@ -415,7 +479,10 @@ export function App() {
   useEffect(measureTabs, [workstreams, closed, active, measureTabs]);
 
   // Fold All in the view title: offered where the All tab shows worktree sections.
-  const sectioned = active === ALL && ['files', 'search', 'vc', 'chats'].includes(persisted.tool) && !(persisted.tool === 'vc' && persisted.vcView === 'compare' && persisted.comparisons.length > 0);
+  const sectioned =
+    active === ALL &&
+    ['files', 'search', 'vc', 'chats'].includes(persisted.tool) &&
+    !(persisted.tool === 'vc' && persisted.vcView === 'compare' && persisted.comparisons.length > 0);
   const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
   useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
 
@@ -429,7 +496,13 @@ export function App() {
     update((p) => withComparison(p, { base: refs?.defaultBase, head: activeWs && activeWs.branch !== refs?.defaultBase ? activeWs.branch : undefined }));
   // Views that + under Version Control can add: those not showing yet.
   const addable: AddableView[] = [
-    { label: 'Compare Branches', detail: 'What differs between two branches', icon: 'git-compare', shown: persisted.comparisons.length > 0, add: addComparison },
+    {
+      label: 'Compare Branches',
+      detail: 'What differs between two branches',
+      icon: 'git-compare',
+      shown: persisted.comparisons.length > 0,
+      add: addComparison,
+    },
   ].filter((v) => !v.shown);
   const colors = colorsFor(workstreams);
   const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
@@ -449,10 +522,7 @@ export function App() {
   const backlogCount = (backlog ?? []).filter((i) => i.need || i.proposed).length;
   const searching = !!persisted.search.query.trim() && !!searchId.current && results?.id !== searchId.current;
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
-  const busyFor = (id: Tool): string[] => [
-    ...(progress[id] ?? []),
-    ...(id === 'search' && searching ? ['Searching…'] : []),
-  ];
+  const busyFor = (id: Tool): string[] => [...(progress[id] ?? []), ...(id === 'search' && searching ? ['Searching…'] : [])];
   /** CI of the scope (the active worktree, or all of them on the All tab): its state on the Version Control tool, and what failed. */
   const ciViews = active === ALL ? workstreams.map((w) => ci[w.key]) : [ci[active]];
   const ciState = scopeState(ciViews);

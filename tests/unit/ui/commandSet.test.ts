@@ -1,6 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 // Whatever a module touches of vscode (or of a feature's deps) at registration is a stub; registerCommand notes the id.
 const registered: string[] = [];
@@ -55,14 +60,16 @@ describe('commands', () => {
     registerFileCommands(extension as never, stub(), stub(), stub());
     registerAll(subscriptions, joinCommands(...Object.values(features).map((f) => f(stub()))));
 
-    const declared = (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { contributes: { commands: { command: string }[] } }).contributes.commands.map((c) => c.command);
+    const declared = (
+      JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { contributes: { commands: { command: string }[] } }
+    ).contributes.commands.map((c) => c.command);
     expect(declared.filter((id) => !registered.includes(id))).toEqual([]);
     expect(registered.filter((id, i) => registered.indexOf(id) !== i)).toEqual([]);
   });
 
   it('extension.ts registers the features’ lists, and no command of its own', () => {
     const source = fs.readFileSync(path.join(root, 'src/extension.ts'), 'utf8');
-    for (const name of Object.keys(features)) expect(source, name).toMatch(new RegExp(`registerAll\\(context\\.subscriptions, ${name}\\(`));
+    for (const name of Object.keys(features)) expect(source, name).toMatch(new RegExp(`registerAll\\(\\s*context\\.subscriptions,\\s*${name}\\(`));
     expect(source).not.toMatch(/commands\.registerCommand\(/);
   });
 

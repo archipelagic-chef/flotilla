@@ -2,9 +2,10 @@ import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
 import type { Handlers } from './context';
+import type { FilesMessage } from './files.messages';
 
 /** Opening what the ticket links to: its file, links in it, commits, worktrees, and running its run blocks. */
-export const filesHandlers: Handlers = {
+export const filesHandlers: Handlers<FilesMessage> = {
   openFile: async ({ item, backlog }) => {
     await vscode.window.showTextDocument(vscode.Uri.file(await backlog.ensureDocument(item)), { preview: false });
   },

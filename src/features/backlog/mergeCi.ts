@@ -1,5 +1,10 @@
 import { runGit } from '../../core/git/gitCli';
-import { isActive, type CiJob, type CiRun, type CiStatus } from '../ci/githubActions';
+import {
+  type CiJob,
+  type CiRun,
+  type CiStatus,
+  isActive,
+} from '../ci/githubActions';
 import { PUSH_REMOTE, runsOnPush } from './branchPush';
 
 /**
@@ -64,7 +69,9 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Whether a workflow in the commit's .github/workflows runs on push. */
 async function workflowsOnPush(cwd: string, commit: string): Promise<boolean> {
-  const files = (await runGit(['ls-tree', '--name-only', `${commit}:.github/workflows`], { cwd }).catch(() => '')).split('\n').filter((f) => /\.ya?ml$/.test(f));
+  const files = (await runGit(['ls-tree', '--name-only', `${commit}:.github/workflows`], { cwd }).catch(() => ''))
+    .split('\n')
+    .filter((f) => /\.ya?ml$/.test(f));
   for (const f of files) if (runsOnPush(await runGit(['show', `${commit}:.github/workflows/${f}`], { cwd }).catch(() => ''))) return true;
   return false;
 }
@@ -93,7 +100,10 @@ export async function decideCi(o: {
     return { kind: 'local', why: `\`${branch}\`'s tip \`${short(tip)}\` isn't pushed: ${why}.` };
   }
   if (typeof o.reader === 'string') return { kind: 'local', why: o.reader };
-  const inBranch = await runGit(['merge-base', '--is-ancestor', o.baseTip, tip], { cwd }).then(() => true, () => false);
+  const inBranch = await runGit(['merge-base', '--is-ancestor', o.baseTip, tip], { cwd }).then(
+    () => true,
+    () => false,
+  );
   if (!inBranch) return { kind: 'moved', tip };
   let runs: CiRun[];
   try {

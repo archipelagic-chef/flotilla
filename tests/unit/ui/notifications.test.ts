@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { ReviewState } from '../../../src/features/backlog/review';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
@@ -47,9 +54,18 @@ function harness(state: { items?: BacklogItem[]; worktrees?: Workstream[]; leade
   const openWorktree = vi.fn(async () => undefined);
   const notifier = new NeedsYouNotifier({
     backlog: { read: async () => ({ items: s.items }), watch: () => ({ dispose() {} }) } as never,
-    repository: { get current() { return s.worktrees; }, onDidChange: () => ({ dispose() {} }) } as never,
+    repository: {
+      get current() {
+        return s.worktrees;
+      },
+      onDidChange: () => ({ dispose() {} }),
+    } as never,
     reviews: { onDidChange: () => ({ dispose() {} }) } as never,
-    leader: { get isLeader() { return s.leader; } },
+    leader: {
+      get isLeader() {
+        return s.leader;
+      },
+    },
     openTicket,
     openWorktree,
   });

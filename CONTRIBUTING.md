@@ -10,6 +10,7 @@ npm test               # unit + git integration tests (vitest), queued with the 
 npm run test:related   # only the tests of what changed since main
 npm run typecheck
 npm run build
+npm run format         # Prettier; the pre-commit hook does it for the staged files
 xvfb-run -a npm run test:vscode   # in the container; plain `npm run test:vscode` on a desktop
 docker build -f test/docker/old-git.Dockerfile -t flotilla-oldgit . && docker run --rm flotilla-oldgit
 ```
@@ -98,9 +99,10 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   places.
 - **The ticket tab's host** ([src/ui/backlog/ticketPanel.ts](src/ui/backlog/ticketPanel.ts)) builds the view; the
   webview's messages are handled in [src/ui/backlog/ticketMessages/](src/ui/backlog/ticketMessages/), one module per
-  group (`ticket`, `comments`, `files`, `tracker`, `agents`, `review`, `merge`), each a map of handlers by message type.
-  A new message type gets its handler in its group's module (or a new group, listed in `index.ts`); the panel only
-  dispatches.
+  group (`ticket`, `comments`, `files`, `tracker`, `agents`, `review`, `merge`, `check`), each a map of handlers by
+  message type. A new message type is declared in its group's `<group>.messages.ts` and handled in its `<group>.ts`
+  (the typecheck fails until it is); a new group gets both files, and a line in `index.ts` and in
+  `HandledTicketMessage` ([src/webview/ticketProtocol.ts](src/webview/ticketProtocol.ts)). The panel only dispatches.
 - **The backlog view** ([src/webview/ui/backlog.tsx](src/webview/ui/backlog.tsx)) is the lanes and their drag and drop;
   the cards are in `card.tsx`, the title bar in `titleBar.tsx`, the autopilot's bar in `autopilotBar.tsx`, Needs You in
   `needsYou.tsx` and the merge queue in `mergeQueueBar.tsx`.
@@ -126,6 +128,42 @@ their merges don't conflict. Add to the part's file, or give a new part a file o
   (the variables, `body`, buttons, rows, `.rendered`, the layout) stays in the entry CSS, `ui/styles.css` or
   `ticket/ticket.css`, which the entry imports before the parts, so a part's rules come after the shared ones and win
   at the same specificity.
+
+## Additions that merge cleanly
+
+Most merge conflicts here were two tickets adding unrelated lines at the same spot, usually the end of a list (BL-155).
+So:
+
+- **One format.** Prettier ([.prettierrc.json](.prettierrc.json): 160 wide, single quotes) formats the code, TypeScript,
+  JavaScript and CSS; Markdown and `package.json` keep theirs. `npm install` installs a pre-commit hook
+  ([scripts/install-hooks.mjs](scripts/install-hooks.mjs)) that formats the staged files, in every worktree, and
+  `npm test` fails on a file that isn't formatted (`npm run format` fixes it). Don't reformat what you don't change.
+- **Imports.** An import of four names or more lists them one per line, sorted
+  ([scripts/prettier-imports.mjs](scripts/prettier-imports.mjs) does it), so two added names land on different lines.
+  Keep it that way when you add one: Prettier puts it in its place.
+- **Ticket tab messages**: in their group's files, as in "Where a part goes" above.
+- **Commands and settings**: a command's handler in its feature's map (above); its entry, and a setting's, in
+  `package.json` next to the related ones of the same feature, not at the end of the list.
+- **`CHANGELOG.md`**: one entry per ticket under "## Unreleased". It merges with `merge=union`
+  ([.gitattributes](.gitattributes)), which keeps both sides' lines: add a new paragraph rather than editing another
+  ticket's, so the merge doesn't keep two versions of it.
+- **CSS**: in the part's own file (above).
+- **Splitting an epic**: siblings that build the same part get `Depends on:` the earlier one, so they don't build it in
+  parallel and conflict; siblings in separate parts run in parallel.
+
+### Merging main past the reformat
+
+The commit that formatted the whole repository (`4da0391`, listed in [.git-blame-ignore-revs](.git-blame-ignore-revs),
+which `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes `git blame` skip) changes most lines of most
+files, so a branch from before it conflicts all over when it merges main. Merge main in three steps instead:
+
+```bash
+git merge 4da0391^                       # main up to the reformat: your usual conflicts, if any
+npm ci && npm run format && git commit -am "BL-…: Format as main does"
+git merge -s ours 4da0391 && git merge main
+```
+
+Your branch, formatted, is what the reformat would have made of it, so `-s ours` takes it as it is.
 
 ## Buttons that wait
 
@@ -224,7 +262,7 @@ Keep a demo short, and safe to play again: a demo that changes the playground (c
 
 ## Releasing
 
-1. Update `CHANGELOG.md` and bump `version` in `package.json`.
+1. Move the entries under "## Unreleased" to the new version's heading, and bump `version` in `package.json`.
 2. `npm run typecheck && npm test && npm run build`
 3. `npm run package` to try the `.vsix` locally (Extensions view → `…` → Install from VSIX…). It packages a copy of
    `dist/`, `media/` and the manifest in the temp folder (`scripts/package.mjs`): `vsce package` run in the repository

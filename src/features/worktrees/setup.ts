@@ -89,11 +89,7 @@ function isInside(root: string, target: string): boolean {
 }
 
 /** Recreates `from`'s directories at `to`, hard-links its files and copies those written in place; says how many. */
-async function linkTree(
-  from: string,
-  to: string,
-  link: (from: string, to: string) => Promise<void>,
-): Promise<{ files: number; copied: number }> {
+async function linkTree(from: string, to: string, link: (from: string, to: string) => Promise<void>): Promise<{ files: number; copied: number }> {
   const files: Array<{ rel: string; copy: boolean }> = [];
   const symlinks: string[] = [];
   const pending = [{ rel: '', copy: false }];

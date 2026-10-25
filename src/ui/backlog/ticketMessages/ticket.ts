@@ -1,9 +1,10 @@
 import { acceptItem, removeItem, updateItem } from '../../../features/backlog/backlog';
 import { keepAttachmentsFolded, keepShowActivity } from '../ticketPanel';
 import type { Handlers } from './context';
+import type { TicketMessage } from './ticket.messages';
 
 /** The ticket itself: its title, description, status and priority, accepting or dismissing it, and how the tab shows it. */
-export const ticketHandlers: Handlers = {
+export const ticketHandlers: Handlers<TicketMessage> = {
   ready: async ({ id, panel, panels }) => {
     // The webview has nothing yet (or reloaded): the whole view goes again, and its Ask chat.
     panels.sentViews.delete(panel);

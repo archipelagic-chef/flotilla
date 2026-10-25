@@ -98,7 +98,8 @@ export function turnSentence(turn: Turn, r: ReviewState | undefined): { text: st
     case 'paused':
       return { text: `You paused ${r?.paused?.agent ?? 'its agent'}${round}.`, todo: 'Resume it: it goes on in the same chat, where it left off.' };
     case 'stopped':
-      if (r?.stop?.kind === 'user' && r.stop.agent) return { text: `You stopped ${r.stop.agent.agent}${round}.`, todo: 'Resume it in its chat, or hand the work to a new agent.' };
+      if (r?.stop?.kind === 'user' && r.stop.agent)
+        return { text: `You stopped ${r.stop.agent.agent}${round}.`, todo: 'Resume it in its chat, or hand the work to a new agent.' };
       return r?.stop?.kind === 'user'
         ? { text: `You stopped the review of ${work}${round}.`, todo: 'Review it yourself, or start the review again.' }
         : { text: `The review of ${work} stopped${round}: ${r?.reason ?? 'no verdict.'}`, todo: 'Choose how it goes on.' };
@@ -106,7 +107,10 @@ export function turnSentence(turn: Turn, r: ReviewState | undefined): { text: st
       if (r?.state === 'approved') {
         return r.byUser
           ? { text: `You approved ${work}${round}.`, todo: 'Merge it, then move it to Done.' }
-          : { text: `${r.reviewer || 'The reviewer'} approved ${work}${round}. It waits for your approval.`, todo: 'Approve it and merge it, or request changes.' };
+          : {
+              text: `${r.reviewer || 'The reviewer'} approved ${work}${round}. It waits for your approval.`,
+              todo: 'Approve it and merge it, or request changes.',
+            };
       }
       return {
         text: `${r?.implementer ? work : 'The work'} waits for your review${round}.`,
@@ -114,4 +118,3 @@ export function turnSentence(turn: Turn, r: ReviewState | undefined): { text: st
       };
   }
 }
-

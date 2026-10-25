@@ -1,8 +1,25 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { EMPTY, INDEX, readFileAtRef, readFileBytesAtRef, sideRefsFor, WORKING } from '../../../src/core/diff/refs';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  EMPTY,
+  INDEX,
+  readFileAtRef,
+  readFileBytesAtRef,
+  sideRefsFor,
+  WORKING,
+} from '../../../src/core/diff/refs';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

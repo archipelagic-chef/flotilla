@@ -2,7 +2,12 @@ import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
 import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
 import { ciSummary } from '../../features/ci/summary';
-import type { CiView, MachineState, SlowStorageView, WorkstreamView } from '../protocol';
+import type {
+  CiView,
+  MachineState,
+  SlowStorageView,
+  WorkstreamView,
+} from '../protocol';
 import { menuContext, run } from './api';
 import { ATTENTION_ICON } from './section';
 import './overview.css';
@@ -107,7 +112,11 @@ export function Overview({ workstreams, machine, active, colors, closed, ci, mis
               <span class="branch" data-tip={ws.branch} data-tip-if-cut>
                 {ws.branch}
               </span>
-              {closed.has(ws.key) && <span class="tag" data-tip="Its tab is closed; double-click to open it">tab closed</span>}
+              {closed.has(ws.key) && (
+                <span class="tag" data-tip="Its tab is closed; double-click to open it">
+                  tab closed
+                </span>
+              )}
               {ws.removing && (
                 <span class="tag removing" role="status">
                   <i class="codicon codicon-loading codicon-modifier-spin" /> Removing…

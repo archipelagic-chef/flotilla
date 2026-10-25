@@ -19,13 +19,12 @@ export interface Implementer {
  * agent that reads the ticket (on a ticket nobody has worked on, or Answer Now), named after its discussion's agent.
  */
 export type Answerer =
-  | { kind: 'implementer'; agent: string; session: string; cwd?: string }
-  | { kind: 'wait'; agent: string }
-  | { kind: 'fresh'; agent?: string };
+  { kind: 'implementer'; agent: string; session: string; cwd?: string } | { kind: 'wait'; agent: string } | { kind: 'fresh'; agent?: string };
 
 export function whoAnswers(o: { implementer?: Implementer; now?: boolean; discussionAgent?: string }): Answerer {
   const i = o.implementer;
-  if (i && !o.now) return i.running ? { kind: 'wait', agent: i.agent } : { kind: 'implementer', agent: i.agent, session: i.session, ...(i.cwd ? { cwd: i.cwd } : {}) };
+  if (i && !o.now)
+    return i.running ? { kind: 'wait', agent: i.agent } : { kind: 'implementer', agent: i.agent, session: i.session, ...(i.cwd ? { cwd: i.cwd } : {}) };
   return { kind: 'fresh', ...(o.discussionAgent ? { agent: o.discussionAgent } : {}) };
 }
 

@@ -1,5 +1,11 @@
 import * as crypto from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 

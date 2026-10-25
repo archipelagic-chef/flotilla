@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, folderVersion, newerInstall, newerMessage, obsoleteFolders, staleStartNote } from '../../../src/features/installedVersion';
+import {
+  compareVersions,
+  folderVersion,
+  newerInstall,
+  newerMessage,
+  obsoleteFolders,
+  staleStartNote,
+} from '../../../src/features/installedVersion';
 import { settingsFileOf } from '../../../src/features/backlog/leanStart';
 
 const ID = 'archipelagic.flotilla';
@@ -57,7 +64,9 @@ describe('obsoleteFolders', () => {
 describe('messages', () => {
   it('says what reloading does to running agents', () => {
     const v = { kind: 'version', version: '0.2.0' } as const;
-    expect(newerMessage(v, '0.1.0', 0)).toBe('Flotilla 0.2.0 is installed, but this window still runs 0.1.0: agents start the old way until you reload the window.');
+    expect(newerMessage(v, '0.1.0', 0)).toBe(
+      'Flotilla 0.2.0 is installed, but this window still runs 0.1.0: agents start the old way until you reload the window.',
+    );
     expect(newerMessage(v, '0.1.0', 1)).toContain('Reloading stops the agent running in this window (its chat is kept to resume).');
     expect(newerMessage(v, '0.1.0', 3)).toContain('Reloading stops the 3 agents running in this window (their chats are kept to resume).');
     expect(newerMessage({ kind: 'build' }, '0.2.0', 0)).toContain('Flotilla 0.2.0 was installed again');

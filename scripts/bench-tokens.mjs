@@ -68,7 +68,21 @@ function readEntries(file) {
 
 /** A session's numbers, from its transcript's entries. */
 export function sessionOf(entries, file) {
-  const s = { session: path.basename(file, '.jsonl'), folder: path.basename(path.dirname(file)), start: '', first: '', model: '', turns: 0, cacheRead: 0, cacheWrite: 0, input: 0, output: 0, peak: 0, compactions: [], kinds: {} };
+  const s = {
+    session: path.basename(file, '.jsonl'),
+    folder: path.basename(path.dirname(file)),
+    start: '',
+    first: '',
+    model: '',
+    turns: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    input: 0,
+    output: 0,
+    peak: 0,
+    compactions: [],
+    kinds: {},
+  };
   // One API response can be written over several lines: each message id counts once.
   const seen = new Set();
   const uses = new Map();
@@ -163,29 +177,39 @@ function main(args) {
   }
   const k = (n) => `${(n / 1000).toFixed(0)}k`;
   const sum = (list, f) => list.reduce((n, r) => n + f(r), 0);
-  console.log(`${rows.length} sessions${sessions.length ? '' : ` since ${since}, in transcript folders matching "${match}"`}${minTurns > 1 ? `, of ${minTurns}+ turns` : ''}\n`);
+  console.log(
+    `${rows.length} sessions${sessions.length ? '' : ` since ${since}, in transcript folders matching "${match}"`}${minTurns > 1 ? `, of ${minTurns}+ turns` : ''}\n`,
+  );
   for (const r of rows) {
     const compacted = r.compactions.length ? r.compactions.map((c) => `${k(c.tokens)}@${c.turn}`).join(' ') : '-';
     console.log(
       `${r.start.slice(0, 16).replace('T', ' ')}  ${r.ticket.padEnd(7)} ${r.role.padEnd(11)} ${r.model.padEnd(20)} turns ${String(r.turns).padStart(4)}  read ${k(r.cacheRead).padStart(7)}  write ${k(r.cacheWrite).padStart(6)}  out ${k(r.output).padStart(5)}  peak ${k(r.peak).padStart(5)}  read/turn ${k(r.readPerTurn).padStart(5)}  compacted ${compacted}`,
     );
   }
-  console.log(`\nTotal: ${sum(rows, (r) => r.turns)} turns, cache read ${k(sum(rows, (r) => r.cacheRead))}, cache write ${k(sum(rows, (r) => r.cacheWrite))}, input ${k(sum(rows, (r) => r.input))}, output ${k(sum(rows, (r) => r.output))}`);
+  console.log(
+    `\nTotal: ${sum(rows, (r) => r.turns)} turns, cache read ${k(sum(rows, (r) => r.cacheRead))}, cache write ${k(sum(rows, (r) => r.cacheWrite))}, input ${k(sum(rows, (r) => r.input))}, output ${k(sum(rows, (r) => r.output))}`,
+  );
   for (const role of ['implementer', 'reviewer', 'shaping', 'other']) {
     const rs = rows.filter((r) => r.role === role);
-    if (rs.length) console.log(`  ${role.padEnd(11)} ${rs.length} sessions, ${sum(rs, (r) => r.turns)} turns, cache read ${k(sum(rs, (r) => r.cacheRead))}, output ${k(sum(rs, (r) => r.output))}`);
+    if (rs.length)
+      console.log(
+        `  ${role.padEnd(11)} ${rs.length} sessions, ${sum(rs, (r) => r.turns)} turns, cache read ${k(sum(rs, (r) => r.cacheRead))}, output ${k(sum(rs, (r) => r.output))}`,
+      );
   }
   const kinds = {};
-  for (const r of rows) for (const [kind, v] of Object.entries(r.kinds)) {
-    const t = (kinds[kind] ??= { results: 0, tokens: 0, reread: 0 });
-    t.results += v.results;
-    t.tokens += v.tokens;
-    t.reread += v.reread;
-  }
+  for (const r of rows)
+    for (const [kind, v] of Object.entries(r.kinds)) {
+      const t = (kinds[kind] ??= { results: 0, tokens: 0, reread: 0 });
+      t.results += v.results;
+      t.tokens += v.tokens;
+      t.reread += v.reread;
+    }
   const all = Object.values(kinds).reduce((n, v) => n + v.reread, 0) || 1;
   console.log('\nWhat fills the context (tool results, and how much of them is read again on later turns):');
   for (const [kind, v] of Object.entries(kinds).sort((a, b) => b[1].reread - a[1].reread)) {
-    console.log(`  ${kind.padEnd(26)} ${String(v.results).padStart(4)} results  ${k(v.tokens).padStart(6)}  re-read ${k(v.reread).padStart(7)}  ${((100 * v.reread) / all).toFixed(0).padStart(3)}%`);
+    console.log(
+      `  ${kind.padEnd(26)} ${String(v.results).padStart(4)} results  ${k(v.tokens).padStart(6)}  re-read ${k(v.reread).padStart(7)}  ${((100 * v.reread) / all).toFixed(0).padStart(3)}%`,
+    );
   }
 }
 

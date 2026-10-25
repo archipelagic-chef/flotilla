@@ -33,7 +33,8 @@ export function Description({ ticket }: { ticket: TicketView }) {
     if (el && !expanded) setOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [ticket.descriptionHtml, foldable, expanded]);
   const save = () => {
-    if (draft !== undefined && draft !== ticket.description && !(draft === DESCRIPTION_SKELETON && !ticket.description.trim())) send({ type: 'description', text: draft });
+    if (draft !== undefined && draft !== ticket.description && !(draft === DESCRIPTION_SKELETON && !ticket.description.trim()))
+      send({ type: 'description', text: draft });
     setDraft(undefined);
   };
   return (
@@ -57,7 +58,11 @@ export function Description({ ticket }: { ticket: TicketView }) {
         <div class="rendered empty-text">Loading from {ticket.remote?.label ?? 'its tracker'}…</div>
       ) : draft === undefined ? (
         <>
-          <div ref={text} class={folded ? (ticket.whenDoneHtml ? 'description when-done' : 'description folded') : 'description'} onDblClick={() => editable && setDraft(startDraft(ticket))}>
+          <div
+            ref={text}
+            class={folded ? (ticket.whenDoneHtml ? 'description when-done' : 'description folded') : 'description'}
+            onDblClick={() => editable && setDraft(startDraft(ticket))}
+          >
             {folded && ticket.whenDoneHtml ? (
               <Rendered html={ticket.whenDoneHtml} empty="" />
             ) : (

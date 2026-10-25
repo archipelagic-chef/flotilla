@@ -57,7 +57,11 @@ describe('the autopilot details', () => {
 
   it("says when they wait for Claude's usage limit, and offers Try Now", () => {
     const until = '2026-10-21T20:22:00';
-    const d = autopilotDetails({ ...base, waitingUntil: until, idle: 'nothing left in To Do', queue: [{ id: 'BL-1', reason: 'slot', kind: 'resume' }] }, titles, now);
+    const d = autopilotDetails(
+      { ...base, waitingUntil: until, idle: 'nothing left in To Do', queue: [{ id: 'BL-1', reason: 'slot', kind: 'resume' }] },
+      titles,
+      now,
+    );
     expect(d.waiting[0].text).toMatch(/^resuming · waits for Claude's usage limit \(until .*22.*\)$/);
     expect(d.tryNow).toBe(true);
     // The limit says why, not the idle reason.
@@ -71,15 +75,25 @@ describe('the autopilot details', () => {
     expect(d).toMatchObject({ agents: [], waiting: [], idle: 'BL-130 waits for BL-126 (in review)', tryNow: false });
   });
 
-  it("adds what each agent is doing (BL-175), or why it looks stuck", () => {
+  it('adds what each agent is doing (BL-175), or why it looks stuck', () => {
     const tool = { id: 't', name: 'Bash', detail: 'npm test', since: new Date(now.getTime() - 130_000).toISOString() };
-    const todos = [{ text: 'a', status: 'completed' as const }, { text: 'b', status: 'in_progress' as const }];
+    const todos = [
+      { text: 'a', status: 'completed' as const },
+      { text: 'b', status: 'in_progress' as const },
+    ];
     const live = new Map([
       ['BL-1', [{ name: 'Nova-7', state: 'working' as const, activity: { tool, todos } }]],
       ['BL-2', [{ name: 'Vega-2', state: 'working' as const, activity: { tool }, stuck: 'No activity for 14 min' }]],
     ]);
     const d = autopilotDetails(
-      { ...base, running: 2, agents: [{ id: 'BL-1', agent: 'Nova-7', doing: 'work' }, { id: 'BL-2', agent: 'Vega-2', doing: 'review' }] },
+      {
+        ...base,
+        running: 2,
+        agents: [
+          { id: 'BL-1', agent: 'Nova-7', doing: 'work' },
+          { id: 'BL-2', agent: 'Vega-2', doing: 'review' },
+        ],
+      },
       titles,
       now,
       live,

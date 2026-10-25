@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 vi.mock('vscode', () => ({}));
 
 describe('the autopilot', () => {
-  it('takes the first accepted To Do ticket, an epic\'s parts rather than the epic', async () => {
+  it("takes the first accepted To Do ticket, an epic's parts rather than the epic", async () => {
     const { nextForAutopilot } = await import('../../../src/ui/backlog/autopilot');
     const at = '2026-10-11T00:00:00Z';
     const data = {
@@ -29,7 +34,7 @@ describe('the autopilot', () => {
 });
 
 describe('the autopilot switch', () => {
-  it('is on only when this machine signed it: an agent writing the file can\'t turn it on', async () => {
+  it("is on only when this machine signed it: an agent writing the file can't turn it on", async () => {
     vi.resetModules();
     vi.doMock('vscode', () => ({
       EventEmitter: class {
@@ -109,7 +114,15 @@ describe('the autopilot and memory', () => {
     const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
     const prepareWorktree = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity: async () => undefined, change: async () => data },
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async () => ({ description: '', activity: [] }),
+        appendActivity: async () => undefined,
+        change: async () => data,
+      },
       reviews: {
         running: 0,
         limit: 2,
@@ -166,7 +179,14 @@ describe('the autopilot gives up a start whose item moved on', () => {
     const appendActivity = vi.fn(async () => undefined);
     let reservedWhilePrepared = 0;
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity },
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async () => ({ description: '', activity: [] }),
+        appendActivity,
+      },
       // The review loop admits the start (see ReviewLoop.admitNew): its memory is reserved on the real ledger.
       reviews: {
         running: 0,
@@ -197,11 +217,13 @@ describe('the autopilot gives up a start whose item moved on', () => {
     // Held while the worktree was prepared, given back after.
     expect(reservedWhilePrepared).toBe(300);
     expect(startingMemoryMB()).toBe(0);
-    expect(appendActivity).toHaveBeenCalledWith(expect.objectContaining({ id: 'BL-1' }), expect.objectContaining({ body: expect.stringContaining('moved on') }));
+    expect(appendActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'BL-1' }),
+      expect.objectContaining({ body: expect.stringContaining('moved on') }),
+    );
     pilot.dispose();
   });
 });
-
 
 describe('the autopilot and tickets that depend on others', () => {
   it('passes over a To Do ticket that waits for another to be merged (BL-55)', async () => {
@@ -317,12 +339,20 @@ describe('the autopilot and tickets whose files clash with work in progress', ()
             change: async () => data,
           },
           repository: {
-            current: [
-              { worktree: { isMain: true, path: main, branch: 'main' } },
-              { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } },
-            ],
+            current: [{ worktree: { isMain: true, path: main, branch: 'main' } }, { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } }],
           },
-          reviews: { running: 0, limit: 2, waitingCount: 0, agentsNow: () => [], queuedStarts: () => [], canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+          reviews: {
+            running: 0,
+            limit: 2,
+            waitingCount: 0,
+            agentsNow: () => [],
+            queuedStarts: () => [],
+            canStartNew: () => true,
+            admitNew: () => 1,
+            giveBack: () => undefined,
+            pausedUntil: async () => undefined,
+            startWork: async () => undefined,
+          },
           leader: { isLeader: true, check: () => true },
           output: { appendLine() {} },
           key: async () => 'key',
@@ -420,8 +450,21 @@ describe('the autopilot starts tickets at once, and sequences them only by "Depe
           appendActivity: async () => undefined,
           change: async () => data,
         },
-        repository: { current: [{ worktree: { isMain: true, path: main, branch: 'main' } }, { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } }] },
-        reviews: { running: 0, limit: 3, waitingCount: 0, agentsNow: () => [], queuedStarts: () => [], canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+        repository: {
+          current: [{ worktree: { isMain: true, path: main, branch: 'main' } }, { worktree: { isMain: false, path: wt, branch: 'feature/BL-2-busy' } }],
+        },
+        reviews: {
+          running: 0,
+          limit: 3,
+          waitingCount: 0,
+          agentsNow: () => [],
+          queuedStarts: () => [],
+          canStartNew: () => true,
+          admitNew: () => 1,
+          giveBack: () => undefined,
+          pausedUntil: async () => undefined,
+          startWork: async () => undefined,
+        },
         leader: { isLeader: true, check: () => true },
         output: { appendLine() {} },
         key: async () => 'key',
@@ -462,7 +505,18 @@ describe('the autopilot starts tickets at once, and sequences them only by "Depe
         change: async () => data,
       },
       repository: { current: [] },
-      reviews: { running: 0, limit: 2, waitingCount: 0, agentsNow: () => [], queuedStarts: () => [], canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => undefined, startWork: async () => undefined },
+      reviews: {
+        running: 0,
+        limit: 2,
+        waitingCount: 0,
+        agentsNow: () => [],
+        queuedStarts: () => [],
+        canStartNew: () => true,
+        admitNew: () => 1,
+        giveBack: () => undefined,
+        pausedUntil: async () => undefined,
+        startWork: async () => undefined,
+      },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
       key: async () => 'key',
@@ -502,9 +556,23 @@ describe('the autopilot starts tickets at once, and sequences them only by "Depe
     const { Autopilot } = await setup();
     const data = { version: 1 as const, next: 5, items: [{ id: 'BL-1', title: 'A', status: 'doing', created: at }] as Item[] };
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }) },
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async () => ({ description: '', activity: [] }),
+      },
       repository: { current: [] },
-      reviews: { running: 0, limit: 2, waitingCount: 0, agentsNow: () => [], queuedStarts: () => [], canStartNew: () => false, pausedUntil: async () => undefined },
+      reviews: {
+        running: 0,
+        limit: 2,
+        waitingCount: 0,
+        agentsNow: () => [],
+        queuedStarts: () => [],
+        canStartNew: () => false,
+        pausedUntil: async () => undefined,
+      },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
       key: async () => 'key',
@@ -548,8 +616,28 @@ describe('the autopilot and Try Now (BL-132)', () => {
     const tryPausedNow = vi.fn(async () => ({ tried, resumed: 0, limited: reset }) as { tried: Date; resumed: number; limited?: Date });
     const prepareWorktree = vi.fn(async () => undefined);
     const pilot = new Autopilot({
-      backlog: { dir: '/unused', watch: () => ({ dispose() {} }), ensureDir: async () => undefined, read: async () => data, readTicketCached: async () => ({ description: '', activity: [] }), appendActivity: async () => undefined, change: async () => data },
-      reviews: { running: 0, limit: 2, waitingCount: 0, agentsNow: () => [], queuedStarts: () => [], canStartNew: () => true, admitNew: () => 1, giveBack: () => undefined, pausedUntil: async () => until, startWork: async () => undefined, tryPausedNow },
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async () => ({ description: '', activity: [] }),
+        appendActivity: async () => undefined,
+        change: async () => data,
+      },
+      reviews: {
+        running: 0,
+        limit: 2,
+        waitingCount: 0,
+        agentsNow: () => [],
+        queuedStarts: () => [],
+        canStartNew: () => true,
+        admitNew: () => 1,
+        giveBack: () => undefined,
+        pausedUntil: async () => until,
+        startWork: async () => undefined,
+        tryPausedNow,
+      },
       leader: { isLeader: true, check: () => true },
       output: { appendLine() {} },
       key: async () => 'key',

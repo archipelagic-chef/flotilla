@@ -14,7 +14,15 @@ const ORDER: BacklogPriority[] = ['urgent', 'high', 'medium', 'low'];
  * compact: just the icon (backlog rows); otherwise the icon and its name (ticket header). Without onChange it only
  * shows it (issues from trackers).
  */
-export function PriorityPicker({ value, onChange, compact }: { value: BacklogPriority | undefined; onChange?(priority: BacklogPriority | null): void; compact?: boolean }) {
+export function PriorityPicker({
+  value,
+  onChange,
+  compact,
+}: {
+  value: BacklogPriority | undefined;
+  onChange?(priority: BacklogPriority | null): void;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {

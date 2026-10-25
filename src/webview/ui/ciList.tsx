@@ -1,6 +1,11 @@
 import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { CiJobView, CiRequest, CiRunView, RunBusy } from '../protocol';
+import type {
+  CiJobView,
+  CiRequest,
+  CiRunView,
+  RunBusy,
+} from '../protocol';
 import { isActive } from '../../features/ci/githubActions';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import { ago } from './ago';
@@ -145,20 +150,57 @@ export function CiRunList({ runs, worktree, actions }: { runs: CiRunView[]; work
 }
 
 /** A run's jobs (or why they aren't there), each with its steps when expanded. */
-function Jobs({ run, worktree, open, onJob, actions }: { run: CiRunView; worktree: string; open: ReadonlySet<string>; onJob: (jobId: number) => void; actions: CiActions }) {
+function Jobs({
+  run,
+  worktree,
+  open,
+  onJob,
+  actions,
+}: {
+  run: CiRunView;
+  worktree: string;
+  open: ReadonlySet<string>;
+  onJob: (jobId: number) => void;
+  actions: CiActions;
+}) {
   if (run.jobsError) return <div class="row group-empty error ci-indent">{run.jobsError}</div>;
   if (!run.jobs) return <div class="row group-empty ci-indent">Loading jobs…</div>;
   if (!run.jobs.length) return <div class="row group-empty ci-indent">No jobs in this run.</div>;
   return (
     <>
       {run.jobs.map((job) => (
-        <JobRow key={job.id} job={job} run={run.id} busy={run.busy} worktree={worktree} isOpen={open.has(`job:${job.id}`)} onToggle={() => onJob(job.id)} actions={actions} />
+        <JobRow
+          key={job.id}
+          job={job}
+          run={run.id}
+          busy={run.busy}
+          worktree={worktree}
+          isOpen={open.has(`job:${job.id}`)}
+          onToggle={() => onJob(job.id)}
+          actions={actions}
+        />
       ))}
     </>
   );
 }
 
-function JobRow({ job, run, busy, worktree, isOpen, onToggle, actions }: { job: CiJobView; run: number; busy?: RunBusy; worktree: string; isOpen: boolean; onToggle: () => void; actions: CiActions }) {
+function JobRow({
+  job,
+  run,
+  busy,
+  worktree,
+  isOpen,
+  onToggle,
+  actions,
+}: {
+  job: CiJobView;
+  run: number;
+  busy?: RunBusy;
+  worktree: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  actions: CiActions;
+}) {
   const status = STATUS[job.status];
   return (
     <>

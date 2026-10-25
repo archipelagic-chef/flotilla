@@ -19,7 +19,12 @@ export class WorkstreamStatusBar implements vscode.Disposable {
     this.item.name = 'Flotilla';
     // Always visible: the way back to Flotilla when VS Code's activity bar is hidden.
     this.item.command = 'flotilla.showSidebar';
-    this.subscriptions = [repository.onDidChange(() => this.update()), active.onDidChange(() => this.update()), needs.onDidChange(() => this.update()), onDidChangeBuild(() => this.update())];
+    this.subscriptions = [
+      repository.onDidChange(() => this.update()),
+      active.onDidChange(() => this.update()),
+      needs.onDidChange(() => this.update()),
+      onDidChangeBuild(() => this.update()),
+    ];
     this.update();
     this.item.show();
   }

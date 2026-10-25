@@ -2,7 +2,12 @@ import { useEffect, useState } from 'preact/hooks';
 import { AGENT_EFFORTS, type BacklogStatus, priorityFromName } from '../../features/backlog/backlog';
 import type { TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
-import { act, Dropdown, send, useWorking } from './actions';
+import {
+  act,
+  Dropdown,
+  send,
+  useWorking,
+} from './actions';
 import './header.css';
 
 export const STATUSES: Array<{ status: BacklogStatus; label: string; icon: string }> = [

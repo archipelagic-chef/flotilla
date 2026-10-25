@@ -4,7 +4,30 @@ import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { DEMO_TAG as READ_TAG, gifSeconds, recordedDemo } from '../../../src/features/backlog/demo';
-import { DEMO_TAG, FRAME_MS, commandMatches, decodePng, failureReason, nearestElements, parseJsonc, plainSettings, resultLine, staleBuild, demoDisplay, demoFile, frameGate, freeDisplay, downscale, encodeGif, gapStats, listDemos, parseDemo, stepsToPlay, timeline, unsafeFrame } from '../../../scripts/demo-kit.mjs';
+import {
+  commandMatches,
+  decodePng,
+  DEMO_TAG,
+  demoDisplay,
+  demoFile,
+  downscale,
+  encodeGif,
+  failureReason,
+  FRAME_MS,
+  frameGate,
+  freeDisplay,
+  gapStats,
+  listDemos,
+  nearestElements,
+  parseDemo,
+  parseJsonc,
+  plainSettings,
+  resultLine,
+  staleBuild,
+  stepsToPlay,
+  timeline,
+  unsafeFrame,
+} from '../../../scripts/demo-kit.mjs';
 
 /** A PNG chunk: length, type, body and CRC. */
 function chunk(type: string, body: Buffer): Buffer {
@@ -41,7 +64,19 @@ function solid(r: number, g: number, b: number): Buffer {
 
 describe('parseDemo', () => {
   it('reads the steps, one action each, with their timeouts', () => {
-    const demo = parseDemo(JSON.stringify({ title: 'T', steps: [{ command: 'Focus on Flotilla View' }, { click: 'text=BL-3', timeout: 5000 }, { hover: '.ci-run' }, { drag: 'text=BL-2', to: 'text=BL-1' }, { wait: 500 }, { caption: '' }] }));
+    const demo = parseDemo(
+      JSON.stringify({
+        title: 'T',
+        steps: [
+          { command: 'Focus on Flotilla View' },
+          { click: 'text=BL-3', timeout: 5000 },
+          { hover: '.ci-run' },
+          { drag: 'text=BL-2', to: 'text=BL-1' },
+          { wait: 500 },
+          { caption: '' },
+        ],
+      }),
+    );
     expect(demo).toEqual({
       title: 'T',
       steps: [
@@ -201,7 +236,7 @@ function playGif(gif: Buffer): { rgb: number[]; ms: number }[] {
     let dict: number[][] = [];
     let size = minSize + 1;
     let prev: number[] | undefined;
-    for (let bit = 0; bit + size <= data.length * 8; ) {
+    for (let bit = 0; bit + size <= data.length * 8;) {
       let code = 0;
       for (let b = 0; b < size; b++, bit++) code |= ((data[bit >> 3] >> (bit & 7)) & 1) << b;
       if (code === clear) {
@@ -267,7 +302,12 @@ describe('frameGate', () => {
 describe('gapStats', () => {
   it("measures the gaps between the frames inside the pointer's moves", () => {
     const ats = [0, 100, 140, 180, 260, 1000, 1500, 1540];
-    expect(gapStats(ats, [[100, 260], [1500, 1600]])).toEqual({ median: 40, p90: 80, count: 4 });
+    expect(
+      gapStats(ats, [
+        [100, 260],
+        [1500, 1600],
+      ]),
+    ).toEqual({ median: 40, p90: 80, count: 4 });
   });
 
   it('is undefined without two frames in a move', () => {
@@ -287,7 +327,10 @@ describe('timeline', () => {
       ],
       1000,
     );
-    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 400], [400, 600]]);
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([
+      [0, 400],
+      [400, 600],
+    ]);
     expect(frames[0].png).toBe(blue);
   });
 
@@ -302,7 +345,10 @@ describe('timeline', () => {
       ],
       1000,
     );
-    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 800], [800, 200]]);
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([
+      [0, 800],
+      [800, 200],
+    ]);
     expect(frames[0].png).toBe(blue);
   });
 
@@ -314,10 +360,12 @@ describe('timeline', () => {
       200,
     );
     expect(FRAME_MS).toBe(40);
-    expect(frames.map((f) => [f.at, f.ms])).toEqual([[0, 40], [40, 160]]);
+    expect(frames.map((f) => [f.at, f.ms])).toEqual([
+      [0, 40],
+      [40, 160],
+    ]);
     expect(frames.map((f) => f.png)).toEqual([colours[2], colours[3]]);
   });
-
 
   it('merges frames that did not change, and each lasts until the next', () => {
     const red = solid(255, 0, 0);
@@ -357,16 +405,23 @@ describe('encodeGif', () => {
   });
 
   it('shows each frame as it was, holding only the pixels that changed', () => {
-    const [red, blue, white, black]: [number, number, number][] = [[255, 0, 0], [0, 0, 255], [255, 255, 255], [0, 0, 0]];
+    const [red, blue, white, black]: [number, number, number][] = [
+      [255, 0, 0],
+      [0, 0, 255],
+      [255, 255, 255],
+      [0, 0, 0],
+    ];
     const first = pixels(red, blue, white, black);
     const second = pixels(red, blue, black, black);
     const third = pixels(white, blue, black, red);
-    const shown = playGif(encodeGif([
-      { png: first, ms: 100 },
-      { png: second, ms: 200 },
-      { png: Buffer.from(second), ms: 300 },
-      { png: third, ms: 400 },
-    ]));
+    const shown = playGif(
+      encodeGif([
+        { png: first, ms: 100 },
+        { png: second, ms: 200 },
+        { png: Buffer.from(second), ms: 300 },
+        { png: third, ms: 400 },
+      ]),
+    );
     // The same frame again only lengthens the one before.
     expect(shown.map((f) => f.ms)).toEqual([100, 500, 400]);
     expect(shown.map((f) => f.rgb)).toEqual([
@@ -377,7 +432,10 @@ describe('encodeGif', () => {
   });
 
   it('names its demo in a comment that the ticket reads, and that leaves its frames as they were (BL-111)', () => {
-    const frames = [{ png: solid(255, 0, 0), ms: 500 }, { png: solid(0, 0, 255), ms: 1200 }];
+    const frames = [
+      { png: solid(255, 0, 0), ms: 500 },
+      { png: solid(0, 0, 255), ms: 1200 },
+    ];
     const gif = encodeGif(frames, { name: 'try-demo' });
     expect(DEMO_TAG).toBe(READ_TAG);
     expect(recordedDemo(gif)).toBe('try-demo');

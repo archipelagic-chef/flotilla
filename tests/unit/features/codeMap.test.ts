@@ -1,6 +1,19 @@
 import { execFileSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
-import { changedFiles, codeMap, findClash, mapNote, namedPaths, relatedTickets, titleWords } from '../../../src/features/backlog/codeMap';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  changedFiles,
+  codeMap,
+  findClash,
+  mapNote,
+  namedPaths,
+  relatedTickets,
+  titleWords,
+} from '../../../src/features/backlog/codeMap';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
 
@@ -30,9 +43,13 @@ function repo(): string {
   return dir;
 }
 
-describe('a ticket\'s map of the code', () => {
+describe("a ticket's map of the code", () => {
   it('reads the paths a description names', () => {
-    expect(namedPaths('See [src/a.ts:42](src/a.ts#L42), `src/b/c.tsx` and src/d.ts:12.\nNot a URL http://x.io/y or a word.')).toEqual(['src/a.ts', 'src/b/c.tsx', 'src/d.ts']);
+    expect(namedPaths('See [src/a.ts:42](src/a.ts#L42), `src/b/c.tsx` and src/d.ts:12.\nNot a URL http://x.io/y or a word.')).toEqual([
+      'src/a.ts',
+      'src/b/c.tsx',
+      'src/d.ts',
+    ]);
   });
 
   it('relates its parts and what it depends on firmly; its parent and done tickets with a similar title loosely', () => {
@@ -50,7 +67,12 @@ describe('a ticket\'s map of the code', () => {
   it('puts the firm files first, without the files every ticket touches, and only those still there', async () => {
     const cwd = repo();
     const items = [item('BL-1', 'Review rounds'), item('BL-2', 'Token budget for agents'), item('BL-3', 'Sidebar colors')];
-    const map = await codeMap(cwd, item('BL-9', 'Agents keep a token budget', { status: 'todo' }), 'Depends on: BL-1. Change `src/colors.ts`, not src/gone.ts.', items);
+    const map = await codeMap(
+      cwd,
+      item('BL-9', 'Agents keep a token budget', { status: 'todo' }),
+      'Depends on: BL-1. Change `src/colors.ts`, not src/gone.ts.',
+      items,
+    );
     expect(map).toEqual({ files: ['src/colors.ts', 'src/review.ts', 'src/loop.ts', 'src/budget.ts'], firm: ['src/colors.ts', 'src/review.ts', 'src/loop.ts'] });
     expect(mapNote(map)).toMatch(/^Places to start .*: src\/colors\.ts, src\/review\.ts, src\/loop\.ts, src\/budget\.ts\.$/);
     expect(mapNote({ files: [], firm: [] })).toBeUndefined();

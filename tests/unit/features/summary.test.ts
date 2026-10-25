@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { SUMMARY_EVERY_MS, summaryAnswer, summaryArgs, summaryInput, summaryWait } from '../../../src/features/chats/summary';
+import {
+  SUMMARY_EVERY_MS,
+  summaryAnswer,
+  summaryArgs,
+  summaryInput,
+  summaryWait,
+} from '../../../src/features/chats/summary';
 
 const assistant = (...content: unknown[]) => JSON.stringify({ type: 'assistant', message: { content } });
 const user = (content: unknown) => JSON.stringify({ type: 'user', message: { content } });
@@ -25,8 +31,14 @@ describe('summaryInput', () => {
   });
 
   it('gives a todo list as its steps', () => {
-    const todos = [{ content: 'Read', status: 'completed' }, { content: 'Fix', status: 'in_progress' }, { content: 'Test', status: 'pending' }];
-    expect(summaryInput([assistant({ type: 'tool_use', id: 't', name: 'TodoWrite', input: { todos } })])).toBe('Tool TodoWrite: Read (done); Fix (doing); Test (to do)');
+    const todos = [
+      { content: 'Read', status: 'completed' },
+      { content: 'Fix', status: 'in_progress' },
+      { content: 'Test', status: 'pending' },
+    ];
+    expect(summaryInput([assistant({ type: 'tool_use', id: 't', name: 'TodoWrite', input: { todos } })])).toBe(
+      'Tool TodoWrite: Read (done); Fix (doing); Test (to do)',
+    );
   });
 
   it('keeps only the last 30 items', () => {
@@ -45,7 +57,7 @@ describe('summaryInput', () => {
     expect(out.split('\n')[0].length).toBeLessThanOrEqual(610);
   });
 
-  it('skips what does not parse (a cut first line) and subagents\' lines', () => {
+  it("skips what does not parse (a cut first line) and subagents' lines", () => {
     const side = JSON.stringify({ type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'sub' }] } });
     expect(summaryInput(['{"type":"assis', side, tool(1), ''])).toBe('Tool Bash: npm test 1');
   });
@@ -63,7 +75,9 @@ describe('summaryArgs', () => {
 
 describe('summaryAnswer', () => {
   it('takes its first two lines', () => {
-    expect(summaryAnswer(JSON.stringify({ type: 'result', subtype: 'success', result: 'Running tests.\n\nNothing looks wrong.\nMore.' }))).toEqual({ text: 'Running tests.\nNothing looks wrong.' });
+    expect(summaryAnswer(JSON.stringify({ type: 'result', subtype: 'success', result: 'Running tests.\n\nNothing looks wrong.\nMore.' }))).toEqual({
+      text: 'Running tests.\nNothing looks wrong.',
+    });
   });
 
   it('says why it failed', () => {

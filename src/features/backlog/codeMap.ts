@@ -23,7 +23,39 @@ export const MAP_SIZE = 10;
 const EVERYWHERE = /^(package(-lock)?\.json|README\.md|CHANGELOG\.md|\.flotilla\/|\.vscode\/|\.gitignore$)/;
 
 /** Words of a title that say what it's about (not "the", "and", "when"...). */
-const SKIP = new Set(['with', 'from', 'that', 'this', 'when', 'into', 'their', 'there', 'than', 'they', 'what', 'which', 'without', 'doesn', 'isn', 'aren', 'don', 'every', 'once', 'each', 'more', 'less', 'only', 'also', 'make', 'show', 'shows', 'keep', 'keeps', 'ticket', 'tickets']);
+const SKIP = new Set([
+  'with',
+  'from',
+  'that',
+  'this',
+  'when',
+  'into',
+  'their',
+  'there',
+  'than',
+  'they',
+  'what',
+  'which',
+  'without',
+  'doesn',
+  'isn',
+  'aren',
+  'don',
+  'every',
+  'once',
+  'each',
+  'more',
+  'less',
+  'only',
+  'also',
+  'make',
+  'show',
+  'shows',
+  'keep',
+  'keeps',
+  'ticket',
+  'tickets',
+]);
 export function titleWords(title: string): Set<string> {
   return new Set(
     title
@@ -46,7 +78,11 @@ export function namedPaths(description: string): string[] {
  * The tickets whose work says where this one's is: firm (its parts, what it depends on) and loose (its parent, often a
  * broad epic, and done tickets with similar titles).
  */
-export function relatedTickets(item: Pick<BacklogItem, 'id' | 'title' | 'parent'>, description: string, items: readonly BacklogItem[]): { firm: string[]; loose: string[] } {
+export function relatedTickets(
+  item: Pick<BacklogItem, 'id' | 'title' | 'parent'>,
+  description: string,
+  items: readonly BacklogItem[],
+): { firm: string[]; loose: string[] } {
   const firm = new Set<string>([...items.filter((i) => i.parent === item.id).map((i) => i.id), ...dependsOn(description, item.id)]);
   firm.delete(item.id);
   // Similar: the done tickets whose titles share its title's or description's words, rare words counting most (a word in
@@ -79,8 +115,15 @@ export async function ticketFiles(cwd: string, ids: readonly string[]): Promise<
     return [];
   }
   const count = new Map<string, number>();
-  for (const f of out.split('\n').map((l) => l.trim()).filter(Boolean)) if (!EVERYWHERE.test(f)) count.set(f, (count.get(f) ?? 0) + 1);
-  return existing(cwd, [...count].sort((a, b) => b[1] - a[1]).map(([f]) => f));
+  for (const f of out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean))
+    if (!EVERYWHERE.test(f)) count.set(f, (count.get(f) ?? 0) + 1);
+  return existing(
+    cwd,
+    [...count].sort((a, b) => b[1] - a[1]).map(([f]) => f),
+  );
 }
 
 /** Those of the paths git tracks in cwd now. */
@@ -96,9 +139,17 @@ async function existing(cwd: string, files: string[]): Promise<string[]> {
 }
 
 /** A ticket's map (see CodeMap), read in cwd (the main worktree). */
-export async function codeMap(cwd: string, item: Pick<BacklogItem, 'id' | 'title' | 'parent'>, description: string, items: readonly BacklogItem[]): Promise<CodeMap> {
+export async function codeMap(
+  cwd: string,
+  item: Pick<BacklogItem, 'id' | 'title' | 'parent'>,
+  description: string,
+  items: readonly BacklogItem[],
+): Promise<CodeMap> {
   const related = relatedTickets(item, description, items);
-  const named = await existing(cwd, namedPaths(description).filter((f) => !EVERYWHERE.test(f)));
+  const named = await existing(
+    cwd,
+    namedPaths(description).filter((f) => !EVERYWHERE.test(f)),
+  );
   const firm = [...new Set([...named, ...(await ticketFiles(cwd, related.firm))])];
   const loose = (await ticketFiles(cwd, related.loose)).filter((f) => !firm.includes(f));
   return { files: [...firm, ...loose].slice(0, MAP_SIZE), firm: firm.slice(0, MAP_SIZE) };
@@ -148,7 +199,10 @@ export interface Clash {
 
 /** A clash's files for a ticket's activity: the first three, and how many more. */
 export function clashFiles(clash: Clash): string {
-  const shown = clash.files.slice(0, 3).map((f) => `\`${f}\``).join(', ');
+  const shown = clash.files
+    .slice(0, 3)
+    .map((f) => `\`${f}\``)
+    .join(', ');
   return clash.files.length > 3 ? `${shown} and ${clash.files.length - 3} more` : shown;
 }
 

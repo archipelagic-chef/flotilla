@@ -28,7 +28,10 @@ const PROMPTS: ReadonlyArray<[SpendPurpose, RegExp]> = [
   ['shaping', /discussing it with its owner|wants to shape it with you first|^Its owner (opened the discussion|wrote in the ticket since your last reply)/],
   ['rework', /requested changes \(review round \d+\)|^The user reviewed your work on \S+ and requested changes/],
   ['answer', /^The user answered you in the ticket/],
-  ['main', /moved on, and merging it into your branch|^Your task: (fix the checks on the merge|resolve the conflicts of merging|finish merging|merge \S+ branch .* again into|with the user, rewrite the commit history)/],
+  [
+    'main',
+    /moved on, and merging it into your branch|^Your task: (fix the checks on the merge|resolve the conflicts of merging|finish merging|merge \S+ branch .* again into|with the user, rewrite the commit history)/,
+  ],
   ['resume', /usage limit stopped you|^Flotilla paused you|^The user paused you|^The user stopped .+ you take over|^Flotilla stopped you:/],
   ['orchestration', /writing Flotilla's improvement review/],
   ['first', /You are agent [^,\n]+, working on backlog item/],
@@ -39,7 +42,10 @@ export function promptPurpose(text: string): { purpose: SpendPurpose; ticket?: s
   const head = text.slice(0, 800);
   const found = PROMPTS.find(([, re]) => re.test(head));
   if (!found) return undefined;
-  const ticket = /backlog item ([A-Z][A-Z0-9]*-\d+)\b/.exec(head)?.[1] ?? /\b([A-Z][A-Z0-9]*-\d+)'s branch\b/.exec(head)?.[1] ?? / (?:on|reviewing) ([A-Z][A-Z0-9]*-\d+)\b/.exec(head)?.[1];
+  const ticket =
+    /backlog item ([A-Z][A-Z0-9]*-\d+)\b/.exec(head)?.[1] ??
+    /\b([A-Z][A-Z0-9]*-\d+)'s branch\b/.exec(head)?.[1] ??
+    / (?:on|reviewing) ([A-Z][A-Z0-9]*-\d+)\b/.exec(head)?.[1];
   const agent = /You are agent ([^,\n]+),/.exec(head)?.[1];
   return { purpose: found[0], ...(ticket ? { ticket } : {}), ...(agent ? { agent } : {}) };
 }
@@ -130,7 +136,15 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0
 function promptText(e: Entry): string | undefined {
   if (e.isMeta || e.isCompactSummary || e.isSidechain) return undefined;
   const c = e.message?.content;
-  const text = typeof c === 'string' ? c : Array.isArray(c) && !c.some((x) => x?.type === 'tool_result') ? c.filter((x) => x?.type === 'text').map((x) => String(x.text ?? '')).join('\n') : undefined;
+  const text =
+    typeof c === 'string'
+      ? c
+      : Array.isArray(c) && !c.some((x) => x?.type === 'tool_result')
+        ? c
+            .filter((x) => x?.type === 'text')
+            .map((x) => String(x.text ?? ''))
+            .join('\n')
+        : undefined;
   if (!text?.trim() || /^\s*(<|\[Request interrupted)/.test(text)) return undefined;
   return text;
 }
@@ -187,7 +201,15 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
   };
   const partAt = (at: string): SpendPart => {
     if (current && current.purpose === (purpose ?? 'orchestration')) return current;
-    current = { purpose: purpose ?? 'orchestration', at, to: at, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, contextK: [], tools: {} };
+    current = {
+      purpose: purpose ?? 'orchestration',
+      at,
+      to: at,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
+      costUsd: 0,
+      contextK: [],
+      tools: {},
+    };
     pending.push(current);
     return current;
   };
@@ -236,7 +258,9 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
     }
     if (e.type !== 'assistant' || e.isSidechain) continue;
     const m = e.message;
-    if (Array.isArray(m?.content)) for (const x of m.content as Array<{ type?: string; id?: string; name?: string; input?: unknown }>) if (x?.type === 'tool_use' && x.id) tools.set(x.id, toolKind(x.name ?? '', x.input));
+    if (Array.isArray(m?.content))
+      for (const x of m.content as Array<{ type?: string; id?: string; name?: string; input?: unknown }>)
+        if (x?.type === 'tool_use' && x.id) tools.set(x.id, toolKind(x.name ?? '', x.input));
     const u = m?.usage;
     if (!u || (typeof m.id === 'string' && seen.has(m.id))) continue;
     if (typeof m.id === 'string') {
@@ -244,7 +268,12 @@ export function transcriptSpend(text: string, o: { after?: string; settled?: boo
       if (o.seen?.has(m.id)) continue;
     }
     const usage: Usage = {
-      tokens: { input: num(u.input_tokens), output: num(u.output_tokens), cacheRead: num(u.cache_read_input_tokens), cacheCreation: num(u.cache_creation_input_tokens) },
+      tokens: {
+        input: num(u.input_tokens),
+        output: num(u.output_tokens),
+        cacheRead: num(u.cache_read_input_tokens),
+        cacheCreation: num(u.cache_creation_input_tokens),
+      },
       write1h: num((u.cache_creation as Record<string, unknown> | undefined)?.ephemeral_1h_input_tokens),
     };
     const weight = priceOf(typeof m.model === 'string' ? m.model : '', usage);

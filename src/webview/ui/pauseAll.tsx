@@ -3,7 +3,12 @@ import { BusyButton } from './backlogBusy';
 /** Pause All (BL-160): every agent working pauses, its chat kept; Resume All goes on with exactly those. */
 export function PauseAllButton() {
   return (
-    <BusyButton class="try-now pause-all" message={{ type: 'backlog', op: 'pauseAll' }} icon="debug-pause" title="Pauses every agent working (their chats are kept), and starts nothing new until Resume All">
+    <BusyButton
+      class="try-now pause-all"
+      message={{ type: 'backlog', op: 'pauseAll' }}
+      icon="debug-pause"
+      title="Pauses every agent working (their chats are kept), and starts nothing new until Resume All"
+    >
       Pause All
     </BusyButton>
   );
@@ -12,7 +17,12 @@ export function PauseAllButton() {
 /** Resume All (BL-160): the agents Pause All paused go on, top of the backlog first, within the limit. */
 export function ResumeAllButton() {
   return (
-    <BusyButton class="try-now resume-all" message={{ type: 'backlog', op: 'resumeAll' }} icon="debug-continue" title="Resumes the agents Pause All paused, top of the backlog first, within flotilla.agents.maxRunning">
+    <BusyButton
+      class="try-now resume-all"
+      message={{ type: 'backlog', op: 'resumeAll' }}
+      icon="debug-continue"
+      title="Resumes the agents Pause All paused, top of the backlog first, within flotilla.agents.maxRunning"
+    >
       Resume All
     </BusyButton>
   );

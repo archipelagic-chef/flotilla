@@ -82,9 +82,7 @@ export class ExplorerDecorations implements vscode.FileDecorationProvider, vscod
 function folderDecoration(ws: Workstream): vscode.FileDecoration {
   const count = ws.changes.length;
   const [badge, color] = ATTENTION_BADGE[ws.attention] ?? [count ? (count > 9 ? '9+' : String(count)) : undefined, undefined];
-  const tooltip = [`⎇ ${workstreamLabel(ws)}`, ATTENTION_LABEL[ws.attention], describeSync(ws), count ? `${count} changed` : '']
-    .filter(Boolean)
-    .join(' · ');
+  const tooltip = [`⎇ ${workstreamLabel(ws)}`, ATTENTION_LABEL[ws.attention], describeSync(ws), count ? `${count} changed` : ''].filter(Boolean).join(' · ');
   // Without a tint of our own, git's "ignored" grey (from the main worktree's `.worktrees/` exclude) would apply.
   const tint = color ?? (count ? 'gitDecoration.modifiedResourceForeground' : 'foreground');
   return new vscode.FileDecoration(badge, tooltip, new vscode.ThemeColor(tint));

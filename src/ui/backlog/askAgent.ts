@@ -1,14 +1,33 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { agentChatItem, agentName, type BacklogItem } from '../../features/backlog/backlog';
-import { askPrompt, chatBusy, findImplementer, whoAnswers, type AnswerView, type Implementer } from '../../features/backlog/askAgent';
+import {
+  type AnswerView,
+  askPrompt,
+  chatBusy,
+  findImplementer,
+  type Implementer,
+  whoAnswers,
+} from '../../features/backlog/askAgent';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { shapingTools } from '../../features/backlog/shaping';
-import { entryAnchors, entryDate, parseReply, replyLine } from '../../features/backlog/ticket';
+import {
+  entryAnchors,
+  entryDate,
+  parseReply,
+  replyLine,
+} from '../../features/backlog/ticket';
 import { nowLine } from '../../features/chats/activity';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { trackProgress } from '../progress';
-import { agentChoice, isRunningHeadless, runAgentHeadless, runningAgentCount, type AgentResult, type AgentRun } from './agentRunner';
+import {
+  agentChoice,
+  type AgentResult,
+  type AgentRun,
+  isRunningHeadless,
+  runAgentHeadless,
+  runningAgentCount,
+} from './agentRunner';
 
 export interface AskAgentDeps {
   backlog: LocalBacklog;
@@ -77,7 +96,12 @@ export class AskAgent implements vscode.Disposable {
     const was = this.asks.get(key);
     if (was && (was.run || was.view.state === 'thinking' || (was.view.state === 'waiting' && !o.now))) return;
     // Claimed before any await: a second click meanwhile finds it.
-    const ask: Ask = { id, anchor, view: { agent: was?.view.agent ?? 'An agent', state: 'thinking', since: new Date().toISOString() }, ...(o.now ? { now: true } : {}) };
+    const ask: Ask = {
+      id,
+      anchor,
+      view: { agent: was?.view.agent ?? 'An agent', state: 'thinking', since: new Date().toISOString() },
+      ...(o.now ? { now: true } : {}),
+    };
     this.asks.set(key, ask);
     try {
       await this.start(ask);
@@ -128,7 +152,13 @@ export class AskAgent implements vscode.Disposable {
     const common = { choice: agentChoice(item), output: this.deps.output, track: { ticket: item.id, agent, role: 'reply' as const } };
     const run =
       who.kind === 'implementer'
-        ? runAgentHeadless({ ...common, cwd: who.cwd ?? this.deps.mainRoot, resume: who.session, prompt: askPrompt({ item, ticket, comment }), name: `${agent} · ${item.id}` })
+        ? runAgentHeadless({
+            ...common,
+            cwd: who.cwd ?? this.deps.mainRoot,
+            resume: who.session,
+            prompt: askPrompt({ item, ticket, comment }),
+            name: `${agent} · ${item.id}`,
+          })
         : runAgentHeadless({
             ...common,
             cwd: this.deps.mainRoot,

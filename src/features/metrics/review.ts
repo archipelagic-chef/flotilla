@@ -37,7 +37,15 @@ export function reviewDue(o: { last?: string; every: number; now: Date }): boole
 }
 
 /** What keeps a review from starting now; undefined when it may. */
-export function reviewBlocked(v: { running: number; waiting: number; waitingUntil?: string; pausedAll?: number; enabled: boolean; idle?: string; elsewhere: boolean }): string | undefined {
+export function reviewBlocked(v: {
+  running: number;
+  waiting: number;
+  waitingUntil?: string;
+  pausedAll?: number;
+  enabled: boolean;
+  idle?: string;
+  elsewhere: boolean;
+}): string | undefined {
   if (v.elsewhere) return 'another window runs the autopilot';
   if (v.pausedAll) return 'all agents are paused';
   if (v.waitingUntil) return 'agents wait for a usage limit';

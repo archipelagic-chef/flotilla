@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { newerInstall, newerMessage, obsoleteFolders, staleStartNote, type NewerInstall } from '../features/installedVersion';
+import {
+  type NewerInstall,
+  newerInstall,
+  newerMessage,
+  obsoleteFolders,
+  staleStartNote,
+} from '../features/installedVersion';
 import { runningAgentCount } from './backlog/agentRunner';
 
 /** How often the extensions folder is looked at again: an update lands there while the window runs. */
@@ -30,7 +36,14 @@ export function watchInstalledVersion(context: vscode.ExtensionContext): void {
     } catch {
       return;
     }
-    const newer = newerInstall({ id, running, folders, obsolete: obsoleteFolders(read(path.join(extensionsDir, '.obsolete'))), builtAt, builtNow: mtime(main) });
+    const newer = newerInstall({
+      id,
+      running,
+      folders,
+      obsolete: obsoleteFolders(read(path.join(extensionsDir, '.obsolete'))),
+      builtAt,
+      builtNow: mtime(main),
+    });
     if (!newer) return;
     found = { newer, running };
     clearInterval(timer);

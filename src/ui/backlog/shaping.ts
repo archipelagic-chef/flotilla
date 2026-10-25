@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentName, updateItem, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentName,
+  type BacklogItem,
+  updateItem,
+} from '../../features/backlog/backlog';
 import type { Chat } from '../../features/chats/chats';
 import {
+  CHAT_LINK,
   discussable,
   discussionPrompt,
   findDiscussionChat,
@@ -11,13 +17,18 @@ import {
   shapingPrompt,
   shapingTools,
   summarizedSince,
-  CHAT_LINK,
 } from '../../features/backlog/shaping';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { trackProgress } from '../progress';
-import { agentChoice, runAgentHeadless, validSession, type AgentResult, type AgentRun } from './agentRunner';
+import {
+  agentChoice,
+  type AgentResult,
+  type AgentRun,
+  runAgentHeadless,
+  validSession,
+} from './agentRunner';
 
 export interface ShapingDeps {
   backlog: LocalBacklog;
@@ -111,7 +122,9 @@ export class Shaping implements vscode.Disposable {
       if (shaping.held) await this.reply(id, true);
       return;
     }
-    await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { ...shaping, held: { kind: action === 'pause' ? 'paused' : 'stopped', at: new Date().toISOString() } } }));
+    await this.deps.backlog.change((d) =>
+      updateItem(d, id, { shaping: { ...shaping, held: { kind: action === 'pause' ? 'paused' : 'stopped', at: new Date().toISOString() } } }),
+    );
     await this.endHeld();
     await this.say(
       item,
@@ -235,7 +248,10 @@ export class Shaping implements vscode.Disposable {
         });
       }
       if (!summarizedSince(activity, shaping.agent, shaping.chat.since)) {
-        await this.say(item, `${shaping.agent}'s chat closed without a summary of the discussion. [Open its chat](${CHAT_LINK}${found.chat.id}) to go on, or press Discuss.`);
+        await this.say(
+          item,
+          `${shaping.agent}'s chat closed without a summary of the discussion. [Open its chat](${CHAT_LINK}${found.chat.id}) to go on, or press Discuss.`,
+        );
       }
     }
     if (changed) this.changed.fire();
@@ -285,7 +301,10 @@ export class Shaping implements vscode.Disposable {
       // the user resumed it, or wrote again.)
       await this.deps.backlog.change((d) => updateItem(d, id, { shaping: { agent, session: run.sessionId } }));
       if (!item.shaping?.session) {
-        await this.say(item, `Opened a chat for agent ${agent} to discuss this ticket with you. It replies here, and writes what's agreed into the description.`);
+        await this.say(
+          item,
+          `Opened a chat for agent ${agent} to discuss this ticket with you. It replies here, and writes what's agreed into the description.`,
+        );
       }
     } catch (e) {
       run.stop();

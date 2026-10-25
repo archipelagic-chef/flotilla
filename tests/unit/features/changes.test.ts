@@ -44,7 +44,10 @@ describe('the backlog notes changes in its tickets', () => {
       let ticket = await store.readTicket(item);
       expect(ticket.activity.map((e) => [e.author, e.body])).toEqual([['Flotilla', 'Nova-7 (an agent) moved it from **To Do** to **In Progress**.']]);
       // An agent edits the file.
-      fs.writeFileSync(store.docPath('BL-2'), fs.readFileSync(store.docPath('BL-2'), 'utf8').replace('Limit requests.', 'Limit requests.\n\n- [ ] Per API key'));
+      fs.writeFileSync(
+        store.docPath('BL-2'),
+        fs.readFileSync(store.docPath('BL-2'), 'utf8').replace('Limit requests.', 'Limit requests.\n\n- [ ] Per API key'),
+      );
       await store.noteDescriptions();
       await store.noteDescriptions();
       ticket = await store.readTicket(item);
@@ -63,7 +66,11 @@ describe('the backlog notes changes in its tickets', () => {
     try {
       const store = new LocalBacklog(root, `${root}/.git`);
       await store.change((d) => ({ ...d, items: [item] }));
-      await store.writeTicket('BL-2', { title: item.title, description: 'Limit requests.', activity: [{ date: '2026-10-21 05:50', author: 'Agent Watt-7', body: 'Proposed this ticket.' }] });
+      await store.writeTicket('BL-2', {
+        title: item.title,
+        description: 'Limit requests.',
+        activity: [{ date: '2026-10-21 05:50', author: 'Agent Watt-7', body: 'Proposed this ticket.' }],
+      });
       await store.noteDescriptions();
       // The agent's editor truncates the file, and writes the new text a moment later (as BL-140's shaping chat did).
       const text = fs.readFileSync(store.docPath('BL-2'), 'utf8').replace('Limit requests.', 'Limit requests.\n\n## Merge train\n\nOne after another.');

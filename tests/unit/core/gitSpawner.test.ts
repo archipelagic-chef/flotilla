@@ -1,6 +1,16 @@
 import * as os from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
-import { GitError, gitProcesses, runGit, runGitBytes } from '../../../src/core/git/gitCli';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  GitError,
+  gitProcesses,
+  runGit,
+  runGitBytes,
+} from '../../../src/core/git/gitCli';
 import { setSpawnOnMainThread, spawnProcess } from '../../../src/core/git/gitSpawner';
 
 const options = { cwd: os.tmpdir(), encoding: 'utf8' as const };
@@ -13,7 +23,10 @@ describe.each([
 ])('spawnProcess %s', (_, onMain) => {
   it('gives the output, the input and the exit code as execFile does', async () => {
     setSpawnOnMainThread(onMain);
-    expect(await spawnProcess({ file: 'git', args: ['--version'], options })).toMatchObject({ error: undefined, stdout: expect.stringMatching(/^git version/) });
+    expect(await spawnProcess({ file: 'git', args: ['--version'], options })).toMatchObject({
+      error: undefined,
+      stdout: expect.stringMatching(/^git version/),
+    });
     const hashed = await spawnProcess({ file: 'git', args: ['hash-object', '--stdin'], options, input: 'hello\n' });
     expect(hashed.stdout.toString().trim()).toBe('ce013625030ba8dba906f756967f9e9ca394464a');
     const failed = await spawnProcess({ file: 'git', args: ['no-such-command'], options });

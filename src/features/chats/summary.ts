@@ -37,7 +37,10 @@ function inputOf(input: unknown): string {
   const i = input as Record<string, unknown>;
   if (Array.isArray(i.todos)) {
     const mark: Record<string, string> = { completed: 'done', in_progress: 'doing' };
-    return cut(i.todos.map((t: { content?: unknown; status?: unknown }) => `${String(t?.content ?? '')} (${mark[String(t?.status)] ?? 'to do'})`).join('; '), 300);
+    return cut(
+      i.todos.map((t: { content?: unknown; status?: unknown }) => `${String(t?.content ?? '')} (${mark[String(t?.status)] ?? 'to do'})`).join('; '),
+      300,
+    );
   }
   const main = [i.command, i.file_path, i.pattern, i.url, i.query, i.description, i.path].find((v) => typeof v === 'string' && v.trim());
   return cut(typeof main === 'string' ? main : JSON.stringify(input), 300);
@@ -98,7 +101,7 @@ export function summaryInput(lines: readonly string[], o: { items?: number; char
 
 /** What it's told to do (its whole system prompt). */
 export const SUMMARY_PROMPT = [
-  "You summarize where a coding agent stands, from the last part of its transcript (its messages, tool calls and their results, oldest first).",
+  'You summarize where a coding agent stands, from the last part of its transcript (its messages, tool calls and their results, oldest first).',
   'Answer in exactly two short lines, plain text, no Markdown headings or bullets:',
   'line 1: what it is doing now; line 2: whether anything is wrong (failing commands, loops, waiting, stuck), or "Nothing looks wrong."',
 ].join('\n');
@@ -134,7 +137,11 @@ export function summaryAnswer(stdout: string): { text: string } | { error: strin
   }
   const text = typeof m.result === 'string' ? m.result.trim() : '';
   if (m.is_error === true || m.subtype !== 'success' || !text) return { error: oneLine(text) || String(m.subtype ?? 'No answer.') };
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2);
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 2);
   return { text: lines.map((l) => oneLine(l, 200)).join('\n') };
 }
 

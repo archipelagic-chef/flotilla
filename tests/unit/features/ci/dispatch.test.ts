@@ -125,7 +125,13 @@ describe('GitHubActions.branchHead', () => {
     const urls: string[] = [];
     const fetch: Fetch = async (url) => {
       urls.push(url);
-      return { ok: true, status: 200, statusText: 'OK', json: async () => ({ commit: { sha: 'f00dfeed'.repeat(5) } }), text: async () => JSON.stringify({ commit: { sha: 'f00dfeed'.repeat(5) } }) };
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ commit: { sha: 'f00dfeed'.repeat(5) } }),
+        text: async () => JSON.stringify({ commit: { sha: 'f00dfeed'.repeat(5) } }),
+      };
     };
     const sha = await new GitHubActions('acme', 'shop', async () => 'tok', fetch).branchHead('feat/x y');
     expect(sha).toBe('f00dfeed'.repeat(5));

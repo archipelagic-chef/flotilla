@@ -1,6 +1,11 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isFresh, PENDING_TTL_MS, removalToRun, type PendingRemoval } from '../../../src/ui/pending';
+import {
+  isFresh,
+  PENDING_TTL_MS,
+  type PendingRemoval,
+  removalToRun,
+} from '../../../src/ui/pending';
 
 const now = 1_800_000_000_000;
 const root = path.resolve('/repo');
@@ -46,4 +51,3 @@ describe('removalToRun', () => {
     expect(removalToRun(undefined, root, root, now)).toEqual({ run: undefined, clear: false });
   });
 });
-

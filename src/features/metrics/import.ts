@@ -5,7 +5,14 @@ import { runGit } from '../../core/git/gitCli';
 import { entryAgent } from '../backlog/backlog';
 import { parseVerdict } from '../backlog/review';
 import type { Ticket } from '../backlog/ticket';
-import { appendEvents, eventsDir, parseEvents, type EventData, type EventKind, type FlotillaEvent } from './events';
+import {
+  appendEvents,
+  type EventData,
+  type EventKind,
+  eventsDir,
+  type FlotillaEvent,
+  parseEvents,
+} from './events';
 
 /**
  * The history from before the events were recorded, read in once (BL-157) so the metrics aren't empty on the first
@@ -92,7 +99,10 @@ function ticketOfMerge(subject: string): string | undefined {
  * that conflicted give a merge-conflicted event, with their files and regions. since limits the merges to later ones.
  */
 export async function replayMerges(cwd: string, o: { since?: string; ref?: string } = {}): Promise<FlotillaEvent[]> {
-  const log = await runGit(['log', '--merges', '--format=%H %P%x09%cI%x09%s', ...(o.since ? [`--since=${o.since}`] : []), o.ref ?? 'HEAD'], { cwd, timeoutMs: 120_000 });
+  const log = await runGit(['log', '--merges', '--format=%H %P%x09%cI%x09%s', ...(o.since ? [`--since=${o.since}`] : []), o.ref ?? 'HEAD'], {
+    cwd,
+    timeoutMs: 120_000,
+  });
   const out: FlotillaEvent[] = [];
   for (const line of log.split('\n').filter(Boolean)) {
     const [shas, at, subject = ''] = line.split('\t');
@@ -168,7 +178,13 @@ async function dropImported(commonDir: string): Promise<string | undefined> {
  * in, or undefined when it was done before. before: when recording started (what happened since isn't read in); the
  * first live event recorded, when that's earlier.
  */
-export async function importHistory(o: { commonDir: string; mainRoot: string; tickets: { id: string; ticket: Pick<Ticket, 'activity'> }[]; ref?: string; before?: Date }): Promise<number | undefined> {
+export async function importHistory(o: {
+  commonDir: string;
+  mainRoot: string;
+  tickets: { id: string; ticket: Pick<Ticket, 'activity'> }[];
+  ref?: string;
+  before?: Date;
+}): Promise<number | undefined> {
   const mark = path.join(eventsDir(o.commonDir), IMPORTED_MARK);
   if (historyImported(o.commonDir)) return undefined;
   await fs.promises.mkdir(eventsDir(o.commonDir), { recursive: true });

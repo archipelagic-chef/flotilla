@@ -6,14 +6,26 @@ import { parseStatusV2 } from '../../core/git/porcelain';
 import { samePath } from '../../core/paths';
 import { rawFs } from '../../core/rawFs';
 import { removeTopLevelLinks } from '../storage/finished';
-import { ensureExcluded, existingNames, sanitizeName, uniqueName, worktreesRoot } from './layout';
-import { lock, makePortable, readGitFile, readLock, resolveGitdir, retargetBackPointer, unlock } from './portability';
+import {
+  ensureExcluded,
+  existingNames,
+  sanitizeName,
+  uniqueName,
+  worktreesRoot,
+} from './layout';
+import {
+  lock,
+  makePortable,
+  readGitFile,
+  readLock,
+  resolveGitdir,
+  retargetBackPointer,
+  unlock,
+} from './portability';
 import { resolveWorktrees, type RepoRoots, type ResolvedWorktree } from './resolver';
 
 export type CreateRequest =
-  | { kind: 'new'; branch: string; startPoint?: string }
-  | { kind: 'existing'; branch: string }
-  | { kind: 'remote'; remoteRef: string; localBranch?: string };
+  { kind: 'new'; branch: string; startPoint?: string } | { kind: 'existing'; branch: string } | { kind: 'remote'; remoteRef: string; localBranch?: string };
 
 export interface BranchList {
   local: string[];
@@ -200,7 +212,10 @@ export class WorktreeService {
     try {
       // Long paths (a VS Code download under .vscode-test goes past 260 characters): without them git stops halfway on
       // Windows, after it has already deleted the worktree's .git.
-      await runGit(['-c', 'core.longpaths=true', 'worktree', 'remove', ...(opts.force ? ['--force'] : []), wt.path], { cwd: this.roots.mainRoot, timeoutMs: ADD_TIMEOUT_MS });
+      await runGit(['-c', 'core.longpaths=true', 'worktree', 'remove', ...(opts.force ? ['--force'] : []), wt.path], {
+        cwd: this.roots.mainRoot,
+        timeoutMs: ADD_TIMEOUT_MS,
+      });
     } catch (error) {
       if (previousLock !== undefined) {
         try {

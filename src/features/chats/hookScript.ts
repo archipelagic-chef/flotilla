@@ -98,8 +98,8 @@ export function hookFileContent(): string {
   return [
     '// Flotilla hook for Claude Code (https://github.com/archipelagic-chef/flotilla).',
     '// Installed by the Flotilla VS Code extension; reinstalling the hooks overwrites this file.',
-    '// It records each chat\'s state (working, waiting for input, done) in this worktree\'s git directory,',
-    '// in flotilla/chats/<session>.json, so Flotilla can show it, and gives new chats the backlog\'s guide',
+    "// It records each chat's state (working, waiting for input, done) in this worktree's git directory,",
+    "// in flotilla/chats/<session>.json, so Flotilla can show it, and gives new chats the backlog's guide",
     '// (.flotilla/backlog/AGENTS.md) so agents can add tickets. It sends nothing anywhere.',
     hookSource(),
     '',

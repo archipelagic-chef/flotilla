@@ -185,7 +185,8 @@ export function checkReview(review: BacklogItem['review'], f: ReviewFacts, now: 
   if (f.runs) return { key: 'review', ok: true, text: `${agent} is ${doing} (run by this window)` };
   if (process) return { key: 'review', ok: true, text: `${agent} is ${doing} (process ${process.pid})` };
   const quiet = f.chat ? now.getTime() - f.chat.lastWrite.getTime() : undefined;
-  if (quiet !== undefined && (quiet < QUIET_MS || f.chat?.busy)) return { key: 'review', ok: true, text: `${agent} is ${doing} (last activity ${ago(quiet)} ago)` };
+  if (quiet !== undefined && (quiet < QUIET_MS || f.chat?.busy))
+    return { key: 'review', ok: true, text: `${agent} is ${doing} (last activity ${ago(quiet)} ago)` };
   const since = f.chat ? ` (its chat was last written at ${clock(f.chat.lastWrite, now)})` : '';
   return {
     key: 'review',
@@ -210,7 +211,8 @@ export function checkMerge(merging: BacklogItem['merging'], f: MergeFacts): Clai
       note: `Check: the merge of \`${merging.branch}\` into \`${merging.base}\` had lost its temporary worktree; cleared its state, to merge again.`,
     };
   }
-  if (merging.state !== 'resolving') return { key: 'merge', ok: true, text: `The merge of \`${merging.branch}\` waits in its temporary worktree (${merging.state})` };
+  if (merging.state !== 'resolving')
+    return { key: 'merge', ok: true, text: `The merge of \`${merging.branch}\` waits in its temporary worktree (${merging.state})` };
   const agent = merging.agent ?? 'Its agent';
   if (f.runs) return { key: 'merge', ok: true, text: `${agent} is resolving the merge (run by this window)` };
   if (f.process) return { key: 'merge', ok: true, text: `${agent} is resolving the merge (process ${f.process.pid})` };
@@ -231,4 +233,3 @@ export function glitchLine(claims: readonly Pick<Claim, 'ok' | 'text'>[]): strin
   if (!bad.length) return undefined;
   return bad.length === 1 ? bad[0].text : `${bad[0].text}, and ${bad.length - 1} more`;
 }
-

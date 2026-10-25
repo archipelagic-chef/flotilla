@@ -130,7 +130,12 @@ export function askContextText(c: AskContext): string {
   if (c.worktree) branch.push(`Worktree: ${c.worktree.path} (the folder you're in), on branch ${c.worktree.branch ?? '(detached)'}.`);
   else branch.push('No worktree: you are in the main one.');
   if (c.commits.length) {
-    branch.push(`Commits not on ${c.base ?? 'the base'} (newest first):\n${c.commits.slice(0, 20).map((x) => `- ${x.short} ${x.subject}`).join('\n')}${c.commits.length > 20 ? `\n- … ${c.commits.length - 20} more` : ''}`);
+    branch.push(
+      `Commits not on ${c.base ?? 'the base'} (newest first):\n${c.commits
+        .slice(0, 20)
+        .map((x) => `- ${x.short} ${x.subject}`)
+        .join('\n')}${c.commits.length > 20 ? `\n- … ${c.commits.length - 20} more` : ''}`,
+    );
   } else branch.push(`No commits of its own${c.base ? ` (not on ${c.base})` : ''} yet.`);
   if (c.diffStat?.trim()) branch.push(`What they change (git diff --stat ${c.base ?? ''}...):\n${gitBlock(c.diffStat)}`);
   if (c.worktree) branch.push(c.worktree.changes.trim() ? `Uncommitted (git status --short):\n${gitBlock(c.worktree.changes)}` : 'No uncommitted changes.');

@@ -23,12 +23,16 @@ describe('missingExclusions', () => {
   });
 
   it('lists every missing one', () => {
-    expect(missingExclusions({ watcherExclude: {}, searchExclude: {}, scanIgnoredFolders: [] })).toEqual(['file watching', 'search', 'the Git repository scan']);
+    expect(missingExclusions({ watcherExclude: {}, searchExclude: {}, scanIgnoredFolders: [] })).toEqual([
+      'file watching',
+      'search',
+      'the Git repository scan',
+    ]);
   });
 });
 
 describe('isInWorktreesFolder', () => {
-  it('is true for a worktree under the main checkout\'s .worktrees folder', () => {
+  it("is true for a worktree under the main checkout's .worktrees folder", () => {
     expect(isInWorktreesFolder('/repo', '/repo/.worktrees/feature-x')).toBe(true);
   });
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { GitHubActions, ciStatus, isActive, splitUpstream } from '../../../../src/features/ci/githubActions';
+import {
+  ciStatus,
+  GitHubActions,
+  isActive,
+  splitUpstream,
+} from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 
 /** A fake GitHub: answers by URL prefix and records the requests. */
@@ -11,7 +16,13 @@ function fakeFetch(routes: Record<string, unknown>) {
       .filter((r) => url.startsWith(r))
       .sort((a, b) => b.length - a.length)[0];
     const found = match !== undefined;
-    return { ok: found, status: found ? 200 : 404, statusText: found ? 'OK' : 'Not Found', json: async () => routes[match!], text: async () => (found ? JSON.stringify(routes[match]) : '') };
+    return {
+      ok: found,
+      status: found ? 200 : 404,
+      statusText: found ? 'OK' : 'Not Found',
+      json: async () => routes[match!],
+      text: async () => (found ? JSON.stringify(routes[match]) : ''),
+    };
   };
   return { fetch, calls };
 }
@@ -109,7 +120,7 @@ describe('GitHubActions', () => {
     expect([again.attempt, first.attempt]).toEqual([2, 1]);
   });
 
-  it('reads a branch\'s latest runs with the token and the API version', async () => {
+  it("reads a branch's latest runs with the token and the API version", async () => {
     const { fetch, calls } = fakeFetch({ 'https://api.github.com/repos/acme/app/actions/runs': { workflow_runs: [run()] } });
     const runs = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('feat/x');
     expect(calls).toHaveLength(1);
@@ -134,7 +145,9 @@ describe('GitHubActions', () => {
 
   it('takes the title from the commit message when there is no display title, and a name for a run without one', async () => {
     const { fetch } = fakeFetch({
-      'https://api.github.com/': { workflow_runs: [run({ display_title: undefined, head_commit: { message: 'Subject\n\nBody' }, name: null, status: 'in_progress', conclusion: null })] },
+      'https://api.github.com/': {
+        workflow_runs: [run({ display_title: undefined, head_commit: { message: 'Subject\n\nBody' }, name: null, status: 'in_progress', conclusion: null })],
+      },
     });
     const [r] = await new GitHubActions('acme', 'app', async () => 'tok', fetch).runs('main');
     expect(r).toMatchObject({ title: 'Subject', workflow: 'Workflow', status: 'running' });
@@ -160,7 +173,14 @@ describe('GitHubActions', () => {
 
   describe('jobs', () => {
     const jobsUrl = 'https://api.github.com/repos/acme/app/actions/runs/7/jobs';
-    const job = (id: number) => ({ id, name: `job ${id}`, status: 'completed', conclusion: 'success', html_url: `https://github.com/acme/app/runs/7/job/${id}`, steps: [] });
+    const job = (id: number) => ({
+      id,
+      name: `job ${id}`,
+      status: 'completed',
+      conclusion: 'success',
+      html_url: `https://github.com/acme/app/runs/7/job/${id}`,
+      steps: [],
+    });
 
     /** A fake GitHub with paged jobs: each page links to the next one through the Link header, as GitHub does. */
     function pagedFetch(pages: Array<{ jobs: unknown[]; link?: string }>) {
@@ -259,7 +279,7 @@ describe('GitHubActions: re-run and cancel', () => {
     const { fetch } = fakeGitHub(503, 'Unavailable');
     await expect(actions(fetch).rerun(1, true)).rejects.toThrow("GitHub didn't re-run the run (503: Unavailable)");
     const offline = (async () => {
-      throw new Error('api.github.com didn\'t answer within 20 seconds.');
+      throw new Error("api.github.com didn't answer within 20 seconds.");
     }) as Fetch;
     await expect(actions(offline).cancel(1)).rejects.toThrow("didn't answer within 20 seconds");
   });

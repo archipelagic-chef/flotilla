@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const memory = vi.hoisted(() => ({
   short: undefined as { freeMB: number; minMB: number } | undefined,
@@ -19,7 +25,9 @@ const probe = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
 /** The token use agents' transcripts show (see watchRunaways); none: no transcript. */
 const transcript = vi.hoisted(() => ({ usage: undefined as Record<string, number> | undefined }));
 const levels = vi.hoisted(() => ({ now: {} as { strong?: string; light?: string } }));
-const quick = vi.hoisted(() => ({ choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>) }));
+const quick = vi.hoisted(() => ({
+  choose: undefined as undefined | ((items: Array<{ id: string }>) => { id: string } | undefined | Promise<{ id: string } | undefined>),
+}));
 
 vi.mock('vscode', () => ({
   EventEmitter: class {
@@ -203,7 +211,7 @@ describe('the review loop and memory', () => {
     expect((data.items[0].review as { round: number }).round).toBe(1);
     loop.dispose();
   });
-  it('holds a start\'s memory from its check, so a start checked while it awaits sees it', async () => {
+  it("holds a start's memory from its check, so a start checked while it awaits sees it", async () => {
     // Room for one agent: the first start passes the check, then awaits (the base); a second start is checked meanwhile.
     memory.free = 2048 + 300 - 1;
     let open!: () => void;
@@ -345,7 +353,11 @@ describe('the agent limit', () => {
       items: [1, 2, 3, 4, 5].map((n) => ({ id: `BL-${n}`, title: `Item ${n}`, status: 'review', created: at, branch: `feature/BL-${n}-review` })),
     };
     notes = [];
-    worktrees = [1, 2, 3, 4, 5].map((n) => ({ key: `wt-${n}`, worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` }, chats: [] }));
+    worktrees = [1, 2, 3, 4, 5].map((n) => ({
+      key: `wt-${n}`,
+      worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` },
+      chats: [],
+    }));
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
     const backlog = {
       dir: '/unused',
@@ -478,7 +490,17 @@ describe('the agent limit', () => {
       round: 1,
       state: 'paused',
       reviewer: '',
-      paused: { until: at, known: false, kind: 'rate', tries: 0, since: new Date().toISOString(), phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+      paused: {
+        until: at,
+        known: false,
+        kind: 'rate',
+        tries: 0,
+        since: new Date().toISOString(),
+        phase: 'work',
+        session: 'session-9',
+        agent: 'Ada-3',
+        resume: 'revising',
+      },
     };
     probe.mockReset();
     probe.mockResolvedValue(rate);
@@ -516,7 +538,12 @@ describe('the agent limit', () => {
   const pauseGuessed = (minutesAgo: Record<number, number>) => {
     for (const [n, ago] of Object.entries(minutesAgo)) {
       pauseOn(Number(n), new Date(Date.now() - 1000).toISOString());
-      Object.assign((data.items[Number(n)].review as { paused: object }).paused, { known: false, kind: 'rate', tries: 0, since: new Date(Date.now() - ago * 60_000).toISOString() });
+      Object.assign((data.items[Number(n)].review as { paused: object }).paused, {
+        known: false,
+        kind: 'rate',
+        tries: 0,
+        since: new Date(Date.now() - ago * 60_000).toISOString(),
+      });
     }
   };
 
@@ -572,8 +599,14 @@ describe('the agent limit', () => {
     probe.mockReset();
     await loop.start('BL-5');
     pauseGuessed({ 1: 10, 2: 30 });
-    data.items[1].review = { ...(data.items[1].review as object), paused: { ...(data.items[1].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
-    data.items[2].review = { ...(data.items[2].review as object), paused: { ...(data.items[2].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() } };
+    data.items[1].review = {
+      ...(data.items[1].review as object),
+      paused: { ...(data.items[1].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() },
+    };
+    data.items[2].review = {
+      ...(data.items[2].review as object),
+      paused: { ...(data.items[2].review as { paused: object }).paused, until: new Date(Date.now() + 3600_000).toISOString() },
+    };
     finish[0]({ code: 0 });
     await settle();
     expect(probe).not.toHaveBeenCalled();
@@ -802,7 +835,11 @@ describe('replies and Prioritize', () => {
       items: [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `BL-${n}`, title: `Item ${n}`, status: 'review', created: at, branch: `feature/BL-${n}-review` })),
     };
     notes = [];
-    worktrees = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ key: `wt-${n}`, worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` }, chats: [] }));
+    worktrees = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
+      key: `wt-${n}`,
+      worktree: { isMain: false, path: `/wt/${n}`, branch: `feature/BL-${n}-review`, adminDir: `/wt/${n}/.git` },
+      chats: [],
+    }));
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
     const backlog = {
       dir: '/unused',
@@ -1017,7 +1054,11 @@ describe('pausing, stopping and resuming agents (BL-81)', () => {
     vi.resetModules();
     spawn.mockReset();
     stops = 0;
-    spawn.mockImplementation((o: { resume?: string }) => ({ sessionId: o.resume ?? 'a1b2c3d4-0000-4000-8000-000000000001', done: new Promise(() => undefined), stop: () => void stops++ }));
+    spawn.mockImplementation((o: { resume?: string }) => ({
+      sessionId: o.resume ?? 'a1b2c3d4-0000-4000-8000-000000000001',
+      done: new Promise(() => undefined),
+      stop: () => void stops++,
+    }));
     memory.short = undefined;
     memory.free = undefined;
     memory.live = new Set();
@@ -1094,7 +1135,11 @@ describe('pausing, stopping and resuming agents (BL-81)', () => {
 
   it('ends its own run when another window paused it (the review state says so)', async () => {
     const r = review();
-    data.items[0].review = { ...r, state: 'paused', paused: { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing', byUser: at } };
+    data.items[0].review = {
+      ...r,
+      state: 'paused',
+      paused: { phase: 'review', session: r.reviewerSession, agent: r.reviewer, resume: 'reviewing', byUser: at },
+    };
     await (loop as unknown as { scan(): Promise<void> }).scan();
     expect(stops).toBe(1);
     expect(loop.running).toBe(0);
@@ -1133,7 +1178,13 @@ describe('runaway agents (BL-76)', () => {
           title: 'Fix me',
           status: 'doing',
           created: at,
-          review: { round: 1, reviewer: 'Rex', implementer: 'Nova', state: 'stopped', stop: { kind: 'no-report', task: { prompt: 'Make the changes.', why: 'Rex requested changes' } } },
+          review: {
+            round: 1,
+            reviewer: 'Rex',
+            implementer: 'Nova',
+            state: 'stopped',
+            stop: { kind: 'no-report', task: { prompt: 'Make the changes.', why: 'Rex requested changes' } },
+          },
         },
       ],
     };
@@ -1222,7 +1273,15 @@ describe('agents lost to a reload (BL-87)', () => {
     data = {
       version: 1,
       next: 2,
-      items: [{ id: 'BL-1', title: 'Fix me', status: 'doing', created: at, review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising', worktree: 'wt' } }],
+      items: [
+        {
+          id: 'BL-1',
+          title: 'Fix me',
+          status: 'doing',
+          created: at,
+          review: { round: 0, reviewer: '', implementer: 'Nova', implementerSession: session, state: 'revising', worktree: 'wt' },
+        },
+      ],
     };
     chats = [];
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
@@ -1309,7 +1368,11 @@ describe('Pause All and Resume All (BL-160)', () => {
     vi.resetModules();
     spawn.mockReset();
     let n = 0;
-    spawn.mockImplementation((o: { resume?: string }) => ({ sessionId: o.resume ?? `a1b2c3d4-0000-4000-8000-00000000000${++n}`, done: new Promise(() => undefined), stop() {} }));
+    spawn.mockImplementation((o: { resume?: string }) => ({
+      sessionId: o.resume ?? `a1b2c3d4-0000-4000-8000-00000000000${++n}`,
+      done: new Promise(() => undefined),
+      stop() {},
+    }));
     memory.short = undefined;
     memory.free = undefined;
     memory.live = new Set();
@@ -1337,9 +1400,20 @@ describe('Pause All and Resume All (BL-160)', () => {
     };
     const repository = {
       onDidChange: () => ({ dispose() {} }),
-      current: [1, 2, 3, 4, 5].map((i) => ({ key: `wt${i}`, worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` }, chats: [] })),
+      current: [1, 2, 3, 4, 5].map((i) => ({
+        key: `wt${i}`,
+        worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` },
+        chats: [],
+      })),
     };
-    const created = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {}, pausedAll: () => store.held } as never);
+    const created = new ReviewLoop({
+      backlog,
+      repository,
+      mainRoot: '/main',
+      output: { appendLine() {} },
+      openTicket() {},
+      pausedAll: () => store.held,
+    } as never);
     loop = created as unknown as Loop;
     all = new PauseAll({ backlog: backlog as never, reviews: created, store, lifted: () => created.dispatchQueued() });
     await tick();
@@ -1448,9 +1522,20 @@ describe('Pause All and Resume All (BL-160)', () => {
     const again = new PausedAllStore(dir);
     const repository = {
       onDidChange: () => ({ dispose() {} }),
-      current: [1, 2, 3, 4, 5].map((i) => ({ key: `wt${i}`, worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` }, chats: [] })),
+      current: [1, 2, 3, 4, 5].map((i) => ({
+        key: `wt${i}`,
+        worktree: { isMain: false, path: `/wt${i}`, branch: `feature/BL-${i}-review`, adminDir: `/wt${i}/.git` },
+        chats: [],
+      })),
     };
-    const fresh = new ReviewLoop({ backlog, repository, mainRoot: '/main', output: { appendLine() {} }, openTicket() {}, pausedAll: () => again.held } as never);
+    const fresh = new ReviewLoop({
+      backlog,
+      repository,
+      mainRoot: '/main',
+      output: { appendLine() {} },
+      openTicket() {},
+      pausedAll: () => again.held,
+    } as never);
     const pauseAll = new PauseAll({ backlog: backlog as never, reviews: fresh, store: again });
     await tick();
     expect(pauseAll.pausedCount).toBe(3);

@@ -1,11 +1,22 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
   extensions: { getExtension: () => undefined },
 }));
 
-import { agentOutcome, agentStart, headlessArgs, resultOf, setAgentDirs } from '../../../src/ui/backlog/agentRunner';
+import {
+  agentOutcome,
+  agentStart,
+  headlessArgs,
+  resultOf,
+  setAgentDirs,
+} from '../../../src/ui/backlog/agentRunner';
 
 const SESSION = '3f1c2a4e-5b6d-4e7f-8a9b-0c1d2e3f4a5b';
 

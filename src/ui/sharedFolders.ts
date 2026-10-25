@@ -57,16 +57,17 @@ export class SharedFolders implements vscode.Disposable {
       if (choice) await vscode.commands.executeCommand('workbench.action.openSettings', 'flotilla.linkFolders');
       return;
     }
-    const results = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Sharing linked folders…' },
-      () => this.enqueue(() => this.share(true)),
+    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Sharing linked folders…' }, () =>
+      this.enqueue(() => this.share(true)),
     );
     const files = results.reduce((n, r) => n + r.files, 0);
     const bytes = results.reduce((n, r) => n + r.bytes, 0);
     const unshared = results.reduce((n, r) => n + r.unshared, 0);
     const copied = unshared ? ` Copied ${unshared} files that installs or tools write in place.` : '';
     void vscode.window.showInformationMessage(
-      (files ? `Shared ${files} files with the main worktree: ${formatBytes(bytes)} freed.` : 'Nothing to share: the worktrees already share every file they can.') + copied,
+      (files
+        ? `Shared ${files} files with the main worktree: ${formatBytes(bytes)} freed.`
+        : 'Nothing to share: the worktrees already share every file they can.') + copied,
     );
   }
 
@@ -89,11 +90,15 @@ export class SharedFolders implements vscode.Disposable {
         const r = await shareLinkedFolder(this.deps.mainRoot, ws.worktree.path, folder);
         results.push(r);
         if (r.unshared) {
-          this.deps.output.appendLine(`Copied ${r.unshared} files of ${folder} in '${workstreamLabel(ws)}' that were linked to the main worktree's: installs or tools write them in place.`);
+          this.deps.output.appendLine(
+            `Copied ${r.unshared} files of ${folder} in '${workstreamLabel(ws)}' that were linked to the main worktree's: installs or tools write them in place.`,
+          );
         }
         if (r.files || r.skipped) {
           const skipped = r.skipped ? ` (${r.skipped} in use, left as they were)` : '';
-          this.deps.output.appendLine(`Shared ${r.files} files of ${folder} in '${workstreamLabel(ws)}' with the main worktree: ${formatBytes(r.bytes)} freed${skipped}.`);
+          this.deps.output.appendLine(
+            `Shared ${r.files} files of ${folder} in '${workstreamLabel(ws)}' with the main worktree: ${formatBytes(r.bytes)} freed${skipped}.`,
+          );
         }
       }
       sharedAt[ws.key] = now;

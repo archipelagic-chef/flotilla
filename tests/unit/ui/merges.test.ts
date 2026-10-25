@@ -1,8 +1,19 @@
 import * as path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { git, initRepo, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }) },
@@ -43,10 +54,10 @@ describe('Merges', () => {
     await merges.refresh();
     expect((await backlog.read()).items[0].status).toBe('done');
     expect(merges.get('BL-1')?.state).toBe('merged');
-    expect((await backlog.readTicket({ id: 'BL-1', title: 'Login' })).activity.at(-1)?.body).toContain('so it\'s done');
+    expect((await backlog.readTicket({ id: 'BL-1', title: 'Login' })).activity.at(-1)?.body).toContain("so it's done");
   });
 
-  it("leaves an item in progress alone while its branch has no commits, and one with unmerged commits too", async () => {
+  it('leaves an item in progress alone while its branch has no commits, and one with unmerged commits too', async () => {
     const { backlog, repo } = await setup(
       [
         { id: 'BL-2', title: 'Fresh', status: 'doing', created: at, branches: ['feature/BL-2-fresh'] },
@@ -88,7 +99,16 @@ describe('Merges', () => {
 
   it("doesn't move an item an agent is working on, even when its work is merged", async () => {
     const { repo, backlog } = await setup(
-      [{ id: 'BL-4', title: 'Busy', status: 'review', created: at, branches: ['feature/BL-4-busy'], review: { round: 1, state: 'revising', reviewer: 'Kit-9' } }],
+      [
+        {
+          id: 'BL-4',
+          title: 'Busy',
+          status: 'review',
+          created: at,
+          branches: ['feature/BL-4-busy'],
+          review: { round: 1, state: 'revising', reviewer: 'Kit-9' },
+        },
+      ],
       { 'feature/BL-4-busy': 1 },
     );
     git(repo, 'merge', '-q', '--ff-only', 'feature/BL-4-busy');

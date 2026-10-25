@@ -18,7 +18,9 @@ describe('stoppedLabel (BL-131)', () => {
   const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   it('says the date and time of a chat that went quiet on another day', () => {
     const then = new Date(2026, 9, 18, 21, 46);
-    expect(stoppedLabel(then.toISOString(), now)).toBe(`Stopped: no activity since ${then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time(then)}`);
+    expect(stoppedLabel(then.toISOString(), now)).toBe(
+      `Stopped: no activity since ${then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time(then)}`,
+    );
   });
   it('says only the time today', () => {
     const then = new Date(2026, 9, 20, 16, 10);

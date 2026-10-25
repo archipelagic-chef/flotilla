@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CI_ACTIVE_INTERVAL_MS, CI_INTERVAL_MS, anyDeploymentActive, anyRunActive, ciStamp, jobsDue, refreshDelay } from '../../../../src/features/ci/refresh';
+import {
+  anyDeploymentActive,
+  anyRunActive,
+  CI_ACTIVE_INTERVAL_MS,
+  CI_INTERVAL_MS,
+  ciStamp,
+  jobsDue,
+  refreshDelay,
+} from '../../../../src/features/ci/refresh';
 import type { CiDeployment } from '../../../../src/features/ci/githubDeployments';
 import type { CiRun } from '../../../../src/features/ci/githubActions';
 

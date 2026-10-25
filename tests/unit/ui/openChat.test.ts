@@ -1,9 +1,21 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
-const calls = vi.hoisted(() => ({ commands: [] as unknown[][], messages: [] as string[], answer: undefined as string | undefined, terminals: [] as unknown[] }));
+const calls = vi.hoisted(() => ({
+  commands: [] as unknown[][],
+  messages: [] as string[],
+  answer: undefined as string | undefined,
+  terminals: [] as unknown[],
+}));
 
 vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
@@ -39,7 +51,12 @@ function transcript(cwd: string, entrypoint: string): string {
   const file = transcriptPath(cwd, ID, home);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const user = { type: 'user', entrypoint, timestamp: '2026-10-20T06:00:00Z', message: { role: 'user', content: 'Fix the bug' } };
-  const reply = { type: 'assistant', entrypoint, timestamp: '2026-10-20T06:01:00Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } };
+  const reply = {
+    type: 'assistant',
+    entrypoint,
+    timestamp: '2026-10-20T06:01:00Z',
+    message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] },
+  };
   const raw = `${JSON.stringify(user)}\n${JSON.stringify(reply)}\n`;
   fs.writeFileSync(file, raw);
   return raw;
@@ -51,7 +68,13 @@ function workstream(name: string, o: { windowOpen?: boolean } = {}): Workstream 
   fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(gitDir, { recursive: true });
   const chat = { id: ID, source: 'claude-code', title: 'Fix the bug', state: 'done', linkedBy: 'cwd', updatedAt: new Date(), open: false };
-  return { key: name, worktree: { path: root, adminDir: gitDir }, chats: [chat], windowOpen: !!o.windowOpen, heartbeat: o.windowOpen ? { env: 'local' } : undefined } as unknown as Workstream;
+  return {
+    key: name,
+    worktree: { path: root, adminDir: gitDir },
+    chats: [chat],
+    windowOpen: !!o.windowOpen,
+    heartbeat: o.windowOpen ? { env: 'local' } : undefined,
+  } as unknown as Workstream;
 }
 
 /** Every transcript file under Claude Code's projects. */

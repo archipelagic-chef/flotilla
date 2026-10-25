@@ -2,8 +2,7 @@ import type { BacklogPriority, BacklogStatus } from '../backlog';
 
 /** A connection to an issue tracker whose issues show in the backlog next to the local items. */
 export type IntegrationConfig =
-  | { kind: 'jira'; id: string; site: string; email: string; jql: string }
-  | { kind: 'github'; id: string; owner: string; repo: string };
+  { kind: 'jira'; id: string; site: string; email: string; jql: string } | { kind: 'github'; id: string; owner: string; repo: string };
 
 /** An issue from a tracker, as the backlog lists it. */
 export interface RemoteIssue {
@@ -87,7 +86,10 @@ export interface IssueSource {
 }
 
 /** fetch, injectable for tests. */
-export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: 'manual' | 'follow' }) => Promise<{
+export type Fetch = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: 'manual' | 'follow' },
+) => Promise<{
   ok: boolean;
   status: number;
   statusText: string;

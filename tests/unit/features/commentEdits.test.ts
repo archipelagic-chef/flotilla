@@ -1,10 +1,29 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { addItem } from '../../../src/features/backlog/backlog';
-import { answeredBy, deleteEntry, editable, editEntry, entryEdit, showsDeleted } from '../../../src/features/backlog/commentEdits';
+import {
+  answeredBy,
+  deleteEntry,
+  editable,
+  editEntry,
+  entryEdit,
+  showsDeleted,
+} from '../../../src/features/backlog/commentEdits';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { entryAnchors, entryThreads, formatTicket, parseTicket, replyLine, type TicketEntry } from '../../../src/features/backlog/ticket';
+import {
+  entryAnchors,
+  entryThreads,
+  formatTicket,
+  parseTicket,
+  replyLine,
+  type TicketEntry,
+} from '../../../src/features/backlog/ticket';
 import { initRepo, removeDir } from '../../helpers/gitRepo';
 
 const entry = (date: string, author: string, body = 'Text.'): TicketEntry => ({ date, author, body });

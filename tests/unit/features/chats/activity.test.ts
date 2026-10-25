@@ -1,8 +1,21 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { parseTranscript, readTranscript, transcriptPath } from '../../../../src/features/chats/chats';
-import { DEFAULT_STUCK_RULES, health, nowLine, progress, statusLine, toolPhrase, type AgentActivity } from '../../../../src/features/chats/activity';
+import {
+  type AgentActivity,
+  DEFAULT_STUCK_RULES,
+  health,
+  nowLine,
+  progress,
+  statusLine,
+  toolPhrase,
+} from '../../../../src/features/chats/activity';
 import { makeTempDir, removeDir } from '../../../helpers/gitRepo';
 
 const T0 = '2026-10-24T10:00:00.000Z';
@@ -10,10 +23,11 @@ const at = (min: number, sec = 0) => new Date(Date.parse(T0) + min * 60_000 + se
 const reply = (content: unknown[], timestamp = T0, extra: object = {}) =>
   JSON.stringify({ type: 'assistant', timestamp, cwd: '/w', message: { id: `m${Math.random()}`, model: 'claude-opus-5-5', content }, ...extra });
 const tool = (id: string, name: string, input: object) => ({ type: 'tool_use', id, name, input });
-const result = (id: string, error = false) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: error }] } });
+const result = (id: string, error = false) =>
+  JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: error }] } });
 const activityOf = (lines: string[]) => parseTranscript('s', lines.join('\n'), new Date()).activity;
 
-describe("reading what an agent is doing from its transcript", () => {
+describe('reading what an agent is doing from its transcript', () => {
   it('gives the tool call running, with its main argument and since when', () => {
     const a = activityOf([reply([{ type: 'text', text: 'Now the tests.\nThen the build.' }, tool('t1', 'Bash', { command: 'npm test' })], at(0))]);
     expect(a).toMatchObject({ tool: { id: 't1', name: 'Bash', detail: 'npm test', since: at(0) }, thoughts: ['Now the tests.'] });
@@ -31,7 +45,11 @@ describe("reading what an agent is doing from its transcript", () => {
   it('keeps the latest todo list and its progress', () => {
     const todos = (done: number) =>
       tool(`w${done}`, 'TodoWrite', {
-        todos: ['Read', 'Build', 'Test'].map((t, n) => ({ content: t, activeForm: `${t}ing`, status: n < done ? 'completed' : n === done ? 'in_progress' : 'pending' })),
+        todos: ['Read', 'Build', 'Test'].map((t, n) => ({
+          content: t,
+          activeForm: `${t}ing`,
+          status: n < done ? 'completed' : n === done ? 'in_progress' : 'pending',
+        })),
       });
     const a = activityOf([reply([todos(0)]), result('w0'), reply([todos(2)])]);
     expect(a!.todos).toHaveLength(3);

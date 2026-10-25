@@ -4,13 +4,13 @@ import {
   parseVerdict,
   readyReport,
   reviewerPrompt,
+  type ReviewState,
   saysReadyForReview,
   saysWaitingForUser,
   userAnswer,
   userReviewBody,
   userRevisionPrompt,
   verdictReport,
-  type ReviewState,
 } from '../../../src/features/backlog/review';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
@@ -48,14 +48,22 @@ describe('review loop', () => {
   });
 
   it("names the reviewer and the item first in the reviewer's prompt", () => {
-    const prompt = reviewerPrompt({ item: { id: 'BL-1', title: 'SSO' }, reviewer: 'Vega-2', implementer: 'Nova-7', ticket: '/t/BL-1.md', branch: 'feature/BL-1', base: 'main', round: 2 });
+    const prompt = reviewerPrompt({
+      item: { id: 'BL-1', title: 'SSO' },
+      reviewer: 'Vega-2',
+      implementer: 'Nova-7',
+      ticket: '/t/BL-1.md',
+      branch: 'feature/BL-1',
+      base: 'main',
+      round: 2,
+    });
     expect(prompt.startsWith('You are agent Vega-2, working on backlog item BL-1:')).toBe(true);
     expect(prompt).toMatch(/Round 2/);
     expect(prompt).toMatch(/Verdict: changes requested/);
     expect(prompt).toMatch(/Start the entry with your verdict/);
   });
 
-  it('has the reviewer run the ticket\'s run block when it can headless, and say what it gave', () => {
+  it("has the reviewer run the ticket's run block when it can headless, and say what it gave", () => {
     const args = { item: { id: 'BL-1', title: 'SSO' }, reviewer: 'Vega-2', ticket: '/t/BL-1.md', branch: 'feature/BL-1', base: 'main' };
     for (const round of [1, 2]) {
       const prompt = reviewerPrompt({ ...args, round });
@@ -68,7 +76,10 @@ describe('review loop', () => {
       expect(prompt).toMatch(/git status/);
     }
     // Round 2 drops only the first paragraph, so the run instruction stays in it.
-    const later = reviewerPrompt({ ...args, round: 2 }).split('\n\n').slice(1).join('\n\n');
+    const later = reviewerPrompt({ ...args, round: 2 })
+      .split('\n\n')
+      .slice(1)
+      .join('\n\n');
     expect(later).toMatch(/run block/);
   });
 

@@ -36,7 +36,12 @@ export function entryEdit(body: string): EntryEdit {
   const m = MARK.exec(body);
   const rest = m ? body.slice(0, m.index).trim() : body.trim();
   const reply = parseReply(rest);
-  const replyLine = reply ? rest.split(/\r?\n/).find((l) => l.trim() !== '')!.trim() : undefined;
+  const replyLine = reply
+    ? rest
+        .split(/\r?\n/)
+        .find((l) => l.trim() !== '')!
+        .trim()
+    : undefined;
   const text = reply ? reply.text : rest;
   if (!m) return { ...(replyLine ? { replyLine } : {}), text };
   return { ...(replyLine ? { replyLine } : {}), text: m[1] === 'deleted' ? '' : text, [m[1]]: m[2] };

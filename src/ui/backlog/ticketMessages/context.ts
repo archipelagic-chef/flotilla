@@ -14,7 +14,7 @@ export interface MessageContext {
   panels: TicketPanels;
 }
 
-/** Handlers of a group of a ticket tab's messages, by type. */
-export type Handlers = {
-  [T in TicketWebviewMessage['type']]?: (c: MessageContext, m: Extract<TicketWebviewMessage, { type: T }>) => Promise<void>;
+/** The handlers of a group of a ticket tab's messages (declared in its <group>.messages.ts): one for each of its types. */
+export type Handlers<M extends TicketWebviewMessage> = {
+  [T in M['type']]: (c: MessageContext, m: Extract<M, { type: T }>) => Promise<void>;
 };

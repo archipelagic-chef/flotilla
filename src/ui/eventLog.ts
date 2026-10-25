@@ -18,7 +18,13 @@ const SPEND_SCAN_MS = 5 * 60_000;
  * once, and rolls months older than a year up into their totals, a minute after it opens and then daily. It reads
  * what the chats spent from their transcripts then, and every few minutes (the first time, all of their history).
  */
-export function startEventLog(o: { commonDir: string; mainRoot: string; backlog: LocalBacklog; isLeader: () => boolean; output: vscode.OutputChannel }): vscode.Disposable {
+export function startEventLog(o: {
+  commonDir: string;
+  mainRoot: string;
+  backlog: LocalBacklog;
+  isLeader: () => boolean;
+  output: vscode.OutputChannel;
+}): vscode.Disposable {
   setEventLog(o.commonDir, (line) => o.output.appendLine(line));
   const started = new Date();
   const upkeep = async () => {

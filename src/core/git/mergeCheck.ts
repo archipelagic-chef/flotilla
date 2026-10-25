@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { GitError, getGitVersion, runGit, runGitBytes, versionAtLeast } from './gitCli';
+import {
+  getGitVersion,
+  GitError,
+  runGit,
+  runGitBytes,
+  versionAtLeast,
+} from './gitCli';
 
 /**
  * Whether merging one commit into another would conflict, without touching a worktree or the repository's index:

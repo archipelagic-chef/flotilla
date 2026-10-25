@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { mayStartNow, ordinal, pauseOrder, prioritizeAction, StartQueue, type WaitingStart } from '../../../src/features/backlog/agentQueue';
+import {
+  mayStartNow,
+  ordinal,
+  pauseOrder,
+  prioritizeAction,
+  StartQueue,
+  type WaitingStart,
+} from '../../../src/features/backlog/agentQueue';
 
 const wait = (id: string, kind: WaitingStart<string>['kind'], manual = false): WaitingStart<string> => ({
   id,
@@ -22,7 +29,7 @@ describe('the agent queue', () => {
     expect(q.ordered().map((w) => w.id)).toEqual(['BL-4', 'BL-6', 'BL-2', 'BL-5', 'BL-1', 'BL-3']);
   });
 
-  it('numbers an item\'s place in that order, from one', () => {
+  it("numbers an item's place in that order, from one", () => {
     const q = new StartQueue<string>();
     q.add(wait('BL-1', 'new'));
     q.add(wait('BL-2', 'review'));
@@ -78,7 +85,7 @@ describe('admitting a start', () => {
 });
 
 describe('replies, and what waits first', () => {
-  it('puts the user\'s replies before reviews, resumes and new tickets, first come first served within', () => {
+  it("puts the user's replies before reviews, resumes and new tickets, first come first served within", () => {
     const q = new StartQueue<string>();
     q.add(wait('BL-1', 'new'));
     q.add(wait('BL-2', 'review'));
@@ -148,6 +155,18 @@ describe('the agent to pause', () => {
 
 describe('the ordinal of a place', () => {
   it('reads 1st, 2nd, 3rd, then 4th, and 11th to 13th as th', () => {
-    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '101st', '111th']);
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111].map(ordinal)).toEqual([
+      '1st',
+      '2nd',
+      '3rd',
+      '4th',
+      '11th',
+      '12th',
+      '13th',
+      '21st',
+      '22nd',
+      '101st',
+      '111th',
+    ]);
   });
 });

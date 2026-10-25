@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { agentGuide } from '../../../src/features/backlog/inbox';
-import { reviewNotes, reviewerPrompt, showNotes, userRevisionPrompt } from '../../../src/features/backlog/review';
+import {
+  reviewerPrompt,
+  reviewNotes,
+  showNotes,
+  userRevisionPrompt,
+} from '../../../src/features/backlog/review';
 import { REPORT_FORMAT } from '../../../src/features/backlog/report';
 import { parseFileLink } from '../../../src/features/backlog/ticket';
 
@@ -42,7 +47,7 @@ describe('review notes', () => {
     expect(REPORT_FORMAT).toContain('```mermaid block');
   });
 
-  it("have the reviewer ask for something to see when a UI change has none", () => {
+  it('have the reviewer ask for something to see when a UI change has none', () => {
     for (const round of [1, 2]) {
       const prompt = reviewerPrompt({ item: { id: 'BL-2', title: 'x' }, reviewer: 'Vega-2', ticket: '/t/BL-2.md', branch: 'b', base: 'main', round });
       expect(prompt).toContain('If the work changes what the user sees (the UI), the report must show it');

@@ -1,8 +1,8 @@
 import { priorityFromName, type BacklogStatus } from '../backlog';
 import {
-  fetchJson,
   type CreateTarget,
   type Fetch,
+  fetchJson,
   type IntegrationConfig,
   type IssueSource,
   type RemoteDetails,
@@ -134,12 +134,21 @@ export class JiraSource implements IssueSource {
       description: i.renderedFields?.description ?? '',
       format: 'html',
       descriptionText: i.fields.description ?? '',
-      comments: raw.map((c, n) => ({ author: c.author?.displayName ?? 'Someone', date: c.created, body: rendered[n]?.body ?? c.body, format: rendered[n] ? 'html' : 'markdown' })),
+      comments: raw.map((c, n) => ({
+        author: c.author?.displayName ?? 'Someone',
+        date: c.created,
+        body: rendered[n]?.body ?? c.body,
+        format: rendered[n] ? 'html' : 'markdown',
+      })),
     };
   }
 
   async comment(id: string, text: string): Promise<void> {
-    await fetchJson(this.fetch, `${this.site}/rest/api/2/issue/${encodeURIComponent(id)}/comment`, { method: 'POST', headers: this.headers(), body: { body: text } });
+    await fetchJson(this.fetch, `${this.site}/rest/api/2/issue/${encodeURIComponent(id)}/comment`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: { body: text },
+    });
   }
 
   private issueUrl(id: string, rest = ''): string {
@@ -185,19 +194,22 @@ export class JiraSource implements IssueSource {
 
   /** The projects issues can be created in. */
   async projects(): Promise<Array<{ key: string; name: string }>> {
-    const out = await fetchJson<{ values?: Array<{ key: string; name: string }> }>(this.fetch, `${this.site}/rest/api/2/project/search?maxResults=100&orderBy=name`, {
-      headers: this.headers(),
-    });
+    const out = await fetchJson<{ values?: Array<{ key: string; name: string }> }>(
+      this.fetch,
+      `${this.site}/rest/api/2/project/search?maxResults=100&orderBy=name`,
+      {
+        headers: this.headers(),
+      },
+    );
     return out?.values ?? [];
   }
 
   /** A project's issue types (not sub-tasks, which need a parent). */
   async issueTypes(project: string): Promise<Array<{ id: string; name: string }>> {
-    const out = await fetchJson<{ issueTypes?: Array<{ id: string; name: string; subtask?: boolean }>; values?: Array<{ id: string; name: string; subtask?: boolean }> }>(
-      this.fetch,
-      `${this.site}/rest/api/2/issue/createmeta/${encodeURIComponent(project)}/issuetypes`,
-      { headers: this.headers() },
-    );
+    const out = await fetchJson<{
+      issueTypes?: Array<{ id: string; name: string; subtask?: boolean }>;
+      values?: Array<{ id: string; name: string; subtask?: boolean }>;
+    }>(this.fetch, `${this.site}/rest/api/2/issue/createmeta/${encodeURIComponent(project)}/issuetypes`, { headers: this.headers() });
     return (out?.issueTypes ?? out?.values ?? []).filter((t) => !t.subtask).map(({ id, name }) => ({ id, name }));
   }
 
@@ -219,7 +231,9 @@ export class JiraSource implements IssueSource {
     const created = await fetchJson<{ key: string }>(this.fetch, `${this.site}/rest/api/2/issue`, {
       method: 'POST',
       headers: this.headers(),
-      body: { fields: { project: { key: target.project }, issuetype: { id: target.issueType }, summary: title, ...(description.trim() ? { description } : {}) } },
+      body: {
+        fields: { project: { key: target.project }, issuetype: { id: target.issueType }, summary: title, ...(description.trim() ? { description } : {}) },
+      },
     });
     return { id: created.key, title, status: 'todo', statusName: '', url: `${this.site}/browse/${created.key}`, source: this.config.id };
   }

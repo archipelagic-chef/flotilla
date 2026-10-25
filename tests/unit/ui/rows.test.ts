@@ -7,15 +7,17 @@ const commit = (hash: string) => ({ hash, subject: hash }) as CommitView;
 describe('history rows', () => {
   it('lists the commits, and an expanded one with its details and its files', () => {
     const commits = [commit('a'), commit('b')];
-    const files = (hash: string) => (hash === 'b' ? { files: [{ path: 'x.ts', kind: 'modified' as const }, { path: 'y.ts', kind: 'added' as const }] } : undefined);
+    const files = (hash: string) =>
+      hash === 'b'
+        ? {
+            files: [
+              { path: 'x.ts', kind: 'modified' as const },
+              { path: 'y.ts', kind: 'added' as const },
+            ],
+          }
+        : undefined;
     expect(historyRows(commits, new Set(), files).map((r) => r.key)).toEqual(['commit:a', 'commit:b']);
-    expect(historyRows(commits, new Set(['b']), files).map((r) => r.key)).toEqual([
-      'commit:a',
-      'commit:b',
-      'details:b',
-      'file:b:x.ts',
-      'file:b:y.ts',
-    ]);
+    expect(historyRows(commits, new Set(['b']), files).map((r) => r.key)).toEqual(['commit:a', 'commit:b', 'details:b', 'file:b:x.ts', 'file:b:y.ts']);
   });
 });
 

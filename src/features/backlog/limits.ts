@@ -34,7 +34,8 @@ const JUST_PAST_MS = 5 * 60_000;
 const SAID_MAX = 200;
 
 /** The plan's limits, in Claude Code's wordings. */
-const USAGE = /usage limit|limit reached|hit your (?:[\w-]+ )?limit|\b(?:session|weekly|daily|5-hour|opus|sonnet) limit|limit will reset|out of (?:extra )?usage/i;
+const USAGE =
+  /usage limit|limit reached|hit your (?:[\w-]+ )?limit|\b(?:session|weekly|daily|5-hour|opus|sonnet) limit|limit will reset|out of (?:extra )?usage/i;
 const OVERLOADED = /overloaded|\b529\b/i;
 const RATE = /rate.?limit|\b429\b|too many requests/i;
 
@@ -45,7 +46,15 @@ function zonedTime(y: number, mo: number, d: number, h: number, mi: number, zone
   const guess = new Date(y, mo, d, h, mi);
   if (!zone) return guess;
   try {
-    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
     // How the zone's clock differs from the local one at that moment, applied once (and once more across a DST change).
     let at = guess;
     for (let i = 0; i < 2; i++) {
@@ -107,7 +116,12 @@ function saidText(output: string, wording: RegExp): string | undefined {
   let text = line.trim();
   try {
     const j = JSON.parse(text) as { result?: unknown; error?: { message?: unknown } | unknown };
-    const said = typeof j.result === 'string' ? j.result : typeof (j.error as { message?: unknown })?.message === 'string' ? (j.error as { message: string }).message : undefined;
+    const said =
+      typeof j.result === 'string'
+        ? j.result
+        : typeof (j.error as { message?: unknown })?.message === 'string'
+          ? (j.error as { message: string }).message
+          : undefined;
     if (said && wording.test(said)) text = said;
   } catch {
     // Not JSON: the line as it is.

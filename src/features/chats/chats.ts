@@ -1,7 +1,12 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { noteReply, noteResults, waitsForResult, type AgentActivity } from './activity';
+import {
+  type AgentActivity,
+  noteReply,
+  noteResults,
+  waitsForResult,
+} from './activity';
 
 export type ChatSource = 'claude-code';
 export type ChatState = 'working' | 'waiting-for-input' | 'done' | 'ended';
@@ -514,7 +519,7 @@ async function readLines(handle: fs.FileHandle, from: number, to: number, onLine
   const buf = Buffer.alloc(Math.min(CHUNK_BYTES, Math.max(0, to - from)));
   let consumed = from;
   let pending: Buffer[] = [];
-  for (let pos = from; pos < to; ) {
+  for (let pos = from; pos < to;) {
     const { bytesRead } = await handle.read(buf, 0, Math.min(buf.length, to - pos), pos);
     if (bytesRead === 0) break;
     const data = buf.subarray(0, bytesRead);
@@ -722,7 +727,12 @@ export function copyIsUnchanged(copy: string, original: string): boolean {
  * still in its worktree's project and the copy wasn't continued, the copy goes and the worktree's record points back
  * at the original. Returns the chats put back.
  */
-export async function removeChatCopies(o: { root: string; gitDir: string; worktrees: readonly { root: string; gitDir: string }[]; home?: string }): Promise<string[]> {
+export async function removeChatCopies(o: {
+  root: string;
+  gitDir: string;
+  worktrees: readonly { root: string; gitDir: string }[];
+  home?: string;
+}): Promise<string[]> {
   const home = o.home ?? claudeHome();
   const restored: string[] = [];
   for (const w of o.worktrees) {
