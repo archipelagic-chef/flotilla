@@ -340,3 +340,134 @@ export function gapStats(ats, moves) {
   const at = (p) => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
   return { median: at(0.5), p90: at(0.9), count: gaps.length };
 }
+
+/**
+ * A settings file's object, read as VS Code reads it: JSON with comments and trailing commas. Undefined when it's not
+ * that, or not an object.
+ */
+export function parseJsonc(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      const from = i;
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
+      out += text.slice(from, i + 1);
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 1;
+      out += ' ';
+    } else if (c === ',' && /^\s*(\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*[}\]]/.test(text.slice(i + 1))) {
+      // A trailing comma (outside strings: those are copied whole above).
+    } else out += c;
+  }
+  try {
+    const parsed = JSON.parse(out);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The files a demo plays from the build. */
+export const BUILT = ['extension.js', 'webview.js', 'ticket.js'].map((f) => path.join('dist', f));
+
+/**
+ * Why the build is behind the sources (a file of dist/ missing, or one in src/ changed since), so the recorder builds
+ * first: an old build plays an old sidebar, whose elements the demo's steps may not find. Undefined when it's current.
+ */
+export function staleBuild(root) {
+  const missing = BUILT.find((f) => !fs.existsSync(path.join(root, f)));
+  if (missing) return `${missing} is missing`;
+  const builtAt = Math.min(...BUILT.map((f) => fs.statSync(path.join(root, f)).mtimeMs));
+  const src = path.join(root, 'src');
+  const changed = fs.readdirSync(src, { recursive: true }).find((f) => fs.statSync(path.join(src, f)).mtimeMs > builtAt);
+  return changed ? `src/${changed} changed since the last build` : undefined;
+}
+
+/**
+ * Why a step failed, in a line: Playwright's own errors when the window went away (a crash, or VS Code closing) say
+ * so, since theirs ("reading '_object'", "Target closed") don't.
+ */
+export function failureReason(error) {
+  const message = String(error?.message ?? error).split('\n')[0];
+  if (/reading '_object'|Target crashed|Target page, context or browser has been closed|Target closed/.test(message)) {
+    return `the VS Code window closed or crashed (${message})`;
+  }
+  return message;
+}
+
+/** The words a selector looks for: its quoted texts, classes, ids and attribute values, lowercased. */
+function selectorWords(selector) {
+  return [...new Set(selector.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && !['has', 'text', 'aria', 'label', 'nth', 'not', 'button', 'div', 'span', 'input'].includes(w)))];
+}
+
+/**
+ * The visible elements (`{ tag, text, label, classes }`) most like what a selector looks for, best first, as lines to
+ * print when a step can't find it: those sharing the most of its words (or their starts), else the first ones.
+ */
+export function nearestElements(selector, elements, count = 8) {
+  const words = selectorWords(selector);
+  const scored = elements.map((element) => {
+    const hay = [element.label, element.text, element.classes].filter(Boolean).join(' ').toLowerCase();
+    // A word found whole counts most; its start (a typo, a plural) still counts.
+    return { element, score: words.reduce((sum, w) => sum + (hay.includes(w) ? 2 : w.length > 4 && hay.includes(w.slice(0, Math.max(4, w.length - 2))) ? 1 : 0), 0) };
+  });
+  const matching = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
+  const picked = (matching.length ? matching : scored.filter((s) => s.element.label || s.element.text)).slice(0, count);
+  return picked.map(({ element: { tag, text, label, classes } }) => {
+    const parts = [tag + (classes ? `.${classes.trim().split(/\s+/).slice(0, 3).join('.')}` : '')];
+    if (label) parts.push(`aria-label="${label}"`);
+    if (text && text !== label) parts.push(JSON.stringify(text.length > 60 ? `${text.slice(0, 57)}…` : text));
+    return parts.join(' ');
+  });
+}
+
+/** A size in bytes, as "512 KB" or "1.4 MB". */
+function size(bytes) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * The recorder's last line, for an agent to read: `{ saved, bytes, ms }` when it was recorded, `{ checked, ms }` when
+ * a check passed every step, or `{ step, reason, screenshot }` when it failed.
+ */
+export function resultLine(result) {
+  if (result.saved) return `Demo saved: ${result.saved} (${size(result.bytes)}, ${(result.ms / 1000).toFixed(1)} s)`;
+  if (result.checked !== undefined) return `Demo checked: all ${result.checked} steps passed (${(result.ms / 1000).toFixed(1)} s). Record it once now.`;
+  const at = result.step ? `${result.step}: ` : '';
+  return `Demo failed: ${at}${result.reason}${result.screenshot ? ` (screenshot: ${result.screenshot})` : ''}`;
+}
+
+/**
+ * Makes the demo profile's settings file plain JSON, as the profile's writer reads it: one with comments or trailing
+ * commas is rewritten without them (`rewritten`), one that isn't even that is moved aside to `<file>.broken` and the
+ * profile starts afresh (`moved`: the demo profile is the recorder's own, never the user's). `kept` when it was plain.
+ */
+export function plainSettings(file) {
+  if (!fs.existsSync(file)) return 'kept';
+  const text = fs.readFileSync(file, 'utf8');
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return 'kept';
+  } catch {
+    // Read as JSON with comments below.
+  }
+  const settings = parseJsonc(text);
+  if (settings) {
+    fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+    return 'rewritten';
+  }
+  fs.renameSync(file, `${file}.broken`);
+  return 'moved';
+}
+
+/** Whether the command palette's row (its aria-label) is the command a step typed: it has every word typed. */
+export function commandMatches(typed, label) {
+  if (!label) return false;
+  const words = label.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  return String(typed).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).every((w) => words.includes(w));
+}

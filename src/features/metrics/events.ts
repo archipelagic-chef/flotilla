@@ -54,6 +54,10 @@ export interface EventData {
   'click-waited': { button: string; ms: number };
   'test-run': { ms: number; waitMs: number; full: boolean; ok: boolean; slots: number };
   'demo-recorded': { name: string; frames: number; ms: number; medianGapMs?: number; p90GapMs?: number };
+  /** A demo's dry run passed every step (BL-190). */
+  'demo-checked': { name: string; steps: number; ms: number };
+  /** A demo didn't record or check: at a step (its number), or before the first (the window, the build). */
+  'demo-failed': { name: string; mode: string; step?: number; reason: string };
 }
 
 export type EventKind = keyof EventData;
