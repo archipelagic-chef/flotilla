@@ -45,7 +45,7 @@ import {
 } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
-import { noteFinished } from './notes';
+import { noteFinished, showNoteSoon } from './notes';
 import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
@@ -333,6 +333,9 @@ export function App() {
           return;
         case 'tool':
           update((prev) => ({ ...prev, tool: m.tool }));
+          return;
+        case 'showNote':
+          showNoteSoon(m.id);
           return;
         case 'metricsView':
           setMetrics({ view: m.view });

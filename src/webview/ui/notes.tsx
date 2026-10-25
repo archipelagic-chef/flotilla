@@ -162,6 +162,12 @@ const cardId = (id: string) => `note-card-${id}`;
  * Goes to a note's card in the Notes lane (Answer in Needs you): scrolls to it, marks it a moment, and focuses its
  * first answer. Where the lane isn't shown (Working only), opens the note instead.
  */
+/** Shows the note once its card is there: the backlog tab may be rendering it (a second at most, then it opens the note). */
+export function showNoteSoon(id: string, tries = 20): void {
+  if (document.getElementById(cardId(id)) || tries <= 0) showNote(id);
+  else setTimeout(() => showNoteSoon(id, tries - 1), 50);
+}
+
 export function showNote(id: string): void {
   const card = document.getElementById(cardId(id));
   if (!card) return send({ type: 'note', op: 'open', id });

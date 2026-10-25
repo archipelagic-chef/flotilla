@@ -15,6 +15,7 @@ import {
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
 import { readSettings } from './settings';
+import type { NoteAgents } from './backlog/notes';
 import type { ReviewLoop } from './backlog/reviewLoop';
 
 /** How long needs are gathered before one notification says them all (`needsYou`). */
@@ -40,14 +41,18 @@ export class NeedsYouNotifier implements vscode.Disposable {
       backlog: LocalBacklog;
       repository: Repository<Workstream>;
       reviews: Pick<ReviewLoop, 'onDidChange'>;
+      notes: Pick<NoteAgents, 'views' | 'onDidChange'>;
       leader: Pick<Leader, 'isLeader'>;
       openTicket: (id: string) => void;
+      /** Shows the note's card in the backlog (where you answer it). */
+      openNote: (id: string) => void;
       openWorktree: (ws: Workstream, newWindow: boolean) => Promise<void>;
     },
   ) {
     this.subscriptions = [
       deps.repository.onDidChange(() => void this.refresh()),
       deps.reviews.onDidChange(() => void this.refresh()),
+      deps.notes.onDidChange(() => void this.refresh()),
       deps.backlog.watch(() => void this.refresh()),
     ];
     // The first list is a baseline: what was already there when the window opened isn't news.
@@ -79,7 +84,9 @@ export class NeedsYouNotifier implements vscode.Disposable {
       attention: ws.attention,
       current: ws.isCurrent,
     }));
-    const next = needsYouList(items, worktrees);
+    // Notes that can't be read right now ask nothing: the tickets and worktrees still count.
+    const notes = await this.deps.notes.views().catch(() => []);
+    const next = needsYouList(items, worktrees, notes);
     const fresh = newNeeds(this.previous, next);
     this.previous = new Set(next.map((n) => n.key));
     this.list = next;
@@ -117,6 +124,11 @@ export class NeedsYouNotifier implements vscode.Disposable {
       if (choice) this.deps.openTicket(id);
       return;
     }
+    if (n.note) {
+      const id = n.note.id;
+      if (await vscode.window.showInformationMessage(text, 'Open')) this.deps.openNote(id);
+      return;
+    }
     const ws = this.workstream(n);
     if (!ws?.worktree.path) return;
     const choice = await (isWarning(n.kind)
@@ -129,7 +141,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
     return this.deps.repository.current.find((ws) => ws.key === n.worktree?.key);
   }
 
-  /** The "Needs you" list: picking a ticket opens it, picking a worktree switches to it here. */
+  /** The "Needs you" list: picking a ticket or a note opens it, picking a worktree switches to it here. */
   async showList(): Promise<void> {
     await this.refresh();
     if (!this.list.length) {
@@ -138,7 +150,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
     }
     const pick = await vscode.window.showQuickPick(
       this.list.map((n) => ({
-        label: n.ticket ? `${n.ticket.id}  ${n.ticket.title}` : subject(n),
+        label: n.ticket ? `${n.ticket.id}  ${n.ticket.title}` : n.note ? `${n.note.id}  ${n.note.title}` : subject(n),
         description: phrase(n.kind),
         need: n,
       })),
@@ -146,6 +158,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
     );
     if (!pick) return;
     if (pick.need.ticket) return this.deps.openTicket(pick.need.ticket.id);
+    if (pick.need.note) return this.deps.openNote(pick.need.note.id);
     const ws = this.workstream(pick.need);
     if (ws?.worktree.path) await this.deps.openWorktree(ws, false);
   }

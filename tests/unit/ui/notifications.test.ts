@@ -9,12 +9,14 @@ import {
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { ReviewState } from '../../../src/features/backlog/review';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
+import type { NeedsYouNote } from '../../../src/features/needsYou';
 import { NeedsYouNotifier } from '../../../src/ui/notifications';
 
 const vs = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
   info: vi.fn(async (..._args: unknown[]) => undefined as string | undefined),
   warn: vi.fn(async (..._args: unknown[]) => undefined as string | undefined),
+  pick: vi.fn(async (items: unknown[]) => items[0] as unknown),
 }));
 
 vi.mock('vscode', () => {
@@ -31,7 +33,7 @@ vi.mock('vscode', () => {
   }
   return {
     EventEmitter,
-    window: { showInformationMessage: vs.info, showWarningMessage: vs.warn, showQuickPick: () => Promise.resolve(undefined) },
+    window: { showInformationMessage: vs.info, showWarningMessage: vs.warn, showQuickPick: vs.pick },
     workspace: { getConfiguration: () => ({ get: (key: string, fallback: unknown) => (key in vs.settings ? vs.settings[key] : fallback) }) },
   };
 });
@@ -48,9 +50,10 @@ function worktree(key: string, attention: string, isCurrent = false): Workstream
 }
 
 /** The notifier with fakes for the backlog, the worktrees and the leader; the test changes `state` and refreshes. */
-function harness(state: { items?: BacklogItem[]; worktrees?: Workstream[]; leader?: boolean } = {}) {
-  const s = { items: state.items ?? [], worktrees: state.worktrees ?? [], leader: state.leader ?? true };
+function harness(state: { items?: BacklogItem[]; worktrees?: Workstream[]; notes?: NeedsYouNote[]; leader?: boolean } = {}) {
+  const s = { items: state.items ?? [], worktrees: state.worktrees ?? [], notes: state.notes ?? [], leader: state.leader ?? true };
   const openTicket = vi.fn();
+  const openNote = vi.fn();
   const openWorktree = vi.fn(async () => undefined);
   const notifier = new NeedsYouNotifier({
     backlog: { read: async () => ({ items: s.items }), watch: () => ({ dispose() {} }) } as never,
@@ -61,16 +64,18 @@ function harness(state: { items?: BacklogItem[]; worktrees?: Workstream[]; leade
       onDidChange: () => ({ dispose() {} }),
     } as never,
     reviews: { onDidChange: () => ({ dispose() {} }) } as never,
+    notes: { views: async () => s.notes, onDidChange: () => ({ dispose() {} }) } as never,
     leader: {
       get isLeader() {
         return s.leader;
       },
     },
     openTicket,
+    openNote,
     openWorktree,
   });
   harnesses.push(notifier);
-  return { s, notifier, openTicket, openWorktree };
+  return { s, notifier, openTicket, openNote, openWorktree };
 }
 const harnesses: NeedsYouNotifier[] = [];
 
@@ -170,5 +175,20 @@ describe('NeedsYouNotifier', () => {
     expect(vs.info).toHaveBeenCalledTimes(1);
     expect(vs.info).toHaveBeenCalledWith('feature/b is waiting for input.', 'Show');
     expect(notifier.current).toHaveLength(2);
+  });
+
+  it('tells of a note whose agent starts asking, and opens the note from it and from the list', async () => {
+    vs.settings.notify = 'all';
+    const { s, notifier, openNote } = harness();
+    await notifier.refresh();
+    s.notes = [{ id: 'NOTE-3', title: 'Dark mode', status: 'asking', agent: 'Orbit-5' }];
+    vs.info.mockResolvedValueOnce('Open');
+    await notifier.refresh();
+    expect(vs.info).toHaveBeenCalledWith('NOTE-3 asks a question.', 'Open');
+    await vi.waitFor(() => expect(openNote).toHaveBeenCalledWith('NOTE-3'));
+    openNote.mockClear();
+    await notifier.showList();
+    expect(vs.pick.mock.calls[0][0]).toEqual([expect.objectContaining({ label: 'NOTE-3  Dark mode', description: 'asks a question' })]);
+    expect(openNote).toHaveBeenCalledWith('NOTE-3');
   });
 });

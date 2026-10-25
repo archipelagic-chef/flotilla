@@ -270,6 +270,8 @@ export type HostMessage =
   /** A replace finished; the webview searches again. */
   | { type: 'replaced'; count: number }
   | { type: 'tool'; tool: Tool }
+  /** Shows a note's card in the backlog (the notifications' "Needs you", BL-200). */
+  | { type: 'showNote'; id: string }
   /** Show an inline name box: a new file or folder in dir, or a rename of path. */
   | { type: 'edit'; key: string; kind: 'file' | 'folder'; dir: string }
   | { type: 'edit'; key: string; kind: 'rename'; path: string }

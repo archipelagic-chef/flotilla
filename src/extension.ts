@@ -429,8 +429,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     backlog,
     repository,
     reviews,
+    notes,
     leader,
     openTicket: (id) => void tickets.open(id),
+    openNote: (id) => void sidebar.showNote(id),
     openWorktree: (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow),
   });
   context.subscriptions.push(

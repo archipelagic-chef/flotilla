@@ -4,6 +4,7 @@ import type { ReviewState } from '../../../src/features/backlog/review';
 import {
   needsYouList,
   needsYouMessage,
+  type NeedsYouNote,
   type NeedsYouWorktree,
   newNeeds,
 } from '../../../src/features/needsYou';
@@ -20,7 +21,20 @@ function worktree(key: string, attention: NeedsYouWorktree['attention'], current
   return { key, label: `feature/${key}`, attention, current };
 }
 
+function note(id: string, extra: Partial<NeedsYouNote> = {}): NeedsYouNote {
+  return { id, title: `Note ${id}`, status: 'asking', agent: 'Orbit-5', ...extra };
+}
+
 describe('needsYouList', () => {
+  it('lists the notes whose agent asks, with the tickets that ask, and not those handled with another', () => {
+    const notes = [note('NOTE-2'), note('NOTE-3', { with: 'NOTE-2' }), note('NOTE-4', { status: 'open' }), note('NOTE-5', { status: 'handled' })];
+    const list = needsYouList([item('BL-1', { review: review('asking') }), item('BL-6', { review: review('yours') })], [], notes);
+    expect(list.map((n) => n.key)).toEqual(['asks:BL-1', 'asks:NOTE-2', 'review:BL-6']);
+    expect(list[1].note).toEqual({ id: 'NOTE-2', title: 'Note NOTE-2' });
+    expect(needsYouMessage([list[1]])).toBe('NOTE-2 asks a question.');
+    expect(needsYouMessage(needsYouList([], [], [note('NOTE-2'), note('NOTE-7')]))).toBe('2 notes need you: NOTE-2 and NOTE-7 ask questions.');
+  });
+
   it('lists the tickets waiting for the user, by kind', () => {
     const items = [
       item('BL-1', { review: review('yours') }),
