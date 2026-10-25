@@ -672,6 +672,40 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-17',
+    title: 'Show the attachment count on the card',
+    status: 'doing',
+    daysAgo: 1,
+    branch: 'feature/BL-17-show-the-attachment-count-on-the-card',
+    // Its agent stopped to go on once BL-7 is merged, which it is (Done): Resume is its main step, and goes on in its
+    // chat (BL-198's demo).
+    description: [
+      'A card says how many files are attached to its ticket.',
+      '',
+      '- [ ] The card shows "2 files" when two are attached.',
+      '',
+      'fake: wait 2s',
+    ].join('\n'),
+    review: { round: 0, state: 'asking', implementer: 'Lyra-3', reviewer: '', implementerSession: '0d6b8e54-7f9a-4cb3-8e4d-5a6b7c8d9e03' },
+    activity: [
+      {
+        ago: 30,
+        author: 'Agent Lyra-3',
+        body: [
+          "Waiting for BL-7: the drop that attaches files isn't on main yet, so there's nothing to count on the card.",
+          '',
+          'Needs from you: nothing. Resume me once BL-7 is merged.',
+        ].join('\n'),
+      },
+    ],
+    commits: [
+      {
+        message: 'BL-17: A place on the card for the attachment count',
+        files: { 'src/card.js': '// The card, with a place for its count.\nexport const card = { count: 0 };\n' },
+      },
+    ],
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */

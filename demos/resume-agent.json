@@ -1,0 +1,57 @@
+{
+  "title": "Resume an agent that waits for another ticket to merge",
+  "settings": {
+    "flotilla.agents.maxRunning": 6
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Show the attachment count on the card\"):has-text(\"BL-7 is merged: resume it\")"
+    },
+    {
+      "caption": "Its agent stopped until BL-7 is merged; BL-7 is: its card says so, with Resume"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".backlog-item:has-text(\"Show the attachment count on the card\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Show the attachment count on the card\")"
+    },
+    {
+      "waitFor": ".resume-after:has-text(\"BL-7\")"
+    },
+    {
+      "caption": "The ticket lists what it waits for; Resume is the main step, Start an Agent the other"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "click": ".review-panel button:has-text(\"Resume\")"
+    },
+    {
+      "caption": "Resume goes on in Lyra-3's chat, where it stopped"
+    },
+    {
+      "waitFor": "text=fake-work/BL-17.txt",
+      "timeout": 20000
+    },
+    {
+      "caption": "Lyra-3 went on where it stopped, and reported Ready for review"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
