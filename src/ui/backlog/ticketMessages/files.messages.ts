@@ -12,7 +12,10 @@ export type FilesMessage =
   | { type: 'expandChange'; group: number; path: string }
   /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
   | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
-  | { type: 'openAllChanges' }
+  /** Open All Changes: those the path filter leaves (filter, BL-174), else all. */
+  | { type: 'openAllChanges'; filter?: string }
+  /** Narrow its Changes to some of its commits (BL-174); none: all of its change again. */
+  | { type: 'narrowChanges'; commits: string[] }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
   /** Remove a worktree of the ticket (asks first, as Remove Worktree… does). */

@@ -368,11 +368,14 @@ export interface ChangeGroup {
  * combined (merged without a merge commit); none when it has no work yet.
  */
 export interface TicketChange {
-  stage: 'work' | 'merged' | 'commits' | 'none';
+  /** picked: narrowed to some of its commits in its Changes (BL-174). */
+  stage: 'work' | 'merged' | 'commits' | 'picked' | 'none';
   groups: ChangeGroup[];
   files: number;
   added: number;
   deleted: number;
+  /** The commits it's narrowed to, oldest first (stage picked). */
+  picked?: string[];
 }
 
 /** A line of a file's inline diff: its numbers on the left side (old) and the right (new), where it has them. */

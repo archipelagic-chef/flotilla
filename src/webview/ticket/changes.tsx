@@ -17,7 +17,9 @@ import {
   type ChangeRow,
   changeRows,
   type DiffRow,
+  filterChange,
   rowWindow,
+  sinceLastReview,
   withDiffs,
 } from './changeTree';
 import type { FullAt } from './diffView';
@@ -44,6 +46,7 @@ const STAGE: Record<string, string> = {
   work: 'Compared with main where its branches split off',
   merged: 'Its merge into main',
   commits: 'Its commits on main, combined',
+  picked: 'The commits picked, combined',
 };
 
 /**
@@ -55,7 +58,10 @@ const STAGE: Record<string, string> = {
  * (marked), and Back to Ticket in a diff editor's title bar comes back here too.
  */
 export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand: (at: FullAt) => void; marked?: string }) {
-  const change = ticket.changes;
+  /** The path filter (BL-174): it narrows the list and its counts here; the commits picked narrow them on the host. */
+  const [filter, setFilter] = useState('');
+  const whole = ticket.changes;
+  const change = useMemo(() => whole && filterChange(whole, filter), [whole, filter]);
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [scrollTop, setScrollTop] = useState(0);
   /** The file whose diff was opened last (marked), and one to scroll to once its row is there. */
@@ -89,15 +95,16 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
     send({ type: 'readChangeDiff', requestId, group, path });
   };
   // A new change (a commit, an edit in the worktree): the unfolded diffs are read again; the others when they unfold.
+  // (Not when the path filter changes: the diffs are the same.)
   useEffect(() => {
     setDiffs(new Map());
-    if (!change) return;
+    if (!whole) return;
     for (const key of unfolded) {
       const [g, ...rest] = key.split(':');
       const path = rest.join(':');
-      if (change.groups[Number(g)]?.files.some((f) => f.path === path)) read(key, Number(g), path);
+      if (whole.groups[Number(g)]?.files.some((f) => f.path === path)) read(key, Number(g), path);
     }
-  }, [change]);
+  }, [whole]);
   const rows = useMemo(() => (change ? withDiffs(changeRows(change, folded), unfolded, diffs) : []), [change, folded, unfolded, diffs]);
   const toggle = (key: string) => {
     const next = new Set(folded);
@@ -139,7 +146,7 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
         {change && change.files > 0 && (
           <ActionButton
             class="text-button"
-            message={{ type: 'openAllChanges' }}
+            message={{ type: 'openAllChanges', ...(filter.trim() ? { filter } : {}) }}
             working="Opening…"
             title="Open them all in the multi-file diff editor, beside the ticket"
           >
@@ -147,11 +154,16 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
           </ActionButton>
         )}
       </div>
+      {whole && (whole.files > 0 || whole.picked || filter) && ticket.commits.length + whole.files > 0 && (
+        <Narrow ticket={ticket} filter={filter} setFilter={setFilter} />
+      )}
       <div class="work">
         {!change ? (
           <div class="work-empty muted">Reading the changes…</div>
         ) : !change.files ? (
-          <div class="work-empty muted">No changes yet</div>
+          <div class="work-empty muted">
+            {filter.trim() ? 'No changed file matches the filter' : whole?.picked ? 'The commits picked change no files' : 'No changes yet'}
+          </div>
         ) : (
           <>
             {change.groups.length === 1 && <div class="changes-compared muted">{change.groups[0].compared}</div>}
@@ -177,6 +189,93 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Narrowing the Changes (BL-174): to some of the ticket's commits (newest first; "Since my last review" picks those
+ * after your last entry), and by path.
+ */
+function Narrow({ ticket, filter, setFilter }: { ticket: TicketView; filter: string; setFilter: (f: string) => void }) {
+  const picked = useMemo(() => new Set(ticket.changes?.picked ?? []), [ticket.changes]);
+  const [open, setOpen] = useState(false);
+  const picker = useRef<HTMLDivElement>(null);
+  // A click elsewhere closes the list.
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !picker.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  /** The commits asked for, until the change read from them comes. */
+  const [asked, setAsked] = useState<string[]>();
+  useEffect(() => setAsked(undefined), [ticket.changes]);
+  const since = useMemo(() => sinceLastReview(ticket.commits, ticket.activity), [ticket.commits, ticket.activity]);
+  const pick = (commits: string[]) => {
+    setAsked(commits);
+    send({ type: 'narrowChanges', commits });
+  };
+  const shown = asked ? new Set(asked) : picked;
+  const toggle = (hash: string) => {
+    const next = new Set(shown);
+    if (!next.delete(hash)) next.add(hash);
+    pick(ticket.commits.filter((c) => next.has(c.hash)).map((c) => c.hash));
+  };
+  const same = (list: string[]) => list.length === shown.size && list.every((h) => shown.has(h));
+  const label = !shown.size ? 'All commits' : same(since) ? 'Since my last review' : `${shown.size} commit${shown.size === 1 ? '' : 's'}`;
+  return (
+    <div class="changes-narrow">
+      {ticket.commits.length > 0 && (
+        <div class="changes-picker" ref={picker} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+          <button
+            class={`text-button${shown.size ? ' narrowed' : ''}`}
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            title="Show what some of its commits changed"
+          >
+            <i class="codicon codicon-git-commit" /> {label}
+            {asked && '…'} <i class={`codicon codicon-chevron-${open ? 'up' : 'down'}`} />
+          </button>
+          {open && (
+            <div class="changes-commits" role="menu">
+              <button class={`changes-commit${!shown.size ? ' on' : ''}`} onClick={() => pick([])}>
+                <i class="codicon codicon-git-compare" /> All of its change
+              </button>
+              <button
+                class={`changes-commit${shown.size && same(since) ? ' on' : ''}`}
+                onClick={() => pick(since)}
+                disabled={!since.length}
+                title={
+                  since.length
+                    ? `The ${since.length} commit${since.length === 1 ? '' : 's'} after your last entry in the ticket`
+                    : 'No commits since your last entry in the ticket'
+                }
+              >
+                <i class="codicon codicon-history" /> Since my last review{since.length > 0 && <span class="muted"> ({since.length})</span>}
+              </button>
+              {ticket.commits.map((c) => (
+                <label key={c.hash} class="changes-commit" title={`${c.subject}\n${c.author}, ${new Date(c.date).toLocaleString()}`}>
+                  <input type="checkbox" checked={shown.has(c.hash)} onChange={() => toggle(c.hash)} />
+                  <span class="muted commit-hash">{c.short}</span>
+                  <span class="change-name">{c.subject}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <span class="changes-filter">
+        <i class="codicon codicon-filter" />
+        <input
+          type="text"
+          value={filter}
+          placeholder="Filter by path (src/core *.test.ts)"
+          aria-label="Filter the changed files by path"
+          onInput={(e) => setFilter((e.currentTarget as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Escape' && setFilter('')}
+        />
+      </span>
+    </div>
   );
 }
 

@@ -143,6 +143,45 @@ async function commitsGroup(cwd: string, id: string, base: string): Promise<Chan
     .filter(([, , subject]) => own(subject ?? ''))
     .map(([hash, parents]) => ({ hash, parent: parents.split(' ').filter(Boolean)[0] ?? EMPTY_TREE }));
   if (!commits.length) return undefined;
+  const n = commits.length;
+  return commitsOf(cwd, commits, {
+    label: `${n} commit${n === 1 ? '' : 's'} of ${id}`,
+    compared: `${id}'s own ${n === 1 ? 'commit' : `${n} commits`} on ${baseName(base)}, combined (it was merged without a merge commit)`,
+  });
+}
+
+/**
+ * The change of some of the ticket's commits (BL-174): those picked in its Changes, combined as its own commits on main
+ * are (each file from before the first of them that touches it to the last), oldest first whatever the order picked.
+ */
+export async function pickedChange(cwd: string, hashes: readonly string[]): Promise<TicketChange> {
+  const log = hashes.length ? await runGit(['log', '--no-walk=unsorted', '--format=%H%x09%P', ...hashes, '--'], { cwd }) : '';
+  const parents = new Map(
+    log
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split('\t'))
+      .map(([hash, ps]) => [hash, ps?.split(' ').filter(Boolean)[0] ?? EMPTY_TREE] as const),
+  );
+  // Oldest first, as history has them (not by date: commits of the same second).
+  const order = parents.size ? (await runGit(['rev-list', '--topo-order', '-n', '5000', ...parents.keys(), '--'], { cwd })).split('\n') : [];
+  const sorted = order.filter((h) => parents.has(h));
+  const commits = [...new Set([...sorted, ...parents.keys()])].reverse().map((hash) => ({ hash, parent: parents.get(hash)! }));
+  const n = commits.length;
+  const g = n
+    ? await commitsOf(cwd, commits, {
+        label: `${n} commit${n === 1 ? '' : 's'} picked`,
+        compared: n === 1 ? `the commit ${short(commits[0].hash)} against its parent` : `the ${n} commits picked, combined`,
+      })
+    : undefined;
+  return {
+    ...(g?.files.length ? summarize('picked', [g]) : { stage: 'picked' as const, groups: [], files: 0, added: 0, deleted: 0 }),
+    picked: commits.map((c) => c.hash),
+  };
+}
+
+/** Commits (oldest first) as one group: their files combined, each counted from its first side to its last. */
+async function commitsOf(cwd: string, commits: ReadonlyArray<{ hash: string; parent: string }>, o: { label: string; compared: string }): Promise<ChangeGroup> {
   const changes = await Promise.all(commits.map((c) => runGit(['diff', '--name-status', '-z', '-M', c.parent, c.hash], { cwd }).then(parseNameStatus)));
   const files = combine(commits.map((c, i) => ({ ...c, changes: changes[i] })));
   // The counts from each file's first side to its last: files with the same two sides in one git call.
@@ -156,15 +195,7 @@ async function commitsGroup(cwd: string, id: string, base: string): Promise<Chan
     );
     for (const f of list) counted.push({ ...f, ...(counts.get(f.path) ?? { added: 0, deleted: 0 }) });
   }
-  const n = commits.length;
-  return group({
-    label: `${n} commit${n === 1 ? '' : 's'} of ${id}`,
-    dir: cwd,
-    left: commits[0].parent,
-    right: commits[n - 1].hash,
-    compared: `${id}'s own ${n === 1 ? 'commit' : `${n} commits`} on ${baseName(base)}, combined (it was merged without a merge commit)`,
-    files: counted,
-  });
+  return group({ ...o, dir: cwd, left: commits[0].parent, right: commits[commits.length - 1].hash, files: counted });
 }
 
 type Combined = FileChange & { left: string; right: string };

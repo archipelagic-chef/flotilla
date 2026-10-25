@@ -4,6 +4,7 @@ import { openCommit } from '../../openCommit';
 import { openChangeEntries } from '../../../core/diff/openDiff';
 import { fileDiff, WHOLE_FILE } from '../../../features/diffs/fileDiff';
 import type { FileDiff, TicketHostMessage } from '../../../webview/ticketProtocol';
+import { filterFiles } from '../../../webview/ticket/changeTree';
 import type { Handlers } from './context';
 import type { FilesMessage } from './files.messages';
 
@@ -68,9 +69,14 @@ export const filesHandlers: Handlers<FilesMessage> = {
           }));
     void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff } satisfies TicketHostMessage);
   },
-  openAllChanges: async ({ item, panels }) => {
+  narrowChanges: async ({ item, panels }, m) => {
+    panels.narrowChanges(item, m.commits);
+  },
+  openAllChanges: async ({ item, panels }, m) => {
     const { groups } = await panels.changesShown(item);
-    const entries = groups.flatMap((g) => g.files.map((f) => ({ worktreeDir: g.dir, change: f, leftRef: f.left ?? g.left, rightRef: f.right ?? g.right })));
+    const entries = groups.flatMap((g) =>
+      filterFiles(g.files, m.filter ?? '').map((f) => ({ worktreeDir: g.dir, change: f, leftRef: f.left ?? g.left, rightRef: f.right ?? g.right })),
+    );
     if (!entries.length) {
       void vscode.window.showInformationMessage(`${item.id} changes no files yet.`);
       return;

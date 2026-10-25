@@ -69,8 +69,10 @@ const byName = <T extends { name: string }>(a: T, b: T) => (a.name < b.name ? -1
  */
 export function changeRows(change: TicketChange, folded: ReadonlySet<string>): ChangeRow[] {
   const rows: ChangeRow[] = [];
-  const headers = change.groups.length > 1;
+  const headers = change.groups.filter((g) => g.files.length).length > 1;
   change.groups.forEach((g, group) => {
+    // A branch the path filter leaves nothing of (BL-174).
+    if (!g.files.length) return;
     const key = `${group}:`;
     const open = !folded.has(key);
     if (headers) rows.push({ kind: 'group', key, group, open });
@@ -161,6 +163,96 @@ export function fullRows(lines: readonly DiffLine[], shown: ReadonlySet<number>,
     i = j;
   }
   return rows;
+}
+
+/**
+ * The files a path filter leaves (BL-174): those whose path has each of its words (case aside); a word with "*" is a
+ * glob ("*" any characters but "/", "**" any). An empty filter leaves them all.
+ */
+export function filterFiles<F extends Pick<ChangedFile, 'path' | 'origPath'>>(files: readonly F[], filter: string): F[] {
+  const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [...files];
+  const tests = words.map((w) => {
+    if (!w.includes('*')) return (p: string) => p.includes(w);
+    const re = new RegExp(
+      w
+        .split(/(\*\*|\*)/)
+        .map((part) => (part === '**' ? '.*' : part === '*' ? '[^/]*' : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')))
+        .join(''),
+    );
+    return (p: string) => re.test(p);
+  });
+  return files.filter((f) => {
+    const paths = [f.path, ...(f.origPath ? [f.origPath] : [])].map((p) => p.toLowerCase());
+    return tests.every((t) => paths.some(t));
+  });
+}
+
+/** The change with only the files a path filter leaves, its counts theirs; its groups stay where they were (by index). */
+export function filterChange(change: TicketChange, filter: string): TicketChange {
+  if (!filter.trim()) return change;
+  const groups = change.groups.map((g) => {
+    const files = filterFiles(g.files, filter);
+    return {
+      ...g,
+      files,
+      added: files.reduce((n, f) => n + f.added, 0),
+      deleted: files.reduce((n, f) => n + f.deleted, 0),
+      uncommitted: files.filter((f) => f.uncommitted).length,
+    };
+  });
+  return {
+    ...change,
+    groups,
+    files: groups.reduce((n, g) => n + g.files.length, 0),
+    added: groups.reduce((n, g) => n + g.added, 0),
+    deleted: groups.reduce((n, g) => n + g.deleted, 0),
+  };
+}
+
+/**
+ * "Since my last review" (BL-174): the ticket's commits made after the user's last entry in its activity (a comment, a
+ * review's verdict), newest first as given; none when they've written nothing yet. Entries' dates are local
+ * ("YYYY-MM-DD HH:MM"), commits' ISO 8601.
+ */
+export function sinceLastReview(commits: ReadonlyArray<{ hash: string; date: string }>, activity: ReadonlyArray<{ author?: string; date?: string }>): string[] {
+  const own = activity.filter((e) => e.author === 'You' && e.date).map((e) => new Date(e.date!.replace(' ', 'T')).getTime());
+  const last = Math.max(...own.filter(Number.isFinite));
+  if (!Number.isFinite(last)) return [];
+  // Within the minute of the entry counts as before it: the entry's time has no seconds.
+  return commits.filter((c) => new Date(c.date).getTime() >= last + 60_000).map((c) => c.hash);
+}
+
+/**
+ * The changed file a link points at (BL-174): a path from the repository's root (as reports link them, "src/x.ts#L42",
+ * "src/x.ts:42", "./src/x.ts"), with the group it's in (the first that has it) and the line, if any. Web links, anchors
+ * and other files: none.
+ */
+export function changeLink(href: string, change: TicketChange | undefined): { group: number; path: string; line?: number } | undefined {
+  if (!change || !href || href.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(href)) return undefined;
+  let rest = href;
+  let line: number | undefined;
+  const hash = rest.indexOf('#');
+  if (hash >= 0) {
+    const m = /^L(\d+)/i.exec(rest.slice(hash + 1));
+    if (m) line = Number(m[1]);
+    rest = rest.slice(0, hash);
+  } else {
+    const m = /^(.*?):(\d+)(?:[:-]\d+)?$/.exec(rest);
+    if (m) {
+      rest = m[1];
+      line = Number(m[2]);
+    }
+  }
+  try {
+    rest = decodeURIComponent(rest);
+  } catch {
+    // As written.
+  }
+  const path = rest.replace(/^\.\//, '').replace(/^\/+/, '');
+  const group = change.groups.findIndex((g) => g.files.some((f) => f.path === path));
+  if (group < 0) return undefined;
+  return { group, path, ...(line ? { line } : {}) };
 }
 
 /** The letter of a file's change, as Source Control shows it. */

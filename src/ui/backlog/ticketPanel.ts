@@ -76,7 +76,7 @@ import { gatherAttachments, type FolderFile } from '../../features/backlog/attac
 import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
 import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
-import { ticketChange } from '../../features/diffs/ticketChange';
+import { pickedChange, ticketChange } from '../../features/diffs/ticketChange';
 import { focusBeside, TicketDiffs, type DiffOrigin } from './ticketDiffs';
 import { baseName, type MergeInfo } from '../../features/backlog/merged';
 import type { Merges } from './merges';
@@ -892,6 +892,16 @@ export class TicketPanels implements vscode.Disposable {
     })();
   }
 
+  /** The commits a ticket's Changes are narrowed to (BL-174), by ticket: none, all its change. */
+  private readonly picked = new Map<string, string[]>();
+
+  /** Narrows the ticket's Changes to some of its commits (none: all its change again), and sends them as they're read. */
+  narrowChanges(item: BacklogItem, commits: readonly string[]): void {
+    if (commits.length) this.picked.set(item.id, [...commits]);
+    else this.picked.delete(item.id);
+    this.refreshChanges(item);
+  }
+
   /** The ticket's change as its tab shows it (read now if it hasn't been yet). */
   async changesShown(item: BacklogItem): Promise<TicketChange> {
     return this.changeViews.get(item.id) ?? (await this.readChanges(item));
@@ -900,6 +910,8 @@ export class TicketPanels implements vscode.Disposable {
   /** What the ticket's work changes compared with main: its own branches (in their worktrees), else its merge. */
   async readChanges(item: BacklogItem): Promise<TicketChange> {
     const cwd = this.deps.mainRoot;
+    const picked = this.picked.get(item.id);
+    if (picked) return pickedChange(cwd, picked);
     const base = await resolveBase(cwd, readSettings().defaultBase);
     const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
     const worktrees = new Map(

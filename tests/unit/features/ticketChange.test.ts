@@ -7,7 +7,12 @@ import {
   it,
 } from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
-import { combine, parseNumstat, ticketChange } from '../../../src/features/diffs/ticketChange';
+import {
+  combine,
+  parseNumstat,
+  pickedChange,
+  ticketChange,
+} from '../../../src/features/diffs/ticketChange';
 import {
   git,
   initRepo,
@@ -151,6 +156,30 @@ describe('ticketChange', () => {
       added: 0,
       deleted: 0,
     });
+  });
+});
+
+describe('pickedChange', () => {
+  it('some of the commits: their files combined, counted from before the first to the last, in history’s order', async () => {
+    const r = repo();
+    const one = commit(r, 'BL-6: One', { 'src/a.ts': 'a\n'.repeat(9) + 'one\n', 'x.ts': 'x\n' });
+    const two = commit(r, 'BL-6: Two', { 'y.ts': 'y\ny\n' });
+    const three = commit(r, 'BL-6: Three', { 'src/a.ts': 'a\n'.repeat(8) + 'two\nthree\n' });
+
+    // The second round: what changed since the first commit, picked newest first.
+    const later = await pickedChange(r, [three, two]);
+    expect(later).toMatchObject({ stage: 'picked', picked: [two, three], files: 2, added: 4, deleted: 2 });
+    expect(brief(later.groups[0].files)).toEqual(['modified src/a.ts +2 -2', 'added y.ts +2 -0']);
+    expect(later.groups[0]).toMatchObject({ left: one, right: three, label: '2 commits picked' });
+
+    const first = await pickedChange(r, [one]);
+    expect(brief(first.groups[0].files)).toEqual(['modified src/a.ts +1 -1', 'added x.ts +1 -0']);
+    expect(first).toMatchObject({ files: 2, added: 2, deleted: 1 });
+  });
+
+  it('none picked: no files', async () => {
+    const r = repo();
+    expect(await pickedChange(r, [])).toMatchObject({ stage: 'picked', groups: [], files: 0, picked: [] });
   });
 });
 
