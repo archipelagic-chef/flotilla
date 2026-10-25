@@ -44,14 +44,15 @@ import type { Claim } from '../../features/backlog/ticketCheck';
 import { readSettings, stuckRules } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
-import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk } from './agentRunner';
+import { agentChoice, askModel, isRunningHeadless, isRunningInTerminal, memoryShortage, modelLevels, spawnAsk, summarizeAgent } from './agentRunner';
 import { heldBy, startedInTerminal } from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
 import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
 import { formatMemory } from '../../features/workstreams/memory';
 import { formatTokens, usageTip } from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
-import { readTranscript } from '../../features/chats/chats';
+import { readTranscript, transcriptPath } from '../../features/chats/chats';
+import { summaryWait, type AgentSummary } from '../../features/chats/summary';
 import type { Shaping } from './shaping';
 import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
 import { demoPath, demoRun, isReport, latestRun, parseRunBlocks, pickRunBlock, placedRunBlocks, withRunButtons } from '../../features/backlog/runBlocks';
@@ -976,6 +977,26 @@ export class TicketPanels implements vscode.Disposable {
     }
   }
 
+  /** The agents' status summaries (BL-180), by chat: in memory only, the latest of each. */
+  private readonly summaries = new Map<string, AgentSummary>();
+
+  /**
+   * Summarizes a ticket's working agent with a small model (BL-180): at most once a minute per agent (a click before
+   * then does nothing; the button says when). Returns once its answer is in; the message's post then shows it.
+   */
+  async summarize(id: string, session: string): Promise<void> {
+    if (summaryWait(this.summaries.get(session)) > 0) return;
+    const panel = this.panels.get(id);
+    const agent = panel && this.sentViews.get(panel)?.agents.find((a) => a.id === session);
+    const ws = agent && this.deps.repository.current.find((w) => w.key === agent.key);
+    const dir = ws?.chats.find((c) => c.id === session)?.cwd ?? ws?.worktree.path;
+    if (!dir) return;
+    const at = new Date().toISOString();
+    this.summaries.set(session, { at, running: true });
+    const answer = await summarizeAgent(transcriptPath(dir, session), { output: this.output() }).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+    this.summaries.set(session, { at, ...answer });
+  }
+
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
   readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
 
@@ -1033,6 +1054,7 @@ export class TicketPanels implements vscode.Disposable {
           reports: view.activity.filter((e) => sameAgent(entryAgent(e.author), c.agent)).length,
           ...(runs ? { runs } : {}),
           ...(halted ? { held: halted } : {}),
+          ...(this.summaries.has(c.id) ? { summary: this.summaries.get(c.id) } : {}),
         };
       });
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));

@@ -13,6 +13,7 @@ import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
 import type { AgentActivity, StuckRules } from '../features/chats/activity';
+import type { AgentSummary } from '../features/chats/summary';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
@@ -69,6 +70,8 @@ export type AgentChatView =
       tokens?: { label: string; tip: string; reRead: number };
       /** What it's doing, from its transcript (BL-175); `updated` is when it last wrote it. */
       activity?: AgentActivity;
+      /** Its status in two lines, from a small model (BL-180): the latest asked, or the one being written. */
+      summary?: AgentSummary;
     }
   /** Started, but Claude Code hasn't created the chat yet (its first message isn't sent). */
   | { pending: true; agent: string; headless?: boolean };
@@ -383,6 +386,8 @@ export type TicketWebviewMessage =
   | { type: 'agentEffort'; effort: AgentEffort | null }
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
+  /** Summarize a working agent's status with a small model (BL-180): at most once a minute per agent. */
+  | { type: 'summarize'; session: string }
   /** Open what a commit changed. */
   | { type: 'openCommit'; hash: string }
   /** Clean up the history of its branch; and the clean-up's actions. */

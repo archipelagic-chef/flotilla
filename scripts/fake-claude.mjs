@@ -12,6 +12,9 @@
 //   fake: limit 2m          its first run hits a usage limit that resets in 2 minutes; the resumed run goes on
 //   fake: crash             its first run dies without reporting; the resumed run goes on
 //
+// Run as Summarize runs it (a system prompt that summarizes "where a coding agent stands", the transcript on stdin), it
+// answers with two lines after a second: what the agent did last, and that nothing looks wrong.
+//
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
 // word by word over a few seconds, and stops (a second later) when it's interrupted.
 //
@@ -217,7 +220,19 @@ function chat() {
   });
 }
 
+/** Summarize (BL-180): two lines on the transcript's last tool call. */
+function summarize() {
+  let input = '';
+  process.stdin.on('data', (d) => (input += d));
+  process.stdin.on('end', () => {
+    const last = [...input.matchAll(/^Tool (\w+): (.*)$/gm)].at(-1);
+    const doing = last ? `It's working through its plan; last it ran ${last[1]} on ${last[2].slice(0, 60)}.` : "It's reading the ticket and the code.";
+    setTimeout(() => reply(`${doing}\nNothing looks wrong: its commands pass and it makes progress.`), 1000);
+  });
+}
+
 if (option('--input-format') === 'stream-json') chat();
+else if (/where a coding agent stands/.test(option('--system-prompt') ?? '')) summarize();
 else main().catch((e) => {
   process.stderr.write(`fake-claude: ${e instanceof Error ? e.message : String(e)}\n`);
   process.exitCode = 1;
