@@ -325,6 +325,8 @@ export type HostMessage =
     }
   /** The notes (BL-182), oldest first; sent at start and whenever they change. */
   | { type: 'notes'; notes: NoteView[] }
+  /** A note's action is finished (as a backlog action's is): a card's × shows working until then (BL-215). */
+  | { type: 'noteDone'; message: Extract<WebviewMessage, { type: 'note' }>; failed?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */

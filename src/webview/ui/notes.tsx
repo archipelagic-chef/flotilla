@@ -1,8 +1,37 @@
-import { useState } from 'preact/hooks';
-import type { NoteView } from '../protocol';
+import { useEffect, useState } from 'preact/hooks';
+import type { NoteView, WebviewMessage } from '../protocol';
 import { send } from './api';
 import { stopControlClick } from './cardClick';
 import './notes.css';
+
+type NoteMessage = Extract<WebviewMessage, { type: 'note' }>;
+
+/** The note actions sent and not done yet (the host's noteDone ends each), and who re-renders when that changes. */
+const pending = new Set<string>();
+const listeners = new Set<() => void>();
+const keyOf = (m: NoteMessage) => (m.op === 'new' ? 'new' : `${m.op}:${m.id}`);
+
+function act(m: NoteMessage): void {
+  pending.add(keyOf(m));
+  listeners.forEach((l) => l());
+  send(m);
+}
+
+/** The host is done with a note action (app.tsx calls it on noteDone). */
+export function noteFinished(m: NoteMessage): void {
+  pending.delete(keyOf(m));
+  listeners.forEach((l) => l());
+}
+
+function useWorking(key: string): boolean {
+  const [, render] = useState(0);
+  useEffect(() => {
+    const l = () => render((n) => n + 1);
+    listeners.add(l);
+    return () => void listeners.delete(l);
+  }, []);
+  return pending.has(key);
+}
 
 /** The limit a note's agent waits for (BL-203). */
 const LIMIT: Record<NonNullable<NoteView['waits']>['kind'], string> = {
@@ -80,17 +109,19 @@ export function answerNote(id: string): void {
 
 /** A note's × (BL-215): deletes it, with the notes handled with it, once you confirm (its agent stops). */
 function DeleteNote({ id }: { id: string }) {
+  const working = useWorking(`delete:${id}`);
   return (
     <button
       class="icon note-delete"
       title="Delete the note: its agent stops; the tickets it became stay"
       aria-label={`Delete ${id}`}
+      disabled={working}
       onClick={(e) => {
         e.stopPropagation();
-        send({ type: 'note', op: 'delete', id });
+        act({ type: 'note', op: 'delete', id });
       }}
     >
-      <i class="codicon codicon-close" />
+      <i class={`codicon codicon-${working ? 'loading codicon-modifier-spin' : 'close'}`} />
     </button>
   );
 }

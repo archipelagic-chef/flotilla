@@ -46,6 +46,7 @@ import {
 } from './search';
 import { Section, WorktreeHeader } from './section';
 import { BacklogView } from './backlog';
+import { noteFinished } from './notes';
 import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
@@ -392,6 +393,9 @@ export function App() {
           return;
         case 'notes':
           setNotes(m.notes);
+          return;
+        case 'noteDone':
+          noteFinished(m.message);
           return;
         case 'fold':
           update((prev) => ({ ...prev, collapsed: m.folded ? (stateRef.current.workstreams ?? []).map((w) => w.key) : [] }));

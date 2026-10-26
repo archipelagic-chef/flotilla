@@ -784,10 +784,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         return;
       }
-      case 'note':
-        await this.notes?.onMessage(m);
-        await this.postNotes();
+      case 'note': {
+        let failed = false;
+        try {
+          await this.notes?.onMessage(m);
+          await this.postNotes();
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          this.post({ type: 'noteDone', message: m, ...(failed ? { failed } : {}) });
+        }
         return;
+      }
       case 'folding':
         await vscode.commands.executeCommand('setContext', 'flotilla.canFold', m.canFold);
         await vscode.commands.executeCommand('setContext', 'flotilla.allFolded', m.allFolded);
