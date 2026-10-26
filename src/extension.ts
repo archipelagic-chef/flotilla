@@ -293,6 +293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     ci: sidebar.ci,
     showCi: (key) => sidebar.showCi(key),
+    githubApi: devGitHubApi(context.extensionMode),
   });
   context.subscriptions.push(tickets);
   sidebar.useTickets(tickets);

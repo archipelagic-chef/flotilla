@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
@@ -106,8 +108,8 @@ export class CiRuns implements vscode.Disposable {
   private acting = new Map<string, RunBusy>();
   /** Refreshes going on: every view shows it. */
   private refreshing = 0;
-  /** The worktrees a Run Workflow… goes on for. */
-  private startingWorkflow = new Set<string>();
+  /** What's being started on the worktrees: a Run Workflow… or a ticket's Run CI (BL-222), as "kind\nkey". */
+  private starting = new Set<string>();
 
   /**
    * post sends the views of every worktree to the sidebar; api, when set, is the fake GitHub (no sign-in then).
@@ -279,18 +281,19 @@ export class CiRuns implements vscode.Disposable {
   /**
    * Run Workflow… on a worktree (start: its dialogs and GitHub's dispatch; true when a run was started): its view shows
    * it from the click until the dialogs are done and, when a run was started, the runs are read again. Another click
-   * meanwhile does nothing.
+   * meanwhile does nothing. A ticket's Run CI (busy: runCi) goes the same way.
    */
-  async runWorkflow(key: string, start: () => Promise<boolean>): Promise<boolean> {
-    if (this.startingWorkflow.has(key)) return false;
-    this.startingWorkflow.add(key);
+  async runWorkflow(key: string, start: () => Promise<boolean>, busy: 'runWorkflow' | 'runCi' = 'runWorkflow'): Promise<boolean> {
+    const flight = `${busy}\n${key}`;
+    if (this.starting.has(flight)) return false;
+    this.starting.add(flight);
     this.publish();
     try {
       const started = await start();
       if (started) await this.load();
       return started;
     } finally {
-      this.startingWorkflow.delete(key);
+      this.starting.delete(flight);
       this.publish();
     }
   }
@@ -417,7 +420,8 @@ export class CiRuns implements vscode.Disposable {
         .filter(([key]) => this.workstreams.some((ws) => ws.key === key))
         .map(([key, view]): [string, CiView] => {
           const shown: CiView = view.kind === 'runs' ? { ...view, runs: view.runs.map((run) => this.withBusy(key, this.withJobs(key, run))) } : view;
-          const busy: CiBusy[] = [...(this.refreshing ? (['refresh'] as const) : []), ...(this.startingWorkflow.has(key) ? (['runWorkflow'] as const) : [])];
+          const starting = (['runWorkflow', 'runCi'] as const).filter((kind) => this.starting.has(`${kind}\n${key}`));
+          const busy: CiBusy[] = [...(this.refreshing ? (['refresh'] as const) : []), ...starting];
           return [key, busy.length ? { ...shown, busy } : shown];
         }),
     );
@@ -530,7 +534,7 @@ export class CiRuns implements vscode.Disposable {
     // Every worktree gets a view, so the All tab never waits on one that can't be read.
     if (!cwd) return { kind: 'view', view: { kind: 'error', error: "This worktree's folder isn't reachable from this environment." } };
     const upstream = ws.sync.upstream;
-    if (!upstream) return { kind: 'view', view: { kind: 'unpublished' } };
+    if (!upstream) return { kind: 'view', view: { kind: 'unpublished', ...(await pushable(cwd)) } };
     try {
       const remotes = (await runGit(['remote'], { cwd })).split('\n').filter(Boolean);
       const split = splitUpstream(upstream, remotes);
@@ -569,4 +573,21 @@ export class CiRuns implements vscode.Disposable {
       return { kind: 'error', error: message(error) };
     }
   }
+}
+
+/**
+ * Of a branch not pushed yet: origin's GitHub repository, when it is one and the worktree has workflows, so a push would
+ * start them (a ticket's Run CI, BL-222). Nothing otherwise.
+ */
+async function pushable(cwd: string): Promise<{ repo?: string }> {
+  // Read at once (a folder of a few files): a branch without workflows answers in the same turn as before.
+  let workflows: string[] = [];
+  try {
+    workflows = fs.readdirSync(path.join(cwd, '.github', 'workflows'));
+  } catch {
+    return {};
+  }
+  if (!workflows.some((f) => /\.ya?ml$/.test(f))) return {};
+  const gh = gitHubRepo((await runGit(['remote', 'get-url', 'origin'], { cwd }).catch(() => '')).trim());
+  return gh && gitHubName(gh.owner) && gitHubName(gh.repo) ? { repo: `${gh.owner}/${gh.repo}` } : {};
 }

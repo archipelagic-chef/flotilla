@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import type { PushResult } from '../../features/backlog/branchPush';
+import { latestCi } from '../../features/ci/summary';
 import type { CiRuns } from '../ci/ciRuns';
 import type { CiView } from '../../webview/protocol';
 import type { TicketCiView, TicketHostMessage, TicketWebviewMessage } from '../../webview/ticketProtocol';
@@ -14,11 +16,18 @@ export interface TicketCiDeps {
   /** Where the open ones are remembered (across windows), and the repository they're of. */
   memento: vscode.Memento;
   mainRoot: string;
+  /** Run CI's push (BL-222): pushes the ticket's branch to origin, noting it in the ticket; undefined when it can't. */
+  push?(id: string, branch: string): Promise<PushResult | undefined>;
+  /** Run Workflow… (BL-222): its dialogs and dispatch on a worktree's branch; true when a run was started. */
+  runWorkflow?(key: string): Promise<boolean>;
 }
+
+/** GitHub lists a new run a few seconds after it's started: the runs are read again then. */
+const RUN_LISTED_MS = 5_000;
 
 interface Shown {
   panel: vscode.WebviewPanel;
-  worktrees: Array<{ key: string; branch: string }>;
+  worktrees: Array<{ key: string; branch: string; ahead?: number; upstream?: string }>;
   /** What was last sent, to send only a change. */
   sent?: string;
 }
@@ -58,7 +67,7 @@ export class TicketCi implements vscode.Disposable {
   }
 
   /** The ticket's worktrees, as its view shows them: their CI is what it shows. */
-  setWorktrees(id: string, worktrees: Array<{ key: string; branch: string }>): void {
+  setWorktrees(id: string, worktrees: Shown['worktrees']): void {
     const shown = this.shown.get(id);
     if (!shown || JSON.stringify(shown.worktrees) === JSON.stringify(worktrees)) return;
     shown.worktrees = worktrees;
@@ -99,7 +108,54 @@ export class TicketCi implements vscode.Disposable {
         return ci.act(m.key, m.run, m.action);
       case 'fix':
         return ci.fix(m.key, m.run, m.job);
+      case 'runCi':
+        return this.runCi(id, m.key);
+      case 'runWorkflow': {
+        const run = this.deps.runWorkflow;
+        if (run && (await ci.runWorkflow(m.key, () => run(m.key)))) this.listedSoon();
+        return;
+      }
     }
+  }
+
+  /**
+   * Run CI (BL-222): pushes the branch when origin lacks its head (which starts the workflows that run on push), and
+   * re-runs its latest run otherwise. A push that's refused is noted in the ticket, as on approval.
+   */
+  private async runCi(id: string, key: string): Promise<void> {
+    const ci = this.deps.ci;
+    const branch = this.shown.get(id)?.worktrees.find((w) => w.key === key)?.branch;
+    const push = this.deps.push;
+    if (!branch || !push) return;
+    let refused: PushResult | undefined;
+    const pushed = await ci.runWorkflow(
+      key,
+      async () => {
+        const result = await push(id, branch);
+        if (!result) return false;
+        if (result.kind === 'pushed') return true;
+        if (result.kind !== 'up-to-date') {
+          refused = result;
+          return false;
+        }
+        // Origin has it: its latest run goes again.
+        const latest = latestCi(ci.snapshot()[key]);
+        if (!latest) {
+          void vscode.window.showInformationMessage(`Origin has ${branch}'s latest commit, and no run of it is listed yet. Run Workflow… starts one by hand.`);
+        } else if (latest.run.status === 'queued' || latest.run.status === 'running') {
+          void vscode.window.showInformationMessage(`${latest.run.workflow} #${latest.run.number} is already running on ${branch}.`);
+        } else await ci.act(key, latest.run.id, 'rerun');
+        return false;
+      },
+      'runCi',
+    );
+    if (pushed) this.listedSoon();
+    if (refused) void vscode.window.showWarningMessage(`Didn't push ${branch} to origin: the ticket says why.`);
+  }
+
+  /** The runs are read again once GitHub lists the new one. */
+  private listedSoon(): void {
+    setTimeout(() => void this.deps.ci.refresh(true), RUN_LISTED_MS);
   }
 
   /** Watches the ticket's worktrees while its tab is visible; a hidden tab reads nothing. */

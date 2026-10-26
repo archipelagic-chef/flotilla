@@ -121,7 +121,8 @@ export interface CiRunView extends CiRun {
 export type RunBusy = RunAction | 'fix';
 
 /** What a worktree's CI view can be busy with: a Refresh (of every view), or a Run Workflow… on its branch. */
-export type CiBusy = 'refresh' | 'runWorkflow';
+/** runCi: a ticket's Run CI (BL-222), pushing its branch or re-running its latest run. */
+export type CiBusy = 'refresh' | 'runWorkflow' | 'runCi';
 
 /**
  * A worktree's CI/CD: its branch's latest runs and deployments on GitHub, or why there are none. Deployments are read
@@ -129,7 +130,8 @@ export type CiBusy = 'refresh' | 'runWorkflow';
  */
 export type CiView = (
   | { kind: 'signIn' }
-  | { kind: 'unpublished' }
+  /** repo: origin is this GitHub repository and the worktree has workflows, so a push would run them (BL-222). */
+  | { kind: 'unpublished'; repo?: string }
   | { kind: 'unsupported' }
   | { kind: 'error'; error: string }
   | { kind: 'runs'; repo: string; branch: string; runs: CiRunView[]; deployments: CiDeployment[]; deploymentsError?: string }
@@ -146,7 +148,11 @@ export type CiRequest =
   /** A run's action: a cancel asks first. */
   | { op: 'act'; key: string; run: number; action: RunAction }
   /** Fix with Agent on a failed job of a run (BL-7). */
-  | { op: 'fix'; key: string; run: number; job: number };
+  | { op: 'fix'; key: string; run: number; job: number }
+  /** A ticket's Run CI (BL-222): pushes the branch when origin lacks its head, else re-runs its latest run. */
+  | { op: 'runCi'; key: string }
+  /** A ticket's Run Workflow… (BL-222): the CI/CD view's run-by-hand, on the worktree's branch. */
+  | { op: 'runWorkflow'; key: string };
 
 /** How a worktree is compared with a base: since they diverged, that plus uncommitted changes, or base..HEAD. */
 export type CompareMode = 'mergeBase' | 'uncommitted' | 'twoDot';

@@ -151,6 +151,9 @@ import {
   resolveEntry,
 } from '../../features/backlog/references';
 import type { CiRuns } from '../ci/ciRuns';
+import { pushBranch as pushBranchToOrigin, pushNote, type PushResult } from '../../features/backlog/branchPush';
+import { runWorkflowByHand } from '../ci/runWorkflow';
+import { originIsLocal, pushItemBranch } from './branchPush';
 import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
 import { recordClickWait } from '../../features/metrics/record';
@@ -182,6 +185,8 @@ export interface TicketDeps {
   /** The CI/CD view's reader, and showing a worktree's CI/CD view: for the tickets' CI (BL-106). */
   ci?: CiRuns;
   showCi?(key: string): void;
+  /** The fake GitHub (flotilla.dev.githubApi): a ticket's Run CI pushes only to a local origin, and Run Workflow… uses it. */
+  githubApi?: string;
 }
 
 /** The key the "Show activity" choice is kept under in the memento. */
@@ -637,7 +642,20 @@ export class TicketPanels implements vscode.Disposable {
 
   constructor(readonly deps: TicketDeps) {
     references = () => this.references();
-    this.ci = deps.ci && new TicketCi({ ci: deps.ci, showCi: (key) => deps.showCi?.(key), memento: deps.memento, mainRoot: deps.mainRoot });
+    this.ci =
+      deps.ci &&
+      new TicketCi({
+        ci: deps.ci,
+        showCi: (key) => deps.showCi?.(key),
+        memento: deps.memento,
+        mainRoot: deps.mainRoot,
+        push: (id, branch) => this.pushBranch(id, branch),
+        runWorkflow: (key) => {
+          const folder = deps.repository.current.find((w) => w.key === key)?.worktree.path;
+          if (!folder) throw new Error("This worktree's folder isn't reachable from this environment.");
+          return runWorkflowByHand(folder, deps.githubApi);
+        },
+      });
     if (this.ci) this.subscriptions.push(this.ci);
     this.subscriptions.push(
       creatingWorktrees.onDidChange(() => this.refreshAll()),
@@ -924,6 +942,25 @@ export class TicketPanels implements vscode.Disposable {
   /** The worktrees working on an item: those started for it, or whose branch carries its id. */
   worktreesOf(item: BacklogItem): Workstream[] {
     return this.deps.repository.current.filter((w) => !w.worktree.isMain && w.worktree.branch && branchMatches(item, w.worktree.branch));
+  }
+
+  /**
+   * A ticket's Run CI pushes its branch (BL-222): as on approval, with pushBranch's checks, kept on the item and noted
+   * in its ticket. An issue from a tracker has no ticket to note it in: a refusal shows as a message.
+   */
+  private async pushBranch(id: string, branch: string): Promise<PushResult | undefined> {
+    const output = this.output();
+    if (this.deps.githubApi && !(await originIsLocal(this.deps.mainRoot, output))) {
+      void vscode.window.showWarningMessage("The fake GitHub is on and origin isn't local: Flotilla doesn't push to the network then.");
+      return undefined;
+    }
+    const item = await this.item(id);
+    if (!item) return undefined;
+    if (!item.remote) return pushItemBranch({ backlog: this.deps.backlog, mainRoot: this.deps.mainRoot, output }, item, branch);
+    const result = await pushBranchToOrigin(this.deps.mainRoot, branch);
+    const note = pushNote(result);
+    if (note && result.kind !== 'pushed') void vscode.window.showWarningMessage(note.split('\n')[0]);
+    return result;
   }
 
   /** A local item, or an issue from an integration (as an item, with remote set). */
@@ -1403,7 +1440,7 @@ export class TicketPanels implements vscode.Disposable {
       this.shown.set(panel, new Set([...view.worktrees.map((w) => w.key), ...agents.map((a) => a.key)]));
       this.ci?.setWorktrees(
         id,
-        view.worktrees.map((w) => ({ key: w.key, branch: w.branch })),
+        view.worktrees.map((w) => ({ key: w.key, branch: w.branch, ahead: w.ahead, ...(w.upstream ? { upstream: w.upstream } : {}) })),
       );
       const showActivity = showActivityKept(this.deps.memento);
       const check = this.checks.get(id);

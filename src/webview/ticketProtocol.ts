@@ -54,11 +54,12 @@ export interface MergeChecksView {
 
 /**
  * A ticket's CI (BL-106): its worktrees' branches with their CI/CD views (undefined: not read yet), and whether the
- * user keeps it open in this ticket.
+ * user keeps it open in this ticket. ahead and upstream are the branch's against origin (BL-222): Run CI pushes it when
+ * it's ahead or has no upstream.
  */
 export interface TicketCiView {
   open: boolean;
-  worktrees: Array<{ key: string; branch: string; view?: CiView }>;
+  worktrees: Array<{ key: string; branch: string; ahead?: number; upstream?: string; view?: CiView }>;
 }
 
 /** An agent's chat, as a ticket entry links it: click to open it in Claude Code. */
