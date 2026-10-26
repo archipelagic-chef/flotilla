@@ -94,6 +94,10 @@ describe('the autopilot details', () => {
     expect(d).toMatchObject({ agents: [], waiting: [], idle: 'BL-130 waits for BL-126 (in review)', tryNow: false });
   });
 
+  it("says when it leaves the next slot to a due note's agent (BL-220)", () => {
+    expect(autopilotDetails({ ...base, running: 2, noteFirst: 'NOTE-3' }, titles, now).noteFirst).toMatch(/^Handling NOTE-3 first/);
+  });
+
   it('adds what each agent is doing (BL-175), or why it looks stuck', () => {
     const tool = { id: 't', name: 'Bash', detail: 'npm test', since: new Date(now.getTime() - 130_000).toISOString() };
     const todos = [

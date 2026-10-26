@@ -157,6 +157,78 @@ describe('the autopilot and memory', () => {
   });
 });
 
+describe('the autopilot and a due note (BL-220)', () => {
+  it("leaves the one free slot to a due note's agent, says so, and starts the ticket once no note waits", async () => {
+    vi.resetModules();
+    vi.doMock('vscode', () => ({
+      EventEmitter: class {
+        event = () => ({ dispose() {} });
+        fire() {}
+        dispose() {}
+      },
+      workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
+      window: { onDidChangeWindowState: () => ({ dispose() {} }), showInformationMessage: async () => undefined },
+    }));
+    vi.doMock('../../../src/ui/backlog/agentRunner', () => ({ memoryShortage: () => undefined }));
+    const { Autopilot } = await import('../../../src/ui/backlog/autopilot');
+    const at = '2026-10-11T00:00:00Z';
+    const data = { version: 1 as const, next: 2, items: [{ id: 'BL-1', title: 'Next', status: 'todo' as const, created: at }] };
+    const prepareWorktree = vi.fn(async () => undefined);
+    // One slot: the note's agent takes it when it ticks.
+    const taken: string[] = [];
+    let due: string | undefined = 'NOTE-3';
+    const pilot = new Autopilot({
+      backlog: {
+        dir: '/unused',
+        watch: () => ({ dispose() {} }),
+        ensureDir: async () => undefined,
+        read: async () => data,
+        readTicketCached: async () => ({ description: '', activity: [] }),
+        appendActivity: async () => undefined,
+        change: async () => data,
+      },
+      reviews: {
+        get running() {
+          return taken.length;
+        },
+        limit: 1,
+        waitingCount: 0,
+        agentsNow: () => [],
+        queuedStarts: () => [],
+        canStartNew: () => taken.length < 1,
+        admitNew: (id: string) => (taken.length < 1 ? (taken.push(id), 1) : undefined),
+        giveBack: () => void taken.pop(),
+        pausedUntil: async () => undefined,
+        startWork: async () => undefined,
+      },
+      leader: { isLeader: true, check: () => true },
+      output: { appendLine() {} },
+      key: async () => 'key',
+      prepareWorktree,
+      noteDue: async () => due,
+    } as never);
+    (pilot as unknown as { on: boolean }).on = true;
+    await pilot.tick();
+    expect(taken).toEqual([]);
+    expect(prepareWorktree).not.toHaveBeenCalled();
+    expect(pilot.view().noteFirst).toBe('NOTE-3');
+
+    // The note's agent took the slot: the ticket waits for a free one.
+    taken.push('note:NOTE-3');
+    due = undefined;
+    await pilot.tick();
+    expect(prepareWorktree).not.toHaveBeenCalled();
+    expect(pilot.view().noteFirst).toBeUndefined();
+
+    // Its run ended, and no note is due: the ticket starts.
+    taken.length = 0;
+    await pilot.tick();
+    expect(prepareWorktree).toHaveBeenCalledTimes(1);
+    expect(prepareWorktree).toHaveBeenCalledWith(expect.objectContaining({ id: 'BL-1' }));
+    pilot.dispose();
+  });
+});
+
 describe('the autopilot gives up a start whose item moved on', () => {
   it('starts no agent, gives its memory back and says so in the ticket, when the item left To Do while its worktree was prepared', async () => {
     vi.resetModules();

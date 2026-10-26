@@ -371,6 +371,8 @@ export interface AutopilotState {
   triedAt?: string;
   /** Too little memory free to start an agent. */
   waitingForMemory?: boolean;
+  /** A note is due (BL-220): its agent gets the next free slot first. */
+  noteFirst?: string;
   /** Another window runs it. */
   elsewhere: boolean;
   /** Why it starts nothing though a slot is free (BL-142). */

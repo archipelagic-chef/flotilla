@@ -23,6 +23,8 @@ export interface AutopilotDetails {
   agents: DetailLine[];
   waiting: DetailLine[];
   idle?: string;
+  /** A note is due (BL-220): "Handling NOTE-3 first". */
+  noteFirst?: string;
   running: number;
   max: number;
   /** Try Now: it waits for a usage limit. */
@@ -87,6 +89,9 @@ export function autopilotDetails(
     agents,
     waiting,
     ...(a.idle && !a.waitingUntil ? { idle: a.idle } : {}),
+    ...(a.noteFirst && !a.waitingUntil
+      ? { noteFirst: `Handling ${a.noteFirst} first: its agent gets the next free slot, then the autopilot starts the next ticket` }
+      : {}),
     running: a.running,
     max: a.max,
     tryNow: !!a.waitingUntil && !a.elsewhere,

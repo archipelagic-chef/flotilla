@@ -396,7 +396,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     giveBack: (slot) => reviews.giveBack(slot),
     pausedAll: () => pausedAll.held,
   });
-  context.subscriptions.push(notes);
+  // A run ended: a due note's agent takes the freed slot at once, not on its 5 s timer (BL-220).
+  context.subscriptions.push(
+    notes,
+    reviews.onDidChangeAgents(() => void notes.tick()),
+  );
   registerAll(context.subscriptions, noteCommands(notes));
   sidebar.useNotes(notes);
   const pauseAll = new PauseAll({
@@ -484,6 +488,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pauseAll,
     merges: merger,
     prepareWorktree: (item) => prepareItemWorktree(ctx, item),
+    // A note due: the autopilot leaves the slot to its agent, which looks now (BL-220).
+    noteDue: async () => {
+      const id = await notes.due();
+      if (id) void notes.tick();
+      return id;
+    },
     // Signs the autopilot's switch: made once per machine, kept where agents can't read it.
     key: () =>
       (autopilotKey ??= (async () => {
