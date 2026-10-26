@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   afterEach,
@@ -13,7 +14,10 @@ vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => setting.value ?? d }) },
 }));
 
+import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
 import { addBranch, addItem, updateItem } from '../../../src/features/backlog/backlog';
+import type { Fetch } from '../../../src/features/backlog/sources/source';
+import { GitHubPullRequests } from '../../../src/features/ci/pullRequests';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { BranchPush } from '../../../src/ui/backlog/branchPush';
 import {
@@ -138,5 +142,103 @@ describe('pushing approved tickets’ branches', () => {
     } finally {
       local.dispose();
     }
+  });
+});
+
+describe('pull requests of tickets in review (BL-221)', () => {
+  let repo: string;
+  let store: LocalBacklog;
+  let pushes: BranchPush;
+  let fake: FakeGitHub;
+
+  beforeEach(async () => {
+    setting.value = 'auto';
+    repo = initRepo();
+    const home = makeTempDir();
+    cleanup.push(repo, home);
+    // A local origin that reads as a GitHub repository (as the playground's does).
+    const origin = path.join(home, 'github.com', 'playground', 'app.git');
+    fs.mkdirSync(origin, { recursive: true });
+    git(origin, 'init', '-q', '--bare');
+    git(repo, 'remote', 'add', 'origin', origin);
+    git(repo, 'push', '-q', 'origin', 'main');
+    git(repo, 'checkout', '-q', '-b', BRANCH);
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'BL-1: one');
+    store = new LocalBacklog(repo, path.join(repo, '.git'));
+    await store.change((d) => updateItem(addBranch(addItem(d, 'Say hi', 'BL', new Date()).data, 'BL-1', BRANCH), 'BL-1', { status: 'review' }));
+    await store.editTicket((await store.read()).items[0], (t) => ({ ...t, description: "**When it's done:** it says hi.\n\n**Why:** it doesn't." }));
+    fake = await startFakeGitHub({ port: 0, repoDir: repo });
+    pushes = new BranchPush({
+      backlog: store,
+      repository: { current: [], onDidChange: () => ({ dispose() {} }) } as never,
+      mainRoot: repo,
+      isLeader: () => true,
+      output: { appendLine: () => undefined } as never,
+      localOnly: true,
+      pullRequests: (owner, name) => new GitHubPullRequests(owner, name, async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url),
+      baseBranch: async () => 'main',
+    });
+  });
+
+  afterEach(async () => {
+    pushes.dispose();
+    await fake.close();
+  });
+
+  const item = async () => (await store.read()).items[0];
+  const notes = async () => (await store.readTicket(await item())).activity.map((e) => e.body);
+
+  it('pushes a ticket that went to review and opens its pull request, once', async () => {
+    await pushes.check();
+    const tip = git(repo, 'rev-parse', BRANCH);
+    expect((await item()).pushed).toEqual([{ branch: BRANCH, commit: tip }]);
+    expect((await item()).pullRequests).toEqual([{ branch: BRANCH, number: 1, url: 'https://github.com/playground/app/pull/1', state: 'open' }]);
+    expect(fake.pulls()).toMatchObject([{ head: BRANCH, base: 'main', title: 'Say hi', body: 'it says hi.\n\nFlotilla ticket BL-1.' }]);
+    expect((await notes()).at(-1)).toBe(`Opened pull request [#1](https://github.com/playground/app/pull/1) for \`${BRANCH}\` on GitHub.`);
+
+    // New commits are pushed; the pull request is the same one.
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'BL-1: two');
+    await pushes.check();
+    expect(fake.pulls()).toHaveLength(1);
+    expect((await item()).pushed?.[0].commit).toBe(git(repo, 'rev-parse', BRANCH));
+  });
+
+  it('opens none when the setting is off', async () => {
+    setting.value = 'off';
+    await pushes.check();
+    expect(fake.pulls()).toEqual([]);
+    expect((await item()).pushed).toBeUndefined();
+  });
+
+  const merge = async (commit: string) => {
+    git(repo, 'checkout', '-q', 'main');
+    const merged = { into: 'main', commit, date: new Date().toISOString() };
+    await store.change((d) => ({ ...d, items: d.items.map((i) => ({ ...i, status: 'done' as const, merged })) }));
+  };
+
+  it('shows it merged once main on origin has its commits', async () => {
+    await pushes.check();
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'merge', '-q', '--ff-only', BRANCH);
+    await merge(git(repo, 'rev-parse', 'main'));
+    await pushes.check();
+    expect((await item()).pullRequests?.[0].state).toBe('open');
+    git(repo, 'push', '-q', 'origin', 'main');
+    await pushes.check();
+    expect((await item()).pullRequests?.[0].state).toBe('merged');
+    expect(fake.pulls()[0].comments).toEqual([]);
+  });
+
+  it('closes it, naming the commit that landed, when other commits did', async () => {
+    await pushes.check();
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'BL-1: one, landed otherwise');
+    const landed = git(repo, 'rev-parse', 'main');
+    await merge(landed);
+    git(repo, 'push', '-q', 'origin', 'main');
+    await pushes.check();
+    expect((await item()).pullRequests?.[0].state).toBe('closed');
+    expect(fake.pulls()[0].comments).toEqual([expect.stringContaining(landed)]);
+    expect((await notes()).at(-1)).toMatch(/^Closed pull request \[#1\]/);
   });
 });

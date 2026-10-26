@@ -16,7 +16,7 @@ import type { QueuedView, TicketCiView, TicketView } from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton } from './actions';
 import { PAUSE_TIP, RESUME_TIP, STOP_TIP } from './agents';
-import { MergeStop, QueuePlace } from './mergePanel';
+import { MergeStop, PullRequestLinks, QueuePlace } from './mergePanel';
 import { MergeStep, StepStatus, ticketSteps } from './steps';
 
 const FIX_ICON: Record<ReviewFix, string> = {
@@ -283,6 +283,7 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
             {ticket.canMerge && <MergeStep ticket={ticket} ci={ci} steps={steps} />}
           </>
         )}
+        <PullRequestLinks ticket={ticket} />
       </div>
       {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
       {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}

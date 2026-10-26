@@ -4,7 +4,7 @@ import { showError, type Commands } from '../commandSet';
 import { backlogIdOf } from './cardMenu';
 import { readyToMerge, type Merger } from './merge';
 
-/** The merge queue's commands: merge a ticket (or all ready ones), take one next, push what's merged, stop pushing the train. */
+/** The merge queue's commands: merge a ticket (or all ready ones), take one next, push what's merged, stop pushing the train; and open its pull request. */
 export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): Commands {
   const { backlog, merger } = deps;
   return {
@@ -32,5 +32,20 @@ export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): 
     },
     'flotilla.pushMerged': () => merger.push().catch(showError),
     'flotilla.stopPushingTrain': () => merger.stopPushingTrain().catch(showError),
+    // A ticket's pull request on GitHub (BL-221): a choice when its branches have several.
+    'flotilla.openPullRequest': async (arg?: unknown) => {
+      const id = backlogIdOf(arg);
+      const prs = (await backlog.read()).items.find((i) => i.id === id)?.pullRequests ?? [];
+      const pr =
+        prs.length > 1
+          ? (
+              await vscode.window.showQuickPick(
+                prs.map((p) => ({ label: `#${p.number}`, description: `${p.branch} · ${p.state}`, pr: p })),
+                { title: `${id}'s Pull Requests` },
+              )
+            )?.pr
+          : prs[0];
+      if (pr) await vscode.env.openExternal(vscode.Uri.parse(pr.url));
+    },
   };
 }

@@ -40,6 +40,22 @@ function HostLink({ href, children }: { href: string; children: ComponentChildre
   );
 }
 
+/** Its branches' pull requests on GitHub (BL-221), by Merge to main: "PR #12 · open", each a link to it. */
+export function PullRequestLinks({ ticket }: { ticket: TicketView }) {
+  const prs = ticket.item.pullRequests ?? [];
+  if (!prs.length) return null;
+  return (
+    <div class="pull-requests">
+      {prs.map((pr) => (
+        <span key={pr.branch} class={`pull-request ${pr.state}`} title={`${pr.branch}'s pull request on GitHub`}>
+          <i class={`codicon codicon-${pr.state === 'merged' ? 'git-merge' : pr.state === 'closed' ? 'git-pull-request-closed' : 'git-pull-request'}`} />{' '}
+          <HostLink href={pr.url}>{`PR #${pr.number}`}</HostLink> · {pr.state}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Why Merge to main stopped on CI (BL-112), under its button: red CI with the failed jobs' logs, or the base moved on.
  * Its button is the step that does the job now (Fix CI with Agent, Update from Main and Merge: steps.tsx). It holds
@@ -303,6 +319,7 @@ export function MergedPanel({ ticket }: { ticket: TicketView }) {
         <strong>Merged into {m.into}</strong> {m.commit.slice(0, 7)} · {new Date(m.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
         {u ? ` · ${u.count} commit${u.count === 1 ? '' : 's'} not on ${u.remote} yet` : ''}
       </span>
+      <PullRequestLinks ticket={ticket} />
       {u && (
         <ActionButton class="button secondary" message={{ type: 'push' }} working="Pushing…" title={`Pushes ${u.base} to ${u.remote} (asks first)`}>
           <i class="codicon codicon-cloud-upload" /> Push…

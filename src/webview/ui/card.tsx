@@ -95,6 +95,7 @@ export function ItemRow({
               backlogReadyToMerge: !remote && readyToMerge(item),
               backlogConflicts: conflictsOf(item).length > 0,
               backlogQueued: !!queuedBehind,
+              backlogPullRequest: !!item.pullRequests?.length,
             })
       }
       draggable={!renaming && !remote && !discarded}
