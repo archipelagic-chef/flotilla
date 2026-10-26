@@ -27,6 +27,22 @@
 .ci-summary:hover {
   background: var(--vscode-list-hoverBackground);
 }
+/* A branch with no run yet (BL-222): its line doesn't open. */
+span.ci-summary:hover {
+  background: none;
+}
+.ci-line .ci-status.none {
+  color: var(--muted);
+}
+/* Run CI: pushes the branch, or re-runs its latest run. */
+.ci-line .ci-run {
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.ci-line .icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .ci-summary .muted {
   overflow: hidden;
   text-overflow: ellipsis;
