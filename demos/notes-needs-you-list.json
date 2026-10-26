@@ -1,5 +1,5 @@
 {
-  "title": "A note whose agent asks is in the notifications' Needs you; picking it shows its card",
+  "title": "A note whose agent asks is in the notifications' Needs you; picking it opens its tab at the question",
   "settings": { "flotilla.agents.maxRunning": 6 },
   "steps": [
     { "command": "Focus on Flotilla View" },
@@ -19,8 +19,8 @@
     { "caption": "The status bar's and notifications' Needs you list the note, as asking a question" },
     { "wait": 2500 },
     { "click": ".quick-input-widget .quick-input-list-row:has-text(\"Tags on tickets\")" },
-    { "caption": "Picking it shows the note's card in the backlog, where you answer" },
-    { "waitFor": ".note-card.note-shown" },
+    { "caption": "Picking it opens the note's tab, at its agent's question" },
+    { "waitFor": ".note-page .note-questions .choice" },
     { "wait": 2500 },
     { "caption": "" }
   ]
