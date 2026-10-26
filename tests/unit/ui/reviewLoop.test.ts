@@ -761,6 +761,19 @@ describe('the agent limit', () => {
     loop.dispose();
   });
 
+  it('a queued start of an item discarded meanwhile does not run (BL-210)', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(loop.queuedFor('BL-3')).toBeDefined();
+    data.items.find((i) => i.id === 'BL-3')!.discarded = { at: new Date().toISOString() };
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started().some((name) => name.includes('BL-3'))).toBe(false);
+    expect(loop.queuedFor('BL-3')).toBeUndefined();
+    loop.dispose();
+  });
+
   it('starts reviews and revisions before new tickets, whatever came first', async () => {
     await loop.start('BL-1');
     await loop.start('BL-2');

@@ -555,7 +555,7 @@ async function discardBacklogItem(ctx: CommandContext, id: string | undefined): 
   // Discarded first, so nothing starts it again meanwhile; what fails after that is said in its entry.
   const branches = worktrees.flatMap((w) => (w.ws.worktree.branch ? [w.ws.worktree.branch] : []));
   await ctx.backlog.change((d) => branches.reduce((data, b) => addBranch(data, id, b), discardItem(d, id, new Date().toISOString())));
-  if (!agents.length && !worktrees.length) return;
+  // Even with no agent nor worktree yet, a start may wait in the queue: it's dropped too.
   const { stopped, left } = await ctx.tickets.stopForDiscard(id);
   const removed: string[] = [];
   const current = worktrees.find((w) => w.ws.isCurrent);

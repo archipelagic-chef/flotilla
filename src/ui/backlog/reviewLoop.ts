@@ -521,8 +521,8 @@ export class ReviewLoop implements vscode.Disposable {
     // The read may have waited while the user stopped the item or answered it (that takes the entry out): then it's
     // not this start any more, and it's not run. A replaced entry (the item waited again) is run by its own dispatch.
     if (this.waiting.get(w.id) !== w) return;
-    // The item moved on, or an agent runs for it already: the start that waited is over.
-    const over = !item || item.proposed || this.runs.has(w.id);
+    // The item moved on, was discarded (BL-210), or an agent runs for it already: the start that waited is over.
+    const over = !item || item.proposed || !!item.discarded || this.runs.has(w.id);
     if (over || stateOf(item) !== w.since) {
       this.waiting.remove(w.id);
       this.fireQueue(w.id);
