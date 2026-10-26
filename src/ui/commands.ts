@@ -81,6 +81,7 @@ import {
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
+import { discardDetail, discardEntry, reopenEntry } from '../features/backlog/discard';
 import * as scmUi from './scmCommands';
 import { readSettings } from './settings';
 import { runWorkflowByHand } from './ci/runWorkflow';
@@ -529,24 +530,78 @@ async function deleteBacklogItem(ctx: CommandContext, id: string | undefined): P
   await ctx.backlog.deleteDocument(id);
 }
 
-/** Discards an item as "won't do" (BL-209), after a confirmation: its ticket is kept, and Reopen brings it back. */
+/**
+ * Discards an item as "won't do" (BL-209), after a confirmation: its ticket is kept, and Reopen brings it back. Work
+ * started on it ends (BL-210): its agents stop and its worktrees are removed, keeping their branches for a reopen.
+ */
 async function discardBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
   if (!id) return;
   const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!item || item.discarded) return;
+  const { agents, worktrees } = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: `Checking what's started on ${item.id}…` },
+    async () => {
+      const linked = linkedWorktrees(item, ctx.repository.current).filter((w) => !removingWorktrees.has(w.key));
+      const risks = await Promise.all(linked.map((w) => ctx.service.removalRisks(w.worktree).catch(() => ({ changedFiles: 0, unmergedCommits: 0 }))));
+      return { agents: await ctx.tickets.agentsOn(id), worktrees: linked.map((ws, n) => ({ ws, changedFiles: risks[n].changedFiles })) };
+    },
+  );
   const choice = await vscode.window.showWarningMessage(
     `Discard ${item.id} '${item.title}' as won't do?`,
-    { modal: true, detail: 'It leaves the lanes; its ticket and activity are kept, and you can reopen it from the Discarded section.' },
+    { modal: true, detail: discardDetail({ agents, worktrees: worktrees.map((w) => ({ label: workstreamLabel(w.ws), changedFiles: w.changedFiles })) }) },
     'Discard',
   );
   if (choice !== 'Discard') return;
-  await ctx.backlog.change((d) => discardItem(d, id, new Date().toISOString()));
+  // Discarded first, so nothing starts it again meanwhile; what fails after that is said in its entry.
+  const branches = worktrees.flatMap((w) => (w.ws.worktree.branch ? [w.ws.worktree.branch] : []));
+  await ctx.backlog.change((d) => branches.reduce((data, b) => addBranch(data, id, b), discardItem(d, id, new Date().toISOString())));
+  if (!agents.length && !worktrees.length) return;
+  const { stopped, left } = await ctx.tickets.stopForDiscard(id);
+  const removed: string[] = [];
+  const current = worktrees.find((w) => w.ws.isCurrent);
+  for (const { ws, changedFiles } of worktrees.filter((w) => w !== current)) {
+    try {
+      await executeRemoval(ctx, removalPlan(ctx, ws, changedFiles));
+      removed.push(ws.worktree.branch ?? workstreamLabel(ws));
+    } catch (error) {
+      left.push(
+        `The worktree of \`${ws.worktree.branch ?? workstreamLabel(ws)}\` couldn't be removed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  const body = discardEntry({ stopped, removed, removing: current?.ws.worktree.branch, branches, left });
+  const discarded = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (body && discarded) await ctx.backlog.appendActivity(discarded, { date: entryDate(new Date()), author: 'Flotilla', body });
+  // This window's worktree goes last, as Remove does it: main opens, and removes it.
+  if (current) await removeCurrent(ctx, removalPlan(ctx, current.ws, current.changedFiles));
 }
 
-/** Reopens a discarded item: back to To Do. */
+/** Removing a worktree, keeping its branch, quietly: the discard's entry says so (BL-210). */
+function removalPlan(ctx: CommandContext, ws: Workstream, changedFiles: number): PendingRemoval {
+  return {
+    mainRoot: ctx.service.roots.mainRoot,
+    adminDir: ws.worktree.adminDir,
+    force: changedFiles > 0,
+    deleteBranch: false,
+    branch: ws.worktree.branch,
+    createdAt: Date.now(),
+    quiet: true,
+  };
+}
+
+/** Reopens a discarded item: back to To Do. Its ticket says which branches of its earlier work are still there. */
 async function reopenBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
   if (!id) return;
+  const before = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!before?.discarded) return;
   await ctx.backlog.change((d) => reopenItem(d, id));
+  const local = await ctx.service.listBranches().then(
+    (b) => b.local,
+    () => [] as string[],
+  );
+  const body = reopenEntry(local.filter((b) => branchMatches(before, b)));
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (body && item) await ctx.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body });
 }
 
 /** Readers of flotilla.backlog.commitPrefix. */
@@ -978,17 +1033,19 @@ export async function removeWorkstream(ctx: CommandContext, ws: Workstream): Pro
     branch: wt.branch,
     createdAt: Date.now(),
   };
-  if (ws.isCurrent) {
-    await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, plan);
-    try {
-      await openWorktree(ctx, plan.mainRoot, false);
-    } catch (error) {
-      await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, undefined);
-      throw error;
-    }
-    return;
-  }
+  if (ws.isCurrent) return removeCurrent(ctx, plan);
   await executeRemoval(ctx, plan);
+}
+
+/** Removes this window's worktree: main opens in this window, and removes it from there (see the pending removal). */
+async function removeCurrent(ctx: CommandContext, plan: PendingRemoval): Promise<void> {
+  await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, plan);
+  try {
+    await openWorktree(ctx, plan.mainRoot, false);
+  } catch (error) {
+    await ctx.extension.globalState.update(PENDING_REMOVAL_KEY, undefined);
+    throw error;
+  }
 }
 
 async function executeRemoval(ctx: CommandContext, plan: PendingRemoval): Promise<void> {
@@ -1022,8 +1079,8 @@ async function removeAndRecord(ctx: CommandContext, plan: PendingRemoval, wt: Re
     }
     deleted ||= !(await ctx.service.listBranches()).local.includes(plan.branch);
   }
-  // The tickets the worktree worked on say so.
-  if (plan.branch) {
+  // The tickets the worktree worked on say so (a discard's says it itself).
+  if (plan.branch && !plan.quiet) {
     const branch = plan.branch;
     for (const item of (await ctx.backlog.read()).items.filter((i) => branchMatches(i, branch))) {
       await ctx.backlog.appendActivity(item, {

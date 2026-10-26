@@ -325,6 +325,8 @@ describe('the agent limit', () => {
   let loop: {
     start(id: string, manual?: boolean): Promise<void>;
     startWork(item: unknown, ws: unknown, o?: { byHand?: boolean }): Promise<void>;
+    discard(id: string): Promise<{ stopped: string[]; left: string[] }>;
+    queuedFor(id: string): unknown;
     stop(id: string): Promise<void>;
     resumePaused(): Promise<void>;
     tryPausedNow(): Promise<{ tried: Date; resumed: number; limited?: Date } | undefined>;
@@ -746,6 +748,19 @@ describe('the agent limit', () => {
     loop.dispose();
   });
 
+  it('a discard drops a queued start (BL-210)', async () => {
+    await loop.start('BL-1');
+    await loop.start('BL-2');
+    await loop.start('BL-3');
+    expect(loop.queuedFor('BL-3')).toBeDefined();
+    expect(await loop.discard('BL-3')).toEqual({ stopped: [], left: [] });
+    expect(loop.queuedFor('BL-3')).toBeUndefined();
+    finish[0]({ code: 0 });
+    await settle();
+    expect(started().some((name) => name.includes('BL-3'))).toBe(false);
+    loop.dispose();
+  });
+
   it('starts reviews and revisions before new tickets, whatever came first', async () => {
     await loop.start('BL-1');
     await loop.start('BL-2');
@@ -1062,6 +1077,8 @@ describe('pausing, stopping and resuming agents (BL-81)', () => {
     resumePaused(): Promise<void>;
     readonly running: number;
     dispose(): void;
+    discard(id: string): Promise<{ stopped: string[]; left: string[] }>;
+    agentsOn(id: string): Promise<{ agent: string }[]>;
   };
   let loop: Loop;
   let stops: number;
@@ -1146,6 +1163,17 @@ describe('pausing, stopping and resuming agents (BL-81)', () => {
     expect(review().state).toBe('stopped');
     expect(review().stop).toMatchObject({ kind: 'user', agent: { phase: 'review' } });
     expect(spawn).toHaveBeenCalledTimes(1);
+    loop.dispose();
+  });
+
+  it('a discard stops the running agent, as Stop does, and says it did (BL-210)', async () => {
+    const reviewer = review().reviewer as string;
+    expect((await loop.agentsOn('BL-1')).map((t) => t.agent)).toEqual([reviewer]);
+    const result = await loop.discard('BL-1');
+    expect(stops).toBe(1);
+    expect(result).toEqual({ stopped: [reviewer], left: [] });
+    expect(review().state).toBe('stopped');
+    expect(await loop.agentsOn('BL-1')).toEqual([]);
     loop.dispose();
   });
 
