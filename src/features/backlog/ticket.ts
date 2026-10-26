@@ -160,6 +160,21 @@ export function entryThreads(activity: ReadonlyArray<TicketEntry>): EntryThread[
   });
 }
 
+/** The author of an entry that came from a comment on the ticket's pull request (BL-224): "<login> on GitHub". */
+export function gitHubAuthor(login: string): string {
+  return `${login} on GitHub`;
+}
+
+/** Whether an entry came from a comment on the ticket's pull request (BL-224). */
+export function fromGitHub(author: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9-]*(?:\[bot\])? on GitHub$/.test(author.trim());
+}
+
+/** Whether an entry is a person's comment: yours, or one from the ticket's pull request (BL-224). */
+export function byPerson(author: string): boolean {
+  return author === 'You' || fromGitHub(author);
+}
+
 /** "YYYY-MM-DD HH:MM" in local time, as entries are dated. */
 export function entryDate(now: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');

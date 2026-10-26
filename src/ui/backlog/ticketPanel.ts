@@ -638,6 +638,11 @@ export class TicketPanels implements vscode.Disposable {
       .reverse();
   }
 
+  /** The tickets whose tabs show now. */
+  shownIds(): string[] {
+    return [...this.panels].filter(([, p]) => p.visible).map(([id]) => id);
+  }
+
   /** Opens the ticket a reference names, at the comment it names (BL-130); false when it isn't a ticket. */
   async openReference(ref: { id: string; anchor?: string }): Promise<boolean> {
     const target = (await this.references())(ref.id);

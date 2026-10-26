@@ -54,6 +54,22 @@ export const unsettled = (i: BacklogItem): boolean => !!i.merged && !!i.pullRequ
 /** A discarded ticket with a pull request still open on GitHub: it's closed (BL-225). */
 export const discardedOpen = (i: BacklogItem): boolean => !!i.discarded && !i.merged && !!i.pullRequests?.some((p) => p.state === 'open');
 
+/** The pull requests client for origin, when they're on (flotilla.github.pullRequests) and origin is on GitHub. */
+export function originPullRequests(
+  url: string,
+  setting: PullRequestSetting,
+  make: ((owner: string, repo: string) => GitHubPullRequests) | undefined,
+): GitHubPullRequests | undefined {
+  if (setting === 'off' || !make) return undefined;
+  const gh = gitHubRepo(url);
+  if (!gh) return undefined;
+  try {
+    return make(gh.owner, gh.repo);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The item's pull requests, with one of a branch put in. */
 const withPullRequest = (i: BacklogItem, pr: PullRequestInfo): PullRequestInfo[] => [...(i.pullRequests ?? []).filter((p) => p.branch !== pr.branch), pr];
 
@@ -149,16 +165,8 @@ export class BranchPush implements vscode.Disposable {
     if (prs) for (const item of all.filter(discardedOpen)) await this.closeForDiscarded(prs, item);
   }
 
-  /** The pull requests client for origin, when they're on (flotilla.github.pullRequests) and origin is on GitHub. */
   private pullRequestsClient(url: string, setting: PullRequestSetting): GitHubPullRequests | undefined {
-    if (setting === 'off' || !this.deps.pullRequests) return undefined;
-    const gh = gitHubRepo(url);
-    if (!gh) return undefined;
-    try {
-      return this.deps.pullRequests(gh.owner, gh.repo);
-    } catch {
-      return undefined;
-    }
+    return originPullRequests(url, setting, this.deps.pullRequests);
   }
 
   /** A pushed branch's open pull request into the base branch: the one it has, or a new one, kept on the item and noted. */

@@ -1,5 +1,6 @@
 import { agentChatItem, type BacklogItem } from './backlog';
 import { isDiscussionChat } from './shaping';
+import { fromGitHub } from './ticket';
 
 /**
  * Ask an Agent (BL-127): an agent answers a comment of yours now, as a reply to it. Who answers, what it's told, and
@@ -94,7 +95,7 @@ export function askPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; ticket: 
           `Its ticket is ${o.ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read what you need of it, and of this repository's code, to answer. You change no code: no branch, no worktree, no commands that change anything. The ticket is the only file you may change.`,
         ]
       : []),
-    `The owner of ${o.item.id} asks you to answer their comment in the ticket (${o.ticket}) now: the entry "### ${o.comment.date} · ${o.comment.author}" of its "## Activity" section, which says:`,
+    `The owner of ${o.item.id} asks you to answer ${fromGitHub(o.comment.author) ? 'a comment from its pull request on GitHub, brought' : 'their comment'} in the ticket (${o.ticket}) now: the entry "### ${o.comment.date} · ${o.comment.author}" of its "## Activity" section, which says:`,
     quoted,
     `Answer it in your final message, in your own words and briefly: Flotilla writes that message into the ticket as your reply to the comment, so don't write it there yourself, and give it no heading or reply line. Then stop. Don't change code, the ticket's description or its status unless the comment asks you to; when you do change something, say what in your answer.`,
   ].join('\n\n');

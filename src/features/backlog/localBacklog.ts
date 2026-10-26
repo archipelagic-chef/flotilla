@@ -408,6 +408,37 @@ export class LocalBacklog {
     });
   }
 
+  private get pullRequestCommentsFile(): string {
+    return path.join(this.dir, 'pr-comments.json');
+  }
+
+  /**
+   * The entries of a ticket known to its pull request's comments (BL-224), by "<id>#<number>": posted there, or there
+   * before it. None: the pull request wasn't synced yet.
+   */
+  async pullRequestComments(key: string): Promise<string[] | undefined> {
+    try {
+      const data: unknown = JSON.parse(await fs.promises.readFile(this.pullRequestCommentsFile, 'utf8'));
+      const known = typeof data === 'object' && data !== null ? (data as Record<string, unknown>)[key] : undefined;
+      return Array.isArray(known) ? known.filter((a): a is string => typeof a === 'string') : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  setPullRequestComments(key: string, known: string[]): Promise<void> {
+    return this.exclusive(async () => {
+      let all: Record<string, unknown> = {};
+      try {
+        const data: unknown = JSON.parse(await fs.promises.readFile(this.pullRequestCommentsFile, 'utf8'));
+        if (typeof data === 'object' && data !== null && !Array.isArray(data)) all = data as Record<string, unknown>;
+      } catch {
+        // None yet.
+      }
+      await writeAtomic(this.pullRequestCommentsFile, `${JSON.stringify({ ...all, [key]: known }, null, 1)}\n`);
+    });
+  }
+
   async deleteDocument(id: string): Promise<void> {
     await fs.promises.rm(this.docPath(id), { force: true });
     await fs.promises.rm(path.join(this.dir, id), { recursive: true, force: true });

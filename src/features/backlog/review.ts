@@ -3,7 +3,7 @@ import { entryAgent, sameAgent } from './backlog';
 import { DESCRIPTION_CHECK, KEEP_WHEN_DONE } from './descriptionShape';
 import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
-import type { TicketEntry } from './ticket';
+import { byPerson, type TicketEntry } from './ticket';
 
 /**
  * The review loop: when an item goes to review, a reviewer agent (not the one that did the work) reviews it and gives
@@ -211,7 +211,8 @@ export function userAnswer(entries: TicketEntry[], review: ReviewState, key: (e:
   const answer: TicketEntry[] = [];
   for (let n = entries.length - 1; n >= 0; n--) {
     const e = entries[n];
-    if (e.author !== 'You') {
+    // Your comments, and those from the ticket's pull request (BL-224).
+    if (!byPerson(e.author)) {
       if (e.author === 'Flotilla') continue;
       break;
     }
