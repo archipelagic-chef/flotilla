@@ -106,6 +106,8 @@ const DEMO_SETTINGS = {
   'window.commandCenter': false,
   // A modal (a confirmation) drawn in the page, not by the OS: frames show it and steps can click it.
   'window.dialogStyle': 'custom',
+  // Only Flotilla's own tool strip on the side: no VS Code activity bar next to it.
+  'workbench.activityBar.location': 'hidden',
   'workbench.startupEditor': 'none',
   'workbench.tips.enabled': false,
   'workbench.enableExperiments': false,
@@ -303,18 +305,14 @@ async function visibleElements(page) {
 }
 
 /**
- * Waits until the window is ready for the demo: the workbench shown, Flotilla's view in the activity bar, Flotilla's
+ * Waits until the window is ready for the demo: the workbench shown, Flotilla's
  * status bar item (shown once the extension has started, so its commands are there), and nothing changed on screen (`drawnAt`: when the last frame came) for QUIET_MS, as extensions and the
  * first git scan settle. A window that never settles fails the demo, rather than recording one still loading.
  */
 async function ready(page, drawnAt) {
   const end = Date.now() + READY_MS;
   await page.locator('.monaco-workbench').waitFor({ timeout: READY_MS });
-  await page
-    .locator('.activitybar [aria-label^="Flotilla"]')
-    .first()
-    .waitFor({ timeout: Math.max(1000, end - Date.now()) });
-  // The activity bar's icon is there before the extension starts; its status bar item only once it has.
+  // The status bar item is shown only once the extension has started.
   await page
     .locator('.statusbar-item[id$="flotilla.current"]')
     .first()
