@@ -47,6 +47,14 @@ export interface FakeGitHub {
     comments: string[];
     /** All its comments (BL-224), in its conversation (issue) and on lines of its diff (review). */
     allComments: FakeComment[];
+    /** The reviews posted on it (BL-223), with their line comments. */
+    reviews: Array<{
+      id: number;
+      event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+      body: string;
+      comments: Array<{ path: string; line: number; start_line?: number; body: string }>;
+      commit: string;
+    }>;
   }>;
   /** Someone comments on a pull request, as on GitHub (the latest open one when none is named, or a ticket's: its branch has its id): its comment's id. */
   comment(o: { body: string; login?: string; repo?: string; number?: number; ticket?: string; path?: string; line?: number; inReplyTo?: number }): number;
