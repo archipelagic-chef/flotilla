@@ -21,7 +21,8 @@ import { eventsWritten, readEvents, setEventLog } from '../../../src/features/me
 
 /** What the mocked VS Code answers and records. */
 const ui = {
-  answers: [] as Array<string | undefined>,
+  /** A function answers when it's asked (what changed while the question waited). */
+  answers: [] as Array<string | undefined | (() => string | undefined)>,
   messages: [] as string[],
   settings: {} as Record<string, unknown>,
   checksExit: 0,
@@ -42,7 +43,8 @@ vi.mock('vscode', () => {
   }
   const ask = (message: string) => {
     ui.messages.push(message);
-    return Promise.resolve(ui.answers.shift());
+    const answer = ui.answers.shift();
+    return Promise.resolve(typeof answer === 'function' ? answer() : answer);
   };
   return {
     EventEmitter,
@@ -675,6 +677,100 @@ describe('Merge to main with fast-forward (BL-181)', () => {
     expect(git(repo, 'show', 'main:s.txt')).toBe('two and three');
     expect((await item('BL-1')).status).toBe('done');
     expect(worktrees()).toBe(1);
+    merger.dispose();
+  });
+
+  /** As its agent rebases BL-1's branch onto main: the same commit on top of it, the conflict resolved. */
+  function rebaseByItsAgent(repo: string): void {
+    git(repo, 'checkout', '-q', '-b', 'rebased', 'main');
+    commit(repo, 's.txt', 'two and three\n', 'BL-1: Two');
+    git(repo, 'branch', '-f', 'feature/BL-1', 'rebased');
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'branch', '-D', 'rebased');
+  }
+
+  /** BL-1's branch and main change s.txt's line: rebasing it onto main conflicts. Queued, its train conflicts too. */
+  async function conflictingQueued() {
+    const s = await setup([approved('BL-1')]);
+    commit(s.repo, 's.txt', 'one\n', 'shared');
+    git(s.repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(s.repo, 's.txt', 'two\n', 'BL-1: Two');
+    git(s.repo, 'checkout', '-q', 'main');
+    commit(s.repo, 's.txt', 'three\n', 'BL-2: Three');
+    ui.settings['merge.onApprove'] = 'off';
+    await s.merger.approved('BL-1', 'Rex-1');
+    await s.merger['currentTrain']({ rebuild: true });
+    await s.merger.resolveTrainConflict('BL-1');
+    const m = (await s.item('BL-1')).merging!;
+    expect(m).toMatchObject({ state: 'resolving', rebase: true, train: { ahead: [] } });
+    // What the agent does: resolves the commit and goes on with the rebase.
+    writeFile(m.dir, 's.txt', 'two and three\n');
+    git(m.dir, 'add', '.');
+    git(m.dir, '-c', 'core.editor=true', 'rebase', '--continue');
+    s.merger['runs'].delete('BL-1');
+    return { ...s, m };
+  }
+
+  it('lands an approved train resolution as approved, once: no second resolution, no agent, not back to In Progress (BL-227)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await conflictingQueued();
+    const before = git(repo, 'rev-parse', 'main');
+    const updates: string[] = [];
+    merger['deps'].updateFromMain = async (id: string) => (updates.push(id), 'handed' as const);
+    const prompts = agents.prompts.length;
+
+    // Update from Main and Merge asked meanwhile joins the merge instead of handing the branch to its agent.
+    const [end] = await Promise.all([merger.approveResolution('BL-1'), merger.updateAndMerge('BL-1')]);
+
+    expect(end).toBe('merged');
+    expect(updates).toEqual([]);
+    expect(agents.prompts.length).toBe(prompts);
+    expect(git(repo, 'log', '--format=%s', `${before}..main`)).toBe('BL-1: Two');
+    expect(git(repo, 'show', 'main:s.txt')).toBe('two and three');
+    expect(git(repo, 'rev-parse', 'feature/BL-1')).toBe(git(repo, 'rev-parse', 'main'));
+    expect((await item('BL-1')).status).toBe('done');
+    expect((await backlog.read()).mergeQueue).toEqual([]);
+    expect(worktrees()).toBe(1);
+    const activity = (await backlog.readTicket(await item('BL-1'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain("in the merge train: it's recorded (`s.txt`), and it lands as you approved it.");
+    expect(activity).not.toContain('In Progress');
+    merger.dispose();
+  });
+
+  it('replays BL-218: the branch rebased by its agent while the resolution waited lands from its tip, with one approval (BL-227)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await conflictingQueued();
+    // Its own agent rebases the branch onto main meanwhile, resolving the same conflict the same way.
+    rebaseByItsAgent(repo);
+    const rebased = git(repo, 'rev-parse', 'feature/BL-1');
+    const prompts = agents.prompts.length;
+
+    expect(await merger.approveResolution('BL-1')).toBe('merged');
+
+    expect(agents.prompts.length).toBe(prompts);
+    expect(ui.messages.filter((x) => x.includes('has conflicts'))).toEqual([]);
+    expect(git(repo, 'rev-parse', 'main')).toBe(rebased);
+    expect((await item('BL-1')).status).toBe('done');
+    expect(worktrees()).toBe(1);
+    const activity = (await backlog.readTicket(await item('BL-1'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toContain('`feature/BL-1` moved since its rebase was made');
+    merger.dispose();
+  });
+
+  it('makes a merge again from the branch as it is when its agent rebased it while you were asked: no conflict, no agent (BL-227)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1')]);
+    commit(repo, 's.txt', 'one\n', 'shared');
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-1');
+    commit(repo, 's.txt', 'two\n', 'BL-1: Two');
+    git(repo, 'checkout', '-q', 'main');
+    commit(repo, 's.txt', 'three\n', 'BL-2: Three');
+    const prompts = agents.prompts.length;
+    // While the conflicts' question waits, its agent rebases the branch onto main.
+    ui.answers = [() => (rebaseByItsAgent(repo), 'Resolve with Agent')];
+
+    expect(await merger.merge('BL-1')).toBe('merged');
+
+    expect(agents.prompts.length).toBe(prompts);
+    expect(git(repo, 'show', 'main:s.txt')).toBe('two and three');
+    expect((await item('BL-1')).status).toBe('done');
     merger.dispose();
   });
 

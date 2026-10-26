@@ -42,6 +42,11 @@ export interface MergeState {
    */
   train?: { ahead: string[] };
   /**
+   * The branch's tip the merge was made from (BL-227): when the branch moved since (its agent rebased it), approving
+   * the merge doesn't land this one: the branch is merged again as it is.
+   */
+  tip?: string;
+  /**
    * Made by rebasing the branch onto baseTip (flotilla.merge.style fast-forward, BL-181), not by a merge commit: the
    * worktree is detached at the rebased tip (or mid-rebase, on its conflicts), and the base fast-forwards to it.
    */

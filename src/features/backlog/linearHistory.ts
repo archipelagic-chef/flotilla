@@ -63,11 +63,11 @@ export async function rebaseInDir(dir: string, onto: string, o: { rerere?: boole
  * branch rebased onto baseTip when it isn't on top of it (or has fixup! commits to squash). Conflicts are left there,
  * the rebase stopped on them; any other failure removes the worktree.
  */
-export async function rebaseInWorktree(cwd: string, o: { dir: string; baseTip: string; branch: string }): Promise<RebaseOutcome> {
+export async function rebaseInWorktree(cwd: string, o: { dir: string; baseTip: string; branch: string; rerere?: boolean }): Promise<RebaseOutcome> {
   await fs.promises.mkdir(path.dirname(o.dir), { recursive: true });
   await runGit(['worktree', 'add', '--detach', o.dir, `refs/heads/${o.branch}`], { cwd, timeoutMs: 120_000 });
   try {
-    return await rebaseInDir(o.dir, o.baseTip);
+    return await rebaseInDir(o.dir, o.baseTip, { rerere: o.rerere });
   } catch (error) {
     await removeMergeWorktree(cwd, o.dir).catch(() => undefined);
     throw error;
