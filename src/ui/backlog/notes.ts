@@ -133,12 +133,9 @@ export class NoteAgents implements vscode.Disposable {
       case 'new':
         await this.newNote();
         return;
-      case 'answer':
-        await this.answer(m.id, m.text);
-        return;
       case 'open':
         // Its note tab (BL-204): what you wrote, to edit, its activity, and a box to write in.
-        await this.openNote(m.id);
+        await this.openNote(m.id, m.answer);
         return;
     }
   }
@@ -149,9 +146,9 @@ export class NoteAgents implements vscode.Disposable {
     this.changed.fire();
   }
 
-  /** A sent note's tab (BL-204), where you edit it and write in it whatever its state. */
-  async openNote(id: string): Promise<void> {
-    await openNotePanel(await this.panelDeps(), id);
+  /** A sent note's tab (BL-204), where you edit it and write in it whatever its state; to answer, at its first question (BL-216). */
+  async openNote(id: string, answer = false): Promise<void> {
+    await openNotePanel(await this.panelDeps(), id, answer);
   }
 
   private async panelDeps(): Promise<Parameters<typeof openNotePanel>[0]> {

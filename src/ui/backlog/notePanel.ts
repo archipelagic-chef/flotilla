@@ -2,7 +2,13 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { mediaType, tooLarge, tooLargeNote } from '../../features/backlog/media';
-import { becameText, type NoteStore } from '../../features/backlog/notes';
+import {
+  askingEntry,
+  becameText,
+  noteQuestion,
+  type NoteStore,
+  withoutQuestions,
+} from '../../features/backlog/notes';
 import type { NoteHostMessage, NoteTabView, NoteWebviewMessage } from '../../webview/noteProtocol';
 import type { NoteView } from '../../webview/protocol';
 import { renderMarkdown } from './ticketPanel';
@@ -33,11 +39,12 @@ const panels = new Map<string, vscode.WebviewPanel>();
  * With a sent note's id, its note tab (BL-204): the same editor with what you wrote, saved as an edit whatever the
  * note's state, then its activity and a box to write a comment in (its answer, when it asks).
  */
-export async function openNotePanel(deps: NotePanelDeps, sentId?: string): Promise<vscode.WebviewPanel> {
+export async function openNotePanel(deps: NotePanelDeps, sentId?: string, answer = false): Promise<vscode.WebviewPanel> {
   const { notes } = deps;
   const shown = sentId && panels.get(sentId);
   if (shown) {
     shown.reveal();
+    if (answer) void shown.webview.postMessage({ type: 'noteFocus' } satisfies NoteHostMessage);
     return shown;
   }
   const id = sentId ?? (await notes.draft());
@@ -54,6 +61,8 @@ export async function openNotePanel(deps: NotePanelDeps, sentId?: string): Promi
     const n = await notes.read(id);
     if (!n || n.status === 'draft') return undefined;
     const shownAs = await deps.status?.(id);
+    const asks = noteQuestion(n);
+    const asking = asks && askingEntry(n);
     return {
       id,
       title: n.title,
@@ -63,8 +72,14 @@ export async function openNotePanel(deps: NotePanelDeps, sentId?: string): Promi
       ...(n.with ? { with: n.with } : {}),
       ...(n.status === 'handled' || n.became.length ? { became: becameText(n.became) } : {}),
       activity: await Promise.all(
-        n.activity.map(async (e) => ({ author: e.author, date: e.date, html: await renderMarkdown(e.body, panel.webview, notes.dir) })),
+        n.activity.map(async (e) => ({
+          author: e.author,
+          date: e.date,
+          // The question blocks of the reply that asks show as its choices, under the activity (BL-216).
+          html: await renderMarkdown(asks?.questions.length && e === asking ? withoutQuestions(e.body) : e.body, panel.webview, notes.dir),
+        })),
       ),
+      ...(asks?.questions.length ? { asks: { questions: asks.questions } } : {}),
     };
   };
   const refresh = async () => {

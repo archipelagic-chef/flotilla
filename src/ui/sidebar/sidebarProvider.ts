@@ -629,12 +629,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'tool', tool });
   }
 
-  /** Shows the backlog with the note's card (where its question is answered), as its "Needs you" row does. */
-  async showNote(id: string): Promise<void> {
-    await this.showTool('backlog');
-    this.act({ type: 'showNote', id });
-  }
-
   /** The Files tab's change marks of a worktree, when they differ from the ones it has. */
   private postMarks(ws: Workstream): void {
     const marks = changeMarks(ws.staged, ws.unstaged, this.listed.of(ws.key));
@@ -782,19 +776,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         return;
       }
-      case 'note': {
-        let failed = false;
-        try {
-          await this.notes?.onMessage(m);
-          await this.postNotes();
-        } catch (error) {
-          failed = true;
-          throw error;
-        } finally {
-          this.post({ type: 'noteDone', message: m, ...(failed ? { failed } : {}) });
-        }
+      case 'note':
+        await this.notes?.onMessage(m);
+        await this.postNotes();
         return;
-      }
       case 'folding':
         await vscode.commands.executeCommand('setContext', 'flotilla.canFold', m.canFold);
         await vscode.commands.executeCommand('setContext', 'flotilla.allFolded', m.allFolded);

@@ -1,34 +1,24 @@
-/* Notes (BL-182): the lane of notes an agent turns into tickets (under Needs you), and the answer box on a note that asks. */
-.notes-input {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-  font-family: inherit;
-  font-size: inherit;
-}
+/* Notes (BL-182): the lane of notes an agent turns into tickets (under Needs you): compact cards (BL-216), and Past notes. */
 .notes-lane .group-head .name {
   color: var(--waiting);
 }
 .note-card {
-  margin: 2px 8px 6px;
-  padding: 4px 8px 6px;
+  margin: 1px 8px 3px;
+  padding: 2px 8px;
   border-left: 2px solid var(--vscode-focusBorder);
   background: var(--vscode-editorWidget-background, transparent);
   border-radius: 3px;
+  cursor: pointer;
+}
+.note-card:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.note-card:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 .note-card.note-asking {
   border-left-color: var(--waiting);
-}
-/* Answer in Needs you went to it (BL-192): marked a moment. */
-.note-card.note-shown {
-  animation: note-shown 1.6s ease-out;
-}
-@keyframes note-shown {
-  from {
-    outline: 1px solid var(--vscode-focusBorder);
-    background: var(--vscode-list-hoverBackground);
-  }
 }
 .note-head {
   display: flex;
@@ -37,7 +27,8 @@
   font-size: 12px;
   color: var(--muted);
 }
-.note-asking .note-head .codicon {
+.note-asking .note-head .codicon,
+.note-asking .note-status {
   color: var(--waiting);
 }
 .note-id {
@@ -49,71 +40,35 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.note-text {
-  margin-top: 2px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
+/* The card's second line: its title, how many notes are handled with it, and what it became (each cut off). */
+.note-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.note-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.note-follower {
-  padding-left: 8px;
-  border-left: 1px solid var(--muted);
-  margin-top: 4px;
-}
-.note-became {
-  display: block;
-  margin-top: 2px;
+.note-followers {
+  flex: none;
   font-size: 12px;
   color: var(--muted);
 }
-.note-asks {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.note-reply {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.note-became {
   font-size: 12px;
+  color: var(--muted);
 }
-.note-question-text {
-  font-weight: 600;
-  margin-bottom: 3px;
-}
-.note-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.note-choice {
-  padding: 1px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--vscode-button-secondaryBackground);
-  background: transparent;
-  color: inherit;
-}
-.note-choice.on {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border-color: var(--vscode-button-background);
-}
-.note-recommended {
-  opacity: 0.75;
-}
-.note-answer-line {
-  width: 100%;
-  box-sizing: border-box;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  padding: 2px 4px;
-}
-.note-send {
-  align-self: flex-end;
+.note-line .note-became {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .note-past {
   gap: 6px;
