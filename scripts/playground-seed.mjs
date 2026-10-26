@@ -292,6 +292,8 @@ const TICKETS = [
       '',
       '- [ ] The size is shown next to each file.',
       '- [ ] A removed file is marked as missing.',
+      '',
+      'Depends on: BL-10',
     ].join('\n'),
     activity: [{ ago: 600, author: 'Flotilla', body: 'You made it part of BL-6.' }],
   },

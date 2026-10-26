@@ -1,0 +1,16 @@
+{
+  "title": "A To Do card says why the autopilot doesn't take it",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 1000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label=\"Hide what needs you\"]" },
+    { "waitFor": ".backlog-item.compact:has-text(\"List attached files in the activity\") .card-status:has-text(\"Waits for BL-10 (\")" },
+    { "caption": "A To Do that waits for another ticket says where that one stands" },
+    { "wait": 2000 },
+    { "caption": "Its title's hover says when the autopilot takes it" },
+    { "hover": ".backlog-item.compact:has-text(\"List attached files in the activity\") .name" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
