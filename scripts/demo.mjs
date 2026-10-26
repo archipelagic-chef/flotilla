@@ -53,6 +53,7 @@ import {
   staleBuild,
   stepsToPlay,
   timeline,
+  recordingLength,
   unsafeFrame,
 } from './demo-kit.mjs';
 
@@ -94,8 +95,12 @@ const CHECK_MS = 250;
 /** The window is ready once nothing has changed on screen for this long (ms), and waited for at most READY_MS. */
 const QUIET_MS = 1000;
 const READY_MS = 60_000;
-/** The pause after each step, and how long the pointer takes to move: slow enough to follow, live and in the GIF. */
+/**
+ * The pause after each step, and how long the pointer takes to move: slow enough to follow, live and in the GIF. A
+ * recording pauses less (BL-219): its stills are cut anyway, and a viewer can pause it.
+ */
 const PACE_MS = 700;
+const RECORD_PACE_MS = 400;
 const MOVE_MS = 450;
 const TIMEOUT_MS = 15_000;
 
@@ -157,11 +162,17 @@ function usage(message) {
   process.exit(1);
 }
 
-/** A check (`npm run demo -- check`): the steps without their pauses, pointer moves and typing delays. */
-const pace = { fast: false };
+/**
+ * A check (`npm run demo -- check`): the steps without their pauses, pointer moves and typing delays. A recording
+ * (`record`): shorter pauses.
+ */
+const pace = { fast: false, recording: false };
 
-/** When the recording started (Date.now()), and the pointer's moves since then ([from, to] in ms): to measure them. */
-const recorded = { start: 0, moves: [] };
+/**
+ * When the recording started (Date.now()), the pointer's moves since then ([from, to] in ms): to measure them, and
+ * when each caption was shown (`at`, with its text's `length`): so that the recording keeps it long enough to read.
+ */
+const recorded = { start: 0, moves: [], captions: [] };
 
 /** A pointer drawn over the workbench, so a viewer sees where each click goes (screenshots have no mouse). */
 async function pointer(page, x, y) {
@@ -202,6 +213,7 @@ async function pointer(page, x, y) {
 
 /** A caption at the bottom of the window (an empty one removes it). */
 async function caption(page, text) {
+  if (recorded.start) recorded.captions.push({ at: Date.now() - recorded.start, length: text?.length ?? 0 });
   await page.evaluate((text) => {
     let box = document.getElementById('flotilla-demo-caption');
     if (!text) return box?.remove();
@@ -394,7 +406,7 @@ async function play(page, step) {
       break;
     }
   }
-  await page.waitForTimeout(pace.fast ? 100 : PACE_MS);
+  await page.waitForTimeout(pace.fast ? 100 : pace.recording ? RECORD_PACE_MS : PACE_MS);
 }
 
 /**
@@ -422,9 +434,9 @@ function findFfmpeg() {
  * Writes the recording: a GIF, or an MP4 (next to it, same name) when it's longer than GIF_MAX_MS and there's an ffmpeg.
  * Either names its demo in its comment (DEMO_TAG), for the ticket's Try it yourself (BL-111).
  */
-function save(captures, endMs, out, name) {
-  const frames = timeline(captures, endMs);
-  const ffmpeg = endMs > GIF_MAX_MS ? findFfmpeg() : undefined;
+function save(frames, out, name) {
+  const { ms } = recordingLength(frames);
+  const ffmpeg = ms > GIF_MAX_MS ? findFfmpeg() : undefined;
   if (ffmpeg) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-demo-'));
     try {
@@ -467,7 +479,7 @@ function save(captures, endMs, out, name) {
   }
   fs.writeFileSync(out, encodeGif(frames, { name }));
   const note =
-    endMs > GIF_MAX_MS
+    ms > GIF_MAX_MS
       ? ` It's longer than ${GIF_MAX_MS / 1000} s, so it would be an MP4, but there's no ffmpeg (not on PATH, and @ffmpeg-installer/ffmpeg isn't installed: run npm install): it's a GIF.`
       : '';
   return { file: out, note };
@@ -482,6 +494,7 @@ async function main() {
   }
   if (mode !== 'record' && mode !== 'play' && mode !== 'try' && mode !== 'check') usage();
   pace.fast = mode === 'check';
+  pace.recording = mode === 'record';
   const file = demoFile(root, name);
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
   const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), name), name };
@@ -681,21 +694,25 @@ async function show(mode, demo, out, still, display) {
     if (mode === 'record') {
       const endMs = end - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
+      const frames = timeline(captures, endMs, { captions: recorded.captions });
+      const length = recordingLength(frames);
       const gaps = gapStats(
-        timeline(captures, endMs).map((f) => f.at),
+        frames.map((f) => f.at),
         recorded.moves,
       );
       if (gaps)
         console.log(
           `While the pointer moved: frames ${Math.round(gaps.median)} ms apart (median), ${Math.round(gaps.p90)} ms (90th percentile), over ${gaps.count} gaps.`,
         );
-      const saved = save(captures, endMs, out, demo.name);
+      const saved = save(frames, out, demo.name);
       // For the metrics (BL-157, BL-133): how smooth the recording was.
       const commonDir = gitCommonDir();
       const data = {
         name: demo.name,
         frames: captures.length,
         ms: endMs,
+        recordedMs: length.ms,
+        cutMs: length.cutMs,
         ...(gaps ? { medianGapMs: Math.round(gaps.median), p90GapMs: Math.round(gaps.p90) } : {}),
       };
       recordEvent(commonDir, 'demo-recorded', { ticket: ticketOfBranch(gitBranch()), data });
@@ -704,7 +721,7 @@ async function show(mode, demo, out, still, display) {
         fs.writeFileSync(still, captures[captures.length - 1].png);
         console.log(`Its last frame: ${still}`);
       }
-      console.log(resultLine({ saved: saved.file, bytes: fs.statSync(saved.file).size, ms: endMs }));
+      console.log(resultLine({ saved: saved.file, bytes: fs.statSync(saved.file).size, ...length }));
     } else if (mode === 'check') {
       recordEvent(gitCommonDir(), 'demo-checked', {
         ticket: ticketOfBranch(gitBranch()),

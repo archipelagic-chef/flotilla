@@ -75,7 +75,7 @@ const SAMPLES: { [K in EventKind]: EventData[K] } = {
   'click-waited': { button: 'merge', ms: 2400 },
   'review-state': { from: 'working', to: 'asking' },
   'test-run': { ms: 90_000, waitMs: 30_000, full: true, ok: true, slots: 1 },
-  'demo-recorded': { name: 'open-agent-chat', frames: 120, ms: 8000, medianGapMs: 40, p90GapMs: 80 },
+  'demo-recorded': { name: 'open-agent-chat', frames: 120, ms: 8000, recordedMs: 5000, cutMs: 3000, medianGapMs: 40, p90GapMs: 80 },
   'demo-checked': { name: 'open-agent-chat', steps: 7, ms: 6000 },
   'demo-failed': { name: 'open-agent-chat', mode: 'record', step: 2, reason: 'nothing visible matches .x after 15000 ms' },
 };

@@ -31,7 +31,16 @@ export function frameGate<F>(check: () => Promise<string | undefined>): {
   add(frame: F): void;
   check(): Promise<string | undefined>;
 };
-export function timeline(captures: { at: number; png: Buffer }[], endMs: number): { png: Buffer; at: number; ms: number }[];
+export function timeline(
+  captures: { at: number; png: Buffer }[],
+  endMs: number,
+  options?: { captions?: { at: number; length: number }[] },
+): { png: Buffer; at: number; ms: number; cutMs: number }[];
+export const STILL_MS: number;
+export const CAPTION_MS_PER_CHAR: number;
+export const CAPTION_MIN_MS: number;
+export function recordingLength(frames: { ms: number; cutMs?: number }[]): { ms: number; cutMs: number };
+export function lengthLine(length: { ms: number; cutMs: number }): string;
 export function gapStats(ats: number[], moves: [number, number][]): { median: number; p90: number; count: number } | undefined;
 export const DEMO_TAG: string;
 export function tagGif(gif: Buffer, name: string): Buffer;
@@ -42,7 +51,8 @@ export function staleBuild(root: string): string | undefined;
 export function failureReason(error: unknown): string;
 export function nearestElements(selector: string, elements: { tag: string; text?: string; label?: string; classes?: string }[], count?: number): string[];
 export function resultLine(
-  result: { saved: string; bytes: number; ms: number } | { checked: number; ms: number } | { step?: string; reason: string; screenshot?: string },
+  result:
+    { saved: string; bytes: number; ms: number; cutMs?: number } | { checked: number; ms: number } | { step?: string; reason: string; screenshot?: string },
 ): string;
 export function plainSettings(file: string): 'kept' | 'rewritten' | 'moved';
 export function commandMatches(typed: string, label: string | undefined | null): boolean;

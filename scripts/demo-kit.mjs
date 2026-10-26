@@ -240,8 +240,13 @@ export function frameGate(check) {
  * the next one, and the last for `endMs - at`. Of those drawn before the start, only the last is kept, as the first
  * frame. Captures the same as the one before (byte for byte) only lengthen it, and of those drawn in the same FRAME_MS
  * (a step of 40 ms from the start), the last shows, from the step's start.
+ *
+ * A frame shows at most STILL_MS (BL-219): a recording doesn't sit on a screen that waits. One with a caption on screen
+ * (`captions`: when each was shown, `at`, with its text's `length`, 0 when removed) shows long enough to read it:
+ * CAPTION_MS_PER_CHAR a character, at least CAPTION_MIN_MS. Each frame's `at` stays when it was drawn; `cutMs` is how
+ * much of its time was cut.
  */
-export function timeline(captures, endMs) {
+export function timeline(captures, endMs, { captions = [] } = {}) {
   const sorted = [...captures].sort((a, b) => a.at - b.at);
   const before = sorted.filter((c) => c.at <= 0).pop();
   const shown = [];
@@ -255,11 +260,42 @@ export function timeline(captures, endMs) {
   }
   // Coming in later frames' place may have made one the same as the one before it.
   const merged = shown.filter((f, n) => n === 0 || !f.png.equals(shown[n - 1].png));
+  const shownCaptions = [...captions].sort((a, b) => a.at - b.at);
   return merged.map(({ png, at }, n) => {
-    const ms = (n + 1 < merged.length ? merged[n + 1].at : Math.max(endMs, at)) - at;
+    const to = n + 1 < merged.length ? merged[n + 1].at : Math.max(endMs, at);
+    const capped = Math.min(to - at, stillCap(shownCaptions, at, to));
     // GIF delays are in hundredths of a second: at least 2 (most viewers slow down faster frames anyway).
-    return { png, at, ms: Math.max(20, Math.round(ms / 10) * 10) };
+    const ms = Math.max(20, Math.round(capped / 10) * 10);
+    return { png, at, ms, cutMs: Math.max(0, Math.round((to - at - capped) / 10) * 10) };
   });
+}
+
+/** The longest a frame shows (ms) when nothing on it changes (BL-219). */
+export const STILL_MS = 1200;
+/** How long a frame with a caption shows at most: this long a character of the caption, and at least CAPTION_MIN_MS. */
+export const CAPTION_MS_PER_CHAR = 60;
+export const CAPTION_MIN_MS = 2000;
+
+/** The cap of a frame shown from `from` to `to`: STILL_MS, or longer for the longest caption on screen meanwhile. */
+function stillCap(captions, from, to) {
+  let length = 0;
+  for (const [n, c] of captions.entries()) {
+    const until = n + 1 < captions.length ? captions[n + 1].at : Infinity;
+    // On screen for more than a FRAME_MS of it: one shown just as the next frame is drawn is that frame's.
+    if (c.at < to - FRAME_MS && until > from + FRAME_MS) length = Math.max(length, c.length);
+  }
+  return length ? Math.max(STILL_MS, CAPTION_MIN_MS, length * CAPTION_MS_PER_CHAR) : STILL_MS;
+}
+
+/** How long the recording of `frames` (from timeline) is, and how much of the stills was cut (ms). */
+export function recordingLength(frames) {
+  return { ms: frames.reduce((sum, f) => sum + f.ms, 0), cutMs: frames.reduce((sum, f) => sum + (f.cutMs ?? 0), 0) };
+}
+
+/** "12.4 s, 9.1 s of stills cut": what the recorder says of a recording's length. */
+export function lengthLine({ ms, cutMs }) {
+  const s = (v) => `${(v / 1000).toFixed(1)} s`;
+  return cutMs ? `${s(ms)}, ${s(cutMs)} of stills cut` : s(ms);
 }
 
 /**
@@ -446,7 +482,7 @@ function size(bytes) {
  * a check passed every step, or `{ step, reason, screenshot }` when it failed.
  */
 export function resultLine(result) {
-  if (result.saved) return `Demo saved: ${result.saved} (${size(result.bytes)}, ${(result.ms / 1000).toFixed(1)} s)`;
+  if (result.saved) return `Demo saved: ${result.saved} (${size(result.bytes)}, ${lengthLine({ ms: result.ms, cutMs: result.cutMs ?? 0 })})`;
   if (result.checked !== undefined) return `Demo checked: all ${result.checked} steps passed (${(result.ms / 1000).toFixed(1)} s). Record it once now.`;
   const at = result.step ? `${result.step}: ` : '';
   return `Demo failed: ${at}${result.reason}${result.screenshot ? ` (screenshot: ${result.screenshot})` : ''}`;
