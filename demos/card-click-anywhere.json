@@ -1,0 +1,16 @@
+{
+  "title": "A click anywhere on a backlog card opens its ticket, also its hovered bottom line",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1200 },
+    { "caption": "Hovered, a compact card's bottom line shows its id, details and actions" },
+    { "hover": ".backlog-item.compact:has-text(\"Sort the backlog by priority\") .name" },
+    { "wait": 1200 },
+    { "caption": "A click on its id opens the ticket" },
+    { "click": ".backlog-item.compact:has-text(\"Sort the backlog by priority\") .card-hover .item-id" },
+    { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
+    { "wait": 2000 },
+    { "caption": "" }
+  ]
+}
