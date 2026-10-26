@@ -45,6 +45,10 @@ export interface BacklogItemView extends BacklogItem {
   need?: Need;
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
+  /** Where each of those stands (BL-205): what it waits for you to do, or else how far it is ("in progress", "merge failed"). */
+  waitsOn?: Array<{ id: string; standing: string }>;
+  /** An epic's parts (BL-205): how many it has, and how many are done. The autopilot takes its parts, not the epic. */
+  parts?: { done: number; total: number };
   /** Its agent stopped without a question, to be resumed (BL-198): the tickets it said it waits for, not merged yet and merged. */
   resume?: { waits: string[]; merged: string[] };
   /** The autopilot holds it back: it would change files this ticket in progress changes (BL-71). */

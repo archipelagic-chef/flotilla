@@ -19,6 +19,8 @@ export interface CardStatus {
   /** An agent (or the merge's checks) works on it now. */
   working?: boolean;
   next?: CardStep;
+  /** Why, at more length: the status line's hover. */
+  tip?: string;
 }
 
 /** A card's next step: a backlog message the card sends, with the button's label. */
@@ -42,6 +44,9 @@ export type CardStatusItem = Pick<
   | 'startFailed'
   | 'clash'
   | 'waitsFor'
+  | 'waitsOn'
+  | 'parts'
+  | 'shaping'
   | 'resume'
   | 'creating'
   | 'base'
@@ -56,7 +61,16 @@ const rounds = (n: number) => `${n} ${n === 1 ? 'round' : 'rounds'}`;
 
 export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], queuedBehind = false, now = Date.now()): CardStatus {
   const main = item.base ?? 'main';
-  if (item.proposed) return { text: item.proposed.by ? `Proposed by ${item.proposed.by}` : 'Proposed', next: { op: 'accept', label: 'Accept', icon: 'check' } };
+  if (item.proposed) {
+    // Why the autopilot doesn't take it (BL-205): it waits to be accepted, and its discussion, if any, ends then.
+    const by = item.proposed.by ? `Proposed by ${item.proposed.by}` : 'Proposed';
+    const talk = item.shaping?.agent;
+    return {
+      text: talk ? `${by} · in discussion with ${talk}` : `${by} · waits to be accepted`,
+      tip: `The autopilot takes it once you accept it${talk ? ', which ends the discussion' : ''}.`,
+      next: { op: 'accept', label: 'Accept', icon: 'check' },
+    };
+  }
   if (item.source) return { text: `${item.source.label} · ${item.source.statusName}` };
   const m = item.merging;
   if (m?.state === 'failed') return { text: `Merge failed${m.reason ? `: ${strip(m.reason)}` : ''}`, mark: 'error', next: OPEN };
@@ -112,7 +126,12 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   const waiting = agents.find((a) => a.state === 'waiting');
   if (waiting) return { text: `${waiting.name} waits for you`, mark: 'question', next: { op: 'open', label: 'Answer', icon: 'comment' } };
   if (item.clash) return { text: `Held back until ${item.clash.with} is merged` };
-  if (item.waitsFor) return { text: `Waits for ${item.waitsFor.join(', ')}` };
+  if (item.waitsFor) {
+    // Where each one stands (BL-205), so a stuck dependency shows on the tickets it holds up.
+    const stands = new Map(item.waitsOn?.map((w) => [w.id, w.standing]));
+    const deps = item.waitsFor.map((id) => (stands.get(id) ? `${id} (${stands.get(id)})` : id));
+    return { text: `Waits for ${deps.join(', ')}`, tip: `The autopilot takes it once ${item.waitsFor.length === 1 ? 'that one is' : 'they are'} merged.` };
+  }
   // The agent that did something last says what it does.
   const since = (a: CardAgent) => a.activity?.tool?.since ?? '';
   const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
@@ -125,6 +144,18 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   if (item.creating) return { text: 'Creating its worktree…', working: true };
   switch (item.status) {
     case 'todo':
+      // What the autopilot passes over, and why (BL-205): an epic (its parts it takes), a ticket in a discussion.
+      if (item.parts?.total)
+        return {
+          text: `Epic · ${item.parts.done} of ${item.parts.total} parts done`,
+          tip: 'The autopilot takes its parts, not the epic: start a part, not the whole.',
+        };
+      if (item.shaping?.agent)
+        return {
+          text: `In discussion with ${item.shaping.agent}`,
+          tip: "The autopilot doesn't take it while it's discussed: accepting it or starting it ends the discussion.",
+          next: START,
+        };
       return { text: item.agent?.light && !item.agent.model ? 'To do · light' : 'To do', next: START };
     case 'doing':
       return { text: 'In progress · no agent on it', next: START };

@@ -523,14 +523,17 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
         {renaming ? (
           <RenameBox item={item} onDone={() => setRenaming(false)} />
         ) : (
-          // Its hover: the whole title, and what the ticket does when it's done (its summary, BL-137).
-          <span class="name" data-tip={item.summary ? `${item.title}\n\n${item.summary}` : item.title}>
+          // Its hover: the whole title, why the autopilot passes it over (BL-205), and what the ticket does when it's done (its summary, BL-137).
+          <span class="name" data-tip={[item.title, status.tip, item.summary].filter(Boolean).join('\n\n')}>
             {item.title}
           </span>
         )}
         {!renaming && (
           <span class="card-line">
-            <span class={`card-status${status.mark ? ` mark-${status.mark}` : ''}${status.working ? ' working' : ''}`} data-tip={item.summary}>
+            <span
+              class={`card-status${status.mark ? ` mark-${status.mark}` : ''}${status.working ? ' working' : ''}`}
+              data-tip={[status.tip, item.summary].filter(Boolean).join('\n\n') || undefined}
+            >
               {saving ? (
                 <i class="codicon codicon-loading codicon-modifier-spin" role="status" aria-label="Saving…" />
               ) : status.mark ? (
