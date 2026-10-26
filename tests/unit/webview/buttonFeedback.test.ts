@@ -38,8 +38,10 @@ const INSTANT = new Set([
   'ci:signIn',
   'copy',
   'copyText',
-  // Its spinner comes from the host's view (the CI's "starting").
+  // Its spinner comes from the host's view (the CI's "starting"): the CI/CD view's, and a ticket's (BL-222).
   'runWorkflow',
+  'ci:runCi',
+  'ci:runWorkflow',
 ]);
 
 const root = join(__dirname, '../../../src/webview');
