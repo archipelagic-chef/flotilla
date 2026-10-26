@@ -339,7 +339,7 @@ async function ready(page, drawnAt) {
 }
 
 /** Plays a step in the window. */
-async function play(page, step) {
+async function play(page, step, github) {
   const timeout = step.timeout ?? TIMEOUT_MS;
   switch (step.action) {
     case 'command': {
@@ -396,6 +396,14 @@ async function play(page, step) {
       return;
     case 'caption':
       await caption(page, step.value);
+      break;
+    case 'gitHubComment':
+      // Someone comments on the ticket's pull request on the fake GitHub (BL-224).
+      // "BL-13: The comment." comments on that ticket's.
+      {
+        const m = /^([A-Z][A-Z0-9]*-\d+):\s+([\s\S]*)$/.exec(step.value);
+        github.comment(m ? { ticket: m[1], body: m[2] } : { body: step.value });
+      }
       break;
     case 'agentTurn': {
       // The seeded agent's chat goes on by a turn, as a running agent's would (its transcript grows).
@@ -673,7 +681,7 @@ async function show(mode, demo, out, still, display) {
         const label = `step ${n + 1} (${step.action} ${JSON.stringify(step.value)}${step.to ? ` to ${JSON.stringify(step.to)}` : ''})`;
         const at = Date.now();
         try {
-          await play(page, step);
+          await play(page, step, github);
         } catch (error) {
           throw await stepFailed(page, demo, n + 1, label, step, error);
         }

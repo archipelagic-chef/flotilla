@@ -1,0 +1,46 @@
+{
+  "title": "A comment on a ticket's pull request reaches the ticket: by its login, linked, and answerable like yours",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "caption": "BL-13 is in review: Flotilla opened its pull request on GitHub"
+    },
+    {
+      "waitFor": ".pull-request.open:has-text(\"PR #\")",
+      "timeout": 30000
+    },
+    {
+      "caption": "Someone comments on the pull request on GitHub…"
+    },
+    {
+      "gitHubComment": "BL-13: Could the greeting say the user's name too?"
+    },
+    {
+      "waitFor": ".feed .entry:has-text(\"octo-reviewer on GitHub\")",
+      "timeout": 40000
+    },
+    {
+      "caption": "…and it shows in the ticket's activity, linked to GitHub. Your comments and the agents' summaries go to the pull request too"
+    },
+    {
+      "hover": ".feed .entry:has-text(\"octo-reviewer on GitHub\")"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

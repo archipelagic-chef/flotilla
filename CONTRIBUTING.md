@@ -233,6 +233,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |
 | `{ "caption": "A click on a card opens its ticket" }` | shows a caption at the bottom; `""` removes it |
 | `{ "agentTurn": "Vega-2" }` | the seeded agent's chat goes on by a turn: its transcript grows, as a running agent's does (the value names it, for the reader) |
+| `{ "gitHubComment": "BL-13: Could it greet by name?" }` | someone (octo-reviewer) comments on that ticket's pull request on the fake GitHub (without "BL-13: ", on the latest open one), as on GitHub (BL-224) |
 
 The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
 

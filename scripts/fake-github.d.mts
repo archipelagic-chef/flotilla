@@ -48,8 +48,8 @@ export interface FakeGitHub {
     /** All its comments (BL-224), in its conversation (issue) and on lines of its diff (review). */
     allComments: FakeComment[];
   }>;
-  /** Someone comments on a pull request, as on GitHub (the latest open one when none is named): its comment's id. */
-  comment(o: { body: string; login?: string; repo?: string; number?: number; path?: string; line?: number; inReplyTo?: number }): number;
+  /** Someone comments on a pull request, as on GitHub (the latest open one when none is named, or a ticket's: its branch has its id): its comment's id. */
+  comment(o: { body: string; login?: string; repo?: string; number?: number; ticket?: string; path?: string; line?: number; inReplyTo?: number }): number;
   close(): Promise<void>;
 }
 
