@@ -1,0 +1,83 @@
+{
+  "title": "Discard a ticket as won't do: it folds into Discarded, keeps its ticket, and reopens into To Do",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Start a ticket from the keyboard\")"
+    },
+    {
+      "caption": "A card's actions have Discard, next to its other actions"
+    },
+    {
+      "hover": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") [aria-label=\"Discard (Won't Do)…\"]"
+    },
+    {
+      "caption": "It asks once: the ticket is kept, and can be reopened"
+    },
+    {
+      "waitFor": ".monaco-dialog-box .monaco-button:has-text(\"Discard\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".monaco-dialog-box .monaco-button:has-text(\"Discard\")"
+    },
+    {
+      "caption": "It leaves the lanes, for a folded Discarded section after Done"
+    },
+    {
+      "waitFor": ".discarded-lane"
+    },
+    {
+      "click": ".discarded-lane .group-head"
+    },
+    {
+      "waitFor": ".discarded-lane .backlog-item:has-text(\"Start a ticket from the keyboard\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "Its ticket says when it was discarded, and offers Reopen"
+    },
+    {
+      "click": ".discarded-lane .backlog-item:has-text(\"Start a ticket from the keyboard\") .name"
+    },
+    {
+      "waitFor": ".discarded-banner"
+    },
+    {
+      "wait": 1800
+    },
+    {
+      "click": ".discarded-banner button:has-text(\"Reopen\")"
+    },
+    {
+      "caption": "Reopened: it's back in To Do, with Discard again"
+    },
+    {
+      "waitFor": "button:has-text(\"Discard\")"
+    },
+    {
+      "waitFor": "[role=\"radio\"][aria-checked=\"true\"]:has-text(\"To Do\")"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
