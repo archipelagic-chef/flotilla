@@ -41,6 +41,8 @@ export interface MergeState {
    * ahead, its ids). Approving it records the resolution (rerere) and rebuilds the train, which lands the ticket.
    */
   train?: { ahead: string[] };
+  /** Started by Land All, Resolving Conflicts (BL-226): its resolution is approved without asking, and lands after its checks. */
+  auto?: boolean;
   /**
    * The branch's tip the merge was made from (BL-227): when the branch moved since (its agent rebased it), approving
    * the merge doesn't land this one: the branch is merged again as it is.

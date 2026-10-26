@@ -472,7 +472,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         await setAgentLimit(m.max);
         return;
       case 'landAll':
-        await vscode.commands.executeCommand('flotilla.mergeAllReady');
+        if (m.resolve) await this.merger?.mergeAllReady({ resolve: true });
+        else await vscode.commands.executeCommand('flotilla.mergeAllReady');
+        return;
+      case 'dequeue':
+        await this.merger?.removeFromQueue(m.id);
         return;
       case 'queueOrder':
         await this.merger?.reorderQueue(m.ids);
