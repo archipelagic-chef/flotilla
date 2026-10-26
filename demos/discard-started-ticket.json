@@ -1,0 +1,50 @@
+{
+  "title": "Discarding a ticket with work started says which agents stop and which worktrees go, keeping their branches",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "caption": "BL-3 is in progress: an agent works in its worktree"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name"
+    },
+    {
+      "waitFor": "button:has-text(\"Discard\")"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "click": "button:has-text(\"Discard\")"
+    },
+    {
+      "caption": "Discard says what goes: its agent stops, its worktree is removed, the branch stays"
+    },
+    {
+      "waitFor": ".monaco-dialog-box:has-text(\"Its worktree is removed, keeping the branch\")"
+    },
+    {
+      "wait": 4000
+    },
+    {
+      "caption": "Cancel leaves it all as it was"
+    },
+    {
+      "click": ".monaco-dialog-box .monaco-button:has-text(\"Cancel\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
