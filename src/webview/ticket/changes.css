@@ -132,6 +132,11 @@
 .change-note {
   font-style: italic;
 }
+.change-more {
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+  background: var(--vscode-diffEditor-unchangedRegionBackground, rgba(128, 128, 128, 0.08));
+}
 .change-line {
   gap: 0;
   font-family: var(--vscode-editor-font-family);

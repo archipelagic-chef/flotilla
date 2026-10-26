@@ -5,6 +5,7 @@ import {
   filterChange,
   filterFiles,
   fullRows,
+  HUNK_LINES,
   rowWindow,
   sinceLastReview,
   withDiffs,
@@ -84,6 +85,28 @@ describe('withDiffs', () => {
     );
     expect(out).toEqual(['a.ts', '@@ −3,2 +3,2 @@ @3', 'context x', 'deleted y', 'added z', 'b.ts', '(Reading its diff…)', 'c.png', '(A binary file)']);
     expect(withDiffs(rows, new Set(), diffs)).toHaveLength(3);
+  });
+
+  it('folds a long hunk past HUNK_LINES into a row of the rest, until it’s opened; one line over shows whole', () => {
+    const rows = changeRows(change(group('b', [file('a.ts')])), new Set());
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'added' as const, text: `l${i}`, new: i + 1 }));
+    const diffs = new Map([
+      [
+        '0:a.ts',
+        {
+          hunks: [
+            { oldStart: 0, newStart: 1, lines: lines(30) },
+            { oldStart: 40, newStart: 40, lines: lines(HUNK_LINES + 1) },
+          ],
+        },
+      ],
+    ]);
+    const kinds = (opened?: Set<string>) =>
+      withDiffs(rows, new Set(['0:a.ts']), diffs, opened).map((r) => (r.kind === 'more' ? `more ${r.count} ${r.hunk}` : r.kind));
+    const folded = kinds();
+    expect(folded.filter((k) => k === 'line')).toHaveLength(HUNK_LINES + HUNK_LINES + 1);
+    expect(folded[HUNK_LINES + 2]).toBe(`more ${30 - HUNK_LINES} 0:a.ts#0`);
+    expect(kinds(new Set(['0:a.ts#0'])).filter((k) => k === 'line')).toHaveLength(30 + HUNK_LINES + 1);
   });
 });
 

@@ -97,13 +97,23 @@ export function changeRows(change: TicketChange, folded: ReadonlySet<string>): C
 export type DiffRow =
   | { kind: 'hunk'; key: string; group: number; path: string; depth: number; line: number; label: string }
   | { kind: 'line'; key: string; depth: number; line: DiffLine }
-  | { kind: 'note'; key: string; group: number; path: string; depth: number; text: string };
+  | { kind: 'note'; key: string; group: number; path: string; depth: number; text: string }
+  | { kind: 'more'; key: string; hunk: string; depth: number; count: number };
+
+/** A hunk inline shows this many of its lines; the rest fold into one row ("40 more lines") until it's opened. */
+export const HUNK_LINES = 12;
 
 /**
- * The rows with the diffs of the unfolded files (by their row's key) under them: each hunk's head, then its lines. A
- * diff not read yet (none in diffs) shows as "Reading its diff…".
+ * The rows with the diffs of the unfolded files (by their row's key) under them: each hunk's head, then its lines, past
+ * HUNK_LINES folded into a "more" row unless the hunk (its head's key) is in opened (BL-172). A diff not read yet (none
+ * in diffs) shows as "Reading its diff…".
  */
-export function withDiffs(rows: readonly ChangeRow[], unfolded: ReadonlySet<string>, diffs: ReadonlyMap<string, FileDiff>): Array<ChangeRow | DiffRow> {
+export function withDiffs(
+  rows: readonly ChangeRow[],
+  unfolded: ReadonlySet<string>,
+  diffs: ReadonlyMap<string, FileDiff>,
+  opened: ReadonlySet<string> = new Set(),
+): Array<ChangeRow | DiffRow> {
   const out: Array<ChangeRow | DiffRow> = [];
   for (const r of rows) {
     out.push(r);
@@ -120,8 +130,12 @@ export function withDiffs(rows: readonly ChangeRow[], unfolded: ReadonlySet<stri
       const old = h.lines.filter((l) => l.kind !== 'added').length;
       const next = h.lines.filter((l) => l.kind !== 'deleted').length;
       const label = `@@ −${h.oldStart},${old} +${h.newStart},${next} @@`;
-      out.push({ kind: 'hunk', key: `${r.key}#${i}`, group, path, depth, line: Math.max(1, h.newStart), label });
-      h.lines.forEach((line, j) => out.push({ kind: 'line', key: `${r.key}#${i}:${j}`, depth, line }));
+      const hunk = `${r.key}#${i}`;
+      out.push({ kind: 'hunk', key: hunk, group, path, depth, line: Math.max(1, h.newStart), label });
+      // One more line than the fold would hide shows, rather than a row saying "1 more line".
+      const shown = opened.has(hunk) || h.lines.length <= HUNK_LINES + 1 ? h.lines.length : HUNK_LINES;
+      h.lines.slice(0, shown).forEach((line, j) => out.push({ kind: 'line', key: `${hunk}:${j}`, depth, line }));
+      if (shown < h.lines.length) out.push({ kind: 'more', key: `${hunk}:more`, hunk, depth, count: h.lines.length - shown });
     });
   }
   return out;

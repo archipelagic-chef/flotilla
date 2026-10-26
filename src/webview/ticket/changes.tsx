@@ -70,6 +70,8 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
   /** The files whose diffs are unfolded inline (their rows' keys), and the diffs read (until the change is new). */
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
   const [diffs, setDiffs] = useState<ReadonlyMap<string, FileDiff>>(new Map());
+  /** The long hunks shown whole (their heads' keys), until the change is new. */
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     if (marked) setCurrent(marked);
   }, [marked]);
@@ -98,6 +100,7 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
   // (Not when the path filter changes: the diffs are the same.)
   useEffect(() => {
     setDiffs(new Map());
+    setOpened(new Set());
     if (!whole) return;
     for (const key of unfolded) {
       const [g, ...rest] = key.split(':');
@@ -105,7 +108,8 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
       if (whole.groups[Number(g)]?.files.some((f) => f.path === path)) read(key, Number(g), path);
     }
   }, [whole]);
-  const rows = useMemo(() => (change ? withDiffs(changeRows(change, folded), unfolded, diffs) : []), [change, folded, unfolded, diffs]);
+  const rows = useMemo(() => (change ? withDiffs(changeRows(change, folded), unfolded, diffs, opened) : []), [change, folded, unfolded, diffs, opened]);
+  const openHunk = (hunk: string) => setOpened(new Set([...opened, hunk]));
   const toggle = (key: string) => {
     const next = new Set(folded);
     if (!next.delete(key)) next.add(key);
@@ -128,9 +132,9 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
     section.current?.scrollIntoView({ block: 'start' });
     setReveal(undefined);
   }, [reveal, rows, change]);
-  const open = (group: number, path: string) => {
+  const open = (group: number, path: string, line?: number) => {
     setCurrent(path);
-    send({ type: 'openChange', group, path });
+    send({ type: 'openChange', group, path, line });
   };
   return (
     <section class="block changes" ref={section}>
@@ -179,6 +183,7 @@ export function Changes({ ticket, expand, marked }: { ticket: TicketView; expand
                     unfold={unfold}
                     unfolded={unfolded}
                     open={open}
+                    openHunk={openHunk}
                     expand={expand}
                     current={current}
                   />
@@ -287,6 +292,7 @@ function Row({
   unfold,
   unfolded,
   open,
+  openHunk,
   expand,
   current,
 }: {
@@ -296,7 +302,8 @@ function Row({
   toggle: (key: string) => void;
   unfold: (key: string, group: number, path: string) => void;
   unfolded: ReadonlySet<string>;
-  open: (group: number, path: string) => void;
+  open: (group: number, path: string, line?: number) => void;
+  openHunk: (hunk: string) => void;
   expand: (at: FullAt) => void;
   current?: string;
 }) {
@@ -344,7 +351,24 @@ function Row({
         >
           <i class="codicon codicon-screen-full" /> Expand
         </button>
+        <button
+          class="change-action"
+          onClick={() => open(row.group, row.path, row.line)}
+          title={`In VS Code's diff editor, beside the ticket, at line ${row.line}`}
+        >
+          <i class="codicon codicon-split-horizontal" /> Open at Line {row.line}
+        </button>
       </div>
+    );
+  }
+  if (row.kind === 'more') {
+    return (
+      <button class="change-row change-more" style={{ ...style, ...indent }} onClick={() => openHunk(row.hunk)} title="Show the hunk's other lines">
+        <i class="codicon codicon-unfold" />
+        <span class="change-name">
+          {row.count} more line{row.count === 1 ? '' : 's'}
+        </span>
+      </button>
     );
   }
   if (row.kind === 'note') {
