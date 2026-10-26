@@ -9,6 +9,7 @@ import { entryAgent } from '../../features/backlog/backlog';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { diagramSvg } from './diagrams';
 import { RecordingBar, type Action } from './demo';
+import { playAtSpeed } from './speed';
 
 /** The window event "Show in activity" sends: the activity opens the entry (its detail: the entry's key) and goes there. */
 export const SHOW_ENTRY = 'flotilla-show-entry';
@@ -174,6 +175,12 @@ function Viewer({
 }) {
   const a = list[at];
   const many = list.length > 1;
+  // A demo plays at the speed demos play at (BL-218), as its bar says.
+  const figure = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!a.demo || a.kind === 'diagram' || !figure.current) return;
+    return playAtSpeed(figure.current, ':scope > img, :scope > .viewer-video > video');
+  }, [a.src, a.demo, a.kind]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
@@ -195,7 +202,7 @@ function Viewer({
           <i class="codicon codicon-chevron-left" />
         </button>
       )}
-      <figure class="viewer-figure">
+      <figure class="viewer-figure" ref={figure}>
         {a.demo && a.kind !== 'diagram' && demo(a as AttachmentView)}
         {a.kind === 'diagram' ? (
           <LargeDiagram key={a.code} code={a.code ?? ''} label={caption(a)} />

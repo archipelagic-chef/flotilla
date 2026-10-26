@@ -135,6 +135,7 @@
   margin: 0;
 }
 .viewer-figure img,
+.viewer-figure canvas,
 .viewer-figure video {
   max-width: 100%;
   max-height: calc(100vh - 140px);

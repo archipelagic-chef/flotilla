@@ -5,16 +5,30 @@ import './demo.css';
  * whom it was recorded, whether the work changed since, and the earlier recordings, folded.
  */
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
 import {
-  demoLength,
+  DEMO_SPEEDS,
+  demoLabel,
   demoRunFor,
   gifSeconds,
+  speedLabel,
   staleNote,
   ticketDemo,
   wantsDemo,
 } from '../../features/backlog/demo';
+import {
+  isGif,
+  pickSpeed,
+  playGifAtSpeed,
+  playVideoAtSpeed,
+  useSpeed,
+} from './speed';
 import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 
 /** The section's id: a review card's demo mark opens the ticket there. */
@@ -43,7 +57,7 @@ function useLength(a: AttachmentView): [number | undefined, (seconds: number) =>
   const [seconds, setSeconds] = useState<number | undefined>(undefined);
   useEffect(() => {
     setSeconds(undefined);
-    if (a.kind === 'video' || !/\.gif(?:$|[?#])/i.test(a.src)) return;
+    if (a.kind === 'video' || !isGif(a.src)) return;
     let gone = false;
     fetch(a.src)
       .then((r) => r.arrayBuffer())
@@ -54,10 +68,17 @@ function useLength(a: AttachmentView): [number | undefined, (seconds: number) =>
   return [seconds, setSeconds];
 }
 
-/** A recording playing: a video muted and looping (BL-134), a GIF as it is. */
+/** A recording playing: a video muted and looping (BL-134), a GIF as it is; at the speed demos play at (BL-218). */
 function Recording({ a, onLength }: { a: AttachmentView; onLength?: (seconds: number) => void }) {
+  const el = useRef<HTMLVideoElement & HTMLImageElement>(null);
+  useEffect(() => {
+    const media = el.current;
+    if (!media) return;
+    return a.kind === 'video' ? playVideoAtSpeed(media) : isGif(a.src) ? playGifAtSpeed(media) : undefined;
+  }, [a.src, a.kind]);
   return a.kind === 'video' ? (
     <video
+      ref={el}
       key={a.src}
       src={a.src}
       autoPlay
@@ -69,7 +90,21 @@ function Recording({ a, onLength }: { a: AttachmentView; onLength?: (seconds: nu
       onLoadedMetadata={(e) => onLength?.((e.currentTarget as HTMLVideoElement).duration)}
     />
   ) : (
-    <img key={a.src} src={a.src} alt={a.alt ?? a.name} />
+    <img ref={el} key={a.src} src={a.src} alt={a.alt ?? a.name} />
+  );
+}
+
+/** 1×, 1.5×, 2× (BL-218): the speed every demo plays at, the one it plays at marked. */
+export function SpeedControl() {
+  const speed = useSpeed();
+  return (
+    <span class="demo-speed" role="group" aria-label="Speed">
+      {DEMO_SPEEDS.map((s) => (
+        <button key={s} type="button" class="demo-speed-option" aria-pressed={s === speed} title={`Play at ${speedLabel(s)}`} onClick={() => pickSpeed(s)}>
+          {speedLabel(s)}
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -95,15 +130,18 @@ export function DemoSection({ ticket, Action }: { ticket: TicketView; Action: Ac
 }
 
 /**
- * The demo unit's bar (BL-111), over a recording: "Recorded demo · 0:12", Try it yourself and Watch it live (with the
- * `run demo` block it goes with). The Demo section's, and the Attachments viewer's.
+ * The demo unit's bar (BL-111), over a recording: "Recorded demo · 0:12" (at the speed it plays at), the speed
+ * (BL-218), Try it yourself and Watch it live (with the `run demo` block it goes with). The Demo section's, and the
+ * Attachments viewer's.
  */
 export function DemoBar({ seconds, run, Action }: { seconds?: number; run?: { key: string; index: number; name: string }; Action: Action }) {
+  const speed = useSpeed();
   return (
     <div class="demo-bar">
       <span class="demo-label">
-        <i class="codicon codicon-device-camera-video" /> Recorded demo{seconds ? ` · ${demoLength(seconds)}` : ''}
+        <i class="codicon codicon-device-camera-video" /> {demoLabel(seconds, speed)}
       </span>
+      <SpeedControl />
       {run && (
         <>
           <Action

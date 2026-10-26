@@ -1,0 +1,30 @@
+{
+  "title": "A ticket's demo plays at 1×, 1.5× or 2×",
+  "settings": { "flotilla.backlog.cards": "detailed" },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 500 },
+    { "caption": "A ticket's demo plays as it was recorded: 0:06 at 1×" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .demo-mark" },
+    { "waitFor": ".demo-section .demo-speed" },
+    { "click": ".demo-section .demo-speed-option:has-text(\"1×\")" },
+    { "waitFor": ".demo-section .demo-figure img:visible" },
+    { "wait": 2500 },
+    { "caption": "2× plays it twice as fast, and its length halves: 0:03" },
+    { "click": ".demo-section .demo-speed-option:has-text(\"2×\")" },
+    { "waitFor": ".demo-section .demo-figure canvas.demo-gif:visible" },
+    { "waitFor": ".demo-section .demo-label:has-text(\"0:03\")" },
+    { "wait": 3000 },
+    { "caption": "1.5× in between: 0:04" },
+    { "click": ".demo-section .demo-speed-option:has-text(\"1.5×\")" },
+    { "waitFor": ".demo-section .demo-label:has-text(\"0:04\")" },
+    { "wait": 2500 },
+    { "caption": "The speed picked is every demo's: the one in the report plays at it too" },
+    { "hover": ".demo-inline .demo-bar" },
+    { "waitFor": ".demo-inline .demo-speed-option[aria-pressed=\"true\"]:has-text(\"1.5×\")" },
+    { "waitFor": ".demo-inline canvas.demo-gif:visible" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

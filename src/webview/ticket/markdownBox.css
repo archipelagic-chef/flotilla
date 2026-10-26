@@ -58,6 +58,7 @@
   margin: 8px 0;
 }
 .demo-inline img,
+.demo-inline canvas,
 .demo-inline video {
   display: block;
   max-width: 100%;
