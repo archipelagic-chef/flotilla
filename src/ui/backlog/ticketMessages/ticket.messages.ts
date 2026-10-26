@@ -17,4 +17,6 @@ export type TicketMessage =
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }
   /** Folds (or opens) the ticket's Attachments section, for this ticket from now on. */
-  | { type: 'foldAttachments'; folded: boolean };
+  | { type: 'foldAttachments'; folded: boolean }
+  /** Plays every ticket's demos at this speed (BL-218), from now on. */
+  | { type: 'demoSpeed'; speed: number };

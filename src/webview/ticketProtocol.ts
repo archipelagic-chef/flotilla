@@ -291,6 +291,8 @@ export interface TicketView {
   attachments?: AttachmentView[];
   /** The user folded its Attachments section (remembered per ticket). */
   attachmentsFolded?: boolean;
+  /** The speed every ticket's demos play at (BL-218): the user's last pick. Unset: as recorded. */
+  demoSpeed?: number;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
   /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
