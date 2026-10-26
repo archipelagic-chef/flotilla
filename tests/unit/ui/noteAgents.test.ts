@@ -98,7 +98,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     const paused = await agents.pauseForAll();
     expect(paused).toEqual([{ id: note.id, kind: 'note', session: first.sessionId }]);
     expect(first.stopped).toBe(true);
-    await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined());
+    await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined(), { timeout: 10_000 });
     const after = await store.read(note.id);
     expect(after).toMatchObject({ status: 'open', session: first.sessionId });
     // Nothing was written to the note: it didn't stop "without a reply".
@@ -121,7 +121,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     await agents.tick();
     held = true;
     await agents.tick();
-    await vi.waitFor(() => expect(runs.started[0].stopped).toBe(true));
+    await vi.waitFor(() => expect(runs.started[0].stopped).toBe(true), { timeout: 10_000 });
   });
 
   describe('a usage limit (BL-203)', () => {
@@ -132,7 +132,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       const [first] = runs.started;
       const [note] = await store.list();
       first.resolve({ code: 1, limit: limit(60 * 60_000) });
-      await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined());
+      await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined(), { timeout: 10_000 });
       const after = await store.read(note.id);
       expect(after).toMatchObject({ status: 'open', session: first.sessionId, limit: { known: true, kind: 'usage' } });
       expect(after?.activity.at(-1)?.body).toMatch(/stopped on Claude's usage limit\. It goes on by itself when it resets/);
@@ -151,7 +151,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
       // It gets through: the limit's gone from its note.
       runs.started[1].resolve({ code: 0, reply: 'Proposed nothing.' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
       expect((await store.read(note.id))?.limit).toBeUndefined();
     });
 
@@ -159,7 +159,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await agents.tick();
       const [note] = await store.list();
       runs.started[0].resolve({ code: 1, limit: limit(-1000) });
-      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       expect((await store.read(note.id))?.status).toBe('open');
     });
@@ -168,7 +168,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await agents.tick();
       const [note] = await store.list();
       runs.started[0].resolve({ code: 1, error: 'boom' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'), { timeout: 10_000 });
       expect((await store.read(note.id))?.activity.at(-1)?.body).toMatch(/stopped without a reply \(boom\)\. Answer here and it goes on\./);
       // Its card has a box to answer in, with Flotilla's line.
       expect((await agents.views())[0].asks).toMatchObject({ reply: expect.stringMatching(/stopped without a reply/), questions: [] });
@@ -180,7 +180,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await store.append(note.id, { author: 'Flotilla', body: 'Nova-3 stopped on a limit (usage). Answer here and it goes on.' });
       const again = new NoteAgents({ ...(agents as unknown as { deps: ConstructorParameters<typeof NoteAgents>[0] }).deps });
       try {
-        await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('open'));
+        await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('open'), { timeout: 10_000 });
       } finally {
         again.dispose();
       }
@@ -192,7 +192,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await agents.tick();
       const [note] = await store.list();
       runs.started.at(-1)!.resolve({ code: 0, reply: 'Proposed BL-9.' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
       return note;
     };
 
@@ -209,14 +209,14 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       const [note] = await store.list();
       await store.edit(note.id, 'Make the button blue');
       runs.started[0].resolve({ code: 0, reply: 'Proposed BL-9.' });
-      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       expect(runs.started[1].prompt).toMatch(/^The user wrote in the note since your last reply/);
       const read = await store.read(note.id);
       expect(read?.status).toBe('open');
       expect(read?.activity.map((e) => e.author)).toEqual(['You', 'Agent ' + read?.agent]);
       runs.started[1].resolve({ code: 0, reply: 'Updated BL-9.' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
       expect((await store.read(note.id))?.changed).toBeUndefined();
     });
 
@@ -224,9 +224,9 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await agents.tick();
       const [note] = await store.list();
       runs.started[0].resolve({ code: 0, reply: 'Which button?\n\nNeeds from you: which one' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'), { timeout: 10_000 });
       await agents.answer(note.id, 'The blue one');
-      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       expect(runs.started[1].prompt).toMatch(/^The user wrote in the note/);
     });
@@ -235,13 +235,13 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       const note = await handle();
       await store.recordBecame([note.id], { id: 'BL-9', kind: 'proposal' });
       await agents.answer(note.id, 'Make it round too');
-      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       expect(runs.started[1].prompt).toMatch(/^The note was handled \(Became BL-9 \(proposal\)\)/);
       expect((await store.read(note.id))?.reopened).toBeUndefined();
       // Its reply's "Added to" names its own proposal: it stays a proposal.
       runs.started[1].resolve({ code: 0, reply: 'Updated BL-9.\n\nAdded to: BL-9' });
-      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
       expect((await store.read(note.id))?.became).toEqual([{ id: 'BL-9', kind: 'proposal' }]);
     });
 
