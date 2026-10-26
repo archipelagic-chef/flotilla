@@ -205,6 +205,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
+  void backlog.closeFinishedEpics().catch(() => undefined);
   watchMainBuild(context, location.mainRoot, location.commonDir, async () => {
     const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
     return base && localBase(location.mainRoot, base);

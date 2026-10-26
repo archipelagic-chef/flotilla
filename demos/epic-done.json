@@ -1,0 +1,95 @@
+{
+  "title": "An epic moves to Done when its last part does",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": "[aria-label=\"Hide what needs you\"]"
+    },
+    {
+      "click": ".cards-detail"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"List attached files in the activity\") .parent-chip"
+    },
+    {
+      "caption": "BL-6 \"Attach any file to a ticket\" is an epic, In Progress"
+    },
+    {
+      "hover": ".backlog-item:has-text(\"Attach any file to a ticket\") .name"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "caption": "Its parts: BL-7 is Done already, BL-8 \"List attached files\" is still To Do (its chip: part of BL-6)"
+    },
+    {
+      "hover": ".backlog-item:has-text(\"List attached files in the activity\") .parent-chip"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": "Mark BL-8, the epic's last part, Done"
+    },
+    {
+      "hover": ".backlog-item:has-text(\"List attached files in the activity\") .name"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".backlog-item:has-text(\"List attached files in the activity\") [aria-label=\"Mark Done\"]"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "caption": "All its parts are done, so BL-6 leaves In Progress and moves to Done too"
+    },
+    {
+      "click": ".group-head:has([aria-label$=\"done items\"])"
+    },
+    {
+      "waitFor": ".lane:has([aria-label$=\"done items\"]) .backlog-item:has-text(\"Attach any file to a ticket\")"
+    },
+    {
+      "hover": ".lane:has([aria-label$=\"done items\"]) .backlog-item:has-text(\"Attach any file to a ticket\") .name"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": "BL-6's activity says why: all its parts are done, BL-7 and BL-8"
+    },
+    {
+      "click": ".lane:has([aria-label$=\"done items\"]) .backlog-item:has-text(\"Attach any file to a ticket\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Attach any file to a ticket\")"
+    },
+    {
+      "click": "text=Show activity"
+    },
+    {
+      "waitFor": ".timeline-text:has-text(\"All its parts are done: BL-7, BL-8.\")"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "click": ".cards-detail"
+    },
+    {
+      "click": "text=Hide activity"
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

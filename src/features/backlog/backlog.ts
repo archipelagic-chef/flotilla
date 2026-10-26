@@ -52,6 +52,8 @@ export interface BacklogItem {
   discarded?: { at: string };
   /** Done with work left unmerged, dismissed as superseded by this item (its id). */
   supersededBy?: string;
+  /** An epic you moved out of Done with all its parts done: it stays out until another of its parts finishes (BL-206). */
+  keptOpen?: boolean;
   /** Its description's fingerprint when last seen: a change to it (in the ticket file) is noted in its activity. */
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
@@ -258,6 +260,35 @@ export function acceptItem(data: BacklogData, id: string): BacklogData {
 /** The items that are parts of an item, in backlog order. */
 export function childrenOf(data: BacklogData, id: string): BacklogItem[] {
   return data.items.filter((i) => i.parent === id);
+}
+
+/**
+ * The backlog with its finished epics moved to Done (BL-206), and which moved with their parts: an item with parts,
+ * every one of them done (an open proposal among them holds it; a dismissed one is gone). before is the backlog as it
+ * was before next: an epic moved out of Done there with its parts all done is kept out (keptOpen) until another of its
+ * parts finishes. Epics of epics close in turn.
+ */
+export function closeFinishedEpics(before: BacklogData, next: BacklogData): { data: BacklogData; closed: Array<{ id: string; parts: string[] }> } {
+  const was = new Map(before.items.map((i) => [i.id, i]));
+  const closed: Array<{ id: string; parts: string[] }> = [];
+  let items = next.items;
+  for (let changed = true; changed;) {
+    changed = false;
+    const data = { ...next, items };
+    items = items.map((item) => {
+      const parts = childrenOf(data, item.id);
+      if (!parts.length || item.proposed || !parts.every((p) => p.status === 'done' && !p.proposed)) return item;
+      const finished = parts.some((p) => was.get(p.id)?.status !== 'done');
+      if (item.status === 'done') return item;
+      if (!finished && was.get(item.id)?.status === 'done') return item.keptOpen ? item : { ...item, keptOpen: true };
+      if (!finished && item.keptOpen) return item;
+      const { keptOpen: _k, ...rest } = item;
+      changed = true;
+      closed.push({ id: item.id, parts: parts.map((p) => p.id) });
+      return { ...rest, status: 'done' };
+    });
+  }
+  return { data: { ...next, items }, closed };
 }
 
 export function removeItem(data: BacklogData, id: string): BacklogData {
