@@ -569,8 +569,10 @@ async function show(mode, demo, out, still, display) {
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');
+  // A demo that pushes a branch finds it unpushed again, every time it plays (BL-222).
+  if (demo.runsOnPush) (await import('./playground-seed.mjs')).unpublishSeeded(playground);
   const { ACTION_DELAY_MS, startFakeGitHub } = await import('./fake-github.mjs');
-  const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS });
+  const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS, runsOnPush: demo.runsOnPush });
   prepareProfile(github.url, demo.settings);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).

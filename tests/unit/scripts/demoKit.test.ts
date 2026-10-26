@@ -88,6 +88,7 @@ describe('parseDemo', () => {
         { action: 'caption', value: '' },
       ],
       settings: {},
+      runsOnPush: false,
     });
   });
 
@@ -95,6 +96,11 @@ describe('parseDemo', () => {
     expect(parseDemo('{"settings": {"flotilla.merge.checks": "local"}, "steps": [{"wait": 1}]}', 'd').settings).toEqual({ 'flotilla.merge.checks': 'local' });
     expect(() => parseDemo('{"settings": {"editor.fontSize": 30}, "steps": [{"wait": 1}]}', 'd')).toThrow(/only Flotilla's settings/);
     expect(() => parseDemo('{"settings": {"flotilla.dev.githubApi": "x"}, "steps": [{"wait": 1}]}', 'd')).toThrow(/not flotilla.dev/);
+  });
+
+  it('turns on the fake GitHub runs on push for a demo that pushes (BL-222)', () => {
+    expect(parseDemo('{"runsOnPush": true, "steps": [{"wait": 1}]}', 'd').runsOnPush).toBe(true);
+    expect(() => parseDemo('{"runsOnPush": "yes", "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
   });
 
   it('says what is wrong, and in which step', () => {

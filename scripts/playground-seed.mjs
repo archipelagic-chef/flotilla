@@ -1035,6 +1035,28 @@ export function seedCreating(dir, now = new Date()) {
 }
 
 /**
+ * The seed's branches that aren't published go off origin again (the playground's local one), as a demo that pushes
+ * one finds them (BL-222): its remote-tracking ref, its upstream and origin's branch are removed. Its commits stay.
+ * Returns the branches it took off.
+ */
+export function unpublishSeeded(dir) {
+  const off = [];
+  for (const { branch } of TICKETS.filter((t) => t.branch && !t.published)) {
+    try {
+      git(dir, 'rev-parse', '--verify', '-q', `refs/remotes/origin/${branch}`);
+    } catch {
+      continue;
+    }
+    git(dir, 'push', '-q', 'origin', '--delete', branch);
+    git(dir, 'update-ref', '-d', `refs/remotes/origin/${branch}`);
+    git(dir, 'config', '--unset', `branch.${branch}.remote`);
+    git(dir, 'config', '--unset', `branch.${branch}.merge`);
+    off.push(branch);
+  }
+  return off;
+}
+
+/**
  * The agent's chat goes on: its next turn (of AGENT_NEXT) is appended to its transcript, and its record says it's
  * still working. Returns false when it has no turn left (or wasn't seeded).
  */

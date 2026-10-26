@@ -90,6 +90,30 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     }
   });
 
+  it('with runsOnPush, starts a CI run on each push of a branch origin lacked when it started (BL-222)', async () => {
+    const dir = initRepo(makeTempDir('fake-github-'));
+    try {
+      const withRepo = await startFakeGitHub({ port: 0, repoDir: dir, now: () => clock, runsOnPush: true });
+      try {
+        const client = new GitHubActions('playground', 'app', async () => 'fake-token', globalThis.fetch as unknown as Fetch, withRepo.url);
+        // Pushed while it runs (origin's ref in the repository): only the run that push started.
+        git(dir, 'update-ref', 'refs/remotes/origin/main', 'main');
+        const first = await client.runs('main');
+        expect(first.map((r) => [r.workflow, r.event, r.sha])).toEqual([['CI', 'push', git(dir, 'rev-parse', 'main')]]);
+        expect(await client.runs('main')).toHaveLength(1);
+        // Pushed again: one more.
+        git(dir, 'commit', '--allow-empty', '-q', '-m', 'More');
+        git(dir, 'update-ref', 'refs/remotes/origin/main', 'main');
+        const again = await client.runs('main');
+        expect(again.map((r) => r.sha)).toEqual([git(dir, 'rev-parse', 'main'), first[0].sha]);
+      } finally {
+        await withRepo.close();
+      }
+    } finally {
+      removeDir(dir);
+    }
+  });
+
   it('runs a workflow by hand: the branch head, the workflows, then a dispatch that shows as a run', async () => {
     const client = actions();
     const head = await client.branchHead('feat/x');
