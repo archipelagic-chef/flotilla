@@ -1,3 +1,4 @@
+import type { PullRequestInfo } from '../ci/pullRequests';
 import type { PushedInfo } from './branchPush';
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
@@ -81,6 +82,8 @@ export interface BacklogItem {
   merged?: MergedInfo;
   /** Its branches' last pushes to origin once approved (BL-104): a tip is pushed, and noted, once. */
   pushed?: PushedInfo[];
+  /** Its branches' pull requests on GitHub (BL-221), opened once they're pushed for review, with their last known state. */
+  pullRequests?: PullRequestInfo[];
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */

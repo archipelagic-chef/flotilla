@@ -1,4 +1,5 @@
-// A fake of GitHub's Actions API, for trying the CI/CD view offline: npm run fake-github.
+// A fake of GitHub's Actions API, for trying the CI/CD view offline: npm run fake-github. It keeps pull requests too
+// (BL-221): opened, listed by head, commented on and closed in memory, and merged once origin's base has their commits.
 // It answers the routes under /repos/{owner}/{repo}/actions that Flotilla calls, from memory. A branch's runs are made
 // when they're first read, from the commits of a local repository (the playground, by default), and each run moves on
 // by the clock: queued, then running, then done. Nothing is sent anywhere, and nothing is pushed.
@@ -97,6 +98,16 @@ function gitBranch(dir, branch) {
   }
 }
 
+/** Whether origin's copy of a branch (its remote-tracking ref) has commit `sha`, as GitHub's branch would. */
+function originHas(dir, branch, sha) {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', sha, `refs/remotes/origin/${branch}`], { cwd: dir, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Starts the fake on host:port (port 0 picks a free one). `repoDir` is a git repository whose branches the fake knows;
  * without it, every branch exists, with made-up commits. `now` is the clock (tests move it).
@@ -109,6 +120,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
   let nextRunId = 1000;
   let nextJobId = 50_000;
   let base = '';
+  const pulls = []; // { repo, number, head, base, title, body, sha, state, mergedAt, comments }
+  const issueNumbers = new Map(); // "owner/repo" → the last pull request's number
 
   /** The branch's commit: from the repository, or made up. Undefined when the repository lacks the branch. */
   const commitOf = (branch) => {
@@ -361,6 +374,76 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     return notFound();
   }
 
+  /** A pull request as GitHub sends it, merged first when origin's base has its head's commit (as GitHub marks it). */
+  function pullJson(pr, at) {
+    const head = commitOf(pr.head);
+    if (head) pr.sha = head.sha;
+    if (pr.state === 'open' && repoDir && pr.sha && originHas(repoDir, pr.base, pr.sha)) {
+      pr.state = 'closed';
+      pr.mergedAt = at;
+    }
+    const [owner] = pr.repo.split('/');
+    return {
+      number: pr.number,
+      html_url: `https://github.com/${pr.repo}/pull/${pr.number}`,
+      state: pr.state,
+      merged_at: pr.mergedAt ? iso(pr.mergedAt) : null,
+      title: pr.title,
+      body: pr.body,
+      head: { ref: pr.head, sha: pr.sha, label: `${owner}:${pr.head}` },
+      base: { ref: pr.base },
+    };
+  }
+
+  /** The pull requests API of one repository: `rest` is the path after /repos/{owner}/{repo}. */
+  function pullsApi({ method, repo, rest, query, at, body }) {
+    let m;
+    const find = (n) => pulls.find((p) => p.repo === repo && p.number === Number(n));
+    if (method === 'GET' && rest === '/pulls') {
+      const head = query.get('head')?.split(':').slice(1).join(':');
+      const state = query.get('state') ?? 'open';
+      const list = pulls
+        .filter((p) => p.repo === repo && (!head || p.head === head))
+        .map((p) => pullJson(p, at))
+        .filter((p) => state === 'all' || p.state === state);
+      return json(200, list.reverse());
+    }
+    if (method === 'POST' && rest === '/pulls') {
+      const head = typeof body?.head === 'string' ? body.head : '';
+      const baseRef = typeof body?.base === 'string' ? body.base : '';
+      const commit = commitOf(head);
+      if (!commit || !baseRef || !body?.title)
+        return json(422, { message: 'Validation Failed', errors: [{ resource: 'PullRequest', field: 'head', code: 'invalid' }] });
+      if (pulls.some((p) => p.repo === repo && p.head === head && p.base === baseRef && pullJson(p, at).state === 'open'))
+        return json(422, { message: 'Validation Failed', errors: [{ message: `A pull request already exists for ${repo.split('/')[0]}:${head}.` }] });
+      const number = (issueNumbers.get(repo) ?? 0) + 1;
+      issueNumbers.set(repo, number);
+      const pr = { repo, number, head, base: baseRef, title: body.title, body: body.body ?? '', sha: commit.sha, state: 'open', comments: [] };
+      pulls.push(pr);
+      return json(201, pullJson(pr, at));
+    }
+    if (method === 'GET' && (m = /^\/pulls\/(\d+)$/.exec(rest))) {
+      const pr = find(m[1]);
+      return pr ? json(200, pullJson(pr, at)) : notFound();
+    }
+    if (method === 'PATCH' && (m = /^\/pulls\/(\d+)$/.exec(rest))) {
+      const pr = find(m[1]);
+      if (!pr) return notFound();
+      if (body?.state === 'closed' && !pr.mergedAt) pr.state = 'closed';
+      if (body?.state === 'open' && !pr.mergedAt) pr.state = 'open';
+      if (typeof body?.title === 'string') pr.title = body.title;
+      if (typeof body?.body === 'string') pr.body = body.body;
+      return json(200, pullJson(pr, at));
+    }
+    if (method === 'POST' && (m = /^\/issues\/(\d+)\/comments$/.exec(rest))) {
+      const pr = find(m[1]);
+      if (!pr) return notFound();
+      pr.comments.push(String(body?.body ?? ''));
+      return json(201, { id: pr.comments.length, body: body?.body ?? '' });
+    }
+    return notFound();
+  }
+
   async function handle(req, res) {
     const url = new URL(req.url, 'http://fake.invalid');
     const method = req.method ?? 'GET';
@@ -371,6 +454,7 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       const logs = /^\/logs\/(\d+)$/.exec(url.pathname);
       const repos = /^\/repos\/([^/]+)\/([^/]+)\/actions(\/.*)?$/.exec(url.pathname);
       const branch = /^\/repos\/[^/]+\/[^/]+\/branches\/(.+)$/.exec(url.pathname);
+      const pullsPath = /^\/repos\/([^/]+)\/([^/]+)(\/(?:pulls|issues)(?:\/.*)?)$/.exec(url.pathname);
       if (logs && method === 'GET') {
         const job = jobs.get(Number(logs[1]));
         result = job ? { status: 200, text: logOf(job.run, job.index) } : notFound();
@@ -382,6 +466,9 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       } else if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/deployments$/.test(url.pathname)) {
         // The CI/CD view also reads a branch's deployments (BL-8): the playground has none.
         result = json(200, []);
+      } else if (pullsPath) {
+        const repo = `${decodeURIComponent(pullsPath[1])}/${decodeURIComponent(pullsPath[2])}`;
+        result = pullsApi({ method, repo, rest: pullsPath[3], query: url.searchParams, at: now(), body });
       } else if (repos) {
         const repo = `${decodeURIComponent(repos[1])}/${decodeURIComponent(repos[2])}`;
         result = api({ method, repo, rest: repos[3] ?? '', query: url.searchParams, at: now(), body });
@@ -417,6 +504,8 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     url: base,
     /** Seeds a branch's runs now, as the first read does (for tests). */
     seed: (repo, branch) => seedBranch(repo, branch),
+    /** The pull requests it has, with their comments (for tests). */
+    pulls: () => pulls.map((p) => ({ ...p, comments: [...p.comments] })),
     // Kept-alive connections (a VS Code window's) would hold the server open.
     close: () =>
       new Promise((resolve) => {

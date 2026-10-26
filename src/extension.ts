@@ -15,7 +15,12 @@ import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
-import { JOB_LOG_SCHEME, JobLogProvider, signedInActions } from './features/ci/jobLog';
+import {
+  JOB_LOG_SCHEME,
+  JobLogProvider,
+  signedInActions,
+  signedInPullRequests,
+} from './features/ci/jobLog';
 import { CiNotifier } from './ui/ci/ciNotifier';
 import {
   deleteHeartbeat,
@@ -320,6 +325,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     isLeader: () => leader.isLeader,
     output,
     localOnly: devGitHubApi(context.extensionMode) !== undefined,
+    pullRequests: signedInPullRequests(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
+    baseBranch: () => merger.baseBranch(),
   });
   context.subscriptions.push(reviews, merger, pushes, trackTerminals());
   registerAll(context.subscriptions, mergeCommands({ backlog, merger }));

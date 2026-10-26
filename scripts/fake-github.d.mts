@@ -20,6 +20,18 @@ export interface FakeGitHub {
   url: string;
   /** Makes a branch's runs now, as the first read does. */
   seed(repo: string, branch: string): void;
+  /** The pull requests it keeps (BL-221), with the comments made on them. */
+  pulls(): Array<{
+    repo: string;
+    number: number;
+    head: string;
+    base: string;
+    title: string;
+    body: string;
+    state: 'open' | 'closed';
+    mergedAt?: number;
+    comments: string[];
+  }>;
   close(): Promise<void>;
 }
 

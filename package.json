@@ -87,6 +87,12 @@
         "icon": "$(git-merge)"
       },
       {
+        "command": "flotilla.openPullRequest",
+        "title": "Open Pull Request",
+        "category": "Flotilla",
+        "icon": "$(git-pull-request)"
+      },
+      {
         "command": "flotilla.mergeNext",
         "title": "Merge Next",
         "category": "Flotilla",
@@ -739,6 +745,10 @@
           "when": "false"
         },
         {
+          "command": "flotilla.openPullRequest",
+          "when": "false"
+        },
+        {
           "command": "flotilla.updateAndMerge",
           "when": "false"
         },
@@ -1216,6 +1226,11 @@
           "command": "flotilla.stopPushingTrain",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogQueued",
           "group": "1_merge@4"
+        },
+        {
+          "command": "flotilla.openPullRequest",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogPullRequest",
+          "group": "1_merge@5"
         },
         {
           "command": "flotilla.runBacklogItem",
@@ -1740,6 +1755,19 @@
           ],
           "default": "auto",
           "markdownDescription": "When a ticket is approved, push its branch to `origin` (setting its upstream), and again when it gets new commits while approved, so CI runs on it before Merge to main. Never another remote, never a force push, and only commits authored and committed with the repository's identity (`user.name`, `user.email`): anything else stops the push, and the ticket says why."
+        },
+        "flotilla.github.pullRequests": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Open pull requests when `origin` is on GitHub.",
+            "Don't open pull requests."
+          ],
+          "default": "auto",
+          "markdownDescription": "When a ticket's agent reports \"Ready for review\", push its branch to `origin` (with the checks of `#flotilla.ci.pushOnApproval#`) and open a pull request into main for it on GitHub, or keep the one it has. Merge to main still lands it: the pull request then shows as merged, or Flotilla closes it when other commits landed. Uses your GitHub sign-in in VS Code."
         },
         "flotilla.ci.notify": {
           "type": "string",

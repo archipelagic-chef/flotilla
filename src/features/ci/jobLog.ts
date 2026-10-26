@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { gitHubName } from '../backlog/sources/github';
 import type { Fetch } from '../backlog/sources/source';
 import { cleanLog, GitHubActions } from './githubActions';
+import { GitHubPullRequests } from './pullRequests';
 
 export const JOB_LOG_SCHEME = 'flotilla-ci-log';
 
@@ -66,22 +67,25 @@ export class JobLogProvider implements vscode.TextDocumentContentProvider {
   }
 }
 
+/** The user's GitHub token, from their sign-in in VS Code (never asked for here); the fake GitHub's needs none. */
+function signedInToken(fakeApi: string | undefined, why: string): () => Promise<string> {
+  return async () => {
+    // The fake GitHub (debug window only) needs no sign-in, and never gets a real token.
+    if (fakeApi) return 'fake-token';
+    const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true });
+    if (!session) throw new Error(`Sign in to GitHub to ${why}.`);
+    return session.accessToken;
+  };
+}
+
 /** The GitHub client for a repository, through the user's GitHub sign-in in VS Code. */
 export function signedInActions(fetch: Fetch, fakeApi?: string): (owner: string, repo: string) => GitHubActions {
-  return (owner, repo) =>
-    new GitHubActions(
-      owner,
-      repo,
-      async () => {
-        // The fake GitHub (debug window only) needs no sign-in, and never gets a real token.
-        if (fakeApi) return 'fake-token';
-        const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true });
-        if (!session) throw new Error('Sign in to GitHub to read the log.');
-        return session.accessToken;
-      },
-      fetch,
-      fakeApi,
-    );
+  return (owner, repo) => new GitHubActions(owner, repo, signedInToken(fakeApi, 'read the log'), fetch, fakeApi);
+}
+
+/** The pull requests client for a repository (BL-221), through the user's GitHub sign-in in VS Code. */
+export function signedInPullRequests(fetch: Fetch, fakeApi?: string): (owner: string, repo: string) => GitHubPullRequests {
+  return (owner, repo) => new GitHubPullRequests(owner, repo, signedInToken(fakeApi, 'open pull requests'), fetch, fakeApi);
 }
 
 /** Opens a job's log, read-only, with the cursor on its first error. */
