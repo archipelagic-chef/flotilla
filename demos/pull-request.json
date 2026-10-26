@@ -1,0 +1,39 @@
+{
+  "title": "A ticket in review gets its pull request on GitHub: its branch is pushed, and the ticket links it by Merge to main",
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "caption": "BL-13's agent reported Ready for review: Flotilla pushes its branch and opens a pull request into main"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Say hi in the greeting\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Say hi in the greeting\")"
+    },
+    {
+      "waitFor": ".pull-request.open:has-text(\"PR #\")",
+      "timeout": 30000
+    },
+    {
+      "caption": "The ticket links it with its state: PR #6 \u00b7 open. The branch's later pushes update it"
+    },
+    {
+      "hover": ".pull-request a"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
