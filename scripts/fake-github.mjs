@@ -2,7 +2,8 @@
 // (BL-221): opened, listed by head, commented on and closed in memory, and merged once origin's base has their commits.
 // It answers the routes under /repos/{owner}/{repo}/actions that Flotilla calls, from memory. A branch's runs are made
 // when they're first read, from the commits of a local repository (the playground, by default), and each run moves on
-// by the clock: queued, then running, then done. Nothing is sent anywhere, and nothing is pushed.
+// by the clock: queued, then running, then done. With runsOnPush, a branch pushed to the repository's origin meanwhile
+// gets a CI run of each push. Nothing is sent anywhere, and nothing is pushed.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -108,15 +109,45 @@ function originHas(dir, branch, sha) {
   }
 }
 
+/** The branches origin has, as the repository's remote-tracking refs say: branch → commit. */
+function originBranches(dir) {
+  try {
+    const out = execFileSync('git', ['for-each-ref', '--format=%(refname:lstrip=3) %(objectname)', 'refs/remotes/origin'], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return new Map(
+      out
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => l.split(' ')),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 /**
  * Starts the fake on host:port (port 0 picks a free one). `repoDir` is a git repository whose branches the fake knows;
  * without it, every branch exists, with made-up commits. `now` is the clock (tests move it).
  */
-export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1', repoDir, now = () => Date.now(), actionDelayMs = 0 } = {}) {
+export async function startFakeGitHub({
+  port = DEFAULT_PORT,
+  host = '127.0.0.1',
+  repoDir,
+  now = () => Date.now(),
+  actionDelayMs = 0,
+  runsOnPush = false,
+} = {}) {
   const runs = [];
   const jobs = new Map(); // job id → { run, index }
   const seeded = new Set(); // "owner/repo@branch", once its runs are made
   const numbers = new Map(); // "owner/repo#workflow id" → the last run_number
+  // runsOnPush: what origin had when the fake started; a branch pushed since gets a CI run of each push, as `on: push`
+  // would (BL-222). Off, a branch's runs are only the ones it's seeded with (the merge tests count on them).
+  const startedWith = repoDir && runsOnPush ? originBranches(repoDir) : undefined;
+  const pushedAt = new Map(); // "owner/repo@branch" → origin's commit, as last seen
   let nextRunId = 1000;
   let nextJobId = 50_000;
   let base = '';
@@ -156,12 +187,27 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
   /** A branch's first runs: two that went well, a deploy, and the CI run that starts now and fails in its tests. */
   function seedBranch(repo, branch) {
     const key = `${repo}@${branch}`;
-    if (seeded.has(key)) return;
+    const [ci, deploy] = WORKFLOWS;
+    const onOrigin = startedWith ? originBranches(repoDir).get(branch) : undefined;
+    if (seeded.has(key)) {
+      // Pushed again since: its CI runs on the new commit.
+      if (onOrigin && pushedAt.get(key) !== onOrigin) {
+        pushedAt.set(key, onOrigin);
+        const title = gitBranch(repoDir, branch)?.title ?? `Work on ${branch}`;
+        addRun(repo, ci, { branch, commit: { sha: onOrigin, title }, event: 'push', createdAt: now(), outcome: 'success' });
+      }
+      return;
+    }
     const commit = commitOf(branch);
     if (!commit) return;
     seeded.add(key);
+    if (onOrigin) pushedAt.set(key, onOrigin);
     const at = now();
-    const [ci, deploy] = WORKFLOWS;
+    // First pushed while the fake runs: only the run that push starts.
+    if (onOrigin && !startedWith?.has(branch)) {
+      addRun(repo, ci, { branch, commit: { ...commit, sha: onOrigin }, event: 'push', createdAt: at, outcome: 'success' });
+      return;
+    }
     addRun(repo, ci, { branch, commit, event: 'push', createdAt: at - 3 * HOUR_MS, outcome: 'success' });
     addRun(repo, ci, { branch, commit, event: 'push', createdAt: at - 2 * HOUR_MS, outcome: 'success' });
     addRun(repo, deploy, { branch, commit, event: 'workflow_dispatch', createdAt: at - HOUR_MS, outcome: 'success' });

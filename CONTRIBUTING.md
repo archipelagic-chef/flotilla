@@ -253,7 +253,7 @@ The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket fr
 }
 ```
 
-A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only.
+A demo can set Flotilla's own settings it plays with, next to its steps: `"settings": { "flotilla.merge.checks": "local" }` (the merge demos of the local checks do, as the playground's BL-13 has CI). They last for that demo only. A demo that pushes a branch sets `"runsOnPush": true` (BL-222): the fake GitHub then starts a CI run on each push, and the seed's unpublished branches start off origin again, so it plays the same every time.
 
 The demo window has chats to open: every demo starts by seeding them (`seedChats` in `scripts/playground-seed.mjs`), in BL-3's worktree, with their transcripts in the demo home's `.claude/projects`: an agent's (Vega-2, `claude -p`, working: it opens read-only, as [demos/open-agent-chat.json](demos/open-agent-chat.json) shows), a panel chat (done), and an agent's that shows as working though nothing runs it (Orbit-2, its process ended 7 minutes before: a Check finds it, as [demos/check-ticket.json](demos/check-ticket.json) shows). The F5 window uses your own `~/.claude`, so `npm run playground` doesn't write them there.
 

@@ -10,6 +10,8 @@ export interface FakeGitHubOptions {
   now?: () => number;
   /** How long it takes to answer an action (a POST: re-run, cancel, dispatch), as GitHub does; 0 by default. */
   actionDelayMs?: number;
+  /** A branch pushed to repoDir's origin after the fake started gets a CI run of each push (BL-222); off by default. */
+  runsOnPush?: boolean;
 }
 
 /** The delay the demo window's and npm run fake-github's fake answer actions after. */

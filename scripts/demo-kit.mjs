@@ -55,7 +55,9 @@ export function parseDemo(text, name = 'demo') {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error(`${name}: "settings" is an object of Flotilla's settings`);
   const other = Object.keys(settings).filter((k) => !/^flotilla\.[\w.]+$/.test(k) || k.startsWith('flotilla.dev.'));
   if (other.length) throw new Error(`${name}: "settings" takes only Flotilla's settings (flotilla.*, not flotilla.dev.*), not ${other.join(', ')}`);
-  return { title: typeof demo.title === 'string' ? demo.title : name, steps, settings };
+  // The fake GitHub starts a CI run when a branch is pushed (BL-222), for a demo that pushes one.
+  if (demo.runsOnPush !== undefined && typeof demo.runsOnPush !== 'boolean') throw new Error(`${name}: "runsOnPush" is true or false`);
+  return { title: typeof demo.title === 'string' ? demo.title : name, steps, settings, runsOnPush: demo.runsOnPush === true };
 }
 
 /** A demo's file by name (letters, digits, - and _ only: a name isn't a path). */
