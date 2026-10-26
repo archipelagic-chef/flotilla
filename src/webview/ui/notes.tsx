@@ -185,6 +185,25 @@ function EditNote({ id }: { id: string }) {
   );
 }
 
+/** A note's × (BL-215): deletes it, with the notes handled with it, once you confirm (its agent stops). */
+function DeleteNote({ id }: { id: string }) {
+  const working = useWorking(`delete:${id}`);
+  return (
+    <button
+      class="icon note-delete"
+      title="Delete the note: its agent stops; the tickets it became stay"
+      aria-label={`Delete ${id}`}
+      disabled={working}
+      onClick={(e) => {
+        e.stopPropagation();
+        act({ type: 'note', op: 'delete', id });
+      }}
+    >
+      <i class={`codicon codicon-${working ? 'loading codicon-modifier-spin' : 'close'}`} />
+    </button>
+  );
+}
+
 const cardId = (id: string) => `note-card-${id}`;
 
 /**
@@ -222,6 +241,7 @@ function NoteCard({ note, followers }: { note: NoteView; followers: NoteView[] }
         <i class={`codicon codicon-${status.icon}`} />
         <span class="note-status">{status.label(note)}</span>
         <EditNote id={note.id} />
+        <DeleteNote id={note.id} />
       </div>
       <div class="note-text">{note.text}</div>
       {followers.map((f) => (
@@ -279,6 +299,7 @@ export function NotesLane({ notes }: { notes: NoteView[] }) {
                   </span>
                   <Became note={n} />
                   <EditNote id={n.id} />
+                  <DeleteNote id={n.id} />
                 </div>
               ))}
             </div>

@@ -121,6 +121,31 @@ describe('storing notes', () => {
     expect((await notes.list()).map((n) => n.id)).toEqual([id]);
   });
 
+  it('deletes a note whatever its state, with the notes handled with it, and keeps its id from being taken again', async () => {
+    const notes = store();
+    const lead = await notes.add('A dark mode', [{ name: 'shot.png', bytes: new Uint8Array([1]) }], new Date(T0));
+    const follower = await notes.add('and a light one', [], new Date(T0 + 1000));
+    const other = await notes.add('Something else', [], new Date(T0 + 2000));
+    await notes.setState(lead.id, (s) => ({ ...s, status: 'handled', agent: 'Vega-2', group: [follower.id] }));
+    await notes.setState(follower.id, (s) => ({ ...s, status: 'handled', with: lead.id }));
+    await notes.recordBecame([lead.id, follower.id], { id: 'BL-180', kind: 'proposal' });
+    await notes.append(lead.id, { author: 'Agent Vega-2', body: 'Proposed BL-180.' });
+    expect(await notes.groupOf(follower.id)).toEqual([lead.id, follower.id]);
+
+    expect(await notes.delete(lead.id)).toEqual([lead.id, follower.id]);
+    for (const id of [lead.id, follower.id]) {
+      for (const f of [`${id}.md`, `${id}.json`, `${id}.became`, id]) expect(fs.existsSync(path.join(notes.dir, f))).toBe(false);
+      expect(notes.wasDeleted(id)).toBe(true);
+      expect(notes.exists(id)).toBe(false);
+    }
+    expect((await notes.list()).map((n) => n.id)).toEqual([other.id]);
+    expect(notes.wasDeleted(other.id)).toBe(false);
+    // The newest one deleted: the next note doesn't take its id.
+    expect(await notes.delete(other.id)).toEqual([other.id]);
+    expect((await notes.add('Next')).id).toBe('NOTE-4');
+    expect(await notes.delete('NOTE-9')).toEqual([]);
+  });
+
   it('refuses ids that are no note', () => {
     expect(() => store().file('../BL-1')).toThrow();
   });

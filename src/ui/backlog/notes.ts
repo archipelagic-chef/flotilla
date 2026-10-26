@@ -27,7 +27,7 @@ import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
 import { showError, type Commands } from '../commandSet';
-import { openNotePanel } from './notePanel';
+import { closeNotePanel, openNotePanel } from './notePanel';
 import { trackProgress } from '../progress';
 import {
   agentChoice,
@@ -71,7 +71,7 @@ const DRAFT_KEPT_MS = 24 * 60 * 60_000;
  */
 export class NoteAgents implements vscode.Disposable {
   /** The agents running, by the note that leads: its notes and its run. */
-  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; started: string; paused?: boolean }>();
+  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; started: string; paused?: boolean; deleted?: boolean }>();
   private ticking = false;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
@@ -79,6 +79,8 @@ export class NoteAgents implements vscode.Disposable {
 
   constructor(private readonly deps: NoteAgentsDeps) {
     const watch = deps.notes.watch(() => {
+      // Deleted in another window (BL-215): its agent here stops.
+      for (const [lead, r] of this.runs) if (!r.deleted && !deps.notes.exists(lead)) void this.stopRun(r);
       this.changed.fire();
       void this.tick();
     });
@@ -140,7 +142,35 @@ export class NoteAgents implements vscode.Disposable {
         // Its note tab (BL-204): what you wrote, to edit, its activity, and a box to write in.
         await this.openNote(m.id);
         return;
+      case 'delete':
+        await this.deleteNote(m.id);
+        return;
     }
+  }
+
+  /**
+   * A card's × (BL-215): asks once, stops its agent (its slot given back), then deletes it with the notes handled with
+   * it; their tabs close. The tickets it became stay.
+   */
+  async deleteNote(id: string): Promise<void> {
+    const ids = await this.deps.notes.groupOf(id);
+    if (!ids.length) return;
+    const [lead, ...rest] = ids;
+    const what = rest.length ? `${lead} and ${rest.join(', ')}, handled with it` : lead;
+    const ok = await vscode.window.showWarningMessage(`Delete ${what}? Its agent stops; the tickets it became stay.`, { modal: true }, 'Delete');
+    if (ok !== 'Delete') return;
+    await Promise.all([...this.runs.values()].filter((r) => r.ids.some((i) => ids.includes(i))).map((r) => this.stopRun(r)));
+    await this.deps.notes.delete(lead);
+    ids.forEach(closeNotePanel);
+    this.changed.fire();
+    void this.tick();
+  }
+
+  /** Stops a run whose note is deleted; it ends as a paused one does (its slot given back, nothing written). */
+  private async stopRun(r: { run: AgentRun; deleted?: boolean }): Promise<void> {
+    r.deleted = true;
+    r.run.stop();
+    await r.run.done;
   }
 
   /** Flotilla: New Note (and the backlog's New Note button): the New Note tab, a draft until you send it. */
@@ -219,7 +249,7 @@ export class NoteAgents implements vscode.Disposable {
    * they resume in their chats once the hold is lifted. The paused, by the note that leads.
    */
   async pauseForAll(): Promise<PausedAgent[]> {
-    const paused = [...this.runs].filter(([, r]) => !r.paused);
+    const paused = [...this.runs].filter(([, r]) => !r.paused && !r.deleted);
     for (const [, r] of paused) {
       r.paused = true;
       r.run.stop();
@@ -319,8 +349,8 @@ export class NoteAgents implements vscode.Disposable {
   private async finished(lead: string, ids: string[], agent: string, result: AgentResult, slot: number): Promise<void> {
     this.deps.giveBack(slot);
     const started = this.runs.get(lead)?.started ?? '';
-    // Paused (Pause All): its notes stay open, with their session, as they are.
-    if (this.runs.get(lead)?.paused) {
+    // Paused (Pause All): its notes stay open, with their session, as they are. Deleted (BL-215): they're gone.
+    if (this.runs.get(lead)?.paused || this.runs.get(lead)?.deleted) {
       this.runs.delete(lead);
       this.changed.fire();
       return;

@@ -138,3 +138,7 @@
   margin-left: auto;
   flex: none;
 }
+/* Its × (BL-215), after Edit. */
+.note-delete {
+  flex: none;
+}

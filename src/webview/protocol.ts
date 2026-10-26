@@ -465,10 +465,10 @@ export type WebviewMessage =
   | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
-  /** Opens a new note in the editor, answers a note's question, or opens its file (BL-182). */
+  /** Opens a new note in the editor, answers a note's question, opens its file (BL-182), or deletes it (asks first, BL-215). */
   | { type: 'note'; op: 'new' }
   | { type: 'note'; op: 'answer'; id: string; text: string }
-  | { type: 'note'; op: 'open'; id: string }
+  | { type: 'note'; op: 'open' | 'delete'; id: string }
   /** Add an item (VS Code's input box asks for its title). */
   | { type: 'backlog'; op: 'new' }
   /** priority null clears it. */

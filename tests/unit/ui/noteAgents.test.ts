@@ -13,6 +13,8 @@ import {
 
 type Finished = { code: number | null; error?: string; reply?: string; limit?: { until: Date; known: boolean; kind: 'usage' | 'rate' | 'overloaded' } };
 
+const ui = vi.hoisted(() => ({ answer: 'Delete' as string | undefined, asked: [] as string[], closed: [] as string[] }));
+
 const runs = vi.hoisted(() => ({
   started: [] as Array<{ prompt: string; resume?: string; sessionId: string; stopped: boolean; resolve: (r: Finished) => void }>,
 }));
@@ -24,9 +26,10 @@ vi.mock('vscode', () => ({
     dispose() {}
   },
   Uri: { file: (p: string) => ({ fsPath: p }) },
+  window: { showWarningMessage: async (message: string) => (ui.asked.push(message), ui.answer) },
 }));
 vi.mock('../../../src/ui/progress', () => ({ trackProgress: () => undefined }));
-vi.mock('../../../src/ui/backlog/notePanel', () => ({ openNotePanel: async () => undefined }));
+vi.mock('../../../src/ui/backlog/notePanel', () => ({ openNotePanel: async () => undefined, closeNotePanel: (id: string) => void ui.closed.push(id) }));
 vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   agentChoice: () => ({}),
   memoryShortage: () => false,
@@ -122,6 +125,40 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     held = true;
     await agents.tick();
     await vi.waitFor(() => expect(runs.started[0].stopped).toBe(true));
+  });
+
+  describe('deleting a note (BL-215)', () => {
+    beforeEach(() => {
+      ui.answer = 'Delete';
+      ui.asked.length = 0;
+      ui.closed.length = 0;
+    });
+
+    it('asks once, stops its running agent (its slot given back), deletes it with the notes handled with it, and closes their tabs', async () => {
+      const [lead] = await store.list();
+      const follower = await store.add('and the link blue', [], new Date(Date.now() - 59 * 60_000));
+      await agents.tick();
+      expect(runs.started).toHaveLength(1);
+      expect(agents.agentOf(follower.id)).toBeDefined();
+
+      await agents.deleteNote(follower.id);
+      expect(ui.asked).toEqual([`Delete ${lead.id} and ${follower.id}, handled with it? Its agent stops; the tickets it became stay.`]);
+      expect(runs.started[0].stopped).toBe(true);
+      expect(agents.agentOf(lead.id)).toBeUndefined();
+      expect(slots).toHaveLength(0);
+      expect(await store.list()).toEqual([]);
+      expect(ui.closed).toEqual([lead.id, follower.id]);
+      // Nothing was written back: no note was made again.
+      expect(store.exists(lead.id)).toBe(false);
+    });
+
+    it('keeps the note when you cancel', async () => {
+      ui.answer = undefined;
+      const [note] = await store.list();
+      await agents.deleteNote(note.id);
+      expect(ui.asked).toHaveLength(1);
+      expect(await store.list()).toHaveLength(1);
+    });
   });
 
   describe('a usage limit (BL-203)', () => {

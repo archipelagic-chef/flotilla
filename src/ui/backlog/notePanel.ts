@@ -25,6 +25,11 @@ export interface NotePanelDeps {
 /** The sent notes' tabs open, by note: opening one again shows it. */
 const panels = new Map<string, vscode.WebviewPanel>();
 
+/** Closes a sent note's tab, if it's open (its note was deleted, BL-215). */
+export function closeNotePanel(id: string): void {
+  panels.get(id)?.dispose();
+}
+
 /**
  * The New Note tab (BL-182): a draft note, written as a ticket's comment is (the formatting toolbar, Write and Preview,
  * pasted or dropped images, saved in the note's folder). Send writes it and sends it to an agent; closing the tab unsent
@@ -70,6 +75,8 @@ export async function openNotePanel(deps: NotePanelDeps, sentId?: string): Promi
   const refresh = async () => {
     const note = await view();
     if (note) post({ type: 'noteChanged', note });
+    // Deleted (in another window too, BL-215): its tab closes.
+    else if (sentId && notes.wasDeleted(id) && !notes.exists(id)) panel.dispose();
   };
   let sent = !!sentId;
   if (sentId) panels.set(id, panel);
