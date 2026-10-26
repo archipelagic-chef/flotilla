@@ -13,6 +13,7 @@ const INSTANT = new Set([
   'expandChange',
   'openTicketChange',
   'backToTicket',
+  'noteOpen',
   'openChat',
   'openCommit',
   'openFile',

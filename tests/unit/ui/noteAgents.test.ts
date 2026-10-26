@@ -56,18 +56,20 @@ describe('NoteAgents and Pause All (BL-193)', () => {
   let store: NoteStore;
   let agents: NoteAgents;
   let held = false;
+  let chatThere = true;
   const slots: number[] = [];
 
   beforeEach(async () => {
     runs.started.length = 0;
     held = false;
+    chatThere = true;
     slots.length = 0;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-'));
     store = new NoteStore(dir);
     agents = new NoteAgents({
       extensionUri: {} as never,
       notes: store,
-      backlog: { dir, read: async () => ({ version: 1, next: 1, items: [] }) } as never,
+      backlog: { dir, read: async () => ({ version: 1, next: 1, items: [{ id: 'BL-9' }] }) } as never,
       repository: { current: [], onDidChange: () => ({ dispose() {} }) } as never,
       mainRoot: dir,
       output: { appendLine() {} } as never,
@@ -75,6 +77,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       admit: () => (slots.push(1), slots.length),
       giveBack: () => void slots.pop(),
       pausedAll: () => held,
+      chatExists: () => chatThere,
     });
     await store.add('Make the button green', [], new Date(Date.now() - 60 * 60_000));
   });
@@ -181,6 +184,75 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       } finally {
         again.dispose();
       }
+    });
+  });
+
+  describe('editing a note and writing more in it (BL-204)', () => {
+    const handle = async () => {
+      await agents.tick();
+      const [note] = await store.list();
+      runs.started.at(-1)!.resolve({ code: 0, reply: 'Proposed BL-9.' });
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      return note;
+    };
+
+    it('updates a note no agent has picked up yet, which settles again', async () => {
+      const [note] = await store.list();
+      await store.edit(note.id, 'Make the button blue');
+      await agents.tick();
+      expect(runs.started).toHaveLength(0);
+      expect(await store.read(note.id)).toMatchObject({ status: 'open', title: 'Make the button blue' });
+    });
+
+    it('gives a change made while its agent works when it ends its turn, before the note counts as handled', async () => {
+      await agents.tick();
+      const [note] = await store.list();
+      await store.edit(note.id, 'Make the button blue');
+      runs.started[0].resolve({ code: 0, reply: 'Proposed BL-9.' });
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
+      expect(runs.started[1].prompt).toMatch(/^The user wrote in the note since your last reply/);
+      const read = await store.read(note.id);
+      expect(read?.status).toBe('open');
+      expect(read?.activity.map((e) => e.author)).toEqual(['You', 'Agent ' + read?.agent]);
+      runs.started[1].resolve({ code: 0, reply: 'Updated BL-9.' });
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      expect((await store.read(note.id))?.changed).toBeUndefined();
+    });
+
+    it('takes a comment on a note that asks as your answer', async () => {
+      await agents.tick();
+      const [note] = await store.list();
+      runs.started[0].resolve({ code: 0, reply: 'Which button?\n\nNeeds from you: which one' });
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'));
+      await agents.answer(note.id, 'The blue one');
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
+      expect(runs.started[1].prompt).toMatch(/^The user wrote in the note/);
+    });
+
+    it('opens a handled note again, and its agent goes on in its chat to update the tickets it became', async () => {
+      const note = await handle();
+      await store.recordBecame([note.id], { id: 'BL-9', kind: 'proposal' });
+      await agents.answer(note.id, 'Make it round too');
+      await vi.waitFor(() => expect(runs.started).toHaveLength(2));
+      expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
+      expect(runs.started[1].prompt).toMatch(/^The note was handled \(Became BL-9 \(proposal\)\)/);
+      expect((await store.read(note.id))?.reopened).toBeUndefined();
+      // Its reply's "Added to" names its own proposal: it stays a proposal.
+      runs.started[1].resolve({ code: 0, reply: 'Updated BL-9.\n\nAdded to: BL-9' });
+      await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'));
+      expect((await store.read(note.id))?.became).toEqual([{ id: 'BL-9', kind: 'proposal' }]);
+    });
+
+    it('starts a new chat for a reopened note whose chat is gone', async () => {
+      const note = await handle();
+      chatThere = false;
+      await store.edit(note.id, 'Make the button blue');
+      await agents.tick();
+      expect(runs.started).toHaveLength(2);
+      expect(runs.started[1].resume).toBeUndefined();
+      expect(runs.started[1].prompt).toMatch(/^You are agent \S+, handling note NOTE-1[\s\S]*The note was handled/);
     });
   });
 });

@@ -16,3 +16,33 @@
   color: var(--vscode-descriptionForeground);
   margin: 0 0 12px;
 }
+/* A sent note's tab (BL-204): its status, the editor, its activity, and the comment box. */
+.note-tab-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.note-tab-hint {
+  flex: 1;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+.note-tab-activity-head {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+.note-entry {
+  border-left: 2px solid var(--vscode-panel-border);
+  padding: 2px 0 2px 10px;
+  margin: 0 0 12px;
+}
+.note-entry-you {
+  border-left-color: var(--vscode-focusBorder);
+}
+.note-entry-head {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  margin-bottom: 2px;
+}

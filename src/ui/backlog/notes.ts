@@ -16,10 +16,13 @@ import {
   noteFollowUp,
   notePrompt,
   noteQuestion,
+  noteReopenPrompt,
+  type NoteState,
   type NoteStore,
   noteTools,
 } from '../../features/backlog/notes';
 import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
+import { transcriptPath } from '../../features/chats/chats';
 import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { NoteView, WebviewMessage } from '../../webview/protocol';
@@ -51,6 +54,8 @@ export interface NoteAgentsDeps {
   giveBack(slot: number): void;
   /** While Pause All holds, no agent starts on its own. */
   pausedAll?(): boolean;
+  /** Whether a note agent's chat is still there to go on in (its transcript, in the main worktree's chats). */
+  chatExists?(session: string): boolean;
 }
 
 /** How long a finished agent's proposals may take to be taken in from the inbox, before the note records what it became. */
@@ -66,7 +71,7 @@ const DRAFT_KEPT_MS = 24 * 60 * 60_000;
  */
 export class NoteAgents implements vscode.Disposable {
   /** The agents running, by the note that leads: its notes and its run. */
-  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; paused?: boolean }>();
+  private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; started: string; paused?: boolean }>();
   private ticking = false;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
@@ -132,26 +137,42 @@ export class NoteAgents implements vscode.Disposable {
         await this.answer(m.id, m.text);
         return;
       case 'open':
-        // The note, formatted: what you wrote, its agent's replies and your answers.
-        await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(this.deps.notes.file(m.id)));
+        // Its note tab (BL-204): what you wrote, to edit, its activity, and a box to write in.
+        await this.openNote(m.id);
         return;
     }
   }
 
   /** Flotilla: New Note (and the backlog's New Note button): the New Note tab, a draft until you send it. */
   async newNote(): Promise<void> {
+    await openNotePanel(await this.panelDeps());
+    this.changed.fire();
+  }
+
+  /** A sent note's tab (BL-204), where you edit it and write in it whatever its state. */
+  async openNote(id: string): Promise<void> {
+    await openNotePanel(await this.panelDeps(), id);
+  }
+
+  private async panelDeps(): Promise<Parameters<typeof openNotePanel>[0]> {
     const ids = await this.deps.backlog
       .read()
       .then((d) => d.items.map((i) => i.id))
       .catch(() => [] as string[]);
-    await openNotePanel({
+    return {
       extensionUri: this.deps.extensionUri,
       notes: this.deps.notes,
       mention: /^(.*?-)\d+$/.exec(ids[0] ?? '')?.[1] ?? '',
       sent: () => (this.changed.fire(), void this.tick()),
       dropped: () => this.changed.fire(),
-    });
-    this.changed.fire();
+      status: (id) => this.status(id),
+      open: (id) => void this.openNote(id).catch(showError),
+    };
+  }
+
+  /** A note's status as its card says it (working while an agent has it). */
+  private async status(id: string): Promise<Pick<NoteView, 'status' | 'agent'> | undefined> {
+    return (await this.views()).find((v) => v.id === id);
   }
 
   /** The note agents working in any window's chats, by the note they lead. */
@@ -176,14 +197,9 @@ export class NoteAgents implements vscode.Disposable {
     return undefined;
   }
 
-  /** The user answered a note's question: their answer goes into the note, and its agent's chat goes on with it. */
+  /** The user answered a note's question (or wrote in it, BL-204): it goes into the note, and its agent's chat goes on with it. */
   async answer(id: string, text: string): Promise<void> {
-    const note = await this.deps.notes.read(id);
-    if (!note || !text.trim()) return;
-    const lead = note.with ?? note.id;
-    await this.deps.notes.append(lead, { author: 'You', body: text.trim() });
-    const group = (await this.deps.notes.read(lead))?.group ?? [];
-    for (const n of [lead, ...group]) await this.deps.notes.setState(n, (s) => (s.status === 'handled' ? s : { ...s, status: 'open' }));
+    if (!(await this.deps.notes.comment(id, text))) return;
     this.changed.fire();
     void this.tick();
   }
@@ -247,13 +263,20 @@ export class NoteAgents implements vscode.Disposable {
   private async start(notes: Note[], slot: number): Promise<void> {
     const [lead, ...rest] = notes;
     const agent = lead.agent ?? agentName(this.takenNames());
-    const resume = validSession(lead.session);
+    // Reopened (BL-204): its chat goes on if it's still there, else a new one is told what the note became.
+    const session = validSession(lead.session);
+    const resume = session && (!lead.reopened || this.chatExists(session)) ? session : undefined;
     const files = notes.map((n) => ({ id: n.id, title: n.title, file: this.deps.notes.file(n.id) }));
-    const o = { agent, notes: files, backlogDir: this.deps.backlog.dir };
+    const o = { agent, notes: files, backlogDir: this.deps.backlog.dir, became: lead.became };
+    const started = new Date().toISOString();
     const run = runAgentHeadless({
       cwd: this.deps.mainRoot,
-      // Resumed after Pause All, unless the user's answer is the last word.
-      prompt: resume ? noteFollowUp(o, lead.activity.at(-1)?.author === 'You' ? 'answered' : 'paused') : notePrompt(o),
+      // Resumed after Pause All, unless the user's answer (or change) is the last word.
+      prompt: resume
+        ? noteFollowUp(o, lead.reopened ? 'reopened' : lead.changed || lead.activity.at(-1)?.author === 'You' ? 'answered' : 'paused')
+        : lead.reopened
+          ? noteReopenPrompt(o)
+          : notePrompt(o),
       resume,
       name: `${agent} · handling ${lead.id}`,
       track: { ticket: lead.id, agent, role: 'note' },
@@ -264,9 +287,16 @@ export class NoteAgents implements vscode.Disposable {
       offer: ['Write'],
     });
     const ids = notes.map((n) => n.id);
-    this.runs.set(lead.id, { ids, agent, run });
+    this.runs.set(lead.id, { ids, agent, run, started });
+    // What it's told now is taken in: a change after this goes on in its chat when it ends its turn.
+    const taken = (s: NoteState): NoteState => ({ ...s, changed: s.changed && s.changed > started ? s.changed : undefined, reopened: undefined });
     try {
-      await this.deps.notes.setState(lead.id, (s) => ({ ...s, agent, session: run.sessionId, ...(rest.length ? { group: rest.map((n) => n.id) } : {}) }));
+      await this.deps.notes.setState(lead.id, (s) => ({
+        ...taken(s),
+        agent,
+        session: run.sessionId,
+        ...(rest.length ? { group: rest.map((n) => n.id) } : {}),
+      }));
       for (const n of rest) await this.deps.notes.setState(n.id, (s) => ({ ...s, agent, with: lead.id }));
     } catch (e) {
       this.runs.delete(lead.id);
@@ -288,6 +318,7 @@ export class NoteAgents implements vscode.Disposable {
    */
   private async finished(lead: string, ids: string[], agent: string, result: AgentResult, slot: number): Promise<void> {
     this.deps.giveBack(slot);
+    const started = this.runs.get(lead)?.started ?? '';
     // Paused (Pause All): its notes stay open, with their session, as they are.
     if (this.runs.get(lead)?.paused) {
       this.runs.delete(lead);
@@ -300,6 +331,13 @@ export class NoteAgents implements vscode.Disposable {
       // Stopped on a limit, it waits for it as a ticket's agent does, and goes on in its chat (BL-203).
       if (!reply && result.limit) return void (await this.waitForLimit(lead, agent, result.limit));
       await this.deps.notes.setState(lead, (s) => (s.limit ? { ...s, limit: undefined } : s));
+      // You wrote in it while it worked (BL-204): its chat goes on with that, before it asks or is handled.
+      const changed = (await this.deps.notes.read(lead))?.changed;
+      if (changed && changed > started) {
+        if (reply) await this.deps.notes.append(lead, { author: `Agent ${agent}`, body: reply });
+        for (const id of ids) await this.deps.notes.setState(id, (s) => ({ ...s, status: 'open' }));
+        return;
+      }
       if (!reply) {
         const why = result.error ? `without a reply (${result.error.slice(0, 200)})` : 'without a reply';
         await this.deps.notes.append(lead, { author: 'Flotilla', body: `${agent} stopped ${why}. Answer here and it goes on.` });
@@ -315,11 +353,13 @@ export class NoteAgents implements vscode.Disposable {
         reply,
         (await this.deps.backlog.read()).items.map((i) => i.id),
       );
-      for (const id of added) await this.deps.notes.recordBecame(ids, { id, kind: 'added' });
+      // A proposal it became and updated since (reopened, BL-204) stays a proposal.
+      const proposed = new Set(((await this.deps.notes.read(lead))?.became ?? []).filter((b) => b.kind === 'proposal').map((b) => b.id));
+      for (const id of added.filter((a) => !proposed.has(a))) await this.deps.notes.recordBecame(ids, { id, kind: 'added' });
       await this.inboxTaken();
       const became = (await this.deps.notes.read(lead))?.became ?? [];
       const handled = new Date().toISOString();
-      for (const id of ids) await this.deps.notes.setState(id, (s) => ({ ...s, status: 'handled', handled }));
+      for (const id of ids) await this.deps.notes.setState(id, (s) => ({ ...s, status: 'handled', handled, changed: undefined, reopened: undefined }));
       await this.deps.notes.append(lead, { author: 'Flotilla', body: `${becameText(became, (id) => `[${id}](../${id}.md)`)}.` });
     } finally {
       this.runs.delete(lead);
@@ -362,6 +402,15 @@ export class NoteAgents implements vscode.Disposable {
       const names = await fs.promises.readdir(dir).catch(() => [] as string[]);
       if (!names.some((n) => (n.endsWith('.md') && !n.startsWith('.')) || n.endsWith('.taking'))) return;
       await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  private chatExists(session: string): boolean {
+    if (this.deps.chatExists) return this.deps.chatExists(session);
+    try {
+      return fs.existsSync(transcriptPath(this.deps.mainRoot, session));
+    } catch {
+      return false;
     }
   }
 

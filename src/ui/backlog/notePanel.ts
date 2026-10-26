@@ -2,8 +2,9 @@ import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { mediaType, tooLarge, tooLargeNote } from '../../features/backlog/media';
-import type { NoteStore } from '../../features/backlog/notes';
-import type { NoteHostMessage, NoteWebviewMessage } from '../../webview/noteProtocol';
+import { becameText, type NoteStore } from '../../features/backlog/notes';
+import type { NoteHostMessage, NoteTabView, NoteWebviewMessage } from '../../webview/noteProtocol';
+import type { NoteView } from '../../webview/protocol';
 import { renderMarkdown } from './ticketPanel';
 
 export interface NotePanelDeps {
@@ -15,18 +16,33 @@ export interface NotePanelDeps {
   sent(id: string): void;
   /** The draft was dropped (the tab closed unsent). */
   dropped(id: string): void;
+  /** A sent note's status, as its card says it (working while an agent has it). */
+  status?(id: string): Promise<Pick<NoteView, 'status' | 'agent'> | undefined>;
+  /** Opens another note's tab (the note that leads one handled with it). */
+  open?(id: string): void;
 }
+
+/** The sent notes' tabs open, by note: opening one again shows it. */
+const panels = new Map<string, vscode.WebviewPanel>();
 
 /**
  * The New Note tab (BL-182): a draft note, written as a ticket's comment is (the formatting toolbar, Write and Preview,
  * pasted or dropped images, saved in the note's folder). Send writes it and sends it to an agent; closing the tab unsent
  * drops the draft and its images.
+ *
+ * With a sent note's id, its note tab (BL-204): the same editor with what you wrote, saved as an edit whatever the
+ * note's state, then its activity and a box to write a comment in (its answer, when it asks).
  */
-export async function openNotePanel(deps: NotePanelDeps): Promise<vscode.WebviewPanel> {
+export async function openNotePanel(deps: NotePanelDeps, sentId?: string): Promise<vscode.WebviewPanel> {
   const { notes } = deps;
-  const id = await notes.draft();
+  const shown = sentId && panels.get(sentId);
+  if (shown) {
+    shown.reveal();
+    return shown;
+  }
+  const id = sentId ?? (await notes.draft());
   const dist = vscode.Uri.joinPath(deps.extensionUri, 'dist');
-  const panel = vscode.window.createWebviewPanel('flotilla.note', 'New Note', vscode.ViewColumn.Active, {
+  const panel = vscode.window.createWebviewPanel('flotilla.note', sentId ?? 'New Note', vscode.ViewColumn.Active, {
     enableScripts: true,
     retainContextWhenHidden: true,
     localResourceRoots: [dist, vscode.Uri.file(notes.dir)],
@@ -34,12 +50,52 @@ export async function openNotePanel(deps: NotePanelDeps): Promise<vscode.Webview
   panel.iconPath = vscode.Uri.joinPath(deps.extensionUri, 'media', 'flotilla.svg');
   panel.webview.html = html(panel.webview, dist);
   const post = (m: NoteHostMessage) => void panel.webview.postMessage(m);
-  let sent = false;
+  const view = async (): Promise<NoteTabView | undefined> => {
+    const n = await notes.read(id);
+    if (!n || n.status === 'draft') return undefined;
+    const shownAs = await deps.status?.(id);
+    return {
+      id,
+      title: n.title,
+      text: n.text,
+      status: shownAs?.status ?? n.status,
+      ...((shownAs?.agent ?? n.agent) ? { agent: shownAs?.agent ?? n.agent } : {}),
+      ...(n.with ? { with: n.with } : {}),
+      ...(n.status === 'handled' || n.became.length ? { became: becameText(n.became) } : {}),
+      activity: await Promise.all(
+        n.activity.map(async (e) => ({ author: e.author, date: e.date, html: await renderMarkdown(e.body, panel.webview, notes.dir) })),
+      ),
+    };
+  };
+  const refresh = async () => {
+    const note = await view();
+    if (note) post({ type: 'noteChanged', note });
+  };
+  let sent = !!sentId;
+  if (sentId) panels.set(id, panel);
+  const watch = sentId ? notes.watch(() => void refresh()) : undefined;
   panel.webview.onDidReceiveMessage(async (m: NoteWebviewMessage) => {
     try {
       switch (m.type) {
-        case 'ready':
-          post({ type: 'noteInit', mention: deps.mention });
+        case 'ready': {
+          const note = sentId ? await view() : undefined;
+          post({ type: 'noteInit', mention: deps.mention, ...(note ? { note } : {}) });
+          return;
+        }
+        case 'noteSave':
+          await notes.edit(id, m.text);
+          deps.sent(id);
+          post({ type: 'noteDone', op: 'save' });
+          await refresh();
+          return;
+        case 'noteComment':
+          if (!(await notes.comment(id, m.text))) throw new Error('The comment has no text.');
+          deps.sent(id);
+          post({ type: 'noteDone', op: 'comment' });
+          await refresh();
+          return;
+        case 'noteOpen':
+          deps.open?.(m.id);
           return;
         case 'image': {
           const bytes = Buffer.from(m.data, 'base64');
@@ -74,10 +130,13 @@ export async function openNotePanel(deps: NotePanelDeps): Promise<vscode.Webview
     } catch (e) {
       const failed = e instanceof Error ? e.message : String(e);
       if (m.type === 'noteSend') post({ type: 'noteSent', failed });
+      else if (m.type === 'noteSave' || m.type === 'noteComment') post({ type: 'noteDone', op: m.type === 'noteSave' ? 'save' : 'comment', failed });
       else void vscode.window.showErrorMessage(failed);
     }
   });
   panel.onDidDispose(() => {
+    watch?.dispose();
+    if (sentId) panels.delete(id);
     if (!sent) void notes.drop(id).then((dropped) => dropped && deps.dropped(id));
   });
   return panel;

@@ -171,6 +171,20 @@ function Became({ note }: { note: NoteView }) {
   );
 }
 
+/** A note's Edit action (BL-204): its note tab, where you change what you wrote or write more, whatever its state. */
+function EditNote({ id }: { id: string }) {
+  return (
+    <button
+      class="icon note-edit"
+      title="Edit the note, or write more in it: its agent takes in the change (a handled note is opened again)"
+      aria-label={`Edit ${id}`}
+      onClick={() => send({ type: 'note', op: 'open', id })}
+    >
+      <i class="codicon codicon-edit" />
+    </button>
+  );
+}
+
 const cardId = (id: string) => `note-card-${id}`;
 
 /**
@@ -200,13 +214,14 @@ function NoteCard({ note, followers }: { note: NoteView; followers: NoteView[] }
       <div class="note-head">
         <button
           class="link note-id"
-          title="Open the note: what you wrote, and its agent's replies"
+          title="Open the note: what you wrote, to edit, its agent's replies, and a box to write more"
           onClick={() => send({ type: 'note', op: 'open', id: note.id })}
         >
           {note.id}
         </button>
         <i class={`codicon codicon-${status.icon}`} />
         <span class="note-status">{status.label(note)}</span>
+        <EditNote id={note.id} />
       </div>
       <div class="note-text">{note.text}</div>
       {followers.map((f) => (
@@ -263,6 +278,7 @@ export function NotesLane({ notes }: { notes: NoteView[] }) {
                     {n.title}
                   </span>
                   <Became note={n} />
+                  <EditNote id={n.id} />
                 </div>
               ))}
             </div>

@@ -133,3 +133,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A note's Edit action (BL-204), at the end of its card's head and of its past row. */
+.note-edit {
+  margin-left: auto;
+  flex: none;
+}
