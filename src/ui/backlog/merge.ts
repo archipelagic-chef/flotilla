@@ -196,6 +196,8 @@ export class Merger implements vscode.Disposable {
   private readonly tasks: Array<{ id?: string; what: string }> = [];
   /** Tickets whose Merge to main is queued or running. */
   private readonly merging = new Set<string>();
+  /** Each ticket's Merge to main under way, for another one asked meanwhile to join (BL-227). */
+  private readonly pendingMerges = new Map<string, Promise<MergeEnd>>();
   /** Merges waiting for CI to pass, by ticket: outside the queue, so they hold up no other merge. */
   private readonly ciWaits = new Map<string, CiWait>();
   /** Why each ticket's last Merge to main stopped on CI (BL-112): red CI, or the base moved on. In memory. */
@@ -379,6 +381,12 @@ export class Merger implements vscode.Disposable {
    */
   async updateAndMerge(id: string): Promise<void> {
     if (this.chains.has(id) || !this.deps.updateFromMain) return;
+    // A merge of it under way (its resolution approved, waiting for CI or its turn) lands it: its branch isn't
+    // rebased again, nor handed back to its agent (BL-227).
+    if (this.runsMergeOf(id) || (await this.item(id))?.merging) {
+      void vscode.window.showInformationMessage(`${id} is being merged already: its ticket says where it is.`);
+      return;
+    }
     this.setChain(id, 'updating');
     const outcome = await this.deps.updateFromMain(id).catch((e: unknown) => {
       this.setChain(id);
@@ -927,15 +935,24 @@ export class Merger implements vscode.Disposable {
    * decision stops it.
    */
   merge(id: string, o: { batch?: boolean } = {}): Promise<MergeEnd> {
+    // One merge of a ticket at a time (BL-227): Merge to main, an approval and Update from Main and Merge join it.
+    const going = this.pendingMerges.get(id);
+    if (going) return going;
     if (this.tasks.length) this.deps.output.appendLine(`Merge: ${id} waits for ${this.tasks[0].what}.`);
     this.merging.add(id);
-    return this.serial({ id, what: `${id}'s merge` }, () => trackProgress('backlog', `Merging ${id}`, () => this.doMerge(id, !!o.batch))).finally(() => {
-      this.merging.delete(id);
-      this.changed.fire();
-    });
+    const merged = this.serial({ id, what: `${id}'s merge` }, () => trackProgress('backlog', `Merging ${id}`, () => this.doMerge(id, !!o.batch))).finally(
+      () => {
+        this.merging.delete(id);
+        this.pendingMerges.delete(id);
+        this.changed.fire();
+      },
+    );
+    this.pendingMerges.set(id, merged);
+    return merged;
   }
 
-  private async doMerge(id: string, batch: boolean): Promise<MergeEnd> {
+  /** rerere: a rebase reuses the resolutions approved before (an approved merge made again from the branch as it is). */
+  private async doMerge(id: string, batch: boolean, o: { rerere?: boolean } = {}): Promise<MergeEnd> {
     const item = await this.item(id);
     if (!item) return 'stopped';
     if (this.ciWaits.has(id)) {
@@ -1040,7 +1057,7 @@ export class Merger implements vscode.Disposable {
     // Fast-forward (BL-181): the branch rebased onto the base (when it isn't on it already), and the base moved to its tip.
     const rebase = style() === 'fast-forward';
     const outcome = rebase
-      ? await rebaseInWorktree(root, { dir, baseTip: check.baseTip, branch })
+      ? await rebaseInWorktree(root, { dir, baseTip: check.baseTip, branch, rerere: o.rerere })
       : await mergeInWorktree(root, { dir, baseTip: check.baseTip, branch, message });
     const doing = rebase ? `Rebasing \`${branch}\` onto \`${base}\`` : `Merging \`${branch}\` into \`${base}\``;
     if (outcome.kind === 'conflicts') {
@@ -1050,6 +1067,7 @@ export class Merger implements vscode.Disposable {
         branch,
         base,
         baseTip: check.baseTip,
+        tip: check.tip,
         ...(rebase ? { rebase } : {}),
         state: 'failed',
         reason: conflictsReason(outcome.files),
@@ -1072,6 +1090,13 @@ export class Merger implements vscode.Disposable {
       if (choice !== 'Resolve with Agent') {
         await this.removeDir(dir);
         return 'stopped';
+      }
+      // The question may have waited while its agent rebased the branch (BL-227): the merge is made again from its tip now.
+      const now = await this.tip(branch);
+      if (now && now !== check.tip) {
+        await this.removeDir(dir);
+        this.deps.output.appendLine(`Merge: ${branch} moved while you were asked (${check.tip.slice(0, 7)} → ${now.slice(0, 7)}): merging it again.`);
+        return this.doMerge(id, batch, o);
       }
       await this.setMerge(id, state);
       await this.startResolver(id);
@@ -1544,6 +1569,7 @@ export class Merger implements vscode.Disposable {
         branch: entry.branch,
         base,
         baseTip: onto.commit,
+        tip: entry.tip,
         train: { ahead: onto.ahead },
         ...(rebase ? { rebase } : {}),
         state: 'failed',
@@ -1775,33 +1801,73 @@ export class Merger implements vscode.Disposable {
           return 'stopped';
         }
         recordEvent('merge-approved', { ticket: id, data: { by: 'You' } });
-        if (m.train) return this.landResolved(item, m, result.merge);
+        const tip = await this.tip(m.branch);
+        if (m.tip && tip && tip !== m.tip && !m.checks) return this.mergeMovedBranch(item, m, tip, result.merge);
+        if (m.train) return this.landResolved(item, m, result);
         await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
-        const now = await this.tip(m.base);
-        if (now && now !== result.onto) return this.mergeOntoMoved(item, m, result, now, false);
-        return this.complete(
-          item,
-          { dir: m.dir, branch: m.branch, base: m.base, baseTip: result.onto, commit: result.commit, merge: result.merge, fixes: result.fixes, resolved: true },
-          false,
-        );
+        return this.landApproved(item, m, result);
       }),
     );
   }
 
   /**
-   * An approved resolution of a merge in the train (BL-146): recorded (rerere), the train rebuilt with it, and the
-   * ticket landed from the train, as Merge to main does. Runs inside a task.
+   * The branch moved since its merge was made (BL-227: its agent rebased it meanwhile): what was resolved isn't what's
+   * on the branch now, so it's merged again from its tip, reusing the approved resolution where it still applies
+   * (rerere). A branch on top of the base already merges with nothing to resolve. Runs inside a task.
    */
-  private async landResolved(item: BacklogItem, m: MergeState, merge: string): Promise<MergeEnd> {
+  private async mergeMovedBranch(item: BacklogItem, m: MergeState, tip: string, resolved: string): Promise<MergeEnd> {
+    const was = { onto: m.baseTip, tip: m.tip!, resolved };
+    await (m.rebase ? recordRebaseResolution(m.dir, was) : recordResolution(m.dir, { ...was, message: mergeMessage(item) })).catch(() => []);
+    await this.removeDir(m.dir);
+    await this.setMerge(item.id, undefined);
+    await this.note(
+      item.id,
+      `You approved the resolution, but \`${m.branch}\` moved since its ${m.rebase ? 'rebase' : 'merge'} was made (it was at ${m.tip!.slice(0, 7)}, it's at ${tip.slice(0, 7)}): it's merged again as it is now, reusing the resolution where it still applies.`,
+    );
+    return this.doMerge(item.id, false, { rerere: true });
+  }
+
+  /** An approved merge lands as it was approved: made again onto the base first if that moved (BL-149). Runs inside a task. */
+  private async landApproved(item: BacklogItem, m: MergeState, result: { commit: string; merge: string; onto: string; fixes: string[] }): Promise<MergeEnd> {
+    const now = await this.tip(m.base);
+    if (now && now !== result.onto) return this.mergeOntoMoved(item, m, result, now, false);
+    return this.complete(
+      item,
+      { dir: m.dir, branch: m.branch, base: m.base, baseTip: result.onto, commit: result.commit, merge: result.merge, fixes: result.fixes, resolved: true },
+      false,
+    );
+  }
+
+  /**
+   * An approved resolution of a merge in the train (BL-146): recorded (rerere). With nothing ahead of it in the train,
+   * it was made onto the base itself: it lands as approved, as a merge's resolution does (BL-227), so no other merge
+   * of the ticket runs into the same conflict again. Else the train is rebuilt with it, and the ticket landed from the
+   * train, as Merge to main does. Runs inside a task.
+   */
+  private async landResolved(item: BacklogItem, m: MergeState, result: { commit: string; merge: string; onto: string; fixes: string[] }): Promise<MergeEnd> {
+    const { merge } = result;
     const files = m.rebase
       ? await recordRebaseResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge })
       : await recordResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge, message: mergeMessage(item) });
+    const recorded = files.map((f) => `\`${f}\``).join(', ') || 'no conflicts to record';
+    if (!m.train?.ahead.length) {
+      const { train: _train, ...alone } = m;
+      await this.setMerge(item.id, alone);
+      await this.note(
+        item.id,
+        `You approved the resolution of its ${m.rebase ? 'rebase' : 'merge'} onto ${m.base} in the merge train: it's recorded (${recorded}), and it lands as you approved it.`,
+      );
+      const end = await this.landApproved(item, alone, result);
+      // The tickets behind it go on in a train on the new main.
+      if (end === 'merged' && (await this.changeQueue((q) => dequeue(q, [item.id])))) await this.currentTrain().catch(() => undefined);
+      return end;
+    }
     await this.removeDir(m.dir);
     await this.setMerge(item.id, undefined);
     const onto = [m.base, ...(m.train?.ahead ?? [])].join(' + ');
     await this.note(
       item.id,
-      `You approved the resolution of its ${m.rebase ? 'rebase' : 'merge'} onto ${onto} in the merge train: it's recorded (${files.map((f) => `\`${f}\``).join(', ') || 'no conflicts to record'}), so the train reuses it when it's rebuilt. \`${m.branch}\` wasn't changed.`,
+      `You approved the resolution of its ${m.rebase ? 'rebase' : 'merge'} onto ${onto} in the merge train: it's recorded (${recorded}), so the train reuses it when it's rebuilt. \`${m.branch}\` wasn't changed.`,
     );
     const train = await this.currentTrain({ rebuild: true });
     const entry = train?.entries.find((e) => e.id === item.id);
@@ -1870,7 +1936,7 @@ export class Merger implements vscode.Disposable {
    */
   private async rebaseOntoMoved(item: BacklogItem, m: MergeState, now: string, was: string, batch: boolean): Promise<MergeEnd> {
     this.deps.output.appendLine(`Merge: ${item.id}'s rebase again onto ${m.base} ${now.slice(0, 7)} (${was}).`);
-    const outcome = await rebaseInDir(m.dir, now);
+    const outcome = await rebaseInDir(m.dir, now, { rerere: true });
     if (outcome.kind === 'conflicts') {
       recordConflicts(item.id, this.deps.mainRoot, now, m.branch, outcome.files);
       await this.setMerge(item.id, { ...m, baseTip: now, state: 'failed', reason: conflictsReason(outcome.files), checks: undefined, from: undefined });
