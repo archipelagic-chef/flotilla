@@ -7,6 +7,7 @@ import {
 import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 import {
+  closeDiscarded,
   ensurePullRequest,
   GitHubPullRequests,
   pullRequestBody,
@@ -101,5 +102,13 @@ describe('a merged ticket’s pull request', () => {
     const closed = await settleMerged(prs, pr, { commit: 'abc1234def', base: 'main', onOrigin: true, headOnOrigin: false });
     expect(closed).toMatchObject({ number: 1, state: 'closed' });
     expect(fake!.pulls()[0].comments).toEqual([expect.stringContaining('abc1234def')]);
+  });
+
+  it("closes a discarded ticket's, with a comment, once (BL-225)", async () => {
+    const prs = await client(repo());
+    const { pr } = await ensurePullRequest(prs, open);
+    expect(await closeDiscarded(prs, pr, 'BL-1')).toMatchObject({ number: 1, state: 'closed' });
+    expect(await closeDiscarded(prs, pr, 'BL-1')).toMatchObject({ state: 'closed' });
+    expect(fake!.pulls()[0].comments).toEqual([expect.stringContaining('BL-1 was discarded')]);
   });
 });
