@@ -124,6 +124,27 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     await vi.waitFor(() => expect(runs.started[0].stopped).toBe(true));
   });
 
+  describe('the note due first (BL-220)', () => {
+    it('names the note an agent picks up next, while it could start here', async () => {
+      const [note] = await store.list();
+      expect(await agents.due()).toBe(note.id);
+      held = true;
+      expect(await agents.due()).toBeUndefined();
+      held = false;
+      await agents.tick();
+      // Its agent works on it: nothing more is due.
+      expect(await agents.due()).toBeUndefined();
+    });
+
+    it('holds nothing back for a note still settling or waiting on a usage limit', async () => {
+      const [old] = await store.list();
+      await store.setState(old.id, (s) => ({ ...s, limit: { until: new Date(Date.now() + 60_000).toISOString(), known: true, kind: 'usage' } }));
+      expect(await agents.due()).toBeUndefined();
+      await store.add('Make the header green', []);
+      expect(await agents.due()).toBeUndefined();
+    });
+  });
+
   describe('a usage limit (BL-203)', () => {
     const limit = (ms: number) => ({ until: new Date(Date.now() + ms), known: true, kind: 'usage' as const });
 

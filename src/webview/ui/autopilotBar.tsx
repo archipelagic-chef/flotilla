@@ -46,9 +46,11 @@ export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldPro
                     : `waits for Claude's usage limit to reset (${shortTime(autopilot.waitingUntil)}); paused agents go on then.`
                   : autopilot.waitingForMemory
                     ? 'waits for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). It tries again shortly.'
-                    : autopilot.idle && !autopilot.running
-                      ? `· Idle: ${autopilot.idle}.`
-                      : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
+                    : autopilot.noteFirst
+                      ? `· ${autopilot.running} of ${autopilot.max} working. Handling ${autopilot.noteFirst} first: its agent gets the next free slot.`
+                      : autopilot.idle && !autopilot.running
+                        ? `· Idle: ${autopilot.idle}.`
+                        : `· ${autopilot.running} of ${autopilot.max} working${autopilot.waiting ? ` · ${autopilot.waiting} waiting` : ''}. ${autopilot.idle ? `Nothing more to start: ${autopilot.idle}.` : 'It takes To Do tickets from the top.'}`}
             {autopilot.away && !autopilot.elsewhere && <> {autopilot.away}.</>}
           </span>
         </button>
@@ -178,6 +180,7 @@ function Details({
         </>
       )}
       {d.idle && <div class="idle">Idle: {d.idle}.</div>}
+      {d.noteFirst && <div class="idle">{d.noteFirst}.</div>}
       <div class="limit">
         <span>
           Up to {d.max} {d.max === 1 ? 'agent' : 'agents'} at once (flotilla.agents.maxRunning)

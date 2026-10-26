@@ -58,6 +58,11 @@ export interface AutopilotDeps {
   key(): Promise<string>;
   /** A worktree for an item, ready for an agent (created without asking; undefined if it can't be). */
   prepareWorktree(item: BacklogItem): Promise<Workstream | undefined>;
+  /**
+   * The note due for an agent, which the next free slot goes to first (BL-220): the autopilot starts no ticket while
+   * one is (see NoteAgents.due), and the note agents are asked to tick.
+   */
+  noteDue?(): Promise<string | undefined>;
 }
 
 /** What the backlog view shows of the autopilot. */
@@ -76,6 +81,8 @@ export interface AutopilotView {
   triedAt?: string;
   /** Waiting for free memory: too little to start an agent (flotilla.agents.minFreeMemoryMB). */
   waitingForMemory?: boolean;
+  /** A note is due (BL-220): its agent gets the next free slot, before the autopilot starts another ticket. */
+  noteFirst?: string;
   /** Another window runs it. */
   elsewhere: boolean;
   /** Why it starts nothing though a slot is free (BL-142): "BL-130 waits for BL-126 (in review)", "nothing left in To Do". */
@@ -119,6 +126,8 @@ export class Autopilot implements vscode.Disposable {
   private ticking = false;
   private waitingUntil: Date | undefined;
   private waitingForMemory = false;
+  /** The note it leaves the next free slot to (BL-220). */
+  private noteFirst: string | undefined;
   /** When Try Now last found the limit still there: shown while it waits on. */
   private triedAt: Date | undefined;
   /** Why it starts nothing (BL-142), since when, and whether a notification said so. */
@@ -143,8 +152,12 @@ export class Autopilot implements vscode.Disposable {
         }),
       );
     if (deps.merges) this.subscriptions.push(deps.merges.onDidChange(() => this.changed.fire()));
-    // An agent spawned or a run ended: the bar's count and details change at once (BL-201).
-    const agents = deps.reviews.onDidChangeAgents?.(() => this.changed.fire());
+    // An agent spawned or a run ended: the bar's count and details change at once (BL-201), and a freed slot is taken
+    // (a due note's agent first, BL-220).
+    const agents = deps.reviews.onDidChangeAgents?.(() => {
+      this.changed.fire();
+      void this.tick();
+    });
     if (agents) this.subscriptions.push(agents);
     void this.refresh().then(() => this.tick());
   }
@@ -208,6 +221,7 @@ export class Autopilot implements vscode.Disposable {
         ? { waitingUntil: this.waitingUntil.toISOString(), ...(this.triedAt ? { triedAt: this.triedAt.toISOString() } : {}) }
         : {}),
       ...(this.waitingForMemory ? { waitingForMemory: true } : {}),
+      ...(this.noteFirst ? { noteFirst: this.noteFirst } : {}),
       elsewhere: !this.deps.leader.isLeader,
       ...(this.idle ? { idle: this.idle } : {}),
       ...(this.away && this.away.until > Date.now() ? { away: this.away.line } : {}),
@@ -351,6 +365,7 @@ export class Autopilot implements vscode.Disposable {
     if (this.ticking || !this.enabled || !this.deps.leader.isLeader || this.deps.pauseAll?.pausedCount !== undefined) return;
     this.ticking = true;
     let memoryWait = false;
+    let noteFirst: string | undefined;
     let idle: string | undefined;
     try {
       const was = this.waitingUntil?.getTime();
@@ -371,6 +386,9 @@ export class Autopilot implements vscode.Disposable {
           idle = clashes.size ? undefined : idleReason(data, waits, this.failed);
           return;
         }
+        // A note is due: its agent takes this slot first, and the next tick (a run's end, the timer) goes on.
+        noteFirst = await this.deps.noteDue?.();
+        if (noteFirst) return;
         // Too little memory for another agent: this one waits, and the next tick tries again.
         if (memoryShortage()) {
           memoryWait = true;
@@ -386,6 +404,10 @@ export class Autopilot implements vscode.Disposable {
     } finally {
       this.ticking = false;
       this.setIdle(idle);
+      if (noteFirst !== this.noteFirst) {
+        this.noteFirst = noteFirst;
+        this.changed.fire();
+      }
       if (memoryWait !== this.waitingForMemory) {
         this.waitingForMemory = memoryWait;
         this.changed.fire();

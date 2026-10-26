@@ -234,6 +234,16 @@ export class NoteAgents implements vscode.Disposable {
     return note?.status === 'open' && note.session === session ? 'running' : undefined;
   }
 
+  /**
+   * The note an agent picks up next, when one is due and could start here (BL-220): the autopilot leaves the next free
+   * slot to it. Not one still settling or waiting on a usage limit (see nextNotes).
+   */
+  async due(): Promise<string | undefined> {
+    if (!this.deps.isLeader() || this.deps.pausedAll?.()) return undefined;
+    const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
+    return nextNotes(await this.deps.notes.list(), busy, Date.now())?.[0].id;
+  }
+
   /** Starts agents for the notes that are due, while slots are free. */
   async tick(): Promise<void> {
     if (this.ticking || !this.deps.isLeader()) return;
