@@ -15,6 +15,7 @@ import {
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { entryDate, whenItsDone } from '../../features/backlog/ticket';
 import {
+  closeDiscarded,
   ensurePullRequest,
   type GitHubPullRequests,
   pullRequestBody,
@@ -41,13 +42,16 @@ export interface BranchPushDeps {
 }
 
 /** An approved ticket, not merged yet: its branches are pushed. */
-export const pushable = (i: BacklogItem): boolean => i.status === 'review' && i.review?.state === 'approved' && !i.proposed && !i.merged;
+export const pushable = (i: BacklogItem): boolean => i.status === 'review' && i.review?.state === 'approved' && !i.proposed && !i.merged && !i.discarded;
 
 /** A ticket whose agent reported "Ready for review", not merged yet: with pull requests on, its branches are pushed (BL-221). */
-export const inReview = (i: BacklogItem): boolean => i.status === 'review' && !i.proposed && !i.merged;
+export const inReview = (i: BacklogItem): boolean => i.status === 'review' && !i.proposed && !i.merged && !i.discarded;
 
 /** A merged ticket whose pull request GitHub doesn't show as merged (or closed) yet. */
 export const unsettled = (i: BacklogItem): boolean => !!i.merged && !!i.pullRequests?.some((p) => p.state === 'open');
+
+/** A discarded ticket with a pull request still open on GitHub: it's closed (BL-225). */
+export const discardedOpen = (i: BacklogItem): boolean => !!i.discarded && !i.merged && !!i.pullRequests?.some((p) => p.state === 'open');
 
 /** The item's pull requests, with one of a branch put in. */
 const withPullRequest = (i: BacklogItem, pr: PullRequestInfo): PullRequestInfo[] => [...(i.pullRequests ?? []).filter((p) => p.branch !== pr.branch), pr];
@@ -59,7 +63,8 @@ const withPullRequest = (i: BacklogItem, pr: PullRequestInfo): PullRequestInfo[]
  *
  * With pull requests on (flotilla.github.pullRequests, BL-221), a ticket's branches are pushed once its agent reports
  * "Ready for review", and each gets a pull request into the base branch; once the ticket is merged, its pull requests
- * are marked merged by GitHub, or closed by Flotilla when other commits landed.
+ * are marked merged by GitHub, or closed by Flotilla when other commits landed. A discarded ticket's open pull requests
+ * are closed (BL-225); reopened and in review again, it gets new ones.
  */
 export class BranchPush implements vscode.Disposable {
   private readonly subscriptions: Array<{ dispose(): void }> = [];
@@ -118,7 +123,7 @@ export class BranchPush implements vscode.Disposable {
     const all = (await this.deps.backlog.read()).items;
     const fresh = new Set(this.fresh);
     this.fresh.clear();
-    if (!all.some((i) => pushable(i) || inReview(i) || unsettled(i))) return;
+    if (!all.some((i) => pushable(i) || inReview(i) || unsettled(i) || discardedOpen(i))) return;
     const url = (await runGit(['remote', 'get-url', '--push', PUSH_REMOTE], { cwd }).catch(() => '')).trim();
     if (this.deps.localOnly && !isLocalUrl(url)) {
       this.deps.output.appendLine(`Push: off, the fake GitHub is on and origin (${url}) isn't local.`);
@@ -153,6 +158,7 @@ export class BranchPush implements vscode.Disposable {
       }
     }
     if (prs) for (const item of all.filter(unsettled)) await this.settle(prs, item);
+    if (prs) for (const item of all.filter(discardedOpen)) await this.closeForDiscarded(prs, item);
   }
 
   /** The pull requests client for origin, when they're on (flotilla.github.pullRequests) and origin is on GitHub. */
@@ -224,6 +230,25 @@ export class BranchPush implements vscode.Disposable {
             date: entryDate(new Date()),
             author: 'Flotilla',
             body: `Closed pull request [#${now.number}](${now.url}): it landed on \`${merged.into}\` as \`${merged.commit.slice(0, 7)}\`, with other commits than its own.`,
+          });
+      } catch (e) {
+        this.deps.output.appendLine(`Pull request #${pr.number} (${item.id}): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
+  /** A discarded ticket's open pull requests: closed with a comment, and noted in the ticket. */
+  private async closeForDiscarded(prs: GitHubPullRequests, item: BacklogItem): Promise<void> {
+    for (const pr of item.pullRequests?.filter((p) => p.state === 'open') ?? []) {
+      try {
+        const now = await closeDiscarded(prs, pr, item.id);
+        await this.keep(item.id, now);
+        this.deps.output.appendLine(`Pull request: #${now.number} (${item.id}) ${now.state}, the ticket was discarded.`);
+        if (now.state === 'closed')
+          await this.deps.backlog.appendActivity(item, {
+            date: entryDate(new Date()),
+            author: 'Flotilla',
+            body: `Closed pull request [#${now.number}](${now.url}) on GitHub: the ticket was discarded.`,
           });
       } catch (e) {
         this.deps.output.appendLine(`Pull request #${pr.number} (${item.id}): ${e instanceof Error ? e.message : String(e)}`);

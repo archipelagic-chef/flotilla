@@ -15,7 +15,13 @@ vi.mock('vscode', () => ({
 }));
 
 import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
-import { addBranch, addItem, updateItem } from '../../../src/features/backlog/backlog';
+import {
+  addBranch,
+  addItem,
+  discardItem,
+  reopenItem,
+  updateItem,
+} from '../../../src/features/backlog/backlog';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import { GitHubPullRequests } from '../../../src/features/ci/pullRequests';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
@@ -240,5 +246,25 @@ describe('pull requests of tickets in review (BL-221)', () => {
     expect((await item()).pullRequests?.[0].state).toBe('closed');
     expect(fake.pulls()[0].comments).toEqual([expect.stringContaining(landed)]);
     expect((await notes()).at(-1)).toMatch(/^Closed pull request \[#1\]/);
+  });
+
+  it('closes it with a comment when the ticket is discarded, and opens a new one once it is in review again (BL-225)', async () => {
+    await pushes.check();
+    await store.change((d) => discardItem(d, 'BL-1', new Date().toISOString()));
+    await pushes.check();
+    expect((await item()).pullRequests).toEqual([{ branch: BRANCH, number: 1, url: 'https://github.com/playground/app/pull/1', state: 'closed' }]);
+    expect(fake.pulls()[0].comments).toEqual([expect.stringContaining('BL-1 was discarded')]);
+    expect((await notes()).at(-1)).toBe('Closed pull request [#1](https://github.com/playground/app/pull/1) on GitHub: the ticket was discarded.');
+
+    // Discarded, it isn't pushed or given a pull request again.
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'BL-1: two');
+    await pushes.check();
+    expect(fake.pulls()).toHaveLength(1);
+
+    // Reopened, and its agent reports "Ready for review" again: a new pull request.
+    await store.change((d) => updateItem(reopenItem(d, 'BL-1'), 'BL-1', { status: 'review' }));
+    await pushes.check();
+    expect((await item()).pullRequests).toEqual([{ branch: BRANCH, number: 2, url: 'https://github.com/playground/app/pull/2', state: 'open' }]);
+    expect(fake.pulls()).toHaveLength(2);
   });
 });

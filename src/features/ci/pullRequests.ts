@@ -121,6 +121,19 @@ export async function settleMerged(
   );
 }
 
+/**
+ * A discarded ticket's pull request (BL-225): closed with a comment saying so, unless it isn't open any more on GitHub
+ * (merged or closed there), when it's left as it is.
+ */
+export async function closeDiscarded(client: Pick<GitHubPullRequests, 'get' | 'close'>, pr: PullRequestInfo, id: string): Promise<PullRequestInfo> {
+  const now = await client.get(pr.number);
+  if (now.state !== 'open') return now;
+  return client.close(
+    pr.number,
+    `Flotilla ticket ${id} was discarded as won't do, so it's closed here. Reopened and in review again, it gets a new pull request.`,
+  );
+}
+
 /** The ticket's note of a pull request it got. */
 export function pullRequestNote(pr: PullRequestInfo, created: boolean): string {
   return created
