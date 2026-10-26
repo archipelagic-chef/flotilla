@@ -140,6 +140,27 @@ async function handleNotes() {
     );
     return;
   }
+  // Reopened by a change (BL-204): the proposals it became get a criterion with what the note says now.
+  const became = /^The note was handled \(Became ([^)]*?) \(proposals?\)/m.exec(prompt)?.[1].split(', ') ?? [];
+  const backlog = /read the backlog \((\S+?)\/backlog\.json/.exec(prompt)?.[1];
+  if (became.length && backlog) {
+    const now = texts[0].text
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .split('\n## Activity')[0]
+      .split('\n')
+      .slice(1)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    for (const id of became) {
+      const file = path.join(backlog, `${id}.md`);
+      if (!fs.existsSync(file)) continue;
+      const [head, ...activity] = fs.readFileSync(file, 'utf8').split('\n## Activity');
+      fs.writeFileSync(file, [`${head.trimEnd()}\n- [ ] As the note says now: ${now}\n`, ...activity].join('\n## Activity'));
+    }
+    reply(`Updated ${became.join(', ')} with the note's change.\n\nAdded to: ${became.join(', ')}`);
+    return;
+  }
   const ids = [];
   for (const n of texts) {
     // Its title, or (a note written in the editor may have none) its first line of text.
