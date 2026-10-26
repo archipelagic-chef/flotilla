@@ -568,9 +568,11 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     /** The pull requests it has, with their comments (for tests). */
     pulls: () =>
       pulls.map((p) => ({ ...p, comments: p.comments.filter((c) => c.kind === 'issue').map((c) => c.body), allComments: p.comments.map((c) => ({ ...c })) })),
-    /** Someone comments on a pull request (the latest open one when none is named), as on GitHub. */
+    /** Someone comments on a pull request (the latest open one when none is named, or a ticket's), as on GitHub. */
     comment: (o) => {
-      const pr = o.number ? pulls.find((p) => p.number === o.number && (!o.repo || p.repo === o.repo)) : pulls.findLast((p) => p.state === 'open');
+      const pr = o.number
+        ? pulls.find((p) => p.number === o.number && (!o.repo || p.repo === o.repo))
+        : pulls.findLast((p) => p.state === 'open' && (!o.ticket || p.head.includes(`/${o.ticket}-`)));
       if (!pr) throw new Error('the fake GitHub has no such pull request');
       const reply = o.inReplyTo ? pr.comments.find((c) => c.id === o.inReplyTo) : undefined;
       return addComment(

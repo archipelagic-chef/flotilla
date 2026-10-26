@@ -5,7 +5,7 @@ export const TITLE_MARKER: string;
 export const FRAME_MS: number;
 
 export interface DemoStep {
-  action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'agentTurn';
+  action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'agentTurn' | 'gitHubComment';
   value: string | number;
   timeout?: number;
 }
