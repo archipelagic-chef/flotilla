@@ -216,6 +216,79 @@ describe('pull requests of tickets in review (BL-221)', () => {
     expect((await item()).pushed).toBeUndefined();
   });
 
+  describe("a reviewer's review (BL-223)", () => {
+    const report = [
+      'Summary: one thing to fix.',
+      'Needs from you: nothing',
+      '',
+      '- [src/hi.ts:2](src/hi.ts#L2) says it twice.',
+      '- [src/other.ts:1](src/other.ts#L1) is not in the diff.',
+      '',
+      'Verdict: changes requested',
+    ].join('\n');
+    const reviewed = async (body = report) => {
+      fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'src', 'hi.ts'), 'hi\nhi\n');
+      git(repo, 'add', '.');
+      git(repo, 'commit', '-q', '-m', 'BL-1: hi');
+      await pushes.check();
+      const entry = { date: '2026-10-26 10:00', author: 'Agent Nova-7', body };
+      await store.appendActivity(await item(), entry);
+      const round = { round: 1, reviewer: 'Nova-7', verdict: 'changes' as const, entry: LocalBacklog.entryKey('BL-1', entry) };
+      await store.change((d) => ({ ...d, items: d.items.map((i) => ({ ...i, pullRequestReviews: [round] })) }));
+    };
+
+    it('is posted once on the pull request, with its findings in the diff as line comments, and the ticket links it', async () => {
+      await reviewed();
+      await pushes.check();
+      const [review] = fake.pulls()[0].reviews;
+      expect(fake.pulls()[0].reviews).toHaveLength(1);
+      // The fake's pull requests are your own: the verdict is said in a comment review.
+      expect(review.event).toBe('COMMENT');
+      expect(review.body).toMatch(/^\*\*Review by agent Nova-7, round 1, on Flotilla ticket BL-1: changes requested\.\*\*/);
+      expect(review.body).toContain('- [src/other.ts:1](src/other.ts#L1) is not in the diff.');
+      expect(review.body).not.toContain('says it twice');
+      expect(review.comments).toMatchObject([{ path: 'src/hi.ts', line: 2, body: '[src/hi.ts:2](src/hi.ts#L2) says it twice.' }]);
+      const url = `https://github.com/playground/app/pull/1#pullrequestreview-${review.id}`;
+      expect((await item()).pullRequestReviews?.[0].posted).toEqual([{ number: 1, id: review.id, url }]);
+      expect((await notes()).at(-1)).toBe(
+        `↩ [Reply to Agent Nova-7, 2026-10-26 10:00](#2026-10-26-1000-agent-nova-7)\nPosted Nova-7's review on pull request [#1](${url}) as a comment: GitHub doesn't let you request changes on your own pull request.`,
+      );
+
+      await pushes.check();
+      // A reload before its id was kept: it's found on the pull request, not posted again.
+      await store.change((d) => ({
+        ...d,
+        items: d.items.map((i) => ({ ...i, pullRequestReviews: i.pullRequestReviews?.map((r) => ({ ...r, posted: [] })) })),
+      }));
+      const before = (await notes()).length;
+      await pushes.check();
+      expect(fake.pulls()[0].reviews).toHaveLength(1);
+      expect((await item()).pullRequestReviews?.[0].posted).toEqual([{ number: 1, id: review.id, url }]);
+      expect(await notes()).toHaveLength(before);
+    });
+
+    it('notes a failure to post once, and leaves it', async () => {
+      await reviewed();
+      await fake.close();
+      await pushes.check();
+      expect((await item()).pullRequestReviews?.[0].failed).toBeTruthy();
+      expect((await notes()).at(-1)).toMatch(/^↩ \[Reply to Agent Nova-7.*\nCouldn't post Nova-7's review \(round 1\) on the pull request: /);
+      const before = (await notes()).length;
+      await pushes.check();
+      expect(await notes()).toHaveLength(before);
+      // The one afterEach closes.
+      fake = await startFakeGitHub({ port: 0 });
+    });
+
+    it('is not posted when pull requests are off', async () => {
+      await reviewed();
+      setting.value = 'off';
+      await pushes.check();
+      expect(fake.pulls()[0].reviews).toEqual([]);
+    });
+  });
+
   const merge = async (commit: string) => {
     git(repo, 'checkout', '-q', 'main');
     const merged = { into: 'main', commit, date: new Date().toISOString() };

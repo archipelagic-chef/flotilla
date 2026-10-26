@@ -103,8 +103,10 @@ describe('the review loop and memory', () => {
   let data: { version: 1; next: number; items: Array<Record<string, unknown>> };
   let loop: { start(id: string, manual?: boolean): Promise<void>; dispose(): void };
   let retry: () => Promise<void>;
+  let activity: Array<{ date: string; author: string; body: string }>;
 
   beforeEach(async () => {
+    activity = [];
     vi.resetModules();
     spawn.mockReset();
     spawn.mockImplementation(() => ({ sessionId: 's', done: new Promise(() => undefined), stop() {} }));
@@ -129,7 +131,7 @@ describe('the review loop and memory', () => {
       change: async (fn: (d: typeof data) => typeof data) => {
         data = fn(data);
       },
-      readTicket: async () => ({ title: 'Review me', description: '', activity: [] }),
+      readTicket: async () => ({ title: 'Review me', description: '', activity: structuredClone(activity) }),
       writeTicket: async () => undefined,
       ensureDocument: async () => '/unused/BL-1.md',
       docPath: () => '/unused/BL-1.md',
@@ -163,6 +165,25 @@ describe('the review loop and memory', () => {
     } finally {
       levels.now = {};
     }
+  });
+
+  it("keeps a reviewer's verdict to post on the ticket's open pull request, and none without one (BL-223)", async () => {
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const entry = { date: '2026-10-26 10:00', author: 'Agent Rex', body: 'Fine.\n\nVerdict: approved' };
+    activity = [entry];
+    const review = { reviewer: 'Rex', implementer: 'Nova', state: 'reviewing', round: 2 };
+    const pr = { branch: 'feature/BL-1-review', number: 4, url: 'u', state: 'open' };
+    data.items[0] = { ...data.items[0], review, pullRequests: [pr] };
+    data.items[1] = { ...data.items[1], review, pullRequests: [{ ...pr, state: 'merged' }] };
+    const ended = loop as unknown as { runs: Map<string, { run: unknown }>; afterReview(id: string, run: unknown, result: unknown): Promise<void> };
+    for (const id of ['BL-1', 'BL-2']) {
+      const run = { sessionId: `r-${id}` };
+      ended.runs.set(id, { run });
+      await ended.afterReview(id, run, {});
+    }
+    expect(data.items[0].pullRequestReviews).toEqual([{ round: 2, reviewer: 'Rex', verdict: 'approved', entry: LocalBacklog.entryKey('BL-1', entry) }]);
+    expect(data.items[0].review).toMatchObject({ state: 'approved' });
+    expect(data.items[1].pullRequestReviews).toBeUndefined();
   });
 
   it('starts nothing while memory is short, and a manual start after that starts the agent once', async () => {

@@ -12,6 +12,7 @@ import {
   sameAgent,
   updateItem,
 } from '../../features/backlog/backlog';
+import type { PullRequestReview } from '../../features/ci/pullRequests';
 import { isDiscussionChat } from '../../features/backlog/shaping';
 import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -1809,6 +1810,7 @@ export class ReviewLoop implements vscode.Disposable {
       agent: item.review.reviewer,
       data: { verdict: verdict.verdict, round: item.review.round, by: item.review.reviewer },
     });
+    await this.toPost(item, { round: item.review.round, reviewer: item.review.reviewer, verdict: verdict.verdict, entry: handled.at(-1)! });
     if (verdict.verdict === 'approved') {
       await this.setReview(id, (r) => ({ ...r!, state: 'approved', handled }));
       this.deps.onApproved?.(id, item.review.reviewer);
@@ -1833,6 +1835,22 @@ export class ReviewLoop implements vscode.Disposable {
     await this.setReview(id, (r) => ({ ...r!, state: 'revising', handled }), 'doing', `Agent ${item.review.reviewer}`);
     const revising: BacklogItem = { ...(strong ?? item), status: 'doing', review: { ...item.review, state: 'revising', handled } };
     await this.startRevision(revising, task);
+  }
+
+  /** A reviewer's round, to be posted on the ticket's pull requests (BL-223, see BranchPush): only when it has an open one. */
+  private async toPost(item: BacklogItem, review: PullRequestReview): Promise<void> {
+    if (!item.pullRequests?.some((p) => p.state === 'open')) return;
+    await this.deps.backlog.change(
+      (d) => ({
+        ...d,
+        items: d.items.map((i) =>
+          i.id === item.id && !i.pullRequestReviews?.some((r) => r.entry === review.entry)
+            ? { ...i, pullRequestReviews: [...(i.pullRequestReviews ?? []), review] }
+            : i,
+        ),
+      }),
+      { by: 'Flotilla' },
+    );
   }
 
   /**

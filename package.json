@@ -1795,7 +1795,7 @@
             "Don't open pull requests."
           ],
           "default": "auto",
-          "markdownDescription": "When a ticket's agent reports \"Ready for review\", push its branch to `origin` (with the checks of `#flotilla.ci.pushOnApproval#`) and open a pull request into main for it on GitHub, or keep the one it has. Merge to main still lands it: the pull request then shows as merged, or Flotilla closes it when other commits landed. Uses your GitHub sign-in in VS Code."
+          "markdownDescription": "When a ticket's agent reports \"Ready for review\", push its branch to `origin` (with the checks of `#flotilla.ci.pushOnApproval#`) and open a pull request into main for it on GitHub, or keep the one it has. Each reviewer agent's review round is posted on it as a review, its findings as comments on the lines they point at. Merge to main still lands it: the pull request then shows as merged, or Flotilla closes it when other commits landed. Uses your GitHub sign-in in VS Code."
         },
         "flotilla.ci.notify": {
           "type": "string",

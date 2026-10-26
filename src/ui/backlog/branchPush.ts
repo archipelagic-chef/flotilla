@@ -13,15 +13,23 @@ import {
   type PushResult,
   type PushSetting,
 } from '../../features/backlog/branchPush';
-import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { entryDate, whenItsDone } from '../../features/backlog/ticket';
+import { LocalBacklog } from '../../features/backlog/localBacklog';
+import {
+  entryAnchors,
+  entryDate,
+  parseReply,
+  replyLine,
+  whenItsDone,
+} from '../../features/backlog/ticket';
 import {
   closeDiscarded,
   ensurePullRequest,
   type GitHubPullRequests,
+  postReview,
   pullRequestBody,
   type PullRequestInfo,
   pullRequestNote,
+  type PullRequestReview,
   type PullRequestSetting,
   settleMerged,
 } from '../../features/ci/pullRequests';
@@ -53,6 +61,13 @@ export const unsettled = (i: BacklogItem): boolean => !!i.merged && !!i.pullRequ
 
 /** A discarded ticket with a pull request still open on GitHub: it's closed (BL-225). */
 export const discardedOpen = (i: BacklogItem): boolean => !!i.discarded && !i.merged && !!i.pullRequests?.some((p) => p.state === 'open');
+
+/** A reviewer's round not posted yet on each of the item's open pull requests (BL-223), nor failed to. */
+const toPost = (i: BacklogItem, r: PullRequestReview): boolean =>
+  !r.failed && !!i.pullRequests?.some((p) => p.state === 'open' && !r.posted?.some((q) => q.number === p.number));
+
+/** An item with review rounds to post on its pull requests. */
+export const reviewsToPost = (i: BacklogItem): boolean => !!i.pullRequestReviews?.some((r) => toPost(i, r));
 
 /** The item's pull requests, with one of a branch put in. */
 const withPullRequest = (i: BacklogItem, pr: PullRequestInfo): PullRequestInfo[] => [...(i.pullRequests ?? []).filter((p) => p.branch !== pr.branch), pr];
@@ -124,7 +139,7 @@ export class BranchPush implements vscode.Disposable {
     const all = (await this.deps.backlog.read()).items;
     const fresh = new Set(this.fresh);
     this.fresh.clear();
-    if (!all.some((i) => pushable(i) || inReview(i) || unsettled(i) || discardedOpen(i))) return;
+    if (!all.some((i) => pushable(i) || inReview(i) || unsettled(i) || discardedOpen(i) || reviewsToPost(i))) return;
     const url = (await runGit(['remote', 'get-url', '--push', PUSH_REMOTE], { cwd }).catch(() => '')).trim();
     if (this.deps.localOnly && !isLocalUrl(url)) {
       this.deps.output.appendLine(`Push: off, the fake GitHub is on and origin (${url}) isn't local.`);
@@ -145,8 +160,61 @@ export class BranchPush implements vscode.Disposable {
         if (prs && !last.error) await this.openPullRequest(prs, item, branch, tip, fresh.has(item.id));
       }
     }
-    if (prs) for (const item of all.filter(unsettled)) await this.settle(prs, item);
-    if (prs) for (const item of all.filter(discardedOpen)) await this.closeForDiscarded(prs, item);
+    if (!prs) return;
+    for (const item of all.filter(unsettled)) await this.settle(prs, item);
+    for (const item of all.filter(discardedOpen)) await this.closeForDiscarded(prs, item);
+    // After the pushes, so a review's line comments are on the commits it reviewed; read again for the new pull requests.
+    for (const item of (await this.deps.backlog.read()).items.filter(reviewsToPost)) await this.postReviews(prs, item);
+  }
+
+  /**
+   * An item's reviewer rounds, each posted once on each of its open pull requests (BL-223), and noted in the ticket as a
+   * reply to the review. A failure is noted once, and not tried again: the review loop goes on regardless.
+   */
+  private async postReviews(prs: GitHubPullRequests, item: BacklogItem): Promise<void> {
+    const ticket = await this.deps.backlog.readTicket(item);
+    const anchors = entryAnchors(ticket.activity);
+    for (const review of item.pullRequestReviews!.filter((r) => toPost(item, r))) {
+      const at = ticket.activity.findIndex((e) => LocalBacklog.entryKey(item.id, e) === review.entry);
+      const entry = ticket.activity[at];
+      const notes: string[] = [];
+      let failed: string | undefined = entry ? undefined : 'its report is no longer in the ticket';
+      const posted = [...(review.posted ?? [])];
+      for (const pr of item.pullRequests!.filter((p) => p.state === 'open' && !posted.some((q) => q.number === p.number))) {
+        if (failed) break;
+        try {
+          const report = parseReply(entry.body)?.text ?? entry.body;
+          const r = await postReview(prs, pr.number, { id: item.id, round: review.round, reviewer: review.reviewer, verdict: review.verdict, report });
+          posted.push({ number: pr.number, id: r.id, url: r.url });
+          this.deps.output.appendLine(`Pull request: #${pr.number} (${item.id}) has review round ${review.round}${r.existing ? ' already' : ', posted'}.`);
+          if (!r.existing)
+            notes.push(
+              `Posted ${review.reviewer}'s review on pull request [#${pr.number}](${r.url})${r.asComment ? ` as a comment: GitHub doesn't let ${review.verdict === 'approved' ? 'you approve' : 'you request changes on'} your own pull request` : ''}.`,
+            );
+        } catch (e) {
+          failed = e instanceof Error ? e.message : String(e);
+          this.deps.output.appendLine(`Review on pull request #${pr.number} (${item.id}): ${failed}`);
+        }
+      }
+      if (failed) notes.push(`Couldn't post ${review.reviewer}'s review (round ${review.round}) on the pull request: ${failed}`);
+      await this.deps.backlog.change(
+        (d) => ({
+          ...d,
+          items: d.items.map((i) =>
+            i.id === item.id
+              ? { ...i, pullRequestReviews: i.pullRequestReviews?.map((r) => (r.entry === review.entry ? { ...r, posted, ...(failed ? { failed } : {}) } : r)) }
+              : i,
+          ),
+        }),
+        { by: 'Flotilla' },
+      );
+      if (notes.length)
+        await this.deps.backlog.appendActivity(item, {
+          date: entryDate(new Date()),
+          author: 'Flotilla',
+          body: [...(entry ? [replyLine(entry, anchors[at])] : []), ...notes].join('\n'),
+        });
+    }
   }
 
   /** The pull requests client for origin, when they're on (flotilla.github.pullRequests) and origin is on GitHub. */
