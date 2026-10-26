@@ -46,3 +46,16 @@
   font-size: 0.9em;
   margin-bottom: 2px;
 }
+/* What its agent asks (BL-216), as a ticket's questions, above the comment box whose Answer sends them. */
+.note-questions {
+  border-left: 2px solid var(--waiting);
+  padding: 0 0 4px 10px;
+  margin: 0 0 8px;
+}
+.note-questions .choice .recommended {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}

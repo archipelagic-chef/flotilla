@@ -191,7 +191,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       runs.started[0].resolve({ code: 1, error: 'boom' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'), { timeout: 10_000 });
       expect((await store.read(note.id))?.activity.at(-1)?.body).toMatch(/stopped without a reply \(boom\)\. Answer here and it goes on\./);
-      // Its card has a box to answer in, with Flotilla's line.
+      // It asks, with Flotilla's line: its tab is where it's answered.
       expect((await agents.views())[0].asks).toMatchObject({ reply: expect.stringMatching(/stopped without a reply/), questions: [] });
     });
 

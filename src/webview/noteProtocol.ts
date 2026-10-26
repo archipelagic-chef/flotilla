@@ -1,3 +1,4 @@
+import type { Question } from '../features/backlog/report';
 import type { NoteView } from './protocol';
 import type { TicketHostMessage, TicketWebviewMessage } from './ticketProtocol';
 
@@ -16,6 +17,8 @@ export interface NoteTabView {
   became?: string;
   /** Its agent's replies, your answers and edits, Flotilla's lines, rendered. */
   activity: Array<{ author: string; date: string; html: string }>;
+  /** What its agent asks, while it waits for you (BL-216): its questions, answered by clicking, as a ticket's. */
+  asks?: { questions: Question[] };
 }
 
 /**
@@ -39,6 +42,8 @@ export type NoteHostMessage =
   | { type: 'noteInit'; mention: string; note?: NoteTabView }
   /** A sent note changed (its agent replied, its state moved, you saved): as it is now. */
   | { type: 'noteChanged'; note: NoteTabView }
+  /** Answer (Needs you, BL-216) opened the tab again: its first question takes the focus. */
+  | { type: 'noteFocus' }
   /** A save or a comment is done, or (with failed) why it isn't. */
   | { type: 'noteDone'; op: 'save' | 'comment'; failed?: string }
   /** The note was sent, or (with failed) why it wasn't. */

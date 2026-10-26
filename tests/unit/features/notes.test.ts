@@ -31,6 +31,7 @@ import {
   ROW_MS,
   SETTLE_MS,
   textChange,
+  withoutQuestions,
 } from '../../../src/features/backlog/notes';
 import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
 
@@ -241,6 +242,8 @@ describe("the agent's prompt and reply", () => {
       new Date('2026-10-25T14:05').toISOString(),
     );
     expect(q?.questions.map((x) => [x.text, x.options.map((o) => o.text)])).toEqual([['Which?', ['A', 'B']]]);
+    // The note's tab shows the reply without its question block, the question being its choices (BL-216).
+    expect(withoutQuestions(asking)).toBe('Two ways to do it.\n\nNeeds from you: which one');
   });
 
   it("gives a note whose agent stopped without a reply Flotilla's line to answer, newer than an earlier reply (BL-203)", () => {

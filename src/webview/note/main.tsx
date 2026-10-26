@@ -1,5 +1,13 @@
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  type Answer,
+  answerComment,
+  answerOf,
+  choose,
+  defaultAnswer,
+  type Question,
+} from '../../features/backlog/report';
 import type { NoteHostMessage, NoteTabView, NoteWebviewMessage } from '../noteProtocol';
 // The ticket's shared rules (buttons, the comment box's layout) first, then the note's own.
 import '../ticket/ticket.css';
@@ -106,6 +114,69 @@ const STATUS: Record<NoteTabView['status'], { icon: string; label: (n: NoteTabVi
 };
 
 /**
+ * What a note's agent asks (BL-216), as a ticket's questions are: a choice to click (its recommendation preselected),
+ * several, yes or no, or Other… and a free answer. The comment box's Answer sends them, with what it says.
+ */
+function Questions({
+  questions,
+  answers,
+  setAnswers,
+  onSubmit,
+}: {
+  questions: Question[];
+  answers: Answer[];
+  setAnswers(a: Answer[]): void;
+  onSubmit(): void;
+}) {
+  const update = (qi: number, a: Answer) => setAnswers(answers.map((x, i) => (i === qi ? a : x)));
+  return (
+    <div class="note-questions">
+      {questions.map((q, qi) => {
+        const a = answers[qi] ?? defaultAnswer(q);
+        const other = q.options.length;
+        const type = q.kind === 'several' ? 'checkbox' : 'radio';
+        const box = (
+          <MarkdownBox
+            value={a.other}
+            setValue={(text) => update(qi, { ...a, other: text })}
+            placeholder="Your answer (Markdown)"
+            label={`Your answer to: ${q.text}`}
+            onSubmit={onSubmit}
+            images={false}
+            minRows={2}
+          />
+        );
+        return (
+          <fieldset class="question" key={q.text}>
+            <legend>{q.text}</legend>
+            {q.kind === 'text' ? (
+              box
+            ) : (
+              <>
+                {q.options.map((o, i) => (
+                  <label class="choice" key={o.text}>
+                    <input type={type} name={`q-${qi}`} checked={a.picked.includes(i)} onChange={() => update(qi, choose(q, a, i))} />
+                    <span>{o.text}</span>
+                    {o.recommended && <span class="recommended">recommended</span>}
+                  </label>
+                ))}
+                {q.kind !== 'yesno' && (
+                  <label class="choice">
+                    <input type={type} name={`q-${qi}`} checked={a.picked.includes(other)} onChange={() => update(qi, choose(q, a, other))} />
+                    <span>Other…</span>
+                  </label>
+                )}
+                {q.kind !== 'yesno' && a.picked.includes(other) && box}
+              </>
+            )}
+          </fieldset>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * A sent note's tab (BL-204): what you wrote, editable whatever its state (Save keeps the change as an entry, and its
  * agent takes it in), its activity, and a box to write a comment in: your answer when its agent asks.
  */
@@ -114,6 +185,12 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
   const [saved, setSaved] = useState(note.text);
   const [text, setText] = useState(note.text);
   const [comment, setComment] = useState('');
+  // The answers to its agent's questions, afresh whenever it asks others.
+  const questions = note.status === 'asking' ? (note.asks?.questions ?? []) : [];
+  const asked = JSON.stringify(questions);
+  const [answers, setAnswers] = useState<{ asked: string; answers: Answer[] }>({ asked, answers: questions.map(defaultAnswer) });
+  if (answers.asked !== asked) setAnswers({ asked, answers: questions.map(defaultAnswer) });
+  const questionsRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<'save' | 'comment' | undefined>(undefined);
   const [failed, setFailed] = useState<string | undefined>(undefined);
   if (note.text !== saved) {
@@ -123,6 +200,7 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
   useEffect(() => {
     const listener = (e: MessageEvent<NoteHostMessage>) => {
       const m = e.data;
+      if (m.type === 'noteFocus') return focusQuestion();
       if (m.type !== 'noteDone') return;
       setBusy(undefined);
       setFailed(m.failed);
@@ -131,6 +209,15 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
     window.addEventListener('message', listener);
     return () => window.removeEventListener('message', listener);
   }, []);
+  // Answer opened it (Needs you): at the first question, focused.
+  const focusQuestion = () => {
+    const first = questionsRef.current?.querySelector<HTMLElement>('input:checked, input, textarea');
+    first?.scrollIntoView({ block: 'center' });
+    first?.focus();
+  };
+  useEffect(() => {
+    if (questions.length) focusQuestion();
+  }, [asked]);
   const status = STATUS[note.status];
   const dirty = text.trim() !== note.text.trim();
   const save = () => {
@@ -139,11 +226,15 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
     setFailed(undefined);
     send({ type: 'noteSave', text });
   };
+  // Answer sends the questions' answers, once each has one, with what the comment box says (as the card's did).
+  const texts = questions.map((q, i) => answerOf(q, answers.answers[i] ?? defaultAnswer(q)));
+  const answered = questions.length > 0 && texts.every(Boolean);
+  const body = [answered ? answerComment(questions.map((question, i) => ({ question, answer: texts[i] }))) : '', comment.trim()].filter(Boolean).join('\n\n');
   const post = () => {
-    if (busy || !comment.trim()) return;
+    if (busy || !body) return;
     setBusy('comment');
     setFailed(undefined);
-    send({ type: 'noteComment', text: comment });
+    send({ type: 'noteComment', text: body });
   };
   return (
     <main class="note-page">
@@ -197,11 +288,22 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
           <div class="rendered" dangerouslySetInnerHTML={{ __html: e.html }} />
         </div>
       ))}
+      {questions.length > 0 && (
+        <div ref={questionsRef}>
+          <Questions questions={questions} answers={answers.answers} setAnswers={(a) => setAnswers({ asked, answers: a })} onSubmit={post} />
+        </div>
+      )}
       <div class="comment-box">
         <MarkdownBox
           value={comment}
           setValue={setComment}
-          placeholder={note.status === 'asking' ? 'Your answer (Ctrl+Enter sends it)' : 'Write more: a comment its agent takes in (Ctrl+Enter sends it)'}
+          placeholder={
+            questions.length
+              ? 'Anything else to say? (Ctrl+Enter sends it with your answers)'
+              : note.status === 'asking'
+                ? 'Your answer (Ctrl+Enter sends it)'
+                : 'Write more: a comment its agent takes in (Ctrl+Enter sends it)'
+          }
           label={note.status === 'asking' ? 'Answer' : 'Comment'}
           onSubmit={post}
           minRows={3}
@@ -209,7 +311,7 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
           mention={mention}
         />
         <div class="actions-row">
-          <button class="button note-comment" disabled={!!busy || !comment.trim()} onClick={post}>
+          <button class="button note-comment" disabled={!!busy || !body} onClick={post}>
             <i class="codicon codicon-comment" /> {busy === 'comment' ? 'Sending…' : note.status === 'asking' ? 'Answer' : 'Comment'}
           </button>
         </div>

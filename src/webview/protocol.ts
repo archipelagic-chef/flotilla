@@ -294,8 +294,6 @@ export type HostMessage =
   /** A replace finished; the webview searches again. */
   | { type: 'replaced'; count: number }
   | { type: 'tool'; tool: Tool }
-  /** Shows a note's card in the backlog (the notifications' "Needs you", BL-200). */
-  | { type: 'showNote'; id: string }
   /** Show an inline name box: a new file or folder in dir, or a rename of path. */
   | { type: 'edit'; key: string; kind: 'file' | 'folder'; dir: string }
   | { type: 'edit'; key: string; kind: 'rename'; path: string }
@@ -319,8 +317,6 @@ export type HostMessage =
     }
   /** The notes (BL-182), oldest first; sent at start and whenever they change. */
   | { type: 'notes'; notes: NoteView[] }
-  /** A note's action is finished (as a backlog action's is). */
-  | { type: 'noteDone'; message: Extract<WebviewMessage, { type: 'note' }>; failed?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
   | { type: 'backlogDone'; message: Extract<WebviewMessage, { type: 'backlog' }>; failed?: boolean }
   /** The CI/CD view of every worktree (by key); sent whenever a worktree's runs are read. */
@@ -467,10 +463,9 @@ export type WebviewMessage =
   | { type: 'runWorkflow'; key: string }
   /** Whether there are worktree sections to fold, and whether they all are: for Fold All in the view title. */
   | { type: 'folding'; canFold: boolean; allFolded: boolean }
-  /** Opens a new note in the editor, answers a note's question, or opens its file (BL-182). */
+  /** Opens a new note in the editor, or a sent note's tab (BL-182); to answer it, focused on its first question (BL-216). */
   | { type: 'note'; op: 'new' }
-  | { type: 'note'; op: 'answer'; id: string; text: string }
-  | { type: 'note'; op: 'open'; id: string }
+  | { type: 'note'; op: 'open'; id: string; answer?: boolean }
   /** Add an item (VS Code's input box asks for its title). */
   | { type: 'backlog'; op: 'new' }
   /** priority null clears it. */

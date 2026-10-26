@@ -4,7 +4,7 @@ import { fixesFor, fixLabel } from '../../features/backlog/review';
 import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
-import { showNote } from './notes';
+import { answerNote } from './notes';
 import './needsYou.css';
 
 function waited(since: string | undefined): string | undefined {
@@ -77,7 +77,7 @@ function NoteNeedRow({ note, need }: { note: NoteView; need: Need }) {
       <span class="need-line">{need.line}</span>
       {age && <span class="need-age">{age}</span>}
       <span class="need-actions" onClick={(e) => e.stopPropagation()}>
-        <button class="button" onClick={() => showNote(note.id)} title="Goes to the note's card, with its agent's questions: answer there">
+        <button class="button" onClick={() => answerNote(note.id)} title="Opens the note's tab at its agent's questions: answer there">
           <i class="codicon codicon-comment" /> Answer
         </button>
         <button class="button secondary" onClick={open}>

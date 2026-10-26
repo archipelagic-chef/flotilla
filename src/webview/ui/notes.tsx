@@ -1,44 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
-import {
-  type Answer,
-  answerComment,
-  answerOf,
-  choose,
-  defaultAnswer,
-  type Question,
-} from '../../features/backlog/report';
-import type { NoteView, WebviewMessage } from '../protocol';
+import { useState } from 'preact/hooks';
+import type { NoteView } from '../protocol';
 import { send } from './api';
+import { stopControlClick } from './cardClick';
 import './notes.css';
-
-type NoteMessage = Extract<WebviewMessage, { type: 'note' }>;
-
-/** The note actions sent and not done yet (the host's noteDone ends each), and who re-renders when that changes. */
-const pending = new Set<string>();
-const listeners = new Set<() => void>();
-const keyOf = (m: NoteMessage) => (m.op === 'new' ? 'new' : `${m.op}:${m.id}`);
-
-function act(m: NoteMessage): void {
-  pending.add(keyOf(m));
-  listeners.forEach((l) => l());
-  send(m);
-}
-
-/** The host is done with a note action (app.tsx calls it on noteDone). */
-export function noteFinished(m: NoteMessage): void {
-  pending.delete(keyOf(m));
-  listeners.forEach((l) => l());
-}
-
-function useWorking(key: string): boolean {
-  const [, render] = useState(0);
-  useEffect(() => {
-    const l = () => render((n) => n + 1);
-    listeners.add(l);
-    return () => void listeners.delete(l);
-  }, []);
-  return pending.has(key);
-}
 
 /** The limit a note's agent waits for (BL-203). */
 const LIMIT: Record<NonNullable<NoteView['waits']>['kind'], string> = {
@@ -61,84 +25,6 @@ const STATUS: Record<NoteView['status'], { icon: string; label: (n: NoteView) =>
   asking: { icon: 'comment-discussion', label: (n) => `${n.agent ?? 'Its agent'} asks you` },
   handled: { icon: 'pass', label: () => 'Handled' },
 };
-
-/** A question's choices to click, and Other's text. */
-function QuestionPicker({ q, answer, setAnswer }: { q: Question; answer: Answer; setAnswer(a: Answer): void }) {
-  const other = q.options.length;
-  return (
-    <div class="note-question">
-      <div class="note-question-text">{q.text}</div>
-      {q.kind === 'text' ? (
-        <input
-          class="note-answer-line"
-          value={answer.other}
-          placeholder="Your answer"
-          onInput={(e) => setAnswer({ picked: [0], other: (e.target as HTMLInputElement).value })}
-        />
-      ) : (
-        <div class="note-choices">
-          {q.options.map((o, i) => (
-            <button
-              key={o.text}
-              class={`note-choice${answer.picked.includes(i) ? ' on' : ''}`}
-              aria-pressed={answer.picked.includes(i)}
-              onClick={() => setAnswer(choose(q, answer, i))}
-            >
-              {o.text}
-              {o.recommended && <span class="note-recommended"> (recommended)</span>}
-            </button>
-          ))}
-          <button
-            class={`note-choice${answer.picked.includes(other) ? ' on' : ''}`}
-            aria-pressed={answer.picked.includes(other)}
-            onClick={() => setAnswer(choose(q, answer, other))}
-          >
-            Other…
-          </button>
-          {answer.picked.includes(other) && (
-            <input
-              class="note-answer-line"
-              value={answer.other}
-              placeholder="Your answer"
-              onInput={(e) => setAnswer({ ...answer, other: (e.target as HTMLInputElement).value })}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** What the note's agent asks: its words, its questions to click, and a box for anything else. */
-function NoteAsks({ note }: { note: NoteView }) {
-  const asks = note.asks!;
-  const [answers, setAnswers] = useState<Answer[]>(() => asks.questions.map(defaultAnswer));
-  const [free, setFree] = useState('');
-  const sending = useWorking(`answer:${note.id}`);
-  const texts = asks.questions.map((q, i) => answerOf(q, answers[i] ?? defaultAnswer(q)));
-  const complete = texts.every(Boolean);
-  const body = [complete && asks.questions.length ? answerComment(asks.questions.map((question, i) => ({ question, answer: texts[i] }))) : '', free.trim()]
-    .filter(Boolean)
-    .join('\n\n');
-  return (
-    <div class="note-asks">
-      {asks.reply && <div class="note-reply">{asks.reply}</div>}
-      {asks.questions.map((q, i) => (
-        <QuestionPicker key={q.text} q={q} answer={answers[i] ?? defaultAnswer(q)} setAnswer={(a) => setAnswers(answers.map((x, j) => (j === i ? a : x)))} />
-      ))}
-      <textarea
-        class="notes-input"
-        rows={2}
-        placeholder={asks.questions.length ? 'Anything else to say?' : 'Your answer'}
-        value={free}
-        onInput={(e) => setFree((e.target as HTMLTextAreaElement).value)}
-      />
-      <button class="primary note-send" disabled={sending || !body} onClick={() => act({ type: 'note', op: 'answer', id: note.id, text: body })}>
-        {sending ? 'Sending…' : 'Answer'}
-      </button>
-    </div>
-  );
-}
 
 /** The tickets a note became, each opening its ticket. */
 function Became({ note }: { note: NoteView }) {
@@ -185,59 +71,52 @@ function EditNote({ id }: { id: string }) {
   );
 }
 
-const cardId = (id: string) => `note-card-${id}`;
+const openNote = (id: string) => send({ type: 'note', op: 'open', id });
+
+/** Answer on a note that asks (Needs you): its tab, at its agent's first question (BL-216). */
+export function answerNote(id: string): void {
+  send({ type: 'note', op: 'open', id, answer: true });
+}
 
 /**
- * Goes to a note's card in the Notes lane (Answer in Needs you): scrolls to it, marks it a moment, and focuses its
- * first answer. Where the lane isn't shown (Working only), opens the note instead.
+ * A note in the Notes lane (BL-216): its id and status, then its title, a line each; a click anywhere on it (or Enter)
+ * opens its tab, where its agent's questions are answered. Its buttons (Edit, the tickets it became) do only their own.
  */
-/** Shows the note once its card is there: the backlog tab may be rendering it (a second at most, then it opens the note). */
-export function showNoteSoon(id: string, tries = 20): void {
-  if (document.getElementById(cardId(id)) || tries <= 0) showNote(id);
-  else setTimeout(() => showNoteSoon(id, tries - 1), 50);
-}
-
-export function showNote(id: string): void {
-  const card = document.getElementById(cardId(id));
-  if (!card) return send({ type: 'note', op: 'open', id });
-  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  card.classList.remove('note-shown');
-  void card.offsetWidth; // restarts the mark's animation when it's shown again
-  card.classList.add('note-shown');
-  card.querySelector<HTMLElement>('.note-question input, .note-question button, .note-asks textarea')?.focus({ preventScroll: true });
-}
-
 function NoteCard({ note, followers }: { note: NoteView; followers: NoteView[] }) {
   const status = STATUS[note.status];
   return (
-    <div id={cardId(note.id)} class={`note-card note-${note.status}`}>
-      <div class="note-head">
-        <button
-          class="link note-id"
-          title="Open the note: what you wrote, to edit, its agent's replies, and a box to write more"
-          onClick={() => send({ type: 'note', op: 'open', id: note.id })}
-        >
-          {note.id}
-        </button>
+    <div
+      class={`note-card note-${note.status}`}
+      tabIndex={0}
+      title="Open the note: what you wrote, to edit, its agent's replies and questions, and a box to write more"
+      onClick={() => openNote(note.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) openNote(note.id);
+      }}
+    >
+      <div class="note-head" onClick={stopControlClick}>
+        <span class="note-id">{note.id}</span>
         <i class={`codicon codicon-${status.icon}`} />
         <span class="note-status">{status.label(note)}</span>
         <EditNote id={note.id} />
       </div>
-      <div class="note-text">{note.text}</div>
-      {followers.map((f) => (
-        <div key={f.id} class="note-text note-follower" title={`${f.id}, handled with ${note.id}`}>
-          <span class="note-id">{f.id}</span> {f.text}
-        </div>
-      ))}
-      {note.became.length > 0 && <Became note={note} />}
-      {note.asks && <NoteAsks key={note.asks.reply} note={note} />}
+      <div class="note-line" onClick={stopControlClick}>
+        <span class="note-title">{note.title}</span>
+        {followers.length > 0 && (
+          <span class="note-followers" title={followers.map((f) => `${f.id}: ${f.title}`).join('\n')}>
+            +{followers.length} {followers.length === 1 ? 'note' : 'notes'}
+          </span>
+        )}
+        {note.became.length > 0 && <Became note={note} />}
+      </div>
     </div>
   );
 }
 
 /**
  * The Notes lane, under Needs you (a note is written in the editor: New Note): the notes not handled yet, each with
- * what its agent is doing (and asks), the notes handled with it under it; then Past notes, folded, with what each became.
+ * what its agent is doing (or that it asks) and how many notes are handled with it; then Past notes, folded, with what
+ * each became.
  */
 export function NotesLane({ notes }: { notes: NoteView[] }) {
   const [pastOpen, setPastOpen] = useState(false);
@@ -271,7 +150,7 @@ export function NotesLane({ notes }: { notes: NoteView[] }) {
             <div class="lane-body">
               {past.map((n) => (
                 <div key={n.id} class="row note-past">
-                  <button class="link note-id" onClick={() => send({ type: 'note', op: 'open', id: n.id })}>
+                  <button class="link note-id" onClick={() => openNote(n.id)}>
                     {n.id}
                   </button>
                   <span class="note-past-title" title={n.text}>

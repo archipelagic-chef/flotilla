@@ -146,23 +146,33 @@ export function askedForLimit(note: Pick<Note, 'status' | 'activity'>): boolean 
   return note.status === 'asking' && last?.author === 'Flotilla' && STOPPED_ON_LIMIT.test(last.body.trim());
 }
 
+/** The entry a note's question is in: Flotilla's line when it's the last word, else its agent's last reply. */
+export function askingEntry(note: Pick<Note, 'activity'>): Note['activity'][number] | undefined {
+  const last = note.activity.at(-1);
+  return last?.author === 'Flotilla' ? last : [...note.activity].reverse().find((e) => /^agent\s/i.test(e.author));
+}
+
 /**
  * The questions of the agent's newest reply in a note that asks you. Its agent stopped without a reply (Flotilla's line
  * is the newest entry): that line, with no questions, so you still get a box to answer in (BL-203).
  */
 export function noteQuestion(note: Pick<Note, 'status' | 'activity' | 'agent'>): { reply: string; questions: Question[]; since?: string } | undefined {
   if (note.status !== 'asking') return undefined;
-  const last = note.activity.at(-1);
-  const reply = last?.author === 'Flotilla' ? last : [...note.activity].reverse().find((e) => /^agent\s/i.test(e.author));
+  const reply = askingEntry(note);
   if (!reply) return undefined;
   const parts = parseReport(reply.body);
   // Its heading's local "YYYY-MM-DD HH:MM", as ISO 8601: when the note began waiting on you.
   const at = new Date(reply.date.replace(' ', 'T'));
   return {
-    reply: (parts.summary ?? reply.body).replace(/^(`{3,})question[\s\S]*?^\1\s*$/gm, '').trim(),
+    reply: withoutQuestions(parts.summary ?? reply.body),
     questions: parts.questions,
     ...(Number.isNaN(at.getTime()) ? {} : { since: at.toISOString() }),
   };
+}
+
+/** A reply without its question blocks (they're shown as choices to click). */
+export function withoutQuestions(body: string): string {
+  return body.replace(/^(`{3,})question[\s\S]*?^\1\s*$/gm, '').trim();
 }
 
 /** Whether an agent's reply asks the user (a question block, or a "Needs from you:" line with something). */
