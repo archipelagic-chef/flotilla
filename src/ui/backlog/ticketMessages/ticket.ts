@@ -1,10 +1,5 @@
 import * as vscode from 'vscode';
-import {
-  acceptItem,
-  removeItem,
-  reopenItem,
-  updateItem,
-} from '../../../features/backlog/backlog';
+import { acceptItem, removeItem, updateItem } from '../../../features/backlog/backlog';
 import { keepAttachmentsFolded, keepDemoSpeed, keepShowActivity } from '../ticketPanel';
 import type { Handlers } from './context';
 import type { TicketMessage } from './ticket.messages';
@@ -69,8 +64,9 @@ export const ticketHandlers: Handlers<TicketMessage> = {
     // The command asks first (as the card's Discard does).
     await vscode.commands.executeCommand('flotilla.discardBacklogItem', id);
   },
-  reopen: async ({ id, backlog }) => {
-    await backlog.change((d) => reopenItem(d, id));
+  reopen: async ({ id }) => {
+    // As the card's Reopen: its ticket says which branches of its earlier work are still there (BL-210).
+    await vscode.commands.executeCommand('flotilla.reopenBacklogItem', id);
   },
   openTicket: async ({ panels }, m) => {
     await panels.open(m.id);

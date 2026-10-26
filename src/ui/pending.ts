@@ -10,6 +10,8 @@ export interface PendingRemoval {
   deleteBranch: boolean;
   branch: string | undefined;
   createdAt: number;
+  /** Its tickets aren't told: a discard's entry says it (BL-210). */
+  quiet?: boolean;
 }
 
 export function isFresh(entry: { createdAt?: unknown }, now: number): boolean {

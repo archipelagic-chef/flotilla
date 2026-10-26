@@ -885,6 +885,30 @@ export class TicketPanels implements vscode.Disposable {
     await this.reviews?.control(id, action, session);
   }
 
+  /** The names of the agents working on a ticket: its discussion's, and the review loop's or others' (BL-210). */
+  async agentsOn(id: string): Promise<string[]> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    const discussing = item?.shaping && this.shaping?.isRunning(id) ? [item.shaping.agent] : [];
+    return [...discussing, ...((await this.reviews?.agentsOn(id))?.map((t) => t.agent) ?? [])];
+  }
+
+  /** Stops all of a discarded ticket's agents, its review loop and a queued start (see ReviewLoop.discard). */
+  async stopForDiscard(id: string): Promise<{ stopped: string[]; left: string[] }> {
+    const stopped: string[] = [];
+    const left: string[] = [];
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (item?.shaping && this.shaping?.isRunning(id)) {
+      try {
+        await this.shaping.control(id, 'stop');
+        stopped.push(item.shaping.agent);
+      } catch (error) {
+        left.push(`${item.shaping.agent} didn't stop: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const loop = (await this.reviews?.discard(id)) ?? { stopped: [], left: [] };
+    return { stopped: [...stopped, ...loop.stopped], left: [...left, ...loop.left] };
+  }
+
   /** Each open ticket's Changes as last read (BL-171). */
   private readonly changeViews = new Map<string, TicketChange>();
 

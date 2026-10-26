@@ -521,8 +521,8 @@ export class ReviewLoop implements vscode.Disposable {
     // The read may have waited while the user stopped the item or answered it (that takes the entry out): then it's
     // not this start any more, and it's not run. A replaced entry (the item waited again) is run by its own dispatch.
     if (this.waiting.get(w.id) !== w) return;
-    // The item moved on, or an agent runs for it already: the start that waited is over.
-    const over = !item || item.proposed || this.runs.has(w.id);
+    // The item moved on, was discarded (BL-210), or an agent runs for it already: the start that waited is over.
+    const over = !item || item.proposed || !!item.discarded || this.runs.has(w.id);
     if (over || stateOf(item) !== w.since) {
       this.waiting.remove(w.id);
       this.fireQueue(w.id);
@@ -1647,6 +1647,54 @@ export class ReviewLoop implements vscode.Disposable {
     } finally {
       if (!spawned) this.release(admitted.slot);
     }
+  }
+
+  /** The agents working on an item: the loop's, and any other chat busy with it (BL-210, for Discard's confirmation). */
+  async agentsOn(id: string): Promise<AgentTarget[]> {
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    if (!item) return [];
+    const entries = (await this.deps.backlog.readTicket(item)).activity;
+    const first = this.target(item, undefined, entries);
+    const found = first ? [first] : [];
+    for (const chat of this.deps.repository.current.flatMap((w) => w.chats)) {
+      if (found.some((t) => t.session === chat.id) || agentChatItem(chat.firstPrompt)?.item !== id) continue;
+      const other = this.target(item, chat.id, entries);
+      if (other) found.push(other);
+    }
+    return found;
+  }
+
+  /**
+   * Ends all of an item's work, for a discard (BL-210): its agents stop as Stop stops them, and its loop and a queued
+   * start end. One in Claude Code's panel can't be stopped from here, nor one that fails to: they're `left`, with why.
+   */
+  async discard(id: string): Promise<{ stopped: string[]; left: string[] }> {
+    const stopped: string[] = [];
+    const left: string[] = [];
+    for (const target of await this.agentsOn(id)) {
+      if (target.where === 'panel') {
+        left.push(`${target.agent} works in Claude Code's panel, which can't be stopped from outside: stop it in its chat`);
+        continue;
+      }
+      const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+      if (!item) break;
+      try {
+        await this.halt(item, target, 'stop');
+        stopped.push(target.agent);
+      } catch (error) {
+        left.push(`${target.agent} didn't stop: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+    const looping = !!item?.review && item.review.state !== 'stopped' && item.review.state !== 'approved';
+    if (looping || this.runs.has(id) || this.waiting.get(id)) {
+      try {
+        await this.stop(id);
+      } catch (error) {
+        left.push(`its review loop didn't stop: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return { stopped, left };
   }
 
   /** Stops the loop: the running agent, if any (it can be resumed), and the handoffs. */
