@@ -5,7 +5,7 @@ import {
   reopenItem,
   updateItem,
 } from '../../../features/backlog/backlog';
-import { keepAttachmentsFolded, keepShowActivity } from '../ticketPanel';
+import { keepAttachmentsFolded, keepDemoSpeed, keepShowActivity } from '../ticketPanel';
 import type { Handlers } from './context';
 import type { TicketMessage } from './ticket.messages';
 
@@ -46,6 +46,10 @@ export const ticketHandlers: Handlers<TicketMessage> = {
   foldAttachments: async ({ id, panels }, m) => {
     // Remembered for this ticket; the tab already shows it.
     await keepAttachmentsFolded(panels.deps.memento, id, m.folded);
+  },
+  demoSpeed: async ({ panels }, m) => {
+    // Remembered for the user: every ticket's demos play at it; the tab already does.
+    await keepDemoSpeed(panels.deps.memento, m.speed);
   },
   status: async ({ id, backlog }, m) => {
     await backlog.change((d) => updateItem(d, id, { status: m.status }));

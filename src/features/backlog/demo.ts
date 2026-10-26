@@ -147,6 +147,15 @@ const DEMO_RUN = /<div class="run-block demo-run" data-demo="([\w-]+)">[\s\S]*?<
 const MEDIA = /<p\b[^>]*>\s*(<img\b[^>]*>|<video\b[^>]*><\/video>)\s*<\/p>/g;
 const srcOf = (tag: string) => /\ssrc="([^"]*)"/.exec(tag)?.[1].replace(/&amp;/g, '&');
 
+/** The speed control in a report's demo bar (BL-218): the webview marks the speed it plays at, and plays it so. */
+function speedButtons(): string {
+  const options = DEMO_SPEEDS.map(
+    (s) =>
+      `<button type="button" class="demo-speed-option" data-demo-speed="${s}" aria-pressed="${s === 1}" title="Play at ${speedLabel(s)}">${speedLabel(s)}</button>`,
+  );
+  return `<span class="demo-speed" role="group" aria-label="Speed">${options.join('')}</span>`;
+}
+
 /**
  * An entry's rendered html with each demo block (withRunButtons made it Try it yourself and Watch it live) put on the
  * recording it goes with, as one unit: "Recorded demo · 0:12" and the buttons over it, the block not shown again. A
@@ -174,11 +183,11 @@ export function withDemoUnits(html: string, recording: (src: string) => Recordin
     used.add(paired.whole);
     // A video plays as a GIF does: muted (as every video is), looping, at once.
     const shown = paired.tag.startsWith('<video') ? paired.tag.replace(/^<video\b/, '<video autoplay loop') : paired.tag;
-    const label = `Recorded demo${paired.seconds ? ` · ${demoLength(paired.seconds)}` : ''}`;
+    const label = demoLabel(paired.seconds);
     const unit =
       `<figure class="demo-unit demo-inline" data-demo="${block.name}"><div class="demo-bar">` +
-      `<span class="demo-label"><i class="codicon codicon-device-camera-video"></i> <span class="demo-length">${label}</span></span>` +
-      `${block.actions}</div>${shown}</figure>`;
+      `<span class="demo-label"><i class="codicon codicon-device-camera-video"></i> <span class="demo-length"${paired.seconds ? ` data-seconds="${paired.seconds}"` : ''}>${label}</span></span>` +
+      `${speedButtons()}${block.actions}</div>${shown}</figure>`;
     out = out.replace(paired.whole, () => unit).replace(block.whole, '');
   }
   return out;
@@ -196,25 +205,25 @@ export function demoLength(seconds: number): string {
 }
 
 /**
- * How long a GIF plays, in seconds: the sum of its frames' delays (1/100 s each, in their Graphic Control Extensions).
- * Undefined when it isn't a GIF, or it's cut short.
+ * A GIF's frames' delays, in milliseconds (1/100 s each, in their Graphic Control Extensions), as they're written: one
+ * for each frame that has one. Undefined when it isn't a GIF, or it's cut short.
  */
-export function gifSeconds(bytes: Uint8Array): number | undefined {
+export function gifDelays(bytes: Uint8Array): number[] | undefined {
   const text = String.fromCharCode(...bytes.subarray(0, 6));
   if ((text !== 'GIF87a' && text !== 'GIF89a') || bytes.length < 13) return undefined;
   // The colour table's size: 3 * 2^(n+1) bytes, after the screen descriptor, when its flag is set.
   const table = (flags: number) => (flags & 0x80 ? 3 * 2 ** ((flags & 0x07) + 1) : 0);
   let i = 13 + table(bytes[10]);
-  let hundredths = 0;
+  const delays: number[] = [];
   const skipBlocks = () => {
     while (i < bytes.length && bytes[i] !== 0) i += bytes[i] + 1;
     i++;
   };
   while (i < bytes.length) {
     const b = bytes[i];
-    if (b === 0x3b) return hundredths / 100;
+    if (b === 0x3b) return delays;
     if (b === 0x21) {
-      if (bytes[i + 1] === 0xf9 && i + 5 < bytes.length) hundredths += bytes[i + 4] | (bytes[i + 5] << 8);
+      if (bytes[i + 1] === 0xf9 && i + 5 < bytes.length) delays.push((bytes[i + 4] | (bytes[i + 5] << 8)) * 10);
       i += 2;
       skipBlocks();
     } else if (b === 0x2c) {
@@ -224,4 +233,38 @@ export function gifSeconds(bytes: Uint8Array): number | undefined {
     } else return undefined;
   }
   return undefined;
+}
+
+/** How long a GIF plays, in seconds: the sum of its frames' delays. Undefined when it isn't a GIF, or it's cut short. */
+export function gifSeconds(bytes: Uint8Array): number | undefined {
+  const delays = gifDelays(bytes);
+  return delays && delays.reduce((sum, d) => sum + d, 0) / 1000;
+}
+
+/** The speeds a demo plays at (BL-218): as recorded, or faster. */
+export const DEMO_SPEEDS = [1, 1.5, 2] as const;
+export type DemoSpeed = (typeof DEMO_SPEEDS)[number];
+
+/** A kept speed as one of DEMO_SPEEDS: anything else (nothing kept yet, an old value) plays as recorded. */
+export function demoSpeed(value: unknown): DemoSpeed {
+  return DEMO_SPEEDS.find((s) => s === value) ?? 1;
+}
+
+/** "1×", "1.5×". */
+export function speedLabel(speed: number): string {
+  return `${speed}×`;
+}
+
+/**
+ * How long a GIF's frame shows at a speed, in milliseconds: its delay divided by the speed. A delay of 10 ms or less
+ * (none, too) is shown for 100 ms, as browsers show it at 1×.
+ */
+export function frameDelay(delay: number | undefined, speed: number): number {
+  const shown = delay === undefined || delay <= 10 ? 100 : delay;
+  return shown / speed;
+}
+
+/** "Recorded demo · 0:12": its length at the speed it plays at (0:12 at 2× is 0:06); just "Recorded demo" when unknown. */
+export function demoLabel(seconds: number | undefined, speed = 1): string {
+  return `Recorded demo${seconds ? ` · ${demoLength(seconds / speed)}` : ''}`;
 }

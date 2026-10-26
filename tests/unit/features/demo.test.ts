@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  demoLabel,
   demoLength,
   demoRunFor,
+  demoSpeed,
+  frameDelay,
+  gifDelays,
   gifSeconds,
+  speedLabel,
   staleNote,
   ticketDemo,
   wantsDemo,
@@ -101,9 +106,72 @@ describe('the labels', () => {
   });
 });
 
+/** A 1×1 GIF with a frame for each delay (in 1/100 s): a Graphic Control Extension, then the image. */
+function gif(...hundredths: number[]): Uint8Array {
+  const frames = hundredths.flatMap((d) => [
+    0x21,
+    0xf9,
+    0x04,
+    0x00,
+    d & 0xff,
+    d >> 8,
+    0x00,
+    0x00,
+    0x2c,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0x00,
+    0x02,
+    0x02,
+    0x44,
+    0x01,
+    0x00,
+  ]);
+  return new Uint8Array([...'GIF89a'].map((c) => c.charCodeAt(0)).concat([1, 0, 1, 0, 0x00, 0, 0], frames, [0x3b]));
+}
+
 describe('gifSeconds', () => {
   it("isn't a GIF's length for other bytes", () => {
     expect(gifSeconds(new Uint8Array([1, 2, 3]))).toBeUndefined();
+  });
+  it("is the sum of its frames' delays", () => {
+    expect(gifSeconds(gif(50, 150, 300))).toBe(5);
+  });
+});
+
+describe('the demo speed (BL-218)', () => {
+  it("reads a GIF's frames' delays in milliseconds", () => {
+    expect(gifDelays(gif(50, 150, 0))).toEqual([500, 1500, 0]);
+    expect(gifDelays(gif(50).subarray(0, 20))).toBeUndefined();
+  });
+  it("divides a frame's delay by the speed", () => {
+    expect(frameDelay(500, 1)).toBe(500);
+    expect(frameDelay(500, 1.5)).toBeCloseTo(333.33);
+    expect(frameDelay(500, 2)).toBe(250);
+  });
+  it('shows a delay of 10 ms or none for 100 ms at 1×, as browsers do', () => {
+    expect(frameDelay(0, 1)).toBe(100);
+    expect(frameDelay(10, 2)).toBe(50);
+    expect(frameDelay(undefined, 1)).toBe(100);
+    expect(frameDelay(20, 2)).toBe(10);
+  });
+  it('divides the shown length by the speed', () => {
+    expect(demoLabel(12, 1)).toBe('Recorded demo · 0:12');
+    expect(demoLabel(12, 2)).toBe('Recorded demo · 0:06');
+    expect(demoLabel(12, 1.5)).toBe('Recorded demo · 0:08');
+    expect(demoLabel(undefined, 2)).toBe('Recorded demo');
+  });
+  it('keeps only the speeds it offers', () => {
+    expect(demoSpeed(1.5)).toBe(1.5);
+    expect(demoSpeed(3)).toBe(1);
+    expect(demoSpeed(undefined)).toBe(1);
+    expect(speedLabel(1.5)).toBe('1.5×');
   });
 });
 
@@ -133,6 +201,9 @@ describe('withDemoUnits (BL-111)', () => {
     const out = withDemoUnits(html(`<p>Done.</p>${gif}${block}`, md), (src) => (src.endsWith('demo.gif') ? { name: 'try-demo', seconds: 12 } : undefined));
     expect(out).toContain('<figure class="demo-unit demo-inline" data-demo="try-demo">');
     expect(out).toContain('Recorded demo · 0:12');
+    expect(out).toContain('data-seconds="12"');
+    expect(out).toContain('data-demo-speed="1.5"');
+    expect(out).toContain('>2×</button>');
     expect(out).toContain('Try it yourself');
     expect(out).toContain('data-run-try="1"');
     expect(out).toContain('Watch it live');

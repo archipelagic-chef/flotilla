@@ -120,6 +120,8 @@ import {
   withRunButtons,
 } from '../../features/backlog/runBlocks';
 import {
+  type DemoSpeed,
+  demoSpeed,
   gifSeconds,
   recordedDemo,
   type Recording,
@@ -194,6 +196,17 @@ export function showActivityKept(memento: vscode.Memento): boolean {
 
 export function keepShowActivity(memento: vscode.Memento, shown: boolean): Thenable<void> {
   return memento.update(SHOW_ACTIVITY_KEY, shown);
+}
+
+/** The key the speed demos play at (BL-218) is kept under in the memento. */
+const DEMO_SPEED_KEY = 'flotilla.ticket.demoSpeed';
+
+export function demoSpeedKept(memento: vscode.Memento): DemoSpeed {
+  return demoSpeed(memento.get<number>(DEMO_SPEED_KEY));
+}
+
+export function keepDemoSpeed(memento: vscode.Memento, speed: number): Thenable<void> {
+  return memento.update(DEMO_SPEED_KEY, demoSpeed(speed));
 }
 
 /** The key the tickets whose Attachments section the user folded are kept under in the memento (BL-110). */
@@ -1413,6 +1426,7 @@ export class TicketPanels implements vscode.Disposable {
         agents,
         showActivity,
         attachmentsFolded: attachmentsFolded(this.deps.memento, view.item.id),
+        demoSpeed: demoSpeedKept(this.deps.memento),
         ...(check ? { check } : {}),
         ...(changes ? { changes } : {}),
       };
