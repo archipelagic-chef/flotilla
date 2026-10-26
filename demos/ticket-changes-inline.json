@@ -1,0 +1,32 @@
+{
+  "title": "Two files of a ticket's Changes unfold their diffs inline at once; a hunk's Open at Line opens VS Code's diff editor beside the ticket, at that line",
+  "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
+  "steps": [
+    { "command": "Close All Editor Groups" },
+    { "command": "Notifications: Clear All Notifications" },
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
+    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
+    { "caption": "1. A file of the ticket's Changes unfolds its diff right there" },
+    { "hover": ".changes .block-head" },
+    { "waitFor": ".change-file:has-text(\"reload.js\")" },
+    { "click": ".change-file:has-text(\"reload.js\") .change-unfold" },
+    { "waitFor": ".change-hunk" },
+    { "wait": 2000 },
+    { "caption": "2. Another one too: several stay open at once" },
+    { "hover": ".change-file:has-text(\"chats.js\") .change-unfold" },
+    { "wait": 600 },
+    { "click": ".change-file:has-text(\"chats.js\") .change-unfold" },
+    { "waitFor": ".change-line:has-text(\"saveChat\")" },
+    { "wait": 2200 },
+    { "caption": "3. A hunk's Open at Line: VS Code's diff editor, beside the ticket, at that line" },
+    { "hover": ".change-hunk .change-action:has-text(\"Open at Line\")" },
+    { "wait": 1000 },
+    { "click": ".change-hunk .change-action:has-text(\"Open at Line\")" },
+    { "waitFor": ".tab.active:has-text(\"chats.js\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
