@@ -12,6 +12,7 @@ import { compareRefs, listRefs } from '../../features/diffs/compare';
 import {
   acceptItem,
   type BacklogItem,
+  childrenOf,
   moveItem,
   removeItem,
   updateItem,
@@ -33,6 +34,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
+import { needsYou, standing } from '../../features/backlog/autopilotIdle';
 import { baseLabel, dependsOn, waitingFor } from '../../features/backlog/mainDrift';
 import {
   ALL,
@@ -304,6 +306,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
         // What it waits for, and how its branches merge with main (BL-55).
         const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
+        // Where each stands, and an epic's parts (BL-205): why the autopilot passes it over.
+        const waitsOn = waitsFor.flatMap((id) => {
+          const dep = data.items.find((i) => i.id === id);
+          return dep ? [{ id, standing: needsYou(dep) ?? standing(dep) }] : [];
+        });
+        const children = childrenOf(data, item.id);
+        const parts = children.length ? { done: children.filter((c) => c.status === 'done').length, total: children.length } : undefined;
         // Its agent stopped to be resumed (BL-198): what it waits for, merged or not.
         const asks = resumeAsk(item, ticket.activity);
         const after = asks?.waits.flatMap((id) => data.items.find((i) => i.id.toUpperCase() === id) ?? []) ?? [];
@@ -323,7 +332,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(merge ? { merge } : {}),
           ...(need ? { need } : {}),
           ...(run ? { run } : {}),
-          ...(waitsFor.length ? { waitsFor } : {}),
+          ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
+          ...(parts ? { parts } : {}),
           ...(resume ? { resume } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),

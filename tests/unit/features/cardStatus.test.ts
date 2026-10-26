@@ -29,7 +29,7 @@ describe('cardStatus', () => {
   });
 
   it('offers Accept on a proposal, and only its tracker’s status on an issue', () => {
-    expect(line(item('todo', { proposed: { by: 'Nova-7' } }))).toEqual(['Proposed by Nova-7', '', '', 'Accept']);
+    expect(line(item('todo', { proposed: { by: 'Nova-7' } }))).toEqual(['Proposed by Nova-7 · waits to be accepted', '', '', 'Accept']);
     expect(line(item('todo', { source: { kind: 'jira', label: 'PROJ-4', url: 'u', statusName: 'In Progress' } }))).toEqual([
       'PROJ-4 · In Progress',
       '',
@@ -110,6 +110,42 @@ describe('cardStatus', () => {
     expect(line(item('todo', { clash: { with: 'BL-9', files: ['a.ts'] } }))).toEqual(['Held back until BL-9 is merged', '', '', '']);
     expect(line(item('todo', { waitsFor: ['BL-2', 'BL-5'] }))).toEqual(['Waits for BL-2, BL-5', '', '', '']);
     expect(line(item('todo', { creating: true }))).toEqual(['Creating its worktree…', '', 'working', '']);
+  });
+});
+
+describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
+  const shaping = { agent: 'Astro-2', session: 's' };
+  const tip = (i: CardStatusItem) => cardStatus(i, []).tip;
+
+  it('says an epic is one, with its parts done, and offers no Start', () => {
+    const epic = item('todo', { parts: { done: 3, total: 5 } });
+    expect(line(epic)).toEqual(['Epic · 3 of 5 parts done', '', '', '']);
+    expect(tip(epic)).toMatch(/takes its parts, not the epic/);
+  });
+
+  it('says a proposal waits to be accepted, or is discussed, before the autopilot takes it', () => {
+    expect(tip(item('todo', { proposed: { by: 'Nova-7' } }))).toBe('The autopilot takes it once you accept it.');
+    const discussed = item('todo', { proposed: { by: 'Nova-7' }, shaping });
+    expect(line(discussed)).toEqual(['Proposed by Nova-7 · in discussion with Astro-2', '', '', 'Accept']);
+    expect(tip(discussed)).toMatch(/ends the discussion/);
+  });
+
+  it('says a To Do in a discussion is, with whom, and that starting it ends it', () => {
+    expect(line(item('todo', { shaping }))).toEqual(['In discussion with Astro-2', '', '', 'Start']);
+    expect(tip(item('todo', { shaping }))).toMatch(/accepting it or starting it ends the discussion/);
+    expect(line(item('doing', { shaping }))[0]).toBe('In progress · no agent on it');
+  });
+
+  it('says where each ticket it waits for stands', () => {
+    const waits = item('todo', {
+      waitsFor: ['BL-171', 'BL-5'],
+      waitsOn: [
+        { id: 'BL-171', standing: 'review stopped' },
+        { id: 'BL-5', standing: 'in progress' },
+      ],
+    });
+    expect(line(waits)).toEqual(['Waits for BL-171 (review stopped), BL-5 (in progress)', '', '', '']);
+    expect(tip(waits)).toBe('The autopilot takes it once they are merged.');
   });
 });
 
