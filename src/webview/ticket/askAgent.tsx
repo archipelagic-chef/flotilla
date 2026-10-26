@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { askLabel } from '../../features/backlog/askAgent';
+import { byPerson } from '../../features/backlog/ticket';
 import { clock } from '../../features/chats/activity';
 import type { TicketView } from '../ticketProtocol';
 import { act } from './actions';
@@ -7,9 +8,9 @@ import './askAgent.css';
 
 type Entry = TicketView['activity'][number];
 
-/** Whether an entry is a comment of yours that an agent can be asked to answer (BL-127). */
+/** Whether an entry is a comment of yours (or from the ticket's pull request, BL-224) that an agent can be asked to answer (BL-127). */
 export function askable(e: Entry, ticket: TicketView): boolean {
-  return !!ticket.canAsk && !!e.anchor && e.author === 'You';
+  return !!ticket.canAsk && !!e.anchor && byPerson(e.author);
 }
 
 /** Ask an Agent, in a comment's head: there until an agent is asked (its line then offers Stop, or Retry). */

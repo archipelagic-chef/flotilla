@@ -121,6 +121,10 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
   let nextJobId = 50_000;
   let base = '';
   const pulls = []; // { repo, number, head, base, title, body, sha, state, mergedAt, comments }
+  // A pull request's comments (BL-224): { id, kind ('issue', in its conversation, or 'review', on a line), login, body, createdAt, path, line, inReplyTo }.
+  let nextCommentId = 7000;
+  /** The login the fake's own user (Flotilla's sign-in) comments as. */
+  const SIGNED_IN = 'flotilla-user';
   const issueNumbers = new Map(); // "owner/repo" → the last pull request's number
 
   /** The branch's commit: from the repository, or made up. Undefined when the repository lacks the branch. */
@@ -395,6 +399,34 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     };
   }
 
+  /** Adds a comment to a pull request: Flotilla's (the signed-in user's), or someone's on GitHub (for tests and demos). */
+  function addComment(pr, { login = SIGNED_IN, body, path: file, line, inReplyTo }, at) {
+    const c = {
+      id: nextCommentId++,
+      kind: file || inReplyTo ? 'review' : 'issue',
+      login,
+      body,
+      createdAt: at,
+      ...(file ? { path: file, line } : {}),
+      ...(inReplyTo ? { inReplyTo } : {}),
+    };
+    pr.comments.push(c);
+    return c;
+  }
+
+  function commentJson(pr, c) {
+    const anchor = c.kind === 'issue' ? `issuecomment-${c.id}` : `discussion_r${c.id}`;
+    return {
+      id: c.id,
+      body: c.body,
+      html_url: `https://github.com/${pr.repo}/pull/${pr.number}#${anchor}`,
+      created_at: iso(c.createdAt),
+      user: { login: c.login },
+      ...(c.kind === 'review' ? { path: c.path, line: c.line ?? null, original_line: c.line ?? null } : {}),
+      ...(c.inReplyTo ? { in_reply_to_id: c.inReplyTo } : {}),
+    };
+  }
+
   /** The pull requests API of one repository: `rest` is the path after /repos/{owner}/{repo}. */
   function pullsApi({ method, repo, rest, query, at, body }) {
     let m;
@@ -435,11 +467,40 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
       if (typeof body?.body === 'string') pr.body = body.body;
       return json(200, pullJson(pr, at));
     }
+    if (method === 'GET' && (m = /^\/(issues|pulls)\/(\d+)\/comments$/.exec(rest))) {
+      const pr = find(m[2]);
+      if (!pr) return notFound();
+      const kind = m[1] === 'issues' ? 'issue' : 'review';
+      const perPage = Number(query.get('per_page') ?? 30);
+      const page = Number(query.get('page') ?? 1);
+      const list = pr.comments.filter((c) => c.kind === kind).slice((page - 1) * perPage, page * perPage);
+      return json(
+        200,
+        list.map((c) => commentJson(pr, c)),
+      );
+    }
     if (method === 'POST' && (m = /^\/issues\/(\d+)\/comments$/.exec(rest))) {
       const pr = find(m[1]);
       if (!pr) return notFound();
-      pr.comments.push(String(body?.body ?? ''));
-      return json(201, { id: pr.comments.length, body: body?.body ?? '' });
+      return json(201, commentJson(pr, addComment(pr, { body: String(body?.body ?? '') }, at)));
+    }
+    if (method === 'POST' && (m = /^\/pulls\/(\d+)\/comments\/(\d+)\/replies$/.exec(rest))) {
+      const pr = find(m[1]);
+      const to = pr?.comments.find((c) => c.kind === 'review' && c.id === Number(m[2]));
+      if (!pr || !to) return notFound();
+      return json(201, commentJson(pr, addComment(pr, { body: String(body?.body ?? ''), inReplyTo: to.inReplyTo ?? to.id, path: to.path, line: to.line }, at)));
+    }
+    if ((method === 'PATCH' || method === 'DELETE') && (m = /^\/(issues|pulls)\/comments\/(\d+)$/.exec(rest))) {
+      const kind = m[1] === 'issues' ? 'issue' : 'review';
+      const pr = pulls.find((p) => p.repo === repo && p.comments.some((c) => c.kind === kind && c.id === Number(m[2])));
+      if (!pr) return notFound();
+      const i = pr.comments.findIndex((c) => c.kind === kind && c.id === Number(m[2]));
+      if (method === 'DELETE') {
+        pr.comments.splice(i, 1);
+        return { status: 204 };
+      }
+      pr.comments[i].body = String(body?.body ?? '');
+      return json(200, commentJson(pr, pr.comments[i]));
     }
     return notFound();
   }
@@ -505,7 +566,25 @@ export async function startFakeGitHub({ port = DEFAULT_PORT, host = '127.0.0.1',
     /** Seeds a branch's runs now, as the first read does (for tests). */
     seed: (repo, branch) => seedBranch(repo, branch),
     /** The pull requests it has, with their comments (for tests). */
-    pulls: () => pulls.map((p) => ({ ...p, comments: [...p.comments] })),
+    pulls: () =>
+      pulls.map((p) => ({ ...p, comments: p.comments.filter((c) => c.kind === 'issue').map((c) => c.body), allComments: p.comments.map((c) => ({ ...c })) })),
+    /** Someone comments on a pull request (the latest open one when none is named), as on GitHub. */
+    comment: (o) => {
+      const pr = o.number ? pulls.find((p) => p.number === o.number && (!o.repo || p.repo === o.repo)) : pulls.findLast((p) => p.state === 'open');
+      if (!pr) throw new Error('the fake GitHub has no such pull request');
+      const reply = o.inReplyTo ? pr.comments.find((c) => c.id === o.inReplyTo) : undefined;
+      return addComment(
+        pr,
+        {
+          login: o.login ?? 'octo-reviewer',
+          body: o.body,
+          path: o.path ?? reply?.path,
+          line: o.line ?? reply?.line,
+          inReplyTo: reply && (reply.inReplyTo ?? reply.id),
+        },
+        now(),
+      ).id;
+    },
     // Kept-alive connections (a VS Code window's) would hold the server open.
     close: () =>
       new Promise((resolve) => {

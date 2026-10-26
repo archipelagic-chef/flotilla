@@ -15,6 +15,17 @@ export interface FakeGitHubOptions {
 /** The delay the demo window's and npm run fake-github's fake answer actions after. */
 export const ACTION_DELAY_MS: number;
 
+export interface FakeComment {
+  id: number;
+  kind: 'issue' | 'review';
+  login: string;
+  body: string;
+  createdAt: number;
+  path?: string;
+  line?: number;
+  inReplyTo?: number;
+}
+
 export interface FakeGitHub {
   /** The address to give Flotilla (flotilla.dev.githubApi). */
   url: string;
@@ -30,8 +41,13 @@ export interface FakeGitHub {
     body: string;
     state: 'open' | 'closed';
     mergedAt?: number;
+    /** The bodies of the comments in its conversation. */
     comments: string[];
+    /** All its comments (BL-224), in its conversation (issue) and on lines of its diff (review). */
+    allComments: FakeComment[];
   }>;
+  /** Someone comments on a pull request, as on GitHub (the latest open one when none is named): its comment's id. */
+  comment(o: { body: string; login?: string; repo?: string; number?: number; path?: string; line?: number; inReplyTo?: number }): number;
   close(): Promise<void>;
 }
 

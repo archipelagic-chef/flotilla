@@ -49,6 +49,7 @@ import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
 import { ImprovementReview } from './ui/metrics/improvementReview';
 import { BranchPush } from './ui/backlog/branchPush';
+import { PullRequestComments } from './ui/backlog/prComments';
 import { MainSync } from './ui/backlog/mainSync';
 import { TicketChecker } from './ui/backlog/ticketCheck';
 import { installCommitHook } from './features/backlog/commitHook';
@@ -328,6 +329,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pullRequests: signedInPullRequests(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
     baseBranch: () => merger.baseBranch(),
   });
+  // The tickets' comments and their pull requests', both ways (BL-224).
+  const prComments = new PullRequestComments({
+    backlog,
+    mainRoot: location.mainRoot,
+    isLeader: () => leader.isLeader,
+    output,
+    pullRequests: signedInPullRequests(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
+    shown: () => tickets.shownIds(),
+  });
+  context.subscriptions.push(
+    prComments,
+    sidebar.ci.onDidChange(() => prComments.ciRead()),
+    // A link back from a comment posted on GitHub opens its ticket at its entry.
+    vscode.window.registerUriHandler({
+      handleUri: (uri) => {
+        const q = new URLSearchParams(uri.query);
+        const id = q.get('id');
+        if (uri.path === '/ticket' && id) void tickets.openReference({ id, ...(q.get('entry') ? { anchor: q.get('entry')! } : {}) });
+      },
+    }),
+  );
   context.subscriptions.push(reviews, merger, pushes, trackTerminals());
   registerAll(context.subscriptions, mergeCommands({ backlog, merger }));
   // Descriptions edited in the ticket files (by agents, in editors) are noted in their tickets.

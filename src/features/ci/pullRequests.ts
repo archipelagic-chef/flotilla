@@ -27,9 +27,53 @@ interface ApiPull {
   head: { ref: string };
 }
 
+/** A comment on a pull request: in its conversation (an issue comment), or on a line of its diff (a review comment). */
+export interface PullRequestComment {
+  id: number;
+  kind: CommentKind;
+  login: string;
+  body: string;
+  url: string;
+  /** ISO date. */
+  createdAt: string;
+  /** A review comment's file and line (none for one on a line that's gone from the diff: its original line). */
+  path?: string;
+  line?: number;
+  /** A review comment's reply: the comment of the thread it answers. */
+  inReplyTo?: number;
+}
+
+export type CommentKind = 'issue' | 'review';
+
+interface ApiComment {
+  id: number;
+  body?: string | null;
+  html_url: string;
+  created_at: string;
+  user?: { login: string } | null;
+  path?: string;
+  line?: number | null;
+  original_line?: number | null;
+  in_reply_to_id?: number;
+}
+
 const API = 'https://api.github.com';
+const PAGE = 100;
+/** Comments read of one kind on one pull request, at most. */
+const MAX_PAGES = 10;
 
 const stateOf = (p: ApiPull): PullRequestState => (p.state === 'open' ? 'open' : p.merged_at ? 'merged' : 'closed');
+const comment = (kind: CommentKind, c: ApiComment): PullRequestComment => ({
+  id: c.id,
+  kind,
+  login: c.user?.login ?? 'ghost',
+  body: c.body ?? '',
+  url: c.html_url,
+  createdAt: c.created_at,
+  ...(kind === 'review' && c.path ? { path: c.path } : {}),
+  ...(kind === 'review' && (c.line ?? c.original_line) ? { line: (c.line ?? c.original_line)! } : {}),
+  ...(c.in_reply_to_id ? { inReplyTo: c.in_reply_to_id } : {}),
+});
 const info = (p: ApiPull): PullRequestInfo => ({ branch: p.head.ref, number: p.number, url: p.html_url, state: stateOf(p) });
 
 function number(n: number): number {
@@ -75,6 +119,44 @@ export class GitHubPullRequests {
     return info(
       await fetchJson<ApiPull>(this.fetch, `${this.base}/pulls/${number(n)}`, { method: 'PATCH', headers: await this.headers(), body: { state: 'closed' } }),
     );
+  }
+
+  /** A pull request's comments (BL-224): its conversation's and its line comments, oldest first. */
+  async comments(n: number): Promise<PullRequestComment[]> {
+    const read = async (kind: CommentKind, path: string): Promise<PullRequestComment[]> => {
+      const all: PullRequestComment[] = [];
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const list = await fetchJson<ApiComment[]>(this.fetch, `${this.base}${path}?per_page=${PAGE}&page=${page}`, { headers: await this.headers() });
+        all.push(...list.map((c) => comment(kind, c)));
+        if (list.length < PAGE) break;
+      }
+      return all;
+    };
+    const [issue, review] = await Promise.all([read('issue', `/issues/${number(n)}/comments`), read('review', `/pulls/${number(n)}/comments`)]);
+    return [...issue, ...review].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+  }
+
+  /** Comments on a pull request: in its conversation, or as a reply in a line comment's thread. */
+  async addComment(n: number, body: string, inReplyTo?: number): Promise<PullRequestComment> {
+    const o = { method: 'POST', headers: await this.headers(), body: { body } };
+    return inReplyTo
+      ? comment('review', await fetchJson<ApiComment>(this.fetch, `${this.base}/pulls/${number(n)}/comments/${number(inReplyTo)}/replies`, o))
+      : comment('issue', await fetchJson<ApiComment>(this.fetch, `${this.base}/issues/${number(n)}/comments`, o));
+  }
+
+  async editComment(kind: CommentKind, id: number, body: string): Promise<void> {
+    await fetchJson(this.fetch, `${this.base}/${kind === 'issue' ? 'issues' : 'pulls'}/comments/${number(id)}`, {
+      method: 'PATCH',
+      headers: await this.headers(),
+      body: { body },
+    });
+  }
+
+  async deleteComment(kind: CommentKind, id: number): Promise<void> {
+    await fetchJson(this.fetch, `${this.base}/${kind === 'issue' ? 'issues' : 'pulls'}/comments/${number(id)}`, {
+      method: 'DELETE',
+      headers: await this.headers(),
+    });
   }
 
   private async headers(): Promise<Record<string, string>> {
