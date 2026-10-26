@@ -43,6 +43,8 @@ export interface BacklogItemView extends BacklogItem {
   creating?: boolean;
   /** Why it waits on the user (its row in "Needs you"). */
   need?: Need;
+  /** Its start waiting in the agents' queue (BL-212): what for, why, and its place in line. */
+  queued?: { kind: 'reply' | 'review' | 'resume' | 'new'; reason: 'slot' | 'memory'; place: number; since?: string };
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
   /** Where each of those stands (BL-205): what it waits for you to do, or else how far it is ("in progress", "merge failed"). */

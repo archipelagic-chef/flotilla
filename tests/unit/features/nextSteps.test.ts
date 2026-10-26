@@ -32,6 +32,12 @@ const table: Array<[string, StepState, string[], string?]> = [
     ['Open Chat', 'Review It Myself'],
     "Iris-3 reviews it: Approve and Request Changes come when it's done",
   ],
+  [
+    'in review, its reviewer agent queued (BL-212)',
+    { status: 'review', reviewing: true, reviewQueued: true, agentWorking: 'Pip-3', hasRunBlock: true },
+    ['Review It Myself', 'Run'],
+    'Approve and Request Changes come when its review is done',
+  ],
   ['yours to review', { status: 'review', reviewing: true, yours: true, hasRunBlock: true }, ['Approve', 'Request Changes', 'Run']],
   ['yours to review, without a run block', { status: 'review', reviewing: true, yours: true }, ['Approve', 'Request Changes', 'Ask for a Run Block']],
   ['approved', approved, ['Merge to main', 'Run']],

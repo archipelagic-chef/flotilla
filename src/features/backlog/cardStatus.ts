@@ -1,5 +1,6 @@
 import type { BacklogItemView } from '../../webview/protocol';
 import { statusLine } from '../chats/activity';
+import { ordinal } from './agentQueue';
 import { readyToMerge } from './backlog';
 import type { CardAgent } from './cardAgents';
 import { conflictsOf } from './mainDrift';
@@ -53,6 +54,7 @@ export type CardStatusItem = Pick<
   | 'agent'
   | 'unseenReplies'
   | 'discarded'
+  | 'queued'
 >;
 
 const OPEN: CardStep = { op: 'open', label: 'Open', icon: 'go-to-file' };
@@ -120,6 +122,12 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
           return { text: `Approved${r?.reviewer ? ` by ${r.reviewer}` : ''} · ready to merge`, next: { op: 'merge', label: 'Merge', icon: 'git-merge' } };
         return { text: 'Waiting for you: review', mark: 'question', next: { op: 'approve', label: 'Approve', icon: 'check' } };
       case 'agent-review':
+        // Its reviewer agent waits for a free agent (BL-212), or for free memory.
+        if (turn.queued && item.queued)
+          return {
+            text: `Queued for an agent review · ${ordinal(item.queued.place)} in line`,
+            tip: `A reviewer agent takes it up when ${item.queued.reason === 'memory' ? "there's free memory" : 'one is free'}.`,
+          };
         return { text: `In review · ${turn.who} reviewing${r?.round ? ` · ${rounds(r.round)}` : ''}`, working: true };
       case 'agent-revising':
         return { text: `Revising · ${turn.who}${r?.round ? ` · round ${r.round}` : ''}`, working: true };

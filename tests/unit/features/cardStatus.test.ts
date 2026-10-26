@@ -124,6 +124,22 @@ describe('cardStatus', () => {
   });
 });
 
+describe('cardStatus: a review start waiting for a free agent (BL-212)', () => {
+  it('says it is queued for an agent review, with its place in line', () => {
+    const queued = { kind: 'review' as const, reason: 'slot' as const, place: 2 };
+    expect(line(item('review', { review: review('working', { round: 0, reviewer: '' }), queued }))).toEqual([
+      'Queued for an agent review · 2nd in line',
+      '',
+      '',
+      '',
+    ]);
+    expect(cardStatus(item('review', { queued: { ...queued, reason: 'memory' } }), []).tip).toBe("A reviewer agent takes it up when there's free memory.");
+    // Its reviewer started, or the start was dropped: as before.
+    expect(line(item('review', { review: review('reviewing'), queued }))[0]).toBe('In review · Iris-3 reviewing · 2 rounds');
+    expect(line(item('review', { review: review('working', { round: 0 }) }))[0]).toBe('Waiting for you: review');
+  });
+});
+
 describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
   const shaping = { agent: 'Astro-2', session: 's' };
   const tip = (i: CardStatusItem) => cardStatus(i, []).tip;

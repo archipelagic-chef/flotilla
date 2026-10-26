@@ -3,6 +3,7 @@ import type { Repository } from '../core/repository';
 import type { BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { Leader } from '../features/backlog/leader';
+import type { QueuedStart } from '../features/backlog/turn';
 import {
   isWarning,
   type NeedsYou,
@@ -40,7 +41,8 @@ export class NeedsYouNotifier implements vscode.Disposable {
     private readonly deps: {
       backlog: LocalBacklog;
       repository: Repository<Workstream>;
-      reviews: Pick<ReviewLoop, 'onDidChange'>;
+      /** Its queue too: a review start waiting for a free agent is no review of the user's (BL-212). */
+      reviews: Pick<ReviewLoop, 'onDidChange'> & Partial<Pick<ReviewLoop, 'queuedFor'>>;
       notes: Pick<NoteAgents, 'views' | 'onDidChange'>;
       leader: Pick<Leader, 'isLeader'>;
       openTicket: (id: string) => void;
@@ -72,9 +74,12 @@ export class NeedsYouNotifier implements vscode.Disposable {
   }
 
   private async apply(): Promise<void> {
-    let items: BacklogItem[];
+    let items: Array<BacklogItem & { queued?: QueuedStart }>;
     try {
-      items = (await this.deps.backlog.read()).items;
+      items = (await this.deps.backlog.read()).items.map((i) => {
+        const queued = this.deps.reviews.queuedFor?.(i.id);
+        return queued ? { ...i, queued } : i;
+      });
     } catch {
       return; // the backlog can't be read right now: the list stays as it was
     }

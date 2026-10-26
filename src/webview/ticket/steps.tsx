@@ -25,6 +25,8 @@ export function redRun(ci: TicketCiView | undefined): { branch: string; run: num
 export function stepState(ticket: TicketView, ci?: TicketCiView): StepState {
   const r = ticket.review;
   const working = ticket.agents.find((a) => a.state === 'working');
+  // Its reviewer agent's start waits in the agents' queue (BL-212): its implementer is done.
+  const reviewQueued = ticket.item.status === 'review' && ticket.queued?.kind === 'review' && r?.state !== 'reviewing';
   const stop = ticket.mergeStop;
   return {
     status: ticket.item.status,
@@ -33,8 +35,9 @@ export function stepState(ticket: TicketView, ci?: TicketCiView): StepState {
     conflicts: [...new Set(conflictsOf(ticket.item).flatMap((b) => b.conflicts))],
     ci: stop?.kind === 'moved' ? 'moved' : stop?.kind === 'failed' || redRun(ci) ? 'red' : undefined,
     queue: ticket.mergeQueue && { place: ticket.mergeQueue.place, ahead: ticket.mergeQueue.ahead.length },
+    ...(reviewQueued ? { reviewQueued } : {}),
     agentWorking:
-      r?.state === 'revising' || r?.state === 'working'
+      !reviewQueued && (r?.state === 'revising' || r?.state === 'working')
         ? (r.implementer ?? 'Its agent')
         : r?.state !== 'reviewing' && working
           ? (working.agent ?? 'An agent')

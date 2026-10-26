@@ -40,6 +40,8 @@ export interface StepState {
   agentWorking?: string;
   /** An agent reviewer works on it now. */
   reviewerWorking?: string;
+  /** Its reviewer agent's start waits in the agents' queue for a free agent (BL-212). */
+  reviewQueued?: boolean;
   /** The work waits for the user's review. */
   yours?: boolean;
   /** Approved (by the user, or as they'd merge it): it can merge. */
@@ -103,6 +105,12 @@ export function nextSteps(s: StepState): NextSteps {
     return { others: [...(s.merged && s.unpushed ? ['push' as const] : []), ...(s.hasWorktree ? ['removeWorktree' as const] : [])] };
   // Update from Main and Merge goes on: the part it's at, and what that part needs (an agent's chat, your approval).
   const chained = s.chained && CHAINED[s.chained];
+  // Its implementer is done; the reviewer agent waits for a free agent (BL-212).
+  if (s.reviewQueued && !s.reviewerWorking)
+    return {
+      others: ['reviewMyself', ...(s.reviewing && s.hasRunBlock ? (['run'] as const) : [])],
+      status: 'Approve and Request Changes come when its review is done',
+    };
   if (s.agentWorking) return { main: 'openChat', others: ['stop'], status: chained || `${s.agentWorking} is working on it` };
   if (chained && !s.yours) return { others: [], status: chained };
   const run: StepOp[] = s.reviewing ? [s.hasRunBlock ? 'run' : 'askRunBlock'] : [];
