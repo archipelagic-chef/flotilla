@@ -216,7 +216,7 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
               <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
             </ActionButton>
           ))}
-        {running && !yours && (
+        {running && !yours && !turn?.queued && (
           <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
             <i class="codicon codicon-debug-pause" /> Pause
           </ActionButton>
