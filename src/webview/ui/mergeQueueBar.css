@@ -9,8 +9,13 @@
   background: color-mix(in srgb, var(--vscode-charts-purple, var(--working)) 10%, transparent);
   font-size: 12px;
 }
+.merge-queue-bar {
+  flex-wrap: wrap;
+}
+/* The tickets keep room in a narrow view: the buttons go below them. */
 .merge-queue-bar > span {
   flex: 1;
+  min-width: 160px;
 }
 .merge-queue-bar .codicon {
   margin-top: 1px;
@@ -33,6 +38,24 @@
 }
 .merge-queue-bar a.conflicts {
   color: var(--vscode-charts-yellow, #cca700);
+}
+.merge-queue-bar a.needs-you {
+  color: var(--vscode-errorForeground, #f48771);
+}
+/* Takes a ticket out of the queue (BL-226). */
+.merge-queue-bar .dequeue {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-size: 12px;
+}
+.merge-queue-bar .dequeue:hover {
+  color: var(--vscode-errorForeground, #f48771);
+}
+.merge-queue-bar .dequeue .codicon {
+  display: none;
 }
 .merge-queue-bar .land-all {
   flex: none;

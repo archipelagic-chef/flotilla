@@ -10,7 +10,8 @@ const QUEUE_DRAG_TYPE = 'application/x-flotilla-merge-queue';
 /**
  * The merge queue (BL-140), above the board: the tickets waiting to land, first to land first, each opening its ticket
  * (one that conflicts with the ones ahead of it is marked), what the queue does now, and Land All (Merge All Ready).
- * Its tickets are dragged to change the order they land in (BL-144).
+ * Its tickets are dragged to change the order they land in (BL-144), and each one's × takes it out of the queue, even
+ * while Land All runs; Land All, Resolving Conflicts has an agent resolve each conflict, approved without asking (BL-226).
  */
 export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
   // Where a dragged ticket would go: before this one, or at the end (null).
@@ -52,22 +53,38 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
                   if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
                 }}
                 onDragEnd={() => setDropBefore(undefined)}
-                class={[e.state === 'conflicts' ? 'conflicts' : '', dropBefore === e.id ? 'drop-before' : ''].filter(Boolean).join(' ') || undefined}
-                title={
-                  e.state === 'conflicts'
-                    ? `${e.id} conflicts with the tickets ahead of it: it waits`
-                    : e.state === 'clean'
-                      ? `${e.id} merges cleanly onto main and the tickets ahead`
-                      : `${e.id}: the merge train is being built`
+                class={
+                  [e.state === 'conflicts' ? 'conflicts' : '', e.run === 'needs you' ? 'needs-you' : '', dropBefore === e.id ? 'drop-before' : '']
+                    .filter(Boolean)
+                    .join(' ') || undefined
                 }
+                title={`${
+                  e.run === 'resolving'
+                    ? `${e.id}: an agent resolves its conflicts with the tickets ahead of it (Land All, Resolving Conflicts)`
+                    : e.run === 'needs you'
+                      ? `${e.id} needs you: its ticket says why`
+                      : e.state === 'conflicts'
+                        ? `${e.id} conflicts with the tickets ahead of it: it waits`
+                        : e.state === 'clean'
+                          ? `${e.id} merges cleanly onto main and the tickets ahead`
+                          : `${e.id}: the merge train is being built`
+                } · drag to change the order`}
                 onClick={(ev) => {
                   ev.preventDefault();
                   send({ type: 'backlog', op: 'open', id: e.id });
                 }}
               >
                 {e.id}
-                {e.state === 'conflicts' && ' (conflicts)'}
+                {e.run === 'resolving' ? ' (resolving)' : e.run === 'needs you' ? ' (needs you)' : e.state === 'conflicts' && ' (conflicts)'}
               </a>
+              <BusyButton
+                class="dequeue"
+                message={{ type: 'backlog', op: 'dequeue', id: e.id }}
+                title={`Take ${e.id} out of the merge queue`}
+                aria-label={`Take ${e.id} out of the merge queue`}
+              >
+                ×
+              </BusyButton>
             </span>
           ))}
           {dropBefore === null && <span class="drop-end" />}
@@ -80,6 +97,14 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
         title="Merge All Ready: lands the queue's tickets in order, each after its checks"
       >
         Land All
+      </BusyButton>
+      <BusyButton
+        class="land-all"
+        disabled={!!queue.working}
+        message={{ type: 'backlog', op: 'landAll', resolve: true }}
+        title="Lands the queue's tickets in order, each after its checks; an agent resolves each one that conflicts, and its resolution is approved without asking you"
+      >
+        Land All, Resolving Conflicts
       </BusyButton>
     </div>
   );

@@ -934,6 +934,80 @@ describe('The merge queue (BL-140)', () => {
     merger.dispose();
   });
 
+  /** The agent Land All, Resolving Conflicts started for a ticket ends (BL-226): having resolved its merge, or not. */
+  async function resolverEnds(merger: unknown, id: string, dir?: string) {
+    if (dir) {
+      writeFile(dir, 'shared.txt', 'two and three\n');
+      git(dir, 'add', '.');
+      git(dir, 'commit', '-q', '--no-edit');
+    }
+    const p = merger as Private;
+    await p.afterResolver(id, p.runs.get(id), undefined);
+  }
+
+  it('Land All, Resolving Conflicts has an agent resolve a ticket that conflicts in the train, and lands it without asking (BL-226)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1'), approved('BL-2'), approved('BL-3')]);
+    branches(repo);
+
+    await merger.mergeAllReady({ resolve: true });
+
+    // BL-1 and BL-2 landed while BL-3's agent works.
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-2', 'main').split('\n')).toEqual(['Merge BL-2: Item BL-2', 'Merge BL-1: Item BL-1']);
+    const m = (await item('BL-3')).merging!;
+    expect(m).toMatchObject({ state: 'resolving', auto: true, train: { ahead: ['BL-1', 'BL-2'] } });
+    await merger['readQueue']();
+    expect(merger.queueView().entries).toEqual([{ id: 'BL-3', state: 'unknown', run: 'resolving' }]);
+    expect(ui.messages.join('\n')).not.toContain('Land All, Resolving Conflicts landed');
+
+    await resolverEnds(merger, 'BL-3', m.dir);
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-1', 'main')).toBe('Merge BL-3: Item BL-3');
+    expect(git(repo, 'show', 'main:shared.txt')).toBe('two and three');
+    expect((await item('BL-3')).status).toBe('done');
+    expect((await backlog.read()).mergeQueue).toEqual([]);
+    expect(worktrees()).toBe(1);
+    const activity = (await backlog.readTicket(await item('BL-3'))).activity.map((e) => e.body).join('\n');
+    expect(activity).toMatch(/Approved automatically \(Land All, Resolving Conflicts\): [A-Z][a-z]+-\d+'s resolution/);
+    expect(ui.messages.at(-1)).toBe('Land All, Resolving Conflicts landed BL-1, BL-2, BL-3.');
+    merger.dispose();
+  });
+
+  it('Land All, Resolving Conflicts leaves a ticket whose agent failed waiting for you, and lands the others (BL-226)', async () => {
+    const { repo, merger, item } = await setup([approved('BL-1'), approved('BL-2'), approved('BL-3')]);
+    branches(repo);
+
+    await merger.mergeAllReady({ resolve: true });
+    await resolverEnds(merger, 'BL-3');
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-2', 'main').split('\n')).toEqual(['Merge BL-2: Item BL-2', 'Merge BL-1: Item BL-1']);
+    expect((await item('BL-3')).merging).toMatchObject({ state: 'failed', auto: true });
+    expect((await item('BL-3')).status).toBe('review');
+    await merger['readQueue']();
+    expect(merger.queueView().entries).toEqual([{ id: 'BL-3', state: 'unknown', run: 'needs you' }]);
+    expect(ui.messages.at(-1)).toBe('Land All, Resolving Conflicts landed BL-1, BL-2. BL-3 needs you: its ticket says why.');
+    merger.dispose();
+  });
+
+  it('Land All, Resolving Conflicts stops the agent of a ticket taken out of the queue, and lands nothing of it (BL-226)', async () => {
+    const { repo, backlog, merger, item, worktrees } = await setup([approved('BL-1'), approved('BL-2'), approved('BL-3')]);
+    branches(repo);
+
+    await merger.mergeAllReady({ resolve: true });
+    const dir = (await item('BL-3')).merging!.dir;
+    await merger.removeFromQueue('BL-3');
+    // Its agent was stopped: what it would have done is never approved.
+    expect(agents.runs.at(-1)?.stopped).toBe(true);
+    await resolverEnds(merger, 'BL-3', dir).catch(() => undefined);
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', '-1', 'main')).toBe('Merge BL-2: Item BL-2');
+    expect((await item('BL-3')).merging).toBeUndefined();
+    expect((await item('BL-3')).status).toBe('review');
+    expect((await backlog.read()).mergeQueue).toEqual([]);
+    expect(worktrees()).toBe(1);
+    expect(ui.messages.at(-1)).toBe('Land All, Resolving Conflicts landed BL-1, BL-2. BL-3 was taken out of the queue.');
+    merger.dispose();
+  });
+
   it('keeps the queue in backlog.json, and Remove from Queue rebuilds the train without the ticket', async () => {
     const { repo, backlog, merger } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
     branches(repo);

@@ -358,7 +358,8 @@ export interface MachineState {
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
 /** The merge queue (BL-140), first to land first: each ticket's state in the merge train, and what the queue does now. */
 export interface MergeQueueView {
-  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown' }>;
+  /** run: Land All, Resolving Conflicts (BL-226) has an agent at its conflict, or it needs you. */
+  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown'; run?: 'resolving' | 'needs you' }>;
   /** "BL-122's merge", "rebuilding the merge train". */
   working?: string;
 }
@@ -501,7 +502,10 @@ export type WebviewMessage =
   /** Check All: every ticket's Check (BL-163). */
   | { type: 'backlog'; op: 'checkAll' }
   /** Merge All Ready: lands the merge queue (BL-140). */
-  | { type: 'backlog'; op: 'landAll' }
+  /** resolve: Land All, Resolving Conflicts (BL-226). */
+  | { type: 'backlog'; op: 'landAll'; resolve?: boolean }
+  /** The queue bar's ×: takes a ticket out of the merge queue (BL-226). */
+  | { type: 'backlog'; op: 'dequeue'; id: string }
   /** The merge queue dragged into a new order; Merge Next moves a ticket to its front (BL-144). */
   | { type: 'backlog'; op: 'queueOrder'; ids: string[] }
   | { type: 'backlog'; op: 'mergeNext'; id: string }
