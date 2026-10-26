@@ -1,0 +1,32 @@
+{
+  "title": "Land All, Resolving Conflicts lands the queue, an agent resolving the ticket that conflicts, approved without asking",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")", "timeout": 30000 },
+    { "click": ".backlog-item:has-text(\"Remember the last open tab\") .name" },
+    { "waitFor": "h1:has-text(\"Remember the last open tab\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Conflicts with main + BL-10\")", "timeout": 30000 },
+    { "caption": "BL-15 conflicts with BL-10 in the merge train. Its tickets are dragged to reorder, × takes one out" },
+    { "hover": ".merge-queue-bar a:has-text(\"BL-15\")" },
+    { "wait": 2500 },
+    { "caption": "Land All, Resolving Conflicts: an agent resolves BL-15 while BL-10 lands" },
+    { "click": ".merge-queue-bar button:has-text(\"Resolving Conflicts\")" },
+    { "waitFor": ".merge-queue-bar:has-text(\"BL-15 (resolving)\")", "timeout": 30000 },
+    { "wait": 1500 },
+    { "caption": "A resolution is approved without asking and lands after its checks; one the agent can't make waits for you" },
+    { "waitFor": ".notification-toast:has-text(\"Land All, Resolving Conflicts landed BL-10.\")", "timeout": 90000 },
+    { "caption": "BL-10 landed. The fake agent can't resolve BL-15: the queue marks it, and its ticket says why" },
+    { "hover": ".merge-queue-bar a:has-text(\"BL-15\")" },
+    { "wait": 3000 },
+    { "caption": "" }
+  ]
+}
