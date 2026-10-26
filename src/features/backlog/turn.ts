@@ -15,6 +15,8 @@ export interface Turn {
   who: string;
   /** It waits on the user. */
   mine: boolean;
+  /** An agent review whose agent waits in the agents' queue for a free agent (BL-212). */
+  queued?: boolean;
 }
 
 /** The turn in a few words, as the cards and the filter name it. */
@@ -40,14 +42,23 @@ export const TURN_ICON: Record<TurnKind, string> = {
 const you = (kind: TurnKind): Turn => ({ kind, who: 'You', mine: true });
 const agent = (kind: TurnKind, name: string | undefined): Turn => ({ kind, who: name || 'Agent', mine: false });
 
+/** A start waiting in the agents' queue (see agentQueue.ts): what it's for. */
+export interface QueuedStart {
+  kind: 'reply' | 'review' | 'resume' | 'new';
+}
+
 /**
  * The turn of an item in review, or none: done items, proposals, and work that hasn't been to review yet (an agent at
  * its first go, a todo) have none. An item moves to In Progress while its implementer revises; that's still its review.
+ * queued: its start waiting in the agents' queue, if any (the queue lives in the review loop, not in the item).
  */
-export function turnOf(item: Pick<BacklogItem, 'status' | 'proposed' | 'review'>): Turn | undefined {
+export function turnOf(item: Pick<BacklogItem, 'status' | 'proposed' | 'review'> & { queued?: QueuedStart }): Turn | undefined {
   if (item.status === 'done' || item.proposed) return undefined;
   const r = item.review;
   const inReview = item.status === 'review';
+  // In review, a reviewer agent's start waits for a free agent (BL-212): it's that agent's turn, not the user's.
+  if (inReview && item.queued?.kind === 'review' && (!r || r.state === 'working' || r.state === 'yours' || r.state === 'stopped'))
+    return { ...agent('agent-review', undefined), queued: true };
   switch (r?.state) {
     case 'yours':
     case 'approved':
@@ -81,6 +92,11 @@ export function turnSentence(turn: Turn, r: ReviewState | undefined): { text: st
   const round = r && r.round > 0 ? `, round ${r.round}` : '';
   switch (turn.kind) {
     case 'agent-review':
+      if (turn.queued)
+        return {
+          text: `A reviewer agent reviews ${work}${round} once one is free.`,
+          todo: 'Prioritize starts it now, or stop the review and review it yourself.',
+        };
       return {
         text: r?.reviewer ? `${r.reviewer} reviews ${work}${round}.` : `A reviewer agent is about to review ${work}.`,
         todo: 'Wait for its verdict, or stop the review and review it yourself.',

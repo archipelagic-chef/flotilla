@@ -300,7 +300,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         });
         const merge = this.merges?.get(item.id);
         const queued = this.queue?.queuedFor(item.id);
-        const need = needOf(item, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
+        // A review start waiting for a free agent is the reviewer agent's turn, not the user's (BL-212).
+        const need = needOf({ ...item, ...(queued ? { queued } : {}) }, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
         // The ticket's run: its last run block (the one its Run button runs).
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
@@ -331,6 +332,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
           ...(need ? { need } : {}),
+          ...(queued ? { queued: { kind: queued.kind, reason: queued.reason, place: queued.place, ...(queued.since ? { since: queued.since } : {}) } } : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
           ...(parts ? { parts } : {}),

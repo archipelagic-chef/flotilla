@@ -143,7 +143,8 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
   const steps = ticketSteps(ticket, ci);
   const active = r.state === 'reviewing' || r.state === 'revising' || r.state === 'asking' || r.state === 'working' || r.state === 'paused';
   // Whose turn it is, said in words with the reviewer and the implementer named, and what the user can do now.
-  const turn = turnOf({ status: ticket.item.status, review: r });
+  // A review start waiting in the agents' queue makes it the reviewer agent's turn (BL-212).
+  const turn = turnOf({ status: ticket.item.status, review: r, ...(ticket.queued ? { queued: ticket.queued } : {}) });
   // Its agent stopped without a question (BL-198): it's resumed, not answered.
   const resume = steps.main === 'resume';
   const said =
@@ -166,7 +167,7 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
   // The agent the user paused or stopped: it can be resumed in its chat.
   const held = heldBy(r);
   const running = r.state === 'reviewing' || r.state === 'revising' || r.state === 'working';
-  const autopilot = r.state === 'working' || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
+  const autopilot = (r.state === 'working' && !turn?.queued) || (r.state === 'paused' && r.paused?.phase === 'work' && (r.autopilot || r.byHand) && !turn);
   const [icon, cls, label, text, todo] = autopilot
     ? r.byHand
       ? [

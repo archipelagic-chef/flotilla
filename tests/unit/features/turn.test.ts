@@ -147,3 +147,35 @@ describe('agents the user paused or stopped (BL-81)', () => {
     expect(needsYouList([p, stopped], [])).toEqual([]);
   });
 });
+
+describe('a review start waiting in the agents’ queue (BL-212)', () => {
+  const queued = { kind: 'review' as const };
+  const waiting = { ...item('review', { state: 'working', round: 0, reviewer: '' }), queued };
+
+  it('is the reviewer agent’s turn, not the user’s', () => {
+    expect(turnOf(waiting)).toEqual({ kind: 'agent-review', who: 'Agent', mine: false, queued: true });
+    expect(turnOf({ ...item('review'), queued })).toMatchObject({ kind: 'agent-review', queued: true });
+    // A review started again by the user, after it stopped or while it was theirs: its agent waits too.
+    expect(turnOf({ ...item('review', { state: 'stopped', stop: { kind: 'user' } }), queued })).toMatchObject({ kind: 'agent-review', mine: false });
+    expect(turnOf({ ...item('review', { state: 'yours' }), queued })).toMatchObject({ kind: 'agent-review', mine: false });
+  });
+
+  it('isn’t in "Needs you", nor notified', () => {
+    expect(needOf(waiting, [])).toBeUndefined();
+    expect(needsYouList([waiting], [])).toEqual([]);
+  });
+
+  it('says a reviewer agent reviews it once one is free', () => {
+    expect(turnSentence(turnOf(waiting)!, waiting.review).text).toBe("A reviewer agent reviews Rune-3's work once one is free.");
+  });
+
+  it('changes nothing once the reviewer starts, or for other queued starts; dropped, it’s the user’s review again', () => {
+    expect(turnOf({ ...item('review', { state: 'reviewing' }), queued })).toEqual(turn('agent-review', 'Jet-6', false));
+    expect(turnOf({ ...item('review', { state: 'asking' }), queued })).toEqual(turn('asking', 'You', true));
+    expect(turnOf({ ...item('review', { state: 'working', round: 0 }), queued: { kind: 'reply' } })).toEqual(turn('yours', 'You', true));
+    expect(turnOf({ ...item('doing', { state: 'working', round: 0 }), queued })).toBeUndefined();
+    const dropped = item('review', { state: 'working', round: 0 });
+    expect(turnOf(dropped)).toEqual(turn('yours', 'You', true));
+    expect(needOf(dropped, [])).toMatchObject({ kind: 'yours', line: 'Ready for your review' });
+  });
+});

@@ -4,7 +4,7 @@ import { ordinal } from './agentQueue';
 import { resumeWaits } from './mainDrift';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
-import { turnOf } from './turn';
+import { turnOf, type QueuedStart } from './turn';
 
 /**
  * What waits on the user, for the backlog's "Needs you" list: an agent's question, work ready for the user's review,
@@ -32,9 +32,10 @@ function firstLine(text: string): string {
 
 /**
  * The row an item has in "Needs you", or none: a ticket in review is in it exactly when its turn is the user's (see
- * turnOf), and a start that failed. Done items and proposals don't wait on the user.
+ * turnOf, which reads its start waiting in the agents' queue, if any), and a start that failed. Done items and
+ * proposals don't wait on the user.
  */
-export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undefined {
+export function needOf(item: BacklogItem & { queued?: QueuedStart }, activity: TicketEntry[]): Need | undefined {
   if (item.status === 'done' || item.proposed) return undefined;
   const r = item.review;
   const turn = turnOf(item);

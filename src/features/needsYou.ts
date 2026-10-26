@@ -1,6 +1,6 @@
 import type { BacklogItem } from './backlog/backlog';
 import { noteNeed } from './backlog/needs';
-import { turnOf } from './backlog/turn';
+import { turnOf, type QueuedStart } from './backlog/turn';
 import type { AttentionState } from './workstreams/attention';
 
 /**
@@ -49,7 +49,7 @@ export function isWarning(kind: NeedsYouKind): boolean {
   return kind === 'error' || kind === 'stopped';
 }
 
-function ticketKind(item: BacklogItem): NeedsYouKind | undefined {
+function ticketKind(item: BacklogItem & { queued?: QueuedStart }): NeedsYouKind | undefined {
   if (item.status === 'done') return undefined;
   if (item.proposed) return 'proposed';
   // A ticket in review needs the user when its turn is theirs (as in the "Needs you" list); what they did themselves
@@ -69,7 +69,11 @@ function ticketKind(item: BacklogItem): NeedsYouKind | undefined {
 }
 
 /** What needs the user, in ORDER and then by name. Agents at work (started, reviewing, revising) never need them. */
-export function needsYouList(items: readonly BacklogItem[], worktrees: readonly NeedsYouWorktree[], notes: readonly NeedsYouNote[] = []): NeedsYou[] {
+export function needsYouList(
+  items: ReadonlyArray<BacklogItem & { queued?: QueuedStart }>,
+  worktrees: readonly NeedsYouWorktree[],
+  notes: readonly NeedsYouNote[] = [],
+): NeedsYou[] {
   const out: NeedsYou[] = [];
   for (const item of items) {
     const kind = ticketKind(item);
