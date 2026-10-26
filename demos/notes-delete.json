@@ -1,0 +1,32 @@
+{
+  "title": "A note's × deletes it, once you confirm: its card and its tab go, the ticket it became stays",
+  "settings": { "flotilla.agents.maxRunning": 6 },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label^=\"New Note\"]" },
+    { "waitFor": ".note-page .comment-box textarea" },
+    { "wait": 600 },
+    { "type": "Export the backlog as CSV" },
+    { "press": "Control+Enter" },
+    { "hover": ".notes-lane .group-head" },
+    { "waitFor": ".proposed-lane:has-text(\"Export the backlog\")", "timeout": 60000 },
+    { "waitFor": ".notes-lane:not(:has(.note-card)) .notes-past .group-head", "timeout": 60000 },
+    { "click": ".notes-past .group-head" },
+    { "waitFor": ".note-past:has-text(\"Became\")", "timeout": 30000 },
+    { "click": ".note-past:has-text(\"Export the backlog\") .note-edit" },
+    { "waitFor": ".note-page .note-entry" },
+    { "wait": 1200 },
+    { "caption": "A note you don't need anymore: its × deletes it" },
+    { "wait": 1200 },
+    { "click": ".note-past:has-text(\"Export the backlog\") .note-delete" },
+    { "waitFor": ".monaco-dialog-box:has-text(\"the tickets it became stay\")" },
+    { "caption": "It asks once: its agent stops, and the tickets it became stay" },
+    { "wait": 2200 },
+    { "click": ".monaco-dialog-box .monaco-button:has-text(\"Delete\")" },
+    { "waitFor": "body:not(:has(.note-past:has-text(\"Export the backlog\"))) .proposed-lane:has-text(\"Export the backlog\")" },
+    { "caption": "The note and its tab are gone; the proposal it became is still there" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
