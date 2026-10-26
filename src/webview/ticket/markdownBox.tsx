@@ -16,7 +16,13 @@ import {
   pasteLink,
   type TextEdit,
 } from './format';
-import { demoLength } from '../../features/backlog/demo';
+import { demoLabel } from '../../features/backlog/demo';
+import {
+  currentSpeed,
+  onSpeed,
+  pickSpeed,
+  playAtSpeed,
+} from './speed';
 import { act, send } from './actions';
 import {
   matchEntries,
@@ -328,17 +334,44 @@ export function Rendered({ html, empty }: { html: string; empty: string }) {
   useEffect(() => {
     el.current?.querySelectorAll<HTMLVideoElement>('.demo-inline video').forEach((v) => {
       const show = () => {
-        const label = v.closest('.demo-inline')?.querySelector('.demo-length');
-        if (label && Number.isFinite(v.duration)) label.textContent = `Recorded demo · ${demoLength(v.duration)}`;
+        const label = v.closest('.demo-inline')?.querySelector<HTMLElement>('.demo-length');
+        if (!label || !Number.isFinite(v.duration)) return;
+        label.dataset.seconds = String(v.duration);
+        label.textContent = demoLabel(v.duration, currentSpeed());
       };
       if (v.readyState >= 1) show();
       else v.addEventListener('loadedmetadata', show, { once: true });
     });
   }, [html]);
+  // Its demos play at the speed demos play at (BL-218), their bars marking it, their lengths at it.
+  useEffect(() => {
+    const root = el.current;
+    if (!root?.querySelector('.demo-inline')) return;
+    const mark = (speed: number) => {
+      root
+        .querySelectorAll<HTMLElement>('.demo-inline [data-demo-speed]')
+        .forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.demoSpeed) === speed)));
+      root
+        .querySelectorAll<HTMLElement>('.demo-inline .demo-length[data-seconds]')
+        .forEach((l) => (l.textContent = demoLabel(Number(l.dataset.seconds), speed)));
+    };
+    mark(currentSpeed());
+    const off = onSpeed(mark);
+    const stop = playAtSpeed(root, '.demo-inline > img, .demo-inline > video');
+    return () => {
+      off();
+      stop();
+    };
+  }, [html]);
   if (!html) return <div class="rendered empty-text">{empty}</div>;
   // Links open here (files at their lines, in the ticket's worktree) or in the browser: not inside the view.
   const onClick = (e: MouseEvent) => {
     // The Run button of a run block in an agent's report (the host puts it in the html).
+    const speed = (e.target as HTMLElement).closest<HTMLElement>('[data-demo-speed]');
+    if (speed) {
+      pickSpeed(Number(speed.dataset.demoSpeed));
+      return;
+    }
     const run = (e.target as HTMLElement).closest<HTMLElement>('[data-run-key]');
     if (run) {
       // The button is in the host's html: its working state is set here, and cleared when the host is done.

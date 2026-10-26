@@ -195,6 +195,7 @@ h2 {
   margin-bottom: 0;
 }
 .rendered img,
+.rendered canvas.demo-gif,
 .rendered video {
   max-width: 100%;
   border-radius: 3px;

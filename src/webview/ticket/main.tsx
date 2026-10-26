@@ -52,6 +52,7 @@ import { ticketSteps } from './steps';
 import { STEP } from '../../features/backlog/nextSteps';
 import { discardedLabel } from '../../features/backlog/cardStatus';
 import { CheckResult } from './checkResult';
+import { keptSpeed } from './speed';
 
 /**
  * The ticket's linked issues. One being unlinked stays until the host is done, so its "Unlinking…" is seen (the
@@ -117,6 +118,8 @@ function App() {
     window.scrollTo(0, scrolled.current);
     scrolled.current = undefined;
   }, [full]);
+  // The speed demos play at, as the host keeps it (BL-218).
+  useEffect(() => keptSpeed(received?.demoSpeed), [received?.demoSpeed]);
   useEffect(() => {
     const listener = (e: MessageEvent<TicketHostMessage>) => {
       const m = e.data;

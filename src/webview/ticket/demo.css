@@ -28,6 +28,7 @@
   margin: 0;
 }
 .demo-figure img,
+.demo-figure canvas,
 .demo-figure video {
   display: block;
   max-width: 100%;
@@ -60,6 +61,7 @@
   width: 240px;
 }
 .demo-earlier img,
+.demo-earlier canvas,
 .demo-earlier video {
   width: 240px;
   border: 1px solid var(--border);
@@ -77,4 +79,35 @@
 }
 .viewer-figure .demo-bar {
   width: 100%;
+}
+/* The speed demos play at (BL-218): 1×, 1.5×, 2×, the one it plays at pressed. */
+.demo-speed {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.demo-speed-option {
+  padding: 1px 8px;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+.demo-speed-option + .demo-speed-option {
+  border-left: 1px solid var(--border);
+}
+.demo-speed-option:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.demo-speed-option[aria-pressed='true'] {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+/* A GIF playing faster is drawn on a canvas, its <img> hidden (whatever display its place gives it). */
+img[hidden],
+canvas.demo-gif[hidden] {
+  display: none !important;
 }
