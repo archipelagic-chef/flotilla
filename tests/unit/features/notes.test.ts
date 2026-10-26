@@ -14,18 +14,23 @@ import {
   askedForLimit,
   asksUser,
   becameText,
+  changedState,
   DRAFT_HINT,
+  editEntry,
   nextNoteId,
   nextNotes,
   type Note,
   noteChatOf,
+  noteFollowUp,
   notePrompt,
   noteQuestion,
+  noteReopenPrompt,
   NoteStore,
   noteTitle,
   noteTools,
   ROW_MS,
   SETTLE_MS,
+  textChange,
 } from '../../../src/features/backlog/notes';
 import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
 
@@ -286,5 +291,76 @@ describe('proposals from notes', () => {
     const ticket = await backlog.readTicket({ id: 'BL-2', title: '' });
     expect(ticket.description).toBe("**When it's done:** it's dark.\n\nFrom [NOTE-1](notes/NOTE-1.md).");
     expect((await notes.read(id))?.became).toEqual([{ id: 'BL-2', kind: 'proposal' }]);
+  });
+});
+
+describe('editing a sent note and writing more in it (BL-204)', () => {
+  const at = '2026-10-25T12:00:00.000Z';
+
+  it('puts the note where its agent takes the change in, whatever its state', () => {
+    // Not picked up yet: updated, it settles again.
+    expect(changedState({ created: at, status: 'open' }, at)).toEqual({ created: at, status: 'open', edited: at });
+    // Being worked on, or waiting for a limit: its chat goes on with the change.
+    const limit = { until: at, known: true, kind: 'usage' as const };
+    expect(changedState({ created: at, status: 'open', session: 's', limit }, at)).toMatchObject({ status: 'open', changed: at, limit });
+    // Asking: it's your answer.
+    expect(changedState({ created: at, status: 'asking', session: 's' }, at)).toMatchObject({ status: 'open', changed: at });
+    // Handled: opened again.
+    const reopened = changedState({ created: at, status: 'handled', session: 's', handled: at }, at);
+    expect(reopened).toEqual({ created: at, status: 'open', session: 's', changed: at, reopened: at });
+    // A note handled with another goes on with it.
+    expect(changedState({ created: at, status: 'open', with: 'NOTE-1' }, at)).toMatchObject({ changed: at });
+    expect(changedState({ created: at, status: 'draft' }, at)).toEqual({ created: at, status: 'draft' });
+  });
+
+  it('says what an edit changed, line by line', () => {
+    expect(textChange('Make it green\nand round', 'Make it blue\nand round\nand big')).toEqual(['- Make it green', '+ Make it blue', '+ and big']);
+    expect(editEntry('a', 'b')).toBe('You edited the note:\n\n```diff\n- a\n+ b\n```');
+  });
+
+  it('saves an edit with its title and an entry, and a comment, in every state', async () => {
+    const notes = store();
+    const n = await notes.add('Make the button green', [], new Date(T0));
+    expect(await notes.edit(n.id, 'Make the button green', new Date(T0 + 1000))).toBe(false);
+
+    expect(await notes.edit(n.id, 'Make the button blue\n\n![shot.png](NOTE-1/shot.png)', new Date(T0 + 1000))).toBe(true);
+    let read = await notes.read(n.id);
+    expect(read).toMatchObject({ title: 'Make the button blue', text: 'Make the button blue\n\n![shot.png](NOTE-1/shot.png)', status: 'open' });
+    expect(read?.edited).toBe(new Date(T0 + 1000).toISOString());
+    expect(read?.activity).toEqual([
+      expect.objectContaining({ author: 'You', body: expect.stringContaining('- Make the button green\n+ Make the button blue') }),
+    ]);
+
+    await notes.setState(n.id, (s) => ({ ...s, status: 'handled', session: 's-1', handled: 'x' }));
+    expect(await notes.comment(n.id, 'And make it round', new Date(T0 + 2000))).toBe(true);
+    read = await notes.read(n.id);
+    expect(read).toMatchObject({ status: 'open', reopened: new Date(T0 + 2000).toISOString(), session: 's-1' });
+    expect(read?.handled).toBeUndefined();
+    expect(read?.activity.at(-1)).toMatchObject({ author: 'You', body: 'And make it round' });
+  });
+
+  it('writes a comment on a note handled with another into the one that leads, and moves both', async () => {
+    const notes = store();
+    const a = await notes.add('One', [], new Date(T0));
+    const b = await notes.add('Two', [], new Date(T0 + 1000));
+    await notes.setState(a.id, (s) => ({ ...s, status: 'asking', session: 's-1', group: [b.id] }));
+    await notes.setState(b.id, (s) => ({ ...s, status: 'asking', with: a.id }));
+    await notes.comment(b.id, 'Both, please');
+    expect((await notes.read(a.id))?.activity.at(-1)?.body).toBe('Both, please');
+    expect((await notes.list()).map((n) => n.status)).toEqual(['open', 'open']);
+  });
+
+  it('tells a reopened note agent to update the tickets it became', () => {
+    const o = {
+      agent: 'Nova-3',
+      notes: [{ id: 'NOTE-1', title: 'Green', file: '/b/notes/NOTE-1.md' }],
+      backlogDir: '/b',
+      became: [{ id: 'BL-9', kind: 'proposal' as const }],
+    };
+    expect(noteFollowUp(o, 'reopened')).toMatch(/^The note was handled \(Became BL-9 \(proposal\)\), and the user wrote in it since/);
+    const fresh = noteReopenPrompt(o);
+    expect(fresh).toMatch(/^You are agent Nova-3, handling note NOTE-1/);
+    expect(fresh).toMatch(/update the proposals' descriptions/);
+    expect(noteFollowUp(o)).toMatch(/You edited the note" gives what changed/);
   });
 });

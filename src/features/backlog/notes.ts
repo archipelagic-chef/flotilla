@@ -65,6 +65,10 @@ export interface NoteState {
    * a guessed one tries again, waiting longer each time (`tries`, since `since`).
    */
   limit?: { until: string; known: boolean; kind: UsageLimit['kind']; tries?: number; since?: string };
+  /** You edited it or wrote in it since its agent took it in (ISO 8601, BL-204): its chat goes on with that next. */
+  changed?: string;
+  /** It was handled, and a change opened it again (ISO 8601, BL-204): its agent updates the tickets it became. */
+  reopened?: string;
 }
 
 export interface NoteOutcome {
@@ -240,17 +244,72 @@ export function notePrompt(o: { agent: string; notes: ReadonlyArray<Pick<Note, '
   ].join('\n\n');
 }
 
-/** A message to a note agent whose chat goes on: the user answered in the note, or Pause All paused it (BL-193). */
+/** What a reopened note's agent does (BL-204): the note was handled, and the user changed it since. */
+function reopenedLine(became: readonly NoteOutcome[]): string {
+  return `The note was handled (${becameText(became)}), and the user wrote in it since: read the entries at the end of the notes' "## Activity" sections ("You edited the note" gives what they changed in what they wrote). Take the change into the tickets it became: update the proposals' descriptions (their <id>.md), add to the tickets, or propose what's new, as the rules below say; end your reply with a line "Added to: <their ids>" for the tickets you changed.`;
+}
+
+/**
+ * A message to a note agent whose chat goes on: the user answered, commented or edited the note (BL-204), it was
+ * handled and the user changed it since (reopened), or Pause All paused it (BL-193).
+ */
 export function noteFollowUp(
-  o: { agent: string; notes: ReadonlyArray<{ id: string; file: string }>; backlogDir: string },
-  why: 'answered' | 'paused' = 'answered',
+  o: { agent: string; notes: ReadonlyArray<{ id: string; file: string }>; backlogDir: string; became?: readonly NoteOutcome[] },
+  why: 'answered' | 'paused' | 'reopened' = 'answered',
 ): string {
   return [
     why === 'paused'
       ? `You were paused (Pause All) and are resumed now: go on with the note where you left off.`
-      : `The user answered in the note since your last reply: read the entries at the end of its "## Activity" section, and go on with it.`,
+      : why === 'reopened'
+        ? reopenedLine(o.became ?? [])
+        : `The user wrote in the note since your last reply (an answer, a comment, or an edit of what they wrote: "You edited the note" gives what changed): read the entries at the end of the notes' "## Activity" sections, and go on with it.`,
     ...rules(o),
   ].join('\n\n');
+}
+
+/** A reopened note's first message, when its chat is gone (BL-204): a new chat, told what it became before. */
+export function noteReopenPrompt(o: Parameters<typeof notePrompt>[0] & { became: readonly NoteOutcome[] }): string {
+  const [lead, intro, ...rest] = notePrompt(o).split('\n\n');
+  return [lead, intro, reopenedLine(o.became), ...rest].join('\n\n');
+}
+
+/**
+ * A note's state once you edited it or wrote in it (BL-204): not picked up yet, it settles again; with an agent (working,
+ * or waiting for a limit), its chat goes on with it next; asking, it's your answer; handled, it's opened again.
+ */
+export function changedState(s: NoteState, at: string): NoteState {
+  if (s.status === 'draft') return s;
+  if (s.status === 'open' && !s.session && !s.with) return { ...s, edited: at };
+  if (s.status === 'handled') {
+    const { handled: _, ...rest } = s;
+    return { ...rest, status: 'open', changed: at, reopened: at };
+  }
+  return { ...s, status: 'open', changed: at };
+}
+
+/** What changed between two versions of a note's text, as a diff's lines ("- " gone, "+ " new), unchanged ones left out. */
+export function textChange(before: string, after: string): string[] {
+  const a = before.split(/\r?\n/);
+  const b = after.split(/\r?\n/);
+  // The longest common subsequence's lengths, from the ends.
+  const lcs = a.map(() => new Array<number>(b.length + 1).fill(0));
+  lcs.push(new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const out: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) (i++, j++);
+    else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) out.push(`- ${a[i++]}`);
+    else out.push(`+ ${b[j++]}`);
+  }
+  return out;
+}
+
+/** The activity entry an edit leaves (BL-204): "You edited the note", with what changed. */
+export function editEntry(before: string, after: string): string {
+  return ['You edited the note:', '', '```diff', ...textChange(before.trim(), after.trim()), '```'].join('\n');
 }
 
 /** The notes' files, in .flotilla/backlog/notes/. Only the leading window runs their agents; any window adds notes. */
@@ -308,6 +367,44 @@ export class NoteStore {
   async write(id: string, text: string): Promise<void> {
     if ((await this.read(id))?.status !== 'draft') throw new Error(`${id} was sent already.`);
     await writeAtomic(this.file(id), formatTicket({ title: noteTitle(text), description: text.trim(), activity: [] }));
+  }
+
+  /**
+   * You edited a sent note (BL-204), whatever its state: its text and title are the new ones, an entry says what changed,
+   * and the note goes where its agent takes the change in (see changedState). Says whether anything changed.
+   */
+  async edit(id: string, text: string, now = new Date()): Promise<boolean> {
+    const note = await this.read(id);
+    if (!note) throw new Error(`${id} is gone.`);
+    if (note.status === 'draft') throw new Error(`${id} wasn't sent yet.`);
+    if (!text.trim()) throw new Error('The note has no text.');
+    if (text.trim() === note.text) return false;
+    const next = this.queue.then(async () => {
+      const ticket = parseTicket((await fs.promises.readFile(this.file(id), 'utf8')).replace(/<!--[\s\S]*?-->/g, ''));
+      const entry = { date: entryDate(now), author: 'You', body: editEntry(ticket.description, text) };
+      await writeAtomic(this.file(id), formatTicket({ title: noteTitle(text), description: text.trim(), activity: [...ticket.activity, entry] }));
+    });
+    this.queue = next.catch(() => undefined);
+    await next;
+    await this.changed(note, now);
+    return true;
+  }
+
+  /** You wrote in a sent note (BL-204): your entry in the note that leads, an answer when it asks (see changedState). */
+  async comment(id: string, text: string, now = new Date()): Promise<boolean> {
+    const note = await this.read(id);
+    if (!note || note.status === 'draft' || !text.trim()) return false;
+    await this.append(note.with ?? id, { author: 'You', body: text.trim() }, now);
+    await this.changed(note, now);
+    return true;
+  }
+
+  /** The note changed: it and the notes handled with it, as changedState says. */
+  private async changed(note: Note, now: Date): Promise<void> {
+    const lead = note.with ?? note.id;
+    const group = lead === note.id ? (note.group ?? []) : ((await this.read(lead))?.group ?? []);
+    const at = now.toISOString();
+    for (const id of [lead, ...group]) if (fs.existsSync(this.stateFile(id))) await this.setState(id, (s) => changedState(s, at));
   }
 
   /** Drops a draft (its tab closed unsent): its files and images go. */
