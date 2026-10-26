@@ -10,6 +10,7 @@ import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
 import type { BacklogItemView as BacklogItem, WorkstreamView } from '../protocol';
 import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
+import { stopControlClick } from './cardClick';
 import { PriorityPicker } from './priority';
 import { cardStatus, cardSummary, type CardStatus } from '../../features/backlog/cardStatus';
 import './card.css';
@@ -330,7 +331,7 @@ export function ItemRow({
             />
           )}
           {!renaming && !item.proposed && (
-            <span class={`hover-actions${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+            <span class={`hover-actions${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={stopControlClick}>
               {!done && item.creating && (
                 <span class="icon" role="status" aria-label="Creating its worktree…" title="Creating its worktree…">
                   <i class="codicon codicon-loading codicon-modifier-spin" />
@@ -543,7 +544,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                 {summary && ` · ${summary}`}
               </span>
             </span>
-            <span class={`card-hover${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={(e) => e.stopPropagation()}>
+            <span class={`card-hover${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={stopControlClick}>
               <span class="card-details">
                 <span class="item-id">{item.id}</span>
                 {!item.proposed && (
