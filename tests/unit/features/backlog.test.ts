@@ -16,6 +16,7 @@ import {
   branchFor,
   branchMatches,
   currentPrefix,
+  discardItem,
   EMPTY_BACKLOG,
   entryAgent,
   idProblem,
@@ -26,7 +27,9 @@ import {
   nextId,
   parseNewItem,
   priorityFromName,
+  readyToMerge,
   removeItem,
+  reopenItem,
   unlinkIssue,
   updateItem,
 } from '../../../src/features/backlog/backlog';
@@ -47,6 +50,25 @@ function backlog(...titles: string[]): BacklogData {
 const order = (data: BacklogData) => data.items.map((i) => `${i.id}:${i.status}`);
 
 describe('backlog', () => {
+  it("discards an item as won't do, keeping it and its status, and reopens it into To Do", () => {
+    let data: BacklogData = { ...backlog('a', 'b'), mergeQueue: ['BL-2', 'BL-1'] };
+    data = updateItem(data, 'BL-2', { status: 'review' });
+    data = discardItem(data, 'BL-2', '2026-10-26T06:40:00Z');
+    expect(data.items.find((i) => i.id === 'BL-2')).toMatchObject({ status: 'review', discarded: { at: '2026-10-26T06:40:00Z' } });
+    expect(data.items).toHaveLength(2);
+    // It leaves the merge queue, and isn't ready to merge even approved.
+    expect(data.mergeQueue).toEqual(['BL-1']);
+    expect(readyToMerge({ status: 'review', review: { round: 1, state: 'approved', reviewer: 'Kit-9' }, discarded: { at: 'x' } })).toBe(false);
+    // Discarding again keeps the first date.
+    expect(discardItem(data, 'BL-2', 'later').items.find((i) => i.id === 'BL-2')?.discarded?.at).toBe('2026-10-26T06:40:00Z');
+    data = reopenItem(data, 'BL-2');
+    const reopened = data.items.find((i) => i.id === 'BL-2')!;
+    expect(reopened.status).toBe('todo');
+    expect('discarded' in reopened).toBe(false);
+    // An item that isn't discarded stays as it is.
+    expect(reopenItem(data, 'BL-1')).toEqual(data);
+  });
+
   it('numbers new items and puts them on top', () => {
     const data = backlog('first', 'second');
     expect(data.items.map((i) => [i.id, i.title])).toEqual([

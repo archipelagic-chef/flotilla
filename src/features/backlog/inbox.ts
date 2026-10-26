@@ -227,7 +227,8 @@ export function agentGuide(backlogDir: string, mode: AgentTicketMode): string {
 This repository's work is tracked in a backlog, in ${backlogDir}:
 
 - \`backlog.json\`: the items in priority order, with id, title, status (todo, doing, review, done), priority and
-  parent (the item one is part of). Read it; never edit it.
+  parent (the item one is part of); \`discarded\` marks one the user decided not to do: don't pick it up as work.
+  Read it; never edit it.
 - \`<id>.md\`: each item's ticket: "# Title", the description, then "## Activity" (comments and agents' reports).
 
 ## Work through a ticket

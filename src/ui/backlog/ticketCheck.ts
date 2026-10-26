@@ -101,6 +101,7 @@ export class TicketChecker {
     const found = new Map<string, Claim[]>();
     const data = await this.deps.backlog.read();
     for (const item of data.items) {
+      if (item.discarded) continue;
       if (item.status === 'done' && !item.merging && !item.review && !inQueue(data, item.id)) continue;
       const claims = await this.checkItem(item, ps);
       if (claims.length) found.set(item.id, claims);

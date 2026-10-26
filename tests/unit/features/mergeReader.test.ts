@@ -91,6 +91,9 @@ describe('lanes and warnings', () => {
     expect(laneOf({ status: 'review', review: { round: 1, state: 'approved', reviewer: 'Kit-9' } })).toBe('ready');
     expect(laneOf({ status: 'review', review: { round: 1, state: 'yours', reviewer: 'Kit-9' } })).toBe('review');
     expect(laneOf({ status: 'done' })).toBe('done');
+    // Discarded (BL-209): in no lane.
+    expect(laneOf({ status: 'todo', discarded: { at: '2026-10-26T06:40:00Z' } })).toBeUndefined();
+    expect(laneOf({ status: 'review', review: { round: 1, state: 'approved', reviewer: 'Kit-9' }, discarded: { at: 'x' } })).toBeUndefined();
   });
 
   it('warns about a Done item only while its work is unmerged and nothing superseded it', () => {

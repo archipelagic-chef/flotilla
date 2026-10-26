@@ -35,7 +35,7 @@ function firstLine(text: string): string {
  * turnOf), and a start that failed. Done items and proposals don't wait on the user.
  */
 export function needOf(item: BacklogItem, activity: TicketEntry[]): Need | undefined {
-  if (item.status === 'done' || item.proposed) return undefined;
+  if (item.status === 'done' || item.proposed || item.discarded) return undefined;
   const r = item.review;
   const turn = turnOf(item);
   if (turn?.mine) {

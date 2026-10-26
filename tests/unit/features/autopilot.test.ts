@@ -24,6 +24,9 @@ describe('the autopilot', () => {
     };
     expect(nextForAutopilot(data, new Set())?.id).toBe('BL-4');
     expect(nextForAutopilot(data, new Set(['BL-4']))?.id).toBe('BL-5');
+    // Discarded as won't do (BL-209): never taken.
+    const discarded = { ...data, items: data.items.map((i) => (i.id === 'BL-4' ? { ...i, discarded: { at } } : i)) };
+    expect(nextForAutopilot(discarded, new Set())?.id).toBe('BL-5');
     // Being discussed with an agent: the owner starts it.
     const discussed = { ...data, items: data.items.map((i) => (i.id === 'BL-4' ? { ...i, shaping: { agent: 'Nova-7', session: 's' } } : i)) };
     expect(nextForAutopilot(discussed, new Set())?.id).toBe('BL-5');

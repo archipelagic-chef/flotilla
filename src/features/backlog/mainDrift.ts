@@ -27,8 +27,8 @@ export interface MainCheck {
 }
 
 /** Tickets whose branches are checked: worked on or in review, and accepted. */
-export function isOpen(item: Pick<BacklogItem, 'status' | 'proposed'>): boolean {
-  return (item.status === 'doing' || item.status === 'review') && !item.proposed;
+export function isOpen(item: Pick<BacklogItem, 'status' | 'proposed' | 'discarded'>): boolean {
+  return (item.status === 'doing' || item.status === 'review') && !item.proposed && !item.discarded;
 }
 
 /** What a check of the item's branches needs: the branches of it that exist, at their heads (now). */

@@ -30,6 +30,8 @@ export function describeChanges(before: BacklogItem, after: BacklogItem, by: str
   const say = (verb: string) => out.push(sentence(by, verb));
   if (before.proposed && !after.proposed) say('accepted it into the backlog.');
   if (!before.merged && after.merged) say(`merged it into **${after.merged.into}** (${after.merged.commit.slice(0, 7)}).`);
+  if (!before.discarded && after.discarded) say("discarded it: it won't be done (its ticket is kept, and it can be reopened).");
+  if (before.discarded && !after.discarded) say('reopened it.');
   if (before.status !== after.status) say(`moved it from **${STATUS_LABEL[before.status]}** to **${STATUS_LABEL[after.status]}**.`);
   if (before.priority !== after.priority) {
     if (!after.priority) say(`cleared its priority (was ${PRIORITY[before.priority!] ?? before.priority}).`);

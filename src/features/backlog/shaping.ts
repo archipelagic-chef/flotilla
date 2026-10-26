@@ -41,8 +41,8 @@ export function readyToStart(entries: TicketEntry[], agent: string): boolean {
 }
 
 /** Whether a local item can be discussed: nobody works on it (a proposal, or To Do). */
-export function discussable(item: Pick<BacklogItem, 'status' | 'proposed'>): boolean {
-  return !!item.proposed || item.status === 'todo';
+export function discussable(item: Pick<BacklogItem, 'status' | 'proposed' | 'discarded'>): boolean {
+  return !!item.proposed || (item.status === 'todo' && !item.discarded);
 }
 
 /**

@@ -41,6 +41,8 @@ describe('needOf', () => {
     expect(needOf(item({ review: review({ state: 'approved', reviewer: 'Ada-1' }) }), [])?.line).toBe('Approved by Ada-1. Ready to merge.');
     expect(needOf(item({ review: review({ state: 'approved', byUser: true }) }), [])?.line).toBe('Approved by you. Ready to merge.');
     expect(needOf(item({ status: 'done', review: review({ state: 'approved' }) }), [])).toBeUndefined();
+    // Discarded as won't do (BL-209): nothing waits on the user.
+    expect(needOf(item({ review: review({ state: 'approved' }), discarded: { at: 'T' } }), [])).toBeUndefined();
   });
 
   it('gives a stopped review its reason; one the user stopped is still theirs to decide', () => {

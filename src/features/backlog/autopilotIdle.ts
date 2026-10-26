@@ -42,7 +42,7 @@ function listed(ids: string[]): string {
  * merges that failed, the starts that failed, or nothing left. Undefined when a ticket could start.
  */
 export function idleReason(data: BacklogData, waits: ReadonlyMap<string, readonly string[]>, failedStarts: ReadonlySet<string>): string | undefined {
-  const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping && !data.items.some((c) => c.parent === i.id));
+  const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !data.items.some((c) => c.parent === i.id));
   const failedMerges = data.items.filter((i) => i.status !== 'done' && i.merging?.state === 'failed').map((i) => i.id);
   const merges = failedMerges.length
     ? `${failedMerges.length} merge${failedMerges.length === 1 ? '' : 's'} failed (${listed(failedMerges)}): ${failedMerges.length === 1 ? 'it needs' : 'they need'} you`

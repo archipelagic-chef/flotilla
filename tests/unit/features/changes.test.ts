@@ -16,6 +16,11 @@ describe('changes noted in a ticket', () => {
       "You set its agents' model to **opus**.",
     ]);
     expect(describeChanges({ ...item, proposed: { by: 'a3f9' } }, item, 'You')).toEqual(['You accepted it into the backlog.']);
+    const discarded = { ...item, status: 'doing' as const, discarded: { at: '2026-10-26T06:40:00Z' } };
+    expect(describeChanges({ ...item, status: 'doing' }, discarded, 'You')).toEqual([
+      "You discarded it: it won't be done (its ticket is kept, and it can be reopened).",
+    ]);
+    expect(describeChanges(discarded, item, 'You')).toEqual(['You reopened it.', 'You moved it from **In Progress** to **To Do**.']);
   });
 
   it('says nothing about what it leaves to others (reviews, notes)', () => {

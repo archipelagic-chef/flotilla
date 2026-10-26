@@ -47,6 +47,8 @@ export interface BacklogItem {
   proposed?: { by?: string };
   /** Its review loop (a reviewer agent, rounds, verdict), once it has been in review. */
   review?: ReviewState;
+  /** Discarded as "won't do" (BL-209), when (ISO 8601): kept with its ticket, out of the lanes, until it's reopened. */
+  discarded?: { at: string };
   /** Done with work left unmerged, dismissed as superseded by this item (its id). */
   supersededBy?: string;
   /** Its description's fingerprint when last seen: a change to it (in the ticket file) is noted in its activity. */
@@ -137,7 +139,9 @@ export type BacklogLane = BacklogStatus | 'ready';
 
 export const BACKLOG_LANES: readonly BacklogLane[] = ['todo', 'doing', 'review', 'ready', 'done'];
 
-export function laneOf(item: Pick<BacklogItem, 'status' | 'review'>): BacklogLane {
+/** An item's lane; a discarded item is in none (BL-209). */
+export function laneOf(item: Pick<BacklogItem, 'status' | 'review' | 'discarded'>): BacklogLane | undefined {
+  if (item.discarded) return undefined;
   return item.status === 'review' && item.review?.state === 'approved' ? 'ready' : item.status;
 }
 
@@ -231,8 +235,8 @@ export function updateItem(
 }
 
 /** Whether an item is ready to merge: in review, approved, and not being merged already. */
-export function readyToMerge(item: Pick<BacklogItem, 'status' | 'review' | 'proposed' | 'merging'>): boolean {
-  return item.status === 'review' && item.review?.state === 'approved' && !item.proposed && !item.merging;
+export function readyToMerge(item: Pick<BacklogItem, 'status' | 'review' | 'proposed' | 'merging' | 'discarded'>): boolean {
+  return item.status === 'review' && item.review?.state === 'approved' && !item.proposed && !item.merging && !item.discarded;
 }
 
 /** Accepts an agent's proposed item: it becomes an ordinary one. */
@@ -255,6 +259,28 @@ export function childrenOf(data: BacklogData, id: string): BacklogItem[] {
 
 export function removeItem(data: BacklogData, id: string): BacklogData {
   return { ...data, items: data.items.filter((i) => i.id !== id) };
+}
+
+/** Discards an item as "won't do" (BL-209): its status and ticket are kept, and it leaves the lanes until it's reopened. */
+export function discardItem(data: BacklogData, id: string, at: string): BacklogData {
+  const queue = data.mergeQueue?.filter((q) => q !== id);
+  return {
+    ...data,
+    ...(queue ? { mergeQueue: queue } : {}),
+    items: data.items.map((i) => (i.id === id && !i.discarded ? { ...i, discarded: { at } } : i)),
+  };
+}
+
+/** Reopens a discarded item: it goes back to To Do. */
+export function reopenItem(data: BacklogData, id: string): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id || !i.discarded) return i;
+      const { discarded: _d, ...rest } = i;
+      return { ...rest, status: 'todo' };
+    }),
+  };
 }
 
 /** Records that the autopilot couldn't start an item (with why), or clears that record (without a failure). */

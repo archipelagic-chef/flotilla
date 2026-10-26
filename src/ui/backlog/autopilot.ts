@@ -100,7 +100,7 @@ const AWAY_MS = 60 * 60_000;
  * (accepting does; a To Do is started with Start), so only then is it taken.
  */
 export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): BacklogItem | undefined {
-  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
+  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
 }
 
 /**
@@ -273,8 +273,8 @@ export class Autopilot implements vscode.Disposable {
     // Without the repository's worktrees (yet), there's nothing to compare.
     const main = this.deps.repository?.current.find((w) => w.worktree.isMain)?.worktree.path;
     if (!main || !vscode.workspace.getConfiguration('flotilla').get<boolean>('autopilot.avoidClashes', false)) return found;
-    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.shaping);
-    const active = data.items.filter((i) => i.status === 'doing' || i.status === 'review');
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping);
+    const active = data.items.filter((i) => (i.status === 'doing' || i.status === 'review') && !i.discarded);
     if (!todo.length || !active.length) return found;
     const base = (await resolveBase(main, readSettings().defaultBase)) ?? 'HEAD';
     const busy = new Map<string, Set<string>>();
@@ -325,7 +325,7 @@ export class Autopilot implements vscode.Disposable {
 
   /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55), and for which. */
   private async waiting(data: BacklogData): Promise<Map<string, string[]>> {
-    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed);
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded);
     const waits = await Promise.all(
       todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).map((d) => d.id)),
     );
