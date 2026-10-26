@@ -78,6 +78,23 @@ export function answerNote(id: string): void {
   send({ type: 'note', op: 'open', id, answer: true });
 }
 
+/** A note's × (BL-215): deletes it, with the notes handled with it, once you confirm (its agent stops). */
+function DeleteNote({ id }: { id: string }) {
+  return (
+    <button
+      class="icon note-delete"
+      title="Delete the note: its agent stops; the tickets it became stay"
+      aria-label={`Delete ${id}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({ type: 'note', op: 'delete', id });
+      }}
+    >
+      <i class="codicon codicon-close" />
+    </button>
+  );
+}
+
 /**
  * A note in the Notes lane (BL-216): its id and status, then its title, a line each; a click anywhere on it (or Enter)
  * opens its tab, where its agent's questions are answered. Its buttons (Edit, the tickets it became) do only their own.
@@ -99,6 +116,7 @@ function NoteCard({ note, followers }: { note: NoteView; followers: NoteView[] }
         <i class={`codicon codicon-${status.icon}`} />
         <span class="note-status">{status.label(note)}</span>
         <EditNote id={note.id} />
+        <DeleteNote id={note.id} />
       </div>
       <div class="note-line" onClick={stopControlClick}>
         <span class="note-title">{note.title}</span>
@@ -158,6 +176,7 @@ export function NotesLane({ notes }: { notes: NoteView[] }) {
                   </span>
                   <Became note={n} />
                   <EditNote id={n.id} />
+                  <DeleteNote id={n.id} />
                 </div>
               ))}
             </div>

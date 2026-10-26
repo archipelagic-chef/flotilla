@@ -21,6 +21,7 @@ import {
  *   NOTE-12.md      the note as written (in the New Note tab), then "## Activity" (the agent's replies, your answers)
  *   NOTE-12.json    its state: a draft, open, asking or handled, its agent and chat, the notes handled with it
  *   NOTE-12.became  what it became, a line per ticket ("BL-180 proposal", "BL-12 added"), appended by whoever records it
+ *   NOTE-12.deleted left when it was deleted (BL-215): its id isn't taken again
  *   NOTE-12/        its images
  *
  * New Note opens a draft in the New Note tab (its pasted images are saved in its folder as you write); Send writes it
@@ -426,6 +427,44 @@ export class NoteStore {
     return true;
   }
 
+  /** A note and the notes handled with it (BL-215), the one that leads first; none when it isn't there. */
+  async groupOf(id: string): Promise<string[]> {
+    const note = await this.read(id);
+    if (!note) return [];
+    const lead = note.with ? ((await this.read(note.with)) ?? note) : note;
+    const rest = (await this.list()).filter((n) => n.id !== lead.id && (n.with === lead.id || lead.group?.includes(n.id))).map((n) => n.id);
+    return [lead.id, ...rest];
+  }
+
+  /**
+   * Deletes a note whatever its state (BL-215), with the notes handled with it: their files, states, records and images.
+   * Each leaves <id>.deleted, so its id isn't taken again (a ticket's link to it would open another note) and a link to
+   * it can say it was deleted. The tickets it became stay. Returns the ids deleted.
+   */
+  async delete(id: string): Promise<string[]> {
+    const ids = await this.groupOf(id);
+    const next = this.queue.then(async () => {
+      for (const n of ids) {
+        await fs.promises.writeFile(this.deletedFile(n), '');
+        for (const f of [this.file(n), this.stateFile(n), path.join(this.dir, `${n}.became`)]) await fs.promises.rm(f, { force: true });
+        await fs.promises.rm(path.join(this.dir, n), { recursive: true, force: true });
+      }
+    });
+    this.queue = next.catch(() => undefined);
+    await next;
+    return ids;
+  }
+
+  /** Whether a note was deleted (BL-215). */
+  wasDeleted(id: string): boolean {
+    return fs.existsSync(this.deletedFile(id));
+  }
+
+  /** Whether a note is there (its state file): a run whose note is gone stops. */
+  exists(id: string): boolean {
+    return fs.existsSync(this.stateFile(id));
+  }
+
   /** Adds a note at once (sent): its images saved in its folder and linked at its end. */
   async add(text: string, images: ReadonlyArray<{ name: string; bytes: Uint8Array }> = [], now = new Date()): Promise<Note> {
     const state: NoteState = { created: now.toISOString(), status: 'open' };
@@ -572,5 +611,10 @@ export class NoteStore {
   private stateFile(id: string): string {
     this.file(id); // validates the id
     return path.join(this.dir, `${id}.json`);
+  }
+
+  private deletedFile(id: string): string {
+    this.file(id); // validates the id
+    return path.join(this.dir, `${id}.deleted`);
   }
 }

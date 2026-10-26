@@ -1759,6 +1759,9 @@ export class TicketPanels implements vscode.Disposable {
     const candidates = path.isAbsolute(link.path) ? [link.path] : roots.map((r) => path.join(r, link.path));
     const found = candidates.find((f) => fs.existsSync(f));
     if (!found) {
+      // A "From notes" link to a note that was deleted (BL-215).
+      const note = /(?:^|[\\/])notes[\\/](NOTE-\d+)\.md$/.exec(link.path)?.[1];
+      if (note) return void vscode.window.showInformationMessage(`${note} was deleted: the tickets it became stay.`);
       void vscode.window.showWarningMessage(`${link.path} isn't there (anymore): not in ${item.id}'s worktrees, nor in the main worktree.`);
       return;
     }
