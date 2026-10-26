@@ -1,5 +1,7 @@
 // A fake of GitHub's Actions API, for trying the CI/CD view offline: npm run fake-github. It keeps pull requests too
 // (BL-221): opened, listed by head, commented on and closed in memory, and merged once origin's base has their commits.
+// Their files are the local repository's diff from base, and they take reviews (BL-223) with line comments in that diff,
+// refusing to approve or request changes as GitHub does on your own pull request.
 // It answers the routes under /repos/{owner}/{repo}/actions that Flotilla calls, from memory. A branch's runs are made
 // when they're first read, from the commits of a local repository (the playground, by default), and each run moves on
 // by the clock: queued, then running, then done. With runsOnPush, a branch pushed to the repository's origin meanwhile
@@ -99,6 +101,36 @@ function gitBranch(dir, branch) {
   }
 }
 
+/** The files a pull request changes, from base to its head, as GitHub lists them (with their patches). */
+function gitFiles(dir, base, sha) {
+  let diff;
+  try {
+    const ref = ['refs/heads/', 'refs/remotes/origin/']
+      .map((p) => `${p}${base}`)
+      .find((r) => {
+        try {
+          execFileSync('git', ['rev-parse', '--verify', '-q', r], { cwd: dir, stdio: 'ignore' });
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    if (!ref) return [];
+    diff = execFileSync('git', ['diff', '--no-color', '--no-ext-diff', '-U3', `${ref}...${sha}`], { cwd: dir, encoding: 'utf8', maxBuffer: 64 << 20 });
+  } catch {
+    return [];
+  }
+  return diff
+    .split(/^diff --git /m)
+    .slice(1)
+    .map((part) => {
+      const name = /^\+\+\+ b\/(.*)$/m.exec(part)?.[1] ?? /^--- a\/(.*)$/m.exec(part)?.[1] ?? '';
+      const at = part.indexOf('\n@@');
+      return { filename: name, status: 'modified', patch: at >= 0 ? part.slice(at + 1).replace(/\n$/, '') : undefined };
+    })
+    .filter((f) => f.filename);
+}
+
 /** Whether origin's copy of a branch (its remote-tracking ref) has commit `sha`, as GitHub's branch would. */
 function originHas(dir, branch, sha) {
   try {
@@ -151,7 +183,8 @@ export async function startFakeGitHub({
   let nextRunId = 1000;
   let nextJobId = 50_000;
   let base = '';
-  const pulls = []; // { repo, number, head, base, title, body, sha, state, mergedAt, comments }
+  const pulls = []; // { repo, number, head, base, title, body, sha, state, mergedAt, comments, reviews }
+  let reviewIds = 0;
   const issueNumbers = new Map(); // "owner/repo" → the last pull request's number
 
   /** The branch's commit: from the repository, or made up. Undefined when the repository lacks the branch. */
@@ -441,6 +474,18 @@ export async function startFakeGitHub({
     };
   }
 
+  function reviewJson(pr, r) {
+    const state = { APPROVE: 'APPROVED', REQUEST_CHANGES: 'CHANGES_REQUESTED', COMMENT: 'COMMENTED' }[r.event] ?? 'COMMENTED';
+    return { id: r.id, body: r.body, state, commit_id: r.commit, html_url: `https://github.com/${pr.repo}/pull/${pr.number}#pullrequestreview-${r.id}` };
+  }
+
+  /** A page of a list (?per_page, ?page), as GitHub answers. */
+  function page(list, query) {
+    const size = Number(query.get('per_page') ?? 30);
+    const n = Number(query.get('page') ?? 1);
+    return list.slice((n - 1) * size, n * size);
+  }
+
   /** The pull requests API of one repository: `rest` is the path after /repos/{owner}/{repo}. */
   function pullsApi({ method, repo, rest, query, at, body }) {
     let m;
@@ -464,7 +509,7 @@ export async function startFakeGitHub({
         return json(422, { message: 'Validation Failed', errors: [{ message: `A pull request already exists for ${repo.split('/')[0]}:${head}.` }] });
       const number = (issueNumbers.get(repo) ?? 0) + 1;
       issueNumbers.set(repo, number);
-      const pr = { repo, number, head, base: baseRef, title: body.title, body: body.body ?? '', sha: commit.sha, state: 'open', comments: [] };
+      const pr = { repo, number, head, base: baseRef, title: body.title, body: body.body ?? '', sha: commit.sha, state: 'open', comments: [], reviews: [] };
       pulls.push(pr);
       return json(201, pullJson(pr, at));
     }
@@ -480,6 +525,53 @@ export async function startFakeGitHub({
       if (typeof body?.title === 'string') pr.title = body.title;
       if (typeof body?.body === 'string') pr.body = body.body;
       return json(200, pullJson(pr, at));
+    }
+    if (method === 'GET' && (m = /^\/pulls\/(\d+)\/files$/.exec(rest))) {
+      const pr = find(m[1]);
+      if (!pr) return notFound();
+      pullJson(pr, at);
+      return json(200, page(repoDir && pr.sha ? gitFiles(repoDir, pr.base, pr.sha) : [], query));
+    }
+    if (method === 'GET' && (m = /^\/pulls\/(\d+)\/reviews$/.exec(rest))) {
+      const pr = find(m[1]);
+      return pr
+        ? json(
+            200,
+            page(
+              pr.reviews.map((r) => reviewJson(pr, r)),
+              query,
+            ),
+          )
+        : notFound();
+    }
+    if (method === 'POST' && (m = /^\/pulls\/(\d+)\/reviews$/.exec(rest))) {
+      const pr = find(m[1]);
+      if (!pr) return notFound();
+      const event = body?.event ?? 'COMMENT';
+      // Its pull requests are opened with the same sign-in that reviews them: GitHub refuses a verdict on your own.
+      if (event === 'APPROVE' || event === 'REQUEST_CHANGES')
+        return json(422, {
+          message: 'Unprocessable Entity',
+          errors: [`Review Can not ${event === 'APPROVE' ? 'approve' : 'request changes on'} your own pull request`],
+        });
+      const comments = Array.isArray(body?.comments) ? body.comments : [];
+      pullJson(pr, at);
+      const files = repoDir && pr.sha ? gitFiles(repoDir, pr.base, pr.sha) : [];
+      const inDiff = (c) => {
+        const patch = files.find((f) => f.filename === c.path)?.patch ?? '';
+        let line = 0;
+        for (const l of patch.split('\n')) {
+          const h = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(l);
+          if (h) line = Number(h[1]);
+          else if (!l.startsWith('-') && !l.startsWith('\\') && line++ === c.line) return true;
+        }
+        return false;
+      };
+      if (comments.some((c) => !inDiff(c)))
+        return json(422, { message: 'Unprocessable Entity', errors: ['Pull request review thread line must be part of the diff'] });
+      const review = { id: (reviewIds += 1), event, body: String(body?.body ?? ''), comments, commit: pr.sha };
+      pr.reviews.push(review);
+      return json(200, reviewJson(pr, review));
     }
     if (method === 'POST' && (m = /^\/issues\/(\d+)\/comments$/.exec(rest))) {
       const pr = find(m[1]);
@@ -551,7 +643,7 @@ export async function startFakeGitHub({
     /** Seeds a branch's runs now, as the first read does (for tests). */
     seed: (repo, branch) => seedBranch(repo, branch),
     /** The pull requests it has, with their comments (for tests). */
-    pulls: () => pulls.map((p) => ({ ...p, comments: [...p.comments] })),
+    pulls: () => pulls.map((p) => ({ ...p, comments: [...p.comments], reviews: p.reviews.map((r) => ({ ...r })) })),
     // Kept-alive connections (a VS Code window's) would hold the server open.
     close: () =>
       new Promise((resolve) => {

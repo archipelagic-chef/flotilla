@@ -33,6 +33,14 @@ export interface FakeGitHub {
     state: 'open' | 'closed';
     mergedAt?: number;
     comments: string[];
+    /** The reviews posted on it (BL-223), with their line comments. */
+    reviews: Array<{
+      id: number;
+      event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+      body: string;
+      comments: Array<{ path: string; line: number; start_line?: number; body: string }>;
+      commit: string;
+    }>;
   }>;
   close(): Promise<void>;
 }

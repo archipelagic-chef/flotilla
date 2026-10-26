@@ -1,4 +1,4 @@
-import type { PullRequestInfo } from '../ci/pullRequests';
+import type { PullRequestInfo, PullRequestReview } from '../ci/pullRequests';
 import type { PushedInfo } from './branchPush';
 import type { HistoryRewrite, HistoryVersion } from './history';
 import type { MainCheck } from './mainDrift';
@@ -88,6 +88,8 @@ export interface BacklogItem {
   pushed?: PushedInfo[];
   /** Its branches' pull requests on GitHub (BL-221), opened once they're pushed for review, with their last known state. */
   pullRequests?: PullRequestInfo[];
+  /** Its reviewer agents' review rounds, posted on its open pull requests (BL-223). */
+  pullRequestReviews?: PullRequestReview[];
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
