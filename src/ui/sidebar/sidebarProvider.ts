@@ -834,7 +834,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         else if (m.op === 'showLog') await this.ci.showLog(m.key, m.jobId, m.jobName);
         else if (m.op === 'act') await this.ci.act(m.key, m.run, m.action).catch((e: unknown) => this.report(e));
         else if (m.op === 'fix') await this.ci.fix(m.key, m.run, m.job).catch((e: unknown) => this.report(e));
-        else await this.ci.refresh();
+        // runCi and runWorkflow are a ticket's (BL-222): the view's Run Workflow… is a message of its own.
+        else if (m.op === 'refresh') await this.ci.refresh();
         return;
       case 'runWorkflow': {
         const folder = this.root(m.key);

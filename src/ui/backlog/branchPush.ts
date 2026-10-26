@@ -10,6 +10,7 @@ import {
   pushedInfo,
   pushNote,
   pushOnApproval,
+  type PushResult,
   type PushSetting,
 } from '../../features/backlog/branchPush';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -134,20 +135,7 @@ export class BranchPush implements vscode.Disposable {
         if (!tip) continue;
         let last = item.pushed?.find((p) => p.branch === branch);
         if (last?.commit !== tip || fresh.has(item.id)) {
-          this.deps.output.appendLine(`Push: ${branch} (${item.id}) to origin.`);
-          const result = await pushBranch(cwd, branch, { leased: last && !last.error ? last.commit : undefined });
-          this.deps.output.appendLine(`Push: ${branch}: ${result.kind}${result.kind === 'failed' ? `: ${result.reason}` : ''}`);
-          last = pushedInfo(result);
-          const info = last;
-          await this.deps.backlog.change(
-            (d) => ({
-              ...d,
-              items: d.items.map((i) => (i.id === item.id ? { ...i, pushed: [...(i.pushed ?? []).filter((p) => p.branch !== branch), info] } : i)),
-            }),
-            { by: 'Flotilla' },
-          );
-          const note = pushNote(result);
-          if (note) await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
+          last = pushedInfo(await pushItemBranch(this.deps, item, branch));
         }
         if (prs && !last.error) await this.openPullRequest(prs, item, branch, tip, fresh.has(item.id));
       }
@@ -236,4 +224,33 @@ export class BranchPush implements vscode.Disposable {
       by: 'Flotilla',
     });
   }
+}
+
+/** With the fake GitHub on, only a local origin is pushed to (BL-113): false (and why, in the output) otherwise. */
+export async function originIsLocal(cwd: string, output: vscode.OutputChannel): Promise<boolean> {
+  const url = (await runGit(['remote', 'get-url', '--push', PUSH_REMOTE], { cwd }).catch(() => '')).trim();
+  if (isLocalUrl(url)) return true;
+  output.appendLine(`Push: off, the fake GitHub is on and origin (${url}) isn't local.`);
+  return false;
+}
+
+/**
+ * Pushes one of an item's branches to origin (pushBranch's checks, leased on its last push), keeps the result on the
+ * item and notes it in the ticket: on approval (BranchPush) and from a ticket's Run CI (BL-222).
+ */
+export async function pushItemBranch(deps: Pick<BranchPushDeps, 'backlog' | 'mainRoot' | 'output'>, item: BacklogItem, branch: string): Promise<PushResult> {
+  const last = item.pushed?.find((p) => p.branch === branch);
+  deps.output.appendLine(`Push: ${branch} (${item.id}) to origin.`);
+  const result = await pushBranch(deps.mainRoot, branch, { leased: last && !last.error ? last.commit : undefined });
+  deps.output.appendLine(`Push: ${branch}: ${result.kind}${result.kind === 'failed' ? `: ${result.reason}` : ''}`);
+  await deps.backlog.change(
+    (d) => ({
+      ...d,
+      items: d.items.map((i) => (i.id === item.id ? { ...i, pushed: [...(i.pushed ?? []).filter((p) => p.branch !== branch), pushedInfo(result)] } : i)),
+    }),
+    { by: 'Flotilla' },
+  );
+  const note = pushNote(result);
+  if (note) await deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: note });
+  return result;
 }
