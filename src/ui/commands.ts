@@ -14,9 +14,11 @@ import {
   type BacklogItem,
   branchFor,
   branchMatches,
+  discardItem,
   itemBranches,
   linkIssue,
   removeItem,
+  reopenItem,
   setStartFailed,
   updateItem,
 } from '../features/backlog/backlog';
@@ -209,6 +211,8 @@ function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Comman
     'flotilla.createBacklogWorktreeNamed': (card?: unknown) => startBacklogItem(ctx, backlogIdOf(card), { agent: false, newWorktree: 'named' }),
     'flotilla.renameBacklogItem': (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)),
     'flotilla.deleteBacklogItem': (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.discardBacklogItem': (card?: unknown) => discardBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.reopenBacklogItem': (card?: unknown) => reopenBacklogItem(ctx, backlogIdOf(card)),
     'flotilla.selectBacklogWorktree': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false),
     'flotilla.openBacklogWorktreeInNewWindow': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true),
     'flotilla.cleanUpHistory': (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts),
@@ -523,6 +527,26 @@ async function deleteBacklogItem(ctx: CommandContext, id: string | undefined): P
   if (choice !== 'Delete') return;
   await ctx.backlog.change((d) => removeItem(d, id));
   await ctx.backlog.deleteDocument(id);
+}
+
+/** Discards an item as "won't do" (BL-209), after a confirmation: its ticket is kept, and Reopen brings it back. */
+async function discardBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  const item = (await ctx.backlog.read()).items.find((i) => i.id === id);
+  if (!item || item.discarded) return;
+  const choice = await vscode.window.showWarningMessage(
+    `Discard ${item.id} '${item.title}' as won't do?`,
+    { modal: true, detail: 'It leaves the lanes; its ticket and activity are kept, and you can reopen it from the Discarded section.' },
+    'Discard',
+  );
+  if (choice !== 'Discard') return;
+  await ctx.backlog.change((d) => discardItem(d, id, new Date().toISOString()));
+}
+
+/** Reopens a discarded item: back to To Do. */
+async function reopenBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+  if (!id) return;
+  await ctx.backlog.change((d) => reopenItem(d, id));
 }
 
 /** Readers of flotilla.backlog.commitPrefix. */

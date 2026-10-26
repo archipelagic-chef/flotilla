@@ -50,6 +50,7 @@ import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';
 import { STEP } from '../../features/backlog/nextSteps';
+import { discardedLabel } from '../../features/backlog/cardStatus';
 import { CheckResult } from './checkResult';
 
 /**
@@ -183,7 +184,9 @@ function App() {
   showingEntries(ticket.activity.length);
   const worktrees = ticket.worktrees;
   const active = activeAgents(ticket.agents);
-  const done = ticket.item.status === 'done';
+  // Discarded as won't do (BL-209): nothing to start until it's reopened.
+  const discarded = ticket.item.discarded;
+  const done = ticket.item.status === 'done' || !!discarded;
   const steps = ticketSteps(ticket, ci);
   const working = steps.main === 'openChat';
   // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
@@ -232,6 +235,15 @@ function App() {
               </ActionButton>
               <ActionButton class="button secondary" message={{ type: 'dismiss' }} working="Dismissing…">
                 Dismiss
+              </ActionButton>
+            </div>
+          )}
+          {discarded && !ticket.remote && (
+            <div class="proposal-banner discarded-banner">
+              <i class="codicon codicon-circle-slash" />
+              <span>{discardedLabel(discarded.at)} as won't do. Its ticket is kept: reopen it to put it back in To Do.</span>
+              <ActionButton class="button" message={{ type: 'reopen' }} working="Reopening…">
+                <i class="codicon codicon-history" /> Reopen
               </ActionButton>
             </div>
           )}
@@ -314,6 +326,16 @@ function App() {
                 >
                   <i class="codicon codicon-pulse" /> Check
                 </ActionButton>
+                {!discarded && !ticket.item.proposed && (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'discard' }}
+                    working="Discarding…"
+                    title="Closes it as won't do: it leaves the lanes, its ticket and activity are kept, and you can reopen it"
+                  >
+                    <i class="codicon codicon-circle-slash" /> Discard
+                  </ActionButton>
+                )}
                 {ticket.canReview && !ticket.review && (
                   <ActionButton
                     class="button secondary"

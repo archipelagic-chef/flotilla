@@ -601,6 +601,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.discardBacklogItem",
+        "title": "Discard Backlog Item (Won't Do)…",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.reopenBacklogItem",
+        "title": "Reopen Backlog Item",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.selectBacklogWorktree",
         "title": "Select Worktree of Backlog Item",
         "category": "Flotilla"
@@ -1095,6 +1105,14 @@
           "when": "false"
         },
         {
+          "command": "flotilla.discardBacklogItem",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.reopenBacklogItem",
+          "when": "false"
+        },
+        {
           "command": "flotilla.selectBacklogWorktree",
           "when": "false"
         },
@@ -1268,9 +1286,19 @@
           "group": "9_edit@1"
         },
         {
+          "command": "flotilla.discardBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal && !backlogDiscarded",
+          "group": "9_edit@2"
+        },
+        {
+          "command": "flotilla.reopenBacklogItem",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal && backlogDiscarded",
+          "group": "9_edit@2"
+        },
+        {
           "command": "flotilla.deleteBacklogItem",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
-          "group": "9_edit@2"
+          "group": "9_edit@3"
         },
         {
           "command": "flotilla.pauseAgent",

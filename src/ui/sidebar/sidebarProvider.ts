@@ -395,6 +395,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'delete':
         await vscode.commands.executeCommand('flotilla.deleteBacklogItem', m.id);
         return;
+      case 'discard':
+        await vscode.commands.executeCommand('flotilla.discardBacklogItem', m.id);
+        return;
+      case 'reopen':
+        await vscode.commands.executeCommand('flotilla.reopenBacklogItem', m.id);
+        return;
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;

@@ -1,4 +1,10 @@
-import { acceptItem, removeItem, updateItem } from '../../../features/backlog/backlog';
+import * as vscode from 'vscode';
+import {
+  acceptItem,
+  removeItem,
+  reopenItem,
+  updateItem,
+} from '../../../features/backlog/backlog';
 import { keepAttachmentsFolded, keepShowActivity } from '../ticketPanel';
 import type { Handlers } from './context';
 import type { TicketMessage } from './ticket.messages';
@@ -54,6 +60,13 @@ export const ticketHandlers: Handlers<TicketMessage> = {
     if (!item.proposed) return;
     await backlog.change((d) => removeItem(d, id));
     await backlog.deleteDocument(id);
+  },
+  discard: async ({ id }) => {
+    // The command asks first (as the card's Discard does).
+    await vscode.commands.executeCommand('flotilla.discardBacklogItem', id);
+  },
+  reopen: async ({ id, backlog }) => {
+    await backlog.change((d) => reopenItem(d, id));
   },
   openTicket: async ({ panels }, m) => {
     await panels.open(m.id);

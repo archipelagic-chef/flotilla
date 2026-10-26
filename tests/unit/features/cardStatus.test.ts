@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogStatus } from '../../../src/features/backlog/backlog';
 import type { CardAgent } from '../../../src/features/backlog/cardAgents';
-import { cardStatus, cardSummary, type CardStatusItem } from '../../../src/features/backlog/cardStatus';
+import {
+  cardStatus,
+  type CardStatusItem,
+  cardSummary,
+  discardedLabel,
+} from '../../../src/features/backlog/cardStatus';
 import type { ReviewState } from '../../../src/features/backlog/review';
 
 const item = (status: BacklogStatus, over: Partial<CardStatusItem> = {}): CardStatusItem => ({ status, ...over });
@@ -26,6 +31,12 @@ describe('cardStatus', () => {
     expect(line(item('doing'))).toEqual(['In progress · no agent on it', '', '', 'Start']);
     expect(line(item('done'))).toEqual(['Done', '', '', '']);
     expect(line(item('done', { merge: { base: 'main', state: 'merged', commits: 0, branches: [] } }))).toEqual(['Done · merged into main', '', '', '']);
+  });
+
+  it('says when a discarded ticket was discarded, with Reopen as its next step (BL-209)', () => {
+    const at = '2026-10-26T06:40:00Z';
+    expect(line(item('doing', { discarded: { at }, review: review('yours') }))).toEqual([discardedLabel(at), '', '', 'Reopen']);
+    expect(discardedLabel(at)).toMatch(/^Discarded .*2026/);
   });
 
   it('offers Accept on a proposal, and only its tracker’s status on an issue', () => {

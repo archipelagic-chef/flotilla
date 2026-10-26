@@ -88,6 +88,7 @@ export function BacklogView({
   openWorktree,
 }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
+  const [discardedOpen, setDiscardedOpen] = useState(false);
   // A card dropped in a lane shows there at once, marked as saving, until the host has saved it.
   const busy = useBusy();
   const items = posted && withMoves(posted, busy.moves());
@@ -101,8 +102,10 @@ export function BacklogView({
   const agentCount = agentCountLabel(autopilot);
   // While Pause All holds (BL-160), the count says so (with the autopilot off: on, its bar does).
   const countLabel = autopilot?.pausedAll !== undefined && !autopilot.enabled ? pausedAllLabel(autopilot.pausedAll) : agentCount;
+  // Discarded as won't do (BL-209): in no lane, but listed in a folded section after Done.
+  const discarded = workingOnly ? [] : (items ?? []).filter((i) => i.discarded && !i.proposed);
   const titles = new Map((items ?? []).map((i) => [i.id, i.title]));
-  const working = workingOnly ? (items ?? []).filter((i) => hasActiveAgent(i, worktreesOf(i))).length : 0;
+  const working = workingOnly ? (items ?? []).filter((i) => !i.discarded && hasActiveAgent(i, worktreesOf(i))).length : 0;
   // Every chat, wherever it runs: an agent's first line names its ticket (BL-96).
   const chats = workstreams.flatMap((w) => w.chats);
   const agentsOf = (item: BacklogItem) => (item.source ? [] : cardAgents(item, chats));
@@ -265,6 +268,39 @@ export function BacklogView({
             </div>
           );
         })}
+      {discarded.length > 0 && (
+        <div class="group lane discarded-lane">
+          <div class="row group-head" onClick={() => setDiscardedOpen(!discardedOpen)}>
+            <span class="name">Discarded</span>
+            <i
+              class={`codicon codicon-chevron-${discardedOpen ? 'down' : 'right'} lane-chev`}
+              aria-label={discardedOpen ? 'Hide discarded items' : 'Show discarded items'}
+            />
+            <span class="badge">{discarded.length}</span>
+          </div>
+          {discardedOpen && (
+            <div class="lane-body">
+              {discarded.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  icon="circle-slash"
+                  worktrees={worktreesOf(item)}
+                  agents={agentsOf(item)}
+                  color={(ws) => colors.get(ws.key)}
+                  renaming={renaming === item.id}
+                  setRenaming={(on) => setRenaming(on ? item.id : undefined)}
+                  dropBefore={false}
+                  onDragOver={() => undefined}
+                  onDrop={() => undefined}
+                  openWorktree={openWorktree}
+                  compact={!detailed}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

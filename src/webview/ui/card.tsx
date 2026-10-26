@@ -12,7 +12,12 @@ import { menuContext, send } from './api';
 import { act, BusyButton, useBusy } from './backlogBusy';
 import { stopControlClick } from './cardClick';
 import { PriorityPicker } from './priority';
-import { cardStatus, cardSummary, type CardStatus } from '../../features/backlog/cardStatus';
+import {
+  type CardStatus,
+  cardStatus,
+  cardSummary,
+  discardedLabel,
+} from '../../features/backlog/cardStatus';
 import './card.css';
 
 export const DRAG_TYPE = 'application/x-flotilla-backlog';
@@ -57,7 +62,9 @@ export function ItemRow({
 }: RowProps) {
   // A card whose button is working keeps its hover buttons shown (BL-117).
   const busy = useBusy();
-  const done = item.status === 'done';
+  // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
+  const discarded = !!item.discarded;
+  const done = item.status === 'done' || discarded;
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
   const worktree = worktrees[0];
@@ -70,7 +77,7 @@ export function ItemRow({
   const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
   return (
     <div
-      class={`row backlog-item st-${item.status}${compact ? ' compact' : ''}${dropBefore ? ' drop-before' : ''}${live && !renaming && !compact ? ' has-status' : ''}${saving ? ' saving' : ''}`}
+      class={`row backlog-item st-${item.status}${discarded ? ' discarded' : ''}${compact ? ' compact' : ''}${dropBefore ? ' drop-before' : ''}${live && !renaming && !compact ? ' has-status' : ''}${saving ? ' saving' : ''}`}
       aria-busy={saving}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
@@ -81,6 +88,7 @@ export function ItemRow({
               backlogId: item.id,
               backlogLocal: !remote,
               backlogDone: done,
+              backlogDiscarded: discarded,
               backlogWorktree: worktrees.length > 0,
               backlogRunnable: !!item.run,
               backlogAgent: remote ? '' : (agentOf(item, worktrees) ?? ''),
@@ -89,7 +97,7 @@ export function ItemRow({
               backlogQueued: !!queuedBehind,
             })
       }
-      draggable={!renaming && !remote}
+      draggable={!renaming && !remote && !discarded}
       onDragStart={(e) => {
         e.dataTransfer?.setData(DRAG_TYPE, item.id);
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -129,7 +137,9 @@ export function ItemRow({
             <BusyButton
               class="icon status-toggle"
               aria-label={done ? 'Reopen' : 'Mark Done'}
-              message={{ type: 'backlog', op: 'update', id: item.id, status: done ? 'todo' : 'done' }}
+              message={
+                discarded ? { type: 'backlog', op: 'reopen', id: item.id } : { type: 'backlog', op: 'update', id: item.id, status: done ? 'todo' : 'done' }
+              }
               icon={icon}
               onClick={(e) => e.stopPropagation()}
             />
@@ -182,6 +192,7 @@ export function ItemRow({
                 {a.name}
               </span>
             ))}
+          {!renaming && item.discarded && <span class="discarded-chip">{discardedLabel(item.discarded.at)}</span>}
           {!renaming && !item.proposed && item.activity > 0 && (
             <span class="activity-count" aria-label={`${item.activity} activity entries`}>
               <i class="codicon codicon-comment" />
@@ -353,7 +364,7 @@ export function ItemRow({
                 </a>
               ) : (
                 <>
-                  {item.status === 'todo' && (
+                  {!discarded && item.status === 'todo' && (
                     <BusyButton
                       class="icon"
                       aria-label="Discuss It with an Agent"
@@ -366,6 +377,11 @@ export function ItemRow({
                   <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                     <i class="codicon codicon-edit" />
                   </button>
+                  {discarded ? (
+                    <BusyButton class="icon" aria-label="Reopen" message={{ type: 'backlog', op: 'reopen', id: item.id }} icon="history" />
+                  ) : (
+                    <BusyButton class="icon" aria-label="Discard (Won't Do)…" message={{ type: 'backlog', op: 'discard', id: item.id }} icon="circle-slash" />
+                  )}
                   <BusyButton class="icon" aria-label="Delete…" message={{ type: 'backlog', op: 'delete', id: item.id }} icon="trash" />
                 </>
               )}
@@ -498,7 +514,9 @@ type CompactProps = Pick<RowProps, 'item' | 'icon' | 'worktrees' | 'agents' | 'c
  */
 function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, saving, openWorktree }: CompactProps) {
   const busy = useBusy();
-  const done = item.status === 'done';
+  // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
+  const discarded = !!item.discarded;
+  const done = item.status === 'done' || discarded;
   const remote = item.source;
   const status = cardStatus(item, agents, queuedBehind);
   const summary = cardSummary(agents.length, worktrees.length);
@@ -515,7 +533,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
         <BusyButton
           class="icon status-toggle"
           aria-label={done ? 'Reopen' : 'Mark Done'}
-          message={{ type: 'backlog', op: 'update', id: item.id, status: done ? 'todo' : 'done' }}
+          message={discarded ? { type: 'backlog', op: 'reopen', id: item.id } : { type: 'backlog', op: 'update', id: item.id, status: done ? 'todo' : 'done' }}
           icon={icon}
           onClick={(e) => e.stopPropagation()}
         />
@@ -651,7 +669,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                       </a>
                     ) : (
                       <>
-                        {item.status === 'todo' && (
+                        {!discarded && item.status === 'todo' && (
                           <BusyButton
                             class="icon"
                             aria-label="Discuss It with an Agent"
@@ -669,6 +687,14 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                         <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                           <i class="codicon codicon-edit" />
                         </button>
+                        {!discarded && (
+                          <BusyButton
+                            class="icon"
+                            aria-label="Discard (Won't Do)…"
+                            message={{ type: 'backlog', op: 'discard', id: item.id }}
+                            icon="circle-slash"
+                          />
+                        )}
                       </>
                     )}
                     <button class="icon" aria-label="More Actions…" aria-haspopup="menu" onClick={openMenu}>

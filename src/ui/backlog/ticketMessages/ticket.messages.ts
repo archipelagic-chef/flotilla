@@ -10,6 +10,9 @@ export type TicketMessage =
   | { type: 'priority'; priority: BacklogPriority | null }
   | { type: 'accept' }
   | { type: 'dismiss' }
+  /** Discard as won't do (asks first), and Reopen into To Do (BL-209). */
+  | { type: 'discard' }
+  | { type: 'reopen' }
   | { type: 'openTicket'; id: string }
   /** Keeps Flotilla's notes open (or shut) for the user, from now on. */
   | { type: 'showActivity'; shown: boolean }

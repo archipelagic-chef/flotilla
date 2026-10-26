@@ -156,7 +156,8 @@
   font-size: 13px;
 }
 /* Whether a ticket's work is merged (from git): green when it is, yellow while some isn't, muted for none yet. */
-.backlog-item .merge-chip {
+.backlog-item .merge-chip,
+.backlog-item .discarded-chip {
   flex: none;
   padding: 0 4px;
   border-radius: 3px;
@@ -440,4 +441,9 @@
 .backlog-item.compact .card-next .button.small {
   height: 20px;
   font-size: 11px;
+}
+/* A discarded ticket (BL-209): its title struck through, as won't do. */
+.backlog-item.discarded .name {
+  text-decoration: line-through;
+  color: var(--muted);
 }

@@ -25,7 +25,7 @@ export interface CardStatus {
 
 /** A card's next step: a backlog message the card sends, with the button's label. */
 export interface CardStep {
-  op: 'accept' | 'start' | 'resume' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
+  op: 'accept' | 'reopen' | 'start' | 'resume' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
   label: string;
   icon: string;
 }
@@ -52,10 +52,15 @@ export type CardStatusItem = Pick<
   | 'base'
   | 'agent'
   | 'unseenReplies'
+  | 'discarded'
 >;
 
 const OPEN: CardStep = { op: 'open', label: 'Open', icon: 'go-to-file' };
 const START: CardStep = { op: 'start', label: 'Start', icon: 'play' };
+/** When it was discarded (BL-209): "Discarded Oct 26, 2026". */
+export function discardedLabel(at: string): string {
+  return `Discarded ${new Date(at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`;
+}
 const strip = (s: string) => s.replace(/`/g, '');
 const rounds = (n: number) => `${n} ${n === 1 ? 'round' : 'rounds'}`;
 
@@ -72,6 +77,7 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
     };
   }
   if (item.source) return { text: `${item.source.label} · ${item.source.statusName}` };
+  if (item.discarded) return { text: discardedLabel(item.discarded.at), next: { op: 'reopen', label: 'Reopen', icon: 'history' } };
   const m = item.merging;
   if (m?.state === 'failed') return { text: `Merge failed${m.reason ? `: ${strip(m.reason)}` : ''}`, mark: 'error', next: OPEN };
   if (item.checks) return { text: `Merging: checks${item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}`, working: true };

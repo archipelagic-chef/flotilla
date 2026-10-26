@@ -477,6 +477,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'move'; id: string; status: BacklogStatus; before?: string }
   /** start: create its worktree and start an agent there; open: its ticket; discuss: talk it through with an agent (BL-45); run: its run block (BL-20); merge: merge its approved work (a card's next step, BL-183). */
   | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run' | 'merge'; id: string }
+  /** Discard as "won't do" (asks first), and Reopen a discarded item into To Do (BL-209). */
+  | { type: 'backlog'; op: 'discard' | 'reopen'; id: string }
   /** The card's Create Worktree (as the ticket's): a new worktree at once, its branch named without asking unless named. */
   | { type: 'backlog'; op: 'createWorktree'; id: string; named?: boolean }
   /** Accept every proposed item; plan the backlog with Claude. */

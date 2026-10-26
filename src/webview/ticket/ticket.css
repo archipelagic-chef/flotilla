@@ -667,3 +667,9 @@ h2 {
   overflow-wrap: anywhere;
   background: var(--vscode-inputOption-activeBackground, rgba(128, 128, 128, 0.2));
 }
+.discarded-banner {
+  border-color: var(--vscode-disabledForeground, #888);
+}
+.discarded-banner > .codicon {
+  color: var(--vscode-disabledForeground, #888);
+}
