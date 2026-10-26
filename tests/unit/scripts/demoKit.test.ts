@@ -17,14 +17,17 @@ import {
   frameGate,
   freeDisplay,
   gapStats,
+  lengthLine,
   listDemos,
   nearestElements,
   parseDemo,
   parseJsonc,
   plainSettings,
+  recordingLength,
   resultLine,
   staleBuild,
   stepsToPlay,
+  STILL_MS,
   timeline,
   unsafeFrame,
 } from '../../../scripts/demo-kit.mjs';
@@ -382,6 +385,65 @@ describe('timeline', () => {
     expect(frames.map((f) => f.ms)).toEqual([240, 120, 640]);
     expect(frames[1].png).toBe(blue);
   });
+
+  it('cuts a still shown longer than STILL_MS to it, and says how much was cut (BL-219)', () => {
+    const red = solid(255, 0, 0);
+    const blue = solid(0, 0, 255);
+    const frames = timeline(
+      [
+        { at: 0, png: red },
+        { at: 5000, png: blue },
+      ],
+      5600,
+    );
+    expect(STILL_MS).toBe(1200);
+    // Each frame keeps when it was drawn (for the pointer's gaps); only how long it shows is cut.
+    expect(frames.map((f) => [f.at, f.ms, f.cutMs])).toEqual([
+      [0, 1200, 3800],
+      [5000, 600, 0],
+    ]);
+    expect(recordingLength(frames)).toEqual({ ms: 1800, cutMs: 3800 });
+  });
+
+  it('cuts the last frame too', () => {
+    const frames = timeline([{ at: 0, png: solid(255, 0, 0) }], 4000);
+    expect(frames.map((f) => [f.ms, f.cutMs])).toEqual([[1200, 2800]]);
+  });
+
+  it('keeps a frame with a caption on screen long enough to read it: 60 ms a character, at least 2 s', () => {
+    const colours = [solid(255, 0, 0), solid(0, 255, 0), solid(0, 0, 255), solid(255, 255, 0)];
+    const frames = timeline(
+      colours.map((png, n) => ({ at: n * 10_000, png })),
+      40_000,
+      {
+        captions: [
+          { at: 9990, length: 10 },
+          { at: 19_990, length: 50 },
+          { at: 29_990, length: 0 },
+        ],
+      },
+    );
+    expect(frames.map((f) => f.ms)).toEqual([1200, 2000, 3000, 1200]);
+  });
+
+  it('keeps the longest caption shown during a frame', () => {
+    const frames = timeline(
+      [
+        { at: 0, png: solid(255, 0, 0) },
+        { at: 10_000, png: solid(0, 0, 255) },
+      ],
+      11_000,
+      { captions: [{ at: 5000, length: 40 }] },
+    );
+    expect(frames.map((f) => f.ms)).toEqual([2400, 1000]);
+  });
+});
+
+describe('lengthLine', () => {
+  it('says how long a recording is, and how much of its stills was cut', () => {
+    expect(lengthLine({ ms: 12_400, cutMs: 9100 })).toBe('12.4 s, 9.1 s of stills cut');
+    expect(lengthLine({ ms: 3000, cutMs: 0 })).toBe('3.0 s');
+  });
 });
 
 describe('encodeGif', () => {
@@ -595,6 +657,9 @@ describe('commandMatches', () => {
 describe('resultLine', () => {
   it('says in one line what was saved, checked, or where it failed', () => {
     expect(resultLine({ saved: '/b/BL-1/demo.gif', bytes: 1.5 * 1024 * 1024, ms: 12_340 })).toBe('Demo saved: /b/BL-1/demo.gif (1.5 MB, 12.3 s)');
+    expect(resultLine({ saved: '/b/BL-1/demo.gif', bytes: 1024, ms: 12_400, cutMs: 9100 })).toBe(
+      'Demo saved: /b/BL-1/demo.gif (1 KB, 12.4 s, 9.1 s of stills cut)',
+    );
     expect(resultLine({ checked: 7, ms: 8000 })).toBe('Demo checked: all 7 steps passed (8.0 s). Record it once now.');
     expect(resultLine({ step: 'step 2 (click ".x")', reason: 'nothing visible matches .x', screenshot: 'demos/a.failed.png' })).toBe(
       'Demo failed: step 2 (click ".x"): nothing visible matches .x (screenshot: demos/a.failed.png)',
