@@ -230,7 +230,7 @@ describe('withDemoUnits (BL-111)', () => {
   it('plays a video as a GIF plays: muted, looping', () => {
     const video = '<p><video class="media" src="vs://BL-1/demo.mp4" controls muted playsinline preload="metadata"></video></p>';
     expect(withDemoUnits(html(`${video}${block}`, md), () => ({ name: 'try-demo' }))).toContain(
-      '<video autoplay loop class="media" src="vs://BL-1/demo.mp4" controls muted playsinline',
+      '<video loop class="media" src="vs://BL-1/demo.mp4" controls muted playsinline',
     );
   });
 });
