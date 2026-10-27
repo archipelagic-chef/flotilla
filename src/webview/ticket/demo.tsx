@@ -68,7 +68,10 @@ function useLength(a: AttachmentView): [number | undefined, (seconds: number) =>
   return [seconds, setSeconds];
 }
 
-/** A recording playing: a video muted and looping (BL-134), a GIF as it is; at the speed demos play at (BL-218). */
+/**
+ * A recording playing: a video muted and looping (BL-134), while it's seen (BL-228), a GIF as it is; at the speed demos
+ * play at (BL-218).
+ */
 function Recording({ a, onLength }: { a: AttachmentView; onLength?: (seconds: number) => void }) {
   const el = useRef<HTMLVideoElement & HTMLImageElement>(null);
   useEffect(() => {
@@ -81,7 +84,6 @@ function Recording({ a, onLength }: { a: AttachmentView; onLength?: (seconds: nu
       ref={el}
       key={a.src}
       src={a.src}
-      autoPlay
       muted
       loop
       playsInline
@@ -176,6 +178,8 @@ export function RecordingBar({ a, ticket, Action }: { a: AttachmentView; ticket:
 function DemoUnit({ demo, Action }: { demo: NonNullable<ReturnType<typeof ticketDemo<AttachmentView>>>; Action: Action }) {
   const a = demo.latest;
   const [seconds, setSeconds] = useLength(a);
+  // The earlier recordings load only once their fold is opened (BL-228).
+  const [earlier, setEarlier] = useState(false);
   return (
     <div class="demo-unit">
       <DemoBar seconds={seconds ?? a.seconds} run={demo.run} Action={Action} />
@@ -192,21 +196,23 @@ function DemoUnit({ demo, Action }: { demo: NonNullable<ReturnType<typeof ticket
         </figcaption>
       </figure>
       {demo.earlier.length > 0 && (
-        <details class="demo-earlier">
+        <details class="demo-earlier" onToggle={(e) => setEarlier((e.currentTarget as HTMLDetailsElement).open)}>
           <summary>
             {demo.earlier.length} earlier recording{demo.earlier.length > 1 ? 's' : ''}
           </summary>
-          <ul>
-            {demo.earlier.map((e) => (
-              <li key={e.src}>
-                <Recording a={e} />
-                <span class="muted">
-                  {e.alt ? `${e.alt} · ` : ''}
-                  {recorded(e)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {earlier && (
+            <ul>
+              {demo.earlier.map((e) => (
+                <li key={e.src}>
+                  <Recording a={e} />
+                  <span class="muted">
+                    {e.alt ? `${e.alt} · ` : ''}
+                    {recorded(e)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </details>
       )}
     </div>

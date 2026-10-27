@@ -10,6 +10,7 @@ import {
   gifDelays,
 } from '../../features/backlog/demo';
 import { send } from './actions';
+import { playWhileSeen } from './seen';
 
 let speed: DemoSpeed = 1;
 const listeners = new Set<(speed: DemoSpeed) => void>();
@@ -172,7 +173,7 @@ export function playGifAtSpeed(img: HTMLImageElement): () => void {
   };
 }
 
-/** A video plays at the speed, from now on. Returns what stops following it. */
+/** A video plays at the speed, from now on, while it's seen (BL-228). Returns what stops following it. */
 export function playVideoAtSpeed(video: HTMLVideoElement): () => void {
   const apply = (s: number) => {
     video.defaultPlaybackRate = s;
@@ -183,8 +184,13 @@ export function playVideoAtSpeed(video: HTMLVideoElement): () => void {
   const loaded = () => apply(speed);
   video.addEventListener('loadedmetadata', loaded);
   const off = onSpeed(apply);
+  const unseen = playWhileSeen(video, {
+    doc: document,
+    Observer: typeof IntersectionObserver === 'undefined' ? undefined : IntersectionObserver,
+  });
   return () => {
     off();
+    unseen();
     video.removeEventListener('loadedmetadata', loaded);
   };
 }
