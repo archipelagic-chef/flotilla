@@ -304,9 +304,10 @@ describe('Merge to main on CI (BL-105)', () => {
     // cancel and once CI has passed, as a timer that fires late would, and waits for it to end (BL-120).
     const polls: Array<() => void> = [];
     const setTimer = globalThis.setTimeout;
-    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    // Its other arguments passed on too: undici's timers of a fetch made meanwhile get theirs.
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => {
       if (ms === HOUR) polls.push(fn);
-      return setTimer(fn, ms);
+      return setTimer(fn as (...a: unknown[]) => void, ms, ...args);
     }) as typeof setTimeout);
     try {
       expect(await merger.merge('BL-1')).toBe('waiting');
@@ -338,9 +339,10 @@ describe('Landing from the merge train on CI (BL-145)', () => {
   async function byHand<T>(merger: unknown, run: () => Promise<T>): Promise<{ result: T; poll(): Promise<void> }> {
     const polls: Array<() => void> = [];
     const setTimer = globalThis.setTimeout;
-    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    // Its other arguments passed on too: undici's timers of a fetch made meanwhile get theirs.
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => {
       if (ms === HOUR) polls.push(fn);
-      return setTimer(fn, ms);
+      return setTimer(fn as (...a: unknown[]) => void, ms, ...args);
     }) as typeof setTimeout);
     try {
       const result = await run();
