@@ -56,6 +56,7 @@ export type CardStatusItem = Pick<
   | 'unseenReplies'
   | 'discarded'
   | 'queued'
+  | 'checking'
 >;
 
 const OPEN: CardStep = { op: 'open', label: 'Open', icon: 'go-to-file' };
@@ -164,6 +165,12 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         return {
           text: `Epic · ${item.parts.done} of ${item.parts.total} parts done`,
           tip: 'The autopilot takes its parts, not the epic: start a part, not the whole.',
+        };
+      if (item.checking)
+        return {
+          text: `Checking against ${item.checking}'s change…`,
+          tip: `An agent checks it against ${item.checking}'s change and what's on ${main}: the autopilot takes it once that's done.`,
+          working: true,
         };
       if (item.shaping?.agent)
         return {

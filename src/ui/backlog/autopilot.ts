@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { checkingOf } from '../../features/backlog/sisterCheck';
 import type { Repository } from '../../core/repository';
 import {
   type BacklogData,
@@ -104,10 +105,14 @@ const AWAY_MS = 60 * 60_000;
 /**
  * The next items the autopilot takes: To Do, accepted, in the backlog's order; an epic's parts, not the epic. A ticket
  * with a discussion with an agent (BL-45) waits: its owner accepts it or starts it by hand, which ends the discussion
- * (accepting does; a To Do is started with Start), so only then is it taken.
+ * (accepting does; a To Do is started with Start), so only then is it taken. One a sister check covers waits for it
+ * (BL-236): its description may be brought up to date.
  */
 export function nextForAutopilot(data: BacklogData, skip: ReadonlySet<string>): BacklogItem | undefined {
-  return data.items.find((i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0);
+  return data.items.find(
+    (i) =>
+      i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !skip.has(i.id) && childrenOf(data, i.id).length === 0 && !checkingOf(data, i.id),
+  );
 }
 
 /**

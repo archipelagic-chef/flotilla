@@ -28,6 +28,7 @@ const NEED_ICON: Record<NeedKind, string> = {
   stopped: 'debug-pause',
   failed: 'error',
   queued: 'clock',
+  sister: 'references',
 };
 const NEED_TITLE: Record<NeedKind, string> = {
   asking: 'Has a question for you',
@@ -37,6 +38,7 @@ const NEED_TITLE: Record<NeedKind, string> = {
   stopped: 'Its review stopped',
   failed: "The autopilot couldn't start it",
   queued: 'Your reply waits for a free agent',
+  sister: "Another ticket's change covers it, or is at odds with it",
 };
 
 /**
@@ -159,6 +161,17 @@ function NeedRow({ item }: { item: BacklogItem }) {
             {' '}
             Prioritize
           </BusyButton>
+        )}
+        {need.kind === 'sister' && (
+          <>
+            <BusyButton class="button" message={{ type: 'backlog', op: 'discard', id: item.id }} icon="circle-slash" title="Discards it as won't do">
+              {' '}
+              Discard
+            </BusyButton>
+            <BusyButton class="button secondary" message={{ type: 'backlog', op: 'keepSister', id: item.id }} title="Keeps it as it is">
+              Keep
+            </BusyButton>
+          </>
         )}
         {need.kind === 'failed' && (
           <BusyButton
