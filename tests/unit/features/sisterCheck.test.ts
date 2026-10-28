@@ -102,6 +102,17 @@ describe('noteChange', () => {
     expect(noteChange(running, 'BL-3', 'merged', none, now).items[2].sisterCheck?.covers).toEqual(['BL-2']);
   });
 
+  it('keeps a merge or discard that comes while it runs, and checks it once that one ends', () => {
+    const running = noteChange(backlog, 'BL-2', 'described', none, now);
+    running.items[1].sisterCheck!.session = 's';
+    const merged = noteChange(noteChange(running, 'BL-2', 'merged', none, now), 'BL-2', 'merged', none, now);
+    expect(merged.items[1].sisterCheck).toMatchObject({ session: 's', reasons: ['described'], pending: ['merged'] });
+    const later = new Date(now.getTime() + 10 * 60_000);
+    const next = endCheck(merged, 'BL-2', later, 60_000);
+    expect(next.items[1].sisterCheck).toEqual({ reasons: ['merged'], due: new Date(later.getTime() + 60_000).toISOString(), covers: ['BL-3'] });
+    expect(checkingOf(next, 'BL-3')).toBe('BL-2');
+  });
+
   it('releases the sisters when it ends', () => {
     const next = endCheck(noteChange(backlog, 'BL-2', 'merged', none, now), 'BL-2');
     expect(next.items[1].sisterCheck).toBeUndefined();

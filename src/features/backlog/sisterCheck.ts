@@ -28,6 +28,8 @@ export interface SisterCheck {
   due: string;
   /** The tickets it checks: held from the autopilot until it's done. */
   covers: string[];
+  /** A merge or discard that came while it ran (it read the ticket and main before them): checked again once it ends. */
+  pending?: SisterReason[];
   /** Once it runs: its agent, its chat, and when it started (ISO 8601). */
   agent?: string;
   session?: string;
@@ -97,8 +99,9 @@ export function reworked(before: string, after: string): boolean {
 /**
  * The backlog with a change of ticket `id` noted (why, at `now`): its check is due a few minutes from now, covering
  * its open sisters and dependents (a check waiting already takes the reason and waits again). Unchanged when there's
- * nothing to check (no parent, no parts, no dependents), when the check is already running (it reads the ticket as it
- * is then), or for an edit of a ticket a check covers: an edit made while it's checked is that check's.
+ * nothing to check (no parent, no parts, no dependents), or for an edit of a ticket a check covers: an edit made while
+ * it's checked is that check's. While its check runs, an edit is that check's too (it reads the ticket as it is then),
+ * but a merge or discard waits on it (`pending`): it read main without them, so another check follows (see endCheck).
  */
 export function noteChange(
   data: BacklogData,
@@ -109,7 +112,13 @@ export function noteChange(
   delayMs = SISTER_DEBOUNCE_MS,
 ): BacklogData {
   const item = data.items.find((i) => i.id === id);
-  if (!item || item.sisterCheck?.session) return data;
+  if (!item) return data;
+  const running = item.sisterCheck?.session ? item.sisterCheck : undefined;
+  if (running) {
+    if (reason === 'described' || running.pending?.includes(reason)) return data;
+    const pending = [...(running.pending ?? []), reason];
+    return { ...data, items: data.items.map((i) => (i.id === id ? { ...i, sisterCheck: { ...running, pending } } : i)) };
+  }
   if (reason === 'described' && checkingOf(data, id)) return data;
   const covers = sistersOf(data, id, descriptions).map((s) => s.id);
   if (!covers.length) return data;
@@ -130,14 +139,18 @@ export function dueChecks(data: Pick<BacklogData, 'items'>, now: Date): BacklogI
     .sort((a, b) => a.sisterCheck!.due.localeCompare(b.sisterCheck!.due));
 }
 
-/** The backlog without ticket `id`'s check: its sisters are released. */
-export function endCheck(data: BacklogData, id: string): BacklogData {
+/**
+ * The backlog without ticket `id`'s check: its sisters are released. When a merge or discard came while it ran, a new
+ * check of those takes its place instead, due a few minutes from `now`, and holds the same sisters until it runs.
+ */
+export function endCheck(data: BacklogData, id: string, now = new Date(), delayMs = SISTER_DEBOUNCE_MS): BacklogData {
   return {
     ...data,
     items: data.items.map((i) => {
       if (i.id !== id || !i.sisterCheck) return i;
-      const { sisterCheck: _done, ...rest } = i;
-      return rest;
+      const { sisterCheck: done, ...rest } = i;
+      if (!done.pending?.length) return rest;
+      return { ...rest, sisterCheck: { reasons: done.pending, due: new Date(now.getTime() + delayMs).toISOString(), covers: done.covers } };
     }),
   };
 }
