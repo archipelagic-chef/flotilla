@@ -67,6 +67,10 @@ describe('backlog', () => {
     expect('discarded' in reopened).toBe(false);
     // An item that isn't discarded stays as it is.
     expect(reopenItem(data, 'BL-1')).toEqual(data);
+    // Reopened from the ticket's status bar (BL-231): into the status picked.
+    const again = reopenItem(discardItem(data, 'BL-2', 'x'), 'BL-2', 'review').items.find((i) => i.id === 'BL-2')!;
+    expect(again.status).toBe('review');
+    expect('discarded' in again).toBe(false);
   });
 
   it('numbers new items and puts them on top', () => {

@@ -46,8 +46,10 @@ export const ticketHandlers: Handlers<TicketMessage> = {
     // Remembered for the user: every ticket's demos play at it; the tab already does.
     await keepDemoSpeed(panels.deps.memento, m.speed);
   },
-  status: async ({ id, backlog }, m) => {
-    await backlog.change((d) => updateItem(d, id, { status: m.status }));
+  status: async ({ id, item, backlog }, m) => {
+    // A discarded ticket is reopened into the status picked, with Reopen's entry (BL-231).
+    if (item.discarded) await vscode.commands.executeCommand('flotilla.reopenBacklogItem', id, m.status);
+    else await backlog.change((d) => updateItem(d, id, { status: m.status }));
   },
   priority: async ({ id, backlog }, m) => {
     await backlog.change((d) => updateItem(d, id, { priority: m.priority }));

@@ -12,6 +12,7 @@ import {
   agentLead,
   agentName,
   type BacklogItem,
+  type BacklogStatus,
   branchFor,
   branchMatches,
   discardItem,
@@ -213,7 +214,7 @@ function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Comman
     'flotilla.renameBacklogItem': (card?: unknown) => renameBacklogItem(ctx, backlogIdOf(card)),
     'flotilla.deleteBacklogItem': (card?: unknown) => deleteBacklogItem(ctx, backlogIdOf(card)),
     'flotilla.discardBacklogItem': (card?: unknown) => discardBacklogItem(ctx, backlogIdOf(card)),
-    'flotilla.reopenBacklogItem': (card?: unknown) => reopenBacklogItem(ctx, backlogIdOf(card)),
+    'flotilla.reopenBacklogItem': (card?: unknown, status?: BacklogStatus) => reopenBacklogItem(ctx, backlogIdOf(card), status),
     'flotilla.selectBacklogWorktree': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), false),
     'flotilla.openBacklogWorktreeInNewWindow': (card?: unknown) => selectBacklogWorktree(ctx, backlogIdOf(card), true),
     'flotilla.cleanUpHistory': (id?: unknown, opts?: unknown) => startCleanUp(cleanUp, id, opts),
@@ -589,12 +590,15 @@ function removalPlan(ctx: CommandContext, ws: Workstream, changedFiles: number):
   };
 }
 
-/** Reopens a discarded item: back to To Do. Its ticket says which branches of its earlier work are still there. */
-async function reopenBacklogItem(ctx: CommandContext, id: string | undefined): Promise<void> {
+/**
+ * Reopens a discarded item: back to To Do, or the status picked in its ticket's status bar (BL-231). Its ticket says
+ * which branches of its earlier work are still there.
+ */
+async function reopenBacklogItem(ctx: CommandContext, id: string | undefined, status?: BacklogStatus): Promise<void> {
   if (!id) return;
   const before = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (!before?.discarded) return;
-  await ctx.backlog.change((d) => reopenItem(d, id));
+  await ctx.backlog.change((d) => reopenItem(d, id, status));
   const local = await ctx.service.listBranches().then(
     (b) => b.local,
     () => [] as string[],

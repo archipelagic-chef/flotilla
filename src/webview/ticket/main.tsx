@@ -38,6 +38,7 @@ import {
   STATUSES,
   StatusMenu,
   Title,
+  WontDo,
 } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
@@ -169,12 +170,14 @@ function App() {
     return () => window.removeEventListener('message', listener);
   }, []);
   if (!received) return <div class="empty-text">Loading…</div>;
+  // A status picked on a discarded ticket reopens it into that status (BL-231): it shows reopened at once.
+  const { discarded: _discarded, ...reopened } = received.item;
   const ticket: TicketView =
     picked.status || picked.priority !== undefined
       ? {
           ...received,
           item: {
-            ...received.item,
+            ...(picked.status ? reopened : received.item),
             ...(picked.status ? { status: picked.status } : {}),
             ...(picked.priority !== undefined ? { priority: picked.priority ?? undefined } : {}),
           },
@@ -217,12 +220,14 @@ function App() {
                   <button
                     key={s.status}
                     role="radio"
-                    aria-checked={ticket.item.status === s.status}
+                    aria-checked={!ticket.item.discarded && ticket.item.status === s.status}
                     onClick={() => pick({ status: s.status }, { type: 'status', status: s.status })}
                   >
                     <i class={`codicon codicon-${s.icon}`} /> {s.label}
                   </button>
                 ))}
+                {/* Proposals are dismissed instead. */}
+                {!ticket.item.proposed && <WontDo ticket={ticket} />}
               </div>
             )}
           </div>
@@ -329,16 +334,6 @@ function App() {
                 >
                   <i class="codicon codicon-pulse" /> Check
                 </ActionButton>
-                {!discarded && !ticket.item.proposed && (
-                  <ActionButton
-                    class="button secondary"
-                    message={{ type: 'discard' }}
-                    working="Discarding…"
-                    title="Closes it as won't do: it leaves the lanes, its ticket and activity are kept, and you can reopen it"
-                  >
-                    <i class="codicon codicon-circle-slash" /> Discard
-                  </ActionButton>
-                )}
                 {ticket.canReview && !ticket.review && (
                   <ActionButton
                     class="button secondary"

@@ -56,11 +56,14 @@ function tab() {
 }
 
 /** Ticket panels over a backlog whose one item's writes fail (or not): only what onMessage needs is there. */
-function panelsWith(change: () => Promise<unknown>, o: { workstreams?: unknown[]; activity?: unknown[]; deps?: Record<string, unknown> } = {}) {
+function panelsWith(
+  change: () => Promise<unknown>,
+  o: { workstreams?: unknown[]; activity?: unknown[]; item?: Record<string, unknown>; deps?: Record<string, unknown> } = {},
+) {
   const none = { dispose: () => undefined };
   const backlog = {
     dir: '/nonexistent/backlog',
-    read: async () => ({ items: [{ id: 'BL-1', title: 'A ticket', status: 'doing', created: '' }] }),
+    read: async () => ({ items: [{ id: 'BL-1', title: 'A ticket', status: 'doing', created: '', ...o.item }] }),
     change,
     watch: () => none,
     readTicket: async () => ({ description: '', activity: o.activity ?? [] }),
@@ -152,6 +155,31 @@ describe("the host's done for an action", () => {
     await expect(panels.onMessage('BL-1', t, { type: 'status', status: 'done' })).rejects.toThrow('disk full');
     expect(panels.post).not.toHaveBeenCalled();
     expect(t.webview.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("the status bar's status (BL-231)", () => {
+  it('sets the status of a ticket that is open', async () => {
+    const change = vi.fn(async () => undefined);
+    const panels = panelsWith(change);
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    vscode.commands.executeCommand.mockClear();
+    await panels.onMessage('BL-1', t, { type: 'status', status: 'review' });
+    expect(change).toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('flotilla.reopenBacklogItem', expect.anything(), expect.anything());
+  });
+
+  it('reopens a discarded ticket into the status picked, as Reopen does', async () => {
+    const change = vi.fn(async () => undefined);
+    const panels = panelsWith(change, { item: { discarded: { at: '2026-10-28T06:40:00Z' } } });
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    vscode.commands.executeCommand.mockClear();
+    await panels.onMessage('BL-1', t, { type: 'status', status: 'review' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('flotilla.reopenBacklogItem', 'BL-1', 'review');
+    // The command writes it: nothing is set here.
+    expect(change).not.toHaveBeenCalled();
   });
 });
 

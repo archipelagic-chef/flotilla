@@ -17,6 +17,25 @@ export const STATUSES: Array<{ status: BacklogStatus; label: string; icon: strin
   { status: 'done', label: 'Done', icon: 'pass-filled' },
 ];
 
+/**
+ * The status bar's Won't Do (BL-231): no lane, so not one of STATUSES. Discarding asks first, so it shows checked once
+ * the host says the ticket is discarded: a cancelled confirmation leaves the status as it was.
+ */
+export function WontDo({ ticket }: { ticket: TicketView }) {
+  const working = useWorking({ type: 'discard' });
+  return (
+    <button
+      role="radio"
+      aria-checked={!!ticket.item.discarded}
+      aria-busy={!!working}
+      onClick={() => !ticket.item.discarded && !working && act({ type: 'discard' }, 'Discarding…')}
+      title="Closes it as won't do: it leaves the lanes, its ticket and activity are kept, and you can reopen it"
+    >
+      <i class="codicon codicon-circle-slash" /> Won't Do
+    </button>
+  );
+}
+
 export function Title({ ticket }: { ticket: TicketView }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(ticket.item.title);

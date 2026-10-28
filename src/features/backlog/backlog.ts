@@ -305,14 +305,14 @@ export function discardItem(data: BacklogData, id: string, at: string): BacklogD
   };
 }
 
-/** Reopens a discarded item: it goes back to To Do. */
-export function reopenItem(data: BacklogData, id: string): BacklogData {
+/** Reopens a discarded item: it goes back to To Do, or the status picked (the ticket's status bar, BL-231). */
+export function reopenItem(data: BacklogData, id: string, status: BacklogStatus = 'todo'): BacklogData {
   return {
     ...data,
     items: data.items.map((i) => {
       if (i.id !== id || !i.discarded) return i;
       const { discarded: _d, ...rest } = i;
-      return { ...rest, status: 'todo' };
+      return { ...rest, status };
     }),
   };
 }
