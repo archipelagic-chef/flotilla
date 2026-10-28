@@ -1131,7 +1131,15 @@ export class ReviewLoop implements vscode.Disposable {
         cwd: ws.worktree.path,
         prompt: [
           agentLead(item, agent),
-          agentPrompt(item, ticket, ws.worktree.branch, agent, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)),
+          agentPrompt(
+            item,
+            ticket,
+            ws.worktree.branch,
+            agent,
+            guide,
+            await mapFor(this.deps.backlog, this.deps.mainRoot, item),
+            (await this.deps.backlog.read()).items,
+          ),
           note,
         ].join('\n\n'),
         name: `${agent} · ${item.id}`,
@@ -1740,7 +1748,8 @@ export class ReviewLoop implements vscode.Disposable {
       const reviewer = item.review?.reviewer || agentName([...taken, item.review?.implementer ?? '']);
       const base = (await resolveBase(this.deps.mainRoot, readSettings().defaultBase)) ?? 'HEAD';
       const ticket = await this.deps.backlog.ensureDocument(item);
-      const prompt = reviewerPrompt({ item, reviewer, implementer: item.review?.implementer, ticket, branch: ws.worktree.branch, base, round });
+      const items = (await this.deps.backlog.read()).items;
+      const prompt = reviewerPrompt({ item, reviewer, implementer: item.review?.implementer, ticket, branch: ws.worktree.branch, base, round, items });
       // Checked where the agent starts: the awaits above may have let another start for the item in, or changed the item.
       if (this.runs.has(item.id)) return;
       if (!(await this.unchanged(item.id, admitted.since))) {
@@ -2012,7 +2021,15 @@ export class ReviewLoop implements vscode.Disposable {
           cwd: ws.worktree.path,
           prompt: [
             agentLead(item, implementer),
-            agentPrompt(item, ticket, ws.worktree.branch, implementer, guide, await mapFor(this.deps.backlog, this.deps.mainRoot, item)),
+            agentPrompt(
+              item,
+              ticket,
+              ws.worktree.branch,
+              implementer,
+              guide,
+              await mapFor(this.deps.backlog, this.deps.mainRoot, item),
+              (await this.deps.backlog.read()).items,
+            ),
             task.prompt,
           ].join('\n\n'),
           name: `${implementer} · ${item.id}`,

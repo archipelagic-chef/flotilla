@@ -286,16 +286,52 @@ export function reviewNotes(o: { id: string; backlogDir: string }): string {
  */
 export const CONTEXT_NOTES = `Keep your context small: whatever you read stays in it and is read again on every turn. Find code with grep and read only the lines you change or must check, not whole files. Ask a subagent (the Agent tool) only for broad exploration across many files: it starts with a context of its own, so it costs more than it saves for a lookup. Look at changes with \`git diff --stat\` first, then diff only the files you need. Keep command output short. While you work, run only the tests your change affects: the project's script for that when it has one (such as \`npm run test:related\`), or the test files of the code you change. Run the whole suite once, before \"Ready for review\": full runs share the machine with the other agents' and merges', and wait their turn. A full run that fails only with timeouts while the machine is busy is noted in your report, not chased.`;
 
+/** How a status reads in the epic's list. */
+const STATUS_NAMES: Record<BacklogItem['status'], string> = { todo: 'To Do', doing: 'In Progress', review: 'In Review', done: 'Done' };
+
+/**
+ * The epic a ticket is part of and its sisters, one line each, for its agents (BL-237): the agents on BL-172 and BL-173
+ * built what BL-171 had built already, told only their own ticket. Undefined for a ticket without a parent.
+ */
+export function epicList(item: Pick<BacklogItem, 'id' | 'parent'>, items: readonly BacklogItem[], backlogDir: string): string | undefined {
+  if (!item.parent) return undefined;
+  const epic = items.find((i) => i.id === item.parent);
+  const file = (id: string) => `${backlogDir}/${id}.md`;
+  const line = (i: BacklogItem) => `- ${i.id} "${i.title}": ${i.discarded ? "discarded (won't do)" : STATUS_NAMES[i.status]}, ${file(i.id)}`;
+  const sisters = items.filter((i) => i.parent === item.parent && i.id !== item.id);
+  return [
+    `It's part of the epic ${item.parent}${epic ? ` "${epic.title}"` : ''} (its ticket ${file(item.parent)})${sisters.length ? ', with these other tickets:' : '.'}`,
+    ...sisters.map(line),
+  ].join('\n');
+}
+
+/** What the implementer of an epic's ticket is told about its epic and sisters (BL-237). */
+export function epicNote(item: Pick<BacklogItem, 'id' | 'parent'>, items: readonly BacklogItem[], backlogDir: string): string | undefined {
+  const list = epicList(item, items, backlogDir);
+  if (!list) return undefined;
+  return `${list}\n\nBefore you plan, read the epic's ticket and the last reports of its Done tickets (and of those in review), and look at what they already built. When much of your ticket is done already, or it asks for what goes against the epic or a sister's work (undoing it, or doing it another way), build nothing of that part: ask in your report instead ("Needs from you:", with questions), saying which ticket covers or contradicts it.`;
+}
+
+/** What the reviewer of an epic's ticket is told about its epic and sisters (BL-237). */
+export function epicReviewNote(item: Pick<BacklogItem, 'id' | 'parent'>, items: readonly BacklogItem[], backlogDir: string): string | undefined {
+  const list = epicList(item, items, backlogDir);
+  if (!list) return undefined;
+  return `${list}\n\nRead the epic's ticket, and check the work against it and against what the Done tickets built: work that duplicates a sister's, or goes against the epic or a sister's work, is a reason to request changes (unless the user asked for it in the ticket).`;
+}
+
 /** What the reviewer is told. Its first line names it and the item (that's how the ticket finds its chat). */
 export function reviewerPrompt(o: {
-  item: Pick<BacklogItem, 'id' | 'title'>;
+  item: Pick<BacklogItem, 'id' | 'title' | 'parent'>;
   reviewer: string;
   implementer?: string;
   ticket: string;
   branch: string;
   base: string;
   round: number;
+  /** The backlog's items: for a ticket of an epic, the epic and its sisters are listed. */
+  items?: readonly BacklogItem[];
 }): string {
+  const epic = o.items && epicReviewNote(o.item, o.items, folderOf(o.ticket));
   const who = o.implementer ? `${o.implementer} (another agent)` : 'another agent';
   return [
     `You are agent ${o.reviewer}, working on backlog item ${o.item.id}: "${o.item.title}". You are its reviewer.`,
@@ -308,6 +344,7 @@ export function reviewerPrompt(o: {
     `If the work changes what the user sees (the UI), the report must show it: a screenshot, before and after, or a demo GIF or video. When it doesn't, request one in your checklist.`,
     `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
     DESCRIPTION_CHECK,
+    ...(epic ? [epic] : []),
     `Never change issue trackers (Jira, GitHub Issues), and don't push.`,
   ].join('\n\n');
 }

@@ -50,7 +50,7 @@ import {
   mapFor,
   mapNote,
 } from '../features/backlog/codeMap';
-import { CONTEXT_NOTES, reviewNotes } from '../features/backlog/review';
+import { CONTEXT_NOTES, epicNote, reviewNotes } from '../features/backlog/review';
 import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
 import {
@@ -722,15 +722,17 @@ export const PLAN_NOTE =
 
 /** What an agent is told when it starts on an item. */
 export function agentPrompt(
-  item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent'>,
+  item: Pick<BacklogItem, 'id' | 'title' | 'links' | 'agent' | 'parent'>,
   ticket: string,
   branch: string,
   agent: string,
   guide: string,
   map?: CodeMap,
+  items?: readonly BacklogItem[],
 ): string {
   const links = (item.links ?? []).map((l) => `${l.id} (${l.url})`);
   const level = levelNote(item);
+  const epic = items && epicNote(item, items, path.dirname(guide));
   return [
     ...(links.length
       ? [
@@ -738,6 +740,7 @@ export function agentPrompt(
         ]
       : []),
     `Its ticket is ${ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read its title, description and the latest entries of its activity first (earlier entries only if you need them), with any images they link (paths relative to the ticket's folder). If its description has a "Where to start" section, begin there: it's what was found in the code when the ticket was shaped.`,
+    ...(epic ? [epic] : []),
     CONTEXT_NOTES,
     ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
@@ -785,7 +788,9 @@ async function fixWithAgent(ctx: CommandContext, failure: unknown): Promise<void
   const ticket = await ctx.backlog.ensureDocument(item);
   const choice = agentChoice(item);
   const map = await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
-  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map)].join('\n\n');
+  const prompt = [task, agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map, (await ctx.backlog.read()).items)].join(
+    '\n\n',
+  );
   const where = await chatUi.startAgent(chatContext(ctx), ws, prompt, agentLead(item, agent), {
     choice,
     name: `${agent} · ${item.id}`,
@@ -826,10 +831,11 @@ async function runAgent(ctx: CommandContext, item: BacklogItem, ws: Workstream, 
   const agent = newAgentName(ctx);
   const choice = agentChoice(item);
   const map = remote ? undefined : await mapFor(ctx.backlog, ctx.service.roots.mainRoot, item);
+  const items = remote ? undefined : (await ctx.backlog.read()).items;
   const where = await chatUi.startAgent(
     chatContext(ctx),
     ws,
-    agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map),
+    agentPrompt(item, ticket, workstreamLabel(ws), agent, path.join(ctx.backlog.dir, GUIDE), map, items),
     agentLead(item, agent),
     {
       choice,
