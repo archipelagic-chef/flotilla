@@ -182,6 +182,12 @@ describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
     expect(tip(epic)).toMatch(/takes its parts, not the epic/);
   });
 
+  it('keeps the epic line for an epic in progress: no agent is missing on it, and no Start (BL-239)', () => {
+    const epic = item('doing', { parts: { done: 3, total: 7 } });
+    expect(line(epic)).toEqual(['Epic · 3 of 7 parts done', '', '', '']);
+    expect(tip(epic)).toMatch(/moves to Done with the last of them/);
+  });
+
   it('says a proposal waits to be accepted, or is discussed, before the autopilot takes it', () => {
     expect(tip(item('todo', { proposed: { by: 'Nova-7' } }))).toBe('The autopilot takes it once you accept it.');
     const discussed = item('todo', { proposed: { by: 'Nova-7' }, shaping });

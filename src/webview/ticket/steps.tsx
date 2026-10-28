@@ -54,6 +54,7 @@ export function stepState(ticket: TicketView, ci?: TicketCiView): StepState {
       merged: ticket.resume.after.filter((d) => d.merged).map((d) => d.id),
     },
     chained: ticket.chain && ticket.chain === 'merging' && ticket.mergeChecks ? 'checks' : ticket.chain,
+    ...(ticket.item.status === 'doing' && ticket.children.length ? { epicStarted: true } : {}),
   };
 }
 

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { heldBy, type ReviewFix } from '../../features/backlog/review';
 import { discussable } from '../../features/backlog/shaping';
@@ -25,10 +26,13 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
   const controlAgent = (action: 'pause' | 'resume' | 'stop') => async (card?: unknown) => {
     let id = backlogIdOf(card);
     if (!id) {
-      const items = (await backlog.read()).items.filter((i) =>
+      const data = await backlog.read();
+      // An epic in progress has no agent of its own to stop (BL-239): its parts do.
+      const epic = (i: BacklogItem) => data.items.some((c) => c.parent === i.id);
+      const items = data.items.filter((i) =>
         action === 'resume'
           ? heldBy(i.review) || i.review?.state === 'paused'
-          : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || i.status === 'doing',
+          : ['working', 'reviewing', 'revising', 'paused'].includes(i.review?.state ?? '') || (i.status === 'doing' && !epic(i)),
       );
       const title = { pause: 'Pause the agent on…', resume: 'Resume the agent on…', stop: 'Stop the agent on…' }[action];
       id = (

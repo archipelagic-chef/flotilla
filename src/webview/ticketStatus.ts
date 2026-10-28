@@ -23,6 +23,8 @@ export interface StatusInput {
   activity: StatusEntry[];
   /** Whether it has worktrees (or branches): work exists, though nothing runs. */
   hasWork: boolean;
+  /** An epic's parts (BL-239): how many it has, and how many are done. */
+  parts?: { done: number; total: number };
   now?: number;
 }
 
@@ -32,6 +34,8 @@ export interface TicketStatus {
   tone: StatusTone;
   title: string;
   detail?: string;
+  /** A line of Flotilla's own after the title (not an agent's words, as detail is). */
+  note?: string;
   ask?: Ask;
 }
 
@@ -117,6 +121,13 @@ export function ticketStatus(input: StatusInput): TicketStatus {
     return { tone: 'working', title: 'An agent is working on it' };
   }
   if (input.status === 'done') return { tone: 'done', title: 'Done' };
+  // An epic in progress is worked on in its parts (BL-239): nothing of its own is missing.
+  if (input.status === 'doing' && input.parts?.total)
+    return {
+      tone: 'idle',
+      title: `Epic · ${input.parts.done} of ${input.parts.total} parts done`,
+      note: 'Its parts are worked on, not the epic: it moves to Done with the last of them.',
+    };
   if (input.status === 'todo' && !input.hasWork) return { tone: 'idle', title: 'Not started' };
   return { tone: 'idle', title: input.status === 'review' ? 'In review' : 'Nothing is running' };
 }

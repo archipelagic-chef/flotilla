@@ -61,6 +61,8 @@ export interface StepState {
   asking?: { waits: readonly string[]; merged: readonly string[] };
   /** Update from Main and Merge is under way: the part it's at. */
   chained?: 'updating' | 'resolving' | 'checks' | 'merging';
+  /** An epic in progress (BL-239): its parts are worked on, not it. */
+  epicStarted?: boolean;
 }
 
 export interface NextSteps {
@@ -134,6 +136,7 @@ export function nextSteps(s: StepState): NextSteps {
     if (s.queue) return { main: 'merge', others: ['mergeQueueRemove', ...run], status: `${s.queue.place} in the merge queue` };
     return { main: 'merge', others: run };
   }
+  if (s.epicStarted) return { others: run, status: 'Its parts are worked on, not the epic: it moves to Done with the last of them' };
   if (s.status === 'todo' || s.status === 'doing') return { main: 'start', others: run };
   return { others: run };
 }

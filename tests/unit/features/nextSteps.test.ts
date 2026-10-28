@@ -93,6 +93,13 @@ describe('nextSteps', () => {
     expect(ops({ ...approved, ci: 'red' })).not.toContain('merge');
   });
 
+  it('offers no Start on an epic in progress: its parts are worked on (BL-239)', () => {
+    expect(nextSteps({ status: 'doing', epicStarted: true })).toEqual({
+      others: [],
+      status: 'Its parts are worked on, not the epic: it moves to Done with the last of them',
+    });
+  });
+
   it('names the base it merges into', () => {
     expect(stepLabel('merge', 'develop')).toBe('Merge to develop');
     expect(stepLabel('updateAndMerge', 'develop')).toBe('Update from Develop and Merge');

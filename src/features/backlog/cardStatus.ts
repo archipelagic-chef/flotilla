@@ -173,6 +173,12 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         };
       return { text: item.agent?.light && !item.agent.model ? 'To do · light' : 'To do', next: START };
     case 'doing':
+      // An epic is in progress with its parts (BL-239): no agent of its own is missing.
+      if (item.parts?.total)
+        return {
+          text: `Epic · ${item.parts.done} of ${item.parts.total} parts done`,
+          tip: 'Its parts are worked on, not the epic: it moves to Done with the last of them.',
+        };
       return { text: 'In progress · no agent on it', next: START };
     case 'review':
       return { text: 'In review' };
