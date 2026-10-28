@@ -5,6 +5,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
 import { mentioningCommits, movesSince, ticketCommits } from '../../../src/features/history/log';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
@@ -110,6 +111,18 @@ describe('cached ticket reads', () => {
     // This process writes it: the cache is dropped even when nothing else changed.
     await backlog.writeTicket('BL-1', { title: 'First', description: 'Three.', activity: [] });
     expect((await backlog.readTicketCached(item)).description).toBe('Three.');
+  });
+
+  it('parses a ticket once for reads of it that come while it is parsed (BL-230)', async () => {
+    const dir = makeTempDir();
+    cleanup.push(dir);
+    const backlog = new LocalBacklog(dir, path.join(dir, '.git'));
+    const item = { id: 'BL-1', title: 'First', notes: undefined };
+    await backlog.writeTicket('BL-1', { title: 'First', description: 'One.', activity: [] });
+    const parse = vi.spyOn(backlog, 'readTicket');
+    const tickets = await Promise.all([1, 2, 3].map(() => backlog.readTicketCached(item)));
+    expect(tickets.map((t) => t.description)).toEqual(['One.', 'One.', 'One.']);
+    expect(parse).toHaveBeenCalledTimes(1);
   });
 
   it('gives a ticket without a file its title and no activity', async () => {

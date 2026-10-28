@@ -1,6 +1,7 @@
 import type { Merger } from '../backlog/merge';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import { singleFlight } from '../../core/singleFlight';
 import type { StartupClock } from '../../core/startupClock';
 import * as vscode from 'vscode';
 import type { Autopilot } from '../backlog/autopilot';
@@ -285,7 +286,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
-  private async postBacklog(): Promise<void> {
+  /** Startup and every change ask for it, often several at once: one read at a time, and one more after it at most. */
+  private readonly postBacklog = singleFlight(() => this.sendBacklog());
+
+  private async sendBacklog(): Promise<void> {
     const store = this.deps.backlog;
     const data = await store.read();
     const sources = this.deps.integrations.current;
