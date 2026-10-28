@@ -296,8 +296,11 @@ export interface TicketView {
   demoSpeed?: number;
   /** It can be discussed with an agent (a proposal, or To Do): Discuss starts that (BL-45). */
   canDiscuss: boolean;
-  /** The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not done. */
-  dependsOn: Array<{ id: string; title: string; status: BacklogStatus }>;
+  /**
+   * The tickets its description says it depends on ("Depends on: BL-12"), with their status: it waits for those not
+   * done, unless discarded (BL-235).
+   */
+  dependsOn: Array<{ id: string; title: string; status: BacklogStatus; discarded?: boolean }>;
   /**
    * Its agent stopped without a question, to be resumed (BL-198): Resume goes on in its chat. after: the tickets its
    * report says it waits for, and whether each is merged.

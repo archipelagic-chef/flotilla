@@ -51,6 +51,8 @@ export interface BacklogItemView extends BacklogItem {
   holdsUp?: string[];
   /** Where each of those stands (BL-205): what it waits for you to do, or else how far it is ("in progress", "merge failed"). */
   waitsOn?: Array<{ id: string; standing: string }>;
+  /** The tickets it depends on that were discarded (BL-235): it no longer waits for them. */
+  depsDiscarded?: string[];
   /** An epic's parts (BL-205): how many it has, and how many are done. The autopilot takes its parts, not the epic. */
   parts?: { done: number; total: number };
   /** Its agent stopped without a question, to be resumed (BL-198): the tickets it said it waits for, not merged yet and merged. */

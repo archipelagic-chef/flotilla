@@ -301,7 +301,10 @@ describe('the autopilot gives up a start whose item moved on', () => {
 });
 
 describe('the autopilot and tickets that depend on others', () => {
-  it('passes over a To Do ticket that waits for another to be merged (BL-55)', async () => {
+  it.each([
+    ['passes over a To Do ticket that waits for another to be merged (BL-55)', false, ['BL-3']],
+    ['takes one that waits only for a discarded ticket like any other To Do (BL-235)', true, ['BL-1', 'BL-3']],
+  ])('%s', async (_name, discarded, started) => {
     vi.resetModules();
     vi.doMock('vscode', () => ({
       EventEmitter: class {
@@ -320,7 +323,7 @@ describe('the autopilot and tickets that depend on others', () => {
       next: 4,
       items: [
         { id: 'BL-1', title: 'Waits', status: 'todo' as const, created: at },
-        { id: 'BL-2', title: 'Needed', status: 'doing' as const, created: at },
+        { id: 'BL-2', title: 'Needed', status: 'doing' as const, created: at, ...(discarded ? { discarded: { at } } : {}) },
         { id: 'BL-3', title: 'Free', status: 'todo' as const, created: at },
       ],
     };
@@ -355,7 +358,7 @@ describe('the autopilot and tickets that depend on others', () => {
     } as never);
     (pilot as unknown as { on: boolean }).on = true;
     await pilot.tick();
-    expect(prepareWorktree.mock.calls.map((c) => (c as unknown as [{ id: string }])[0].id)).toEqual(['BL-3']);
+    expect(prepareWorktree.mock.calls.map((c) => (c as unknown as [{ id: string }])[0].id)).toEqual(started);
     pilot.dispose();
   });
 });

@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import { reopenItem } from '../../../src/features/backlog/backlog';
 import {
   baseLabel,
   branchesToCheck,
   conflictsOf,
+  dependencyDiscardedEntry,
   dependsOn,
+  discardedDeps,
   driftNotes,
   fileList,
   holdsUp,
@@ -124,6 +127,30 @@ describe('tickets that depend on others', () => {
       items: [item({ id: 'BL-2', status: 'done' }), item({ id: 'BL-3', status: 'review', title: 'Three' })],
     };
     expect(waitingFor(data, ['BL-2', 'BL-3', 'BL-99'])).toEqual([{ id: 'BL-3', title: 'Three', status: 'review' }]);
+  });
+
+  it("doesn't wait for discarded ones, and waits again once they're reopened (BL-235)", () => {
+    const discarded: BacklogData = {
+      version: 1,
+      next: 1,
+      items: [
+        item({ id: 'BL-2', status: 'todo', title: 'Two', discarded: { at: '2026-10-28T00:00:00Z' } }),
+        item({ id: 'BL-3', status: 'review', title: 'Three' }),
+      ],
+    };
+    expect(waitingFor(discarded, ['BL-2'])).toEqual([]);
+    expect(discardedDeps(discarded, ['BL-2'])).toEqual([{ id: 'BL-2', title: 'Two' }]);
+    expect(waitingFor(discarded, ['BL-2', 'BL-3'])).toEqual([{ id: 'BL-3', title: 'Three', status: 'review' }]);
+    expect(discardedDeps(discarded, ['BL-2', 'BL-3'])).toEqual([{ id: 'BL-2', title: 'Two' }]);
+    const reopened = reopenItem(discarded, 'BL-2');
+    expect(waitingFor(reopened, ['BL-2', 'BL-3']).map((d) => d.id)).toEqual(['BL-2', 'BL-3']);
+    expect(discardedDeps(reopened, ['BL-2', 'BL-3'])).toEqual([]);
+  });
+
+  it('tells a dependent that a ticket it depends on was discarded (BL-235)', () => {
+    expect(dependencyDiscardedEntry('BL-172')).toBe(
+      'BL-172, which this depends on, was discarded: it no longer waits for it. Check that it still makes sense without that work.',
+    );
   });
 });
 

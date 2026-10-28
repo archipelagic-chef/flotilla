@@ -127,12 +127,28 @@ export function resumeWaits(text: string, self?: string): string[] {
   return [...ids];
 }
 
-/** The tickets of those it depends on that aren't done yet (merged): what it waits for. Unknown ids are ignored. */
+/**
+ * The tickets of those it depends on that aren't done yet (merged): what it waits for. Unknown ids are ignored, and
+ * discarded ones too (BL-235): their work isn't coming, so they don't hold it up; Reopen makes it wait again.
+ */
 export function waitingFor(data: BacklogData, deps: readonly string[]): Array<Pick<BacklogItem, 'id' | 'title' | 'status'>> {
   return deps.flatMap((id) => {
     const dep = data.items.find((i) => i.id.toUpperCase() === id);
-    return dep && dep.status !== 'done' ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
+    return dep && dep.status !== 'done' && !dep.discarded ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
   });
+}
+
+/** The tickets of those it depends on that were discarded (BL-235): it no longer waits for them. */
+export function discardedDeps(data: BacklogData, deps: readonly string[]): Array<Pick<BacklogItem, 'id' | 'title'>> {
+  return deps.flatMap((id) => {
+    const dep = data.items.find((i) => i.id.toUpperCase() === id);
+    return dep?.discarded ? [{ id: dep.id, title: dep.title }] : [];
+  });
+}
+
+/** The Flotilla entry on each open ticket that depends on one just discarded (BL-235). */
+export function dependencyDiscardedEntry(id: string): string {
+  return `${id}, which this depends on, was discarded: it no longer waits for it. Check that it still makes sense without that work.`;
 }
 
 export function capitalize(s: string): string {

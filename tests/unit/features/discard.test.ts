@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { discardDetail, discardEntry, reopenEntry } from '../../../src/features/backlog/discard';
+import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import type { TicketEntry } from '../../../src/features/backlog/ticket';
+import {
+  discardDetail,
+  discardEntry,
+  noteDependents,
+  reopenEntry,
+} from '../../../src/features/backlog/discard';
 
 describe('discardDetail', () => {
   it("is BL-209's plain confirmation when nothing has started", () => {
@@ -48,5 +55,46 @@ describe('reopenEntry', () => {
   it('names the branches still there, or nothing', () => {
     expect(reopenEntry(['feature/BL-7-a'])).toBe('Its branch from before is still there: `feature/BL-7-a`. Start picks the work up there again.');
     expect(reopenEntry([])).toBeUndefined();
+  });
+});
+
+describe('noteDependents', () => {
+  it('tells each open ticket that depends on the discarded one, once (BL-235)', async () => {
+    const at = '2026-10-28T00:00:00Z';
+    const item = (id: string, o: Partial<BacklogItem> = {}): BacklogItem => ({ id, title: id, status: 'todo', created: at, ...o });
+    const data: BacklogData = {
+      version: 1,
+      next: 7,
+      items: [
+        item('BL-1', { discarded: { at } }),
+        item('BL-2'),
+        item('BL-3', { status: 'doing' }),
+        item('BL-4', { status: 'done' }),
+        item('BL-5', { discarded: { at } }),
+        item('BL-6'),
+      ],
+    };
+    const descriptions: Record<string, string> = {
+      'BL-2': 'Depends on: BL-1',
+      'BL-3': 'Depends on: BL-9, bl-1',
+      'BL-4': 'Depends on: BL-1',
+      'BL-5': 'Depends on: BL-1',
+      'BL-6': 'Mentions BL-1, but depends on nothing.',
+    };
+    const appended: Array<[string, TicketEntry]> = [];
+    await noteDependents(
+      {
+        read: async () => data,
+        readTicketCached: async (i) => ({ description: descriptions[i.id] ?? '' }),
+        appendActivity: async (i, e) => void appended.push([i.id, e]),
+      },
+      'BL-1',
+      '2026-10-28 18:30',
+    );
+    const body = 'BL-1, which this depends on, was discarded: it no longer waits for it. Check that it still makes sense without that work.';
+    expect(appended).toEqual([
+      ['BL-2', { date: '2026-10-28 18:30', author: 'Flotilla', body }],
+      ['BL-3', { date: '2026-10-28 18:30', author: 'Flotilla', body }],
+    ]);
   });
 });

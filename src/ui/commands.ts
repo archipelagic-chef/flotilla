@@ -82,7 +82,12 @@ import {
 import { describeWorkstream, workstreamLabel } from './format';
 import { maybeOfferHygiene } from './hygiene';
 import { removalToRun, type PendingRemoval } from './pending';
-import { discardDetail, discardEntry, reopenEntry } from '../features/backlog/discard';
+import {
+  discardDetail,
+  discardEntry,
+  noteDependents,
+  reopenEntry,
+} from '../features/backlog/discard';
 import * as scmUi from './scmCommands';
 import { readSettings } from './settings';
 import { runWorkflowByHand } from './ci/runWorkflow';
@@ -575,6 +580,7 @@ async function discardBacklogItem(ctx: CommandContext, id: string | undefined): 
   const body = discardEntry({ stopped, removed, removing: current?.ws.worktree.branch, branches, left });
   const discarded = (await ctx.backlog.read()).items.find((i) => i.id === id);
   if (body && discarded) await ctx.backlog.appendActivity(discarded, { date: entryDate(new Date()), author: 'Flotilla', body });
+  await noteDependents(ctx.backlog, id, entryDate(new Date()));
   // This window's worktree goes last, as Remove does it: main opens, and removes it.
   if (current) await removeCurrent(ctx, removalPlan(ctx, current.ws, current.changedFiles));
 }

@@ -1,5 +1,9 @@
 /** What Discard says about a ticket's started work (BL-210): its confirmation, and the entry once it's done. */
 
+import type { BacklogData, BacklogItem } from './backlog';
+import type { TicketEntry } from './ticket';
+import { dependencyDiscardedEntry, dependsOn } from './mainDrift';
+
 const code = (names: readonly string[]) => names.map((n) => `\`${n}\``).join(', ');
 
 /** A worktree of the ticket to remove: its label, and how many uncommitted or untracked files it has. */
@@ -51,4 +55,26 @@ export function discardEntry(o: {
 export function reopenEntry(branches: readonly string[]): string | undefined {
   if (!branches.length) return undefined;
   return `${branches.length === 1 ? 'Its branch from before is still there' : 'Its branches from before are still there'}: ${code(branches)}. Start picks the work up there again.`;
+}
+
+/**
+ * The open tickets that depend on one just discarded stop waiting for it (BL-235): each gets an entry saying so, to
+ * check that it still makes sense without that work.
+ */
+export async function noteDependents(
+  backlog: {
+    read(): Promise<BacklogData>;
+    readTicketCached(item: BacklogItem): Promise<{ description: string }>;
+    appendActivity(item: BacklogItem, entry: TicketEntry): Promise<void>;
+  },
+  id: string,
+  date: string,
+): Promise<void> {
+  const open = (await backlog.read()).items.filter((i) => i.id !== id && i.status !== 'done' && !i.discarded);
+  for (const item of open) {
+    const { description } = await backlog.readTicketCached(item);
+    if (dependsOn(description, item.id).includes(id.toUpperCase())) {
+      await backlog.appendActivity(item, { date, author: 'Flotilla', body: dependencyDiscardedEntry(id) });
+    }
+  }
 }

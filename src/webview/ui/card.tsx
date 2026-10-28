@@ -273,6 +273,15 @@ export function ItemRow({
               {item.waitsFor.join(', ')}
             </span>
           )}
+          {!renaming && item.depsDiscarded && !item.discarded && (
+            <span
+              class="drift-badge"
+              data-tip={`Depended on ${item.depsDiscarded.join(', ')}, discarded: it no longer waits for ${item.depsDiscarded.length === 1 ? 'it' : 'them'}`}
+            >
+              <i class="codicon codicon-circle-slash" />
+              {item.depsDiscarded.join(', ')}, discarded
+            </span>
+          )}
           {!renaming && item.linked && (
             // One small badge (the title needs the room); the hover lists the issues, a click opens the first.
             <a

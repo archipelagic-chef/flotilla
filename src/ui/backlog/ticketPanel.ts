@@ -1601,7 +1601,7 @@ export class TicketPanels implements vscode.Disposable {
         const dep = data.items.find((i) => i.id.toUpperCase() === id);
         return dep ? [{ id: dep.id, title: dep.title, status: dep.status }] : [];
       });
-    const dependsOn = known(dependsOnIds(description, item.id));
+    const dependsOn = known(dependsOnIds(description, item.id)).map((d) => (data.items.find((i) => i.id === d.id)?.discarded ? { ...d, discarded: true } : d));
     const asks = resumeAsk(item, activity);
     const resume = asks && { after: known(asks.waits).map((d) => ({ ...d, merged: d.status === 'done' || !!data.items.find((i) => i.id === d.id)?.merged })) };
     const base = this.mainSync && isOpen(item) && this.worktreesOf(item).length ? await this.mainSync.base() : undefined;

@@ -473,11 +473,13 @@ export function MergePanel({ ticket }: { ticket: TicketView }) {
  */
 export function MainState({ ticket }: { ticket: TicketView }) {
   const conflicts = conflictsOf(ticket.item);
-  const waiting = ticket.dependsOn.filter((d) => d.status !== 'done');
+  const waiting = ticket.dependsOn.filter((d) => d.status !== 'done' && !d.discarded);
+  // Those discarded hold it up no more (BL-235).
+  const dropped = ticket.item.status === 'done' ? [] : ticket.dependsOn.filter((d) => d.discarded);
   const update = ticket.updateFromMain;
   // The tickets its agent said it waits for to be merged, to be resumed (BL-198).
   const resumeAfter = ticket.resume?.after ?? [];
-  if (!conflicts.length && !waiting.length && !resumeAfter.length) return null;
+  if (!conflicts.length && !waiting.length && !dropped.length && !resumeAfter.length) return null;
   const label = (s: BacklogStatus) => STATUSES.find((x) => x.status === s)?.label ?? s;
   return (
     <>
@@ -506,6 +508,20 @@ export function MainState({ ticket }: { ticket: TicketView }) {
             </span>
           ))}{' '}
           to be merged: it depends on {waiting.length === 1 ? 'its' : 'their'} work.
+        </div>
+      )}
+      {dropped.length > 0 && (
+        <div class="main-note">
+          <i class="codicon codicon-circle-slash" /> Depended on{' '}
+          {dropped.map((d, i) => (
+            <span key={d.id}>
+              {i > 0 && ', '}
+              <button class="text-button" onClick={() => send({ type: 'openTicket', id: d.id })} title={d.title}>
+                {d.id}
+              </button>
+            </span>
+          ))}
+          , discarded: it no longer waits for {dropped.length === 1 ? 'it' : 'them'}.
         </div>
       )}
       {resumeAfter.length > 0 && (

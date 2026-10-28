@@ -39,7 +39,13 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
 import { needsYou, standing } from '../../features/backlog/autopilotIdle';
-import { baseLabel, holdsUp, waitsOf } from '../../features/backlog/mainDrift';
+import {
+  baseLabel,
+  dependsOn,
+  discardedDeps,
+  holdsUp,
+  waitsOf,
+} from '../../features/backlog/mainDrift';
 import {
   ALL,
   type BacklogItemView,
@@ -345,6 +351,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
         // What it waits for, and how its branches merge with main (BL-55).
         const waitsFor = waits.get(item.id) ?? [];
+        // Those discarded hold it up no more (BL-235): the card says so.
+        const depsDiscarded = item.status === 'done' ? [] : discardedDeps(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
         // Where each stands, and an epic's parts (BL-205): why the autopilot passes it over.
         const waitsOn = waitsFor.flatMap((id) => {
           const dep = data.items.find((i) => i.id === id);
@@ -376,6 +384,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
           ...(holders.has(item.id) ? { holdsUp: holders.get(item.id) } : {}),
+          ...(depsDiscarded.length ? { depsDiscarded } : {}),
           ...(parts ? { parts } : {}),
           ...(resume ? { resume } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
