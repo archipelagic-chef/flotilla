@@ -74,6 +74,41 @@ describe('needOf', () => {
   });
 });
 
+describe('an approved ticket being merged (BL-229)', () => {
+  const merging = (state: 'resolving' | 'resolved' | 'failed', reason?: string, stopped?: boolean) =>
+    ({
+      dir: 'd',
+      branch: 'b',
+      base: 'main',
+      baseTip: 't',
+      state,
+      started: 'S',
+      ...(reason ? { reason } : {}),
+      ...(state === 'failed'
+        ? { checks: { command: 'npm test', output: '', at: 'F', runs: [{ log: 'l', at: 'F', ms: 1, timeouts: 0, failures: [], stopped }] } }
+        : {}),
+    }) as BacklogItem['merging'];
+  const approved = (m: BacklogItem['merging']) => item({ status: 'review', review: review({ state: 'approved', reviewer: 'Nova-9' }), merging: m });
+
+  it('says where its merge is, in the card’s words, not "Ready to merge"', () => {
+    expect(needOf(approved(merging('failed', 'you stopped the checks (`npm test`).', true)), [])).toEqual({
+      kind: 'merge',
+      since: 'F',
+      line: 'Merge stopped: you stopped its checks. Run them again, or cancel it.',
+    });
+    expect(needOf(approved(merging('failed', 'the checks failed (`npm test`).')), [])).toEqual({
+      kind: 'merge',
+      since: 'F',
+      line: 'Merge failed: the checks failed (npm test).',
+    });
+    expect(needOf(approved(merging('resolved')), [])).toEqual({ kind: 'merge', since: 'S', line: 'Waiting for you: approve the merge' });
+  });
+
+  it('leaves out a merge an agent resolves', () => {
+    expect(needOf(approved(merging('resolving')), [])).toBeUndefined();
+  });
+});
+
 describe('oldestFirst', () => {
   it('lists the waiting items oldest first, the ones without a start last', () => {
     const rows = [

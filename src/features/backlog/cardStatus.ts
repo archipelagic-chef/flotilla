@@ -5,6 +5,7 @@ import { readyToMerge } from './backlog';
 import type { CardAgent } from './cardAgents';
 import { conflictsOf } from './mainDrift';
 import { mergeLabel, unmergedWarning } from './merged';
+import { mergeStage } from './mergeStage';
 import { nextSteps, STEP } from './nextSteps';
 import { turnOf } from './turn';
 
@@ -80,11 +81,11 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
   }
   if (item.source) return { text: `${item.source.label} · ${item.source.statusName}` };
   if (item.discarded) return { text: discardedLabel(item.discarded.at), next: { op: 'reopen', label: 'Reopen', icon: 'history' } };
-  const m = item.merging;
-  if (m?.state === 'failed') return { text: `Merge failed${m.reason ? `: ${strip(m.reason)}` : ''}`, mark: 'error', next: OPEN };
+  const merge = mergeStage(item.merging);
+  if (merge && (merge.stage === 'failed' || merge.stage === 'stopped')) return { text: merge.text, mark: merge.mark, next: OPEN };
   if (item.checks) return { text: `Merging: checks${item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}`, working: true };
-  if (m?.state === 'resolving') return { text: 'Merging: an agent resolves its conflicts', working: true };
-  if (m?.state === 'resolved') return { text: 'Waiting for you: approve the merge', mark: 'question', next: OPEN };
+  if (merge?.stage === 'resolving') return { text: merge.text, working: true };
+  if (merge?.stage === 'resolved') return { text: merge.text, mark: merge.mark, next: OPEN };
   if (item.startFailed) return { text: `Couldn't start: ${strip(item.startFailed.message)}`, mark: 'error', next: { ...START, label: 'Retry' } };
   const stuck = agents.find((a) => a.stuck);
   if (stuck) return { text: `${stuck.name} looks stuck: ${strip(stuck.stuck!)}`, mark: 'warning', next: OPEN };
