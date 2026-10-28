@@ -54,6 +54,8 @@ export interface BacklogItem {
   supersededBy?: string;
   /** An epic you moved out of Done with all its parts done: it stays out until another of its parts finishes (BL-206). */
   keptOpen?: boolean;
+  /** An epic you moved back to To Do with parts started: it stays there until another of its parts starts (BL-239). */
+  keptToDo?: boolean;
   /** Its description's fingerprint when last seen: a change to it (in the ticket file) is noted in its activity. */
   descriptionHash?: string;
   /** The model and effort agents use on it (unset: the settings'). */
@@ -289,6 +291,42 @@ export function closeFinishedEpics(before: BacklogData, next: BacklogData): { da
     });
   }
   return { data: { ...next, items }, closed };
+}
+
+/** Whether a part counts as started for its epic (BL-239): in progress, in review or done, accepted and not discarded. */
+const started = (i: BacklogItem | undefined) => !!i && i.status !== 'todo' && !i.proposed && !i.discarded;
+
+/**
+ * The backlog with its started epics moved to In Progress (BL-239), and which moved with the part that did it: a To Do
+ * item with parts, one of them started. before is the backlog as it was before next: an epic moved back to To Do there
+ * with no part newly started is kept there (keptToDo) until another of its parts starts. Epics of epics start in turn.
+ */
+export function startEpics(before: BacklogData, next: BacklogData): { data: BacklogData; started: Array<{ id: string; part: string }> } {
+  const was = new Map(before.items.map((i) => [i.id, i]));
+  const moved: Array<{ id: string; part: string }> = [];
+  let items = next.items;
+  for (let changed = true; changed;) {
+    changed = false;
+    const data = { ...next, items };
+    items = items.map((item) => {
+      if (item.status !== 'todo' && item.keptToDo) {
+        const { keptToDo: _k, ...rest } = item;
+        return rest;
+      }
+      if (item.status !== 'todo' || item.proposed || item.discarded) return item;
+      const parts = childrenOf(data, item.id).filter(started);
+      if (!parts.length) return item;
+      const fresh = parts.find((p) => !started(was.get(p.id)));
+      const old = was.get(item.id);
+      if (!fresh && old && old.status !== 'todo') return item.keptToDo ? item : { ...item, keptToDo: true };
+      if (!fresh && item.keptToDo) return item;
+      const { keptToDo: _k, ...rest } = item;
+      changed = true;
+      moved.push({ id: item.id, part: (fresh ?? parts[0]).id });
+      return { ...rest, status: 'doing' };
+    });
+  }
+  return { data: { ...next, items }, started: moved };
 }
 
 export function removeItem(data: BacklogData, id: string): BacklogData {
