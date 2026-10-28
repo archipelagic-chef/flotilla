@@ -147,3 +147,39 @@ describe('needsYouMessage', () => {
     expect(needsYouMessage(mixed)).toBe('2 items need you: feature/a reported an error, BL-1 is ready for your review.');
   });
 });
+
+describe('the tickets a need holds up (BL-238)', () => {
+  const held = new Map([
+    ['BL-172', ['BL-208']],
+    ['BL-173', ['BL-211', 'BL-213']],
+  ]);
+
+  it('lists a review the user stopped or paused, or approved, when it holds others up', () => {
+    const items = [
+      item('BL-173', { review: review('stopped', { stop: { kind: 'user' } }) }),
+      item('BL-174', { review: review('stopped', { stop: { kind: 'user' } }) }),
+      item('BL-175', { review: review('paused', { paused: { byUser: '2026-10-28T10:00:00Z' } } as Partial<ReviewState>) }),
+      item('BL-172', { review: review('approved', { byUser: true }) }),
+    ];
+    const list = needsYouList(items, [], [], new Map([...held, ['BL-175', ['BL-9']]]));
+    expect(list.map((n) => [n.key, n.holdsUp])).toEqual([
+      ['stopped:BL-173', ['BL-211', 'BL-213']],
+      ['stopped:BL-175', ['BL-9']],
+      ['approved:BL-172', ['BL-208']],
+    ]);
+  });
+
+  it('puts those that hold tickets up first among their kind', () => {
+    const items = [item('BL-100', { review: review('approved') }), item('BL-172', { review: review('approved') })];
+    expect(needsYouList(items, [], [], held).map((n) => n.ticket?.id)).toEqual(['BL-172', 'BL-100']);
+  });
+
+  it('says who waits for it', () => {
+    const [n] = needsYouList([item('BL-172', { review: review('approved') })], [], [], held);
+    expect(needsYouMessage([n])).toBe('BL-172 is approved, ready to merge: BL-208 waits for it.');
+    const list = needsYouList([item('BL-172', { review: review('approved') }), item('BL-173', { review: review('stopped') })], [], [], held);
+    expect(needsYouMessage(list)).toBe(
+      '2 tickets need you: BL-173 (holds up BL-211 and BL-213) has a review that stopped, BL-172 (holds up BL-208) is approved, ready to merge.',
+    );
+  });
+});
