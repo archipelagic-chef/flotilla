@@ -19,6 +19,7 @@ import {
   closeDiscarded,
   ensurePullRequest,
   type GitHubPullRequests,
+  GitHubSignInNeeded,
   pullRequestBody,
   type PullRequestInfo,
   pullRequestNote,
@@ -40,6 +41,8 @@ export interface BranchPushDeps {
   pullRequests?: (owner: string, repo: string) => GitHubPullRequests;
   /** The branch tickets merge into, which their pull requests go into. */
   baseBranch?: () => Promise<string | undefined>;
+  /** A pull request couldn't be opened because you aren't signed in to GitHub (BL-232): asked once until you sign in. */
+  needsSignIn?: () => void;
 }
 
 /** An approved ticket, not merged yet: its branches are pushed. */
@@ -81,7 +84,8 @@ const withPullRequest = (i: BacklogItem, pr: PullRequestInfo): PullRequestInfo[]
  * With pull requests on (flotilla.github.pullRequests, BL-221), a ticket's branches are pushed once its agent reports
  * "Ready for review", and each gets a pull request into the base branch; once the ticket is merged, its pull requests
  * are marked merged by GitHub, or closed by Flotilla when other commits landed. A discarded ticket's open pull requests
- * are closed (BL-225); reopened and in review again, it gets new ones.
+ * are closed (BL-225); reopened and in review again, it gets new ones. Without a GitHub sign-in, you're asked once and
+ * the tickets show it; once you sign in, their pull requests are opened (BL-232).
  */
 export class BranchPush implements vscode.Disposable {
   private readonly subscriptions: Array<{ dispose(): void }> = [];
@@ -92,6 +96,8 @@ export class BranchPush implements vscode.Disposable {
   private readonly fresh = new Set<string>();
   /** The tips a pull request couldn't be opened for (branch → tip): tried again on the next tip, or when approved. */
   private readonly prFailed = new Map<string, string>();
+  /** You were asked to sign in to GitHub (needsSignIn), and haven't signed in since. */
+  private signInAsked = false;
 
   constructor(private readonly deps: BranchPushDeps) {
     // The repository's refresh sees new commits on the branches.
@@ -108,6 +114,13 @@ export class BranchPush implements vscode.Disposable {
   /** An item was approved: its branches are pushed now. */
   approved(id: string): void {
     this.fresh.add(id);
+    this.schedule(0);
+  }
+
+  /** You signed in to GitHub (BL-232): the pull requests that couldn't be opened are opened now, at the same tips. */
+  signedIn(): void {
+    this.signInAsked = false;
+    this.prFailed.clear();
     this.schedule(0);
   }
 
@@ -190,14 +203,41 @@ export class BranchPush implements vscode.Disposable {
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       this.deps.output.appendLine(`Pull request for ${branch}: ${why}`);
-      if (this.prFailed.get(branch) !== tip)
+      const noted = this.prFailed.get(branch) === tip;
+      this.prFailed.set(branch, tip);
+      if (e instanceof GitHubSignInNeeded) return this.signInNeeded(item, branch, why);
+      // Signed in by now: it waits for something else, said in its note.
+      if (item.pullRequestSignIn)
+        await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, pullRequestSignIn: undefined } : i)) }), {
+          by: 'Flotilla',
+        });
+      if (!noted)
         await this.deps.backlog.appendActivity(item, {
           date: entryDate(new Date()),
           author: 'Flotilla',
           body: `Couldn't open a pull request for \`${branch}\` on GitHub: ${why}\n\nIt's tried again when the branch gets new commits.`,
         });
-      this.prFailed.set(branch, tip);
     }
+  }
+
+  /** No GitHub session: the ticket notes it once and shows it until its pull request opens; you're asked once. */
+  private async signInNeeded(item: BacklogItem, branch: string, why: string): Promise<void> {
+    if (!this.signInAsked) {
+      this.signInAsked = true;
+      this.deps.needsSignIn?.();
+    }
+    if ((await this.deps.backlog.read()).items.find((i) => i.id === item.id)?.pullRequestSignIn) return;
+    await this.deps.backlog.change(
+      (d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, pullRequestSignIn: new Date().toISOString() } : i)) }),
+      {
+        by: 'Flotilla',
+      },
+    );
+    await this.deps.backlog.appendActivity(item, {
+      date: entryDate(new Date()),
+      author: 'Flotilla',
+      body: `Couldn't open a pull request for \`${branch}\` on GitHub: ${why}\n\nIt's opened once you sign in.`,
+    });
   }
 
   /** A merged ticket's open pull requests: merged by GitHub, or closed once main is on origin with other commits. */
@@ -253,9 +293,12 @@ export class BranchPush implements vscode.Disposable {
   }
 
   private async keep(id: string, pr: PullRequestInfo): Promise<void> {
-    await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, pullRequests: withPullRequest(i, pr) } : i)) }), {
-      by: 'Flotilla',
-    });
+    await this.deps.backlog.change(
+      (d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, pullRequests: withPullRequest(i, pr), pullRequestSignIn: undefined } : i)) }),
+      {
+        by: 'Flotilla',
+      },
+    );
   }
 }
 

@@ -4,6 +4,7 @@ import {
   type Need,
   type NeedKind,
   needsYouRows,
+  waitsForSignIn,
 } from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
@@ -49,19 +50,46 @@ const NEED_TITLE: Record<NeedKind, string> = {
 export function NeedsYou({ items, notes = [] }: { items: BacklogItem[]; notes?: NoteView[] }) {
   const [open, setOpen] = useState(true);
   const rows = needsYouRows(items, notes);
-  if (!rows.length) return null;
+  const signIn = signInNeed(items);
+  if (!rows.length && !signIn) return null;
   return (
     <div class="group lane needs-lane">
       <div class="row group-head" onClick={() => setOpen(!open)}>
         <span class="name">Needs you</span>
         <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} lane-chev`} aria-label={open ? 'Hide what needs you' : 'Show what needs you'} />
-        <span class="badge">{rows.length}</span>
+        <span class="badge">{rows.length + (signIn ? 1 : 0)}</span>
       </div>
       {open && (
         <div class="lane-body">
+          {signIn && <SignInRow need={signIn} />}
           {rows.map((row) => (row.note ? <NoteNeedRow key={row.note.id} note={row.note} need={row.need!} /> : <NeedRow key={row.item.id} item={row.item} />))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Tickets in review whose pull requests wait for you to sign in to GitHub (BL-232): one row for them all. */
+function signInNeed(items: BacklogItem[]): { since: string; count: number } | undefined {
+  const waiting = items.filter(waitsForSignIn);
+  if (!waiting.length) return undefined;
+  return { since: waiting.map((i) => i.pullRequestSignIn!).sort()[0], count: waiting.length };
+}
+
+/** Pull requests on GitHub need you to sign in: Sign In asks for the session, and they're opened then. */
+function SignInRow({ need }: { need: { since: string; count: number } }) {
+  const age = waited(need.since);
+  return (
+    <div class="row backlog-item need need-signIn" title="Flotilla opens the pull requests once you sign in to GitHub in VS Code">
+      <i class="codicon codicon-github need-icon" />
+      <span class="name">Pull requests on GitHub need you to sign in</span>
+      <span class="need-line">{need.count === 1 ? '1 ticket waits for its pull request' : `${need.count} tickets wait for their pull requests`}</span>
+      {age && <span class="need-age">{age}</span>}
+      <span class="need-actions">
+        <button class="button" onClick={() => send({ type: 'ci', op: 'signIn' })}>
+          Sign In
+        </button>
+      </span>
     </div>
   );
 }

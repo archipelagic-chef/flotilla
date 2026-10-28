@@ -17,6 +17,7 @@ import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
 import {
+  GITHUB_SCOPES,
   JOB_LOG_SCHEME,
   JobLogProvider,
   signedInActions,
@@ -355,7 +356,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     localOnly: devGitHubApi(context.extensionMode) !== undefined,
     pullRequests: signedInPullRequests(globalThis.fetch as unknown as Fetch, devGitHubApi(context.extensionMode)),
     baseBranch: () => merger.baseBranch(),
+    // Asked once, where you'll see it (BL-232): Sign In is the CI/CD view's, which asks for the session.
+    needsSignIn: () =>
+      void vscode.window
+        .showWarningMessage('Pull requests on GitHub need you to sign in.', 'Sign In')
+        .then((pick) => pick && sidebar.ci.signIn().catch((e: unknown) => output.appendLine(`Sign in to GitHub: ${String(e)}`))),
   });
+  context.subscriptions.push(
+    // Signed in to GitHub: the pull requests that waited for it are opened now.
+    vscode.authentication.onDidChangeSessions(async (e) => {
+      if (e.provider.id !== 'github') return;
+      const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true }).then(undefined, () => undefined);
+      if (session) pushes.signedIn();
+    }),
+  );
   // The tickets' comments and their pull requests', both ways (BL-224).
   const prComments = new PullRequestComments({
     backlog,

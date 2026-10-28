@@ -7,6 +7,10 @@ import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 import { turnOf, type QueuedStart } from './turn';
 
+/** A ticket in review with no open pull request because you aren't signed in to GitHub (BL-232). */
+export const waitsForSignIn = (i: BacklogItem): boolean =>
+  !!i.pullRequestSignIn && i.status === 'review' && !i.merged && !i.discarded && !i.pullRequests?.some((p) => p.state === 'open');
+
 /**
  * What waits on the user, for the backlog's "Needs you" list: an agent's question, work ready for the user's review,
  * approved work not merged yet, a merge that stopped or waits for approval, a stopped review, a start that failed, a reply queued for an agent. Shared by the host

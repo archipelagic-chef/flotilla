@@ -23,7 +23,7 @@ import {
   updateItem,
 } from '../../../src/features/backlog/backlog';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
-import { GitHubPullRequests } from '../../../src/features/ci/pullRequests';
+import { GitHubPullRequests, GitHubSignInNeeded } from '../../../src/features/ci/pullRequests';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { BranchPush } from '../../../src/ui/backlog/branchPush';
 import {
@@ -156,9 +156,15 @@ describe('pull requests of tickets in review (BL-221)', () => {
   let store: LocalBacklog;
   let pushes: BranchPush;
   let fake: FakeGitHub;
+  let session: boolean;
+  let down: boolean;
+  let asked: number;
 
   beforeEach(async () => {
     setting.value = 'auto';
+    session = true;
+    down = false;
+    asked = 0;
     repo = initRepo();
     const home = makeTempDir();
     cleanup.push(repo, home);
@@ -181,8 +187,20 @@ describe('pull requests of tickets in review (BL-221)', () => {
       isLeader: () => true,
       output: { appendLine: () => undefined } as never,
       localOnly: true,
-      pullRequests: (owner, name) => new GitHubPullRequests(owner, name, async () => 'fake-token', globalThis.fetch as unknown as Fetch, fake.url),
+      pullRequests: (owner, name) =>
+        new GitHubPullRequests(
+          owner,
+          name,
+          async () => {
+            if (!session) throw new GitHubSignInNeeded('open pull requests');
+            if (down) throw new Error('GitHub is down.');
+            return 'fake-token';
+          },
+          globalThis.fetch as unknown as Fetch,
+          fake.url,
+        ),
       baseBranch: async () => 'main',
+      needsSignIn: () => asked++,
     });
   });
 
@@ -207,6 +225,45 @@ describe('pull requests of tickets in review (BL-221)', () => {
     await pushes.check();
     expect(fake.pulls()).toHaveLength(1);
     expect((await item()).pushed?.[0].commit).toBe(git(repo, 'rev-parse', BRANCH));
+  });
+
+  it('asks once to sign in to GitHub, for all its tickets, and opens their pull requests once you have (BL-232)', async () => {
+    session = false;
+    git(repo, 'checkout', '-q', '-b', 'feature/BL-2-y');
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'BL-2: one');
+    await store.change((d) => updateItem(addBranch(addItem(d, 'Two', 'BL', new Date()).data, 'BL-2', 'feature/BL-2-y'), 'BL-2', { status: 'review' }));
+    await pushes.check();
+    await pushes.check();
+    expect(asked).toBe(1);
+    expect(fake.pulls()).toEqual([]);
+    const items = (await store.read()).items;
+    expect(items.map((i) => !!i.pullRequestSignIn)).toEqual([true, true]);
+    for (const i of items) {
+      const activity = (await store.readTicket(i)).activity.map((e) => e.body);
+      expect(activity.filter((n) => n.includes('Sign in to GitHub to open pull requests.'))).toHaveLength(1);
+    }
+
+    // Signed in: the same tips get their pull requests, without new commits.
+    session = true;
+    pushes.signedIn();
+    await pushes.check();
+    expect(fake.pulls()).toHaveLength(2);
+    expect((await store.read()).items.map((i) => [i.pullRequests?.length, i.pullRequestSignIn])).toEqual([
+      [1, undefined],
+      [1, undefined],
+    ]);
+  });
+
+  it('stops asking for a sign-in once one is there, when the pull request fails another way', async () => {
+    session = false;
+    await pushes.check();
+    expect((await item()).pullRequestSignIn).toBeDefined();
+    session = true;
+    down = true;
+    pushes.signedIn();
+    await pushes.check();
+    expect((await item()).pullRequestSignIn).toBeUndefined();
+    expect((await notes()).at(-1)).toContain('GitHub is down.');
   });
 
   it('opens none when the setting is off', async () => {

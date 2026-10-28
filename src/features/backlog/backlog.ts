@@ -97,6 +97,8 @@ export interface BacklogItem {
   pullRequests?: PullRequestInfo[];
   /** Its reviewer agents' review rounds, posted on its open pull requests (BL-223). */
   pullRequestReviews?: PullRequestReview[];
+  /** Since when (ISO 8601) a pull request couldn't be opened for it because you aren't signed in to GitHub (BL-232). */
+  pullRequestSignIn?: string;
 }
 
 /** How hard an agent thinks (Claude Code's --effort). */
