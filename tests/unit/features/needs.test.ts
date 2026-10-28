@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { setStartFailed, type BacklogData, type BacklogItem } from '../../../src/features/backlog/backlog';
 import {
+  holdsUpLine,
   needOf,
   needsYouRows,
   noteNeed,
@@ -193,5 +194,30 @@ describe('notes in Needs you (BL-192)', () => {
     const rows = needsYouRows(items, notes);
     expect(rows.map((r) => r.item?.id ?? r.note?.id)).toEqual(['BL-1', 'NOTE-1', 'BL-3']);
     expect(rows[1].need?.line).toBe('Vega-2 asks you');
+  });
+});
+
+describe('rows that hold tickets up (BL-238)', () => {
+  const need = (since: string) => ({ kind: 'approved' as const, since, line: 'Approved' });
+
+  it('come first, then the oldest waiting', () => {
+    const items = [
+      { id: 'BL-1', need: need('2026-10-25T10:00:00.000Z') },
+      { id: 'BL-2', need: need('2026-10-25T12:00:00.000Z'), holdsUp: ['BL-9'] },
+      { id: 'BL-3', need: need('2026-10-25T11:00:00.000Z'), holdsUp: ['BL-7', 'BL-8'] },
+    ];
+    expect(needsYouRows(items, []).map((r) => r.item?.id)).toEqual(['BL-3', 'BL-2', 'BL-1']);
+  });
+
+  it('say which, or how many', () => {
+    expect(holdsUpLine(['BL-208'])).toBe('holds up BL-208');
+    expect(holdsUpLine(['BL-211', 'BL-213'])).toBe('holds up 2 tickets');
+  });
+
+  it('include a review the user stopped or paused themselves', () => {
+    const stopped = item({ status: 'review', review: review({ state: 'stopped', stop: { kind: 'user' } }) });
+    expect(needOf(stopped, [])?.kind).toBe('stopped');
+    const paused = item({ status: 'review', review: review({ state: 'paused', paused: { byUser: '2026-10-28T10:00:00Z' } } as Partial<ReviewState>) });
+    expect(needOf(paused, [])?.kind).toBe('stopped');
   });
 });

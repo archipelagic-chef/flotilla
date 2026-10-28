@@ -1,5 +1,10 @@
 import { useState } from 'preact/hooks';
-import { type Need, type NeedKind, needsYouRows } from '../../features/backlog/needs';
+import {
+  holdsUpLine,
+  type Need,
+  type NeedKind,
+  needsYouRows,
+} from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
 import { send } from './api';
@@ -112,6 +117,7 @@ function NeedRow({ item }: { item: BacklogItem }) {
       <span class="item-id">{item.id}</span>
       <span class="name">{item.title}</span>
       <span class="need-line">{need.line}</span>
+      {item.holdsUp?.length ? <HoldsUp ids={item.holdsUp} /> : null}
       {age && <span class="need-age">{age}</span>}
       <span class="need-actions" onClick={(e) => e.stopPropagation()}>
         {need.kind === 'asking' && (
@@ -170,5 +176,29 @@ function NeedRow({ item }: { item: BacklogItem }) {
         </button>
       </span>
     </div>
+  );
+}
+
+/**
+ * The tickets a row holds up (BL-238): they wait for it to be merged, directly or through a chain. The hover lists
+ * them; each id opens its ticket.
+ */
+function HoldsUp({ ids }: { ids: readonly string[] }) {
+  const link = (id: string) => (
+    <a key={id} class="need-holds-id" onClick={() => send({ type: 'backlog', op: 'open', id })}>
+      {id}
+    </a>
+  );
+  return (
+    <span class="need-holds" data-tip={`${ids.join(', ')} ${ids.length === 1 ? 'waits' : 'wait'} for it to be merged`} onClick={(e) => e.stopPropagation()}>
+      <i class="codicon codicon-debug-step-over" />
+      {ids.length === 1 ? (
+        <>holds up {link(ids[0])}</>
+      ) : (
+        <>
+          {holdsUpLine(ids)} ({ids.map((id, n) => [n > 0 && ', ', link(id)])})
+        </>
+      )}
+    </span>
   );
 }
