@@ -12,6 +12,7 @@ import {
   entryAgent,
   ID_PATTERN,
   isBacklogData,
+  startEpics,
 } from './backlog';
 import { describeChanges, descriptionHash, lineDelta } from './changes';
 import {
@@ -158,34 +159,38 @@ export class LocalBacklog {
    * Nova-7"), or "Flotilla". change may be async (it runs with the lock held: it must not call change itself).
    */
   async change(change: (data: BacklogData) => BacklogData | Promise<BacklogData>, opts: { by?: string } = {}): Promise<BacklogData> {
-    const { before, next, closed } = await this.exclusive(async () => {
+    const { before, next, closed, started } = await this.exclusive(async () => {
       const before = await this.read();
-      // Epics whose last part this finished move to Done with it, however it got there (BL-206).
-      const { data: next, closed } = closeFinishedEpics(before, await change(before));
+      // Epics whose last part this finished move to Done with it, however it got there (BL-206); those with a part
+      // started, to In Progress (BL-239).
+      const { data: finished, closed } = closeFinishedEpics(before, await change(before));
+      const { data: next, started } = startEpics(before, finished);
       await writeAtomic(this.file, `${JSON.stringify(next, null, 1)}\n`);
-      return { before, next, closed: new Map(closed.map((c) => [c.id, c.parts])) };
+      return { before, next, closed: new Map(closed.map((c) => [c.id, c.parts])), started: new Map(started.map((s) => [s.id, s.part])) };
     });
     const was = new Map(before.items.map((i) => [i.id, i]));
     for (const item of next.items) {
       const old = was.get(item.id);
       const parts = closed.get(item.id);
-      const by = parts ? 'Flotilla' : (opts.by ?? 'You');
+      const part = started.get(item.id);
+      const epic = parts ? `All its parts are done: ${parts.join(', ')}.` : part && `${part} was started, so the epic is in progress.`;
+      const by = epic ? 'Flotilla' : (opts.by ?? 'You');
       const lines = old ? describeChanges(old, item, by) : [];
       // One paragraph, the parts first: the activity's folded timeline shows only that (BL-206).
-      if (parts) lines.splice(0, lines.length, [`All its parts are done: ${parts.join(', ')}.`, ...lines].join(' '));
+      if (epic) lines.splice(0, lines.length, [epic, ...lines].join(' '));
       if (old && old.status !== item.status) {
         const data = { from: old.status, to: item.status, by };
         // Done: with its acceptance criteria then, what it delivered (BL-189).
         if (item.status === 'done')
           recordEventOf('ticket-moved', {
             ticket: item.id,
-            agent: entryAgent(parts ? '' : (opts.by ?? '')),
+            agent: entryAgent(epic ? '' : (opts.by ?? '')),
             data: this.readTicket(item).then(
               (t) => ({ ...data, criteria: criteriaCount(t.description) }),
               () => data,
             ),
           });
-        else recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(parts ? '' : (opts.by ?? '')), data });
+        else recordEvent('ticket-moved', { ticket: item.id, agent: entryAgent(epic ? '' : (opts.by ?? '')), data });
       }
       if (old && old.review?.state !== item.review?.state) {
         recordEvent('review-state', {
@@ -198,10 +203,13 @@ export class LocalBacklog {
     return next;
   }
 
-  /** Moves epics whose parts are all done already to Done (BL-206): only when there are some, so nothing is written otherwise. */
-  async closeFinishedEpics(): Promise<void> {
+  /**
+   * Moves epics whose parts are all done already to Done (BL-206), and those with a part started to In Progress
+   * (BL-239): only when there are some, so nothing is written otherwise.
+   */
+  async settleEpics(): Promise<void> {
     const data = await this.read();
-    if (closeFinishedEpics(data, data).closed.length) await this.change((d) => d, { by: 'Flotilla' });
+    if (closeFinishedEpics(data, data).closed.length || startEpics(data, data).started.length) await this.change((d) => d, { by: 'Flotilla' });
   }
 
   /**

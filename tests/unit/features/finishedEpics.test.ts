@@ -4,12 +4,14 @@ import {
   type BacklogItem,
   type BacklogStatus,
   closeFinishedEpics,
+  startEpics,
 } from '../../../src/features/backlog/backlog';
 
 const created = '2026-10-26T06:00:00Z';
 const item = (id: string, status: BacklogStatus, extra: Partial<BacklogItem> = {}): BacklogItem => ({ id, title: id, status, created, ...extra });
 const data = (...items: BacklogItem[]): BacklogData => ({ version: 1, next: 300, items });
-const statuses = (d: BacklogData) => Object.fromEntries(d.items.map((i) => [i.id, `${i.status}${i.keptOpen ? ' (kept open)' : ''}`]));
+const statuses = (d: BacklogData) =>
+  Object.fromEntries(d.items.map((i) => [i.id, `${i.status}${i.keptOpen ? ' (kept open)' : ''}${i.keptToDo ? ' (kept to do)' : ''}`]));
 const setStatus = (d: BacklogData, id: string, status: BacklogStatus) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, status } : i)) });
 
 describe('finished epics (BL-206)', () => {
@@ -72,12 +74,12 @@ describe('finished epics (BL-206)', () => {
     const root = makeTempDir();
     try {
       const store = new LocalBacklog(root, `${root}/.git`);
-      await store.change(() => data(item('BL-1', 'todo'), item('BL-2', 'done', { parent: 'BL-1' }), item('BL-3', 'review', { parent: 'BL-1' })));
+      await store.change(() => data(item('BL-1', 'doing'), item('BL-2', 'done', { parent: 'BL-1' }), item('BL-3', 'review', { parent: 'BL-1' })));
       await store.change((d) => setStatus(d, 'BL-3', 'done'));
       expect(statuses(await store.read())['BL-1']).toBe('done');
       const ticket = await store.readTicket(item('BL-1', 'done'));
       expect(ticket.activity.map((e) => [e.author, e.body])).toEqual([
-        ['Flotilla', 'All its parts are done: BL-2, BL-3. Moved it from **To Do** to **Done**.'],
+        ['Flotilla', 'All its parts are done: BL-2, BL-3. Moved it from **In Progress** to **Done**.'],
       ]);
       expect((await store.readTicket(item('BL-3', 'done'))).activity.map((e) => e.body)).toEqual(['You moved it from **In Review** to **Done**.']);
     } finally {
@@ -94,11 +96,98 @@ describe('finished epics (BL-206)', () => {
       const store = new LocalBacklog(root, `${root}/.git`);
       fs.mkdirSync(store.dir, { recursive: true });
       fs.writeFileSync(store.file, JSON.stringify(data(item('BL-1', 'todo'), item('BL-2', 'todo', { parent: 'BL-1' }))));
-      await store.closeFinishedEpics();
+      await store.settleEpics();
       expect(fs.readFileSync(store.file, 'utf8')).not.toContain('\n');
       fs.writeFileSync(store.file, JSON.stringify(data(item('BL-1', 'todo'), item('BL-2', 'done', { parent: 'BL-1' }))));
-      await store.closeFinishedEpics();
+      await store.settleEpics();
       expect(statuses(await store.read())['BL-1']).toBe('done');
+    } finally {
+      removeDir(root);
+    }
+  });
+});
+
+describe('started epics (BL-239)', () => {
+  it('moves a To Do epic to In Progress when one of its parts is started', () => {
+    const before = data(item('BL-170', 'todo'), item('BL-171', 'todo', { parent: 'BL-170' }), item('BL-172', 'todo', { parent: 'BL-170' }));
+    for (const status of ['doing', 'review', 'done'] as const) {
+      const { data: next, started } = startEpics(before, setStatus(before, 'BL-172', status));
+      expect(started).toEqual([{ id: 'BL-170', part: 'BL-172' }]);
+      expect(statuses(next)['BL-170']).toBe('doing');
+    }
+  });
+
+  it('moves epics in that state already, as the backlog is read', () => {
+    const d = data(item('BL-214', 'todo'), item('BL-222', 'done', { parent: 'BL-214' }), item('BL-223', 'review', { parent: 'BL-214' }), item('BL-9', 'todo'));
+    const { data: next, started } = startEpics(d, d);
+    expect(started).toEqual([{ id: 'BL-214', part: 'BL-222' }]);
+    expect(statuses(next)).toEqual({ 'BL-214': 'doing', 'BL-222': 'done', 'BL-223': 'review', 'BL-9': 'todo' });
+  });
+
+  it("doesn't count proposals, discarded parts or parts to do, and leaves proposed epics", () => {
+    const d = data(
+      item('BL-1', 'todo'),
+      item('BL-2', 'doing', { parent: 'BL-1', proposed: {} }),
+      item('BL-3', 'done', { parent: 'BL-1', discarded: { at: created } }),
+      item('BL-4', 'todo', { parent: 'BL-1' }),
+      item('BL-5', 'todo', { proposed: {} }),
+      item('BL-6', 'doing', { parent: 'BL-5' }),
+    );
+    expect(startEpics(d, d).started).toEqual([]);
+  });
+
+  it('keeps an epic you move back to To Do there until another of its parts starts', () => {
+    const doing = data(item('BL-1', 'doing'), item('BL-2', 'review', { parent: 'BL-1' }), item('BL-3', 'todo', { parent: 'BL-1' }));
+    let { data: next } = startEpics(doing, setStatus(doing, 'BL-1', 'todo'));
+    expect(statuses(next)['BL-1']).toBe('todo (kept to do)');
+    // Later changes (and the sweep) leave it, a part moving on too.
+    expect(startEpics(next, next).started).toEqual([]);
+    ({ data: next } = startEpics(next, setStatus(next, 'BL-2', 'done')));
+    expect(statuses(next)['BL-1']).toBe('todo (kept to do)');
+    ({ data: next } = startEpics(next, setStatus(next, 'BL-3', 'doing')));
+    expect(statuses(next)['BL-1']).toBe('doing');
+    // Moved on by hand, it's not kept anymore.
+    expect(next.items[0].keptToDo).toBeUndefined();
+  });
+
+  it('starts epics of epics in turn', () => {
+    const before = data(item('BL-1', 'todo'), item('BL-2', 'todo', { parent: 'BL-1' }), item('BL-3', 'todo', { parent: 'BL-2' }));
+    const { data: next, started } = startEpics(before, setStatus(before, 'BL-3', 'doing'));
+    expect(started).toEqual([
+      { id: 'BL-2', part: 'BL-3' },
+      { id: 'BL-1', part: 'BL-2' },
+    ]);
+    expect(statuses(next)).toEqual({ 'BL-1': 'doing', 'BL-2': 'doing', 'BL-3': 'doing' });
+  });
+
+  it("notes it in the epic's activity, as done by Flotilla, when the store writes the part started", async () => {
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const { makeTempDir, removeDir } = await import('../../helpers/gitRepo');
+    const root = makeTempDir();
+    try {
+      const store = new LocalBacklog(root, `${root}/.git`);
+      await store.change(() => data(item('BL-1', 'todo'), item('BL-172', 'todo', { parent: 'BL-1' })));
+      await store.change((d) => setStatus(d, 'BL-172', 'doing'));
+      expect(statuses(await store.read())['BL-1']).toBe('doing');
+      expect((await store.readTicket(item('BL-1', 'doing'))).activity.map((e) => [e.author, e.body])).toEqual([
+        ['Flotilla', 'BL-172 was started, so the epic is in progress. Moved it from **To Do** to **In Progress**.'],
+      ]);
+    } finally {
+      removeDir(root);
+    }
+  });
+
+  it('sweeps epics started already', async () => {
+    const fs = await import('node:fs');
+    const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
+    const { makeTempDir, removeDir } = await import('../../helpers/gitRepo');
+    const root = makeTempDir();
+    try {
+      const store = new LocalBacklog(root, `${root}/.git`);
+      fs.mkdirSync(store.dir, { recursive: true });
+      fs.writeFileSync(store.file, JSON.stringify(data(item('BL-1', 'todo'), item('BL-2', 'review', { parent: 'BL-1' }))));
+      await store.settleEpics();
+      expect(statuses(await store.read())['BL-1']).toBe('doing');
     } finally {
       removeDir(root);
     }
