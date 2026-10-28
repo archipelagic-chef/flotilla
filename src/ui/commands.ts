@@ -558,6 +558,8 @@ async function discardBacklogItem(ctx: CommandContext, id: string | undefined): 
   await ctx.backlog.change((d) => branches.reduce((data, b) => addBranch(data, id, b), discardItem(d, id, new Date().toISOString())));
   // Even with no agent nor worktree yet, a start may wait in the queue: it's dropped too.
   const { stopped, left } = await ctx.tickets.stopForDiscard(id);
+  // Its sisters are checked against it: what it was to do is now nobody's (BL-236).
+  await ctx.backlog.noteScopeChange(id, 'discarded').catch(() => undefined);
   const removed: string[] = [];
   const current = worktrees.find((w) => w.ws.isCurrent);
   for (const { ws, changedFiles } of worktrees.filter((w) => w !== current)) {

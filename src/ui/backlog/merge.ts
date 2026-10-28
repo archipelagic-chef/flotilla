@@ -1501,6 +1501,8 @@ export class Merger implements vscode.Disposable {
     );
     this.changed.fire();
     if (!m.already) recordEvent('merge-landed', { ticket: item.id, data: { into: m.base, commit: m.commit } });
+    // Its sisters are checked against what's now on main (BL-236).
+    if (!m.already) await this.deps.backlog.noteScopeChange(item.id, 'merged').catch(() => undefined);
     await this.note(
       item.id,
       m.already
