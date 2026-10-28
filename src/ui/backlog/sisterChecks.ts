@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   agentChatItem,
   agentName,
+  type BacklogData,
   type BacklogItem,
   entryAgent,
   sameAgent,
@@ -43,6 +44,8 @@ export interface SisterChecksDeps {
   takenNames: () => string[];
   /** Starts an agent (tests fake it). */
   run?: typeof runAgentHeadless;
+  /** How long after a change a check starts (flotilla.sisterCheckDelaySeconds); unset: 3 minutes. */
+  delayMs?: () => number | undefined;
   now?: () => Date;
 }
 
@@ -101,8 +104,19 @@ export class SisterChecks implements vscode.Disposable {
   /** Ends ticket `id`'s check without its findings: its sisters are released, with an entry saying why. */
   private async release(item: BacklogItem, why: string): Promise<void> {
     const covers = item.sisterCheck?.covers ?? [];
-    await this.deps.backlog.change((d) => endCheck(d, item.id), { by: 'Flotilla' });
-    await this.say(item, `${why}: ${covers.join(', ')} ${covers.length === 1 ? 'is' : 'are'} released, unchecked.`);
+    const next = await this.deps.backlog.change((d) => this.end(d, item.id), { by: 'Flotilla' });
+    const again = next.items.find((i) => i.id === item.id)?.sisterCheck;
+    await this.say(
+      item,
+      again
+        ? `${why}. It's checked again for what came meanwhile (${again.reasons.join(', ')}): ${covers.join(', ')} ${covers.length === 1 ? 'waits' : 'wait'} for that.`
+        : `${why}: ${covers.join(', ')} ${covers.length === 1 ? 'is' : 'are'} released, unchecked.`,
+    );
+  }
+
+  /** Ends ticket `id`'s check; a merge or discard that came while it ran is checked next (see endCheck). */
+  private end(data: BacklogData, id: string): BacklogData {
+    return endCheck(data, id, this.now(), this.deps.delayMs?.());
   }
 
   private async start(id: string): Promise<void> {
@@ -213,7 +227,7 @@ export class SisterChecks implements vscode.Disposable {
         verdicts.push([f.id, { from: id, kind: finding, line: verdictLine(id, finding, f.text), since: this.now().toISOString() }]);
       lines.push(`- ${f.id}: ${finding === 'contradicts' ? 'at odds with it' : finding}`);
     }
-    await this.deps.backlog.change((d) => verdicts.reduce((x, [sid, v]) => setVerdict(x, sid, v), endCheck(d, id)), { by: 'Flotilla' });
+    await this.deps.backlog.change((d) => verdicts.reduce((x, [sid, v]) => setVerdict(x, sid, v), this.end(d, id)), { by: 'Flotilla' });
     // One short entry when nothing changed, not one in each sister.
     const body = lines.length
       ? [parsed.summary || `Checked ${covers.join(', ')} against this change.`, lines.join('\n')].join('\n\n')

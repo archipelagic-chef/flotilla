@@ -430,6 +430,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       output,
       isLeader: () => leader.isLeader,
       takenNames: () => chatAgentNames(repository.current.flatMap((w) => w.chats)),
+      delayMs: () => backlog.sisterCheckDelayMs?.(),
     }),
   );
   tickets.useShaping(shaping);

@@ -66,8 +66,8 @@ function fake(items: BacklogItem[], descriptions: Record<string, string> = {}) {
     runs,
     checks,
     at: (t: number) => (now = new Date(t)),
-    async note(id: string) {
-      data = noteChange(data, id, 'merged', new Map(Object.entries(descriptions)), now);
+    async note(id: string, reason: 'merged' | 'described' = 'merged') {
+      data = noteChange(data, id, reason, new Map(Object.entries(descriptions)), now);
     },
     async tick() {
       checks.tick();
@@ -136,6 +136,25 @@ describe('SisterChecks', () => {
     await f.tick();
     expect(['BL-3', 'BL-4', 'BL-5'].map((id) => f.tickets.get(id)!.activity.length)).toEqual([0, 0, 0]);
     expect(f.tickets.get('BL-2')!.activity[0].body).toContain('nothing to change');
+    f.checks.dispose();
+  });
+
+  it('checks again for a merge that came while it ran, once it ends', async () => {
+    const f = fake(epic());
+    const t0 = Date.parse('2026-10-28T12:00:00Z') + SISTER_DEBOUNCE_MS;
+    await f.note('BL-2', 'described');
+    f.at(t0);
+    await f.tick();
+    await f.note('BL-2', 'merged');
+    f.runs[0].resolve({ code: 0, reply: 'All still right.\n## BL-3 · unchanged' });
+    await f.tick();
+    expect(f.data.items[1].sisterCheck).toMatchObject({ reasons: ['merged'], covers: ['BL-3', 'BL-4', 'BL-5'] });
+    expect(f.data.items[1].sisterCheck?.session).toBeUndefined();
+    expect(checkingOf(f.data, 'BL-3')).toBe('BL-2');
+    f.at(t0 + SISTER_DEBOUNCE_MS);
+    await f.tick();
+    expect(f.runs).toHaveLength(2);
+    expect(f.runs[1].prompt).toContain('BL-2 was merged to main');
     f.checks.dispose();
   });
 
