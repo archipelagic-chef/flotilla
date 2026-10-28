@@ -5,6 +5,7 @@ import type { MainCheck } from './mainDrift';
 import type { MergedInfo, MergeState } from './merge';
 import type { MergeTrain } from './mergeTrain';
 import type { ReviewState } from './review';
+import type { SisterCheck, SisterVerdict } from './sisterCheck';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
  * backlog (below) to begin with; Jira and GitHub Issues can be added as sources with the same item shape.
@@ -86,6 +87,10 @@ export interface BacklogItem {
   /** A merge of its branch waiting for a decision (its conflicts being resolved), and where it was merged once done. */
   merging?: MergeState;
   merged?: MergedInfo;
+  /** Its sisters' check (BL-236): waiting a few minutes after its change, or running. */
+  sisterCheck?: SisterCheck;
+  /** A sister's check found it covered by that ticket's change, or at odds with it: "Needs you" asks Discard or Keep. */
+  sisterVerdict?: SisterVerdict;
   /** Its branches' last pushes to origin once approved (BL-104): a tip is pushed, and noted, once. */
   pushed?: PushedInfo[];
   /** Its branches' pull requests on GitHub (BL-221), opened once they're pushed for review, with their last known state. */
@@ -341,7 +346,12 @@ export function discardItem(data: BacklogData, id: string, at: string): BacklogD
   return {
     ...data,
     ...(queue ? { mergeQueue: queue } : {}),
-    items: data.items.map((i) => (i.id === id && !i.discarded ? { ...i, discarded: { at } } : i)),
+    // A sister check's question (BL-236) is answered by the discard.
+    items: data.items.map((i) => {
+      if (i.id !== id || i.discarded) return i;
+      const { sisterVerdict: _asked, ...rest } = i;
+      return { ...rest, discarded: { at } };
+    }),
   };
 }
 
