@@ -340,10 +340,19 @@ export class LocalBacklog {
     const stamp = `${stat.mtimeMs}:${stat.size}`;
     const known = this.tickets.get(item.id);
     if (known && known.stamp === stamp && known.title === item.title) return known.ticket;
-    const ticket = await this.readTicket(item);
+    // A second read of the same file meanwhile (the views read every ticket on each change) waits for this one's (BL-230).
+    const key = `${item.id}\n${stamp}\n${item.title}`;
+    const reading = this.ticketReads.get(key);
+    if (reading) return reading;
+    const read = this.readTicket(item).finally(() => this.ticketReads.delete(key));
+    this.ticketReads.set(key, read);
+    const ticket = await read;
     this.tickets.set(item.id, { stamp, title: item.title, ticket });
     return ticket;
   }
+
+  /** The tickets being parsed by readTicketCached, by id, file stamp and title. */
+  private readonly ticketReads = new Map<string, Promise<Ticket>>();
 
   private async writeTicketFile(id: string, ticket: Ticket): Promise<void> {
     await writeAtomic(this.docPath(id), formatTicket(ticket));
