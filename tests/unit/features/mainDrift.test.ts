@@ -7,12 +7,15 @@ import {
   dependsOn,
   driftNotes,
   fileList,
+  holdsUp,
   isOpen,
   type MainCheck,
   mergeBasePrompt,
   resumeWaits,
   reusable,
+  waitChain,
   waitingFor,
+  waitsOf,
 } from '../../../src/features/backlog/mainDrift';
 
 const item = (o: Partial<BacklogItem>): BacklogItem => ({ id: 'BL-1', title: 'T', status: 'doing', created: '2026-10-17T00:00:00Z', ...o });
@@ -136,5 +139,50 @@ describe('tickets a report waits for to be merged', () => {
   it('ignores other mentions, and the ticket itself', () => {
     expect(resumeWaits('Builds on BL-12, like BL-13 did.')).toEqual([]);
     expect(resumeWaits('Resume me once BL-7 and BL-8 are merged.', 'bl-7')).toEqual(['BL-8']);
+  });
+});
+
+describe('the tickets each one holds up (BL-238)', () => {
+  const data: BacklogData = {
+    version: 1,
+    next: 1,
+    items: [
+      item({ id: 'BL-172', status: 'review' }),
+      item({ id: 'BL-173', status: 'review' }),
+      item({ id: 'BL-208', status: 'todo', notes: 'Depends on: BL-172' }),
+      item({ id: 'BL-211', status: 'review', notes: 'Depends on: BL-173' }),
+      item({ id: 'BL-213', status: 'todo', notes: 'Depends on: BL-211, BL-1' }),
+      item({ id: 'BL-1', status: 'done' }),
+      item({ id: 'BL-300', status: 'todo', notes: 'Depends on: BL-172', discarded: { at: '2026-10-20T00:00:00Z' } }),
+      item({ id: 'BL-301', status: 'done', notes: 'Depends on: BL-173' }),
+    ],
+  };
+  const read = async (i: BacklogItem) => i.notes ?? '';
+
+  it("reads what each ticket not done waits for, from its description: done ones don't count", async () => {
+    const waits = await waitsOf(data, read);
+    expect(Object.fromEntries(waits)).toEqual({ 'BL-208': ['BL-172'], 'BL-211': ['BL-173'], 'BL-213': ['BL-211'], 'BL-300': ['BL-172'] });
+  });
+
+  it('holds up those that wait for it through a chain, and not discarded ones', async () => {
+    const held = holdsUp(data, await waitsOf(data, read));
+    expect(Object.fromEntries(held)).toEqual({ 'BL-172': ['BL-208'], 'BL-173': ['BL-211', 'BL-213'], 'BL-211': ['BL-213'] });
+  });
+
+  it('ends a loop of tickets that wait for each other, without holding itself up', () => {
+    const waits = new Map([
+      ['BL-1', ['BL-2']],
+      ['BL-2', ['BL-1']],
+    ]);
+    expect(Object.fromEntries(holdsUp({ version: 1, next: 1, items: [] }, waits))).toEqual({ 'BL-1': ['BL-2'], 'BL-2': ['BL-1'] });
+    expect(waitChain(waits, 'BL-1', (id) => id)).toBe('BL-2');
+  });
+
+  it('follows a chain to the ticket that holds it up', () => {
+    const waits = new Map([
+      ['BL-213', ['BL-211', 'BL-9']],
+      ['BL-211', ['BL-173']],
+    ]);
+    expect(waitChain(waits, 'BL-213', (id) => `${id} (x)`)).toBe('BL-211, which waits for BL-173 (x), BL-9 (x)');
   });
 });

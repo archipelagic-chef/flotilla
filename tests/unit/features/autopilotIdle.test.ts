@@ -21,6 +21,19 @@ describe('why the autopilot is idle (BL-142)', () => {
     expect(idleReason(d, waits, new Set())).toBe('BL-130 waits for BL-126 (in review) (and 1 more wait)');
   });
 
+  it('follows a chain to the ticket to act on (BL-238)', () => {
+    const d = data(
+      item('BL-173', 'review', { review: { round: 1, state: 'stopped', reviewer: 'Ada-1' } }),
+      item('BL-211', 'review', { review: { round: 1, state: 'reviewing', reviewer: 'Ada-1' } }),
+      item('BL-213', 'todo'),
+    );
+    const waits = new Map([
+      ['BL-213', ['BL-211']],
+      ['BL-211', ['BL-173']],
+    ]);
+    expect(idleReason(d, waits, new Set())).toBe('BL-213 waits for BL-211, which waits for BL-173 (review stopped)');
+  });
+
   it("isn't idle while a ticket can start", () => {
     const d = data(item('BL-126', 'review'), item('BL-130', 'todo'), item('BL-131', 'todo'));
     expect(idleReason(d, new Map([['BL-130', ['BL-126']]]), new Set())).toBeUndefined();

@@ -138,3 +138,56 @@ export function waitingFor(data: BacklogData, deps: readonly string[]): Array<Pi
 export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/**
+ * What each ticket not done waits for (BL-238): its "Depends on" tickets not merged yet, for the tickets that wait on
+ * any. description: the ticket's description, read from its file.
+ */
+export async function waitsOf(data: BacklogData, description: (item: BacklogItem) => Promise<string>): Promise<Map<string, string[]>> {
+  const open = data.items.filter((i) => i.status !== 'done');
+  const waits = await Promise.all(open.map(async (i) => waitingFor(data, dependsOn(await description(i), i.id)).map((d) => d.id)));
+  return new Map(open.flatMap((i, n) => (waits[n].length ? [[i.id, waits[n]] as const] : [])));
+}
+
+/**
+ * The tickets each one holds up (BL-238): those that wait for it, directly or through a chain (BL-213 waits for
+ * BL-211, which waits for BL-173: BL-173 holds up both). In the order of `waits`; none for itself. Discarded tickets
+ * and proposals wait for nothing.
+ */
+export function holdsUp(data: BacklogData, waits: ReadonlyMap<string, readonly string[]>): Map<string, string[]> {
+  const idle = new Set(data.items.filter((i) => i.discarded || i.proposed).map((i) => i.id));
+  const waiters = new Map<string, string[]>();
+  for (const [id, deps] of waits) if (!idle.has(id)) for (const dep of deps) waiters.set(dep, [...(waiters.get(dep) ?? []), id]);
+  const order = [...waits.keys()];
+  const out = new Map<string, string[]>();
+  for (const holder of waiters.keys()) {
+    const seen = new Set<string>();
+    const next = [...(waiters.get(holder) ?? [])];
+    while (next.length) {
+      const id = next.shift()!;
+      if (id === holder || seen.has(id)) continue;
+      seen.add(id);
+      next.push(...(waiters.get(id) ?? []));
+    }
+    if (seen.size)
+      out.set(
+        holder,
+        order.filter((id) => seen.has(id)),
+      );
+  }
+  return out;
+}
+
+/**
+ * What a ticket waits for, followed to the tickets that hold it up (BL-238): "BL-211, which waits for BL-173 (review
+ * stopped)". about: how a ticket at the end of a chain stands. Loops end at a ticket already named.
+ */
+export function waitChain(waits: ReadonlyMap<string, readonly string[]>, id: string, about: (id: string) => string, seen = new Set([id])): string {
+  return (waits.get(id) ?? [])
+    .map((dep) =>
+      seen.has(dep) || !waits.get(dep)?.some((d) => !seen.has(d) && d !== dep)
+        ? about(dep)
+        : `${dep}, which waits for ${waitChain(waits, dep, about, new Set([...seen, dep]))}`,
+    )
+    .join(', ');
+}
