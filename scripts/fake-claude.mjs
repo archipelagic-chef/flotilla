@@ -20,6 +20,8 @@
 //
 // Asked to answer a comment (Ask an Agent), it answers in its final message, quoting the comment, and changes nothing.
 //
+// As a sister check (BL-236), it adds a line of what's left to each To Do sister's description, and says so.
+//
 // Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
 //
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
@@ -216,8 +218,30 @@ async function main() {
 
   // Ask an Agent (BL-127): it answers the comment in its final message, which Flotilla writes as the reply.
   if (/asks you to answer their comment/.test(prompt)) return answerComment();
+  if (/You check its sister tickets against its change/.test(prompt)) return checkSisters(item);
   if (reviewer) return review(file, text, hints, item);
   return implement(file, text, hints, item);
+}
+
+/**
+ * A sister check (BL-236): each sister it may edit gets a line in its description saying what's left after the change
+ * (just above its "## Activity"); those in progress or review are said to be outdated.
+ */
+function checkSisters(id) {
+  const sisters = [...prompt.matchAll(/^- ([A-Z]+-\d+) "[^"]*" \([^)]*\): (\S+\.md)( \(read only\))?$/gm)].map((m) => ({
+    id: m[1],
+    file: m[2],
+    editable: !m[3],
+  }));
+  const sections = sisters.map((s) => {
+    if (!s.editable) return `## ${s.id} · outdated\nFake check: ${id} changed what this ticket's work builds on; look again at what it touches.`;
+    const text = fs.readFileSync(s.file, 'utf8');
+    const at = text.search(/^##\s+Activity\s*$/im);
+    const line = `- [ ] What's left after ${id}: the parts it didn't build (fake sister check).\n`;
+    fs.writeFileSync(s.file, at < 0 ? `${text.trimEnd()}\n\n${line}` : `${text.slice(0, at).trimEnd()}\n${line}\n${text.slice(at)}`);
+    return `## ${s.id} · updated\nFake check: took out what ${id} built; what's left is in the description.`;
+  });
+  reply([`Fake sister check: read ${id}, its epic and its sisters.`, ...sections].join('\n\n'));
 }
 
 function answerComment() {
