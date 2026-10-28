@@ -94,6 +94,13 @@ describe('ticketStatus', () => {
     expect(ticketStatus({ ...base, status: 'doing' }).title).toBe('Nothing is running');
   });
 
+  it('says an epic in progress is worked on in its parts (BL-239)', () => {
+    const status = ticketStatus({ ...base, hasWork: false, parts: { done: 3, total: 7 } });
+    expect(status).toMatchObject({ tone: 'idle', title: 'Epic · 3 of 7 parts done' });
+    expect(status.note).toMatch(/moves to Done with the last of them/);
+    expect(ticketStatus({ ...base, parts: { done: 0, total: 0 } }).title).toBe('Nothing is running');
+  });
+
   it('is not waiting once the user answered', () => {
     const status = ticketStatus({
       ...base,

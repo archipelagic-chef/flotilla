@@ -61,6 +61,7 @@ export function StateCard({ ticket, ci }: { ticket: TicketView; ci?: TicketCiVie
     agents: ticket.agents,
     activity: ticket.activity,
     hasWork: ticket.worktrees.length > 0 || ticket.branches.length > 0,
+    parts: { done: ticket.children.filter((c) => c.status === 'done').length, total: ticket.children.length },
   });
   // The chat an agent works in, or waits in (to open it).
   const chat = ticket.agents.find((a) => a.state === 'waiting-for-input') ?? ticket.agents.find((a) => a.state === 'working');
@@ -91,6 +92,7 @@ export function StateCard({ ticket, ci }: { ticket: TicketView; ci?: TicketCiVie
             <span class="review-text">
               <strong>{status.title}</strong>
               {status.detail && <span class="muted"> “{status.detail}”</span>}
+              {status.note && <span class="muted"> {status.note}</span>}
             </span>
             {chat && (
               <button class="button secondary" onClick={() => send({ type: 'openChat', key: chat.key, id: chat.id })} title="Open this chat in Claude Code">

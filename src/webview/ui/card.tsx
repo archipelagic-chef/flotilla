@@ -65,6 +65,8 @@ export function ItemRow({
   // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
   const discarded = !!item.discarded;
   const done = item.status === 'done' || discarded;
+  // An epic in progress is worked on in its parts (BL-239): no Start of its own.
+  const epicStarted = item.status === 'doing' && !!item.parts?.total;
   // Issues from integrations are ordered, renamed and closed in their tracker.
   const remote = item.source;
   const worktree = worktrees[0];
@@ -349,7 +351,7 @@ export function ItemRow({
                   <i class="codicon codicon-loading codicon-modifier-spin" />
                 </span>
               )}
-              {!done && !item.creating && (
+              {!done && !item.creating && !epicStarted && (
                 <BusyButton
                   class="icon"
                   aria-label={worktree ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}
@@ -518,6 +520,8 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
   // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
   const discarded = !!item.discarded;
   const done = item.status === 'done' || discarded;
+  // An epic in progress is worked on in its parts (BL-239): no Start of its own.
+  const epicStarted = item.status === 'doing' && !!item.parts?.total;
   const remote = item.source;
   const status = cardStatus(item, agents, queuedBehind);
   const summary = cardSummary(agents.length, worktrees.length);
@@ -646,7 +650,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                         <i class="codicon codicon-loading codicon-modifier-spin" />
                       </span>
                     )}
-                    {!done && !item.creating && next?.op !== 'start' && (
+                    {!done && !item.creating && !epicStarted && next?.op !== 'start' && (
                       <BusyButton
                         class="icon"
                         aria-label={ws ? 'Start an Agent on It (in Its Worktree)' : 'Start an Agent on It (Creates Its Worktree)'}

@@ -1,0 +1,20 @@
+{
+  "title": "An epic in progress shows its parts, not a missing agent",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "wait": 1000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label=\"Hide what needs you\"]" },
+    { "waitFor": ".backlog-item.compact:has-text(\"Attach any file to a ticket\") .card-status:has-text(\"Epic · 1 of 2 parts done\")" },
+    { "caption": "BL-6 is an epic In Progress: one of its parts is started, so it left To Do" },
+    { "wait": 2000 },
+    { "caption": "Its card counts its parts done, with no Start of its own: its parts are worked on" },
+    { "hover": ".backlog-item.compact:has-text(\"Attach any file to a ticket\") .name" },
+    { "wait": 2500 },
+    { "caption": "Its ticket says the same: it moves to Done with the last of its parts" },
+    { "click": ".backlog-item.compact:has-text(\"Attach any file to a ticket\") .name" },
+    { "waitFor": ".review-panel:has-text(\"Epic · 1 of 2 parts done\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

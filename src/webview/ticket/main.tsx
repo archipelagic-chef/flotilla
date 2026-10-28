@@ -195,6 +195,7 @@ function App() {
   const done = ticket.item.status === 'done' || !!discarded;
   const steps = ticketSteps(ticket, ci);
   const working = steps.main === 'openChat';
+  const epicStarted = ticket.item.status === 'doing' && ticket.children.length > 0;
   // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
   const resume = steps.main === 'resume';
   return (
@@ -291,7 +292,8 @@ function App() {
                 <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
               </ActionButton>
             )}
-            {!done && !working && (
+            {/* An epic in progress has none of its own (BL-239): its parts are started. */}
+            {!done && !working && !epicStarted && (
               <ActionButton
                 class={resume ? 'button secondary' : 'button'}
                 message={{ type: 'start', agent: true }}
