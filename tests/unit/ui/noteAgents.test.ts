@@ -69,6 +69,8 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     slots.length = 0;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-'));
     store = new NoteStore(dir);
+    // Added before the agents look, so the store's watcher doesn't tick them into picking it up while a test sets it up.
+    await store.add('Make the button green', [], new Date(Date.now() - 60 * 60_000));
     agents = new NoteAgents({
       extensionUri: {} as never,
       notes: store,
@@ -82,7 +84,6 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       pausedAll: () => held,
       chatExists: () => chatThere,
     });
-    await store.add('Make the button green', [], new Date(Date.now() - 60 * 60_000));
   });
 
   afterEach(() => {
