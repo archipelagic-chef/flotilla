@@ -106,19 +106,26 @@ export function noteNeed(note: { status: string; agent?: string; with?: string; 
   return { kind: 'asking', ...(note.asks?.since ? { since: note.asks.since } : {}), line: `${note.agent ?? 'Its agent'} asks you` };
 }
 
+/** The line a row that holds tickets up adds (BL-238): "holds up BL-208", "holds up 2 tickets". */
+export function holdsUpLine(ids: readonly string[]): string {
+  return ids.length === 1 ? `holds up ${ids[0]}` : `holds up ${ids.length} tickets`;
+}
+
 /**
- * The rows of the backlog's "Needs you", oldest waiting first: the tickets waiting on the user (their need), and the
- * notes whose agent asks.
+ * The rows of the backlog's "Needs you": the tickets waiting on the user (their need), and the notes whose agent asks.
+ * Those that hold other tickets up come first (BL-238), as what to land or decide to get the autopilot going again;
+ * then oldest waiting first.
  */
-export function needsYouRows<I extends { need?: Need }, N extends Parameters<typeof noteNeed>[0]>(
+export function needsYouRows<I extends { need?: Need; holdsUp?: readonly string[] }, N extends Parameters<typeof noteNeed>[0]>(
   items: readonly I[],
   notes: readonly N[],
 ): ({ need?: Need } & ({ item: I; note?: undefined } | { note: N; item?: undefined }))[] {
+  const holds = (row: object) => ('item' in row && (row.item as I).holdsUp?.length ? 0 : 1);
   return oldestFirst([
     ...items.map((item) => ({ item, ...(item.need ? { need: item.need } : {}) })),
     ...notes.map((note) => {
       const need = noteNeed(note);
       return { note, ...(need ? { need } : {}) };
     }),
-  ]);
+  ]).sort((a, b) => holds(a) - holds(b));
 }

@@ -37,7 +37,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
 import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
 import { needsYou, standing } from '../../features/backlog/autopilotIdle';
-import { baseLabel, dependsOn, waitingFor } from '../../features/backlog/mainDrift';
+import { baseLabel, holdsUp, waitsOf } from '../../features/backlog/mainDrift';
 import {
   ALL,
   type BacklogItemView,
@@ -294,6 +294,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const data = await store.read();
     const sources = this.deps.integrations.current;
     const issues = this.deps.integrations.issues();
+    // What the open tickets wait for, and so which ones each holds up, through chains (BL-238).
+    const waits = await waitsOf(data, async (i) => (await store.readTicketCached(i)).description);
+    const holders = holdsUp(data, waits);
     const items = await Promise.all(
       data.items.map(async (item): Promise<BacklogItemView> => {
         const ticket = await store.readTicketCached(item);
@@ -315,7 +318,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
         // What it waits for, and how its branches merge with main (BL-55).
-        const waitsFor = item.status === 'done' ? [] : waitingFor(data, dependsOn(ticket.description, item.id)).map((d) => d.id);
+        const waitsFor = waits.get(item.id) ?? [];
         // Where each stands, and an epic's parts (BL-205): why the autopilot passes it over.
         const waitsOn = waitsFor.flatMap((id) => {
           const dep = data.items.find((i) => i.id === id);
@@ -344,6 +347,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(queued ? { queued: { kind: queued.kind, reason: queued.reason, place: queued.place, ...(queued.since ? { since: queued.since } : {}) } } : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
+          ...(holders.has(item.id) ? { holdsUp: holders.get(item.id) } : {}),
           ...(parts ? { parts } : {}),
           ...(resume ? { resume } : {}),
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
