@@ -206,6 +206,11 @@ export class BranchPush implements vscode.Disposable {
       const noted = this.prFailed.get(branch) === tip;
       this.prFailed.set(branch, tip);
       if (e instanceof GitHubSignInNeeded) return this.signInNeeded(item, branch, why);
+      // Signed in by now: it waits for something else, said in its note.
+      if (item.pullRequestSignIn)
+        await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, pullRequestSignIn: undefined } : i)) }), {
+          by: 'Flotilla',
+        });
       if (!noted)
         await this.deps.backlog.appendActivity(item, {
           date: entryDate(new Date()),

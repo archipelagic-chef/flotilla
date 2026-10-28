@@ -157,11 +157,13 @@ describe('pull requests of tickets in review (BL-221)', () => {
   let pushes: BranchPush;
   let fake: FakeGitHub;
   let session: boolean;
+  let down: boolean;
   let asked: number;
 
   beforeEach(async () => {
     setting.value = 'auto';
     session = true;
+    down = false;
     asked = 0;
     repo = initRepo();
     const home = makeTempDir();
@@ -191,6 +193,7 @@ describe('pull requests of tickets in review (BL-221)', () => {
           name,
           async () => {
             if (!session) throw new GitHubSignInNeeded('open pull requests');
+            if (down) throw new Error('GitHub is down.');
             return 'fake-token';
           },
           globalThis.fetch as unknown as Fetch,
@@ -249,6 +252,18 @@ describe('pull requests of tickets in review (BL-221)', () => {
       [1, undefined],
       [1, undefined],
     ]);
+  });
+
+  it('stops asking for a sign-in once one is there, when the pull request fails another way', async () => {
+    session = false;
+    await pushes.check();
+    expect((await item()).pullRequestSignIn).toBeDefined();
+    session = true;
+    down = true;
+    pushes.signedIn();
+    await pushes.check();
+    expect((await item()).pullRequestSignIn).toBeUndefined();
+    expect((await notes()).at(-1)).toContain('GitHub is down.');
   });
 
   it('opens none when the setting is off', async () => {

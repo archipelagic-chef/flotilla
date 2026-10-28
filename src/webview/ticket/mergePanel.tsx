@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import type { BacklogStatus } from '../../features/backlog/backlog';
 import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import { waitsForSignIn } from '../../features/backlog/needs';
 import { mergeActions } from '../../features/backlog/mergeStates';
 import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
 import type { TicketCiView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
@@ -44,20 +45,18 @@ function HostLink({ href, children }: { href: string; children: ComponentChildre
 export function PullRequestLinks({ ticket }: { ticket: TicketView }) {
   const prs = ticket.item.pullRequests ?? [];
   // None opened because you aren't signed in to GitHub (BL-232): it's opened once you are.
-  if (!prs.length && ticket.item.pullRequestSignIn && ticket.item.status === 'review')
-    return (
-      <div class="pull-requests">
+  const signIn = waitsForSignIn(ticket.item);
+  if (!prs.length && !signIn) return null;
+  return (
+    <div class="pull-requests">
+      {signIn && (
         <span class="pull-request sign-in" title="Flotilla opens its pull request on GitHub once you sign in">
           <i class="codicon codicon-github" /> Pull request: sign in to GitHub ·{' '}
           <button class="link" onClick={() => send({ type: 'ci', op: 'signIn' })}>
             Sign In
           </button>
         </span>
-      </div>
-    );
-  if (!prs.length) return null;
-  return (
-    <div class="pull-requests">
+      )}
       {prs.map((pr) => (
         <span key={pr.branch} class={`pull-request ${pr.state}`} title={`${pr.branch}'s pull request on GitHub`}>
           <i class={`codicon codicon-${pr.state === 'merged' ? 'git-merge' : pr.state === 'closed' ? 'git-pull-request-closed' : 'git-pull-request'}`} />{' '}

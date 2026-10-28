@@ -4,6 +4,7 @@ import {
   type Need,
   type NeedKind,
   needsYouRows,
+  waitsForSignIn,
 } from '../../features/backlog/needs';
 import { fixesFor, fixLabel } from '../../features/backlog/review';
 import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
@@ -68,9 +69,7 @@ export function NeedsYou({ items, notes = [] }: { items: BacklogItem[]; notes?: 
 
 /** Tickets in review whose pull requests wait for you to sign in to GitHub (BL-232): one row for them all. */
 function signInNeed(items: BacklogItem[]): { since: string; count: number } | undefined {
-  const waiting = items.filter(
-    (i) => i.pullRequestSignIn && i.status === 'review' && !i.merged && !i.discarded && !i.pullRequests?.some((p) => p.state === 'open'),
-  );
+  const waiting = items.filter(waitsForSignIn);
   if (!waiting.length) return undefined;
   return { since: waiting.map((i) => i.pullRequestSignIn!).sort()[0], count: waiting.length };
 }
