@@ -117,6 +117,14 @@ function number(n: number): number {
   return n;
 }
 
+/** There's no GitHub session in VS Code to call GitHub with (BL-232): only a sign-in fixes it. */
+export class GitHubSignInNeeded extends Error {
+  constructor(why: string) {
+    super(`Sign in to GitHub to ${why}.`);
+    this.name = 'GitHubSignInNeeded';
+  }
+}
+
 /** The pull requests of one repository, through the user's GitHub sign-in in VS Code (or the fake GitHub's). */
 export class GitHubPullRequests {
   constructor(

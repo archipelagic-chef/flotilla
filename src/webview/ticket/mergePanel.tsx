@@ -43,6 +43,18 @@ function HostLink({ href, children }: { href: string; children: ComponentChildre
 /** Its branches' pull requests on GitHub (BL-221), by Merge to main: "PR #12 · open", each a link to it. */
 export function PullRequestLinks({ ticket }: { ticket: TicketView }) {
   const prs = ticket.item.pullRequests ?? [];
+  // None opened because you aren't signed in to GitHub (BL-232): it's opened once you are.
+  if (!prs.length && ticket.item.pullRequestSignIn && ticket.item.status === 'review')
+    return (
+      <div class="pull-requests">
+        <span class="pull-request sign-in" title="Flotilla opens its pull request on GitHub once you sign in">
+          <i class="codicon codicon-github" /> Pull request: sign in to GitHub ·{' '}
+          <button class="link" onClick={() => send({ type: 'ci', op: 'signIn' })}>
+            Sign In
+          </button>
+        </span>
+      </div>
+    );
   if (!prs.length) return null;
   return (
     <div class="pull-requests">

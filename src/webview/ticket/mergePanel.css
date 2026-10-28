@@ -70,3 +70,20 @@
 .pull-request.closed .codicon {
   color: var(--vscode-charts-red);
 }
+
+.pull-request.sign-in .codicon {
+  color: var(--vscode-charts-yellow);
+}
+
+.pull-request.sign-in button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+
+.pull-request.sign-in button.link:hover {
+  text-decoration: underline;
+}

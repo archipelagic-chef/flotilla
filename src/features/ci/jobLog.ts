@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import { gitHubName } from '../backlog/sources/github';
 import type { Fetch } from '../backlog/sources/source';
 import { cleanLog, GitHubActions } from './githubActions';
-import { GitHubPullRequests } from './pullRequests';
+import { GitHubPullRequests, GitHubSignInNeeded } from './pullRequests';
 
 export const JOB_LOG_SCHEME = 'flotilla-ci-log';
 
-const GITHUB_SCOPES = ['repo'];
+export const GITHUB_SCOPES = ['repo'];
 
 export interface JobLogRef {
   owner: string;
@@ -73,7 +73,7 @@ function signedInToken(fakeApi: string | undefined, why: string): () => Promise<
     // The fake GitHub (debug window only) needs no sign-in, and never gets a real token.
     if (fakeApi) return 'fake-token';
     const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true });
-    if (!session) throw new Error(`Sign in to GitHub to ${why}.`);
+    if (!session) throw new GitHubSignInNeeded(why);
     return session.accessToken;
   };
 }
