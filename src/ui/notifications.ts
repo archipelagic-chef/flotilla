@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
-import type { BacklogItem } from '../features/backlog/backlog';
+import type { BacklogData, BacklogItem } from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { Leader } from '../features/backlog/leader';
 import type { QueuedStart } from '../features/backlog/turn';
+import { holdsUp, waitsOf } from '../features/backlog/mainDrift';
+import { holdsUpLine } from '../features/backlog/needs';
 import {
   isWarning,
   type NeedsYou,
@@ -75,14 +77,21 @@ export class NeedsYouNotifier implements vscode.Disposable {
 
   private async apply(): Promise<void> {
     let items: Array<BacklogItem & { queued?: QueuedStart }>;
+    let data: BacklogData;
     try {
-      items = (await this.deps.backlog.read()).items.map((i) => {
+      data = await this.deps.backlog.read();
+      items = data.items.map((i) => {
         const queued = this.deps.reviews.queuedFor?.(i.id);
         return queued ? { ...i, queued } : i;
       });
     } catch {
       return; // the backlog can't be read right now: the list stays as it was
     }
+    // The tickets each one holds up, through their "Depends on" (BL-238), as the "Needs you" rows say; none while the
+    // tickets can't be read.
+    const holders = await waitsOf(data, async (i) => (await this.deps.backlog.readTicketCached(i)).description)
+      .then((waits) => holdsUp(data, waits))
+      .catch(() => new Map<string, string[]>());
     const worktrees = this.deps.repository.current.map((ws) => ({
       key: ws.key,
       label: workstreamLabel(ws),
@@ -91,7 +100,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
     }));
     // Notes that can't be read right now ask nothing: the tickets and worktrees still count.
     const notes = await this.deps.notes.views().catch(() => []);
-    const next = needsYouList(items, worktrees, notes);
+    const next = needsYouList(items, worktrees, notes, holders);
     const fresh = newNeeds(this.previous, next);
     this.previous = new Set(next.map((n) => n.key));
     this.list = next;
@@ -156,7 +165,8 @@ export class NeedsYouNotifier implements vscode.Disposable {
     const pick = await vscode.window.showQuickPick(
       this.list.map((n) => ({
         label: n.ticket ? `${n.ticket.id}  ${n.ticket.title}` : n.note ? `${n.note.id}  ${n.note.title}` : subject(n),
-        description: phrase(n.kind),
+        description: n.holdsUp ? `${phrase(n.kind)} · ${holdsUpLine(n.holdsUp)}` : phrase(n.kind),
+        ...(n.holdsUp && n.holdsUp.length > 1 ? { detail: `Holds up ${n.holdsUp.join(', ')}` } : {}),
         need: n,
       })),
       { title: 'Needs you', placeHolder: 'Pick one to open it' },
