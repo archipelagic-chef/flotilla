@@ -21,10 +21,11 @@ import {
 } from '../../features/backlog/backlog';
 import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
 import { needOf, queuedNeed, resumeAsk } from '../../features/backlog/needs';
+import { checkingOf, setVerdict } from '../../features/backlog/sisterCheck';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
-import { cardSummaryOf } from '../../features/backlog/ticket';
+import { cardSummaryOf, entryDate } from '../../features/backlog/ticket';
 import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
@@ -333,6 +334,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const checks = this.merger?.checksView(item.id);
         const part = checks && fraction(checks.progress);
         const percent = part === undefined ? undefined : Math.round(part * 100);
+        // A sister check covers it (BL-236): the autopilot waits for it.
+        const checking = checkingOf(data, item.id);
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
         return {
           ...item,
@@ -350,6 +353,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
           ...(this.discussing(item) ? { discussing: true } : {}),
+          ...(checking && item.status === 'todo' ? { checking } : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
           ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };
@@ -413,6 +417,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'reopen':
         await vscode.commands.executeCommand('flotilla.reopenBacklogItem', m.id);
         return;
+      case 'keepSister': {
+        // Kept as it is, though a sister check found it covered or at odds (BL-236).
+        const item = (await store.read()).items.find((i) => i.id === m.id);
+        const v = item?.sisterVerdict;
+        if (!item || !v) return;
+        await store.change((d) => setVerdict(d, m.id));
+        await store.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: `You kept it as it is, after ${v.from}'s check.` });
+        return;
+      }
       case 'start':
         await vscode.commands.executeCommand('flotilla.startBacklogItem', m.id, { agent: true });
         return;

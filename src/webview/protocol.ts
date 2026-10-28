@@ -63,6 +63,8 @@ export interface BacklogItemView extends BacklogItem {
   demo?: boolean;
   /** Its discussion's chat is open (BL-188): its card says Discussing, and opens that chat. */
   discussing?: boolean;
+  /** The ticket whose sister check covers it (BL-236): the autopilot waits for it, and its card says so. */
+  checking?: string;
 }
 
 /** A note (BL-182), as the backlog's Notes lane shows it. */
@@ -488,6 +490,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'delete' | 'start' | 'open' | 'discuss' | 'link' | 'accept' | 'dismiss' | 'run' | 'merge'; id: string }
   /** Discard as "won't do" (asks first), and Reopen a discarded item into To Do (BL-209). */
   | { type: 'backlog'; op: 'discard' | 'reopen'; id: string }
+  /** Keeps a ticket a sister check found covered or at odds (BL-236): as it is, out of "Needs you". */
+  | { type: 'backlog'; op: 'keepSister'; id: string }
   /** The card's Create Worktree (as the ticket's): a new worktree at once, its branch named without asking unless named. */
   | { type: 'backlog'; op: 'createWorktree'; id: string; named?: boolean }
   /** Accept every proposed item; plan the backlog with Claude. */

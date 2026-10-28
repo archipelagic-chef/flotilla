@@ -12,7 +12,7 @@ import { turnOf, type QueuedStart } from './turn';
  * approved work not merged yet, a merge that stopped or waits for approval, a stopped review, a start that failed, a reply queued for an agent. Shared by the host
  * and the webview (no node or vscode APIs).
  */
-export type NeedKind = 'asking' | 'yours' | 'approved' | 'merge' | 'stopped' | 'failed' | 'queued';
+export type NeedKind = 'asking' | 'yours' | 'approved' | 'merge' | 'stopped' | 'failed' | 'queued' | 'sister';
 
 export interface Need {
   kind: NeedKind;
@@ -37,7 +37,11 @@ function firstLine(text: string): string {
  * proposals don't wait on the user.
  */
 export function needOf(item: BacklogItem & { queued?: QueuedStart }, activity: TicketEntry[]): Need | undefined {
-  if (item.status === 'done' || item.proposed || item.discarded) return undefined;
+  if (item.status === 'done' || item.discarded) return undefined;
+  // A sister check found it covered by another ticket's change, or at odds with it (BL-236): Discard or Keep.
+  const v = item.sisterVerdict;
+  if (v && (item.proposed || item.status === 'todo')) return { kind: 'sister', since: v.since, line: v.line };
+  if (item.proposed) return undefined;
   const r = item.review;
   const turn = turnOf(item);
   // Its merge (BL-229): where that is, in the card's words, not "Ready to merge"; one an agent resolves doesn't wait on you.

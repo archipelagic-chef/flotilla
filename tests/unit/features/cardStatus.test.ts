@@ -189,6 +189,11 @@ describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
     expect(tip(discussed)).toMatch(/ends the discussion/);
   });
 
+  it('says a To Do a sister check covers waits for it (BL-236)', () => {
+    expect(line(item('todo', { checking: 'BL-7', shaping }))).toEqual(["Checking against BL-7's change…", '', 'working', '']);
+    expect(tip(item('todo', { checking: 'BL-7' }))).toMatch(/the autopilot takes it once that's done/);
+  });
+
   it('says a To Do in a discussion is, with whom, and that starting it ends it', () => {
     expect(line(item('todo', { shaping }))).toEqual(['In discussion with Astro-2', '', '', 'Start']);
     expect(tip(item('todo', { shaping }))).toMatch(/accepting it or starting it ends the discussion/);
