@@ -1,0 +1,33 @@
+{
+  "title": "A discarded ticket's sisters are checked against it: BL-8, which depends on BL-10, asks in Needs you, Discard or Keep",
+  "settings": {
+    "flotilla.sisterCheckDelaySeconds": 0
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\")" },
+    { "caption": "BL-8 depends on BL-10: we discard BL-10 as won't do" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
+    { "waitFor": "[role=\"radio\"]:has-text(\"Won't Do\")" },
+    { "click": "[role=\"radio\"]:has-text(\"Won't Do\")" },
+    { "waitFor": ".monaco-dialog-box .monaco-button:has-text(\"Discard\")" },
+    { "wait": 1200 },
+    { "click": ".monaco-dialog-box .monaco-button:has-text(\"Discard\")" },
+    { "caption": "An agent checks the tickets that depend on it against the discard" },
+    { "caption": "BL-8 is at odds with it: Needs you asks whether to discard it too, or keep it as it is" },
+    { "waitFor": ".needs-lane .need-sister:has-text(\"At odds with BL-10's change\")", "timeout": 60000 },
+    { "hover": ".needs-lane .need-sister .name" },
+    { "wait": 3000 },
+    { "caption": "Keep leaves it as it is, and it leaves Needs you" },
+    { "click": ".needs-lane .need-sister button:has-text(\"Keep\")" },
+    { "wait": 1500 },
+    { "command": "View: Close All Editors" },
+    { "click": ".backlog-item:has-text(\"List attached files in the activity\") .name" },
+    { "waitFor": "h1:has-text(\"List attached files in the activity\")" },
+    { "click": ".activity-toggle[aria-expanded=\"false\"], .timeline-text:has-text(\"You kept it as it is\")" },
+    { "waitFor": ".timeline-text:has-text(\"You kept it as it is, after BL-10's check.\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

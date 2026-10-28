@@ -1,0 +1,28 @@
+{
+  "title": "A merged ticket's sisters are checked against it: BL-8, which depends on BL-10, gets its description brought up to date",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off",
+    "flotilla.sisterCheckDelaySeconds": 0
+  },
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\")" },
+    { "caption": "BL-8 depends on BL-10, which is approved: we merge BL-10" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "click": ".review-panel button:has-text(\"Merge to main\")", "timeout": 30000 },
+    { "caption": "Once it's merged, an agent checks the tickets that depend on it, and its epic's other parts, against main" },
+    { "waitFor": ".backlog-item:has-text(\"Checking against BL-10's change\")", "timeout": 60000 },
+    { "wait": 1500 },
+    { "caption": "BL-8's description is brought up to date to what's left, with an entry saying what changed" },
+    { "click": ".backlog-item:has-text(\"List attached files in the activity\") .name" },
+    { "waitFor": "h1:has-text(\"List attached files in the activity\")" },
+    { "waitFor": "text=What's left after BL-10", "timeout": 30000 },
+    { "waitFor": "text=Brought its description up to date after BL-10's change", "timeout": 30000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
