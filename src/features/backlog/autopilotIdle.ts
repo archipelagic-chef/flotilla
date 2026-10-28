@@ -1,4 +1,5 @@
 import type { BacklogData, BacklogItem } from './backlog';
+import { waitChain } from './mainDrift';
 
 /**
  * Why the autopilot is idle, and what it did while the user was away (BL-142): the lines its bar shows when it has
@@ -38,7 +39,7 @@ function listed(ids: string[]): string {
 }
 
 /**
- * Why nothing starts: the To Do tickets that wait for others (`waits`: each one's unmerged dependencies, BL-55), the
+ * Why nothing starts: the To Do tickets that wait for others (`waits`: each open one's unmerged dependencies, BL-55), the
  * merges that failed, the starts that failed, or nothing left. Undefined when a ticket could start.
  */
 export function idleReason(data: BacklogData, waits: ReadonlyMap<string, readonly string[]>, failedStarts: ReadonlySet<string>): string | undefined {
@@ -53,11 +54,12 @@ export function idleReason(data: BacklogData, waits: ReadonlyMap<string, readonl
   const parts: string[] = [];
   if (waiting.length) {
     const first = waiting[0];
-    const deps = (waits.get(first.id) ?? []).map((id) => {
+    // Through a chain, to the ticket to act on (BL-238): "BL-213 waits for BL-211, which waits for BL-173 (review stopped)".
+    const about = (id: string) => {
       const dep = data.items.find((i) => i.id.toUpperCase() === id.toUpperCase());
-      return dep ? `${dep.id} (${standing(dep)})` : id;
-    });
-    parts.push(`${first.id} waits for ${deps.join(', ')}${waiting.length > 1 ? ` (and ${waiting.length - 1} more wait)` : ''}`);
+      return dep ? `${dep.id} (${needsYou(dep) ?? standing(dep)})` : id;
+    };
+    parts.push(`${first.id} waits for ${waitChain(waits, first.id, about)}${waiting.length > 1 ? ` (and ${waiting.length - 1} more wait)` : ''}`);
   }
   if (merges) parts.push(merges);
   if (cantStart.length) parts.push(`${listed(cantStart.map((i) => i.id))} couldn't start: start ${cantStart.length === 1 ? 'it' : 'them'} yourself`);

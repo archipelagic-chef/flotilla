@@ -23,7 +23,7 @@ import { readSettings } from '../settings';
 import { entryDate } from '../../features/backlog/ticket';
 import type { Leader } from '../../features/backlog/leader';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { dependsOn, waitingFor } from '../../features/backlog/mainDrift';
+import { waitsOf } from '../../features/backlog/mainDrift';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
@@ -337,13 +337,9 @@ export class Autopilot implements vscode.Disposable {
     }
   }
 
-  /** The To Do tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55), and for which. */
+  /** The open tickets that wait for others to be merged ("Depends on: BL-12" in their description, BL-55), and for which. */
   private async waiting(data: BacklogData): Promise<Map<string, string[]>> {
-    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded);
-    const waits = await Promise.all(
-      todo.map(async (i) => waitingFor(data, dependsOn((await this.deps.backlog.readTicketCached(i)).description, i.id)).map((d) => d.id)),
-    );
-    return new Map(todo.flatMap((i, n) => (waits[n].length ? [[i.id, waits[n]] as const] : [])));
+    return waitsOf(data, async (i) => (await this.deps.backlog.readTicketCached(i)).description);
   }
 
   /**
