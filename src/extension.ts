@@ -11,6 +11,7 @@ import {
   versionAtLeast,
 } from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
+import { StartupClock } from './core/startupClock';
 import { Repository, type Scope } from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
@@ -30,7 +31,12 @@ import {
   writeHeartbeat,
 } from './features/workstreams/heartbeat';
 import { scopeForChange } from './features/workstreams/refreshPlan';
-import { buildWorkstreams, findWorkstreamFor, type Workstream } from './features/workstreams/workstream';
+import {
+  buildWorkstreams,
+  findWorkstreamFor,
+  listWorkstreams,
+  type Workstream,
+} from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
 import { samePath, toGitPath } from './core/paths';
 import * as chatUi from './ui/chatCommands';
@@ -130,6 +136,11 @@ function showMessageView(context: vscode.ExtensionContext, text: string): void {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('Flotilla');
+  // Where startup's time goes, from the extension host's start (BL-230).
+  const startup = new StartupClock((line) => output.appendLine(line), ['view registered', 'page ready', 'worktrees shown', 'backlog shown', 'worktrees built']);
+  const loading = (globalThis as { __flotillaLoading?: number }).__flotillaLoading;
+  if (loading !== undefined) startup.mark('bundle loading', loading);
+  startup.mark('activated');
   // An update installed while this window runs only applies after a reload: that's said (BL-85).
   watchInstalledVersion(context);
   // The build's commit, and in Flotilla's own repository what main has merged since (BL-151).
@@ -181,6 +192,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return;
   }
 
+  startup.mark('repository located');
   const service = new WorktreeService(location, () => ({
     autoAdopt: readSettings().autoAdopt,
     onAdoptError: (wt, error) =>
@@ -239,7 +251,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     integrations,
     githubApi: devGitHubApi(context.extensionMode),
     onCiFinished: (items) => ciNotifier.notify(items),
+    startup,
   });
+  // Registered as soon as it's made, its parts wired in as they're made (use…): VS Code can show it at once (BL-230).
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }));
+  startup.mark('view registered');
+  startup.mark('listing worktrees');
+  // The worktrees from `git worktree list` until the first refresh has read their statuses and chats.
+  void listWorkstreams(service, { currentWorktreeRoot: location.worktreeRoot, settings: readSettings(), now: new Date() })
+    .then((items) => {
+      startup.mark('worktrees listed');
+      sidebar.showListed(items);
+    })
+    .catch(() => undefined);
   // Merge to main (BL-54): it moves its ticket to Done itself, saying what it merged, so the merge watcher leaves those to it.
   const merger = new Merger({
     backlog,
@@ -476,7 +500,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(
     sidebar,
-    vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, { webviewOptions: { retainContextWhenHidden: true } }),
     active,
     new WorkstreamStatusBar(repository, active, needs),
     decorations,
@@ -484,6 +507,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     needs,
     { dispose: () => repository.dispose() },
   );
+  startup.mark('view registered');
   registerCommands(ctx);
   // A done ticket's worktree is removed (its branch kept), so finished work doesn't fill the drive.
   const finished = new FinishedWorktrees({
@@ -718,8 +742,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => pollTimer && clearInterval(pollTimer) },
   );
 
-  await repository.refresh();
-  await resumePendingActions(ctx);
+  const built = repository.onDidChange(() => {
+    startup.mark('worktrees built');
+    built.dispose();
+  });
+  // Not awaited: VS Code shows the view only once activate has returned, and the first refresh reads every worktree.
+  void repository
+    .refresh()
+    .then(() => resumePendingActions(ctx))
+    .catch((e: unknown) => output.appendLine(`Could not resume the pending actions: ${e instanceof Error ? e.message : String(e)}`));
 }
 
 export async function deactivate(): Promise<void> {

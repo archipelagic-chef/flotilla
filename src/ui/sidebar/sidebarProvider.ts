@@ -1,6 +1,7 @@
 import type { Merger } from '../backlog/merge';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import type { StartupClock } from '../../core/startupClock';
 import * as vscode from 'vscode';
 import type { Autopilot } from '../backlog/autopilot';
 import type { StorageMonitor } from '../storage';
@@ -103,6 +104,8 @@ export interface SidebarDeps {
   githubApi?: string;
   /** Runs that finished on a worktree's branch while they were read (for the notices). */
   onCiFinished?: (items: FinishedRun[]) => void;
+  /** Where startup's time goes (BL-230): the page's ready, its first worktrees and backlog. */
+  startup?: Pick<StartupClock, 'mark'>;
   /** The Metrics tool's numbers (BL-158). */
   metrics?: Metrics;
 }
@@ -112,6 +115,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private view: vscode.WebviewView | undefined;
   /** The page has loaded and listens; until then actions wait in pending. */
   private ready = false;
+  /** The page has said it is ready at least once (for the startup marks). */
+  private pageLoaded = false;
   private pending: HostMessage[] = [];
   private readonly visibility = new vscode.EventEmitter<boolean>();
   readonly onDidChangeVisibility = this.visibility.event;
@@ -372,6 +377,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}),
       ...(queue?.entries.length ? { mergeQueue: queue } : {}),
     });
+    if (this.view && this.pageLoaded) this.deps.startup?.mark('backlog shown');
   }
 
   private async onBacklog(m: Extract<WebviewMessage, { type: 'backlog' }>): Promise<void> {
@@ -516,6 +522,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.deps.startup?.mark('view resolved');
     this.view = view;
     this.ready = false;
     const dist = vscode.Uri.joinPath(this.deps.extensionUri, 'dist');
@@ -556,10 +563,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
   }
 
+  /**
+   * Shows the worktrees as `git worktree list` has them (listWorkstreams) until the repository's first load is done
+   * (BL-230): the page has its tabs at once, their changes and chats following.
+   */
+  showListed(items: readonly Workstream[]): void {
+    if (this.deps.repository.loaded) return;
+    this.firstList = items;
+    this.postState();
+  }
+
+  private firstList: readonly Workstream[] | undefined;
+
   /** Sends the worktrees whose view changed since the last state (all of them after the page loads). */
   postState(): void {
+    const loaded = this.deps.repository.loaded;
+    // Before the first load there's nothing to send but the first list: the page says it's loading, not that there are none.
+    const all = loaded ? this.deps.repository.current : this.firstList;
+    if (!all) return;
+    if (loaded) this.firstList = undefined;
     const now = new Date();
-    const all = this.deps.repository.current;
     const config = vscode.workspace.getConfiguration('flotilla');
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
@@ -576,8 +599,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       windows: all.filter((ws) => ws.windowOpen).length,
     };
     this.post({ type: 'state', workstreams: changed, keys, machine });
+    if (this.view && this.pageLoaded && keys.length) this.deps.startup?.mark('worktrees shown');
     this.shown.retain(new Set(all.map((ws) => ws.key)));
     this.listed.retain(new Set(all.map((ws) => ws.key)));
+    if (!loaded) return;
     for (const ws of all) this.postMarks(ws);
     this.postExclusions();
     this.ci.update(all);
@@ -699,6 +724,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.deps.metrics?.openEditor(m.period);
         return;
       case 'ready':
+        this.deps.startup?.mark('page ready');
+        this.pageLoaded = true;
         void this.postIconTheme();
         // A page that has just loaded has none of the views: send them all.
         this.sent.clear();

@@ -132,6 +132,44 @@ export async function buildWorkstreams(service: WorktreeService, opts: BuildOpti
   return sortByAttention(items);
 }
 
+/**
+ * The worktrees as `git worktree list` has them, before any status, chat or progress is read (BL-230): what the
+ * sidebar shows at startup until the first buildWorkstreams is done. Only the sidebar shows them: nothing acts on them.
+ */
+export async function listWorkstreams(service: WorktreeService, opts: Pick<BuildOptions, 'currentWorktreeRoot' | 'settings' | 'now'>): Promise<Workstream[]> {
+  const s = opts.settings;
+  return (await service.list()).map((wt) => {
+    const activity = classifyActivity(undefined, opts.now, s.activeWindowMinutes, s.staleAfterDays);
+    const { state, agentStale } = computeAttention({
+      reachable: wt.path !== undefined,
+      agent: undefined,
+      activity,
+      now: opts.now,
+      agentStaleMinutes: s.agentStatusStaleMinutes,
+    });
+    return {
+      key: wt.adminDir,
+      worktree: wt,
+      changes: [],
+      staged: [],
+      unstaged: [],
+      sync: { upstream: undefined, ahead: 0, behind: 0, hasRemote: false, head: undefined },
+      chats: [],
+      hasHooks: false,
+      agent: undefined,
+      agentStale,
+      heartbeat: undefined,
+      windowOpen: false,
+      lastActivity: undefined,
+      activity,
+      progress: undefined,
+      attention: state,
+      isCurrent: wt.path !== undefined && opts.currentWorktreeRoot !== undefined && samePath(wt.path, opts.currentWorktreeRoot),
+      refreshedAt: 0,
+    };
+  });
+}
+
 interface RepoFacts {
   base: string | undefined;
   baseHead: string | undefined;
