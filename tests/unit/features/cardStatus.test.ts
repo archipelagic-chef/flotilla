@@ -217,6 +217,13 @@ describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
     expect(line(waits)).toEqual(['Waits for BL-171 (review stopped), BL-5 (in progress)', '', '', '']);
     expect(tip(waits)).toBe('The autopilot takes it once they are merged.');
   });
+
+  it("says a discarded one isn't waited for (BL-235)", () => {
+    const dropped = item('todo', { depsDiscarded: ['BL-172'] });
+    expect(line(dropped)).toEqual(['Depended on BL-172, discarded', '', '', 'Start']);
+    expect(tip(dropped)).toBe('It no longer waits for it: check that it still makes sense without that work.');
+    expect(line(item('todo', { waitsFor: ['BL-5'], depsDiscarded: ['BL-172'] }))[0]).toBe('Waits for BL-5');
+  });
 });
 
 describe('cardSummary', () => {

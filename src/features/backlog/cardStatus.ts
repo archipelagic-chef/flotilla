@@ -47,6 +47,7 @@ export type CardStatusItem = Pick<
   | 'clash'
   | 'waitsFor'
   | 'waitsOn'
+  | 'depsDiscarded'
   | 'parts'
   | 'shaping'
   | 'resume'
@@ -176,6 +177,13 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         return {
           text: `In discussion with ${item.shaping.agent}`,
           tip: "The autopilot doesn't take it while it's discussed: accepting it or starting it ends the discussion.",
+          next: START,
+        };
+      // What it depended on was discarded (BL-235): it waits for it no more, and is taken like any other.
+      if (item.depsDiscarded?.length)
+        return {
+          text: `Depended on ${item.depsDiscarded.join(', ')}, discarded`,
+          tip: `It no longer waits for ${item.depsDiscarded.length === 1 ? 'it' : 'them'}: check that it still makes sense without that work.`,
           next: START,
         };
       return { text: item.agent?.light && !item.agent.model ? 'To do · light' : 'To do', next: START };

@@ -512,16 +512,20 @@ export function MainState({ ticket }: { ticket: TicketView }) {
       )}
       {dropped.length > 0 && (
         <div class="main-note">
-          <i class="codicon codicon-circle-slash" /> Depended on{' '}
-          {dropped.map((d, i) => (
-            <span key={d.id}>
-              {i > 0 && ', '}
-              <button class="text-button" onClick={() => send({ type: 'openTicket', id: d.id })} title={d.title}>
-                {d.id}
-              </button>
-            </span>
-          ))}
-          , discarded: it no longer waits for {dropped.length === 1 ? 'it' : 'them'}.
+          <i class="codicon codicon-circle-slash" />
+          <span>
+            Depended on{' '}
+            {dropped.map((d, i) => (
+              <span key={d.id}>
+                {i > 0 && ', '}
+                <button class="text-button" onClick={() => send({ type: 'openTicket', id: d.id })} title={d.title}>
+                  {d.id}
+                </button>{' '}
+                (discarded)
+              </span>
+            ))}
+            : it no longer waits for {dropped.length === 1 ? 'it' : 'them'}.
+          </span>
         </div>
       )}
       {resumeAfter.length > 0 && (
