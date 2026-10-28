@@ -20,7 +20,8 @@
 //
 // Asked to answer a comment (Ask an Agent), it answers in its final message, quoting the comment, and changes nothing.
 //
-// As a sister check (BL-236), it adds a line of what's left to each To Do sister's description, and says so.
+// As a sister check (BL-236), it adds a line of what's left to each To Do sister's description, and says so; after a
+// discard, it finds each To Do sister at odds with it instead.
 //
 // Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
 //
@@ -235,6 +236,8 @@ function checkSisters(id) {
   }));
   const sections = sisters.map((s) => {
     if (!s.editable) return `## ${s.id} · outdated\nFake check: ${id} changed what this ticket's work builds on; look again at what it touches.`;
+    // A discarded ticket's sister is at odds with it: the user decides (Discard or Keep).
+    if (/was discarded as won't do/.test(prompt)) return `## ${s.id} · contradicts\nIt builds on ${id}, which won't be done (fake sister check).`;
     const text = fs.readFileSync(s.file, 'utf8');
     const at = text.search(/^##\s+Activity\s*$/im);
     const line = `- [ ] What's left after ${id}: the parts it didn't build (fake sister check).\n`;
