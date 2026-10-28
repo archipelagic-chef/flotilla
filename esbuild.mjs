@@ -15,7 +15,8 @@ const host = await esbuild.context({
   outfile: 'dist/extension.js',
   external: ['vscode', 'original-fs'],
   sourcemap: true,
-  banner: { js: "const __importMetaUrl = require('url').pathToFileURL(__filename).href;" },
+  // When the bundle started loading, for the startup marks (BL-230: its modules take time to load before activate).
+  banner: { js: "globalThis.__flotillaLoading = performance.now(); const __importMetaUrl = require('url').pathToFileURL(__filename).href;" },
   define: { 'import.meta.url': '__importMetaUrl' },
   logLevel: 'info',
 });

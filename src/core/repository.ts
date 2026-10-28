@@ -22,6 +22,7 @@ export class Repository<T> {
   private disposed = false;
   /** Bumped by patch(); a load that started before a patch is stale and is redone. */
   private version = 0;
+  private hasLoaded = false;
 
   constructor(
     private readonly load: (scope: Scope) => Promise<readonly T[]>,
@@ -31,6 +32,11 @@ export class Repository<T> {
 
   get current(): readonly T[] {
     return this.items;
+  }
+
+  /** A load has finished: current is what was read, not the empty list it starts with. */
+  get loaded(): boolean {
+    return this.hasLoaded;
   }
 
   onDidChange(listener: () => void): { dispose(): void } {
@@ -95,6 +101,7 @@ export class Repository<T> {
       if (!stale) {
         this.items = items;
         loaded = true;
+        this.hasLoaded = true;
       }
     } catch (error) {
       // What this load was asked to rebuild is still owed: the next load gets it.

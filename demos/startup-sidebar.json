@@ -1,0 +1,14 @@
+{
+  "title": "The side view shows its worktrees and backlog within a moment of a reload",
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".backlog-item" },
+    { "caption": "Reload the window with the side view open" },
+    { "command": "Developer: Reload Window" },
+    { "waitFor": ".backlog-item", "timeout": 30000 },
+    { "caption": "Its tabs and the backlog's cards are there as soon as VS Code's own views" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

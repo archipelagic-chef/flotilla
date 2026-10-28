@@ -168,6 +168,10 @@ git merge -s ours 4da0391 && git merge main
 
 Your branch, formatted, is what the reformat would have made of it, so `-s ours` takes it as it is.
 
+## Startup
+
+VS Code shows the side view only once `activate` has returned, so `activate` awaits nothing it doesn't need to go on (BL-230): the view is registered as soon as the `SidebarProvider` is made (its parts wired in later through its `use…` methods), and the first refresh isn't awaited. Until that refresh is done the view shows the worktrees from `listWorkstreams` (the worktrees' own files, no status or chats), and the `Repository` stays empty, so nothing acts on worktrees whose chats aren't read yet; the page says "Loading worktrees…" rather than show an empty list. Reads that startup and every change start several at once go one at a time (`singleFlight`, as `postBacklog` does). Where the time goes is in the Flotilla output channel, each step from the extension host's start (`Startup: page ready at 910 ms`), then a `Startup took …` line; a new step worth watching gets a `startup.mark(…)`. To measure, play `demos/startup-sidebar.json` (it reloads the window with the view open) and read the marks in the demo profile's logs: `grep Startup $(ls -t $(find .vscode-test/demo-profile/logs -name '*Flotilla*.log') | head -1)`.
+
 ## Buttons that wait
 
 A button that starts something taking a while (git, GitHub, an agent starting, a file write and the backlog's refresh) says it's working from the click until the host is done, and takes no second click meanwhile (BL-116). The webview marks the action busy when it sends it; the host replies "done" for every such message, in a `finally`, whether the action posted, failed (`failed: true`; the error shows as before), was cancelled at a question or returned early. So nothing sticks, and a button whose action asks first (a confirmation, a quick pick) stays working while the question is up.

@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { Repository } from '../../../src/core/repository';
 
 describe('Repository', () => {
+  it('says it has loaded once a load has finished, not before (BL-230)', async () => {
+    const repo = new Repository(async () => [], 1);
+    expect(repo.loaded).toBe(false);
+    await repo.refresh();
+    expect(repo.loaded).toBe(true);
+    expect(repo.current).toEqual([]);
+  });
+
   it('coalesces refresh calls into one load and notifies listeners', async () => {
     let loads = 0;
     const repo = new Repository(async () => [++loads], 10);

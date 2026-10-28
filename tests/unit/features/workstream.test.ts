@@ -11,6 +11,7 @@ import {
   buildWorkstreams,
   canReuseProgress,
   findWorkstreamFor,
+  listWorkstreams,
   type Workstream,
 } from '../../../src/features/workstreams/workstream';
 import { WorktreeService } from '../../../src/features/worktrees/worktreeService';
@@ -115,6 +116,22 @@ describe('buildWorkstreams', () => {
     await buildWorkstreams(service, options(repo));
     expect(fs.statSync(index).mtimeMs).toBe(before);
     expect(fs.readFileSync(index).equals(content)).toBe(true);
+  });
+});
+
+describe('listWorkstreams', () => {
+  it('lists the worktrees as buildWorkstreams keys them, with nothing read yet and due for a rebuild (BL-230)', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const service = new WorktreeService({ mainRoot: repo, commonDir: path.join(repo, '.git') }, () => ({ autoAdopt: true }));
+    const a = await service.create({ kind: 'new', branch: 'a' });
+    writeFile(a.path!, 'new.txt', 'x\n');
+    const listed = await listWorkstreams(service, options(repo));
+    const built = await buildWorkstreams(service, options(repo));
+    expect(listed.map((w) => w.key).sort()).toEqual(built.map((w) => w.key).sort());
+    const listedA = listed.find((w) => w.worktree.branch === 'a')!;
+    expect(listedA).toMatchObject({ changes: [], chats: [], refreshedAt: 0, isCurrent: false });
+    expect(listed.find((w) => w.worktree.isMain)!.isCurrent).toBe(true);
   });
 });
 

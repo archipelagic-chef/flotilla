@@ -56,12 +56,12 @@ async function scanWorktreesDir(mainRoot: string): Promise<Map<string, string>> 
   } catch {
     return found;
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(root, entry.name);
-    const value = await readGitFile(dir);
+  const dirs = entries.filter((e) => e.isDirectory()).map((e) => path.join(root, e.name));
+  const values = await Promise.all(dirs.map((dir) => readGitFile(dir)));
+  dirs.forEach((dir, i) => {
+    const value = values[i];
     if (value) found.set(pathKey(resolveGitdir(dir, value)), dir);
-  }
+  });
   return found;
 }
 
@@ -94,26 +94,34 @@ export async function resolveWorktrees(roots: RepoRoots): Promise<ResolvedWorktr
   }
   const scanned = await scanWorktreesDir(roots.mainRoot);
 
-  for (const id of ids) {
-    const adminDir = path.join(roots.commonDir, 'worktrees', id);
-    const back = await readBackPointer(adminDir);
-    const recordedPath = back ? path.dirname(back) : '';
-    let location: string | undefined;
-    if (back && (await pointsBackTo(recordedPath, adminDir))) location = path.resolve(recordedPath);
-    location ??= scanned.get(pathKey(adminDir));
-    const head = await readHead(adminDir);
-    result.push({
-      id,
-      isMain: false,
-      adminDir,
-      path: location,
-      recordedPath,
-      branch: head.branch,
-      head: head.head,
-      locked: await isLocked(adminDir),
-      portable: location ? await isPortable(location, adminDir) : false,
-      insideRepo: location ? isInside(roots.mainRoot, location) : false,
-    });
-  }
+  // Each worktree's files are read alongside the others': at startup every read waits behind the window's others (BL-230).
+  const linked = await Promise.all(
+    ids.map(async (id): Promise<ResolvedWorktree> => {
+      const adminDir = path.join(roots.commonDir, 'worktrees', id);
+      const back = await readBackPointer(adminDir);
+      const recordedPath = back ? path.dirname(back) : '';
+      let location: string | undefined;
+      if (back && (await pointsBackTo(recordedPath, adminDir))) location = path.resolve(recordedPath);
+      location ??= scanned.get(pathKey(adminDir));
+      const [head, locked, portable] = await Promise.all([
+        readHead(adminDir),
+        isLocked(adminDir),
+        location ? isPortable(location, adminDir) : Promise.resolve(false),
+      ]);
+      return {
+        id,
+        isMain: false,
+        adminDir,
+        path: location,
+        recordedPath,
+        branch: head.branch,
+        head: head.head,
+        locked,
+        portable,
+        insideRepo: location ? isInside(roots.mainRoot, location) : false,
+      };
+    }),
+  );
+  result.push(...linked);
   return result;
 }
