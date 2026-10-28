@@ -1748,6 +1748,12 @@
           "minimum": 1,
           "description": "A workstream with no activity for this long is 'stale'."
         },
+        "flotilla.sisterCheckDelaySeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 0,
+          "description": "When a ticket of an epic is merged, discarded or its description reworked, an agent checks its sister tickets against it this long after the last change: edits close together run one check."
+        },
         "flotilla.agentStatusStaleMinutes": {
           "type": "number",
           "default": 10,

@@ -14,6 +14,7 @@ import {
   isBacklogData,
 } from './backlog';
 import { describeChanges, descriptionHash, lineDelta } from './changes';
+import { noteChange, reworked, type SisterReason } from './sisterCheck';
 import {
   entryDate,
   formatTicket,
@@ -235,7 +236,7 @@ export class LocalBacklog {
 
   private async describe(edit?: { id: string; before: string; by: string }): Promise<void> {
     const data = await this.read();
-    const changed: Array<{ item: BacklogItem; hash: string; body?: string }> = [];
+    const changed: Array<{ item: BacklogItem; hash: string; body?: string; before?: string; description: string }> = [];
     for (const item of data.items.filter((i) => !edit || i.id === edit.id)) {
       const description = (await this.readTicket(item)).description;
       const hash = descriptionHash(description);
@@ -251,13 +252,30 @@ export class LocalBacklog {
           : `The description was edited in its file${size}: by an agent, or in an editor.`;
         if (!description.trim() && before?.trim()) body += `\n\n${await this.keepDescription(item.id, before)}`;
       }
-      changed.push({ item, hash, body });
+      changed.push({ item, hash, body, before: item.descriptionHash !== undefined || edit ? before : undefined, description });
     }
     if (!changed.length) return;
     const hashes = new Map(changed.map((c) => [c.item.id, c.hash]));
     await this.change((d) => ({ ...d, items: d.items.map((i) => (hashes.has(i.id) ? { ...i, descriptionHash: hashes.get(i.id) } : i)) }));
     for (const c of changed) if (c.body) await this.appendActivity(c.item, { date: entryDate(new Date()), author: 'Flotilla', body: c.body });
+    // A reworked description changes the ticket's scope: its sisters are checked against it (BL-236).
+    for (const c of changed) if (c.before !== undefined && reworked(c.before, c.description)) await this.noteScopeChange(c.item.id, 'described');
   }
+
+  /**
+   * Notes that a ticket's scope changed (BL-236): merged, discarded, or its description reworked. When it has sisters
+   * (its epic's other open parts, its parts, its dependents), their check is due a few minutes from now.
+   */
+  async noteScopeChange(id: string, reason: SisterReason): Promise<void> {
+    const delay = this.sisterCheckDelayMs?.();
+    const data = await this.read();
+    const descriptions = new Map<string, string>();
+    for (const i of data.items) if (!i.discarded && i.status !== 'done') descriptions.set(i.id, (await this.readTicketCached(i)).description);
+    await this.change((d) => noteChange(d, id, reason, descriptions, new Date(), delay), { by: 'Flotilla' });
+  }
+
+  /** How long after a ticket's change its sisters' check starts (flotilla.sisterCheckDelaySeconds); unset: 3 minutes. */
+  sisterCheckDelayMs?: () => number | undefined;
 
   /**
    * Keeps a description that an edit removed entirely in the ticket's folder (<id>/description-<time>.md), and returns

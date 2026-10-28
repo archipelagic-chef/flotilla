@@ -53,6 +53,7 @@ import {
 } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
+import { chatAgentNames, SisterChecks } from './ui/backlog/sisterChecks';
 import { ImprovementReview } from './ui/metrics/improvementReview';
 import { BranchPush } from './ui/backlog/branchPush';
 import { PullRequestComments } from './ui/backlog/prComments';
@@ -416,6 +417,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     openChat: async (key, chatId) => void (await vscode.commands.executeCommand('flotilla.openChat', { key, chatId })),
   });
   context.subscriptions.push(shaping);
+  // When a ticket's scope changes, an agent checks its sisters against it (BL-236), in the leading window.
+  backlog.sisterCheckDelayMs = () => {
+    const s = vscode.workspace.getConfiguration('flotilla').get<number>('sisterCheckDelaySeconds');
+    return typeof s === 'number' && s >= 0 ? s * 1000 : undefined;
+  };
+  context.subscriptions.push(
+    new SisterChecks({
+      backlog,
+      mainRoot: location.mainRoot,
+      base: async () => (await merger.baseBranch()) ?? 'main',
+      output,
+      isLeader: () => leader.isLeader,
+      takenNames: () => chatAgentNames(repository.current.flatMap((w) => w.chats)),
+    }),
+  );
   tickets.useShaping(shaping);
   const answers = new AskAgent({
     backlog,

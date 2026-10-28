@@ -74,6 +74,9 @@ describe('promptPurpose', () => {
     expect(promptPurpose(LIMIT)?.purpose).toBe('resume');
     expect(promptPurpose('Flotilla paused you to make room for another ticket; a slot is free now.')?.purpose).toBe('resume');
     expect(promptPurpose('You are agent Iris-2, working on backlog item BL-9, discussing it with its owner: "x".')?.purpose).toBe('shaping');
+    expect(
+      promptPurpose('You are agent Iris-2, working on backlog item BL-9: "x".\n\nYou check its sister tickets against its change: BL-9 was merged.'),
+    ).toMatchObject({ purpose: 'shaping', ticket: 'BL-9' });
     expect(promptPurpose("You are agent Gauge-3, writing Flotilla's improvement review of 2026-10-24.")?.purpose).toBe('orchestration');
     expect(promptPurpose('Please look at the backlog and add tickets')).toBeUndefined();
   });

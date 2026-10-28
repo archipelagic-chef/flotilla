@@ -25,7 +25,10 @@ export const TOOL_LABEL: Record<ToolKind, string> = { code: 'Reading code', git:
 /** Flotilla's prompts, by what they start: the first that matches the prompt's beginning. */
 const PROMPTS: ReadonlyArray<[SpendPurpose, RegExp]> = [
   ['review', /You are its reviewer\.|made changes after your last review|Go on with your review/],
-  ['shaping', /discussing it with its owner|wants to shape it with you first|^Its owner (opened the discussion|wrote in the ticket since your last reply)/],
+  [
+    'shaping',
+    /discussing it with its owner|wants to shape it with you first|You check its sister tickets against its change|^Its owner (opened the discussion|wrote in the ticket since your last reply)/,
+  ],
   ['rework', /requested changes \(review round \d+\)|^The user reviewed your work on \S+ and requested changes/],
   ['answer', /^The user answered you in the ticket/],
   [
