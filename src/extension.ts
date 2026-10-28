@@ -117,6 +117,8 @@ import { metricsCommands } from './ui/metrics/metricsCommands';
 import { viewCommands } from './ui/sidebar/viewCommands';
 
 const BACKGROUND_POLL_SECONDS = 60;
+/** How long the rest of startup waits for the worktrees' first list, at most (BL-233): it takes ~40 ms on its own. */
+const FIRST_LIST_WAIT_MS = 500;
 let heartbeatGitDir: string | undefined;
 
 function setState(state: 'ready' | 'noRepo' | 'gitMissing'): Thenable<unknown> {
@@ -221,16 +223,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const scmCtx = scmContext(repository);
   const active = new ActiveWorktree(context.workspaceState);
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
-  void backlog.settleEpics().catch(() => undefined);
-  watchMainBuild(context, location.mainRoot, location.commonDir, async () => {
-    const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
-    return base && localBase(location.mainRoot, base);
-  });
   // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
   setAgentDirs([backlog.dir]);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
   context.subscriptions.push(integrations);
-  void integrations.refresh();
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
   terminalOptions = async () => (await worktreeTerminalOptions(repository, active, location.worktreeRoot, false)) ?? { cwd: location.worktreeRoot };
   // The Metrics view (BL-158): the sidebar's tool and its editor tab, counted from the event log.
@@ -261,12 +257,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   startup.mark('view registered');
   startup.mark('listing worktrees');
   // The worktrees from `git worktree list` until the first refresh has read their statuses and chats.
-  void listWorkstreams(service, { currentWorktreeRoot: location.worktreeRoot, settings: readSettings(), now: new Date() })
+  const listed = listWorkstreams(service, { currentWorktreeRoot: location.worktreeRoot, settings: readSettings(), now: new Date() })
     .then((items) => {
       startup.mark('worktrees listed');
       sidebar.showListed(items);
     })
     .catch(() => undefined);
+  // The rest of startup waits for that list (BL-233): it takes a few file reads per worktree, but each waits its turn
+  // behind every read the rest starts (the backlog's, the watchers', the refresh's) and behind its synchronous work,
+  // and then behind other extensions' (Claude Code loads at onStartupFinished, ~300 ms). Not for long when it's slow.
+  await Promise.race([listed, new Promise((resolve) => setTimeout(resolve, FIRST_LIST_WAIT_MS))]);
+  void backlog.settleEpics().catch(() => undefined);
+  watchMainBuild(context, location.mainRoot, location.commonDir, async () => {
+    const base = await resolveBase(location.mainRoot, readSettings().defaultBase);
+    return base && localBase(location.mainRoot, base);
+  });
+  void integrations.refresh();
   // Merge to main (BL-54): it moves its ticket to Done itself, saying what it merged, so the merge watcher leaves those to it.
   const merger = new Merger({
     backlog,
