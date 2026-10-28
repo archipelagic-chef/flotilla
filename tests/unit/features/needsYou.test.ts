@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { ReviewState } from '../../../src/features/backlog/review';
 import {
+  isWarning,
   needsYouList,
   needsYouMessage,
   type NeedsYouNote,
@@ -44,6 +45,33 @@ describe('needsYouList', () => {
       item('BL-5', { proposed: { by: 'Nova-7' }, status: 'todo' }),
     ];
     expect(needsYouList(items, []).map((n) => n.key)).toEqual(['asks:BL-2', 'stopped:BL-4', 'review:BL-1', 'approved:BL-3', 'proposed:BL-5']);
+  });
+
+  it('tells of a merge that stopped as a warning, and of a resolution that waits for you, not "ready to merge" (BL-229)', () => {
+    const merging = (state: 'resolving' | 'resolved' | 'failed', stopped?: boolean) =>
+      ({
+        dir: 'd',
+        branch: 'b',
+        base: 'main',
+        baseTip: 't',
+        state,
+        started: 'S',
+        ...(state === 'failed'
+          ? { checks: { command: 'npm test', output: '', runs: [{ log: 'l', at: 'F', ms: 1, timeouts: 0, failures: [], stopped }] } }
+          : {}),
+      }) as BacklogItem['merging'];
+    const items = [
+      item('BL-1', { review: review('approved'), merging: merging('failed', true) }),
+      item('BL-2', { review: review('approved'), merging: merging('failed') }),
+      item('BL-3', { review: review('approved'), merging: merging('resolving') }),
+      item('BL-4', { review: review('approved'), merging: merging('resolved') }),
+    ];
+    const list = needsYouList(items, []);
+    expect(list.map((n) => n.key)).toEqual(['merge:BL-1', 'merge:BL-2', 'resolved:BL-4']);
+    expect(isWarning('merge')).toBe(true);
+    expect(isWarning('resolved')).toBe(false);
+    expect(needsYouMessage([list[0]])).toBe('BL-1 has a merge that stopped.');
+    expect(needsYouMessage([list[2]])).toBe('BL-4 has a merge waiting for your approval.');
   });
 
   it('leaves out work agents do by themselves, done items, and reviews the user stopped', () => {

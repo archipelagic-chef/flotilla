@@ -2,16 +2,17 @@ import type { BacklogItem } from './backlog';
 import { entryAgent, sameAgent } from './backlog';
 import { ordinal } from './agentQueue';
 import { resumeWaits } from './mainDrift';
+import { mergeStage } from './mergeStage';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
 import { turnOf, type QueuedStart } from './turn';
 
 /**
  * What waits on the user, for the backlog's "Needs you" list: an agent's question, work ready for the user's review,
- * approved work not merged yet, a stopped review, a start that failed, a reply queued for an agent. Shared by the host
+ * approved work not merged yet, a merge that stopped or waits for approval, a stopped review, a start that failed, a reply queued for an agent. Shared by the host
  * and the webview (no node or vscode APIs).
  */
-export type NeedKind = 'asking' | 'yours' | 'approved' | 'stopped' | 'failed' | 'queued';
+export type NeedKind = 'asking' | 'yours' | 'approved' | 'merge' | 'stopped' | 'failed' | 'queued';
 
 export interface Need {
   kind: NeedKind;
@@ -39,6 +40,9 @@ export function needOf(item: BacklogItem & { queued?: QueuedStart }, activity: T
   if (item.status === 'done' || item.proposed || item.discarded) return undefined;
   const r = item.review;
   const turn = turnOf(item);
+  // Its merge (BL-229): where that is, in the card's words, not "Ready to merge"; one an agent resolves doesn't wait on you.
+  const merge = mergeStage(item.merging);
+  if (merge) return merge.needsYou ? { kind: 'merge', since: item.merging?.checks?.at ?? item.merging?.started, line: merge.line } : undefined;
   if (turn?.mine) {
     if (r?.state === 'asking') {
       const report = activity.filter((e) => sameAgent(entryAgent(e.author), r.implementer)).at(-1);

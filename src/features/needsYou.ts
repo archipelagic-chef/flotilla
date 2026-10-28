@@ -1,5 +1,6 @@
 import type { BacklogItem } from './backlog/backlog';
 import { noteNeed } from './backlog/needs';
+import { mergeStage } from './backlog/mergeStage';
 import { turnOf, type QueuedStart } from './backlog/turn';
 import type { AttentionState } from './workstreams/attention';
 
@@ -8,7 +9,7 @@ import type { AttentionState } from './workstreams/attention';
  * stopped, a proposal to accept), the notes whose agent asks (BL-200) and the worktrees waiting for input or reporting an error. Worked out from the state,
  * so the "Needs you" list and the notifications agree. A window notifies about what is new since its last look.
  */
-export type NeedsYouKind = 'error' | 'waiting' | 'asks' | 'stopped' | 'review' | 'approved' | 'proposed';
+export type NeedsYouKind = 'error' | 'waiting' | 'asks' | 'merge' | 'stopped' | 'review' | 'resolved' | 'approved' | 'proposed';
 
 export interface NeedsYou {
   /** Identifies the need: a need that isn't in the previous list is news. */
@@ -31,22 +32,24 @@ export interface NeedsYouWorktree {
 export type NeedsYouNote = Parameters<typeof noteNeed>[0] & { id: string; title: string };
 
 /** The order of the list, and of the groups in a notification. */
-const ORDER: readonly NeedsYouKind[] = ['error', 'waiting', 'asks', 'stopped', 'review', 'approved', 'proposed'];
+const ORDER: readonly NeedsYouKind[] = ['error', 'waiting', 'asks', 'merge', 'stopped', 'review', 'resolved', 'approved', 'proposed'];
 
 /** How each kind reads after its subject: one, and several. */
 const PHRASE: Record<NeedsYouKind, readonly [one: string, many: string]> = {
   error: ['reported an error', 'reported errors'],
   waiting: ['is waiting for input', 'are waiting for input'],
   asks: ['asks a question', 'ask questions'],
+  merge: ['has a merge that stopped', 'have merges that stopped'],
   stopped: ['has a review that stopped', 'have reviews that stopped'],
   review: ['is ready for your review', 'are ready for your review'],
+  resolved: ['has a merge waiting for your approval', 'have merges waiting for your approval'],
   approved: ['is approved, ready to merge', 'are approved, ready to merge'],
   proposed: ['waits for you to accept it', 'wait for you to accept them'],
 };
 
 /** Stops and errors read as warnings; the rest as information. */
 export function isWarning(kind: NeedsYouKind): boolean {
-  return kind === 'error' || kind === 'stopped';
+  return kind === 'error' || kind === 'stopped' || kind === 'merge';
 }
 
 function ticketKind(item: BacklogItem & { queued?: QueuedStart }): NeedsYouKind | undefined {
@@ -54,6 +57,9 @@ function ticketKind(item: BacklogItem & { queued?: QueuedStart }): NeedsYouKind 
   if (item.proposed) return 'proposed';
   // A ticket in review needs the user when its turn is theirs (as in the "Needs you" list); what they did themselves
   // (stopped a review, moved an item to review) is no news to tell them.
+  // Its merge (BL-229), even checks you stopped yourself: the merge waits in its worktree until you see to it.
+  const merge = mergeStage(item.merging);
+  if (merge) return !merge.needsYou ? undefined : merge.stage === 'resolved' ? 'resolved' : 'merge';
   const r = item.review;
   if (!turnOf(item)?.mine || !r || r.stop?.kind === 'user' || r.paused?.byUser) return undefined;
   switch (r.state) {

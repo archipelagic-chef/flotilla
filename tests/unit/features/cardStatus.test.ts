@@ -89,6 +89,38 @@ describe('cardStatus', () => {
     ]);
   });
 
+  it('says a merge whose checks you stopped stopped, as a warning, not failed (BL-229)', () => {
+    const run = (stopped: boolean) => ({ log: 'l', at: 'T', ms: 1, timeouts: 0, failures: [], ...(stopped ? { stopped } : {}) });
+    const failed = (runs: ReturnType<typeof run>[], reason: string) =>
+      ({
+        dir: 'd',
+        branch: 'b',
+        base: 'main',
+        baseTip: 't',
+        started: 'S',
+        state: 'failed',
+        reason,
+        checks: { command: 'npm test', output: '', runs },
+      }) as CardStatusItem['merging'];
+    const approved = { review: review('approved') };
+    expect(line(item('review', { ...approved, merging: failed([run(true)], 'you stopped the checks (`npm test`).') }))).toEqual([
+      'Merge stopped: you stopped its checks',
+      'warning',
+      '',
+      'Open',
+    ]);
+    // The run that counts is the last: the timeouts-only run before it was not stopped, or one stopped before it failed.
+    expect(line(item('review', { ...approved, merging: failed([run(false), run(true)], 'you stopped the checks.') }))[0]).toBe(
+      'Merge stopped: you stopped its checks',
+    );
+    expect(line(item('review', { ...approved, merging: failed([run(true), run(false)], 'the checks failed (`npm test`).') }))).toEqual([
+      'Merge failed: the checks failed (npm test).',
+      'error',
+      '',
+      'Open',
+    ]);
+  });
+
   it('marks the signs that need you before the work going on', () => {
     const working = [agent('Vega-2', { stuck: 'no output for 20 min' })];
     expect(line(item('doing'), working)).toEqual(['Vega-2 looks stuck: no output for 20 min', 'warning', '', 'Open']);
