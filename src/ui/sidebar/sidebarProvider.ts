@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { singleFlight } from '../../core/singleFlight';
 import type { StartupClock } from '../../core/startupClock';
 import * as vscode from 'vscode';
+import { setAgentDefault } from '../backlog/agentDefaults';
 import type { Autopilot } from '../backlog/autopilot';
 import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
@@ -32,7 +33,7 @@ import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import type { Merges } from '../backlog/merges';
 import type { NoteAgents } from '../backlog/notes';
-import { freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
+import { agentChoice, freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
 import { commitChanges, readLog } from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -189,7 +190,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           e.affectsConfiguration('git.repositoryScanIgnoredFolders')
         )
           this.postExclusions();
-        if (e.affectsConfiguration('flotilla.backlog.cards')) void this.postBacklog();
+        if (
+          e.affectsConfiguration('flotilla.backlog.cards') ||
+          e.affectsConfiguration('flotilla.agents.model') ||
+          e.affectsConfiguration('flotilla.agents.effort')
+        )
+          void this.postBacklog();
       }),
       deps.active.onDidChange((key) => this.post({ type: 'active', key })),
       deps.active.onDidChangeTabs((closed) => this.post({ type: 'tabs', closed: [...closed] })),
@@ -420,6 +426,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       problems,
       integrations: sources.length,
       detailedCards: vscode.workspace.getConfiguration('flotilla').get<string>('backlog.cards') === 'detailed',
+      agentDefaults: agentChoice(undefined),
       ...(this.autopilot ? { autopilot: this.autopilot.view() } : {}),
       ...(queue?.entries.length ? { mergeQueue: queue } : {}),
     });
@@ -528,6 +535,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'resumeAll':
         await vscode.commands.executeCommand('flotilla.resumeAllAgents');
+        return;
+      case 'defaultModel':
+        await setAgentDefault('model', m.model);
+        return;
+      case 'defaultEffort':
+        await setAgentDefault('effort', m.effort);
         return;
       case 'maxAgents':
         await setAgentLimit(m.max);

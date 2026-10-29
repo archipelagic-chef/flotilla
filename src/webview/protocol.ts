@@ -6,7 +6,13 @@ import type { AgentActivity } from '../features/chats/activity';
 import type { ChangeKind } from '../core/git/porcelain';
 import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
-import type { BacklogItem, BacklogPriority, BacklogStatus } from '../features/backlog/backlog';
+import type {
+  AgentChoice,
+  AgentEffort,
+  BacklogItem,
+  BacklogPriority,
+  BacklogStatus,
+} from '../features/backlog/backlog';
 import type { Need } from '../features/backlog/needs';
 import type { RunKind } from '../features/backlog/runBlocks';
 import type { ReviewFix } from '../features/backlog/review';
@@ -328,6 +334,7 @@ export type HostMessage =
       autopilot?: AutopilotState;
       mergeQueue?: MergeQueueView;
       /** The cards show every detail (flotilla.backlog.cards, BL-183). */ detailedCards?: boolean;
+      /** The agents' default model and effort, for the title bar (BL-242). */ agentDefaults?: AgentChoice;
     }
   /** The notes (BL-182), oldest first; sent at start and whenever they change. */
   | { type: 'notes'; notes: NoteView[] }
@@ -502,6 +509,9 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
+  /** The agents' default model or effort, from the title bar's dropdowns (BL-242): null is Claude Code's; a model of 'other' asks for its name. */
+  | { type: 'backlog'; op: 'defaultModel'; model: string | null }
+  | { type: 'backlog'; op: 'defaultEffort'; effort: AgentEffort | null }
   /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
   | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
