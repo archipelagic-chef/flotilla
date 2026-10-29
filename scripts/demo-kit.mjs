@@ -61,7 +61,15 @@ export function parseDemo(text, name = 'demo') {
   if (other.length) throw new Error(`${name}: "settings" takes only Flotilla's settings (flotilla.*, not flotilla.dev.*), not ${other.join(', ')}`);
   // The fake GitHub starts a CI run when a branch is pushed (BL-222), for a demo that pushes one.
   if (demo.runsOnPush !== undefined && typeof demo.runsOnPush !== 'boolean') throw new Error(`${name}: "runsOnPush" is true or false`);
-  return { title: typeof demo.title === 'string' ? demo.title : name, steps, settings, runsOnPush: demo.runsOnPush === true };
+  // The fake GitHub starts signed out (BL-245), for a demo of the sign-in prompts.
+  if (demo.githubSignedOut !== undefined && typeof demo.githubSignedOut !== 'boolean') throw new Error(`${name}: "githubSignedOut" is true or false`);
+  return {
+    title: typeof demo.title === 'string' ? demo.title : name,
+    steps,
+    settings,
+    runsOnPush: demo.runsOnPush === true,
+    githubSignedOut: demo.githubSignedOut === true,
+  };
 }
 
 /** A demo's file by name (letters, digits, - and _ only: a name isn't a path). */

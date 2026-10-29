@@ -655,9 +655,11 @@ async function show(mode, demo, out, still, display) {
   const { _electron } = await import('playwright-core');
   // A demo that pushes a branch finds it unpushed again, every time it plays (BL-222).
   if (demo.runsOnPush) (await import('./playground-seed.mjs')).unpublishSeeded(playground);
+  // A demo of the GitHub sign-in finds its tickets' pull requests not opened yet, every time it plays (BL-245).
+  if (demo.githubSignedOut) (await import('./playground-seed.mjs')).forgetPullRequests(playground);
   const { ACTION_DELAY_MS, startFakeGitHub } = await import('./fake-github.mjs');
   const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS, runsOnPush: demo.runsOnPush });
-  prepareProfile(github.url, demo.settings);
+  prepareProfile(github.url, { ...demo.settings, ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}) });
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).
   const { seedChats, seedCreating, seedEvents } = await import('./playground-seed.mjs');
