@@ -34,6 +34,8 @@ export interface SisterCheck {
   agent?: string;
   session?: string;
   started?: string;
+  /** You stopped it (BL-240), from any window (ISO 8601): the leading window stops its agent and releases its sisters. */
+  stop?: string;
 }
 
 /** What a check found for a sister that needs the user: it's covered by the change, or at odds with it. */
@@ -132,10 +134,32 @@ export function checkingOf(data: Pick<BacklogData, 'items'>, id: string): string
   return data.items.find((i) => i.id !== id && i.sisterCheck?.covers.includes(id))?.id;
 }
 
+/** The backlog with ticket `id`'s check marked stopped (BL-240): the leading window ends it, see SisterChecks. */
+export function stopCheck(data: BacklogData, id: string, now = new Date()): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) =>
+      i.id === id && i.sisterCheck && !i.sisterCheck.stop ? { ...i, sisterCheck: { ...i.sisterCheck, stop: now.toISOString() } } : i,
+    ),
+  };
+}
+
+/** The backlog without ticket `id`'s check, nor what came while it ran: its sisters are released at once (a stopped check). */
+export function dropCheck(data: BacklogData, id: string): BacklogData {
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== id || !i.sisterCheck) return i;
+      const { sisterCheck: _done, ...rest } = i;
+      return rest;
+    }),
+  };
+}
+
 /** The checks due to start now, oldest first. */
 export function dueChecks(data: Pick<BacklogData, 'items'>, now: Date): BacklogItem[] {
   return data.items
-    .filter((i) => i.sisterCheck && !i.sisterCheck.session && Date.parse(i.sisterCheck.due) <= now.getTime())
+    .filter((i) => i.sisterCheck && !i.sisterCheck.session && !i.sisterCheck.stop && Date.parse(i.sisterCheck.due) <= now.getTime())
     .sort((a, b) => a.sisterCheck!.due.localeCompare(b.sisterCheck!.due));
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
 import {
   checkingOf,
+  dropCheck,
   dueChecks,
   endCheck,
   noteChange,
@@ -11,6 +12,7 @@ import {
   sisterCheckPrompt,
   sisterCheckTools,
   sistersOf,
+  stopCheck,
   verdictLine,
 } from '../../../src/features/backlog/sisterCheck';
 
@@ -117,6 +119,17 @@ describe('noteChange', () => {
     const next = endCheck(noteChange(backlog, 'BL-2', 'merged', none, now), 'BL-2');
     expect(next.items[1].sisterCheck).toBeUndefined();
     expect(checkingOf(next, 'BL-3')).toBeUndefined();
+  });
+
+  it('marks a check you stopped, which never starts, and drops it with what came meanwhile (BL-240)', () => {
+    const running = noteChange(backlog, 'BL-2', 'described', none, now);
+    running.items[1].sisterCheck!.pending = ['merged'];
+    const stopped = stopCheck(running, 'BL-2', now);
+    expect(stopped.items[1].sisterCheck?.stop).toBe(now.toISOString());
+    expect(stopCheck(stopped, 'BL-2', new Date(0)).items[1].sisterCheck?.stop).toBe(now.toISOString());
+    expect(dueChecks(stopped, new Date(now.getTime() + SISTER_DEBOUNCE_MS))).toEqual([]);
+    expect(checkingOf(stopped, 'BL-3')).toBe('BL-2');
+    expect(checkingOf(dropCheck(stopped, 'BL-2'), 'BL-3')).toBeUndefined();
   });
 });
 

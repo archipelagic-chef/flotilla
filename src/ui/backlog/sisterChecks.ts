@@ -10,6 +10,7 @@ import {
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { baseLabel } from '../../features/backlog/mainDrift';
 import {
+  dropCheck,
   editableSister,
   endCheck,
   parseSisterReply,
@@ -58,8 +59,10 @@ const STATUS: Record<BacklogItem['status'], string> = { todo: 'To Do', doing: 'i
  * at odds ask in "Needs you"), and one in the changed ticket. A check that fails, or that a window left, releases them.
  */
 export class SisterChecks implements vscode.Disposable {
-  private readonly runs = new Map<string, AgentRun>();
+  /** The checks this window runs: their agent, and the sisters' tickets before it (see guard). */
+  private readonly runs = new Map<string, { run: AgentRun; agent: string; before: ReadonlyMap<string, Ticket> }>();
   private ticking = false;
+  private again = false;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly watcher: vscode.Disposable;
 
@@ -71,28 +74,38 @@ export class SisterChecks implements vscode.Disposable {
   dispose(): void {
     clearInterval(this.timer);
     this.watcher.dispose();
-    this.runs.forEach((r) => r.stop());
+    this.runs.forEach((r) => r.run.stop());
   }
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** Starts the checks that are due, and releases those a window left running; one tick at a time. */
+  /** Starts the checks that are due, ends those you stopped, and releases those a window left running; one tick at a time. */
   tick(): void {
-    if (this.ticking || !this.deps.isLeader()) return;
+    if (!this.deps.isLeader()) return;
+    // A change during a tick (a Stop check, BL-240) is looked at right after it, not on the next timer.
+    if (this.ticking) {
+      this.again = true;
+      return;
+    }
     this.ticking = true;
+    this.again = false;
     void this.startDue()
       .catch((e: unknown) => this.deps.output.appendLine(`Sister checks: ${String(e)}`))
-      .finally(() => (this.ticking = false));
+      .finally(() => {
+        this.ticking = false;
+        if (this.again) this.tick();
+      });
   }
 
   private async startDue(): Promise<void> {
     const now = this.now();
     for (const item of (await this.deps.backlog.read()).items) {
       const c = item.sisterCheck;
-      if (!c || this.runs.has(item.id)) continue;
-      if (c.session) {
+      if (c?.stop) await this.stopped(item);
+      else if (!c || this.runs.has(item.id)) continue;
+      else if (c.session) {
         if (now.getTime() - Date.parse(c.started ?? c.due) >= SISTER_STALE_MS)
           await this.release(item, `${c.agent ?? 'Its agent'}'s check of its sisters didn't finish (its window closed)`);
       } else if (Date.parse(c.due) <= now.getTime()) {
@@ -112,6 +125,22 @@ export class SisterChecks implements vscode.Disposable {
         ? `${why}. It's checked again for what came meanwhile (${again.reasons.join(', ')}): ${covers.join(', ')} ${covers.length === 1 ? 'waits' : 'wait'} for that.`
         : `${why}: ${covers.join(', ')} ${covers.length === 1 ? 'is' : 'are'} released, unchecked.`,
     );
+  }
+
+  /**
+   * You stopped ticket `item`'s check (BL-240): its agent, if this window runs it, is stopped, and its sisters are
+   * released at once, unchecked, with what came meanwhile (a check you stopped isn't run again for it).
+   */
+  private async stopped(item: BacklogItem): Promise<void> {
+    const c = item.sisterCheck!;
+    const own = this.runs.get(item.id);
+    this.runs.delete(item.id);
+    own?.run.stop();
+    if (own) await this.guard(own.agent, own.before);
+    await this.deps.backlog.change((d) => dropCheck(d, item.id), { by: 'Flotilla' });
+    const covers = c.covers;
+    const whose = c.session ? `${c.agent ?? 'Its agent'}'s check of its sisters` : 'the check of its sisters before it started';
+    await this.say(item, `You stopped ${whose}: ${covers.join(', ')} ${covers.length === 1 ? 'is' : 'are'} released, unchecked.`);
   }
 
   /** Ends ticket `id`'s check; a merge or discard that came while it ran is checked next (see endCheck). */
@@ -160,7 +189,7 @@ export class SisterChecks implements vscode.Disposable {
       output: this.deps.output,
       tools: sisterCheckTools(refs.filter((r) => r.editable).map((r) => r.ticket)),
     });
-    this.runs.set(id, run);
+    this.runs.set(id, { run, agent, before });
     const covers = sisters.map((s) => s.id);
     try {
       await this.deps.backlog.change(
@@ -180,14 +209,16 @@ export class SisterChecks implements vscode.Disposable {
       throw e;
     }
     void trackProgress('backlog', `${agent} is checking ${id}'s sisters`, () => run.done);
-    void run.done.then((result) =>
-      this.finished(id, agent, result, before).catch((e: unknown) => this.deps.output.appendLine(`Sister check of ${id}: ${String(e)}`)),
-    );
+    void run.done.then((result) => this.finished(id, run, result).catch((e: unknown) => this.deps.output.appendLine(`Sister check of ${id}: ${String(e)}`)));
   }
 
   /** The check's run is over: its findings go into the tickets, and its sisters are released. */
-  private async finished(id: string, agent: string, result: AgentResult, before: ReadonlyMap<string, Ticket>): Promise<void> {
+  private async finished(id: string, run: AgentRun, result: AgentResult): Promise<void> {
+    // Stopped (see stopped): what it found isn't used.
+    const own = this.runs.get(id);
+    if (own?.run !== run) return;
     this.runs.delete(id);
+    const { agent, before } = own;
     const data = await this.deps.backlog.read();
     const item = data.items.find((i) => i.id === id);
     if (!item?.sisterCheck) return;

@@ -11,6 +11,7 @@ import {
   noteChange,
   SISTER_DEBOUNCE_MS,
   SISTER_STALE_MS,
+  stopCheck,
 } from '../../../src/features/backlog/sisterCheck';
 import type { Ticket, TicketEntry } from '../../../src/features/backlog/ticket';
 
@@ -28,7 +29,7 @@ const item = (id: string, over: Partial<BacklogItem> = {}): BacklogItem => ({ id
 function fake(items: BacklogItem[], descriptions: Record<string, string> = {}) {
   let data = { version: 1, next: 9, items } as unknown as BacklogData;
   const tickets = new Map<string, Ticket>(items.map((i) => [i.id, { title: i.title, description: descriptions[i.id] ?? '', activity: [] as TicketEntry[] }]));
-  const runs: Array<{ prompt: string; tools?: string[]; resolve: (r: Result) => void }> = [];
+  const runs: Array<{ prompt: string; tools?: string[]; resolve: (r: Result) => void; stopped?: boolean }> = [];
   let now = new Date('2026-10-28T12:00:00Z');
   const backlog = {
     read: async () => structuredClone(data),
@@ -54,8 +55,9 @@ function fake(items: BacklogItem[], descriptions: Record<string, string> = {}) {
     run: ((o: { prompt: string; tools?: string[] }) => {
       let resolve!: (r: Result) => void;
       const done = new Promise<Result>((r) => (resolve = r));
-      runs.push({ ...o, resolve });
-      return { sessionId: `s${runs.length}`, done, stop: () => undefined };
+      const run = { ...o, resolve, stopped: false };
+      runs.push(run);
+      return { sessionId: `s${runs.length}`, done, stop: () => void (run.stopped = true) };
     }) as never,
   });
   return {
@@ -68,6 +70,9 @@ function fake(items: BacklogItem[], descriptions: Record<string, string> = {}) {
     at: (t: number) => (now = new Date(t)),
     async note(id: string, reason: 'merged' | 'described' = 'merged') {
       data = noteChange(data, id, reason, new Map(Object.entries(descriptions)), now);
+    },
+    async change(fn: (d: BacklogData) => BacklogData) {
+      data = fn(data);
     },
     async tick() {
       checks.tick();
@@ -177,6 +182,56 @@ describe('SisterChecks', () => {
     expect(g.runs).toHaveLength(0);
     expect(checkingOf(g.data, 'BL-3')).toBeUndefined();
     expect(g.tickets.get('BL-2')!.activity[0].body).toContain("didn't finish");
+    f.checks.dispose();
+    g.checks.dispose();
+  });
+
+  it('stops a running check you stopped, releases its sisters at once, and drops its late reply (BL-240)', async () => {
+    const f = fake(epic());
+    await f.note('BL-2', 'described');
+    f.at(Date.parse('2026-10-28T12:00:00Z') + SISTER_DEBOUNCE_MS);
+    await f.tick();
+    await f.note('BL-2', 'merged');
+    f.tickets.get('BL-3')!.title = 'Renamed by the agent';
+    await f.change((d) => stopCheck(d, 'BL-2'));
+    await f.tick();
+    expect(f.runs[0].stopped).toBe(true);
+    // Released, with what came meanwhile: you stopped it.
+    expect(f.data.items[1].sisterCheck).toBeUndefined();
+    expect(checkingOf(f.data, 'BL-3')).toBeUndefined();
+    expect(f.tickets.get('BL-3')!.title).toBe('Title BL-3');
+    expect(f.tickets.get('BL-2')!.activity.map((e) => [e.author, e.body])).toEqual([
+      ['Flotilla', expect.stringMatching(/^You stopped .+'s check of its sisters: BL-3, BL-4, BL-5 are released, unchecked\.$/)],
+    ]);
+    f.runs[0].resolve({ code: 0, reply: 'Late.\n## BL-5 · covered\nAll of it.' });
+    await f.tick();
+    expect(f.tickets.get('BL-2')!.activity).toHaveLength(1);
+    expect(f.tickets.get('BL-5')!.activity).toHaveLength(0);
+    expect(f.data.items[4].sisterVerdict).toBeUndefined();
+    f.checks.dispose();
+  });
+
+  it('drops a waiting check you stopped, and one a window left running (BL-240)', async () => {
+    const f = fake(epic());
+    await f.note('BL-2');
+    await f.change((d) => stopCheck(d, 'BL-2'));
+    f.at(Date.parse('2026-10-28T12:00:00Z') + SISTER_DEBOUNCE_MS);
+    await f.tick();
+    expect(f.runs).toHaveLength(0);
+    expect(checkingOf(f.data, 'BL-3')).toBeUndefined();
+    expect(f.tickets.get('BL-2')!.activity[0].body).toBe('You stopped the check of its sisters before it started: BL-3, BL-4, BL-5 are released, unchecked.');
+
+    const g = fake(epic());
+    await g.note('BL-2');
+    await g.change((d) =>
+      stopCheck(
+        { ...d, items: d.items.map((i) => (i.sisterCheck ? { ...i, sisterCheck: { ...i.sisterCheck, agent: 'Vex-2', session: 'gone' } } : i)) },
+        'BL-2',
+      ),
+    );
+    await g.tick();
+    expect(checkingOf(g.data, 'BL-3')).toBeUndefined();
+    expect(g.tickets.get('BL-2')!.activity[0].body).toBe("You stopped Vex-2's check of its sisters: BL-3, BL-4, BL-5 are released, unchecked.");
     f.checks.dispose();
     g.checks.dispose();
   });
