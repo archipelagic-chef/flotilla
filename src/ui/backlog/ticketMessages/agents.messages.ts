@@ -13,6 +13,8 @@ export type AgentsMessage =
   /** The model and effort agents use on it: null is the default; 'other' asks for a model's name. */
   | { type: 'agentModel'; model: string | null }
   | { type: 'agentEffort'; effort: AgentEffort | null }
+  /** Change every ticket's default model and effort (the settings), in two quick picks (BL-242). */
+  | { type: 'agentDefaults' }
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
   /** Summarize a working agent's status with a small model (BL-180): at most once a minute per agent. */

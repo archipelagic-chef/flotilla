@@ -5,7 +5,11 @@ import {
   vi,
 } from 'vitest';
 
-const vscode = vi.hoisted(() => ({ commands: { executeCommand: vi.fn(async () => undefined) }, window: { showWarningMessage: vi.fn(async () => undefined) } }));
+const vscode = vi.hoisted(() => ({
+  commands: { executeCommand: vi.fn(async () => undefined) },
+  window: { showWarningMessage: vi.fn(async () => undefined) },
+  workspace: { onDidChangeConfiguration: () => ({ dispose() {} }) },
+}));
 vi.mock('vscode', () => vscode);
 const { attachmentsFolded, keepAttachmentsFolded, keepShowActivity, showActivityKept, TicketPanels } = await import('../../../src/ui/backlog/ticketPanel');
 
