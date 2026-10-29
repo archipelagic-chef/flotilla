@@ -549,6 +549,9 @@ export type WebviewMessage =
   /** Open the diff of one file of a comparison, or (without path) of all of them. */
   | ({ type: 'openCompare'; path?: string } & RefComparison);
 
+/** What opens a Version Control file row's diff (its click's message); its right-click menu's Open Changes sends it again. */
+export type VcFileDiff = Extract<WebviewMessage, { type: 'openCommit' | 'openTicketChange' | 'openCompare' }>;
+
 /** Two refs to compare (what differs between them); with worktree (a key), head's side is that worktree's files, uncommitted changes included. */
 export interface RefComparison {
   base: string;

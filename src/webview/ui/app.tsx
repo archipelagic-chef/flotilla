@@ -625,7 +625,12 @@ export function App() {
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
       {tool === 'vc' && vcView === 'ticketChanges' && ticket && (
-        <TicketChangesBody view={ticketView} selected={ticketFile[ticket.id]} select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))} />
+        <TicketChangesBody
+          ws={ws}
+          view={ticketView}
+          selected={ticketFile[ticket.id]}
+          select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))}
+        />
       )}
       {tool === 'vc' && vcView === 'ticketCommits' && ticket && (
         <TicketCommitsBody
