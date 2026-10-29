@@ -1,5 +1,5 @@
 {
-  "title": "Discuss opens a chat with the agent, beside the ticket",
+  "title": "Discuss is a chat inside the ticket: the agent opens it, you answer, and the description updates",
   "steps": [
     { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
@@ -8,11 +8,21 @@
     { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\")" },
     { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },
     { "wait": 800 },
-    { "caption": "Discuss opens a Claude Code chat beside it, its first message ready to send" },
+    { "caption": "Discuss opens a chat in the ticket, and the agent starts it" },
     { "click": "button:has-text(\"Discuss\")" },
-    { "wait": 5000 },
-    { "caption": "The ticket says Discussing, with Open Chat, and notes the chat in its activity" },
-    { "waitFor": "text=Discussing", "timeout": 20000 },
+    { "waitFor": ".discuss .ask-answer:has-text(\"What should it do first?\")", "timeout": 30000 },
+    { "wait": 1500 },
+    { "caption": "You answer, and press Enter" },
+    { "click": ".discuss textarea" },
+    { "type": "Ctrl+N starts a ticket" },
+    { "press": "Enter" },
+    { "caption": "It writes what you agreed into the description as it answers" },
+    { "waitFor": "text=Ctrl+N starts a ticket (agreed in the discussion)", "timeout": 30000 },
+    { "waitFor": ".discuss .ask-answer:has-text(\"are we done?\")", "timeout": 30000 },
+    { "wait": 1500 },
+    { "caption": "Done: it writes its summary into the activity, and says the ticket is ready" },
+    { "click": ".discuss button:has-text(\"Done\")" },
+    { "waitFor": "text=says the ticket is ready to start", "timeout": 30000 },
     { "wait": 2500 },
     { "caption": "" }
   ]

@@ -26,7 +26,9 @@
 // Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
 //
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
-// word by word over a few seconds, and stops (a second later) when it's interrupted.
+// word by word over a few seconds, and stops (a second later) when it's interrupted. As a ticket's discussion (BL-241:
+// its system prompt is discussionPrompt), it opens with a question, writes each answer into the description as agreed,
+// and on Done its summary into the activity ("Ready to start."); it keeps its transcript, so the chat can be resumed.
 //
 // Try it: in the debug window's settings, set "flotilla.agents.claudePath" to the absolute path of this file (it must
 // be executable: chmod +x scripts/fake-claude.mjs). It's not part of the published extension (.vscodeignore).
@@ -308,20 +310,63 @@ function implement(file, text, hints, id) {
 /** One line of stream-json output. */
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
+/** A discussion's (BL-241): its agent, ticket and transcript, read from its system prompt; undefined for the Ask chat. */
+function discussion() {
+  const system = option('--append-system-prompt') ?? '';
+  const lead = /^You are agent ([A-Za-z0-9-]+), working on backlog item ([A-Z]+-\d+), discussing it/.exec(system);
+  const ticket = /Its ticket is (\/\S+?\.md):/.exec(system)?.[1];
+  if (!lead || !ticket) return undefined;
+  const home = process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude');
+  const transcript = path.join(home, 'projects', process.cwd().replace(/[^a-zA-Z0-9]/g, '-'), `${session}.jsonl`);
+  fs.mkdirSync(path.dirname(transcript), { recursive: true });
+  const record = (type, text) =>
+    fs.appendFileSync(
+      transcript,
+      `${JSON.stringify({ type, sessionId: session, message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } })}\n`,
+    );
+  return {
+    /** What it answers a message, and what it does in the ticket first. */
+    answer(text) {
+      record('user', text);
+      const agent = lead[1];
+      let said;
+      if (/^You are agent /.test(text))
+        said = `I read ${lead[2]}: this is the fake Claude (scripts/fake-claude.mjs), so I checked no code.\n\n1. What should it do first?`;
+      else if (/summary of our discussion/.test(text)) {
+        const body = `Discussed with you: agreed what's in the description; open nothing (fake discussion).\n\nReady to start.`;
+        const doc = fs.readFileSync(ticket, 'utf8');
+        const sep = doc.endsWith('\n') ? '\n' : '\n\n';
+        const entry = `### ${stamp()} · Agent ${agent}\n${body}\n`;
+        fs.appendFileSync(ticket, /^##\s+Activity\s*$/im.test(doc) ? `${sep}${entry}` : `${sep}## Activity\n\n${entry}`);
+        said = "It's in the ticket: the summary is at the end of its activity.";
+      } else {
+        const line = `- [ ] ${text.split('\n')[0].trim()} (agreed in the discussion)\n`;
+        const doc = fs.readFileSync(ticket, 'utf8');
+        const at = doc.search(/^##\s+Activity\s*$/im);
+        fs.writeFileSync(ticket, at < 0 ? `${doc.trimEnd()}\n\n${line}` : `${doc.slice(0, at).trimEnd()}\n${line}\n${doc.slice(at)}`);
+        said = 'Agreed: I wrote it into the description. Anything else, or are we done?';
+      }
+      record('assistant', said);
+      return said;
+    },
+  };
+}
+
 /** The Ask chat: each user message gets an answer streamed word by word; an interrupt stops it where it is. */
 function chat() {
   emit({ type: 'system', subtype: 'init', session_id: session });
+  const discussing = discussion();
   let answering;
   const finish = (text, stopped) => {
     clearInterval(answering);
     answering = undefined;
     emit({ type: 'result', subtype: stopped ? 'error_during_execution' : 'success', is_error: false, result: text, session_id: session, total_cost_usd: 0 });
   };
-  const answer = () => {
-    const words =
-      'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'.split(
-        ' ',
-      );
+  const answer = (asked) => {
+    const words = (
+      discussing?.answer(asked) ??
+      'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'
+    ).split(' ');
     let said = '';
     emit({ type: 'stream_event', event: { type: 'message_start' } });
     answering = setInterval(() => {
@@ -339,7 +384,7 @@ function chat() {
     rest = lines.pop() ?? '';
     for (const line of lines.filter((l) => l.trim())) {
       const m = JSON.parse(line);
-      if (m.type === 'user' && !answering) answer();
+      if (m.type === 'user' && !answering) answer(m.message?.content?.[0]?.text ?? '');
       else if (m.type === 'control_request') {
         emit({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id } });
         // A moment, as Claude Code takes one: the chat shows it's stopping.
