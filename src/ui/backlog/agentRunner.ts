@@ -23,6 +23,7 @@ import {
   writeOnce,
 } from '../../features/backlog/leanStart';
 import { askArgs } from '../../features/backlog/ask';
+import { discussArgs } from '../../features/backlog/discussChat';
 import {
   SUMMARY_MODEL,
   summaryAnswer,
@@ -688,14 +689,57 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
 }
 
 /**
- * Records an Ask process's start and end (BL-168), as the agent "Ask" in the role reply. Its tokens and cost are its
- * last result's: a result counts the whole process so far. It keeps no session: the event's is made up here.
+ * Starts a ticket's discussion process in cwd (BL-241, see discussArgs): its session new or resumed, the ticket the only
+ * file it may change, and no hooks (it isn't listed as a chat). Like Ask, it isn't one of the running agents
+ * (flotilla.agents.maxRunning), but its memory counts against the free memory for its first minute.
  */
-export function trackAsk(child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 'on'>, o: { ticket?: string; model?: string }): void {
-  const who = { ticket: o.ticket, agent: 'Ask' };
-  const session = crypto.randomUUID();
+export function spawnDiscussion(
+  cwd: string,
+  o: {
+    instructions: string;
+    session: string;
+    resume: boolean;
+    tools: readonly string[];
+    choice?: AgentChoice;
+    output: vscode.OutputChannel;
+    ticket: string;
+    agent: string;
+  },
+): ChildProcessWithoutNullStreams {
+  if (!validSession(o.session)) throw new Error(`Not a chat session id: ${o.session.slice(0, 60)}`);
+  let plugins: string[] = [];
+  try {
+    plugins = userPlugins(cwd, process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
+  } catch {
+    // Started with them.
+  }
+  const model = validModel(o.choice?.model);
+  o.output.appendLine(
+    `Discussion of ${o.ticket}: ${o.agent} ${o.resume ? `resuming ${o.session}` : `in session ${o.session}`} in ${cwd}${model ? ` (model ${model})` : ''}.`,
+  );
+  const args = discussArgs({ choice: choiceArgs(o.choice ?? {}), instructions: o.instructions, plugins, session: o.session, resume: o.resume, tools: o.tools });
+  const child = spawn(claudeBinary(), args, { cwd, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const slot = starting.begin();
+  child.on('exit', () => starting.end(slot));
+  child.on('error', () => starting.end(slot));
+  trackAsk(child, { ticket: o.ticket, model, agent: o.agent, role: 'discuss', session: o.session, resumed: o.resume });
+  return child;
+}
+
+/**
+ * Records an Ask process's start and end (BL-168), as the agent "Ask" in the role reply. Its tokens and cost are its
+ * last result's: a result counts the whole process so far. It keeps no session: the event's is made up here. A
+ * discussion's (BL-241) is recorded the same way, as its agent, its role and its session.
+ */
+export function trackAsk(
+  child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 'on'>,
+  o: { ticket?: string; model?: string; agent?: string; role?: AgentRole; session?: string; resumed?: boolean },
+): void {
+  const who = { ticket: o.ticket, agent: o.agent ?? 'Ask' };
+  const session = o.session ?? crypto.randomUUID();
+  const role = o.role ?? 'reply';
   const startedAt = Date.now();
-  recordEvent('agent-started', { ...who, data: { role: 'reply', session, ...(o.model ? { model: o.model } : {}) } });
+  recordEvent(o.resumed ? 'agent-resumed' : 'agent-started', { ...who, data: { role, session, ...(o.model ? { model: o.model } : {}) } });
   let rest = '';
   let last = '';
   child.stdout.on('data', (d: Buffer) => {
@@ -710,7 +754,7 @@ export function trackAsk(child: Pick<ChildProcessWithoutNullStreams, 'stdout' | 
     const minutes = Math.round((Date.now() - startedAt) / 600) / 100;
     recordEvent('agent-ended', {
       ...who,
-      data: { role: 'reply', session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) },
+      data: { role, session, code, ok: code === 0, minutes, ...runUsage(last), ...(o.model ? { model: o.model } : {}) },
     });
   };
   child.on('error', () => end(null));
