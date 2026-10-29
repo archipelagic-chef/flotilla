@@ -23,6 +23,7 @@ import {
 } from '../../features/ci/refresh';
 import { failedJob } from '../../features/ci/failureTask';
 import { finished, type FinishedRun } from '../../features/ci/notify';
+import { fakeGitHubSession } from '../../features/ci/fakeSession';
 import { runActions, type RunAction } from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type {
@@ -225,9 +226,9 @@ export class CiRuns implements vscode.Disposable {
         const answer = await vscode.window.showWarningMessage(`Cancel ${run.workflow} #${run.number} on ${view.branch}?`, { modal: true }, 'Cancel run');
         if (answer !== 'Cancel run') return;
       }
-      // A dismissed sign-in dialog ends it: nothing was asked of GitHub. The fake GitHub needs no sign-in, and never gets a real token.
+      // A dismissed sign-in dialog ends it: nothing was asked of GitHub. The fake GitHub never gets a real token.
       const session: Session | undefined = this.api
-        ? { accessToken: FAKE_TOKEN }
+        ? this.fakeSession(true)
         : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(
             (s) => s,
             () => undefined,
@@ -301,8 +302,15 @@ export class CiRuns implements vscode.Disposable {
   /** Asks for the GitHub sign-in (a dialog, unlike the silent reads), then reads the runs. */
   async signIn(): Promise<void> {
     // A dismissed dialog is not an error: the view stays at "Sign in to GitHub".
-    if (!this.api) await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
+    if (this.api) fakeGitHubSession.signIn();
+    else await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(undefined, () => undefined);
     await this.load();
+  }
+
+  /** The fake GitHub's session: none while it's signed out (BL-245), unless asked for as the sign-in dialog would. */
+  private fakeSession(create: boolean): Session | undefined {
+    if (create) fakeGitHubSession.signIn();
+    return fakeGitHubSession.signedIn ? { accessToken: FAKE_TOKEN } : undefined;
   }
 
   /**
@@ -353,7 +361,7 @@ export class CiRuns implements vscode.Disposable {
 
   private async startFix(view: Extract<CiView, { kind: 'runs' }>, run: CiRunView, jobId?: number): Promise<void> {
     const session: Session | undefined = this.api
-      ? { accessToken: FAKE_TOKEN }
+      ? this.fakeSession(true)
       : await vscode.authentication.getSession('github', SCOPES, { createIfNone: true }).then(
           (s) => s,
           () => undefined,
@@ -380,7 +388,7 @@ export class CiRuns implements vscode.Disposable {
     const gh = gitHubRepo(url);
     if (!gh || !gitHubName(gh.owner) || !gitHubName(gh.repo)) return "`origin` isn't a GitHub repository.";
     const session: Session | undefined = this.api
-      ? { accessToken: FAKE_TOKEN }
+      ? this.fakeSession(interactive)
       : await vscode.authentication.getSession('github', SCOPES, interactive ? { createIfNone: true } : { silent: true }).then(
           (s) => s,
           () => undefined,
@@ -480,9 +488,9 @@ export class CiRuns implements vscode.Disposable {
     const targets = this.workstreams.filter((ws) => !keys || keys.includes(ws.key));
     const wheres = await Promise.all(targets.map(async (ws) => ({ ws, where: await this.where(ws) })));
     const github = wheres.some((w) => w.where.kind === 'github');
-    // Without a sign-in (or a provider to ask), the runs say so: they're not read. The fake GitHub needs no sign-in.
+    // Without a sign-in (or a provider to ask), the runs say so: they're not read. The fake GitHub's is fakeSession's.
     let session: Session | undefined;
-    if (github && this.api) session = { accessToken: FAKE_TOKEN };
+    if (github && this.api) session = this.fakeSession(false);
     else if (github)
       session = await vscode.authentication.getSession('github', SCOPES, { silent: true }).then(
         (s) => s,

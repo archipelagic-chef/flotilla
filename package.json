@@ -2090,6 +2090,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
+        },
+        "flotilla.dev.githubSignedOut": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "For development only: the fake GitHub (`#flotilla.dev.githubApi#`) starts signed out, so pull requests and the CI/CD view ask you to sign in. Its **Sign In** signs it in until the window reloads."
         }
       }
     },
