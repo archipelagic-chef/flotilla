@@ -6,7 +6,6 @@
     "flotilla.sisterCheckDelaySeconds": 0
   },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\")" },
     { "caption": "BL-8 depends on BL-10, which is approved: we merge BL-10" },

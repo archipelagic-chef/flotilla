@@ -1,7 +1,6 @@
 {
   "title": "Needs you says which tickets each one holds up: the row says it, first in the list, and each id opens its ticket",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".needs-lane .need-holds" },
     { "caption": "BL-8 depends on BL-10: BL-10's row in Needs you says it holds BL-8 up, and comes first" },

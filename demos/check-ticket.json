@@ -1,7 +1,6 @@
 {
   "title": "Check what a ticket says is running, and clean up what isn't",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "BL-3 says two agents are working: Vega-2, and Orbit-2, whose process ended 7 minutes ago" },
     { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },

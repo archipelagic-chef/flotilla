@@ -2,9 +2,6 @@
   "title": "Edit and delete your own comments",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

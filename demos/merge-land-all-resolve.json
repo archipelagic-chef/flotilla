@@ -5,7 +5,6 @@
     "flotilla.merge.onApprove": "off"
   },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
     { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },

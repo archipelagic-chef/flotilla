@@ -1,7 +1,6 @@
 {
   "title": "A report's Mermaid diagram, in the Attachments section",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
     { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },

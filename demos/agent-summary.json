@@ -1,7 +1,6 @@
 {
   "title": "Summarize a working agent's status in two lines, with a small model",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 3000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name", "timeout": 30000 },

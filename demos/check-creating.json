@@ -1,7 +1,6 @@
 {
   "title": "Check finds a worktree left \"being created\" by a window that closed, and clears it",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "A window closed while creating BL-5's worktree: its record of that was left behind" },
     { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },

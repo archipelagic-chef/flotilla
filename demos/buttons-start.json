@@ -2,9 +2,6 @@
   "title": "Dismiss (a proposal), Prioritize and the Ask chat's buttons show they're working",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

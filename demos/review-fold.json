@@ -1,7 +1,6 @@
 {
   "title": "The implementer's report stays open while it's reviewed",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
     { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },

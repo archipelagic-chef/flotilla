@@ -2,7 +2,6 @@
   "title": "Write a formatted note in the New Note tab, and an agent turns it into a ticket proposal",
   "settings": { "flotilla.agents.maxRunning": 6 },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "New Note opens a note to write as you'd write a comment on a ticket" },
     { "click": "[aria-label^=\"New Note\"]" },

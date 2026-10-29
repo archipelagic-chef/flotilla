@@ -1,7 +1,6 @@
 {
   "title": "A To Do card says why the autopilot doesn't take it",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 1000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": "[aria-label=\"Hide what needs you\"]" },

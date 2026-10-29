@@ -2,7 +2,6 @@
   "title": "Backlog cards show the agents working on them",
   "settings": { "flotilla.backlog.cards": "detailed" },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 3000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "A card shows each agent on its ticket, and what it's doing" },

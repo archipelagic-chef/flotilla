@@ -1,7 +1,6 @@
 {
   "title": "The pointer sweeps across the window (to measure how smooth recordings are)",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "hover": ".tools button:first-child" },
     { "hover": ".statusbar-item:last-child" },
     { "hover": ".tools button:first-child" },

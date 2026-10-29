@@ -1,7 +1,6 @@
 {
   "title": "An epic in progress shows its parts, not a missing agent",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 1000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": "[aria-label=\"Hide what needs you\"]" },

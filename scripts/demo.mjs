@@ -672,6 +672,9 @@ async function show(mode, demo, out, still, display) {
       checking = (async () => {
         while (recording && !(await gate.check())) await new Promise((r) => setTimeout(r, CHECK_MS));
       })();
+      // The Flotilla view is open before the demo starts (BL-243), so no recording shows the palette that opens it.
+      await play(page, { action: 'command', value: 'Focus on Flotilla View' }, github);
+      await play(page, { action: 'waitFor', value: '[aria-label="Backlog"]' }, github);
       start = Date.now();
       recorded.start = start;
       // Try it yourself (BL-135): the window as the demo starts, its steps left to you.

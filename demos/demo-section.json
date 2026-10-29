@@ -2,7 +2,6 @@
   "title": "A ticket's Demo section, from a review card's demo mark",
   "settings": { "flotilla.backlog.cards": "detailed" },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 500 },
     { "caption": "A review card's demo mark opens its ticket at the Demo section" },

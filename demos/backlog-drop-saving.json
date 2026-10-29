@@ -1,7 +1,6 @@
 {
   "title": "A card dropped in a lane moves there at once, marked as saving",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\") .name" },
     { "caption": "Drag a card up the To Do lane" },

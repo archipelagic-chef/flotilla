@@ -1,7 +1,6 @@
 {
   "title": "A CI run's buttons show they're working: Re-run Failed Jobs and Refresh on the fake GitHub",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Version Control\"]" },
     { "click": "[aria-label=\"Version Control: CI/CD\"]" },
     { "waitFor": ".ci .ci-repo" },

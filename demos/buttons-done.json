@@ -2,9 +2,6 @@
   "title": "A Done ticket's unmerged work, Accept (a proposal) and the backlog's buttons show they're working",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

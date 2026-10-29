@@ -1,7 +1,6 @@
 {
   "title": "Formatting a comment, and previewing it",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 2000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },

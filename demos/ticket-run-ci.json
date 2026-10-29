@@ -2,7 +2,6 @@
   "title": "Run a ticket's CI from the ticket: push its branch, then run a workflow by hand on it",
   "runsOnPush": true,
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },
     { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },

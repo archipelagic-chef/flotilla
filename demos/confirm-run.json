@@ -1,7 +1,6 @@
 {
   "title": "Confirm a ticket's run block in a dialog",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },
     { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },

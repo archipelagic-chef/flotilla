@@ -2,9 +2,6 @@
   "title": "An epic moves to Done when its last part does",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

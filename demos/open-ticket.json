@@ -1,7 +1,6 @@
 {
   "title": "Open a ticket from the backlog",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "caption": "The backlog: the playground's tickets" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },

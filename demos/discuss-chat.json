@@ -1,7 +1,6 @@
 {
   "title": "Discuss is a chat inside the ticket: the agent opens it, you answer, and the description updates",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1000 },
     { "caption": "A To Do ticket nobody works on yet" },

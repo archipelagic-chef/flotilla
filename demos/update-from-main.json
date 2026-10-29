@@ -1,7 +1,6 @@
 {
   "title": "Update from Main shows it's updating, then says what happened",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\") .name" },
     { "waitFor": "h1:has-text(\"Keep the sidebar's scroll on refresh\")" },

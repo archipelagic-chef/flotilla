@@ -2,9 +2,6 @@
   "title": "Discard a ticket as won't do: it folds into Discarded, its ticket shows Won't Do, and another status reopens it",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {
