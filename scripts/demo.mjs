@@ -420,11 +420,12 @@ async function play(page, step, github) {
       await page.keyboard.press('Enter');
       break;
     }
-    case 'click': {
+    case 'click':
+    case 'rightClick': {
       const target = await find(page, step.value, timeout);
       const box = await target.boundingBox();
       if (box) await pointer(page, box.x + box.width / 2, box.y + box.height / 2);
-      await target.click({ timeout });
+      await target.click({ timeout, ...(step.action === 'rightClick' ? { button: 'right' } : {}) });
       break;
     }
     case 'hover': {
@@ -846,7 +847,7 @@ async function stepFailed(page, demo, number, label, step, error) {
     () => undefined,
   );
   const selector = [step.value, step.to].filter((v) => typeof v === 'string').join(' ');
-  if (['click', 'hover', 'drag', 'waitFor', 'highlight'].includes(step.action) && selector) {
+  if (['click', 'rightClick', 'hover', 'drag', 'waitFor', 'highlight'].includes(step.action) && selector) {
     const near = nearestElements(selector, await visibleElements(page));
     if (near.length) console.error(`On screen, nearest ${selector}:\n${near.map((line) => `  ${line}`).join('\n')}`);
   }
