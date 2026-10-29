@@ -10,3 +10,18 @@
 .working-filter.on {
   color: var(--working);
 }
+/* The agents' default model and effort (BL-242): its icon and a short label ("Opus · high"). */
+.agent-defaults.icon {
+  width: auto;
+  display: flex;
+  gap: 3px;
+  padding: 0 4px;
+}
+.agent-defaults-label {
+  max-width: 9em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted);
+}

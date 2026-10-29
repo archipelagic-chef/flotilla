@@ -24,6 +24,7 @@ import {
   type VcView,
   type WorkstreamView,
 } from '../protocol';
+import type { AgentChoice } from '../../features/backlog/backlog';
 import type { ChangeKind } from '../../core/git/porcelain';
 import {
   menuContext,
@@ -212,6 +213,7 @@ export function App() {
     autopilot?: AutopilotState;
     mergeQueue?: MergeQueueView;
     detailedCards?: boolean;
+    agentDefaults?: AgentChoice;
   }>({ problems: [], integrations: 0 });
   /** Files of expanded commits, by worktree key and hash. */
   const [commitFiles, setCommitFiles] = useState<ReadonlyMap<string, CommitFiles>>(new Map());
@@ -386,6 +388,7 @@ export function App() {
             autopilot: m.autopilot,
             mergeQueue: m.mergeQueue,
             detailedCards: !!m.detailedCards,
+            agentDefaults: m.agentDefaults,
           });
           return;
         case 'backlogDone':
@@ -647,6 +650,7 @@ export function App() {
         problems={backlogInfo.problems}
         integrations={backlogInfo.integrations}
         autopilot={backlogInfo.autopilot}
+        agentDefaults={backlogInfo.agentDefaults}
         mergeQueue={backlogInfo.mergeQueue}
         notes={notes}
         workstreams={workstreams}

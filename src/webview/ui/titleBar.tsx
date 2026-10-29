@@ -1,3 +1,4 @@
+import { defaultsLabel } from '../../features/backlog/backlog';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
 import type { Props } from './backlog';
@@ -8,11 +9,12 @@ import './titleBar.css';
 export function TitleBar({
   integrations,
   autopilot,
+  agentDefaults,
   workingOnly,
   setWorkingOnly,
   detailed,
   setDetailed,
-}: Pick<Props, 'integrations' | 'autopilot' | 'workingOnly' | 'setWorkingOnly' | 'detailed' | 'setDetailed'>) {
+}: Pick<Props, 'integrations' | 'autopilot' | 'agentDefaults' | 'workingOnly' | 'setWorkingOnly' | 'detailed' | 'setDetailed'>) {
   return (
     <div class="tool-title backlog-title">
       <span>Backlog</span>
@@ -30,6 +32,16 @@ export function TitleBar({
             message={{ type: 'backlog', op: 'autopilot' }}
             icon="rocket"
           />
+        )}
+        {agentDefaults && (
+          <BusyButton
+            class="icon agent-defaults"
+            aria-label={`Agents' default: ${defaultsLabel(agentDefaults)}. Click to choose the model and effort of every ticket that hasn't chosen its own`}
+            message={{ type: 'backlog', op: 'defaults' }}
+            icon="hubot"
+          >
+            <span class="agent-defaults-label">{defaultsLabel(agentDefaults, true)}</span>
+          </BusyButton>
         )}
         <button
           class={`icon working-filter${workingOnly ? ' on' : ''}`}

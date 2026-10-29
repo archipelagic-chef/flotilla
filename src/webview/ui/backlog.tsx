@@ -1,6 +1,11 @@
 import { useState } from 'preact/hooks';
 import { agentCountLabel } from './agentCount';
-import { branchMatches, laneOf, type BacklogLane } from '../../features/backlog/backlog';
+import {
+  type AgentChoice,
+  type BacklogLane,
+  branchMatches,
+  laneOf,
+} from '../../features/backlog/backlog';
 import { cardAgents } from '../../features/backlog/cardAgents';
 import { hasActiveAgent } from '../../features/backlog/activeAgent';
 import { turnOf } from '../../features/backlog/turn';
@@ -49,6 +54,8 @@ export interface Props {
   /** How many integrations are connected. */
   integrations: number;
   autopilot?: AutopilotState;
+  /** The agents' default model and effort (BL-242), for the title bar. */
+  agentDefaults?: AgentChoice;
   mergeQueue?: MergeQueueView;
   /** The notes (BL-182): the Notes box and lane at the top. */
   notes: NoteView[];
@@ -75,6 +82,7 @@ export function BacklogView({
   problems,
   integrations,
   autopilot,
+  agentDefaults,
   mergeQueue,
   notes,
   workstreams,
@@ -139,6 +147,7 @@ export function BacklogView({
       <TitleBar
         integrations={integrations}
         autopilot={autopilot}
+        agentDefaults={agentDefaults}
         workingOnly={workingOnly}
         setWorkingOnly={setWorkingOnly}
         detailed={detailed}
