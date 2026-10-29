@@ -74,6 +74,8 @@ const cap = (text: string, n: number) => (text.length > n ? `${text.slice(0, n)}
 /** A question asked in the ticket's Ask chat (BL-80), and its answer so far. */
 export interface AskTurn {
   question: string;
+  /** Not shown: the message that has the agent open a discussion (BL-241). */
+  opener?: boolean;
   /** Markdown: as it streams in, then the answer as it ended. */
   answer: string;
   /** The answer rendered, once it's finished. */

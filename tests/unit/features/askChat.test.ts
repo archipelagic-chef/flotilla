@@ -1,40 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { EventEmitter } from 'node:events';
-import { PassThrough, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { AskChat, type AskChatDeps } from '../../../src/features/backlog/askChat';
-
-/** A Claude process as the chat sees it: what's written to it, and lines it prints. */
-class FakeClaude extends EventEmitter {
-  readonly written: Array<Record<string, unknown>> = [];
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
-  killed = false;
-  readonly stdin = new Writable({
-    write: (chunk: Buffer, _enc, done) => {
-      for (const line of chunk.toString().split('\n').filter(Boolean)) this.written.push(JSON.parse(line) as Record<string, unknown>);
-      done();
-    },
-  });
-  print(...events: unknown[]): void {
-    this.stdout.write(events.map((e) => `${JSON.stringify(e)}\n`).join(''));
-  }
-  kill(): boolean {
-    this.killed = true;
-    setImmediate(() => this.emit('close', null));
-    return true;
-  }
-  /** The texts of the user messages it got. */
-  get questions(): string[] {
-    return this.written.filter((m) => m.type === 'user').map((m) => (m.message as { content: Array<{ text: string }> }).content[0].text);
-  }
-}
+import { FakeClaude } from '../../helpers/fakeClaude';
 
 const tick = () => new Promise((r) => setTimeout(r, 5));
 const delta = (text: string) => ({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } });
 const result = (text: string) => ({ type: 'result', subtype: 'success', is_error: false, result: text });
 
-function setup(o: { short?: () => string | undefined } = {}) {
+function setup(o: { short?: () => string | undefined; kept?: boolean; answered?: AskChatDeps['answered'] } = {}) {
   const spawned: FakeClaude[] = [];
   let changes = 0;
   const deps: AskChatDeps = {
@@ -49,6 +22,8 @@ function setup(o: { short?: () => string | undefined } = {}) {
     render: async (md) => `<p>${md}</p>`,
     changed: () => changes++,
     log: () => undefined,
+    kept: o.kept,
+    answered: o.answered,
   };
   const chat = new AskChat(deps, { memoryRetryMs: 5, stopGraceMs: 20 });
   return { chat, spawned, changes: () => changes };
@@ -223,5 +198,34 @@ describe('AskChat', () => {
     const turn = chat.answered(0)!;
     chat.markPosted(turn);
     expect(chat.view().turns[0].posted).toBe(true);
+  });
+
+  it("a kept chat (a discussion) opens with a message it doesn't show, and starts over without the chat so far", async () => {
+    const { chat, spawned } = setup({ kept: true });
+    chat.restore([{ question: 'Open it.', answer: 'Hi.', state: 'done', opener: true }]);
+    expect(chat.view().turns).toHaveLength(1);
+    await chat.ask('Speed.');
+    expect(spawned[0].questions).toEqual(['# BL-80: Ask\n\nSpeed.']);
+    spawned[0].print(result('Noted.'));
+    await tick();
+    chat.halt();
+    expect(spawned[0].killed).toBe(true);
+    await chat.ask('And?');
+    expect(spawned[1].questions).toEqual(['# BL-80: Ask\n\nAnd?']);
+    expect(chat.view().turns.map((t) => t.question)).toEqual(['Open it.', 'Speed.', 'And?']);
+  });
+
+  it('tells when an answer is finished, and halt stops the one being written', async () => {
+    const answered: string[] = [];
+    const { chat, spawned } = setup({ answered: (t) => answered.push(t.state) });
+    await chat.ask('One?', { opener: true });
+    expect(chat.view().turns[0].opener).toBe(true);
+    spawned[0].print(result('Yes.'));
+    await tick();
+    await chat.ask('Two?');
+    chat.halt();
+    await tick();
+    expect(answered).toEqual(['done', 'stopped']);
+    expect(chat.busy).toBe(false);
   });
 });

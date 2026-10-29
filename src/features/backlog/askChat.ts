@@ -26,6 +26,10 @@ export interface AskChatDeps {
   /** The chat changed: its view is to be shown again. */
   changed(): void;
   log(line: string): void;
+  /** Its process keeps the chat (a discussion, BL-241): one that starts over resumes it, so it isn't given the chat so far. */
+  kept?: boolean;
+  /** An answer is finished (done, stopped or failed), its process still there or not. */
+  answered?(turn: AskTurn): void;
 }
 
 /** How often a question waiting for memory looks again, and how long a stopped answer may take to end. */
@@ -71,11 +75,19 @@ export class AskChat {
     return !!this.current || !!this.active;
   }
 
-  async ask(text: string): Promise<void> {
+  /** The chat as it was (a kept discussion's, read back from its transcript), before anything is asked here. */
+  restore(turns: readonly AskTurn[]): void {
+    if (this.turns.length) return;
+    this.turns = turns.map((t) => ({ ...t }));
+    this.d.changed();
+  }
+
+  /** opener: a message the chat doesn't show (a discussion's start: the agent opens the conversation). */
+  async ask(text: string, o: { opener?: boolean } = {}): Promise<void> {
     const question = text.trim();
     if (!question || this.busy) return;
-    const turn: AskTurn = { question, answer: '', state: 'waiting' };
-    const earlier = this.turns.filter((t) => t.answer.trim());
+    const turn: AskTurn = { question, answer: '', state: 'waiting', ...(o.opener ? { opener: true } : {}) };
+    const earlier = this.d.kept ? [] : this.turns.filter((t) => t.answer.trim());
     this.turns.push(turn);
     this.d.changed();
     const epoch = this.epoch;
@@ -95,7 +107,9 @@ export class AskChat {
         const context = await this.d.context();
         if (gone()) return;
         this.launch(context.cwd);
-        message = [context.text, earlierText(earlier), `## Question\n\n${question}`].filter(Boolean).join('\n\n');
+        message = this.d.kept
+          ? [context.text, question].filter(Boolean).join('\n\n')
+          : [context.text, earlierText(earlier), `## Question\n\n${question}`].filter(Boolean).join('\n\n');
       }
       turn.state = 'answering';
       turn.activity = 'Thinking…';
@@ -131,6 +145,20 @@ export class AskChat {
       this.end();
       void this.finish(turn);
     }, this.timing.stopGraceMs);
+  }
+
+  /** Ends its process now, the answer being written stopped: the chat stays, and the next question starts a new one. */
+  halt(): void {
+    const turn = this.current;
+    this.end();
+    if (!turn) return this.d.changed();
+    turn.state = 'stopped';
+    void this.finish(turn);
+  }
+
+  /** Whether its process is up (or starting): the chat is going on. */
+  get live(): boolean {
+    return !!this.child;
   }
 
   /** New Question: the chat starts over, its process ended. */
@@ -231,7 +259,9 @@ export class AskChat {
         // Shown as written.
       }
     }
-    if (epoch === this.epoch) this.d.changed();
+    if (epoch !== this.epoch) return;
+    this.d.changed();
+    this.d.answered?.(turn);
   }
 
   private fail(turn: AskTurn, error: string): void {
