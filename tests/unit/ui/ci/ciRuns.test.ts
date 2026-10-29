@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { fakeGitHubSession } from '../../../../src/features/ci/fakeSession';
 import { CiRuns } from '../../../../src/ui/ci/ciRuns';
 import type { Workstream } from '../../../../src/features/workstreams/workstream';
 import type { CiView } from '../../../../src/webview/protocol';
@@ -15,7 +16,16 @@ const git = vi.hoisted(() => ({ runGit: vi.fn() }));
 const commands = vi.hoisted(() => ({ executeCommand: vi.fn() }));
 const win = vi.hoisted(() => ({ showWarningMessage: vi.fn() }));
 
-vi.mock('vscode', () => ({ authentication: auth, commands, window: win }));
+vi.mock('vscode', () => ({
+  authentication: auth,
+  commands,
+  window: win,
+  EventEmitter: class {
+    event = () => ({ dispose: () => undefined });
+    fire() {}
+  },
+  workspace: { getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }) },
+}));
 vi.mock('../../../../src/core/git/gitCli', () => git);
 
 const GITHUB = 'git@github.com:acme/app.git';
@@ -867,6 +877,25 @@ describe('CiRuns with the fake GitHub (the debug window)', () => {
     await ci.signIn();
 
     expect(auth.getSession).not.toHaveBeenCalled();
+    ci.dispose();
+  });
+
+  it('started signed out (BL-245), asks for a sign-in until its Sign In', async () => {
+    fakeGitHubSession['out'] = true;
+    const { fetch } = github({ feat: [apiRun()] });
+    const { post, last } = setup();
+    const ci = new CiRuns(post, 'http://127.0.0.1:4010');
+    ci.update([ws('a')]);
+    ci.setVisible(true);
+    await settle();
+    expect(last().a.kind).toBe('signIn');
+    expect(fetch).not.toHaveBeenCalled();
+
+    await ci.signIn();
+    await settle();
+    expect(auth.getSession).not.toHaveBeenCalled();
+    expect(fakeGitHubSession.signedIn).toBe(true);
+    expect(last().a.kind).toBe('runs');
     ci.dispose();
   });
 });

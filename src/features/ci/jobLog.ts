@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { gitHubName } from '../backlog/sources/github';
 import type { Fetch } from '../backlog/sources/source';
+import { fakeGitHubSession } from './fakeSession';
 import { cleanLog, GitHubActions } from './githubActions';
 import { GitHubPullRequests, GitHubSignInNeeded } from './pullRequests';
 
@@ -70,8 +71,11 @@ export class JobLogProvider implements vscode.TextDocumentContentProvider {
 /** The user's GitHub token, from their sign-in in VS Code (never asked for here); the fake GitHub's needs none. */
 function signedInToken(fakeApi: string | undefined, why: string): () => Promise<string> {
   return async () => {
-    // The fake GitHub (debug window only) needs no sign-in, and never gets a real token.
-    if (fakeApi) return 'fake-token';
+    // The fake GitHub (debug window only) never gets a real token; it's signed out only when a demo starts it so.
+    if (fakeApi) {
+      if (!fakeGitHubSession.signedIn) throw new GitHubSignInNeeded(why);
+      return 'fake-token';
+    }
     const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true });
     if (!session) throw new GitHubSignInNeeded(why);
     return session.accessToken;

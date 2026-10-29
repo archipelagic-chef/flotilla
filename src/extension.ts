@@ -23,6 +23,7 @@ import {
   signedInActions,
   signedInPullRequests,
 } from './features/ci/jobLog';
+import { fakeGitHubSession } from './features/ci/fakeSession';
 import { CiNotifier } from './ui/ci/ciNotifier';
 import {
   deleteHeartbeat,
@@ -369,6 +370,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const session = await vscode.authentication.getSession('github', GITHUB_SCOPES, { silent: true }).then(undefined, () => undefined);
       if (session) pushes.signedIn();
     }),
+    // The fake GitHub's Sign In (BL-245), the same way.
+    fakeGitHubSession.onDidChange(() => fakeGitHubSession.signedIn && pushes.signedIn()),
   );
   // The tickets' comments and their pull requests', both ways (BL-224).
   const prComments = new PullRequestComments({
