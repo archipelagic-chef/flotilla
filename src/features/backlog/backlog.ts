@@ -71,6 +71,11 @@ export interface BacklogItem {
     session: string;
     /** The discussion is a Claude Code chat the owner talks in (BL-188), not replies in the ticket: when it opened ("YYYY-MM-DD HH:MM"). */
     chat?: { since: string };
+    /**
+     * The discussion is a chat in the ticket's Discuss pane (BL-241), its session kept: when it (or the talk since its
+     * last summary) started ("YYYY-MM-DD HH:MM"), and whether the agent has summarized it since (Done).
+     */
+    pane?: { since: string; ended?: boolean };
     ready?: boolean;
     /** The user paused (or stopped) it, when (ISO 8601): it goes on in its chat when they resume it, or write again. */
     held?: { kind: 'paused' | 'stopped'; at: string };

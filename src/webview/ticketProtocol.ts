@@ -317,6 +317,8 @@ export interface TicketView {
     held?: 'paused' | 'stopped';
     /** It's a Claude Code chat (BL-188): open (Discussing), or closed, or its first message not sent yet (pending). */
     chat?: 'open' | 'closed' | 'pending';
+    /** It's in the ticket's Discuss pane (BL-241): going on, or summarized (Done). */
+    pane?: 'open' | 'ended';
   };
   /**
    * Its last Check (BL-163): each thing it says is going on, ✓ (ok, with its evidence) or ✗ (with what Clean Up does).
@@ -428,12 +430,22 @@ export type TicketHostMessage =
   | { type: 'entries'; requestId: number; entries: EntrySuggestion[] }
   /** The Ask chat changed (BL-80). */
   | { type: 'ask'; ask: AskView }
+  /** The Discuss pane changed (BL-241). */
+  | { type: 'discussion'; discussion: DiscussionView }
   /** Its CI changed (BL-106): sent on its own, as it's read (every 10 seconds while a run goes on). */
   | { type: 'ci'; ci: TicketCiView }
   /** A run's whole log, for Show All (BL-169). */
   | { type: 'checksLog'; requestId: number; text: string }
   /** A file's inline diff (BL-171), for readChangeDiff. */
   | { type: 'changeDiff'; requestId: number; diff: FileDiff };
+
+/** A ticket's Discuss pane (BL-241): its agent, its chat, and whether it was summarized (Done) or paused. */
+export interface DiscussionView {
+  agent: string;
+  chat: AskView;
+  ended: boolean;
+  held?: 'paused' | 'stopped';
+}
 
 export type TicketPartsMessage = Extract<TicketHostMessage, { type: 'ticketParts' }>;
 
@@ -448,13 +460,17 @@ export type TicketWebviewMessage =
   | { type: 'askStop' }
   | { type: 'askNew' }
   | { type: 'askPost'; index: number }
+  /** The Discuss pane (BL-241): a message, stop the answer, Done (the agent writes its summary). */
+  | { type: 'discussSend'; text: string }
+  | { type: 'discussStop' }
+  | { type: 'discussDone' }
   /** Its CI (BL-106): the CI/CD view's requests for a worktree of the ticket; open or close it; show the CI/CD view. */
   | ({ type: 'ci' } & CiRequest)
   | { type: 'ciOpen'; open: boolean }
   | { type: 'ciShow'; key: string };
 
 /** Where an opened ticket goes: its comment box, its Demo section, or an entry (gone: the reference's entry isn't there). */
-export type FocusTarget = 'comment' | 'demo' | { entry: string; gone?: true };
+export type FocusTarget = 'comment' | 'demo' | 'discuss' | { entry: string; gone?: true };
 
 /** An entry of a ticket, as the comment box suggests it after "BL-102#" (BL-130). */
 export interface EntrySuggestion {
