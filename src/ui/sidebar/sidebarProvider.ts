@@ -23,7 +23,7 @@ import {
 import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
 import type { Shaping } from '../backlog/shaping';
 import { needOf, queuedNeed, resumeAsk } from '../../features/backlog/needs';
-import { checkingOf, setVerdict } from '../../features/backlog/sisterCheck';
+import { checkingOf, setVerdict, stopCheck } from '../../features/backlog/sisterCheck';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
@@ -397,7 +397,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
           ...(this.discussing(item) ? { discussing: true } : {}),
-          ...(checking && item.status === 'todo' ? { checking } : {}),
+          ...(checking && item.status === 'todo'
+            ? { checking, ...(data.items.find((i) => i.id === checking)?.sisterCheck?.stop ? { checkStopped: true } : {}) }
+            : {}),
           ...(creatingWorktrees.has(item.id) ? { creating: true } : {}),
           ...(checks ? { checks: { ...(checks.progress.step ? { step: checks.progress.step } : {}), ...(percent !== undefined ? { percent } : {}) } } : {}),
         };
@@ -462,6 +464,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'reopen':
         await vscode.commands.executeCommand('flotilla.reopenBacklogItem', m.id);
         return;
+      case 'stopCheck': {
+        // Stops the sister check that holds this card (BL-240): the leading window ends it, see SisterChecks.
+        const data = await store.read();
+        const from = checkingOf(data, m.id);
+        if (from) await store.change((d) => stopCheck(d, from));
+        return;
+      }
       case 'keepSister': {
         // Kept as it is, though a sister check found it covered or at odds (BL-236).
         const item = (await store.read()).items.find((i) => i.id === m.id);

@@ -75,6 +75,8 @@ export interface BacklogItemView extends BacklogItem {
   discussing?: boolean;
   /** The ticket whose sister check covers it (BL-236): the autopilot waits for it, and its card says so. */
   checking?: string;
+  /** You stopped that check (BL-240): its card says it's stopping until the leading window ends it. */
+  checkStopped?: boolean;
 }
 
 /** A note (BL-182), as the backlog's Notes lane shows it. */
@@ -503,6 +505,8 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'discard' | 'reopen'; id: string }
   /** Keeps a ticket a sister check found covered or at odds (BL-236): as it is, out of "Needs you". */
   | { type: 'backlog'; op: 'keepSister'; id: string }
+  /** Stops the sister check that holds this To Do card (BL-240): its sisters are released, unchecked. */
+  | { type: 'backlog'; op: 'stopCheck'; id: string }
   /** The card's Create Worktree (as the ticket's): a new worktree at once, its branch named without asking unless named. */
   | { type: 'backlog'; op: 'createWorktree'; id: string; named?: boolean }
   /** Accept every proposed item; plan the backlog with Claude. */

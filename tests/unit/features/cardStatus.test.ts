@@ -196,7 +196,8 @@ describe('cardStatus: why the autopilot passes a To Do over (BL-205)', () => {
   });
 
   it('says a To Do a sister check covers waits for it (BL-236)', () => {
-    expect(line(item('todo', { checking: 'BL-7', shaping }))).toEqual(["Checking against BL-7's change…", '', 'working', '']);
+    expect(line(item('todo', { checking: 'BL-7', shaping }))).toEqual(["Checking against BL-7's change…", '', 'working', 'Stop check']);
+    expect(line(item('todo', { checking: 'BL-7', checkStopped: true }))).toEqual(["Stopping the check against BL-7's change…", '', 'working', '']);
     expect(tip(item('todo', { checking: 'BL-7' }))).toMatch(/the autopilot takes it once that's done/);
   });
 

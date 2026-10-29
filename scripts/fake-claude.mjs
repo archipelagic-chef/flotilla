@@ -21,7 +21,8 @@
 // Asked to answer a comment (Ask an Agent), it answers in its final message, quoting the comment, and changes nothing.
 //
 // As a sister check (BL-236), it adds a line of what's left to each To Do sister's description, and says so; after a
-// discard, it finds each To Do sister at odds with it instead.
+// discard, it finds each To Do sister at odds with it instead. It takes 6 s more than other turns, long enough to Stop
+// check on a sister's card (BL-240).
 //
 // Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
 //
@@ -221,7 +222,10 @@ async function main() {
 
   // Ask an Agent (BL-127): it answers the comment in its final message, which Flotilla writes as the reply.
   if (/asks you to answer their comment/.test(prompt)) return answerComment();
-  if (/You check its sister tickets against its change/.test(prompt)) return checkSisters(item);
+  if (/You check its sister tickets against its change/.test(prompt)) {
+    await new Promise((r) => setTimeout(r, 6000));
+    return checkSisters(item);
+  }
   if (reviewer) return review(file, text, hints, item);
   return implement(file, text, hints, item);
 }

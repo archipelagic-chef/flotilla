@@ -1,0 +1,82 @@
+{
+  "title": "A sister check holds BL-8's card: Stop check stops its agent, and BL-8 is released, unchecked",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off",
+    "flotilla.sisterCheckDelaySeconds": 0
+  },
+  "steps": [
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"List attached files in the activity\")"
+    },
+    {
+      "caption": "BL-8 depends on BL-10: we merge BL-10, and an agent checks BL-8 against it"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open ticket\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Merge to main\")",
+      "timeout": 30000
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Checking against BL-10's change\")",
+      "timeout": 60000
+    },
+    {
+      "hover": ".group-head:has-text(\"To Do\") .name"
+    },
+    {
+      "caption": "BL-8's To Do card says it's checked against BL-10's change, and has Stop check"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".backlog-item:has-text(\"Checking against BL-10's change\") button:has-text(\"Stop check\")"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"List attached files in the activity\"):not(:has-text(\"against BL-10's change\"))",
+      "timeout": 30000
+    },
+    {
+      "hover": ".group-head:has-text(\"To Do\") .name"
+    },
+    {
+      "caption": "Stop check stops the agent: BL-8 is released at once, unchecked, and can start again"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "caption": "BL-10's ticket says you stopped its check"
+    },
+    {
+      "click": ".tab[aria-label^=\"BL-10 \"]"
+    },
+    {
+      "click": ".activity-toggle[aria-expanded=\"false\"], .timeline-text:has-text(\"check of its sisters: BL-8 is released\")"
+    },
+    {
+      "hover": ".timeline-text:has-text(\"check of its sisters: BL-8 is released, unchecked\")"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

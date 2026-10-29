@@ -27,7 +27,7 @@ export interface CardStatus {
 
 /** A card's next step: a backlog message the card sends, with the button's label. */
 export interface CardStep {
-  op: 'accept' | 'reopen' | 'start' | 'resume' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open';
+  op: 'accept' | 'reopen' | 'start' | 'resume' | 'approve' | 'comment' | 'merge' | 'mergeNext' | 'updateAndMerge' | 'open' | 'stopCheck';
   label: string;
   icon: string;
 }
@@ -58,6 +58,7 @@ export type CardStatusItem = Pick<
   | 'discarded'
   | 'queued'
   | 'checking'
+  | 'checkStopped'
 >;
 
 const OPEN: CardStep = { op: 'open', label: 'Open', icon: 'go-to-file' };
@@ -167,11 +168,13 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
           text: `Epic · ${item.parts.done} of ${item.parts.total} parts done`,
           tip: 'The autopilot takes its parts, not the epic: start a part, not the whole.',
         };
+      if (item.checking && item.checkStopped) return { text: `Stopping the check against ${item.checking}'s change…`, working: true };
       if (item.checking)
         return {
           text: `Checking against ${item.checking}'s change…`,
-          tip: `An agent checks it against ${item.checking}'s change and what's on ${main}: the autopilot takes it once that's done.`,
+          tip: `An agent checks it against ${item.checking}'s change and what's on ${main}: the autopilot takes it once that's done. Stop check releases it, unchecked.`,
           working: true,
+          next: { op: 'stopCheck', label: 'Stop check', icon: 'debug-stop' },
         };
       if (item.shaping?.agent)
         return {

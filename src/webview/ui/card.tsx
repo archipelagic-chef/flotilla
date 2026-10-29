@@ -255,6 +255,31 @@ export function ItemRow({
               checks{item.checks.percent !== undefined ? ` ${item.checks.percent}%` : ''}
             </span>
           )}
+          {!renaming && item.checking && (
+            <span
+              class="drift-badge"
+              data-tip={
+                item.checkStopped
+                  ? `You stopped the check against ${item.checking}'s change: it's released, unchecked, in a moment`
+                  : `An agent checks it against ${item.checking}'s change: the autopilot takes it once that's done`
+              }
+            >
+              <i class="codicon codicon-loading codicon-modifier-spin" />
+              {item.checkStopped ? 'stopping check' : `checking against ${item.checking}`}
+            </span>
+          )}
+          {!renaming && item.checking && !item.checkStopped && (
+            <BusyButton
+              class="drift-badge"
+              aria-label="Stop check"
+              data-tip="Stops the check: it's released at once, unchecked"
+              onClick={(e) => e.stopPropagation()}
+              message={{ type: 'backlog', op: 'stopCheck', id: item.id }}
+              icon="debug-stop"
+            >
+              Stop check
+            </BusyButton>
+          )}
           {!renaming && item.discussing && (
             <BusyButton
               class="drift-badge discussing"
@@ -730,7 +755,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                   </button>
                 ) : (
                   <BusyButton
-                    class={`button small${next.op === 'start' ? ' secondary' : ''}`}
+                    class={`button small${next.op === 'start' || next.op === 'stopCheck' ? ' secondary' : ''}`}
                     message={{ type: 'backlog', op: next.op, id: item.id }}
                     icon={next.icon}
                   >
