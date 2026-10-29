@@ -2,9 +2,6 @@
   "title": "Ask an agent to reply to a comment now",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

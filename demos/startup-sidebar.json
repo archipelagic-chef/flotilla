@@ -1,7 +1,6 @@
 {
   "title": "The side view shows its worktrees and backlog within a moment of a reload",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".backlog-item" },
     { "caption": "Reload the window with the side view open" },

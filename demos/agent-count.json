@@ -1,7 +1,6 @@
 {
   "title": "The backlog counts the agents working, with the autopilot off",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 2000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\") .name" },

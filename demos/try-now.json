@@ -2,7 +2,6 @@
   "title": "Try Now: the autopilot's paused agents go on before the usage limit's reset",
   "settings": { "flotilla.agents.maxRunning": 2 },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "An agent is paused on Claude's usage limit; the autopilot is turned on" },
     { "click": ".autopilot-toggle" },

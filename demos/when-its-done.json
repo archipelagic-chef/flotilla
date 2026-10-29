@@ -1,7 +1,6 @@
 {
   "title": "A ticket's description opens with what it does when it's done: the card's hover and the folded description show those lines",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": "[aria-label=\"Hide what needs you\"]" },
     { "waitFor": ".backlog-item.compact:has-text(\"Show a run button on review cards\")" },

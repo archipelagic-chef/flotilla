@@ -1,7 +1,6 @@
 {
   "title": "Open an agent's chat from the Chats view",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Chats\"]" },
     { "caption": "An agent's chat (claude -p): Claude Code's panel would open it empty" },
     { "waitFor": ".chat:has-text(\"Vega-2\")" },

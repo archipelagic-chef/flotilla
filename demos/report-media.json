@@ -1,7 +1,6 @@
 {
   "title": "Pictures and diagrams lead each report in the activity",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 500 },
     { "click": "[aria-label=\"Show done items\"]" },

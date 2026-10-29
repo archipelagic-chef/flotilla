@@ -2,9 +2,6 @@
   "title": "Compact backlog cards: the title, one status line and the next step; Detailed shows every detail",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "command": "View: Decrease Current View Size"
     },
     {

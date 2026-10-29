@@ -2,7 +2,6 @@
   "title": "See what a working agent is doing, how far it is, and whether it's stuck",
   "settings": { "flotilla.backlog.cards": "detailed" },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "wait": 3000 },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "A working agent's card says what it's doing, with its plan's progress" },

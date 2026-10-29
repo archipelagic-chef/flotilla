@@ -2,9 +2,6 @@
   "title": "A ticket in review gets its pull request on GitHub: its branch is pushed, and the ticket links it by Merge to main",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

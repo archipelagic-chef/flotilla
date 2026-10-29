@@ -1,7 +1,6 @@
 {
   "title": "The backlog's Approve shows it's working until the card moves",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".need-yours:has-text(\"Show a run button on review cards\")" },
     { "caption": "Approve on a card that waits for your review" },

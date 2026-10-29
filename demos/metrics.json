@@ -1,7 +1,6 @@
 {
   "title": "The Metrics view: how the work flows, where time and money go",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "caption": "Metrics: the playground's last week of events, each number against the week before" },
     { "click": "[aria-label=\"Metrics\"]" },
     { "waitFor": ".metrics-number:has-text(\"Tickets done\")" },

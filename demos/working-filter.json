@@ -1,7 +1,6 @@
 {
   "title": "Narrow the board to tickets being worked on",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },
     { "caption": "The filter in the backlog's title shows only tickets an agent works on" },

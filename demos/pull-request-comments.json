@@ -2,9 +2,6 @@
   "title": "A comment on a ticket's pull request reaches the ticket: by its login, linked, and answerable like yours",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

@@ -1,7 +1,6 @@
 {
   "title": "A click anywhere on a backlog card opens its ticket, also its hovered bottom line",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },
     { "caption": "Hovered, a compact card's bottom line shows its id, details and actions" },

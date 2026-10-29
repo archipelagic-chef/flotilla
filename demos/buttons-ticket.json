@@ -1,7 +1,6 @@
 {
   "title": "The ticket's pickers, Unlink and Link Issue show they're working",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name" },
     { "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")" },

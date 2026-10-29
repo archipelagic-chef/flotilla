@@ -1,7 +1,6 @@
 {
   "title": "Reply to an entry of a ticket",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
     { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .name" },

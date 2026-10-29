@@ -5,7 +5,6 @@
     "flotilla.merge.checkCommand": "npm run checks"
   },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": ".backlog-item:has-text(\"Say hi in the greeting\")" },
     { "waitFor": "h1:has-text(\"Say hi in the greeting\")" },

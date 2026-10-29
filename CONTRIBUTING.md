@@ -228,7 +228,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 
 | Step | What it does |
 | --- | --- |
-| `{ "command": "Focus on Flotilla View" }` | runs a command through the Command Palette, typed as a user would |
+| `{ "command": "Close All Editor Groups" }` | runs a command through the Command Palette, typed as a user would |
 | `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
 | `{ "hover": ".ci-run" }` | moves the pointer onto it and leaves it there, so what shows on hover (a row's actions) can be clicked next |
 | `{ "drag": "text=BL-2", "to": "text=BL-1" }` | drags the first element onto the second (both in the same webview), as a mouse would |
@@ -239,13 +239,12 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "agentTurn": "Vega-2" }` | the seeded agent's chat goes on by a turn: its transcript grows, as a running agent's does (the value names it, for the reader) |
 | `{ "gitHubComment": "BL-13: Could it greet by name?" }` | someone (octo-reviewer) comments on that ticket's pull request on the fake GitHub (without "BL-13: ", on the latest open one), as on GitHub (BL-224) |
 
-The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
+Every demo starts on the Flotilla view: the recorder opens it before the demo starts (BL-243), in every mode, so no recording shows the palette that opens it and Try it yourself opens on it as well. A `command` step that focuses it later brings it back after another view. The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
 
 ```json
 {
   "title": "Open a ticket from the backlog",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "caption": "The backlog: the playground's tickets" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1200 },

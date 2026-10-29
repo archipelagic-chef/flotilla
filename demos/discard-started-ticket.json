@@ -2,9 +2,6 @@
   "title": "Won't Do in a ticket's status bar says which agents stop and which worktrees go, keeping their branches; Cancel leaves it as it was",
   "steps": [
     {
-      "command": "Focus on Flotilla View"
-    },
-    {
       "click": "[aria-label=\"Backlog\"]"
     },
     {

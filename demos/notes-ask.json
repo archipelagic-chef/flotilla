@@ -2,7 +2,6 @@
   "title": "A note's card is a short line that opens its tab, where you answer its agent's question",
   "settings": { "flotilla.agents.maxRunning": 6 },
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "click": "[aria-label^=\"New Note\"]" },
     { "waitFor": ".note-page .comment-box textarea" },

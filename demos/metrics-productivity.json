@@ -1,7 +1,6 @@
 {
   "title": "Productivity: criteria delivered per $ and per token, and where the spend went",
   "steps": [
-    {"command": "Focus on Flotilla View"},
     {"caption": "The Metrics view opens with Productivity: criteria of tickets done, per $ and per million tokens"},
     {"click": "[aria-label=\"Metrics\"]"},
     {"waitFor": ".metrics-number:has-text(\"Criteria done per $\")"},

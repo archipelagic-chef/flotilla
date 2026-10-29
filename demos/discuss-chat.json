@@ -1,7 +1,6 @@
 {
   "title": "Discuss opens a chat with the agent, beside the ticket",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 1000 },
     { "caption": "A To Do ticket nobody works on yet" },

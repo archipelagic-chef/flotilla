@@ -1,7 +1,6 @@
 {
   "title": "A click on the autopilot's bar shows what it's doing",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "caption": "The autopilot is turned on: agents take To Do tickets" },
     { "click": ".autopilot-toggle" },
