@@ -1057,6 +1057,24 @@ export function unpublishSeeded(dir) {
 }
 
 /**
+ * The tickets forget their pull requests (and that one waited for a sign-in), as a demo of the GitHub sign-in finds
+ * them (BL-245): the fake GitHub starts afresh each time, so it opens them again. Returns the tickets it changed.
+ */
+export function forgetPullRequests(dir) {
+  const file = path.join(dir, '.flotilla', 'backlog', 'backlog.json');
+  if (!fs.existsSync(file)) return [];
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const changed = data.items.filter((i) => i.pullRequests || i.pullRequestSignIn);
+  if (!changed.length) return [];
+  for (const i of changed) {
+    delete i.pullRequests;
+    delete i.pullRequestSignIn;
+  }
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 1)}\n`);
+  return changed.map((i) => i.id);
+}
+
+/**
  * The agent's chat goes on: its next turn (of AGENT_NEXT) is appended to its transcript, and its record says it's
  * still working. Returns false when it has no turn left (or wasn't seeded).
  */

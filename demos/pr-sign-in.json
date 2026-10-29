@@ -1,0 +1,27 @@
+{
+  "title": "Not signed in to GitHub: Flotilla asks once, Needs you and the ticket say so, and Sign In opens the pull request",
+  "githubSignedOut": true,
+  "steps": [
+    { "command": "Focus on Flotilla View" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "caption": "BL-13 is in review, but you aren't signed in to GitHub: its pull request can't be opened" },
+    { "waitFor": ".notification-toast:has-text(\"Pull requests on GitHub need you to sign in\")", "timeout": 30000 },
+    { "caption": "Flotilla asks once, with Sign In, rather than noting it only in the ticket" },
+    { "wait": 2500 },
+    { "waitFor": ".need-signIn:has-text(\"Sign In\")" },
+    { "caption": "Needs you lists it while it lasts" },
+    { "hover": ".need-signIn" },
+    { "wait": 2500 },
+    { "click": ".backlog-item:has-text(\"Say hi in the greeting\") .name" },
+    { "waitFor": ".pull-request.sign-in:has-text(\"sign in to GitHub\")" },
+    { "caption": "The ticket says it by Merge to main: Pull request: sign in to GitHub · Sign In" },
+    { "hover": ".pull-request.sign-in button" },
+    { "wait": 2000 },
+    { "click": ".pull-request.sign-in button" },
+    { "caption": "Signed in: the pull requests that waited for it are opened now, without new commits" },
+    { "waitFor": ".pull-request.open:has-text(\"PR #\")", "timeout": 30000 },
+    { "hover": ".pull-request a" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}

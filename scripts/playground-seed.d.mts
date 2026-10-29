@@ -6,5 +6,6 @@ export function seedChats(dir: string, claudeHome: string, now?: Date): string[]
 export function seedCreating(dir: string, now?: Date): string;
 /** Takes the seed's unpublished branches off the playground's origin again, for a demo that pushes one (BL-222); returns them. */
 export function unpublishSeeded(dir: string): string[];
+export function forgetPullRequests(dir: string): string[];
 /** Appends the seeded agent chat's next turn to its transcript; false when it has none left. */
 export function appendAgentTurn(dir: string, claudeHome: string, now?: Date): boolean;
