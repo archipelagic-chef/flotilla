@@ -65,7 +65,8 @@ import type { ResolvedWorktree } from '../features/worktrees/resolver';
 import { branchNameProblem } from '../features/worktrees/layout';
 import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
 import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
-import type { ChangeGroup } from '../webview/protocol';
+import type { ChangeGroup, VcFileDiff } from '../webview/protocol';
+import { vcFileDiffOf } from '../webview/vcFile';
 import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
 import { branchPickEntries, type BranchPickAction } from './branchPicker';
 import * as chatUi from './chatCommands';
@@ -97,6 +98,10 @@ import { addWorkspaceFolder, extraWorkspaceFolder, removeWorkspaceFolder } from 
 /** What the sidebar offers to commands. */
 export interface SidebarHandle {
   reveal(key: string): void;
+  /** Shows a worktree's file in the sidebar's Files tool, its folders expanded and it selected. */
+  revealInFiles(key: string, path: string): void;
+  /** Opens a Version Control file row's diff, as clicking the row does. */
+  openDiff(diff: VcFileDiff): Promise<void>;
 }
 
 export interface CommandContext {
@@ -195,6 +200,8 @@ function worktreeCommands(ctx: CommandContext, withWs: WithWorkstream): Commands
     ),
     'flotilla.removeFromWorkspace': withWs((ws) => removeWorkspaceFolder(ws.worktree.path)),
     'flotilla.revealInExplorer': (arg?: Arg) => revealInExplorer(ctx, arg),
+    'flotilla.openVcFileChanges': (arg?: unknown) => openVcFileChanges(ctx, arg),
+    'flotilla.revealInFiles': (arg?: Arg) => isTarget(arg) && arg.path && ctx.sidebar.revealInFiles(arg.key, arg.path),
   };
 }
 
@@ -997,6 +1004,12 @@ async function openFile(ctx: CommandContext, ws: Workstream, relPath: string | u
     return;
   }
   await vscode.window.showTextDocument(toWorkspaceUri(ctx.reference, resolveInside(ws.worktree.path, relPath)), { preview: false });
+}
+
+/** Open Changes of a file row's right-click menu in History, Compare or a ticket's views (BL-244): the diff its click opens. */
+async function openVcFileChanges(ctx: CommandContext, arg: unknown): Promise<void> {
+  const diff = vcFileDiffOf(arg);
+  if (diff) await ctx.sidebar.openDiff(diff);
 }
 
 /** Reveals a file or a worktree folder in the Explorer; it must be inside a workspace folder. */

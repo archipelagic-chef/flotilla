@@ -464,8 +464,13 @@ export function App() {
             if (m.tool) update((prev) => ({ ...prev, tool: m.tool!, ...(m.vcView ? { vcView: m.vcView } : {}) }));
             return;
           }
+          if (m.tool === 'files') {
+            // Reveal in Files (BL-244): to the Files tool, its worktree shown.
+            if (current !== ALL && current !== m.key) setActive(m.key);
+            if (p.tool !== 'files') update((prev) => ({ ...prev, tool: 'files' }));
+          }
           // The active editor's file, like the Explorer's auto-reveal: only in the Files tool, and only if its worktree is shown.
-          if (p.tool !== 'files' || (current !== ALL && current !== m.key)) return;
+          else if (p.tool !== 'files' || (current !== ALL && current !== m.key)) return;
           const parents = ancestors(m.path);
           update((prev) => ({
             ...prev,
@@ -625,7 +630,12 @@ export function App() {
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
       {tool === 'vc' && vcView === 'ticketChanges' && ticket && (
-        <TicketChangesBody view={ticketView} selected={ticketFile[ticket.id]} select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))} />
+        <TicketChangesBody
+          ws={ws}
+          view={ticketView}
+          selected={ticketFile[ticket.id]}
+          select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))}
+        />
       )}
       {tool === 'vc' && vcView === 'ticketCommits' && ticket && (
         <TicketCommitsBody

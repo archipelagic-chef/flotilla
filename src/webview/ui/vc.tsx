@@ -10,10 +10,12 @@ import type {
   FileChangeView,
   RefComparison,
   Tool,
+  VcFileDiff,
   VcView,
   WorkstreamView,
 } from '../protocol';
 import { menuContext, run, send } from './api';
+import { vcFileContext } from '../vcFile';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
@@ -458,9 +460,17 @@ function CommitDetails({ commit, files }: { commit: CommitView; files: CommitFil
 function CommitFileRow({ ws, commit, change }: { ws: WorkstreamView; commit: CommitView; change: FileChangeView }) {
   const parts = change.path.split('/');
   const name = parts.pop()!;
-  const open = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path });
+  const diff = { type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path } as const;
+  const open = () => send(diff);
   return (
-    <div class="row change commit-file" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
+    <div
+      class="row change commit-file"
+      role="button"
+      tabIndex={0}
+      data-vscode-context={menuContext('vcFile', vcFileContext(ws.key, change, diff, ws.context))}
+      onClick={open}
+      onKeyDown={(e) => e.key === 'Enter' && open()}
+    >
       <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>
@@ -762,7 +772,7 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
           {base && head && result?.error && <div class="row group-empty error">{result.error}</div>}
           {base && head && !result?.error && !files.length && <div class="row group-empty">{!result || result.loading ? 'Comparing…' : 'No differences'}</div>}
           {files.map((f) => (
-            <CompareRow key={f.path} worktree={worktree?.key} change={f} open={() => open(f.path)} />
+            <CompareRow key={f.path} worktree={worktree?.key} change={f} diff={{ type: 'openCompare', ...request, path: f.path }} />
           ))}
         </>
       )}
@@ -770,11 +780,19 @@ function ComparisonCard({ workstreams, colors, choice, refs, result, choose, clo
   );
 }
 
-function CompareRow({ worktree, change, open }: { worktree: string | undefined; change: FileChangeView; open(): void }) {
+function CompareRow({ worktree, change, diff }: { worktree: string | undefined; change: FileChangeView; diff: VcFileDiff }) {
   const parts = change.path.split('/');
   const name = parts.pop()!;
+  const open = () => send(diff);
   return (
-    <div class="row change" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
+    <div
+      class="row change"
+      role="button"
+      tabIndex={0}
+      data-vscode-context={menuContext('vcFile', vcFileContext(worktree, change, diff))}
+      onClick={open}
+      onKeyDown={(e) => e.key === 'Enter' && open()}
+    >
       <i class={fileIcon(name)} />
       <span class={`name k-${change.kind}`}>{name}</span>
       <span class="dir">{parts.join('/')}</span>

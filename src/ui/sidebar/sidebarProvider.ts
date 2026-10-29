@@ -56,6 +56,7 @@ import {
   type SearchGroup,
   type TicketVcView,
   type Tool,
+  type VcFileDiff,
   type VcView,
   type WebviewMessage,
 } from '../../webview/protocol';
@@ -694,6 +695,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
   reveal(key: string, relPath?: string, tool?: Tool, vcView?: VcView): void {
     this.act({ type: 'reveal', key, path: relPath, tool, vcView });
+  }
+
+  /** Opens a file row's diff from its right-click menu, as clicking the row does (BL-244). */
+  openDiff(diff: VcFileDiff): Promise<void> {
+    return this.onMessage(diff);
   }
 
   /** Shows a worktree's CI/CD view (Version Control › CI/CD). */

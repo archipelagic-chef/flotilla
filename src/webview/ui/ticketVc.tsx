@@ -3,7 +3,8 @@ import type { BacklogItemView, TicketVcView, WorkstreamView } from '../protocol'
 import type { ChangedFile } from '../ticketProtocol';
 import type { TicketCommit } from '../../features/history/log';
 import { branchMatches } from '../../features/backlog/backlog';
-import { run, send } from './api';
+import { menuContext, run, send } from './api';
+import { vcFileContext } from '../vcFile';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
 import { ago } from './ago';
@@ -52,7 +53,17 @@ function Counts({ f }: { f: Pick<ChangedFile, 'added' | 'deleted' | 'binary'> })
 }
 
 /** The ticket's Changes in full: each comparison's files, with their line counts; the one Expand was on selected. */
-export function TicketChangesBody({ view, selected, select }: { view: TicketVcView | undefined; selected?: string; select(path: string): void }) {
+export function TicketChangesBody({
+  ws,
+  view,
+  selected,
+  select,
+}: {
+  ws: WorkstreamView;
+  view: TicketVcView | undefined;
+  selected?: string;
+  select(path: string): void;
+}) {
   const list = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (selected) list.current?.querySelector('.row.selected')?.scrollIntoView({ block: 'nearest' });
@@ -80,9 +91,10 @@ export function TicketChangesBody({ view, selected, select }: { view: TicketVcVi
           {g.files.map((f) => {
             const parts = f.path.split('/');
             const name = parts.pop()!;
+            const diff = { type: 'openTicketChange', id: view.id, group, path: f.path } as const;
             const open = () => {
               select(f.path);
-              send({ type: 'openTicketChange', id: view.id, group, path: f.path });
+              send(diff);
             };
             return (
               <div
@@ -92,6 +104,7 @@ export function TicketChangesBody({ view, selected, select }: { view: TicketVcVi
                 tabIndex={0}
                 aria-current={selected === f.path ? 'true' : undefined}
                 data-tip={f.uncommitted ? 'Changed and not committed yet' : undefined}
+                data-vscode-context={menuContext('vcFile', vcFileContext(ws.key, f, diff, ws.context))}
                 onClick={open}
                 onKeyDown={(e) => e.key === 'Enter' && open()}
               >
@@ -174,9 +187,18 @@ export function TicketCommitsBody({
       {shown?.files.map((change) => {
         const parts = change.path.split('/');
         const name = parts.pop()!;
-        const open = () => send({ type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path });
+        const diff = { type: 'openCommit', key: ws.key, hash: commit.hash, path: change.path } as const;
+        const open = () => send(diff);
         return (
-          <div key={change.path} class="row change commit-file" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === 'Enter' && open()}>
+          <div
+            key={change.path}
+            class="row change commit-file"
+            role="button"
+            tabIndex={0}
+            data-vscode-context={menuContext('vcFile', vcFileContext(ws.key, change, diff, ws.context))}
+            onClick={open}
+            onKeyDown={(e) => e.key === 'Enter' && open()}
+          >
             <i class={fileIcon(name)} />
             <span class={`name k-${change.kind}`}>{name}</span>
             <span class="dir">{parts.join('/')}</span>

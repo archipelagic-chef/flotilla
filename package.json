@@ -312,6 +312,16 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "flotilla.openVcFileChanges",
+        "title": "Open Changes",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.revealInFiles",
+        "title": "Reveal in Files",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.openChanges",
         "title": "Open Changes",
         "category": "Flotilla",
@@ -909,6 +919,14 @@
           "when": "flotilla.state == ready"
         },
         {
+          "command": "flotilla.openVcFileChanges",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.revealInFiles",
+          "when": "false"
+        },
+        {
           "command": "flotilla.stage",
           "when": "false"
         },
@@ -1500,6 +1518,21 @@
           "command": "flotilla.unstage",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'change' && group == 'staged'",
           "group": "2_scm@1"
+        },
+        {
+          "command": "flotilla.openVcFileChanges",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'vcFile'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "flotilla.openFile",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'vcFile' && onDisk",
+          "group": "1_open@2"
+        },
+        {
+          "command": "flotilla.revealInFiles",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'vcFile' && onDisk",
+          "group": "1_open@3"
         },
         {
           "command": "flotilla.openChat",
