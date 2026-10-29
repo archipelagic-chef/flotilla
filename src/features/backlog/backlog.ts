@@ -110,6 +110,27 @@ export interface BacklogItem {
 export type AgentEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const AGENT_EFFORTS: readonly AgentEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
+/** The models offered by name (a ticket's picker, the default's pick); any other is typed in. */
+export const AGENT_MODELS: ReadonlyArray<{ model: string; label: string; detail: string }> = [
+  { model: 'fable', label: 'Fable', detail: 'The most capable' },
+  { model: 'opus', label: 'Opus', detail: 'Strong all-rounder' },
+  { model: 'sonnet', label: 'Sonnet', detail: 'Fast and capable' },
+  { model: 'haiku', label: 'Haiku', detail: 'Fastest, for small tasks' },
+];
+
+/** A model's name to show: "Opus" for opus, else as it is. */
+export const modelLabel = (model: string): string => AGENT_MODELS.find((m) => m.model === model.toLowerCase())?.label ?? model;
+
+/**
+ * The agents' default, to show (BL-242): "Opus · high", "Claude Code's" for an unset part; short (on a button), only
+ * the parts set: "Opus", "high", "Default" for none.
+ */
+export function defaultsLabel(c: AgentChoice, short = false): string {
+  const parts = [c.model ? modelLabel(c.model) : undefined, c.effort];
+  if (short) return parts.filter(Boolean).join(' · ') || 'Default';
+  return `${parts[0] ?? "Claude Code's model"} · ${parts[1] ?? "Claude Code's effort"}`;
+}
+
 /** Which model an agent runs, and how hard it thinks: unset, Claude Code's default. */
 export interface AgentChoice {
   /** An alias ("opus", "sonnet") or a model's full name. */

@@ -478,6 +478,12 @@
         "icon": "$(debug-pause)"
       },
       {
+        "command": "flotilla.chooseAgentDefaults",
+        "title": "Choose Agents' Default Model and Effort…",
+        "category": "Flotilla",
+        "icon": "$(hubot)"
+      },
+      {
         "command": "flotilla.resumeAllAgents",
         "title": "Resume All Agents",
         "category": "Flotilla",

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import { AGENT_EFFORTS, type BacklogStatus, priorityFromName } from '../../features/backlog/backlog';
+import {
+  AGENT_EFFORTS,
+  AGENT_MODELS,
+  type BacklogStatus,
+  modelLabel,
+  priorityFromName,
+} from '../../features/backlog/backlog';
 import type { TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
 import {
@@ -139,17 +145,8 @@ export function RemotePriority({ current, names }: { current?: string; names: st
   );
 }
 
-const MODELS: Array<{ model: string; label: string; detail: string }> = [
-  { model: 'fable', label: 'Fable', detail: 'The most capable' },
-  { model: 'opus', label: 'Opus', detail: 'Strong all-rounder' },
-  { model: 'sonnet', label: 'Sonnet', detail: 'Fast and capable' },
-  { model: 'haiku', label: 'Haiku', detail: 'Fastest, for small tasks' },
-];
-
 /** A model or effort chosen: saved to the ticket (a running agent takes it on its next turn). */
 const pick = (message: Extract<TicketWebviewMessage, { type: 'agentModel' | 'agentEffort' }>) => act(message, 'Saving…');
-
-const modelLabel = (model: string) => MODELS.find((m) => m.model === model.toLowerCase())?.label ?? model;
 
 /**
  * Which model the ticket's agents run and how hard they think: the ticket's choice, or the default (the settings, else
@@ -164,9 +161,17 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
   const effort = chosen.effort ?? defaults.effort;
   const defaultModel = defaults.model ? `Default (${modelLabel(defaults.model)})` : "Default (Claude Code's)";
   const defaultEffort = defaults.effort ? `Default (${defaults.effort})` : "Default (Claude Code's)";
-  const custom = chosen.model && !MODELS.some((m) => m.model === chosen.model!.toLowerCase()) ? [chosen.model] : [];
+  const custom = chosen.model && !AGENT_MODELS.some((m) => m.model === chosen.model!.toLowerCase()) ? [chosen.model] : [];
   const savingModel = useWorking({ type: 'agentModel', model: null });
   const savingEffort = useWorking({ type: 'agentEffort', effort: null });
+  // Every ticket's default (BL-242): the settings, chosen in two quick picks.
+  const changeDefault = {
+    key: 'defaults',
+    label: 'Change Default…',
+    detail: "For every ticket that hasn't chosen its own",
+    icon: 'settings-gear',
+    onSelect: () => act({ type: 'agentDefaults' }, 'Choosing…'),
+  };
   return (
     <>
       <Dropdown
@@ -193,7 +198,7 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
                 },
               ]
             : []),
-          ...MODELS.map((m) => ({
+          ...AGENT_MODELS.map((m) => ({
             key: m.model,
             label: m.label,
             detail: m.detail,
@@ -203,6 +208,7 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
           })),
           ...custom.map((c) => ({ key: c, label: c, icon: 'hubot', checked: true, onSelect: () => pick({ type: 'agentModel', model: c }) })),
           { key: 'other', label: 'Other Model…', icon: 'edit', onSelect: () => pick({ type: 'agentModel', model: 'other' }) },
+          changeDefault,
         ]}
       />
       <Dropdown
@@ -224,6 +230,7 @@ export function AgentPicker({ ticket }: { ticket: TicketView }) {
             checked: chosen.effort === e,
             onSelect: () => pick({ type: 'agentEffort', effort: e }),
           })),
+          changeDefault,
         ]}
       />
     </>

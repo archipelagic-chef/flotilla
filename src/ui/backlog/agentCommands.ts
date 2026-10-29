@@ -4,6 +4,7 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { heldBy, type ReviewFix } from '../../features/backlog/review';
 import { discussable } from '../../features/backlog/shaping';
 import { showError, type Commands } from '../commandSet';
+import { chooseAgentDefaults } from './agentDefaults';
 import { backlogIdOf } from './cardMenu';
 import { checkAllTickets } from './checkAll';
 import type { ReviewLoop } from './reviewLoop';
@@ -58,6 +59,7 @@ export function agentCommands(deps: AgentCommandDeps): Commands {
     },
     // Back from a diff opened from a ticket's Changes (BL-171), in its title bar and the status bar.
     'flotilla.backToTicket': () => tickets.diffs.back().catch(showError),
+    'flotilla.chooseAgentDefaults': () => chooseAgentDefaults().catch(showError),
     'flotilla.pauseAgent': controlAgent('pause'),
     'flotilla.resumeAgent': controlAgent('resume'),
     'flotilla.stopAgent': controlAgent('stop'),

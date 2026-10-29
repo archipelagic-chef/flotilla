@@ -689,6 +689,10 @@ export class TicketPanels implements vscode.Disposable {
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
       deps.backlog.watch((changed) => void this.backlogChanged(changed)),
       deps.merges.watch(() => this.refreshAll()),
+      // A new default model or effort (BL-242): the pickers show "Default (Sonnet)" at once.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (['model', 'effort', 'lightModel'].some((k) => e.affectsConfiguration(`flotilla.agents.${k}`))) this.refreshAll();
+      }),
       // Refreshed issues: read their details again too.
       deps.integrations.onDidChange(() => {
         this.details.clear();

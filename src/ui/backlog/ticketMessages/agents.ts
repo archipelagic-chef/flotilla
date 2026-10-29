@@ -51,6 +51,9 @@ export const agentsHandlers: Handlers<AgentsMessage> = {
     if (item.remote) return;
     await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? withAgent(i, { ...i.agent, effort: m.effort ?? undefined }) : i)) }));
   },
+  agentDefaults: async () => {
+    await vscode.commands.executeCommand('flotilla.chooseAgentDefaults');
+  },
   agent: async ({ id, panels }, m) => {
     await panels.controlAgent(id, m.action, m.session);
   },
