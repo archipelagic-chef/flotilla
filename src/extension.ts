@@ -448,6 +448,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   tickets.useShaping(shaping);
+  sidebar.useShaping(shaping);
   const answers = new AskAgent({
     backlog,
     repository,

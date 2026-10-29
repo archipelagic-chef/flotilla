@@ -50,6 +50,19 @@ const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(
  */
 export function DiscussPanel({ ticket }: { ticket: TicketView }) {
   const s = ticket.shaping!;
+  if (s.pane === 'open' && !s.ready && !s.held) {
+    return (
+      <div class="review-panel working">
+        <i class={`codicon codicon-comment-discussion${s.running ? ' pulse' : ''}`} />
+        <span class="review-text">
+          <strong>Discussing</strong> with {s.agent}, in the Discuss pane below: it writes what's agreed into the description as you go.
+        </span>
+        <ActionButton class="button" message={{ type: 'discuss' }} working="Opening…" title="Go to the discussion's chat">
+          <i class="codicon codicon-comment-discussion" /> Open Chat
+        </ActionButton>
+      </div>
+    );
+  }
   if ((s.chat === 'open' || s.chat === 'pending') && !s.ready) {
     return (
       <div class="review-panel working">
@@ -71,7 +84,8 @@ export function DiscussPanel({ ticket }: { ticket: TicketView }) {
       <div class="review-panel waiting">
         <i class="codicon codicon-debug-pause" />
         <span class="review-text">
-          <strong>Discussion</strong> You {s.held} {s.agent}. Its chat is kept: Resume, and it goes on there.
+          <strong>Discussion</strong> You {s.held} {s.agent}.{' '}
+          {s.pane ? 'Its discussion is kept: Resume, and it goes on in the Discuss pane.' : 'Its chat is kept: Resume, and it goes on there.'}
         </span>
         <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
           <i class="codicon codicon-debug-continue" /> Resume

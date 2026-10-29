@@ -524,7 +524,16 @@ export class TicketPanels implements vscode.Disposable {
   /** The discussions with agents (BL-45), for the tickets nobody works on yet. */
   useShaping(shaping: Shaping): void {
     this.shaping = shaping;
-    this.subscriptions.push(shaping.onDidChange(() => this.refreshAll()));
+    this.subscriptions.push(
+      shaping.onDidChange(() => this.refreshAll()),
+      // Discuss (BL-241): the ticket's tab, opened by now, shows its Discuss pane and goes to it.
+      shaping.onFocusPane((id) => {
+        const panel = this.panels.get(id);
+        if (!panel) return;
+        this.focusOnPost.set(panel, 'discuss');
+        void this.attachDiscussion(id, panel).then(() => this.refresh(new Set([id])));
+      }),
+    );
   }
 
   private checker: TicketChecker | undefined;
@@ -816,14 +825,20 @@ export class TicketPanels implements vscode.Disposable {
       // Its Ask chat ends with it: nothing of it is kept.
       this.asks.get(id)?.dispose();
       this.asks.delete(id);
+      // Its discussion's process too; the discussion is kept (BL-241).
+      this.shaping?.detach(id);
     });
+    // A discussion in its Discuss pane shows again (BL-241).
+    if (item.shaping?.pane) void this.attachDiscussion(id, panel);
     panel.webview.onDidReceiveMessage((m: TicketWebviewMessage) =>
       (m.type === 'ask' || m.type === 'askStop' || m.type === 'askNew' || m.type === 'askPost'
         ? this.onAskMessage(id, panel, m)
-        : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
-          ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
-            (this.ci?.handle(id, m) ?? Promise.resolve())
-          : this.onMessage(id, panel, m)
+        : m.type === 'discussSend' || m.type === 'discussStop' || m.type === 'discussDone'
+          ? this.onDiscussMessage(id, panel, m)
+          : m.type === 'ci' || m.type === 'ciOpen' || m.type === 'ciShow'
+            ? // The CI goes on its own: the rest of the ticket isn't sent again for it.
+              (this.ci?.handle(id, m) ?? Promise.resolve())
+            : this.onMessage(id, panel, m)
       ).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))),
     );
   }
@@ -1500,6 +1515,8 @@ export class TicketPanels implements vscode.Disposable {
       if (update) {
         this.sentViews.set(panel, next);
         void panel.webview.postMessage(update);
+        // A tab whose view (re)starts gets its Discuss pane with it (BL-241).
+        if (update.type === 'ticket') this.postDiscussion(id, panel, 0);
       }
       const focus = this.focusOnPost.get(panel);
       if (focus && this.focusOnPost.delete(panel)) void panel.webview.postMessage({ type: 'focus', target: focus } satisfies TicketHostMessage);
@@ -1662,6 +1679,7 @@ export class TicketPanels implements vscode.Disposable {
               running: this.shaping.isRunning(plain.id),
               ready: !!plain.shaping.ready,
               ...(plain.shaping.held ? { held: plain.shaping.held.kind } : {}),
+              ...(plain.shaping.pane ? { pane: plain.shaping.pane.ended ? 'ended' : 'open' } : {}),
               ...this.discussionChat(plain),
             },
           }
@@ -2136,6 +2154,55 @@ export class TicketPanels implements vscode.Disposable {
       this.asks.set(id, chat);
     }
     await chat.ask(m.text);
+  }
+
+  /** Shows the ticket's Discuss pane in its tab (BL-241), when it has a discussion there. */
+  private async attachDiscussion(id: string, panel: vscode.WebviewPanel): Promise<void> {
+    const view = await this.shaping?.attach(id, {
+      render: (markdown) =>
+        renderMarkdown(
+          markdown,
+          panel.webview,
+          this.deps.backlog.dir,
+          this.roots(this.sentViews.get(panel)?.item ?? { id, title: id, status: 'todo', created: '' }),
+        ),
+      changed: () => this.postDiscussion(id, panel),
+    });
+    if (view) this.postDiscussion(id, panel, 0);
+  }
+
+  /** The Discuss pane's messages (BL-241), then their done: a message returns once it's sent. */
+  private async onDiscussMessage(
+    id: string,
+    panel: vscode.WebviewPanel,
+    m: Extract<TicketWebviewMessage, { type: 'discussSend' | 'discussStop' | 'discussDone' }>,
+  ): Promise<void> {
+    let failed = false;
+    try {
+      if (m.type === 'discussStop') this.shaping?.stopAnswer(id);
+      else await this.shaping?.send(id, m.type === 'discussSend' ? m.text : '', { done: m.type === 'discussDone' });
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      if (this.panels.get(id) === panel) void panel.webview.postMessage({ type: 'done', message: m, failed } satisfies TicketHostMessage);
+    }
+  }
+
+  private readonly discussionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Sends the Discuss pane to its tab, at most every 60 ms while an answer streams in. */
+  private postDiscussion(id: string, panel: vscode.WebviewPanel, delayMs = 60): void {
+    if (this.discussionTimers.has(id)) return;
+    this.discussionTimers.set(
+      id,
+      setTimeout(() => {
+        this.discussionTimers.delete(id);
+        void this.shaping?.paneView(id).then((discussion) => {
+          if (discussion && this.panels.get(id) === panel) void panel.webview.postMessage({ type: 'discussion', discussion } satisfies TicketHostMessage);
+        });
+      }, delayMs),
+    );
   }
 
   private fallbackOutput: vscode.OutputChannel | undefined;

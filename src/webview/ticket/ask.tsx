@@ -10,12 +10,12 @@ import { Rendered } from './markdownBox';
 import { modelName } from './agents';
 import './ask.css';
 
-/** A question in the Ask chat, and its answer: streaming in as plain text, rendered once it's finished. */
-function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
+/** A question in the chat (none for a discussion's opener), and its answer: streaming in as plain text, rendered once it's finished. */
+function AskTurnView({ turn: t, index, post }: { turn: AskTurn; index: number; post: boolean }) {
   const finished = t.state === 'done' || (t.state === 'stopped' && !!t.answer.trim());
   return (
     <div class={`ask-turn ${t.state}`}>
-      <div class="ask-question">{t.question}</div>
+      {!t.opener && <div class="ask-question">{t.question}</div>}
       <div class="ask-answer">
         {t.html ? <Rendered html={t.html} empty="" /> : t.answer && <div class="ask-streaming">{t.answer}</div>}
         {t.activity && (
@@ -29,7 +29,7 @@ function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
             <i class="codicon codicon-warning" /> {t.error}
           </div>
         )}
-        {finished && (
+        {post && finished && (
           <div class="ask-actions">
             {t.posted ? (
               <span class="muted">
@@ -52,24 +52,38 @@ function AskTurnView({ turn: t, index }: { turn: AskTurn; index: number }) {
   );
 }
 
-/**
- * Ask (BL-80): a small chat about the ticket, off the record. Folded until opened. What's asked and answered shows only
- * here: it isn't written to the ticket, agents don't see it, and it's gone when the tab closes.
- */
-export function AskPane({ ask }: { ask?: AskView }) {
-  const [open, setOpen] = useState(false);
+/** What a chat's Stop and its message box send: the Ask chat's, or the Discuss pane's (BL-241). */
+export interface ChatMessages {
+  send(text: string): void;
+  stop: { type: 'askStop' } | { type: 'discussStop' };
+}
+
+/** A chat's turns and its message box (Enter sends, Shift+Enter a new line), with Stop while it answers. */
+export function ChatBody(o: {
+  open: boolean;
+  turns: AskTurn[];
+  busy: boolean;
+  messages: ChatMessages;
+  placeholder: string;
+  label: string;
+  button: string;
+  hint: string;
+  /** Its finished answers can be posted to the ticket (Ask's). */
+  post?: boolean;
+  /** Changes when the box is to be focused again (Discuss pressed again). */
+  focus?: number;
+}) {
+  const { open, turns, busy } = o;
   const [draft, setDraft] = useState('');
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const turns = ask?.turns ?? [];
   const last = turns[turns.length - 1];
-  const busy = !!ask?.busy;
   // Stopping from the click: the answer shows it's stopped once it is.
-  const stopSent = !!useWorking({ type: 'askStop' });
+  const stopSent = !!useWorking(o.messages.stop);
   const stopping = busy && (last?.state === 'stopped' || stopSent);
   useEffect(() => {
     if (open) box.current?.focus();
-  }, [open]);
+  }, [open, o.focus]);
   // The chat follows its answer while its end is in sight; scrolled away (to the activity), it stays put.
   const following = useRef(true);
   useEffect(() => {
@@ -81,16 +95,67 @@ export function AskPane({ ask }: { ask?: AskView }) {
   }, [open]);
   useEffect(() => {
     if (open) end.current?.scrollIntoView({ block: 'nearest' });
-  }, [open, turns.length]);
+  }, [open, turns.length, o.focus]);
   useEffect(() => {
     if (open && following.current) end.current?.scrollIntoView({ block: 'nearest' });
   }, [last?.answer.length, last?.state, last?.activity]);
   const submit = () => {
     const text = draft.trim();
     if (!text || busy) return;
-    send({ type: 'ask', text });
+    o.messages.send(text);
     setDraft('');
   };
+  return (
+    <div class="ask-chat">
+      {turns.map((t, i) => (
+        <AskTurnView key={i} turn={t} index={i} post={!!o.post} />
+      ))}
+      <div class="ask-input">
+        <textarea
+          ref={box}
+          rows={2}
+          value={draft}
+          placeholder={o.placeholder}
+          aria-label={o.label}
+          onInput={(e) => setDraft(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        {busy ? (
+          <button
+            class="button secondary"
+            disabled={stopping}
+            onClick={() => act(o.messages.stop, 'Stopping…')}
+            title="Stops the answer; what it wrote so far stays"
+          >
+            <i class="codicon codicon-debug-stop" /> {stopping ? 'Stopping…' : 'Stop'}
+          </button>
+        ) : (
+          <button class="button" disabled={!draft.trim()} onClick={submit}>
+            <i class="codicon codicon-send" /> {o.button}
+          </button>
+        )}
+      </div>
+      <div class="hint" ref={end}>
+        {o.hint}
+      </div>
+    </div>
+  );
+}
+
+const ASK_MESSAGES: ChatMessages = { send: (text) => send({ type: 'ask', text }), stop: { type: 'askStop' } };
+
+/**
+ * Ask (BL-80): a small chat about the ticket, off the record. Folded until opened. What's asked and answered shows only
+ * here: it isn't written to the ticket, agents don't see it, and it's gone when the tab closes.
+ */
+export function AskPane({ ask }: { ask?: AskView }) {
+  const [open, setOpen] = useState(false);
+  const turns = ask?.turns ?? [];
   return (
     <section class="block ask">
       <div class="block-head">
@@ -110,48 +175,21 @@ export function AskPane({ ask }: { ask?: AskView }) {
         )}
       </div>
       {open && (
-        <div class="ask-chat">
-          {turns.map((t, i) => (
-            <AskTurnView key={i} turn={t} index={i} />
-          ))}
-          <div class="ask-input">
-            <textarea
-              ref={box}
-              rows={2}
-              value={draft}
-              placeholder={
-                turns.length
-                  ? 'A follow-up… (Enter asks, Shift+Enter starts a new line)'
-                  : "What's this for? How far is it? Which files does it touch? (Enter asks)"
-              }
-              aria-label="Ask about this ticket"
-              onInput={(e) => setDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-            />
-            {busy ? (
-              <button
-                class="button secondary"
-                disabled={stopping}
-                onClick={() => act({ type: 'askStop' }, 'Stopping…')}
-                title="Stops the answer; what it wrote so far stays"
-              >
-                <i class="codicon codicon-debug-stop" /> {stopping ? 'Stopping…' : 'Stop'}
-              </button>
-            ) : (
-              <button class="button" disabled={!draft.trim()} onClick={submit}>
-                <i class="codicon codicon-send" /> Ask
-              </button>
-            )}
-          </div>
-          <div class="hint" ref={end}>
-            {ask ? `${modelName(ask.model)} answers` : 'A fast model answers'}, reading the code and git only. Closing the ticket forgets the chat.
-          </div>
-        </div>
+        <ChatBody
+          open={open}
+          turns={turns}
+          busy={!!ask?.busy}
+          messages={ASK_MESSAGES}
+          post
+          placeholder={
+            turns.length
+              ? 'A follow-up… (Enter asks, Shift+Enter starts a new line)'
+              : "What's this for? How far is it? Which files does it touch? (Enter asks)"
+          }
+          label="Ask about this ticket"
+          button="Ask"
+          hint={`${ask ? `${modelName(ask.model)} answers` : 'A fast model answers'}, reading the code and git only. Closing the ticket forgets the chat.`}
+        />
       )}
     </section>
   );

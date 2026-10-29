@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
 import type { AskView } from '../../features/backlog/ask';
 import type {
+  DiscussionView,
   TicketCiView,
   TicketHostMessage,
   TicketView,
@@ -42,6 +43,7 @@ import {
 } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
+import { DISCUSS_SECTION, DiscussPane } from './discuss';
 import { ActiveAgents, Agents, RESUME_TIP } from './agents';
 import { MainState, MergePanel, withCiStop } from './mergePanel';
 import { CreateWorktreeButton, Parts, Work } from './work';
@@ -94,6 +96,9 @@ function App() {
   // What was just picked (status, priority) shows at once; the view the host sends after the action is the truth.
   const [picked, setPicked] = useState<{ status?: BacklogStatus; priority?: BacklogPriority | null }>({});
   const [ask, setAsk] = useState<AskView>();
+  const [discussion, setDiscussion] = useState<DiscussionView>();
+  // Counts Discuss presses: its pane's box is focused again at each.
+  const [discussFocus, setDiscussFocus] = useState(0);
   const [ci, setCi] = useState<TicketCiView>();
   /**
    * A file of its Changes expanded to the whole tab (BL-171): only its diff shows, under a header that leads back,
@@ -138,9 +143,13 @@ function App() {
       } else if (m.type === 'focus' && typeof m.target === 'object') {
         const { entry, gone } = m.target;
         setTimeout(() => showAnchor(entry, gone));
+      } else if (m.type === 'focus' && m.target === 'discuss') {
+        setDiscussFocus((n) => n + 1);
+        setTimeout(() => document.getElementById(DISCUSS_SECTION)?.scrollIntoView({ block: 'start' }));
       } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
       else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
+      else if (m.type === 'discussion') setDiscussion(m.discussion);
       // Back from VS Code's diff editor: the ticket at its Changes (which scroll there themselves).
       // A file of its Changes picked in the sidebar's Version Control: its diff.
       else if (m.type === 'showFull') expand({ group: m.group, path: m.path }, 'host');
@@ -319,7 +328,9 @@ function App() {
                     title={
                       ticket.shaping?.chat && ticket.shaping.chat !== 'pending'
                         ? "Opens the discussion's chat again: it goes on there"
-                        : "Opens a chat with an agent beside the ticket: it talks it through with you, and writes what's agreed into the description"
+                        : ticket.shaping?.pane
+                          ? 'Goes to the discussion, in the Discuss pane: it goes on there'
+                          : "Opens a chat with an agent in the ticket: it talks it through with you, and writes what's agreed into the description"
                     }
                   >
                     <i class="codicon codicon-comment-discussion" /> Discuss
@@ -371,6 +382,7 @@ function App() {
         {active.length > 0 && <ActiveAgents ticket={ticket} agents={active} />}
         {((ticket.merge && ticket.merge.state !== 'none') || ticket.item.supersededBy) && <MergePanel ticket={ticket} />}
         <Description ticket={ticket} />
+        {discussion && ticket.shaping?.pane && <DiscussPane discussion={discussion} focus={discussFocus} />}
         <DemoSection ticket={ticket} Action={ActionButton} />
         <Attachments ticket={ticket} send={send} Action={ActionButton} />
         <AskPane ask={ask} />

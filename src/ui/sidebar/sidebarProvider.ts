@@ -20,6 +20,7 @@ import {
   updateItem,
 } from '../../features/backlog/backlog';
 import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
+import type { Shaping } from '../backlog/shaping';
 import { needOf, queuedNeed, resumeAsk } from '../../features/backlog/needs';
 import { checkingOf, setVerdict } from '../../features/backlog/sisterCheck';
 import { gatherAttachments } from '../../features/backlog/attachments';
@@ -144,8 +145,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       .join(',');
   }
 
-  /** Whether an item's discussion chat is open now. */
+  /** Whether an item's discussion chat is open now, or its Discuss pane is answering or open (BL-241). */
   private discussing(item: BacklogItem): boolean {
+    if (discussable(item) && this.shaping?.isDiscussing(item)) return true;
     const shaping = item.shaping;
     if (!shaping?.chat || !discussable(item)) return false;
     return this.deps.repository.current.some((w) => !!findDiscussionChat(w.chats, { id: item.id, agent: shaping.agent, session: shaping.session })?.open);
@@ -261,6 +263,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private notes: NoteAgents | undefined;
 
   /** The notes (BL-182): the Notes box and lane at the top of the backlog. */
+  private shaping: Shaping | undefined;
+  /** The tickets whose Discuss pane the backlog was last posted with as discussing (BL-241). */
+  private panesShown = '';
+
+  /** Discussions (BL-241): a card says "Discussing" while its Discuss pane answers, or is open. */
+  useShaping(shaping: Shaping): void {
+    this.shaping = shaping;
+    this.subscriptions.push(
+      shaping.onDidChange(
+        () =>
+          void this.deps.backlog.read().then((d) => {
+            const shown = d.items
+              .filter((i) => discussable(i) && shaping.isDiscussing(i))
+              .map((i) => i.id)
+              .join(',');
+            if (shown === this.panesShown) return;
+            this.panesShown = shown;
+            void this.postBacklog();
+          }),
+      ),
+    );
+  }
+
   useNotes(notes: NoteAgents): void {
     this.notes = notes;
     this.subscriptions.push(notes.onDidChange(() => void this.postNotes()));
