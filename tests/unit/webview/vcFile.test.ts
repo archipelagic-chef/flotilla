@@ -38,11 +38,11 @@ describe('vcFileContext', () => {
     });
   });
 
-  it('shows Open Changes, Open File and Reveal in Explorer View for a file on disk', () => {
+  it('shows Open Changes, Open File and Reveal in Files for a file on disk', () => {
     expect(shown('vcFile', vcFileContext('wt', { path: 'src/a.ts', kind: 'added' }, commit))).toEqual([
       'flotilla.openVcFileChanges',
       'flotilla.openFile',
-      'flotilla.revealInExplorer',
+      'flotilla.revealInFiles',
     ]);
   });
 

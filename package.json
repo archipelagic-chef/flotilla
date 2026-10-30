@@ -317,6 +317,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.revealInFiles",
+        "title": "Reveal in Files",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.openChanges",
         "title": "Open Changes",
         "category": "Flotilla",
@@ -915,6 +920,10 @@
         },
         {
           "command": "flotilla.openVcFileChanges",
+          "when": "false"
+        },
+        {
+          "command": "flotilla.revealInFiles",
           "when": "false"
         },
         {
@@ -1521,7 +1530,7 @@
           "group": "1_open@2"
         },
         {
-          "command": "flotilla.revealInExplorer",
+          "command": "flotilla.revealInFiles",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'vcFile' && onDisk",
           "group": "1_open@3"
         },

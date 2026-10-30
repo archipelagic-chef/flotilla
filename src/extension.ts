@@ -504,7 +504,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     extension: context,
     service,
     repository,
-    sidebar: { reveal: (key) => sidebar.reveal(key), openDiff: (diff) => sidebar.openDiff(diff) },
+    sidebar: {
+      reveal: (key) => sidebar.reveal(key),
+      openDiff: (diff) => sidebar.openDiff(diff),
+      revealInFiles: (key, path) => sidebar.reveal(key, path, 'files'),
+    },
     reference: folder.uri,
     currentRoot: location.worktreeRoot,
     currentGitDir: location.gitDir,

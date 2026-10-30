@@ -98,6 +98,8 @@ import { addWorkspaceFolder, extraWorkspaceFolder, removeWorkspaceFolder } from 
 /** What the sidebar offers to commands. */
 export interface SidebarHandle {
   reveal(key: string): void;
+  /** Shows a worktree's file in the sidebar's Files tool, its folders expanded and it selected. */
+  revealInFiles(key: string, path: string): void;
   /** Opens a Version Control file row's diff, as clicking the row does. */
   openDiff(diff: VcFileDiff): Promise<void>;
 }
@@ -199,6 +201,7 @@ function worktreeCommands(ctx: CommandContext, withWs: WithWorkstream): Commands
     'flotilla.removeFromWorkspace': withWs((ws) => removeWorkspaceFolder(ws.worktree.path)),
     'flotilla.revealInExplorer': (arg?: Arg) => revealInExplorer(ctx, arg),
     'flotilla.openVcFileChanges': (arg?: unknown) => openVcFileChanges(ctx, arg),
+    'flotilla.revealInFiles': (arg?: Arg) => isTarget(arg) && arg.path && ctx.sidebar.revealInFiles(arg.key, arg.path),
   };
 }
 
