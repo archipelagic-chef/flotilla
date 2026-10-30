@@ -61,7 +61,6 @@ describe("the default's label", () => {
   it('names the model and effort, and the unset parts as Claude Code’s', () => {
     expect(defaultsLabel({ model: 'opus', effort: 'high' })).toBe('Opus · high');
     expect(defaultsLabel({ effort: 'low' })).toBe("Claude Code's model · low");
-    expect(defaultsLabel({ model: 'claude-opus-5-5' }, true)).toBe('claude-opus-5-5');
-    expect(defaultsLabel({}, true)).toBe('Default');
+    expect(defaultsLabel({})).toBe("Claude Code's model · Claude Code's effort");
   });
 });

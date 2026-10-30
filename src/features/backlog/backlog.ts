@@ -121,14 +121,9 @@ export const AGENT_MODELS: ReadonlyArray<{ model: string; label: string; detail:
 /** A model's name to show: "Opus" for opus, else as it is. */
 export const modelLabel = (model: string): string => AGENT_MODELS.find((m) => m.model === model.toLowerCase())?.label ?? model;
 
-/**
- * The agents' default, to show (BL-242): "Opus · high", "Claude Code's" for an unset part; short (on a button), only
- * the parts set: "Opus", "high", "Default" for none.
- */
-export function defaultsLabel(c: AgentChoice, short = false): string {
-  const parts = [c.model ? modelLabel(c.model) : undefined, c.effort];
-  if (short) return parts.filter(Boolean).join(' · ') || 'Default';
-  return `${parts[0] ?? "Claude Code's model"} · ${parts[1] ?? "Claude Code's effort"}`;
+/** The agents' default, to show (BL-242): "Opus · high", "Claude Code's" for an unset part. */
+export function defaultsLabel(c: AgentChoice): string {
+  return `${c.model ? modelLabel(c.model) : "Claude Code's model"} · ${c.effort ?? "Claude Code's effort"}`;
 }
 
 /** Which model an agent runs, and how hard it thinks: unset, Claude Code's default. */
