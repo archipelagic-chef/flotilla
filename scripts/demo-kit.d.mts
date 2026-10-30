@@ -5,7 +5,7 @@ export const TITLE_MARKER: string;
 export const FRAME_MS: number;
 
 export interface DemoStep {
-  action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'agentTurn' | 'gitHubComment';
+  action: 'command' | 'click' | 'hover' | 'type' | 'press' | 'waitFor' | 'wait' | 'caption' | 'highlight' | 'agentTurn' | 'gitHubComment';
   value: string | number;
   timeout?: number;
 }
@@ -34,10 +34,11 @@ export function frameGate<F>(check: () => Promise<string | undefined>): {
 export function timeline(
   captures: { at: number; png: Buffer }[],
   endMs: number,
-  options?: { captions?: { at: number; length: number }[] },
+  options?: { captions?: { at: number; length: number }[]; highlights?: { at: number }[] },
 ): { png: Buffer; at: number; ms: number; cutMs: number }[];
 export const STILL_MS: number;
 export const CAPTION_MS_PER_CHAR: number;
+export const HIGHLIGHT_MS: number;
 export const CAPTION_MIN_MS: number;
 export function recordingLength(frames: { ms: number; cutMs?: number }[]): { ms: number; cutMs: number };
 export function lengthLine(length: { ms: number; cutMs: number }): string;

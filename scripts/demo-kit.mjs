@@ -10,7 +10,7 @@ import * as gifencModule from 'gifenc';
 const { GIFEncoder, quantize, applyPalette } = gifencModule.default?.GIFEncoder ? gifencModule.default : gifencModule;
 
 /** What a demo's step does: one of these keys, with its value. */
-export const ACTIONS = ['command', 'click', 'hover', 'drag', 'type', 'press', 'waitFor', 'wait', 'caption', 'agentTurn', 'gitHubComment'];
+export const ACTIONS = ['command', 'click', 'hover', 'drag', 'type', 'press', 'waitFor', 'wait', 'caption', 'highlight', 'agentTurn', 'gitHubComment'];
 /** The demos' folder, from the repository root; a demo is `demos/<name>.json`. */
 export const DEMOS_DIR = 'demos';
 /** Longer than this, a demo is an MP4 (when there's an ffmpeg: see findFfmpeg in demo.mjs); a GIF otherwise. */
@@ -43,7 +43,11 @@ export function parseDemo(text, name = 'demo') {
     if (actions.length !== 1) throw new Error(`${where}: a step does one thing: ${ACTIONS.join(', ')}`);
     const action = actions[0];
     const value = step[action];
-    if (action === 'wait' ? !(Number.isFinite(value) && value >= 0) : typeof value !== 'string' || (action !== 'caption' && !value.trim())) {
+    if (
+      action === 'wait'
+        ? !(Number.isFinite(value) && value >= 0)
+        : typeof value !== 'string' || (action !== 'caption' && action !== 'highlight' && !value.trim())
+    ) {
       throw new Error(`${where}: "${action}" takes ${action === 'wait' ? 'a number of milliseconds' : 'a string'}`);
     }
     if (step.timeout !== undefined && !(Number.isFinite(step.timeout) && step.timeout > 0)) throw new Error(`${where}: "timeout" is a number of milliseconds`);
@@ -245,10 +249,11 @@ export function frameGate(check) {
  *
  * A frame shows at most STILL_MS (BL-219): a recording doesn't sit on a screen that waits. One with a caption on screen
  * (`captions`: when each was shown, `at`, with its text's `length`, 0 when removed) shows long enough to read it:
- * CAPTION_MS_PER_CHAR a character, at least CAPTION_MIN_MS. Each frame's `at` stays when it was drawn; `cutMs` is how
- * much of its time was cut.
+ * CAPTION_MS_PER_CHAR a character, at least CAPTION_MIN_MS. The first frame drawn after a highlight was shown
+ * (`highlights`: when each was, `at`) shows at least HIGHLIGHT_MS (BL-246), long enough to see where it points. Each
+ * frame's `at` stays when it was drawn; `cutMs` is how much of its time was cut.
  */
-export function timeline(captures, endMs, { captions = [] } = {}) {
+export function timeline(captures, endMs, { captions = [], highlights = [] } = {}) {
   const sorted = [...captures].sort((a, b) => a.at - b.at);
   const before = sorted.filter((c) => c.at <= 0).pop();
   const shown = [];
@@ -263,9 +268,12 @@ export function timeline(captures, endMs, { captions = [] } = {}) {
   // Coming in later frames' place may have made one the same as the one before it.
   const merged = shown.filter((f, n) => n === 0 || !f.png.equals(shown[n - 1].png));
   const shownCaptions = [...captions].sort((a, b) => a.at - b.at);
+  // Each highlight's frame: the first drawn once it was shown (or in the same FRAME_MS).
+  const highlighted = new Set(highlights.map((h) => merged.findIndex((f) => f.at >= h.at - FRAME_MS)).filter((n) => n >= 0));
   return merged.map(({ png, at }, n) => {
     const to = n + 1 < merged.length ? merged[n + 1].at : Math.max(endMs, at);
-    const capped = Math.min(to - at, stillCap(shownCaptions, at, to));
+    const cap = stillCap(shownCaptions, at, to);
+    const capped = Math.min(to - at, highlighted.has(n) ? Math.max(cap, HIGHLIGHT_MS) : cap);
     // GIF delays are in hundredths of a second: at least 2 (most viewers slow down faster frames anyway).
     const ms = Math.max(20, Math.round(capped / 10) * 10);
     return { png, at, ms, cutMs: Math.max(0, Math.round((to - at - capped) / 10) * 10) };
@@ -277,6 +285,8 @@ export const STILL_MS = 1200;
 /** How long a frame with a caption shows at most: this long a character of the caption, and at least CAPTION_MIN_MS. */
 export const CAPTION_MS_PER_CHAR = 60;
 export const CAPTION_MIN_MS = 2000;
+/** How long the frame that shows a new highlight shows at most (BL-246). */
+export const HIGHLIGHT_MS = 2000;
 
 /** The cap of a frame shown from `from` to `to`: STILL_MS, or longer for the longest caption on screen meanwhile. */
 function stillCap(captions, from, to) {

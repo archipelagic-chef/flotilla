@@ -172,9 +172,10 @@ const pace = { fast: false, recording: false };
 
 /**
  * When the recording started (Date.now()), the pointer's moves since then ([from, to] in ms): to measure them, and
- * when each caption was shown (`at`, with its text's `length`): so that the recording keeps it long enough to read.
+ * when each caption was shown (`at`, with its text's `length`): so that the recording keeps it long enough to read;
+ * and when each highlight was (`at`), so that it keeps it long enough to see.
  */
-const recorded = { start: 0, moves: [], captions: [] };
+const recorded = { start: 0, moves: [], captions: [], highlights: [] };
 
 /** A pointer drawn over the workbench, so a viewer sees where each click goes (screenshots have no mouse). */
 async function pointer(page, x, y) {
@@ -241,6 +242,67 @@ async function caption(page, text) {
     }
     box.textContent = text;
   }, text);
+}
+
+/** The highlight on screen: its element, and the timer that keeps its ring on it. */
+let highlighted;
+
+/**
+ * A ring around what to look at (BL-246), the rest of the window dimmed, drawn over the workbench like the pointer:
+ * scrolled into view, at the element's box in page coordinates (also for one in a webview), followed as it moves, until the next
+ * highlight. `target` undefined removes it. It takes no clicks, so the next steps go through it.
+ */
+async function highlight(page, target) {
+  clearInterval(highlighted?.timer);
+  highlighted = undefined;
+  if (!target) {
+    await page.evaluate(() => document.getElementById('flotilla-demo-highlight')?.remove());
+    return;
+  }
+  // One out of its view's scroll (a card down the backlog) is scrolled to, as a click would.
+  await target.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => undefined);
+  const draw = async () => {
+    const box = await target.boundingBox().catch(() => null);
+    await page
+      .evaluate((box) => {
+        let ring = document.getElementById('flotilla-demo-highlight');
+        if (!ring) {
+          ring = document.createElement('div');
+          ring.id = 'flotilla-demo-highlight';
+          Object.assign(ring.style, {
+            position: 'fixed',
+            borderRadius: '6px',
+            border: '3px solid rgb(255, 196, 0)',
+            boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35), 0 0 12px 2px rgba(255, 196, 0, 0.8)',
+            zIndex: '2147483645',
+            pointerEvents: 'none',
+          });
+          document.body.appendChild(ring);
+        }
+        // Gone (a webview closed, a card removed): no ring, until it's back.
+        ring.style.display = box ? 'block' : 'none';
+        if (!box) return;
+        const pad = 4;
+        Object.assign(ring.style, {
+          left: `${box.x - pad - 3}px`,
+          top: `${box.y - pad - 3}px`,
+          width: `${box.width + 2 * pad}px`,
+          height: `${box.height + 2 * pad}px`,
+        });
+      }, box)
+      .catch(() => undefined);
+  };
+  await draw();
+  if (recorded.start) recorded.highlights.push({ at: Date.now() - recorded.start });
+  const own = { timer: undefined };
+  // One draw at a time, so a slow one isn't overtaken by an older box.
+  own.timer = setInterval(() => {
+    if (highlighted === own && !own.busy) {
+      own.busy = true;
+      void draw().finally(() => (own.busy = false));
+    }
+  }, 200);
+  highlighted = own;
 }
 
 /** The first visible element a selector finds, in the workbench or any webview inside it. */
@@ -396,6 +458,9 @@ async function play(page, step, github) {
       return;
     case 'caption':
       await caption(page, step.value);
+      break;
+    case 'highlight':
+      await highlight(page, step.value ? await find(page, step.value, timeout) : undefined);
       break;
     case 'gitHubComment':
       // Someone comments on the ticket's pull request on the fake GitHub (BL-224).
@@ -694,6 +759,7 @@ async function show(mode, demo, out, still, display) {
     } finally {
       end = Date.now();
       recording = false;
+      clearInterval(highlighted?.timer);
       await checking;
       await stopScreencast();
     }
@@ -705,7 +771,7 @@ async function show(mode, demo, out, still, display) {
     if (mode === 'record') {
       const endMs = end - start;
       fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
-      const frames = timeline(captures, endMs, { captions: recorded.captions });
+      const frames = timeline(captures, endMs, { captions: recorded.captions, highlights: recorded.highlights });
       const length = recordingLength(frames);
       const gaps = gapStats(
         frames.map((f) => f.at),
@@ -778,7 +844,7 @@ async function stepFailed(page, demo, number, label, step, error) {
     () => undefined,
   );
   const selector = [step.value, step.to].filter((v) => typeof v === 'string').join(' ');
-  if (['click', 'hover', 'drag', 'waitFor'].includes(step.action)) {
+  if (['click', 'hover', 'drag', 'waitFor', 'highlight'].includes(step.action) && selector) {
     const near = nearestElements(selector, await visibleElements(page));
     if (near.length) console.error(`On screen, nearest ${selector}:\n${near.map((line) => `  ${line}`).join('\n')}`);
   }

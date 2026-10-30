@@ -17,6 +17,7 @@ import {
   frameGate,
   freeDisplay,
   gapStats,
+  HIGHLIGHT_MS,
   lengthLine,
   listDemos,
   nearestElements,
@@ -77,6 +78,8 @@ describe('parseDemo', () => {
           { drag: 'text=BL-2', to: 'text=BL-1' },
           { wait: 500 },
           { caption: '' },
+          { highlight: '.backlog-item' },
+          { highlight: '' },
         ],
       }),
     );
@@ -89,6 +92,8 @@ describe('parseDemo', () => {
         { action: 'drag', value: 'text=BL-2', to: 'text=BL-1' },
         { action: 'wait', value: 500 },
         { action: 'caption', value: '' },
+        { action: 'highlight', value: '.backlog-item' },
+        { action: 'highlight', value: '' },
       ],
       settings: {},
       runsOnPush: false,
@@ -113,6 +118,7 @@ describe('parseDemo', () => {
     expect(() => parseDemo('{"steps": [{"click": "x", "type": "y"}]}', 'd')).toThrow(/step 1: a step does one thing/);
     expect(() => parseDemo('{"steps": [{"wait": "1s"}]}', 'd')).toThrow(/"wait" takes a number/);
     expect(() => parseDemo('{"steps": [{"click": "  "}]}', 'd')).toThrow(/"click" takes a string/);
+    expect(() => parseDemo('{"steps": [{"highlight": 3}]}', 'd')).toThrow(/"highlight" takes a string/);
     expect(() => parseDemo('{"steps": [{"click": "x", "timeout": -1}]}', 'd')).toThrow(/"timeout"/);
     expect(() => parseDemo('{"steps": [{"drag": "x"}]}', 'd')).toThrow(/"drag" drops "to" a selector/);
     expect(() => parseDemo('{"steps": [{"click": "x", "to": "y"}]}', 'd')).toThrow(/unknown to/);
@@ -442,6 +448,17 @@ describe('timeline', () => {
       { captions: [{ at: 5000, length: 40 }] },
     );
     expect(frames.map((f) => f.ms)).toEqual([2400, 1000]);
+  });
+
+  it('keeps the first frame drawn after a highlight was shown at least HIGHLIGHT_MS (BL-246), and not the ones after', () => {
+    const colours = [solid(255, 0, 0), solid(0, 255, 0), solid(0, 0, 255)];
+    const frames = timeline(
+      colours.map((png, n) => ({ at: n * 10_000, png })),
+      30_000,
+      { highlights: [{ at: 9990 }] },
+    );
+    expect(HIGHLIGHT_MS).toBe(2000);
+    expect(frames.map((f) => f.ms)).toEqual([1200, 2000, 1200]);
   });
 });
 
