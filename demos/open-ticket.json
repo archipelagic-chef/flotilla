@@ -7,7 +7,10 @@
     { "caption": "A click on a card opens its ticket" },
     { "click": ".backlog-item:has-text(\"Sort the backlog by priority\") .name" },
     { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
+    { "caption": "Its title, with what's to be done under it" },
+    { "highlight": "h1:has-text(\"Sort the backlog by priority\")" },
     { "wait": 2000 },
+    { "highlight": "" },
     { "caption": "" }
   ]
 }

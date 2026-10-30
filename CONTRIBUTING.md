@@ -236,6 +236,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 | `{ "waitFor": "h1:has-text(\"Sort\")" }` | waits until a selector finds something visible |
 | `{ "wait": 1500 }` | waits that many milliseconds (to let a result be seen) |
 | `{ "caption": "A click on a card opens its ticket" }` | shows a caption at the bottom; `""` removes it |
+| `{ "highlight": ".backlog-item:has-text(\"BL-3\")" }` | draws a bright ring around the first visible element the selector finds (as `click` does), with the rest of the window dimmed, and keeps it on that element as it moves, until the next `highlight`; `""` removes it. It takes no clicks. A recording holds the frame that shows it at least 2 s. Highlight what the ticket changed (the new button, the card or line that now says something else), with a caption saying what to look at |
 | `{ "agentTurn": "Vega-2" }` | the seeded agent's chat goes on by a turn: its transcript grows, as a running agent's does (the value names it, for the reader) |
 | `{ "gitHubComment": "BL-13: Could it greet by name?" }` | someone (octo-reviewer) comments on that ticket's pull request on the fake GitHub (without "BL-13: ", on the latest open one), as on GitHub (BL-224) |
 
@@ -251,7 +252,10 @@ Every demo starts on the Flotilla view: the recorder opens it before the demo st
     { "caption": "A click on a card opens its ticket" },
     { "click": ".backlog-item:has-text(\"Sort the backlog by priority\")" },
     { "waitFor": "h1:has-text(\"Sort the backlog by priority\")" },
+    { "caption": "Its title, with what's to be done under it" },
+    { "highlight": "h1:has-text(\"Sort the backlog by priority\")" },
     { "wait": 2000 },
+    { "highlight": "" },
     { "caption": "" }
   ]
 }

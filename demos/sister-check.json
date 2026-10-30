@@ -20,8 +20,13 @@
     { "click": ".backlog-item:has-text(\"List attached files in the activity\") .name" },
     { "waitFor": "h1:has-text(\"List attached files in the activity\")" },
     { "waitFor": "text=What's left after BL-10", "timeout": 30000 },
+    { "highlight": "text=What's left after BL-10" },
+    { "wait": 1500 },
+    { "caption": "The entry that says what changed, signed by the agent that checked it" },
     { "waitFor": "text=Brought its description up to date after BL-10's change", "timeout": 30000 },
+    { "highlight": "text=Brought its description up to date after BL-10's change" },
     { "wait": 2500 },
+    { "highlight": "" },
     { "caption": "" }
   ]
 }
