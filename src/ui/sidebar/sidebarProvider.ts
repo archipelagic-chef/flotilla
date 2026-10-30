@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { singleFlight } from '../../core/singleFlight';
 import type { StartupClock } from '../../core/startupClock';
 import * as vscode from 'vscode';
+import { setAgentDefault } from '../backlog/agentDefaults';
 import type { Autopilot } from '../backlog/autopilot';
 import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
@@ -526,8 +527,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'resumeAll':
         await vscode.commands.executeCommand('flotilla.resumeAllAgents');
         return;
-      case 'defaults':
-        await vscode.commands.executeCommand('flotilla.chooseAgentDefaults');
+      case 'defaultModel':
+        await setAgentDefault('model', m.model);
+        return;
+      case 'defaultEffort':
+        await setAgentDefault('effort', m.effort);
         return;
       case 'maxAgents':
         await setAgentLimit(m.max);

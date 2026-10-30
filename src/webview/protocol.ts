@@ -8,6 +8,7 @@ import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtoco
 import type { MergeInfo } from '../features/backlog/merged';
 import type {
   AgentChoice,
+  AgentEffort,
   BacklogItem,
   BacklogPriority,
   BacklogStatus,
@@ -506,8 +507,9 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'acceptAll' | 'plan' }
   /** Turn the autopilot on or off. */
   | { type: 'backlog'; op: 'autopilot' }
-  /** Choose the agents' default model and effort (BL-242). */
-  | { type: 'backlog'; op: 'defaults' }
+  /** The agents' default model or effort, from the title bar's dropdowns (BL-242): null is Claude Code's; a model of 'other' asks for its name. */
+  | { type: 'backlog'; op: 'defaultModel'; model: string | null }
+  | { type: 'backlog'; op: 'defaultEffort'; effort: AgentEffort | null }
   /** Sets the agent limit (flotilla.agents.maxRunning), from the autopilot's details. */
   | { type: 'backlog'; op: 'maxAgents'; max: number }
   | { type: 'backlog'; op: 'tryNow' }
