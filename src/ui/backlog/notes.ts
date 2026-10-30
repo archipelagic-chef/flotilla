@@ -72,7 +72,9 @@ const DRAFT_KEPT_MS = 24 * 60 * 60_000;
 export class NoteAgents implements vscode.Disposable {
   /** The agents running, by the note that leads: its notes and its run. */
   private readonly runs = new Map<string, { ids: string[]; agent: string; run: AgentRun; started: string; paused?: boolean; deleted?: boolean }>();
-  private ticking = false;
+  /** The tick running, if one is; and the one asked for while it ran, which looks again once it's done. */
+  private ticking?: Promise<void>;
+  private again?: Promise<void>;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -273,10 +275,16 @@ export class NoteAgents implements vscode.Disposable {
 
   /** Starts agents for the notes that are due, while slots are free. */
   async tick(): Promise<void> {
-    if (this.ticking || !this.deps.isLeader()) return;
+    if (!this.deps.isLeader()) return;
+    // Asked while one runs (a note's file written, a limit lifted), it looks again after it: that one may have read the
+    // notes before the change.
+    if (this.ticking) return (this.again ??= this.ticking.then(() => ((this.again = undefined), this.tick())));
     // Paused in another window too: the agents running here stop.
     if (this.deps.pausedAll?.()) return void this.pauseForAll();
-    this.ticking = true;
+    return (this.ticking = this.startDue());
+  }
+
+  private async startDue(): Promise<void> {
     try {
       for (;;) {
         const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
@@ -293,7 +301,7 @@ export class NoteAgents implements vscode.Disposable {
         }
       }
     } finally {
-      this.ticking = false;
+      this.ticking = undefined;
     }
   }
 
