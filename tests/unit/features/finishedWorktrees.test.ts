@@ -252,7 +252,8 @@ describe('FinishedWorktrees', () => {
     showInformationMessage.mockResolvedValueOnce('Delete');
 
     await cleaner.sweep();
-    await new Promise((r) => setTimeout(r, 20));
+    // The question comes once the folder's size is measured, not awaited by the sweep.
+    await vi.waitFor(() => expect(deleted).toEqual([left]));
     await cleaner.sweep();
 
     expect(showInformationMessage).toHaveBeenCalledTimes(1);
