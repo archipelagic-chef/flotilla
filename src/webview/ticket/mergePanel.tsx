@@ -171,6 +171,23 @@ export function MergeButton({ into, progress, secondary }: { into: string; progr
 }
 
 /**
+ * Land, Resolving Conflicts (BL-247), next to Merge to main: the ticket joins the merge queue and lands on its own; an
+ * agent resolves its conflicts, and its resolution is approved without asking.
+ */
+export function LandResolvingButton() {
+  return (
+    <ActionButton
+      class="button secondary land-resolving"
+      message={{ type: 'merge', auto: true }}
+      working="Landing…"
+      title="It joins the merge queue and lands when its turn comes, without asking: an agent resolves any conflicts (with the tickets ahead of it, or with main), and its resolution is approved without asking you. Its checks, or CI, still decide; it waits for you only when they fail or the agent can't resolve it."
+    >
+      <i class="codicon codicon-hubot" /> Land, Resolving Conflicts
+    </ActionButton>
+  );
+}
+
+/**
  * Merge to main waiting for CI to pass (BL-105), and Cancel. It merges once the runs are green; their progress is in
  * its tooltip, and live in the ticket's CI below.
  */

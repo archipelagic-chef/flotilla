@@ -160,6 +160,11 @@ export interface BacklogData {
   items: BacklogItem[];
   /** The merge queue (BL-140): the ids of the tickets waiting to land, in the order they land. */
   mergeQueue?: string[];
+  /**
+   * Queued tickets that land on their own (BL-247: Land, Resolving Conflicts): an agent resolves their conflicts and
+   * its resolution is approved without asking. Dropped when the ticket lands or is taken out of the queue.
+   */
+  autoLand?: string[];
   /** The train built from the queue, as last built. */
   mergeTrain?: MergeTrain;
 }
