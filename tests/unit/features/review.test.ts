@@ -83,6 +83,23 @@ describe('review loop', () => {
     expect(later).toMatch(/run block/);
   });
 
+  it('has the reviewer check a UI ticket\'s demo against its "When it\'s done" lines, in every round', () => {
+    const args = { item: { id: 'BL-1', title: 'Compact cards' }, reviewer: 'Vega-2', ticket: '/t/BL-1.md', branch: 'feature/BL-1', base: 'main' };
+    for (const round of [1, 2]) {
+      const prompt = reviewerPrompt({ ...args, round });
+      expect(prompt).toMatch(/Check what the demo shows, not only that there is one/);
+      expect(prompt).toMatch(/its script .*demos\/<name>\.json/);
+      expect(prompt).toMatch(/open the screenshots and frames the report shows/);
+      expect(prompt).toMatch(/`npm run demo -- check <name>`/);
+      expect(prompt).toMatch(/where it can't .*say so and judge from the script and the images/);
+      expect(prompt).toMatch(
+        /for each "When it's done" line and each acceptance criterion about what the user sees, say in your report whether the demo shows it/,
+      );
+      expect(prompt).toMatch(/A line the demo doesn't show .* is a change you request, naming that line/);
+      expect(prompt).toMatch(/matter of taste: mention it, don't request it/);
+    }
+  });
+
   it("writes the user's review with a verdict the loop reads", () => {
     expect(userReviewBody('changes', 'Use the config file.\n')).toBe('Use the config file.\n\nVerdict: changes requested');
     expect(parseVerdict(userReviewBody('changes', 'Use the config file.'))).toBe('changes');
