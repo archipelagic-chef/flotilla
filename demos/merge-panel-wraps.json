@@ -1,0 +1,59 @@
+{
+  "title": "The merge panel keeps its sentence readable: with five buttons, they move to a row of their own under it",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open ticket\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".merge-queue-bar:has-text(\"BL-10\")",
+      "timeout": 60000
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open tab\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open tab\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".review-panel:has-text(\"2nd of 2\") button.land-resolving",
+      "timeout": 30000
+    },
+    {
+      "caption": "The sentence reads on full-width lines: its five buttons don't fit beside it, so they go to a row under it"
+    },
+    {
+      "highlight": ".review-panel:has-text(\"2nd of 2\") .review-text"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ".review-panel:has-text(\"2nd of 2\") .review-actions"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
