@@ -657,7 +657,7 @@ function startXvfbOn(n) {
 }
 
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
-async function show(mode, demo, free, still, display) {
+async function show(mode, demo, out, still, display) {
   const playground = PLAYGROUND;
   // Made when missing, and brought up to date otherwise (its local origin, BL-113): it changes nothing else.
   execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
