@@ -57,6 +57,36 @@ describe('MergeReader', () => {
     expect(movesToDone(item('BL-3', { status: 'doing' }), map.get('BL-3'))).toBe(false);
   });
 
+  it("doesn't call a branch merged when its commit was reset away, back to where it started", async () => {
+    const repo = repoWith('feature/BL-9-x', 1);
+    git(repo, 'checkout', '-q', 'feature/BL-9-x');
+    git(repo, 'reset', '-q', '--hard', 'HEAD~1');
+    git(repo, 'checkout', '-q', 'main');
+    const map = await new MergeReader(repo).read([item('BL-9', { branches: ['feature/BL-9-x'] })], 'main');
+    expect(map.get('BL-9')?.state).toBe('none');
+  });
+
+  it("doesn't call a branch merged when it was only fast-forwarded to the base", async () => {
+    const repo = repoWith('feature/BL-10-x', 0);
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'on main');
+    git(repo, 'checkout', '-q', 'feature/BL-10-x');
+    git(repo, 'merge', '-q', '--ff-only', 'main');
+    git(repo, 'checkout', '-q', 'main');
+    const map = await new MergeReader(repo).read([item('BL-10', { branches: ['feature/BL-10-x'] })], 'main');
+    expect(map.get('BL-10')?.state).toBe('none');
+  });
+
+  it('reports a branch rebased onto the base and fast-forwarded in as merged', async () => {
+    const repo = repoWith('feature/BL-11-x', 1);
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'on main');
+    git(repo, 'checkout', '-q', 'feature/BL-11-x');
+    git(repo, 'rebase', '-q', 'main');
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'merge', '-q', '--ff-only', 'feature/BL-11-x');
+    const map = await new MergeReader(repo).read([item('BL-11', { branches: ['feature/BL-11-x'] })], 'main');
+    expect(map.get('BL-11')?.state).toBe('merged');
+  });
+
   it('reports partly merged for an epic whose branches are some merged, some not', async () => {
     const repo = repoWith('feature/BL-4-a', 1);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-4-b', 'main');
