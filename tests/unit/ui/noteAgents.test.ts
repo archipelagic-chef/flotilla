@@ -52,6 +52,8 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
 }));
 
 import { NoteStore } from '../../../src/features/backlog/notes';
+import { accountLimit } from '../../../src/features/backlog/accountLimit';
+import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
 import { NoteAgents } from '../../../src/ui/backlog/notes';
 
 describe('NoteAgents and Pause All (BL-193)', () => {
@@ -244,6 +246,41 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       expect(runs.started).toHaveLength(2);
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       await ticking;
+    });
+
+    it("starts no note agent while the account's limit is known to hold, and starts it when it lifts (BL-248)", async () => {
+      accountLimit.holdUntil(new Date(Date.now() + 60 * 60_000));
+      try {
+        expect(await agents.due()).toBeUndefined();
+        await agents.tick();
+        expect(runs.started).toHaveLength(0);
+        accountLimit.lift();
+        await vi.waitFor(() => expect(runs.started).toHaveLength(1), { timeout: 10_000 });
+      } finally {
+        accountLimit.lift();
+      }
+    });
+
+    it('counts the wait of a note agent that hit a limit, with its minutes, when it goes on (BL-248)', async () => {
+      const log = fs.mkdtempSync(path.join(os.tmpdir(), 'events-'));
+      setEventLog(log);
+      try {
+        await agents.tick();
+        await started(1);
+        const [note] = await store.list();
+        runs.started[0].resolve({ code: 1, limit: limit(60 * 60_000) });
+        await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined(), { timeout: 10_000 });
+        expect((await store.read(note.id))?.limit).toMatchObject({ known: true, since: expect.any(String) });
+        await agents.limitLifted();
+        expect(runs.started).toHaveLength(2);
+        await eventsWritten();
+        expect((await readEvents(log)).filter((e) => e.kind === 'limit-lifted')).toEqual([
+          expect.objectContaining({ ticket: note.id, data: { minutes: expect.any(Number) } }),
+        ]);
+      } finally {
+        setEventLog(undefined);
+        fs.rmSync(log, { recursive: true, force: true });
+      }
     });
 
     it('goes on by itself when the reset comes', async () => {

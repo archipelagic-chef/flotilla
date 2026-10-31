@@ -22,6 +22,8 @@ import {
   noteTools,
 } from '../../features/backlog/notes';
 import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
+import { accountLimit } from '../../features/backlog/accountLimit';
+import { recordEvent } from '../../features/metrics/events';
 import { transcriptPath } from '../../features/chats/chats';
 import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -102,7 +104,10 @@ export class NoteAgents implements vscode.Disposable {
       for (const n of all.filter(askedForLimit))
         for (const id of [n.id, ...(n.group ?? [])]) await deps.notes.setState(id, (s) => (s.status === 'asking' ? { ...s, status: 'open' } : s));
     });
-    this.subscriptions.push({ dispose: () => (watch.dispose(), clearInterval(timer), chats.dispose()) }, this.changed);
+    // The account's limit lifted (BL-248): the notes waiting on it go on (after the paused tickets' agents, which take
+    // their slots first: see ReviewLoop).
+    const lifted = accountLimit.onLifted(() => void this.limitLifted());
+    this.subscriptions.push({ dispose: () => (watch.dispose(), clearInterval(timer), chats.dispose(), lifted.dispose()) }, this.changed);
   }
 
   /** The notes as the backlog's Notes lane shows them, oldest first. */
@@ -268,7 +273,7 @@ export class NoteAgents implements vscode.Disposable {
    * slot to it. Not one still settling or waiting on a usage limit (see nextNotes).
    */
   async due(): Promise<string | undefined> {
-    if (!this.deps.isLeader() || this.deps.pausedAll?.()) return undefined;
+    if (!this.deps.isLeader() || this.deps.pausedAll?.() || accountLimit.holds()) return undefined;
     const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
     return nextNotes(await this.deps.notes.list(), busy, Date.now())?.[0].id;
   }
@@ -292,7 +297,8 @@ export class NoteAgents implements vscode.Disposable {
       for (;;) {
         const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
         const due = nextNotes(await this.deps.notes.list(), busy, Date.now());
-        if (!due || memoryShortage()) return;
+        // None starts into the account's usage limit, known to hold (BL-248): they go on when it lifts.
+        if (!due || memoryShortage() || accountLimit.holds()) return;
         const slot = this.deps.admit(`note:${due[0].id}`);
         if (slot === undefined) return;
         try {
@@ -336,6 +342,18 @@ export class NoteAgents implements vscode.Disposable {
     });
     const ids = notes.map((n) => n.id);
     this.runs.set(lead.id, { ids, agent, run, started });
+    // It waited on a limit: that wait is counted, as a ticket's agent's is (BL-248).
+    if (lead.limit) {
+      const since = lead.limit.since ? Date.parse(lead.limit.since) : NaN;
+      recordEvent('limit-lifted', {
+        ticket: lead.id,
+        agent,
+        data: {
+          ...(Number.isNaN(since) ? {} : { minutes: Math.round((Date.now() - since) / 600) / 100 }),
+          ...(lead.limit.tries ? { tries: lead.limit.tries } : {}),
+        },
+      });
+    }
     // What it's told now is taken in: a change after this goes on in its chat when it ends its turn.
     const taken = (s: NoteState): NoteState => ({ ...s, changed: s.changed && s.changed > started ? s.changed : undefined, reopened: undefined });
     try {
@@ -430,7 +448,9 @@ export class NoteAgents implements vscode.Disposable {
         until: until.toISOString(),
         known: limit.known,
         kind: limit.kind,
-        ...(limit.known ? {} : { tries: again?.tries ?? 0, since: again?.since ?? new Date().toISOString() }),
+        ...(limit.known ? {} : { tries: again?.tries ?? 0 }),
+        // When the wait began, known or not: its limit-lifted has its minutes (BL-248).
+        since: again?.since ?? new Date().toISOString(),
       },
     }));
     if (before) return;
