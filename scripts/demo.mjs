@@ -685,7 +685,7 @@ async function show(mode, demo, out, still, display) {
   prepareProfile(github.url, { ...demo.settings, ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}) });
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).
-  const { clearDiscussions, seedChats, seedCreating, seedEvents, seedReviews } = await import('./playground-seed.mjs');
+  const { clearDiscussions, seedChats, seedCreating, seedEvents, seedReviews, seedScheduledTasks } = await import('./playground-seed.mjs');
   seedChats(playground, CLAUDE_DIR);
   seedCreating(playground);
   // A month of events up to now, for the Metrics view (BL-158).
@@ -694,6 +694,8 @@ async function show(mode, demo, out, still, display) {
   seedReviews(playground, new Date(), demo.reviewsDaysAgo);
   // No discussions (BL-267): those an earlier demo started are gone.
   clearDiscussions(playground);
+  // The scheduled tasks, one still proposed (BL-260).
+  seedScheduledTasks(playground);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 

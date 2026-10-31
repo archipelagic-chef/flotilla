@@ -939,6 +939,7 @@ function recording(colour, frames) {
 function writeBacklog(backlog, now) {
   fs.mkdirSync(backlog, { recursive: true });
   const items = TICKETS.map((t) => writeTicket(backlog, t, now));
+  seedSchedules(backlog, now);
   // Last: the backlog's presence says the playground is seeded.
   const data = { version: 1, next: TICKETS.length + 1, counters: { BL: TICKETS.length }, items };
   fs.writeFileSync(path.join(backlog, 'backlog.json'), `${JSON.stringify(data, null, 1)}\n`);
@@ -979,6 +980,54 @@ export function resetTicket(dir, id, now = new Date()) {
   data.items[at] = item;
   fs.writeFileSync(file, `${JSON.stringify(data, null, 1)}\n`);
   return true;
+}
+
+/** A scheduled task with a report of last week's run (BL-260), so the report's page has something to show. */
+function seedSchedules(backlog, now) {
+  const dir = path.join(backlog, 'schedules');
+  fs.mkdirSync(path.join(dir, 'docs-check'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'docs-check.md'),
+    '---\nevery: Mondays at 06:00\nwhen: idle\n---\nRead the README and the code it describes; report what it gets wrong, and propose a ticket for each.\n',
+  );
+  const day = new Date(now.getTime() - 3 * 86_400_000);
+  const name = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  fs.writeFileSync(
+    path.join(dir, 'docs-check', `${name}.md`),
+    [
+      `# Docs check ${name}`,
+      '',
+      'The README says cards show a Run button on every ticket; the code shows it on review cards only. One proposal.',
+      '',
+      '## Problems',
+      '',
+      '### 1. The README promises a Run button on every card',
+      '',
+      '[src/card.js:1](src/card.js#L1) shows it only in review. The last run proposed BL-2, which is done.',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      '  R[README] -->|says| A[Run on every card]',
+      '  C[src/card.js] -->|does| B[Run on review cards]',
+      '```',
+      '',
+    ].join('\n'),
+  );
+  // The run the week before, and a task an agent proposed, for the Scheduled view.
+  const before = new Date(day.getTime() - 7 * 86_400_000);
+  const earlier = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, '0')}-${String(before.getDate()).padStart(2, '0')}`;
+  fs.writeFileSync(path.join(dir, 'docs-check', `${earlier}.md`), `# Docs check ${earlier}\n\nThe README matches the code. Nothing to propose.\n`);
+  fs.writeFileSync(
+    path.join(dir, 'test-gaps.md'),
+    '---\nevery: Fridays at 17:00\nproposed: Vega-2\n---\nList the code changed this week that no test covers; propose a ticket for each gap.\n',
+  );
+}
+
+/** The scheduled tasks as seeded, fresh, every time a demo plays (BL-260: one accepts the proposed task). */
+export function seedScheduledTasks(dir, now = new Date()) {
+  const backlog = path.join(dir, '.flotilla', 'backlog');
+  fs.rmSync(path.join(backlog, 'schedules'), { recursive: true, force: true });
+  seedSchedules(backlog, now);
 }
 
 // ---- chats (BL-123) ----

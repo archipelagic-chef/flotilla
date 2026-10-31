@@ -1,0 +1,29 @@
+{
+  "title": "The Scheduled tool: each task's schedule, next run and reports; Run Now, Edit, Accept",
+  "steps": [
+    { "caption": "Scheduled, next to Backlog and Metrics: the repository's scheduled tasks" },
+    { "click": "[aria-label=\"Scheduled\"]" },
+    { "waitFor": ".scheduled-task:has-text(\"Docs check\")" },
+    { "wait": 1500 },
+    { "caption": "Each with its schedule, when it runs next (or what it waits for) and its last report" },
+    { "highlight": ".scheduled-task:has-text(\"Docs check\")" },
+    { "wait": 2500 },
+    { "caption": "Its earlier reports, newest first" },
+    { "click": ".scheduled-task:has-text(\"Docs check\") .scheduled-more" },
+    { "wait": 2000 },
+    { "caption": "A report opens as a page, rendered like a ticket's report" },
+    { "click": ".scheduled-task:has-text(\"Docs check\") .scheduled-report >> nth=0" },
+    { "waitFor": ".page h1:has-text(\"Docs check\")" },
+    { "wait": 2500 },
+    { "caption": "A task an agent proposed waits for you: Accept lets it run, Dismiss deletes it" },
+    { "highlight": ".scheduled-task:has-text(\"Test gaps\")" },
+    { "wait": 2500 },
+    { "click": "[aria-label=\"Accept Test gaps\"]" },
+    { "waitFor": ".scheduled-task:has-text(\"Test gaps\"):not(.is-proposed)" },
+    { "caption": "Accepted: it shows when it runs next, with Run Now and Edit" },
+    { "highlight": ".scheduled-task:has-text(\"Test gaps\")" },
+    { "wait": 2500 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "title": "A scheduled task's report opens as a page, rendered like a ticket",
+  "steps": [
+    { "caption": "A scheduled task, docs-check, ran last week: its report is in schedules/docs-check/" },
+    { "command": "Flotilla: Open a Scheduled Task's Report" },
+    { "waitFor": ".quick-input-widget .monaco-list-row:has-text(\"Docs check\")" },
+    { "click": ".quick-input-widget .monaco-list-row:has-text(\"Docs check\")" },
+    { "waitFor": ".page h1:has-text(\"Docs check\")" },
+    { "caption": "It renders as a ticket's report does: its diagram drawn, its links to files at their lines" },
+    { "waitFor": ".page .rendered svg" },
+    { "highlight": ".page .rendered svg" },
+    { "wait": 1500 },
+    { "highlight": ".page a:has-text(\"src/card.js:1\")" },
+    { "caption": "A click on a file link opens the file at its line" },
+    { "click": ".page a:has-text(\"src/card.js:1\")" },
+    { "wait": 1500 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}
