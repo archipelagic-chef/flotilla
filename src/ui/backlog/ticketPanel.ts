@@ -56,6 +56,7 @@ import {
   workstreamLabel,
 } from '../format';
 import { runGit } from '../../core/git/gitCli';
+import { singleFlight } from '../../core/singleFlight';
 import { toWorkspaceUri } from '../../core/uris';
 import {
   parseFileLink,
@@ -1492,8 +1493,6 @@ export class TicketPanels implements vscode.Disposable {
   /** The worktrees and agents' keys a ticket's view showed, per panel: a change to one of them refreshes it. */
   private readonly shown = new WeakMap<vscode.WebviewPanel, Set<string>>();
 
-  /** The latest post per panel: an older one that finishes later (a slow tracker) is dropped. */
-  private readonly posts = new WeakMap<vscode.WebviewPanel, number>();
   /** The panels whose agents' transcripts are being read (liveActivity): one read at a time each. */
   private readonly liveReads = new WeakSet<vscode.WebviewPanel>();
 
@@ -1561,12 +1560,21 @@ export class TicketPanels implements vscode.Disposable {
   /** The view each panel shows (as last sent): a change sends only the parts that differ from it. */
   readonly sentViews = new WeakMap<vscode.WebviewPanel, TicketView>();
 
-  /** The posts running per panel. A post superseded by a newer one sends nothing: the newer one carries its change. */
+  /** The posts running per panel, until they're done. */
   private readonly running = new WeakMap<vscode.WebviewPanel, Set<Promise<void>>>();
 
-  /** Sends a ticket's view (see postView), and keeps it in `running` until it's done. */
+  /** Each panel's posts, one at a time (see post). */
+  private readonly flights = new WeakMap<vscode.WebviewPanel, () => Promise<void>>();
+
+  /**
+   * Sends a ticket's view (see postView), and keeps it in `running` until it's done. One at a time per panel, with one
+   * more after it however many changes come meanwhile (BL-253): each sends its view, so a stream of changes faster than
+   * a view is built (a merge landing on a busy machine) can't keep every one from being sent.
+   */
   private post(id: string, panel: vscode.WebviewPanel): Promise<void> {
-    const run = this.postView(id, panel);
+    let flight = this.flights.get(panel);
+    if (!flight) this.flights.set(panel, (flight = singleFlight(() => this.postView(id, panel))));
+    const run = flight();
     const set = this.running.get(panel) ?? new Set<Promise<void>>();
     this.running.set(panel, set);
     set.add(run);
@@ -1575,7 +1583,7 @@ export class TicketPanels implements vscode.Disposable {
 
   /**
    * Waits until no post of the panel is running. Once one has finished, the view with everything written before it has
-   * been sent: the newest post is the one that sends it, and a post that was superseded has its newer one in `running`.
+   * been sent: a post started after it was written, and one that comes after it is in `running`.
    */
   private async settled(panel: vscode.WebviewPanel): Promise<void> {
     for (let set = this.running.get(panel); set?.size; set = this.running.get(panel)) await Promise.allSettled([...set]);
@@ -1583,11 +1591,11 @@ export class TicketPanels implements vscode.Disposable {
 
   /** Sends a ticket's view; never leaves the tab waiting: a failure shows in it. */
   private async postView(id: string, panel: vscode.WebviewPanel): Promise<void> {
-    const seq = (this.posts.get(panel) ?? 0) + 1;
-    this.posts.set(panel, seq);
     let shown: BacklogItem | undefined;
-    const send = (view: Omit<TicketView, 'agents' | 'showActivity'>) => {
-      if (this.posts.get(panel) !== seq) return;
+    const send = (built: Omit<TicketView, 'agents' | 'showActivity'>) => {
+      // The merges' state as it is now, not when the view was started: a merge's checks can end, and it can land, while
+      // the view's slower parts are read (BL-253).
+      const view = shown ? { ...withoutMergerParts(built), ...this.mergerParts(shown) } : built;
       const chats = shown ? this.agentChats(shown, view.activity) : [];
       // Each agent with the reports it signed, where it runs if it's busy, and whether the user paused or stopped it.
       const r = shown?.review;
@@ -1743,13 +1751,6 @@ export class TicketPanels implements vscode.Disposable {
   /** A ticket's view without its description and activity. */
   private baseView(plain: BacklogItem, remote: RemoteIssue | undefined): Omit<TicketView, 'agents' | 'showActivity'> {
     const queued = this.reviews?.queuedFor(plain.id);
-    const mergeProgress = this.merger?.mergeProgress(plain.id);
-    const mergeChecks = this.merger?.checksView(plain.id);
-    const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
-    const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
-      const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
-      return ws && (ws.sync.head ?? ws.worktree.head);
-    });
     const source = remote && this.deps.integrations.current.find((s) => s.config.id === remote.source);
     const issues = this.deps.integrations.issues();
     return {
@@ -1794,12 +1795,7 @@ export class TicketPanels implements vscode.Disposable {
       ...(queued ? { queued } : {}),
       canReview: !remote && !!this.reviews && this.worktreesOf(plain).length > 0,
       canMerge: !remote && !!this.merger && readyToMerge(plain),
-      ...(mergeProgress ? { mergeProgress } : {}),
-      ...(mergeChecks ? { mergeChecks } : {}),
-      ...(mergeStop ? { mergeStop } : {}),
-      ...(mergeQueue ? { mergeQueue } : {}),
-      ...(this.merger?.chainOf(plain.id) ? { chain: this.merger.chainOf(plain.id) } : {}),
-      ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
+      ...this.mergerParts(plain),
       ...(creatingWorktrees.has(plain.id) ? { creating: true } : {}),
       canDiscuss: !remote && !!this.shaping && discussable(plain),
       ...(!remote && this.answers ? { canAsk: true, asked: this.answers.viewsOf(plain.id) } : {}),
@@ -1816,6 +1812,26 @@ export class TicketPanels implements vscode.Disposable {
             },
           }
         : {}),
+    };
+  }
+
+  /** What its view shows of the merges' state (read again as the view is sent, see postView). */
+  private mergerParts(plain: BacklogItem): Pick<TicketView, MergerPart> {
+    const mergeProgress = this.merger?.mergeProgress(plain.id);
+    const mergeChecks = this.merger?.checksView(plain.id);
+    const mergeQueue = readyToMerge(plain) ? this.merger?.queuePlace(plain.id) : undefined;
+    const mergeStop = this.merger?.ciStop(plain.id, (branch) => {
+      const ws = this.worktreesOf(plain).find((w) => w.worktree.branch === branch);
+      return ws && (ws.sync.head ?? ws.worktree.head);
+    });
+    const chain = this.merger?.chainOf(plain.id);
+    return {
+      ...(mergeProgress ? { mergeProgress } : {}),
+      ...(mergeChecks ? { mergeChecks } : {}),
+      ...(mergeStop ? { mergeStop } : {}),
+      ...(mergeQueue ? { mergeQueue } : {}),
+      ...(chain ? { chain } : {}),
+      ...(plain.merging ? { merging: { ...plain.merging, running: !!this.merger?.isRunning(plain.id) } } : {}),
     };
   }
 
@@ -2452,4 +2468,13 @@ export class TicketPanels implements vscode.Disposable {
 </body>
 </html>`;
   }
+}
+
+/** The parts of a ticket's view that mergerParts reads from the merges. */
+type MergerPart = 'mergeProgress' | 'mergeChecks' | 'mergeStop' | 'mergeQueue' | 'chain' | 'merging';
+
+/** A view without the merges' parts, for those read as it's sent. */
+function withoutMergerParts<T extends Partial<Pick<TicketView, MergerPart>>>(view: T): Omit<T, MergerPart> {
+  const { mergeProgress: _p, mergeChecks: _c, mergeStop: _s, mergeQueue: _q, chain: _ch, merging: _m, ...rest } = view;
+  return rest;
 }
