@@ -25,6 +25,9 @@
 // check on a sister's card (BL-240).
 //
 // Asked to rebase its branch onto main (Update from Main on conflicts), it rebases it, keeping its side of each conflict.
+// Asked to resolve a merge's (or a rebase's) conflicts in its temporary worktree (Resolve with Agent, or Land, Resolving
+// Conflicts, BL-247), it keeps the branch's side of each, finishes the merge or rebase, and reports; after 3 s, whatever
+// the ticket's "fake: wait".
 //
 // Run as the Ask chat runs Claude Code (--input-format stream-json), it's a chat instead: it answers each question,
 // word by word over a few seconds, and stops (a second later) when it's interrupted. As a ticket's discussion (BL-241:
@@ -204,7 +207,8 @@ async function main() {
     return;
   }
 
-  await new Promise((r) => setTimeout(r, duration(directive(hints, 'wait'), 's') ?? 3000));
+  const resolving = RESOLVE.test(prompt);
+  await new Promise((r) => setTimeout(r, resolving ? 3000 : (duration(directive(hints, 'wait'), 's') ?? 3000)));
   const fresh = resume === undefined;
 
   if (fresh && directive(hints, 'crash') !== undefined) {
@@ -227,7 +231,43 @@ async function main() {
     return checkSisters(item);
   }
   if (reviewer) return review(file, text, hints, item);
+  if (resolving) return resolveConflicts(file);
   return implement(file, text, hints, item);
+}
+
+/** A merge's resolver prompt (resolvePrompt in src/features/backlog/merge.ts): its conflicts, mid-merge or mid-rebase. */
+const RESOLVE = /^Your task: resolve the conflicts of (merging|rebasing) /m;
+
+/** Keeps the branch's side of each conflict ("theirs", in a merge and in a rebase alike), commit by commit, and reports. */
+function resolveConflicts(file) {
+  const rebasing = RESOLVE.exec(prompt)?.[1] === 'rebasing';
+  const resolved = new Set();
+  const env = { ...process.env, GIT_EDITOR: 'true' };
+  for (;;) {
+    const files = git('diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
+    for (const f of files) {
+      git('checkout', '--theirs', '--', f);
+      git('add', '--', f);
+      resolved.add(f);
+    }
+    if (!rebasing) {
+      git('commit', '--no-edit');
+      break;
+    }
+    try {
+      execFileSync('git', ['rebase', '--continue'], { cwd: process.cwd(), env, stdio: 'ignore' });
+      break;
+    } catch {
+      // It stopped on the next commit's conflicts.
+      if (!git('diff', '--name-only', '--diff-filter=U')) throw new Error('fake-claude: the rebase stopped without conflicts');
+    }
+  }
+  const list = [...resolved].map((f) => `\`${f}\``).join(', ');
+  appendEntry(
+    file,
+    `Resolved the conflicts in ${list}, keeping this branch's side of each (a fake agent's way), and ${rebasing ? 'finished the rebase' : 'committed the merge'}.`,
+  );
+  reply(`Fake resolver: resolved ${list}.`);
 }
 
 /**

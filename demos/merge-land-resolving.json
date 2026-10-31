@@ -1,5 +1,5 @@
 {
-  "title": "Land, Resolving Conflicts on one ticket: it lands on its own, an agent resolving its conflict, approved without asking",
+  "title": "Land, Resolving Conflicts on one ticket: an agent resolves its conflict, the resolution is approved without asking, and it lands",
   "settings": {
     "flotilla.merge.checks": "local",
     "flotilla.merge.onApprove": "off"
@@ -56,21 +56,20 @@
       "wait": 2000
     },
     {
-      "caption": "Resolved, BL-10 and BL-15 land after their checks. The fake agent can't resolve it: BL-15 waits for you"
+      "caption": "Its resolution is approved without asking: BL-10, ahead of it, lands first, then BL-15, each after its checks"
     },
     {
-      "waitFor": ".notification-toast:has-text(\"BL-15 needs you\")",
-      "timeout": 90000
+      "waitFor": ".notification-toast:has-text(\"Merged BL-15 into main\")",
+      "timeout": 120000
     },
     {
-      "waitFor": ".merge-queue-bar:has-text(\"BL-15 (needs you)\")",
-      "timeout": 60000
+      "caption": "Both landed, and nobody was asked: BL-15 is Done, merged into main"
     },
     {
-      "highlight": ".merge-queue-bar a:has-text(\"BL-15\")"
+      "highlight": "div.segmented[aria-label=\"Status\"]"
     },
     {
-      "wait": 2500
+      "wait": 3000
     },
     {
       "highlight": ""
