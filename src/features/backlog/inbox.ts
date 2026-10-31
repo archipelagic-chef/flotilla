@@ -31,6 +31,12 @@ import {
   fromNotesLine,
   noteIdsOf,
 } from './notes';
+import {
+  frontMatter,
+  proposedTask,
+  SCHEDULES_DIR,
+  schedulesDir,
+} from '../schedules/schedule';
 
 /**
  * The backlog's inbox: how agents add tickets. An agent writes a Markdown file into .flotilla/backlog/inbox/ (the
@@ -142,6 +148,8 @@ export async function takeInbox(
     onStarted?(item: BacklogItem, branch: string): Promise<void>;
     /** A ticket proposed from notes (BL-182): they record what they became. */
     onFromNotes?(notes: string[], item: BacklogItem): Promise<void>;
+    /** A scheduled task an agent proposed (schedule: <name>, BL-260), saved to schedules/ to accept or dismiss. */
+    onTaskProposed?(name: string): void;
   },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
@@ -171,10 +179,23 @@ export async function takeInbox(
     }
     // A file that can't be read is answered with the problem, so its agent doesn't wait for an answer that never comes.
     let proposal: ReturnType<typeof parseProposal>;
+    let text: string | undefined;
     try {
-      proposal = parseProposal(await fs.promises.readFile(taking, 'utf8'));
+      text = await fs.promises.readFile(taking, 'utf8');
+      proposal = parseProposal(text);
     } catch {
       proposal = { error: "It couldn't be read." };
+    }
+    // A scheduled task (BL-260): saved as proposed, so it runs only once the user accepts it.
+    if (text !== undefined && frontMatter(text).fields.has('schedule')) {
+      const answer = await saveProposedTask(store.dir, text);
+      await fs.promises.rm(taking, { recursive: true, force: true });
+      if ('error' in answer) await writeAtomic(`${base}.error`, `${answer.error}\n`);
+      else {
+        await writeAtomic(`${base}.added`, `${SCHEDULES_DIR}/${answer.name}.md\n`);
+        opts.onTaskProposed?.(answer.name);
+      }
+      continue;
     }
     let item: BacklogItem | undefined;
     let error = 'error' in proposal ? proposal.error : 'Not added.';
@@ -221,6 +242,20 @@ export async function takeInbox(
     if (stat && Date.now() - stat.mtimeMs > 86_400_000) await fs.promises.rm(path.join(dir, n), { force: true });
   }
   return added;
+}
+
+/** Saves a proposed scheduled task to schedules/<name>.md: its name, or why it can't be. */
+async function saveProposedTask(backlogDir: string, text: string): Promise<{ name: string } | { error: string }> {
+  const p = proposedTask(text);
+  if ('error' in p) return p;
+  const file = path.join(schedulesDir(backlogDir), `${p.name}.md`);
+  await fs.promises.mkdir(schedulesDir(backlogDir), { recursive: true });
+  try {
+    await fs.promises.writeFile(file, p.file, { flag: 'wx' });
+  } catch {
+    return { error: `A scheduled task ${p.name} is there already: give yours another name.` };
+  }
+  return { name: p.name };
 }
 
 /** A file taken by a process that died before answering it goes back to the inbox, once it has sat taken for five minutes. */
@@ -319,6 +354,19 @@ claim: BL-3
 branch: feature/x
 agent: Nova-7
 ---
+\`\`\`
+
+To propose a scheduled task (work an agent does on its own, on a schedule: a weekly check, a measurement on a date),
+the front matter names it and says when it runs; the body is what its agent does. It runs only once the user accepts it:
+
+\`\`\`markdown
+---
+schedule: docs-check  # its name: lower case letters, digits and dashes
+every: Mondays at 06:00   # or "7 days", "day at 06:00"; or once: 2026-11-07
+when: idle            # optional: idle (the default: when no agent works or waits) or any
+agent: Nova-7
+---
+What the agent reads, checks, and writes in its report.
 \`\`\`
 
 Flotilla takes it in within seconds and writes the ticket's id to \`<name>.added\` next to your file (or the problem
