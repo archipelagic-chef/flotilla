@@ -21,7 +21,7 @@ const host = await esbuild.context({
   logLevel: 'info',
 });
 
-// Webview bundles (browser): the sidebar (dist/webview.js, .css), ticket tabs (dist/ticket.js, .css), the New Note tab (dist/note.js, .css), the Metrics tab (dist/metrics.js, .css), a review's tab (dist/review.js, .css) and a discussion's (dist/discussion.js, .css).
+// Webview bundles (browser): the sidebar (dist/webview.js, .css), ticket tabs (dist/ticket.js, .css), the New Note tab (dist/note.js, .css), the Metrics tab (dist/metrics.js, .css), a review's tab (dist/review.js, .css), a discussion's (dist/discussion.js, .css) and page tabs, such as a scheduled task's report (dist/page.js, .css).
 const webview = await esbuild.context({
   entryPoints: {
     webview: 'src/webview/ui/main.tsx',
@@ -30,6 +30,7 @@ const webview = await esbuild.context({
     metrics: 'src/webview/metrics/main.tsx',
     review: 'src/webview/review/main.tsx',
     discussion: 'src/webview/discussion/main.tsx',
+    page: 'src/webview/page/main.tsx',
   },
   bundle: true,
   platform: 'browser',
