@@ -373,8 +373,11 @@ export interface MachineState {
 /** The autopilot: whether it's on, its agents, and whether it waits for Claude's usage limit or for memory. */
 /** The merge queue (BL-140), first to land first: each ticket's state in the merge train, and what the queue does now. */
 export interface MergeQueueView {
-  /** run: Land All, Resolving Conflicts (BL-226) has an agent at its conflict, or it needs you. */
-  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown'; run?: 'resolving' | 'needs you' }>;
+  /**
+   * run: Land All, Resolving Conflicts (BL-226), or its own Land, Resolving Conflicts, has an agent at its conflict, or
+   * it needs you. auto: it lands on its own (BL-247: Land, Resolving Conflicts).
+   */
+  entries: Array<{ id: string; state: 'clean' | 'conflicts' | 'unknown'; run?: 'resolving' | 'needs you'; auto?: boolean }>;
   /** "BL-122's merge", "rebuilding the merge train". */
   working?: string;
 }

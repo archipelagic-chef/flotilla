@@ -17,8 +17,8 @@ export const mergeHandlers: Handlers<MergeMessage> = {
   compareCleanUp: async ({ id }) => {
     await vscode.commands.executeCommand('flotilla.compareCleanUp', id);
   },
-  merge: async ({ id, panels }) => {
-    await panels.merger?.merge(id);
+  merge: async ({ id, panels }, m) => {
+    await panels.merger?.merge(id, m.auto ? { auto: true } : {});
   },
   mergeResolve: async ({ id, panels }) => {
     await panels.merger?.resolveWithAgent(id);

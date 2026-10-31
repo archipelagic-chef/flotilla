@@ -10,7 +10,7 @@ import {
 import { latestCi } from '../../features/ci/summary';
 import type { TicketCiView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
 import { ActionButton } from './actions';
-import { MergeButton } from './mergePanel';
+import { LandResolvingButton, MergeButton } from './mergePanel';
 
 /** Its branch's latest CI run, when it failed: Fix CI with Agent fixes that one. */
 export function redRun(ci: TicketCiView | undefined): { branch: string; run: number } | undefined {
@@ -87,13 +87,21 @@ export function MergeStep({ ticket, ci, steps }: { ticket: TicketView; ci?: Tick
   return (
     <>
       {op === 'merge' ? (
-        <MergeButton into={into} />
+        <>
+          <MergeButton into={into} />
+          <LandResolvingButton />
+        </>
       ) : (
         <ActionButton class="button" message={MESSAGE[op]!(ci)} working={op === 'updateAndMerge' ? 'Updating…' : 'Starting…'} title={TIP[op]}>
           <i class={`codicon codicon-${STEP[op].icon}`} /> {stepLabel(op, into)}
         </ActionButton>
       )}
-      {op !== 'merge' && steps.others.includes('merge') && <MergeButton into={into} secondary />}
+      {op !== 'merge' && steps.others.includes('merge') && (
+        <>
+          <MergeButton into={into} secondary />
+          <LandResolvingButton />
+        </>
+      )}
       {steps.others
         .filter((o) => MESSAGE[o])
         .map((o) => (

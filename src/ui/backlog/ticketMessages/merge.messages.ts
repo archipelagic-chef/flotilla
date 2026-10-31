@@ -10,7 +10,8 @@ export type MergeMessage =
   | { type: 'cancelCleanUp' }
   | { type: 'compareCleanUp' }
   /** Merge it into the base branch; a merge's decisions; push the base branch after. */
-  | { type: 'merge' }
+  /** auto: Land, Resolving Conflicts (BL-247): it lands on its own, an agent resolving its conflicts, approved without asking. */
+  | { type: 'merge'; auto?: boolean }
   | { type: 'mergeResolve' }
   | { type: 'mergeApprove' }
   | { type: 'mergeRecheck' }
