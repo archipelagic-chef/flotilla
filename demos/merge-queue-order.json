@@ -23,9 +23,11 @@
     { "wait": 2500 },
     { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
     { "waitFor": ".merge-queue:has-text(\"2nd of 2\")", "timeout": 30000 },
-    { "caption": "Merge Next puts a ticket at the front of the queue" },
-    { "click": ".merge-queue button:has-text(\"Merge Next\")" },
-    { "waitFor": ".merge-queue:has-text(\"1st of 2\")", "timeout": 30000 },
+    { "caption": "Merge Next puts it at the front of the queue, and lands it: one click" },
+    { "waitFor": ".review-panel button:has-text(\"Merge Next\"):not([disabled])", "timeout": 60000 },
+    { "highlight": ".review-panel button:has-text(\"Merge Next\")" },
+    { "click": ".review-panel button:has-text(\"Merge Next\")" },
+    { "waitFor": ".review-panel:has-text(\"Merged into main\")", "timeout": 60000 },
     { "wait": 2500 },
     { "caption": "" }
   ]

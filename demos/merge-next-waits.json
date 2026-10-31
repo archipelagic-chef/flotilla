@@ -1,0 +1,36 @@
+{
+  "title": "Merge Next while another ticket merges: it waits for that merge, then lands, with one click",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.checkCommand": "sleep 8",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "click": ".review-panel button:has-text(\"Approve\")" },
+    { "waitFor": ".merge-queue:has-text(\"Merges cleanly onto main\")", "timeout": 30000 },
+    { "click": ".backlog-item:has-text(\"Keep the sidebar's scroll on refresh\") .name" },
+    { "waitFor": "h1:has-text(\"Keep the sidebar's scroll on refresh\")" },
+    { "click": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Approve\")" },
+    { "waitFor": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .merge-queue:has-text(\"2nd of 2\")", "timeout": 30000 },
+    { "caption": "BL-2 is 2nd in the merge queue, behind BL-10" },
+    { "wait": 1500 },
+    { "caption": "Merge to main on BL-10: its merge starts" },
+    { "click": ".tabs-container .tab:has-text(\"BL-10\")" },
+    { "waitFor": "body:has(h1:has-text(\"Remember the last open ticket\")) .review-panel button:has-text(\"Merge to main\"):not([disabled])", "timeout": 60000 },
+    { "click": "body:has(h1:has-text(\"Remember the last open ticket\")) .review-panel button:has-text(\"Merge to main\")" },
+    { "click": ".tabs-container .tab:has-text(\"BL-2\")" },
+    { "caption": "Merge Next on BL-2 while BL-10 merges: one click" },
+    { "waitFor": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Merge Next\"):not([disabled])", "timeout": 30000 },
+    { "highlight": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Merge Next\")" },
+    { "click": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Merge Next\")" },
+    { "caption": "It says it waits for BL-10's merge, then lands next by itself" },
+    { "waitFor": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Waiting for BL-10's merge\")", "timeout": 30000 },
+    { "highlight": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel button:has-text(\"Waiting for BL-10's merge\")" },
+    { "waitFor": "body:has(h1:has-text(\"Keep the sidebar's scroll on refresh\")) .review-panel:has-text(\"Merged into main\")", "timeout": 120000 },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
