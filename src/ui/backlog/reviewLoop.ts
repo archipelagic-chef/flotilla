@@ -9,9 +9,15 @@ import {
   type BacklogStatus,
   branchMatches,
   entryAgent,
+  moveItem,
   sameAgent,
   updateItem,
 } from '../../features/backlog/backlog';
+import {
+  heldEntry,
+  heldUntil,
+  notBefore,
+} from '../../features/backlog/notBefore';
 import { isDiscussionChat } from '../../features/backlog/shaping';
 import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -194,6 +200,8 @@ export class ReviewLoop implements vscode.Disposable {
   private readonly baseline = new Map<string, string[]>();
   /** The agent running for an item (reviewer or implementer). */
   private readonly runs = new Map<string, Running>();
+  /** Each started run's ticket's "Not before" date as it started (BL-261): a Start Anyway's run isn't sent back for it. */
+  private readonly notBeforeAtStart = new Map<string, Promise<number | undefined>>();
   /**
    * The starts admitted but not spawned yet (see admitStart): their reserved slots, and the items they're for. Each holds
    * its agent slot (see running) and its memory (see reserveStart) until its agent spawns, or it's given up (see release).
@@ -448,6 +456,8 @@ export class ReviewLoop implements vscode.Disposable {
    * until its agent spawns (see launched) or it's given up (see release).
    */
   private take(id: string): number {
+    // Its "Not before" date as the agent starts (BL-261), read before it spawns: only a date it sets sends it back.
+    this.notBeforeAtStart.set(id, this.notBeforeOf(id));
     const slot = reserveStart();
     this.starting.set(slot, id);
     this.noteAgents();
@@ -456,6 +466,16 @@ export class ReviewLoop implements vscode.Disposable {
       this.fireQueue(id);
     }
     return slot;
+  }
+
+  /** A ticket's "Not before" date (BL-261), as its description says now. */
+  private async notBeforeOf(id: string): Promise<number | undefined> {
+    try {
+      const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
+      return item && notBefore((await this.deps.backlog.readTicket(item)).description)?.getTime();
+    } catch {
+      return undefined;
+    }
   }
 
   /** An admitted start's agent has spawned (runAgentHeadless took its reserved memory over): it runs now. */
@@ -2152,8 +2172,26 @@ export class ReviewLoop implements vscode.Disposable {
     if (this.runs.has(id)) return;
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if ((item?.review?.state === 'revising' || item?.review?.state === 'working') && item.status !== 'review') {
-      // It asked the user something: it waits for their answer (a comment).
       const ticket = await this.deps.backlog.readTicket(item);
+      // Its work can't start yet (BL-261): it set "Not before:", and waits in To Do for the autopilot to start it then.
+      const held = heldUntil(ticket.description);
+      const before = await this.notBeforeAtStart.get(id);
+      this.notBeforeAtStart.delete(id);
+      if (held && held.getTime() !== before) {
+        this.statuses.set(id, 'todo');
+        // First in To Do: it was next before it started, and is again on its date.
+        await this.deps.backlog.change(
+          (d) => {
+            const moved = moveItem(d, id, 'todo', d.items.find((i) => i.status === 'todo' && i.id !== id)?.id);
+            return { ...moved, items: moved.items.map((i) => (i.id === id ? withoutReview(i) : i)) };
+          },
+          { by: 'Flotilla' },
+        );
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: heldEntry(held) });
+        this.changed.fire(id);
+        return;
+      }
+      // It asked the user something: it waits for their answer (a comment).
       const last = ticket.activity.filter((e) => sameAgent(entryAgent(e.author), item.review!.implementer)).at(-1);
       if (last && saysWaitingForUser(last.body)) {
         await this.setReview(id, (r) => ({ ...r!, state: 'asking', handled: [...(r!.handled ?? []), this.key(id)(last)] }));

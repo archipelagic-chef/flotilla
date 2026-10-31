@@ -1,6 +1,10 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
+  fromLabel,
+  heldUntil,
+} from '../features/backlog/notBefore';
+import {
   openChangeDiff,
   openChangesEditor,
 } from '../core/diff/openDiff';
@@ -57,7 +61,10 @@ import {
   installCommitHook,
   markWorktree,
 } from '../features/backlog/commitHook';
-import { GUIDE } from '../features/backlog/inbox';
+import {
+  GUIDE,
+  NOT_BEFORE_NOTE,
+} from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
 import { removingWorktrees } from '../features/workstreams/removingWorktrees';
@@ -498,6 +505,17 @@ async function startBacklogItem(ctx: CommandContext, id: unknown, opts?: unknown
   }
   // An agent needs memory to start: when there's little, the user decides (before a worktree is made for it).
   if (agent && !(await confirmMemory(`The agent for ${item.id}`))) return;
+  // Held for a date (BL-261): the user may know better, but says so first.
+  const held = !remote && (item.status === 'todo' || item.status === 'doing') && heldUntil((await ctx.backlog.readTicketCached(item)).description);
+  if (held) {
+    const when = fromLabel(held).replace(/^From/, 'before');
+    const choice = await vscode.window.showWarningMessage(
+      `${item.id} can't start ${when}`,
+      { modal: true, detail: `Its description says "Not before:": the autopilot starts it on that date. Start it now anyway?` },
+      'Start Anyway',
+    );
+    if (choice !== 'Start Anyway') return;
+  }
   // A branch of the item that has no worktree (anymore): a worktree for it.
   const branchOpt = typeof opts === 'object' && opts !== null ? (opts as { branch?: unknown }).branch : undefined;
   if (typeof branchOpt === 'string' && branchMatches(item, branchOpt)) {
@@ -781,7 +799,7 @@ export async function prepareItemWorktree(ctx: CommandContext, item: BacklogItem
  * ticket's work (BL-55).
  */
 export const mergeNotes = (id: string): string =>
-  `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge.`;
+  `Before you report "Ready for review.", rebase your branch onto main (the branch work merges into), resolve any conflicts commit by commit, tidy your commits into the steps a reviewer would want to read, and run the project's checks (build, tests) on the result, so the work lands cleanly as it is. ${tidyNotes(id)} Rebase only onto main, never onto another ticket's branch. If you need another ticket's work, don't take it from its branch: add a line "Depends on: <its id>" to the description and say so in your report; your ticket then shows that it waits for that one to be merged. Use "Depends on:" only when the work builds on another ticket's or reshapes the same feature, not because both change the same files: overlapping changes are reconciled when they merge. ${NOT_BEFORE_NOTE}`;
 
 /** Agents keep a todo list, so the ticket shows how far they are (BL-175). */
 export const PLAN_NOTE =
