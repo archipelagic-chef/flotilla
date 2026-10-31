@@ -24,7 +24,7 @@ vi.mock('vscode', () => ({
   workspace: {},
   EventEmitter: class {},
 }));
-const { mediaThumbs, renderMarkdown, replaceMedia, stripStyles } = await import('../../../src/ui/backlog/ticketPanel');
+const { mediaThumbs, mediaVersion, renderMarkdown, replaceMedia, resolveMedia, stripStyles } = await import('../../../src/ui/backlog/ticketPanel');
 
 const webview = { asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `webview:${u.fsPath.replace(/\\/g, '/')}` }) } as never;
 
@@ -76,14 +76,31 @@ describe('media in a ticket', () => {
   it('shows images and GIFs next to the ticket through the webview', async () => {
     const html = await render('<p><img src="BL-1/shot.png" alt="Shot"> <img src="BL-1/demo.gif" alt="Demo"></p>');
     expect(html).toContain('<img src="webview:');
-    expect(html).toMatch(/src="webview:[^"]*BL-1\/shot\.png" alt="Shot"/);
-    expect(html).toMatch(/src="webview:[^"]*BL-1\/demo\.gif" alt="Demo"/);
+    expect(html).toMatch(/src="webview:[^"]*BL-1\/shot\.png\?v=\d+-10" alt="Shot"/);
+    expect(html).toMatch(/src="webview:[^"]*BL-1\/demo\.gif\?v=\d+-10" alt="Demo"/);
+  });
+
+  it("loads a file next to the ticket at a URL that changes when the file's time or size does", async () => {
+    const file = path.join(backlog, 'BL-1', 'again.mp4');
+    const src = async () => (await resolveMedia('BL-1/again.mp4', webview, backlog)) as { src: string };
+    write(file, 10);
+    fs.utimesSync(file, 1000, 1000);
+    const first = (await src()).src;
+    expect(first).toMatch(/^webview:.*BL-1\/again\.mp4\?v=1000000-10$/);
+    expect((await src()).src).toBe(first);
+    fs.utimesSync(file, 2000, 2000);
+    const touched = (await src()).src;
+    expect(touched).toMatch(/\?v=2000000-10$/);
+    write(file, 11);
+    fs.utimesSync(file, 2000, 2000);
+    expect((await src()).src).toMatch(/\?v=2000000-11$/);
+    expect(mediaVersion({ mtimeMs: 1.5, size: 2 })).toBe('1-2');
   });
 
   it("plays videos next to the ticket in a player with controls, which doesn't start by itself", async () => {
     const html = await render('<p><img src="BL-1/demo.webm" alt="The demo"></p>');
     expect(html).toMatch(
-      /<video class="media" src="webview:[^"]*BL-1\/demo\.webm" controls muted playsinline preload="metadata" title="The demo" aria-label="The demo"><\/video>/,
+      /<video class="media" src="webview:[^"]*BL-1\/demo\.webm\?v=\d+-10" controls muted playsinline preload="metadata" title="The demo" aria-label="The demo"><\/video>/,
     );
     expect(html).not.toMatch(/autoplay/);
   });

@@ -292,16 +292,18 @@ export async function resolveMedia(src: string, webview: vscode.Webview, dir: st
   const name = path.basename(rel);
   const besideTicket = path.resolve(dir, rel);
   if (besideTicket.startsWith(dir + path.sep)) {
-    const bytes = await fileSize(besideTicket);
-    if (bytes !== undefined) {
-      if (type && tooLarge(type.kind, bytes)) return { note: tooLargeNote(name, type.kind, bytes) };
-      return { src: webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString(), kind: type?.kind ?? 'image' };
+    const stat = await fileStat(besideTicket);
+    if (stat) {
+      if (type && tooLarge(type.kind, stat.size)) return { note: tooLargeNote(name, type.kind, stat.size) };
+      // Versioned by the file (BL-251): a demo recorded again under its name never mixes with the old one's cached ranges.
+      const src = `${webview.asWebviewUri(vscode.Uri.file(besideTicket)).toString()}?v=${mediaVersion(stat)}`;
+      return { src, kind: type?.kind ?? 'image' };
     }
   }
   if (!type) return undefined;
   const candidates = path.isAbsolute(rel) ? [rel] : roots.map((r) => path.join(r, rel));
   for (const file of candidates) {
-    const bytes = await fileSize(file);
+    const bytes = (await fileStat(file))?.size;
     if (bytes === undefined) continue;
     // Videos play from the backlog's folder only: the view may load files from there, and they're too big to embed.
     if (type.kind === 'video') return { note: `${name} isn't next to the ticket: videos play from the ticket's folder (in ${dir}).` };
@@ -363,10 +365,15 @@ async function readRecording(file: string): Promise<Recording> {
   }
 }
 
-async function fileSize(file: string): Promise<number | undefined> {
+/** What a media file's URL carries so it changes when the file does (BL-251): its modification time and size. */
+export function mediaVersion(stat: { mtimeMs: number; size: number }): string {
+  return `${Math.floor(stat.mtimeMs)}-${stat.size}`;
+}
+
+async function fileStat(file: string): Promise<fs.Stats | undefined> {
   try {
     const stat = await fs.promises.stat(file);
-    return stat.isFile() ? stat.size : undefined;
+    return stat.isFile() ? stat : undefined;
   } catch {
     return undefined;
   }
