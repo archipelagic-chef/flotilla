@@ -1,0 +1,89 @@
+{
+  "title": "While Claude's usage limit is known to hold, Start with an Agent queues until it lifts, then starts",
+  "settings": {
+    "flotilla.agents.maxRunning": 6
+  },
+  "steps": [
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": "[aria-label^=\"New Note\"]"
+    },
+    {
+      "waitFor": ".note-page .comment-box textarea"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "type": "Tags on tickets, to filter the board fake: limit 40s"
+    },
+    {
+      "press": "Control+Enter"
+    },
+    {
+      "click": "text=Needs you"
+    },
+    {
+      "waitFor": ".note-status:has-text(\"waiting for the usage limit\")",
+      "timeout": 60000
+    },
+    {
+      "caption": "A note's agent hit Claude's usage limit: Claude said when it resets"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Start a ticket from the keyboard\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Start a ticket from the keyboard\")"
+    },
+    {
+      "caption": "Start a ticket's agent while the limit holds"
+    },
+    {
+      "click": "button:has-text(\"Start with an Agent\")"
+    },
+    {
+      "waitFor": ".review-panel.waiting:has-text(\"usage limit lifts\")",
+      "timeout": 30000
+    },
+    {
+      "highlight": ".review-panel.waiting"
+    },
+    {
+      "caption": "It doesn't start into the limit: it's queued until it lifts, and Prioritize tries it now anyway"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "When the limit lifts, the agent starts by itself"
+    },
+    {
+      "waitFor": "text=you started it, without a window",
+      "timeout": 120000
+    },
+    {
+      "highlight": "text=you started it, without a window"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
