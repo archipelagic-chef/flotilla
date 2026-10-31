@@ -1278,7 +1278,8 @@ export class TicketPanels implements vscode.Disposable {
           const started = agentChatItem(c.firstPrompt);
           const agent = started?.agent ?? c.agent;
           if (!agent || seen.has(c.id)) return [];
-          if (started?.item !== item.id && !named.has(agent.toLowerCase())) return [];
+          // A chat started for another ticket is that one's, even when its agent is named here too (BL-256).
+          if (started ? started.item !== item.id : !named.has(agent.toLowerCase())) return [];
           seen.add(c.id);
           // A quiet chat whose process runs in this window is still working: its record and transcript just wait.
           const alive = isRunningHeadless(c.id) || isRunningInTerminal(c.id);
