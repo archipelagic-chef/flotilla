@@ -86,6 +86,9 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     });
   });
 
+  // A tick's effect, waited for (BL-250): an agent started for a note, not only the tick awaited.
+  const started = (n: number) => vi.waitFor(() => expect(runs.started).toHaveLength(n), { timeout: 10_000 });
+
   afterEach(() => {
     agents.dispose();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -93,7 +96,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
   it('stops a running note agent, keeps its note open with its session, and resumes that chat once lifted', async () => {
     await agents.tick();
-    expect(runs.started).toHaveLength(1);
+    await started(1);
     const [first] = runs.started;
     const [note] = await store.list();
     expect(agents.agentOf(note.id)).toBeDefined();
@@ -116,13 +119,14 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
     held = false;
     await agents.tick();
-    expect(runs.started).toHaveLength(2);
+    await started(2);
     expect(runs.started[1].resume).toBe(first.sessionId);
     expect(runs.started[1].prompt).toMatch(/You were paused \(Pause All\)/);
   });
 
   it('stops its agents when Pause All holds from another window', async () => {
     await agents.tick();
+    await started(1);
     held = true;
     await agents.tick();
     await vi.waitFor(() => expect(runs.started[0].stopped).toBe(true), { timeout: 10_000 });
@@ -188,6 +192,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
     it('leaves its note open with its session, waiting, and goes on in its chat once the limit lifts', async () => {
       await agents.tick();
+      await started(1);
       const [first] = runs.started;
       const [note] = await store.list();
       first.resolve({ code: 1, limit: limit(60 * 60_000) });
@@ -204,7 +209,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       expect(runs.started).toHaveLength(1);
 
       await agents.limitLifted();
-      expect(runs.started).toHaveLength(2);
+      await started(2);
       expect(runs.started[1].resume).toBe(first.sessionId);
       expect(runs.started[1].prompt).toMatch(/You were paused/);
 
@@ -214,8 +219,36 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       expect((await store.read(note.id))?.limit).toBeUndefined();
     });
 
+    it('goes on in its chat when the limit lifts while a tick runs, before limitLifted resolves (BL-250)', async () => {
+      await agents.tick();
+      await started(1);
+      const [note] = await store.list();
+      runs.started[0].resolve({ code: 1, limit: limit(60 * 60_000) });
+      await vi.waitFor(() => expect(agents.agentOf(note.id)).toBeUndefined(), { timeout: 10_000 });
+      // The tick its run's end started is done: nothing's due while the limit's on.
+      await agents.tick();
+
+      // A tick reads the notes while the limit's on, and holds there until limitLifted asks for its own.
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const list = store.list.bind(store);
+      vi.spyOn(store, 'list').mockImplementationOnce(async () => {
+        const read = await list();
+        await gate;
+        return read;
+      });
+      const ticking = agents.tick();
+      const changed = (agents as unknown as { changed: { fire(): void } }).changed;
+      vi.spyOn(changed, 'fire').mockImplementation(() => release());
+      await agents.limitLifted();
+      expect(runs.started).toHaveLength(2);
+      expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
+      await ticking;
+    });
+
     it('goes on by itself when the reset comes', async () => {
       await agents.tick();
+      await started(1);
       const [note] = await store.list();
       runs.started[0].resolve({ code: 1, limit: limit(-1000) });
       await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
@@ -225,6 +258,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
     it('still asks you when its agent stops with an error or without a reply', async () => {
       await agents.tick();
+      await started(1);
       const [note] = await store.list();
       runs.started[0].resolve({ code: 1, error: 'boom' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'), { timeout: 10_000 });
@@ -249,6 +283,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
   describe('editing a note and writing more in it (BL-204)', () => {
     const handle = async () => {
       await agents.tick();
+      await started(1);
       const [note] = await store.list();
       runs.started.at(-1)!.resolve({ code: 0, reply: 'Proposed BL-9.' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
@@ -281,6 +316,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
 
     it('takes a comment on a note that asks as your answer', async () => {
       await agents.tick();
+      await started(1);
       const [note] = await store.list();
       runs.started[0].resolve({ code: 0, reply: 'Which button?\n\nNeeds from you: which one' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('asking'), { timeout: 10_000 });
@@ -297,7 +333,8 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       await vi.waitFor(() => expect(runs.started).toHaveLength(2), { timeout: 10_000 });
       expect(runs.started[1].resume).toBe(runs.started[0].sessionId);
       expect(runs.started[1].prompt).toMatch(/^The note was handled \(Became BL-9 \(proposal\)\)/);
-      expect((await store.read(note.id))?.reopened).toBeUndefined();
+      // Taken in once its agent's state is written, just after the run starts.
+      await vi.waitFor(async () => expect((await store.read(note.id))?.reopened).toBeUndefined(), { timeout: 10_000 });
       // Its reply's "Added to" names its own proposal: it stays a proposal.
       runs.started[1].resolve({ code: 0, reply: 'Updated BL-9.\n\nAdded to: BL-9' });
       await vi.waitFor(async () => expect((await store.read(note.id))?.status).toBe('handled'), { timeout: 10_000 });
@@ -309,7 +346,7 @@ describe('NoteAgents and Pause All (BL-193)', () => {
       chatThere = false;
       await store.edit(note.id, 'Make the button blue');
       await agents.tick();
-      expect(runs.started).toHaveLength(2);
+      await started(2);
       expect(runs.started[1].resume).toBeUndefined();
       expect(runs.started[1].prompt).toMatch(/^You are agent \S+, handling note NOTE-1[\s\S]*The note was handled/);
     });
