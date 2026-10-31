@@ -31,6 +31,8 @@ export function agentTicketMode(): AgentTicketMode {
 export class BacklogInbox implements vscode.Disposable {
   private readonly timer: ReturnType<typeof setInterval>;
   private busy = false;
+  /** A scheduled task an agent proposed (BL-260): the scheduler offers it to accept. */
+  onTaskProposed?: (name: string) => void;
 
   constructor(
     private readonly backlog: LocalBacklog,
@@ -84,6 +86,7 @@ export class BacklogInbox implements vscode.Disposable {
           await installCommitHook(this.roots.mainRoot, this.roots.commonDir, commitPrefixMode()).catch(() => undefined);
         },
         onFromNotes: async (notes, item) => this.notes?.recordBecame(notes, { id: item.id, kind: 'proposal' }),
+        onTaskProposed: (name) => this.onTaskProposed?.(name),
       });
     } catch {
       // try again on the next round

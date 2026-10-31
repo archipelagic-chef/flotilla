@@ -69,6 +69,11 @@ import {
   SisterChecks,
 } from './ui/backlog/sisterChecks';
 import { ImprovementReview } from './ui/metrics/improvementReview';
+import { openPagePanel } from './ui/schedules/pagePanel';
+import {
+  scheduleCommands,
+  Scheduler,
+} from './ui/schedules/scheduler';
 import { BranchPush } from './ui/backlog/branchPush';
 import { PullRequestComments } from './ui/backlog/prComments';
 import { MainSync } from './ui/backlog/mainSync';
@@ -645,6 +650,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
   });
   context.subscriptions.push(improvement);
+  // Tasks that run on a schedule, each an agent without a window (BL-260).
+  const scheduler = new Scheduler({
+    backlogDir: backlog.dir,
+    repository,
+    admit: (id) => reviews.admitNew(id),
+    giveBack: (slot) => reviews.giveBack(slot),
+    autopilot: () => autopilot.view(),
+    isLeader: () => leader.isLeader,
+    mainRoot: location.mainRoot,
+    output,
+    openPage: (file, title) => void openPagePanel({ extensionUri: context.extensionUri, openHref: (href) => tickets.openHref(undefined, href) }, file, title),
+  });
+  context.subscriptions.push(scheduler);
+  inbox.onTaskProposed = (name) => void scheduler.offerProposed(name).catch(() => undefined);
+  registerAll(context.subscriptions, scheduleCommands({ scheduler }));
   registerAll(context.subscriptions, metricsCommands({ backlog, repository, metrics, improvement, output }));
   context.subscriptions.push(
     autopilot,
@@ -653,6 +673,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void autopilot.tick();
       void notes.tick();
       void improvement.tick().catch(() => undefined);
+      void scheduler.tick().catch(() => undefined);
       void reviews.resumePaused();
       void finished.sweep();
       void shared.sweep();
