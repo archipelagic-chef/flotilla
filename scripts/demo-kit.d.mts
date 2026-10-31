@@ -19,7 +19,15 @@ export interface RgbaImage {
 export function parseDemo(
   text: string,
   name?: string,
-): { title: string; steps: DemoStep[]; settings: Record<string, unknown>; runsOnPush: boolean; githubSignedOut: boolean; resetsTicket?: string };
+): {
+  title: string;
+  steps: DemoStep[];
+  settings: Record<string, unknown>;
+  runsOnPush: boolean;
+  ciPasses: boolean;
+  githubSignedOut: boolean;
+  resetsTicket?: string;
+};
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
 export function unsafeFrame(frame: { title?: string; argv?: string[] }, options: { profileDir: string }): string | undefined;

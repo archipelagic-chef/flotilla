@@ -1,5 +1,6 @@
 {
   "title": "The merge queue's buttons and Push\u2026 show they're working",
+  "ciPasses": true,
   "settings": {
     "flotilla.merge.checks": "local",
     "flotilla.merge.onApprove": "off"

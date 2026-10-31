@@ -75,6 +75,8 @@ export function parseDemo(text, name = 'demo') {
   if (other.length) throw new Error(`${name}: "settings" takes only Flotilla's settings (flotilla.*, not flotilla.dev.*), not ${other.join(', ')}`);
   // The fake GitHub starts a CI run when a branch is pushed (BL-222), for a demo that pushes one.
   if (demo.runsOnPush !== undefined && typeof demo.runsOnPush !== 'boolean') throw new Error(`${name}: "runsOnPush" is true or false`);
+  // The fake GitHub's seeded CI runs pass (BL-256), for a demo whose merge would stop on red CI.
+  if (demo.ciPasses !== undefined && typeof demo.ciPasses !== 'boolean') throw new Error(`${name}: "ciPasses" is true or false`);
   // The fake GitHub starts signed out (BL-245), for a demo of the sign-in prompts.
   if (demo.githubSignedOut !== undefined && typeof demo.githubSignedOut !== 'boolean') throw new Error(`${name}: "githubSignedOut" is true or false`);
   // The ticket a demo answers is put back as seeded before it plays (BL-257), for a demo that changes it.
@@ -84,6 +86,7 @@ export function parseDemo(text, name = 'demo') {
     steps,
     settings,
     runsOnPush: demo.runsOnPush === true,
+    ciPasses: demo.ciPasses === true,
     githubSignedOut: demo.githubSignedOut === true,
     ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
   };
