@@ -755,7 +755,28 @@ const TICKETS = [
       'mockup-b.svg': mockup('b'),
     },
   },
+  {
+    id: 'BL-19',
+    title: 'Measure how long a reload takes, a week after the fix',
+    status: 'todo',
+    daysAgo: 1,
+    // Held for a date a week from now (BL-261's demo): its card says "From …", and the autopilot passes it over.
+    description: [
+      'Time the reloads of the week after BL-3, against the week before it.',
+      '',
+      '- [ ] The median reload time of each week.',
+      '',
+      `Not before: ${weekAhead()}`,
+    ].join('\n'),
+    activity: [{ ago: 120, author: 'Flotilla', body: 'You accepted it into the backlog.' }],
+  },
 ];
+
+/** The local date a week from now, as "Not before:" takes it. */
+function weekAhead() {
+  const d = new Date(Date.now() + 7 * 86_400_000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */
 function commit(root, message, files) {
