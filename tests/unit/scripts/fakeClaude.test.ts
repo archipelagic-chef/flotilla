@@ -190,7 +190,8 @@ describe('the fake claude', () => {
       expect(git(s.worktree, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')).toHaveLength(how === 'merging' ? 3 : 2);
       expect(activity(s).at(-1)?.body).toContain("Resolved the conflicts in `f.txt`, keeping this branch's side");
     },
-    15_000,
+    // The resolver waits 3s and takes about 3s alone, but alongside the merger's and the playground's git-heavy tests it went past 15s.
+    30_000,
   );
 
   it('answers a run that names no ticket without touching anything', () => {
