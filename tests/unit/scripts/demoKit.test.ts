@@ -16,6 +16,7 @@ import {
   FRAME_MS,
   frameGate,
   freeDisplay,
+  freeRecording,
   gapStats,
   HIGHLIGHT_MS,
   lengthLine,
@@ -553,6 +554,20 @@ describe('demoDisplay', () => {
     expect(demoDisplay({ DEMO_DISPLAY: 'virtual' })).toBe('virtual');
     expect(demoDisplay({ DEMO_DISPLAY: ' Screen ', CLAUDECODE: '1' })).toBe('screen');
     expect(() => demoDisplay({ DEMO_DISPLAY: 'mine' })).toThrow(/virtual or screen/);
+  });
+});
+
+describe('freeRecording', () => {
+  it("keeps the name asked for when it's free, else numbers it past the GIFs and MP4s that are taken", () => {
+    const at =
+      (...files: string[]) =>
+      (f: string) =>
+        files.includes(f);
+    expect(freeRecording('t/BL-1/demo.gif', at())).toBe('t/BL-1/demo.gif');
+    expect(freeRecording('t/BL-1/demo.gif', at('t/BL-1/demo.gif'))).toBe('t/BL-1/demo-2.gif');
+    expect(freeRecording('t/BL-1/demo.gif', at('t/BL-1/demo.mp4'))).toBe('t/BL-1/demo-2.gif');
+    expect(freeRecording('t/BL-1/demo.GIF', at('t/BL-1/demo.GIF', 't/BL-1/demo-2.mp4'))).toBe('t/BL-1/demo-3.GIF');
+    expect(freeRecording('t/BL-1/demo-x.gif', at('t/BL-1/demo.gif'))).toBe('t/BL-1/demo-x.gif');
   });
 });
 

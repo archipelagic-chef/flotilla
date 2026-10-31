@@ -26,6 +26,7 @@ export function unsafeFrame(frame: { title?: string; argv?: string[] }, options:
 export function stepsToPlay<S>(demo: { steps: S[] }, mode: 'record' | 'play' | 'try' | 'check'): S[];
 export function demoDisplay(env: Record<string, string | undefined>): 'virtual' | 'screen';
 export function freeDisplay(exists: (file: string) => boolean, from?: number): number;
+export function freeRecording(out: string, exists: (file: string) => boolean): string;
 export function decodePng(buffer: Buffer): RgbaImage;
 export function downscale(image: RgbaImage, maxWidth: number): RgbaImage;
 export function frameGate<F>(check: () => Promise<string | undefined>): {

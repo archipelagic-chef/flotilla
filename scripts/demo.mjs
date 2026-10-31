@@ -43,6 +43,7 @@ import {
   failureReason,
   frameGate,
   freeDisplay,
+  freeRecording,
   encodeGif,
   gapStats,
   listDemos,
@@ -160,7 +161,7 @@ function prepareProfile(githubUrl, own = {}) {
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('Usage: npm run demo -- record <name> --out <file.gif> | check <name> | play <name> | try <name> | list');
+  console.error('Usage: npm run demo -- record <name> --out <file.gif> [--replace] | check <name> | play <name> | try <name> | list');
   process.exit(1);
 }
 
@@ -538,6 +539,9 @@ function save(frames, out, name) {
           'yuv420p',
           '-c:v',
           'libx264',
+          // The index (moov) first: a player that loads only the metadata gets it in its first range.
+          '-movflags',
+          '+faststart',
           '-metadata',
           `comment=${DEMO_TAG}${name}`,
           path.resolve(mp4),
@@ -575,10 +579,16 @@ async function main() {
   const stillAt = rest.indexOf('--still');
   const still = stillAt >= 0 ? rest[stillAt + 1] : undefined;
   if (mode === 'record' && (!out || !/\.gif$/i.test(out))) usage('record needs --out <file.gif> (a long demo becomes <file>.mp4)');
+  // A recording that's taken keeps its name: an earlier report shows it (BL-251). --replace writes over it.
+  const free = out && mode === 'record' && !rest.includes('--replace') ? freeRecording(out, fs.existsSync) : out;
+  if (free !== out)
+    console.log(
+      `${path.basename(out)} (or its .mp4) is taken: an earlier report may show it. Recording to ${path.basename(free)} instead (--replace writes over it).`,
+    );
 
   // A lock left by a demo that's gone is taken over; one held open (a demo played, its window not closed yet) isn't.
   const display = demoDisplay(process.env);
-  await withLock(LOCK_FILE, () => (build(), show(mode, demo, out, still, display)), {
+  await withLock(LOCK_FILE, () => (build(), show(mode, demo, free, still, display)), {
     staleMs: Number.POSITIVE_INFINITY,
     onWait: () => console.log('Another demo is running in this worktree: waiting for it to finish (or close its window)…'),
   });
@@ -647,7 +657,7 @@ function startXvfbOn(n) {
 }
 
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
-async function show(mode, demo, out, still, display) {
+async function show(mode, demo, free, still, display) {
   const playground = PLAYGROUND;
   // Made when missing, and brought up to date otherwise (its local origin, BL-113): it changes nothing else.
   execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });

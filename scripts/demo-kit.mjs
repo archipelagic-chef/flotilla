@@ -145,6 +145,20 @@ export function freeDisplay(exists, from = 99) {
   throw new Error(`no free X display from :${from} up`);
 }
 
+/**
+ * Where a recording asked for at `out` (a .gif) goes, so it doesn't overwrite one an earlier report shows (BL-251):
+ * `out` when neither it nor the .mp4 a long demo becomes is there, else the first free `<name>-2`, `<name>-3`…
+ */
+export function freeRecording(out, exists) {
+  const base = out.replace(/\.gif$/i, '');
+  const ext = out.slice(base.length);
+  for (let n = 1; n < 1000; n++) {
+    const name = n === 1 ? base : `${base}-${n}`;
+    if (!exists(name + ext) && !exists(`${name}.mp4`)) return name + ext;
+  }
+  throw new Error(`no free name for ${out}`);
+}
+
 /** A PNG (8-bit RGB or RGBA, not interlaced: what Chromium's screenshots are) as RGBA pixels. */
 export function decodePng(buffer) {
   if (buffer.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
