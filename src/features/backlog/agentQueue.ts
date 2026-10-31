@@ -11,8 +11,8 @@
 export const START_KINDS = ['reply', 'review', 'resume', 'new'] as const;
 export type StartKind = (typeof START_KINDS)[number];
 
-/** Why a start waits: no free slot, or too little memory (flotilla.agents.minFreeMemoryMB). */
-export type WaitReason = 'slot' | 'memory';
+/** Why a start waits: no free slot, too little memory (flotilla.agents.minFreeMemoryMB), or the account's usage limit (BL-248). */
+export type WaitReason = 'slot' | 'memory' | 'limit';
 
 /** "2nd", "11th", "23rd". */
 export function ordinal(n: number): string {

@@ -137,7 +137,11 @@ export function QueuedPanel({ queued }: { queued: QueuedView }) {
       <i class="codicon codicon-clock" />
       <span class="review-text">
         {queuedNeed(queued).line}
-        {queued.reason === 'slot' ? `: ${queued.running} of ${queued.limit} agents running.` : '.'}
+        {queued.reason === 'slot'
+          ? `: ${queued.running} of ${queued.limit} agents running.`
+          : queued.reason === 'limit'
+            ? ': Prioritize tries it now anyway.'
+            : '.'}
       </span>
       <ActionButton
         class="button secondary"

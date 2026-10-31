@@ -387,7 +387,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
           ...(need ? { need } : {}),
-          ...(queued ? { queued: { kind: queued.kind, reason: queued.reason, place: queued.place, ...(queued.since ? { since: queued.since } : {}) } } : {}),
+          ...(queued
+            ? {
+                queued: {
+                  kind: queued.kind,
+                  reason: queued.reason,
+                  ...(queued.until ? { until: queued.until } : {}),
+                  place: queued.place,
+                  ...(queued.since ? { since: queued.since } : {}),
+                },
+              }
+            : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
           ...(holders.has(item.id) ? { holdsUp: holders.get(item.id) } : {}),

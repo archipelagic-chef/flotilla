@@ -50,7 +50,7 @@ export interface BacklogItemView extends BacklogItem {
   /** Why it waits on the user (its row in "Needs you"). */
   need?: Need;
   /** Its start waiting in the agents' queue (BL-212): what for, why, and its place in line. */
-  queued?: { kind: 'reply' | 'review' | 'resume' | 'new'; reason: 'slot' | 'memory'; place: number; since?: string };
+  queued?: { kind: 'reply' | 'review' | 'resume' | 'new'; reason: 'slot' | 'memory' | 'limit'; until?: string; place: number; since?: string };
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
   /** The open tickets that wait for it (BL-238), directly or through a chain: its "Needs you" row says it holds them up. */
@@ -424,7 +424,7 @@ export interface AutopilotAgent {
 /** A start waiting: for a free slot or for memory; a reply, a review, a resume or a new ticket. */
 export interface AutopilotQueued {
   id: string;
-  reason: 'slot' | 'memory';
+  reason: 'slot' | 'memory' | 'limit';
   kind: 'reply' | 'review' | 'resume' | 'new';
   since?: string;
 }
