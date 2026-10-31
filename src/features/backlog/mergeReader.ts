@@ -12,9 +12,9 @@ import {
 
 /**
  * Reads whether each item's branches are merged into the base, from git. A branch is merged when it's an ancestor of
- * the base and had commits of its own (its reflog says so: a branch just started is an ancestor too). Branches that
- * no longer exist are left out. Results are cached by the base's and each branch's commit, so a refresh with nothing
- * moved reads nothing.
+ * the base and its tip is a commit it made itself (its reflog says so: a branch just started, or reset back, is an
+ * ancestor too). Branches that no longer exist are left out. Results are cached by the base's and each branch's
+ * commit, so a refresh with nothing moved reads nothing.
  */
 export class MergeReader {
   private cache = new Map<string, BranchState>();
@@ -81,9 +81,17 @@ export class MergeReader {
       const commits = Number((await runGit(['rev-list', '--count', `${baseSha}..${sha}`], { cwd: this.cwd })).trim()) || 0;
       return { branch, state: 'unmerged', commits };
     }
-    // Ancestor of the base: merged if it ever had commits (its reflog says more than its creation), else empty.
-    const log = await runGit(['reflog', 'show', '--format=%gs', `refs/heads/${branch}`], { cwd: this.cwd }).catch(() => '');
-    const worked = log.split('\n').some((line) => line && !line.startsWith('branch: Created'));
+    // Ancestor of the base: merged if the branch made its tip itself (its reflog says so), else empty. A branch
+    // back on the commit it was created from, reset to or fast-forwarded to is in the base too, with no work of its own.
+    const log = await runGit(['reflog', 'show', '--format=%H %gs', `refs/heads/${branch}`], { cwd: this.cwd }).catch(() => '');
+    const worked = log.split('\n').some((line) => line.startsWith(`${sha} `) && madeCommit(line.slice(sha.length + 1)));
     return { branch, state: worked ? 'merged' : 'empty', commits: 0 };
   }
+}
+
+/** Whether a reflog entry's subject is the branch making a commit: a commit, amend, rebase, cherry-pick, revert or
+ * real merge, not its creation, a reset or a fast-forward. */
+function madeCommit(subject: string): boolean {
+  if (/^(commit|cherry-pick|revert|rebase|am)\b/.test(subject)) return true;
+  return /^(merge|pull)\b/.test(subject) && !/: Fast-forward$/.test(subject);
 }
