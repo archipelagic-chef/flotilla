@@ -23,6 +23,7 @@ import {
   withDiffs,
 } from './changeTree';
 import type { FullAt } from './diffView';
+import { LineText } from './lineText';
 
 const ROW = 22;
 const MAX_HEIGHT = 440;
@@ -364,7 +365,7 @@ function Row({
         <span class="line-no">{l.old ?? ''}</span>
         <span class="line-no">{l.new ?? ''}</span>
         <span class="line-sign">{l.kind === 'added' ? '+' : l.kind === 'deleted' ? '−' : ''}</span>
-        <span class="line-text">{l.text}</span>
+        <LineText line={l} />
       </div>
     );
   }

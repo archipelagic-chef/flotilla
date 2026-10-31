@@ -15,6 +15,7 @@ import {
   rowWindow,
 } from './changeTree';
 import './diffView.css';
+import { LineText } from './lineText';
 
 const ROW = 20;
 
@@ -161,7 +162,7 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
                   <span class="line-no">{l.old ?? ''}</span>
                   <span class="line-no">{l.new ?? ''}</span>
                   <span class="line-sign">{l.kind === 'added' ? '+' : l.kind === 'deleted' ? '−' : ''}</span>
-                  <span class="line-text">{l.text}</span>
+                  <LineText line={l} />
                 </div>
               );
             })}

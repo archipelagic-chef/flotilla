@@ -245,3 +245,61 @@
 .rendered .diff-mark:hover {
   opacity: 0.85;
 }
+/* The code's syntax colouring (BL-208), in both views: highlight.js's scopes, coloured from the theme's variables. */
+.tok-keyword,
+.tok-literal,
+.tok-meta,
+.tok-tag,
+.tok-name,
+.tok-selector-tag,
+.tok-section,
+.tok-bullet {
+  color: var(--vscode-debugTokenExpression-boolean);
+}
+.tok-string,
+.tok-regexp,
+.tok-char,
+.tok-code,
+.tok-template-tag {
+  color: var(--vscode-debugTokenExpression-string);
+}
+.tok-number,
+.tok-symbol {
+  color: var(--vscode-debugTokenExpression-number);
+}
+.tok-comment,
+.tok-doctag,
+.tok-quote {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+.tok-title {
+  color: var(--vscode-symbolIcon-functionForeground);
+}
+.tok-type,
+.tok-built_in,
+.tok-class {
+  color: var(--vscode-symbolIcon-classForeground);
+}
+.tok-variable,
+.tok-params,
+.tok-attr,
+.tok-attribute,
+.tok-property,
+.tok-template-variable,
+.tok-selector-class,
+.tok-selector-id,
+.tok-selector-attr,
+.tok-selector-pseudo {
+  color: var(--vscode-symbolIcon-variableForeground);
+}
+.tok-link {
+  color: var(--vscode-textLink-foreground);
+}
+.tok-section,
+.tok-strong {
+  font-weight: bold;
+}
+.tok-emphasis {
+  font-style: italic;
+}
