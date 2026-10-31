@@ -5,8 +5,17 @@ export interface ConflictPlace {
   pureAddition: boolean;
   imports: boolean;
 }
-export function conflictsOf(text: string): ConflictPlace[];
-export function replay(cwd: string, first: string, second: string): { name: string; places: ConflictPlace[] }[] | undefined;
+export interface Landing {
+  id: string;
+  before: string;
+  last: string;
+  merged?: boolean;
+}
+export function conflictsOf(text: string, reversed?: boolean): ConflictPlace[];
+export function replay(cwd: string, first: string, second: string, base?: string, reversed?: boolean): { name: string; places: ConflictPlace[] }[] | undefined;
+export function landings(cwd: string, ref: string, since: string, until?: string): Landing[];
+export function branchStart(cwd: string, id: string): string | undefined;
+export function replayLanding(cwd: string, landing: Landing, start: string): { name: string; places: ConflictPlace[] }[] | undefined;
 export function summarize(results: { commit: string; files?: { name: string; places: ConflictPlace[] }[] }[]): {
   merges: number;
   conflicted: number;
