@@ -2262,6 +2262,7 @@
     "bench": "node scripts/bench-refresh.mjs",
     "bench:tokens": "node scripts/bench-tokens.mjs",
     "bench:ticket": "node scripts/bench-ticket.mjs",
+    "bench:demos": "node scripts/bench-demos.mjs",
     "debug-profile": "node scripts/debug-profile.mjs",
     "demo": "node scripts/demo.mjs",
     "fake-github": "node scripts/fake-github.mjs",
