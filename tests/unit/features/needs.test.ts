@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { setStartFailed, type BacklogData, type BacklogItem } from '../../../src/features/backlog/backlog';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  type BacklogData,
+  type BacklogItem,
+  setStartFailed,
+} from '../../../src/features/backlog/backlog';
 import {
   holdsUpLine,
   needOf,
@@ -8,7 +16,10 @@ import {
   oldestFirst,
   resumeAsk,
 } from '../../../src/features/backlog/needs';
-import { stampWaiting, type ReviewState } from '../../../src/features/backlog/review';
+import {
+  type ReviewState,
+  stampWaiting,
+} from '../../../src/features/backlog/review';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
 
 const item = (over: Partial<BacklogItem> = {}): BacklogItem => ({

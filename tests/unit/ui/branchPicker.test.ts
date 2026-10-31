@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { branchPickEntries, type BranchPickEntry } from '../../../src/ui/branchPicker';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  branchPickEntries,
+  type BranchPickEntry,
+} from '../../../src/ui/branchPicker';
 
 const branches = { local: ['main', 'feat/a', 'busy'], remote: ['origin/main', 'origin/feat/b', 'origin/busy'] };
 const checkedOut = new Map([

@@ -1,4 +1,7 @@
-import { runGit, runGitBytes } from '../git/gitCli';
+import {
+  runGit,
+  runGitBytes,
+} from '../git/gitCli';
 import type { FileChange } from '../git/porcelain';
 
 /** Right side is the file on disk. */

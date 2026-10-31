@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { cardAgents, type CardChat } from '../../../src/features/backlog/cardAgents';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  cardAgents,
+  type CardChat,
+} from '../../../src/features/backlog/cardAgents';
 import type { ReviewState } from '../../../src/features/backlog/review';
 
 const chat = (name: string, state: CardChat['state'], item = 'BL-1'): CardChat => ({ state, agent: { name, item } });

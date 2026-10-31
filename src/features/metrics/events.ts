@@ -1,7 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ConflictedFile } from '../../core/git/conflictRegions';
-import type { SpendHour, SpendPurpose, ToolKind } from './transcriptSpend';
+import type {
+  SpendHour,
+  SpendPurpose,
+  ToolKind,
+} from './transcriptSpend';
 
 /**
  * What Flotilla does and sees, as events (BL-157): one JSON object per line in

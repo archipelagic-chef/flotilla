@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { backlogIdOf, linkedWorktrees } from '../../../src/ui/backlog/cardMenu';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  backlogIdOf,
+  linkedWorktrees,
+} from '../../../src/ui/backlog/cardMenu';
 
 describe('backlogIdOf', () => {
   it('reads an id, or the card of a context menu', () => {

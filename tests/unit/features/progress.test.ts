@@ -5,7 +5,10 @@ import {
   expect,
   it,
 } from 'vitest';
-import { computeProgress, resolveBase } from '../../../src/features/workstreams/progress';
+import {
+  computeProgress,
+  resolveBase,
+} from '../../../src/features/workstreams/progress';
 import {
   git,
   initRepo,

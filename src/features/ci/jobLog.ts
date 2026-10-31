@@ -2,8 +2,14 @@ import * as vscode from 'vscode';
 import { gitHubName } from '../backlog/sources/github';
 import type { Fetch } from '../backlog/sources/source';
 import { fakeGitHubSession } from './fakeSession';
-import { cleanLog, GitHubActions } from './githubActions';
-import { GitHubPullRequests, GitHubSignInNeeded } from './pullRequests';
+import {
+  cleanLog,
+  GitHubActions,
+} from './githubActions';
+import {
+  GitHubPullRequests,
+  GitHubSignInNeeded,
+} from './pullRequests';
 
 export const JOB_LOG_SCHEME = 'flotilla-ci-log';
 

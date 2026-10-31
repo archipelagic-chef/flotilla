@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { agentOf, hasActiveAgent } from '../../../src/features/backlog/activeAgent';
-import type { BacklogItemView, WorkstreamView } from '../../../src/webview/protocol';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  agentOf,
+  hasActiveAgent,
+} from '../../../src/features/backlog/activeAgent';
+import type {
+  BacklogItemView,
+  WorkstreamView,
+} from '../../../src/webview/protocol';
 
 const item = (fields: Partial<BacklogItemView> = {}) => ({ id: 'BL-1', title: 'A', status: 'doing', ...fields }) as BacklogItemView;
 const worktree = (attention: string) => ({ key: 'w', attention }) as unknown as WorkstreamView;

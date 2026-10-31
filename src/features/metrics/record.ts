@@ -2,7 +2,10 @@ import { conflictRegions } from '../../core/git/conflictRegions';
 import type { CiStop } from '../backlog/ciStop';
 import type { MergeTrain } from '../backlog/mergeTrain';
 import { trainOnto } from '../backlog/mergeTrain';
-import { recordEvent, recordEventOf } from './events';
+import {
+  recordEvent,
+  recordEventOf,
+} from './events';
 
 /**
  * Records a merge's conflicts (BL-157) with their regions, measured in memory (merge-tree) without holding up the

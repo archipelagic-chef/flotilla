@@ -1,6 +1,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { isInside, pathKey, samePath } from '../../core/paths';
+import {
+  isInside,
+  pathKey,
+  samePath,
+} from '../../core/paths';
 import { worktreesRoot } from './layout';
 import {
   isLocked,

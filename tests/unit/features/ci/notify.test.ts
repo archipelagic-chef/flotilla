@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { finished, notifies } from '../../../../src/features/ci/notify';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  finished,
+  notifies,
+} from '../../../../src/features/ci/notify';
 import type { CiRun } from '../../../../src/features/ci/githubActions';
 
 const run = (id: number, status: CiRun['status']): CiRun => ({

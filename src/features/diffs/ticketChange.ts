@@ -1,12 +1,23 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import { parseNameStatus, type FileChange } from '../../core/git/porcelain';
+import {
+  type FileChange,
+  parseNameStatus,
+} from '../../core/git/porcelain';
 import { WORKING } from '../../core/diff/refs';
 import { withTempIndex } from './compare';
-import type { ChangedFile, ChangeGroup, TicketChange } from '../../webview/ticketProtocol';
+import type {
+  ChangedFile,
+  ChangeGroup,
+  TicketChange,
+} from '../../webview/ticketProtocol';
 
-export type { ChangedFile, ChangeGroup, TicketChange };
+export type {
+  ChangedFile,
+  ChangeGroup,
+  TicketChange,
+};
 
 /** What the change of a ticket is read from: its own branches (with the worktree each is checked out in), and its merge. */
 export interface TicketChangeInput {

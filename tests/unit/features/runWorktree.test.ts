@@ -1,5 +1,9 @@
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { RunBlock } from '../../../src/features/backlog/runBlocks';
 import {
   demoPlace,

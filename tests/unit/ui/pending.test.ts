@@ -1,5 +1,9 @@
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   isFresh,
   PENDING_TTL_MS,

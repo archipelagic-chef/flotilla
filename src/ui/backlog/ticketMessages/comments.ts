@@ -1,9 +1,16 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { entryAnchors } from '../../../features/backlog/ticket';
-import { mediaType, tooLarge, tooLargeNote } from '../../../features/backlog/media';
+import {
+  mediaType,
+  tooLarge,
+  tooLargeNote,
+} from '../../../features/backlog/media';
 import type { TicketHostMessage } from '../../../webview/ticketProtocol';
-import { inMarkup, renderMarkdown } from '../ticketPanel';
+import {
+  inMarkup,
+  renderMarkdown,
+} from '../ticketPanel';
 import type { Handlers } from './context';
 import type { CommentsMessage } from './comments.messages';
 

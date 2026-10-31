@@ -13,7 +13,11 @@ import {
   sumNumstat,
   UNTRACKED_SUMMARY_AT,
 } from '../../../src/core/git/porcelain';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

@@ -12,12 +12,24 @@ import {
   priorityFromName,
   updateItem,
 } from './backlog';
-import { DESCRIPTION_SHAPE, KEEP_WHEN_DONE } from './descriptionShape';
+import {
+  DESCRIPTION_SHAPE,
+  KEEP_WHEN_DONE,
+} from './descriptionShape';
 import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
-import { entryDate, parseTicket } from './ticket';
-import { writeAtomic, type LocalBacklog } from './localBacklog';
-import { fromNotesLine, noteIdsOf } from './notes';
+import {
+  entryDate,
+  parseTicket,
+} from './ticket';
+import {
+  type LocalBacklog,
+  writeAtomic,
+} from './localBacklog';
+import {
+  fromNotesLine,
+  noteIdsOf,
+} from './notes';
 
 /**
  * The backlog's inbox: how agents add tickets. An agent writes a Markdown file into .flotilla/backlog/inbox/ (the

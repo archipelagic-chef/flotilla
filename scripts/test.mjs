@@ -11,12 +11,18 @@
 // `npm run test:related` (`--related`) runs the tests of what changed since the merge base with main (committed, not
 // committed, and new files): vitest's `related` mode on those files, which doesn't queue either. A change that every
 // test may depend on (a shared helper, the vitest config, the packages, a tsconfig) runs the full suite instead.
-import { execFileSync, spawn } from 'node:child_process';
+import {
+  execFileSync,
+  spawn,
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { recordEvent, ticketOfBranch } from './record-event.mjs';
+import {
+  recordEvent,
+  ticketOfBranch,
+} from './record-event.mjs';
 
 /** Entries of other hosts (a container sharing the repository) can't be checked: they're dropped after this long. */
 const FOREIGN_MAX_AGE_MS = 2 * 60 * 60_000;

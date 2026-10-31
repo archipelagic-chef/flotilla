@@ -1,7 +1,11 @@
 import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { isInside, samePath, toGitPath } from '../core/paths';
+import {
+  isInside,
+  samePath,
+  toGitPath,
+} from '../core/paths';
 import {
   claudeHome,
   isHeadless,
@@ -14,7 +18,10 @@ import {
   transcriptPath,
   unlinkChat,
 } from '../features/chats/chats';
-import { hooksPresent, installHooks } from '../features/chats/hookInstall';
+import {
+  hooksPresent,
+  installHooks,
+} from '../features/chats/hookInstall';
 import { PendingLinks } from '../features/chats/pendingLinks';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';
@@ -25,7 +32,10 @@ import {
   isRunningHeadless,
   runAgentInTerminal,
 } from './backlog/agentRunner';
-import { sendWindowRequest, takeWindowRequests } from '../features/workstreams/windowRequests';
+import {
+  sendWindowRequest,
+  takeWindowRequests,
+} from '../features/workstreams/windowRequests';
 import { showTranscript } from './transcriptView';
 import type { WindowEnv } from '../features/workstreams/heartbeat';
 import { clearAgentStatus } from '../features/workstreams/agentStatus';

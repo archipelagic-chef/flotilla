@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { showError, type Commands } from '../commandSet';
+import {
+  type Commands,
+  showError,
+} from '../commandSet';
 import { backlogIdOf } from './cardMenu';
-import { readyToMerge, type Merger } from './merge';
+import {
+  type Merger,
+  readyToMerge,
+} from './merge';
 
 /** The merge queue's commands: merge a ticket (or all ready ones), take one next, push what's merged, stop pushing the train; and open its pull request. */
 export function mergeCommands(deps: { backlog: LocalBacklog; merger: Merger }): Commands {

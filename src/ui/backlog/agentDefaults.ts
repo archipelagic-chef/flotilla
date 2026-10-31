@@ -5,7 +5,10 @@ import {
   type AgentEffort,
   defaultsLabel,
 } from '../../features/backlog/backlog';
-import { agentChoice, validModel } from './agentRunner';
+import {
+  agentChoice,
+  validModel,
+} from './agentRunner';
 
 /**
  * Saves one part of the agents' default (flotilla.agents.model or .effort): in the workspace's settings when a folder

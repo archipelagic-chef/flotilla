@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import type { TicketView } from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
 import {

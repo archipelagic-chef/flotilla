@@ -1,6 +1,9 @@
 import { useState } from 'preact/hooks';
 import type { AttentionState } from '../../features/workstreams/attention';
-import { formatMemory, isMemoryShort } from '../../features/workstreams/memory';
+import {
+  formatMemory,
+  isMemoryShort,
+} from '../../features/workstreams/memory';
 import { ciSummary } from '../../features/ci/summary';
 import type {
   CiView,
@@ -8,7 +11,10 @@ import type {
   SlowStorageView,
   WorkstreamView,
 } from '../protocol';
-import { menuContext, run } from './api';
+import {
+  menuContext,
+  run,
+} from './api';
 import { ATTENTION_ICON } from './section';
 import './overview.css';
 

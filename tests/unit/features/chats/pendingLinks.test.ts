@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { PENDING_LINK_TTL_MS, PendingLinks } from '../../../../src/features/chats/pendingLinks';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  PENDING_LINK_TTL_MS,
+  PendingLinks,
+} from '../../../../src/features/chats/pendingLinks';
 
 describe('PendingLinks', () => {
   it('links the first unknown session to the oldest request, one session per request', () => {

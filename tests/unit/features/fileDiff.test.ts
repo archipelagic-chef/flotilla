@@ -5,7 +5,10 @@ import {
   it,
 } from 'vitest';
 import { WORKING } from '../../../src/core/diff/refs';
-import { fileDiff, parseHunks } from '../../../src/features/diffs/fileDiff';
+import {
+  fileDiff,
+  parseHunks,
+} from '../../../src/features/diffs/fileDiff';
 import {
   git,
   initRepo,

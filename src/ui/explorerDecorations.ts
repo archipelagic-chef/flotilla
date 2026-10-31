@@ -5,7 +5,11 @@ import { pathKey } from '../core/paths';
 import type { Repository } from '../core/repository';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { Workstream } from '../features/workstreams/workstream';
-import { ATTENTION_LABEL, describeSync, workstreamLabel } from './format';
+import {
+  ATTENTION_LABEL,
+  describeSync,
+  workstreamLabel,
+} from './format';
 
 /** Badges are at most two characters. */
 const ATTENTION_BADGE: Partial<Record<AttentionState, [string, string | undefined]>> = {

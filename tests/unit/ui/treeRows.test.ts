@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { treeRows, type TreeState } from '../../../src/webview/ui/treeRows';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  treeRows,
+  type TreeState,
+} from '../../../src/webview/ui/treeRows';
 import type { DirEntry } from '../../../src/webview/protocol';
 
 const dir = (name: string, extra: Partial<DirEntry> = {}): DirEntry => ({ name, dir: true, ...extra });

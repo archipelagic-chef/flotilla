@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { FileChange } from '../../../../src/core/git/porcelain';
 import type { Workstream } from '../../../../src/features/workstreams/workstream';
-import { capChanges, changedViews, toWorkstreamView } from '../../../../src/ui/sidebar/viewModel';
+import {
+  capChanges,
+  changedViews,
+  toWorkstreamView,
+} from '../../../../src/ui/sidebar/viewModel';
 import type { WorkstreamView } from '../../../../src/webview/protocol';
 
 const change = (n: number): FileChange => ({ path: `f${n}.txt`, kind: 'modified' });

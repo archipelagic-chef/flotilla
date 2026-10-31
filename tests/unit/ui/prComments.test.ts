@@ -12,13 +12,26 @@ vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }) },
 }));
 
-import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
-import { addBranch, addItem } from '../../../src/features/backlog/backlog';
-import { deleteEntry, editEntry } from '../../../src/features/backlog/commentEdits';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../scripts/fake-github.mjs';
+import {
+  addBranch,
+  addItem,
+} from '../../../src/features/backlog/backlog';
+import {
+  deleteEntry,
+  editEntry,
+} from '../../../src/features/backlog/commentEdits';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { userAnswer } from '../../../src/features/backlog/review';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
-import { entryAnchors, entryThreads, type TicketEntry } from '../../../src/features/backlog/ticket';
+import {
+  entryAnchors,
+  entryThreads,
+  type TicketEntry,
+} from '../../../src/features/backlog/ticket';
 import {
   commentEntries,
   markOf,
@@ -27,7 +40,11 @@ import {
 } from '../../../src/features/ci/prComments';
 import { GitHubPullRequests } from '../../../src/features/ci/pullRequests';
 import { PullRequestComments } from '../../../src/ui/backlog/prComments';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

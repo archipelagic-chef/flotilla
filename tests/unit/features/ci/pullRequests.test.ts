@@ -4,7 +4,10 @@ import {
   expect,
   it,
 } from 'vitest';
-import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../../scripts/fake-github.mjs';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 import {
   closeDiscarded,
@@ -18,7 +21,11 @@ import {
   reviewMark,
   settleMerged,
 } from '../../../../src/features/ci/pullRequests';
-import { git, initRepo, removeDir } from '../../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../../helpers/gitRepo';
 
 let fake: FakeGitHub | undefined;
 const cleanup: string[] = [];

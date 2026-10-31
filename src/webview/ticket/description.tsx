@@ -1,7 +1,15 @@
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import type { TicketView } from '../ticketProtocol';
 import { send } from './actions';
-import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
+import {
+  MarkdownBox,
+  mentionPrefix,
+  Rendered,
+} from './markdownBox';
 import './description.css';
 
 /** A new description starts from its shape: the user (or an agent) fills it in (BL-137). */

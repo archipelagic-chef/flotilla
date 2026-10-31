@@ -1,5 +1,9 @@
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { openTarget } from '../../../src/features/backlog/runTarget';
 
 const dir = path.resolve('/work/tree');

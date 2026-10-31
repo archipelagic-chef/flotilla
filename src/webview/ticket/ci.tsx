@@ -1,13 +1,26 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import {
   ciWord,
   type LatestCi,
   latestCi,
   tookLabel,
 } from '../../features/ci/summary';
-import type { CiRunView, CiView } from '../protocol';
-import type { TicketCiView, TicketWebviewMessage } from '../ticketProtocol';
-import { CiRunList, STATUS, type CiActions } from '../ui/ciList';
+import type {
+  CiRunView,
+  CiView,
+} from '../protocol';
+import type {
+  TicketCiView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
+import {
+  type CiActions,
+  CiRunList,
+  STATUS,
+} from '../ui/ciList';
 import './ci.css';
 
 /**

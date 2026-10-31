@@ -14,7 +14,11 @@ import {
   mergesSince,
   parseBuildStamp,
 } from '../../../src/features/selfUpdate';
-import { outFile, SHIPPED, stagedManifest } from '../../../scripts/package.mjs';
+import {
+  outFile,
+  SHIPPED,
+  stagedManifest,
+} from '../../../scripts/package.mjs';
 import {
   git,
   initRepo,

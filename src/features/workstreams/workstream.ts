@@ -5,7 +5,10 @@ import {
   type StatusBranch,
   summariseUntracked,
 } from '../../core/git/porcelain';
-import { isInside, samePath } from '../../core/paths';
+import {
+  isInside,
+  samePath,
+} from '../../core/paths';
 import type { Scope } from '../../core/repository';
 import {
   type Chat,
@@ -28,9 +31,20 @@ import {
   lastActivity,
   MAX_PATHS,
 } from './activity';
-import { readAgentStatus, type AgentStatus } from './agentStatus';
-import { computeAttention, sortByAttention, type AttentionState } from './attention';
-import { isAlive, readHeartbeat, type Heartbeat } from './heartbeat';
+import {
+  type AgentStatus,
+  readAgentStatus,
+} from './agentStatus';
+import {
+  type AttentionState,
+  computeAttention,
+  sortByAttention,
+} from './attention';
+import {
+  type Heartbeat,
+  isAlive,
+  readHeartbeat,
+} from './heartbeat';
 import {
   computeProgress,
   type Progress,

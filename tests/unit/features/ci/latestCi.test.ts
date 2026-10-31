@@ -5,11 +5,20 @@ import {
   expect,
   it,
 } from 'vitest';
-import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../../scripts/fake-github.mjs';
 import { GitHubActions } from '../../../../src/features/ci/githubActions';
-import { latestCi, tookLabel } from '../../../../src/features/ci/summary';
+import {
+  latestCi,
+  tookLabel,
+} from '../../../../src/features/ci/summary';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
-import type { CiRunView, CiView } from '../../../../src/webview/protocol';
+import type {
+  CiRunView,
+  CiView,
+} from '../../../../src/webview/protocol';
 
 const run = (over: Partial<CiRunView>): CiRunView => ({
   id: 1,

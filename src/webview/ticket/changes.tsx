@@ -10,7 +10,10 @@ import type {
   TicketHostMessage,
   TicketView,
 } from '../ticketProtocol';
-import { ActionButton, send } from './actions';
+import {
+  ActionButton,
+  send,
+} from './actions';
 import './changes.css';
 import {
   changeLetter,

@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { HOOK_EVENTS, hookCommand } from '../../../src/features/chats/hookScript';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  HOOK_EVENTS,
+  hookCommand,
+} from '../../../src/features/chats/hookScript';
 import { claudeHookConfig } from '../../../src/ui/claudeHooks';
 
 describe('claudeHookConfig', () => {

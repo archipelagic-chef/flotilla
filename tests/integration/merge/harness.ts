@@ -8,7 +8,10 @@ import * as path from 'node:path';
 import { expect } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { mergeActions, type MergeAction } from '../../../src/features/backlog/mergeStates';
+import {
+  type MergeAction,
+  mergeActions,
+} from '../../../src/features/backlog/mergeStates';
 import type { AgentRun } from '../../../src/ui/backlog/agentRunner';
 import type { Merger } from '../../../src/ui/backlog/merge';
 import {
@@ -18,7 +21,11 @@ import {
   removeDir,
   writeFile,
 } from '../../helpers/gitRepo';
-import { fakeChecksEnv, resetUi, ui } from './fakeVscode';
+import {
+  fakeChecksEnv,
+  resetUi,
+  ui,
+} from './fakeVscode';
 
 /** The checks: they print what the scenario's next result says, and exit with it. */
 export const FAKE_CHECKS = `node -e "const r = process.env.FLOTILLA_FAKE_CHECKS; console.log(r === 'timeout' ? ' FAIL  a.test.ts > slow\\n Test timed out in 30000ms.' : r === 'fail' ? 'FAIL a.test.ts: expected 1, got 2' : 'all passed'); process.exit(r === 'pass' ? 0 : 1)"`;

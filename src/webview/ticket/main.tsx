@@ -1,6 +1,17 @@
-import { Component, render, type ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { type BacklogPriority, type BacklogStatus } from '../../features/backlog/backlog';
+import {
+  Component,
+  type ComponentChildren,
+  render,
+} from 'preact';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import {
+  type BacklogPriority,
+  type BacklogStatus,
+} from '../../features/backlog/backlog';
 import type { AskView } from '../../features/backlog/ask';
 import type {
   DiscussionView,
@@ -12,8 +23,14 @@ import type {
 // The shared rules first: each section's own CSS, imported by its module, comes after them.
 import '../ui/priority.css';
 import './ticket.css';
-import { Attachments, showAnchor } from './attachments';
-import { DEMO_SECTION, DemoSection } from './demo';
+import {
+  Attachments,
+  showAnchor,
+} from './attachments';
+import {
+  DEMO_SECTION,
+  DemoSection,
+} from './demo';
 import { applyTicketParts } from '../ticketParts';
 import { activeAgents } from '../activeAgents';
 import { PriorityPicker } from '../ui/priority';
@@ -43,12 +60,33 @@ import {
 } from './header';
 import { Description } from './description';
 import { AskPane } from './ask';
-import { DISCUSS_SECTION, DiscussPane } from './discuss';
-import { ActiveAgents, Agents, RESUME_TIP } from './agents';
-import { MainState, MergePanel, withCiStop } from './mergePanel';
-import { CreateWorktreeButton, Parts, Work } from './work';
-import { changeDiffReplies, Changes } from './changes';
-import { DiffView, type FullAt } from './diffView';
+import {
+  DISCUSS_SECTION,
+  DiscussPane,
+} from './discuss';
+import {
+  ActiveAgents,
+  Agents,
+  RESUME_TIP,
+} from './agents';
+import {
+  MainState,
+  MergePanel,
+  withCiStop,
+} from './mergePanel';
+import {
+  CreateWorktreeButton,
+  Parts,
+  Work,
+} from './work';
+import {
+  changeDiffReplies,
+  Changes,
+} from './changes';
+import {
+  DiffView,
+  type FullAt,
+} from './diffView';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';

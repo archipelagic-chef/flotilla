@@ -13,7 +13,11 @@ import {
   seedCreating,
   seedPlayground,
 } from '../../../scripts/playground-seed.mjs';
-import { CreatingWorktrees, creatingDir, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
+import {
+  creatingDir,
+  CreatingWorktrees,
+  readCreatingRecords,
+} from '../../../src/features/backlog/creatingWorktrees';
 import {
   isHeadless,
   mergeChats,
@@ -22,7 +26,10 @@ import {
   readUnlinked,
 } from '../../../src/features/chats/chats';
 import { transcriptMarkdown } from '../../../src/features/chats/transcriptMarkdown';
-import { childrenOf, ID_PATTERN } from '../../../src/features/backlog/backlog';
+import {
+  childrenOf,
+  ID_PATTERN,
+} from '../../../src/features/backlog/backlog';
 import { descriptionHash } from '../../../src/features/backlog/changes';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import {
@@ -31,9 +38,16 @@ import {
   userAnswer,
   verdictReport,
 } from '../../../src/features/backlog/review';
-import { latestRun, placedRunBlocks } from '../../../src/features/backlog/runBlocks';
+import {
+  latestRun,
+  placedRunBlocks,
+} from '../../../src/features/backlog/runBlocks';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

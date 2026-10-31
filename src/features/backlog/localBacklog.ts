@@ -2,7 +2,10 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ensureExcludeLine } from '../../core/git/exclude';
-import { recordEvent, recordEventOf } from '../metrics/events';
+import {
+  recordEvent,
+  recordEventOf,
+} from '../metrics/events';
 import { criteriaCount } from '../metrics/productivity';
 import {
   type BacklogData,
@@ -14,8 +17,16 @@ import {
   isBacklogData,
   startEpics,
 } from './backlog';
-import { describeChanges, descriptionHash, lineDelta } from './changes';
-import { noteChange, reworked, type SisterReason } from './sisterCheck';
+import {
+  describeChanges,
+  descriptionHash,
+  lineDelta,
+} from './changes';
+import {
+  noteChange,
+  reworked,
+  type SisterReason,
+} from './sisterCheck';
 import {
   entryDate,
   formatTicket,

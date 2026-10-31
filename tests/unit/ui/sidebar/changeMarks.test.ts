@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { FileChange } from '../../../../src/core/git/porcelain';
-import { changeMarks, ListedFolders } from '../../../../src/ui/sidebar/changeMarks';
+import {
+  changeMarks,
+  ListedFolders,
+} from '../../../../src/ui/sidebar/changeMarks';
 
 const m = (path: string): FileChange => ({ path, kind: 'modified' });
 

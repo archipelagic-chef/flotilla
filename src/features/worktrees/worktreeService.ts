@@ -22,7 +22,11 @@ import {
   retargetBackPointer,
   unlock,
 } from './portability';
-import { resolveWorktrees, type RepoRoots, type ResolvedWorktree } from './resolver';
+import {
+  type RepoRoots,
+  type ResolvedWorktree,
+  resolveWorktrees,
+} from './resolver';
 
 export type CreateRequest =
   { kind: 'new'; branch: string; startPoint?: string } | { kind: 'existing'; branch: string } | { kind: 'remote'; remoteRef: string; localBranch?: string };

@@ -8,12 +8,26 @@ import {
   expect,
   it,
 } from 'vitest';
-import { eventsDir, readEvents } from '../../../../src/features/metrics/events';
-import { readLiveSpend, scanSpend, STATE_FILE } from '../../../../src/features/metrics/spendScan';
+import {
+  eventsDir,
+  readEvents,
+} from '../../../../src/features/metrics/events';
+import {
+  readLiveSpend,
+  scanSpend,
+  STATE_FILE,
+} from '../../../../src/features/metrics/spendScan';
 import { spendTimeline } from '../../../../src/features/metrics/spendTimeline';
 import type { FlotillaEvent } from '../../../../src/features/metrics/events';
-import { hourOf, transcriptSpend } from '../../../../src/features/metrics/transcriptSpend';
-import { buckets, MOST_CHATS, topChats } from '../../../../src/webview/metrics/spendBuckets';
+import {
+  hourOf,
+  transcriptSpend,
+} from '../../../../src/features/metrics/transcriptSpend';
+import {
+  buckets,
+  MOST_CHATS,
+  topChats,
+} from '../../../../src/webview/metrics/spendBuckets';
 import type { SpendTimeline } from '../../../../src/webview/metricsProtocol';
 import { line } from './transcriptSpend.test';
 

@@ -1,5 +1,8 @@
 import { runGit } from '../../core/git/gitCli';
-import { gitMessage as message, PUSH_REMOTE } from './branchPush';
+import {
+  gitMessage as message,
+  PUSH_REMOTE,
+} from './branchPush';
 import type { MergeTrain } from './mergeTrain';
 
 /**

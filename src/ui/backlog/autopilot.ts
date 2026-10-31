@@ -29,7 +29,10 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
 import type { PauseAll } from './pauseAll';
-import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
+import type {
+  AutopilotAgent,
+  AutopilotQueued,
+} from '../../webview/protocol';
 import { memoryShortage } from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
 import {

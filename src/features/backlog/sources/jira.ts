@@ -1,4 +1,7 @@
-import { priorityFromName, type BacklogStatus } from '../backlog';
+import {
+  type BacklogStatus,
+  priorityFromName,
+} from '../backlog';
 import {
   type CreateTarget,
   type Fetch,

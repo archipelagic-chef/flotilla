@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { computeAttention, sortByAttention } from '../../../src/features/workstreams/attention';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  computeAttention,
+  sortByAttention,
+} from '../../../src/features/workstreams/attention';
 
 const now = new Date('2026-10-09T10:00:00Z');
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);

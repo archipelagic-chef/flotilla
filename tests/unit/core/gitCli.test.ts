@@ -13,7 +13,11 @@ import {
   runGit,
   versionAtLeast,
 } from '../../../src/core/git/gitCli';
-import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

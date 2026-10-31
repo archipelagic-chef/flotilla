@@ -1,9 +1,15 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
 import type { Leader } from '../features/backlog/leader';
-import { FINISHED_SWEEP_MS, formatBytes } from '../features/storage/finished';
+import {
+  FINISHED_SWEEP_MS,
+  formatBytes,
+} from '../features/storage/finished';
 import type { Workstream } from '../features/workstreams/workstream';
-import { shareLinkedFolder, type ShareResult } from '../features/worktrees/setup';
+import {
+  shareLinkedFolder,
+  type ShareResult,
+} from '../features/worktrees/setup';
 import { workstreamLabel } from './format';
 import { readSettings } from './settings';
 

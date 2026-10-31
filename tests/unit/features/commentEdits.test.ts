@@ -24,7 +24,10 @@ import {
   replyLine,
   type TicketEntry,
 } from '../../../src/features/backlog/ticket';
-import { initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const entry = (date: string, author: string, body = 'Text.'): TicketEntry => ({ date, author, body });
 const NOW = '2026-10-25 09:00';

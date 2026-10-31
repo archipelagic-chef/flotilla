@@ -3,7 +3,10 @@ import type * as vscode from 'vscode';
 import { claudeHome } from '../features/chats/chats';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import { setEventLog } from '../features/metrics/events';
-import { historyImported, importHistory } from '../features/metrics/import';
+import {
+  historyImported,
+  importHistory,
+} from '../features/metrics/import';
 import { rollUpOldEvents } from '../features/metrics/rollup';
 import { scanSpend } from '../features/metrics/spendScan';
 

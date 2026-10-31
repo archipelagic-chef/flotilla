@@ -1,4 +1,7 @@
-import { type ExecFileOptions, execFile } from 'node:child_process';
+import {
+  execFile,
+  type ExecFileOptions,
+} from 'node:child_process';
 import { Worker } from 'node:worker_threads';
 
 /**

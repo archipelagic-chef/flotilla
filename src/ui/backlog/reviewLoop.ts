@@ -52,19 +52,32 @@ import {
   type Verdict,
   verdictReport,
 } from '../../features/backlog/review';
-import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
+import {
+  entryDate,
+  type TicketEntry,
+} from '../../features/backlog/ticket';
 import {
   movedUp,
   moveUpTarget,
   ROUNDS_BEFORE_MOVING_UP,
   strongerRequest,
 } from '../../features/backlog/modelLevel';
-import { NO_USAGE, runawayPrompt, runawayReason } from '../../features/backlog/runaway';
+import {
+  NO_USAGE,
+  runawayPrompt,
+  runawayReason,
+} from '../../features/backlog/runaway';
 import { mapFor } from '../../features/backlog/codeMap';
-import { readTranscript, type ChatUsage } from '../../features/chats/chats';
+import {
+  type ChatUsage,
+  readTranscript,
+} from '../../features/chats/chats';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
-import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
+import {
+  retryDelay,
+  type UsageLimit,
+} from '../../features/backlog/limits';
 import { accountLimit } from '../../features/backlog/accountLimit';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
@@ -93,7 +106,10 @@ import {
   validSession,
 } from './agentRunner';
 import type { QueuedView } from '../../webview/ticketProtocol';
-import type { AutopilotAgent, AutopilotQueued } from '../../webview/protocol';
+import type {
+  AutopilotAgent,
+  AutopilotQueued,
+} from '../../webview/protocol';
 import { trackProgress } from '../progress';
 import { recordEvent } from '../../features/metrics/events';
 import { resumeAsk } from '../../features/backlog/needs';

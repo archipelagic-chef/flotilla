@@ -1,8 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { MetricsPeriod, MetricsView } from '../../webview/metricsProtocol';
-import { computeMetrics, EventIndex } from './compute';
-import { eventsDir, parseEvents } from './events';
+import type {
+  MetricsPeriod,
+  MetricsView,
+} from '../../webview/metricsProtocol';
+import {
+  computeMetrics,
+  EventIndex,
+} from './compute';
+import {
+  eventsDir,
+  parseEvents,
+} from './events';
 import { readLiveSpend } from './spendScan';
 
 /**

@@ -1,10 +1,33 @@
-import type { TicketCiView, TicketView } from '../ticketProtocol';
-import { type Ask, ticketStatus } from '../ticketStatus';
-import { ActionButton, send } from './actions';
-import { focusComment, sendComment } from './comments';
-import { AgentStatus, outsideAgents } from './agents';
-import { DiscussPanel, QueuedPanel, ReviewPanel } from './reviewPanel';
-import { CleanUpPanel, MergedPanel, MergingPanel } from './mergePanel';
+import type {
+  TicketCiView,
+  TicketView,
+} from '../ticketProtocol';
+import {
+  type Ask,
+  ticketStatus,
+} from '../ticketStatus';
+import {
+  ActionButton,
+  send,
+} from './actions';
+import {
+  focusComment,
+  sendComment,
+} from './comments';
+import {
+  AgentStatus,
+  outsideAgents,
+} from './agents';
+import {
+  DiscussPanel,
+  QueuedPanel,
+  ReviewPanel,
+} from './reviewPanel';
+import {
+  CleanUpPanel,
+  MergedPanel,
+  MergingPanel,
+} from './mergePanel';
 import { ChecksRunning } from './checksPanel';
 import './stateCard.css';
 

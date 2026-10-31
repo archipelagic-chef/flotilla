@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../../src/features/backlog/backlog';
 import {
   checkingOf,
   dropCheck,

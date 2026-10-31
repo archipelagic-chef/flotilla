@@ -5,7 +5,10 @@ import {
   fetchText,
   TIMEOUT_MS,
 } from '../backlog/sources/source';
-import { explainRunError, type RunAction } from './runActions';
+import {
+  explainRunError,
+  type RunAction,
+} from './runActions';
 
 /** Where a run is: waiting to start, running, or how it ended. */
 export type CiStatus = 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped' | 'neutral';

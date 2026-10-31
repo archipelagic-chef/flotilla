@@ -2,7 +2,10 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { GIT_SCHEME, GitFileSystemProvider } from './core/diff/gitContentProvider';
+import {
+  GIT_SCHEME,
+  GitFileSystemProvider,
+} from './core/diff/gitContentProvider';
 import {
   getGitVersion,
   GitError,
@@ -12,7 +15,10 @@ import {
 } from './core/git/gitCli';
 import { locateRepo } from './core/repoLocator';
 import { StartupClock } from './core/startupClock';
-import { Repository, type Scope } from './core/repository';
+import {
+  Repository,
+  type Scope,
+} from './core/repository';
 import { inBackground } from './core/git/gitQueue';
 import { toWorkspaceUri } from './core/uris';
 import type { Fetch } from './features/backlog/sources/source';
@@ -40,7 +46,10 @@ import {
   type Workstream,
 } from './features/workstreams/workstream';
 import { WorktreeService } from './features/worktrees/worktreeService';
-import { samePath, toGitPath } from './core/paths';
+import {
+  samePath,
+  toGitPath,
+} from './core/paths';
 import * as chatUi from './ui/chatCommands';
 import { registerTranscriptView } from './ui/transcriptView';
 import {
@@ -55,7 +64,10 @@ import {
 } from './ui/commands';
 import { Autopilot } from './ui/backlog/autopilot';
 import { Leader } from './features/backlog/leader';
-import { chatAgentNames, SisterChecks } from './ui/backlog/sisterChecks';
+import {
+  chatAgentNames,
+  SisterChecks,
+} from './ui/backlog/sisterChecks';
 import { ImprovementReview } from './ui/metrics/improvementReview';
 import { BranchPush } from './ui/backlog/branchPush';
 import { PullRequestComments } from './ui/backlog/prComments';
@@ -64,17 +76,27 @@ import { TicketChecker } from './ui/backlog/ticketCheck';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
-import { NoteAgents, noteCommands } from './ui/backlog/notes';
+import {
+  NoteAgents,
+  noteCommands,
+} from './ui/backlog/notes';
 import { NoteStore } from './features/backlog/notes';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
-import { isWorkingHere, setAgentDirs, trackTerminals } from './ui/backlog/agentRunner';
+import {
+  isWorkingHere,
+  setAgentDirs,
+  trackTerminals,
+} from './ui/backlog/agentRunner';
 import { Shaping } from './ui/backlog/shaping';
 import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
 import { PausedAllStore } from './features/backlog/pausedAll';
-import { commit, scmContext } from './ui/scmCommands';
+import {
+  commit,
+  scmContext,
+} from './ui/scmCommands';
 import { ActiveWorktree } from './ui/activeWorktree';
 import {
   activeWorktreeCommands,
@@ -90,7 +112,10 @@ import { LocalBacklog } from './features/backlog/localBacklog';
 import { BacklogIntegrations } from './ui/backlog/integrations';
 import { TicketPanels } from './ui/backlog/ticketPanel';
 import { Merges } from './ui/backlog/merges';
-import { RunApprovals, RunTerminals } from './ui/backlog/runBlock';
+import {
+  RunApprovals,
+  RunTerminals,
+} from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { Metrics } from './ui/metrics/metrics';
 import { devGitHubApi } from './ui/ci/devGitHub';
@@ -106,8 +131,15 @@ import { FinishedWorktrees } from './ui/finishedWorktrees';
 import { SharedFolders } from './ui/sharedFolders';
 import { extraWorkspaceFolder } from './ui/workspaceFolders';
 import { watchInstalledVersion } from './ui/installedVersion';
-import { registerSelfUpdate, resumeAfterInstall, watchMainBuild } from './ui/selfUpdate';
-import { creatingDir, creatingWorktrees } from './features/backlog/creatingWorktrees';
+import {
+  registerSelfUpdate,
+  resumeAfterInstall,
+  watchMainBuild,
+} from './ui/selfUpdate';
+import {
+  creatingDir,
+  creatingWorktrees,
+} from './features/backlog/creatingWorktrees';
 import { startEventLog } from './ui/eventLog';
 import { registerAll } from './ui/commandSet';
 import { mergeCommands } from './ui/backlog/mergeCommands';

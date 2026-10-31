@@ -34,8 +34,16 @@ import {
   updateItem,
 } from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { formatTicket, parseTicket, summaryOf } from '../../../src/features/backlog/ticket';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  formatTicket,
+  parseTicket,
+  summaryOf,
+} from '../../../src/features/backlog/ticket';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

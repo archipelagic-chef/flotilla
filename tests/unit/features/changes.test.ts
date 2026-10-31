@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
-import { describeChanges, lineDelta } from '../../../src/features/backlog/changes';
+import {
+  describeChanges,
+  lineDelta,
+} from '../../../src/features/backlog/changes';
 
 const item: BacklogItem = { id: 'BL-2', title: 'Rate-limit', status: 'todo', created: '2026-10-11T00:00:00Z' };
 

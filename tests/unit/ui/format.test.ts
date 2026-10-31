@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { ResolvedWorktree } from '../../../src/features/worktrees/resolver';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 import {

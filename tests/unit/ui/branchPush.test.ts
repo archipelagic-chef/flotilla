@@ -14,7 +14,10 @@ vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => setting.value ?? d }) },
 }));
 
-import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../scripts/fake-github.mjs';
 import {
   addBranch,
   addItem,
@@ -23,7 +26,10 @@ import {
   updateItem,
 } from '../../../src/features/backlog/backlog';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
-import { GitHubPullRequests, GitHubSignInNeeded } from '../../../src/features/ci/pullRequests';
+import {
+  GitHubPullRequests,
+  GitHubSignInNeeded,
+} from '../../../src/features/ci/pullRequests';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { BranchPush } from '../../../src/ui/backlog/branchPush';
 import {

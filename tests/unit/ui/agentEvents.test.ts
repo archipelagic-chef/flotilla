@@ -17,9 +17,16 @@ vi.mock('vscode', () => ({
   ThemeIcon: class {},
 }));
 
-import { addItem, moveItem } from '../../../src/features/backlog/backlog';
+import {
+  addItem,
+  moveItem,
+} from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
+import {
+  eventsWritten,
+  readEvents,
+  setEventLog,
+} from '../../../src/features/metrics/events';
 import { transcriptPath } from '../../../src/features/chats/chats';
 import {
   endTerminalRun,
@@ -28,7 +35,10 @@ import {
   runUsage,
   trackAsk,
 } from '../../../src/ui/backlog/agentRunner';
-import { initRepo, makeTempDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  makeTempDir,
+} from '../../helpers/gitRepo';
 
 const output = { appendLine: () => undefined } as never;
 

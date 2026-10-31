@@ -9,7 +9,10 @@ import type {
   BacklogStatus,
 } from '../features/backlog/backlog';
 import type { RemoteEditOptions } from '../features/backlog/sources/source';
-import type { HistoryRewrite, HistoryVersion } from '../features/backlog/history';
+import type {
+  HistoryRewrite,
+  HistoryVersion,
+} from '../features/backlog/history';
 import type { MergeInfo } from '../features/backlog/merged';
 import type { FileChange } from '../core/git/porcelain';
 import type { ReviewState } from '../features/backlog/review';
@@ -19,12 +22,18 @@ import type { AnswerView } from '../features/backlog/askAgent';
 import type { AttachmentKind } from '../features/backlog/attachments';
 import type { TicketEntry } from '../features/backlog/ticket';
 import type { AskView } from '../features/backlog/ask';
-import type { AgentActivity, StuckRules } from '../features/chats/activity';
+import type {
+  AgentActivity,
+  StuckRules,
+} from '../features/chats/activity';
 import type { AgentSummary } from '../features/chats/summary';
 import type { RunBlockRef } from '../features/backlog/runBlocks';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
-import type { CiRequest, CiView } from './protocol';
+import type {
+  CiRequest,
+  CiView,
+} from './protocol';
 import type { CiStatus } from '../features/ci/githubActions';
 import type { CiStop } from '../features/backlog/ciStop';
 import type { ChecksProgress } from '../features/backlog/checksProgress';

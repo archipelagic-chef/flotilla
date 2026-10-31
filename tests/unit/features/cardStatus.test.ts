@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { BacklogStatus } from '../../../src/features/backlog/backlog';
 import type { CardAgent } from '../../../src/features/backlog/cardAgents';
 import {

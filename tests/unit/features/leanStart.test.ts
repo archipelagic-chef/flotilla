@@ -12,7 +12,11 @@ import {
   leanFlags,
   writeAgentSettings,
 } from '../../../src/features/backlog/leanStart';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

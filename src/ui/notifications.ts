@@ -1,10 +1,16 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
-import type { BacklogData, BacklogItem } from '../features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../features/backlog/backlog';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import type { Leader } from '../features/backlog/leader';
 import type { QueuedStart } from '../features/backlog/turn';
-import { holdsUp, waitsOf } from '../features/backlog/mainDrift';
+import {
+  holdsUp,
+  waitsOf,
+} from '../features/backlog/mainDrift';
 import { holdsUpLine } from '../features/backlog/needs';
 import {
   isWarning,

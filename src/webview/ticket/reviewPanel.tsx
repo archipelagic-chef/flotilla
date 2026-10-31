@@ -12,12 +12,28 @@ import {
   turnOf,
   turnSentence,
 } from '../../features/backlog/turn';
-import type { QueuedView, TicketCiView, TicketView } from '../ticketProtocol';
+import type {
+  QueuedView,
+  TicketCiView,
+  TicketView,
+} from '../ticketProtocol';
 import { queuedNeed } from '../../features/backlog/needs';
 import { ActionButton } from './actions';
-import { PAUSE_TIP, RESUME_TIP, STOP_TIP } from './agents';
-import { MergeStop, PullRequestLinks, QueuePlace } from './mergePanel';
-import { MergeStep, StepStatus, ticketSteps } from './steps';
+import {
+  PAUSE_TIP,
+  RESUME_TIP,
+  STOP_TIP,
+} from './agents';
+import {
+  MergeStop,
+  PullRequestLinks,
+  QueuePlace,
+} from './mergePanel';
+import {
+  MergeStep,
+  StepStatus,
+  ticketSteps,
+} from './steps';
 
 const FIX_ICON: Record<ReviewFix, string> = {
   retry: 'debug-restart',

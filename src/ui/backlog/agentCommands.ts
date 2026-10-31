@@ -1,9 +1,15 @@
 import * as vscode from 'vscode';
 import type { BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { heldBy, type ReviewFix } from '../../features/backlog/review';
+import {
+  heldBy,
+  type ReviewFix,
+} from '../../features/backlog/review';
 import { discussable } from '../../features/backlog/shaping';
-import { showError, type Commands } from '../commandSet';
+import {
+  type Commands,
+  showError,
+} from '../commandSet';
 import { chooseAgentDefaults } from './agentDefaults';
 import { backlogIdOf } from './cardMenu';
 import { checkAllTickets } from './checkAll';

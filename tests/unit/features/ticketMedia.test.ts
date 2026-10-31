@@ -7,7 +7,10 @@ import {
   it,
   vi,
 } from 'vitest';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 import {
   fileKind,
   MEDIA_LIMITS,

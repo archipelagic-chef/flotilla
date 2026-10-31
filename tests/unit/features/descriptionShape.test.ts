@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   DESCRIPTION_CHECK,
   DESCRIPTION_SHAPE,
@@ -6,9 +10,18 @@ import {
   SHAPE_RULE,
 } from '../../../src/features/backlog/descriptionShape';
 import { agentGuide } from '../../../src/features/backlog/inbox';
-import { reviewerPrompt, userRevisionPrompt } from '../../../src/features/backlog/review';
-import { discussionPrompt, shapingPrompt } from '../../../src/features/backlog/shaping';
-import { cardSummaryOf, whenItsDone } from '../../../src/features/backlog/ticket';
+import {
+  reviewerPrompt,
+  userRevisionPrompt,
+} from '../../../src/features/backlog/review';
+import {
+  discussionPrompt,
+  shapingPrompt,
+} from '../../../src/features/backlog/shaping';
+import {
+  cardSummaryOf,
+  whenItsDone,
+} from '../../../src/features/backlog/ticket';
 
 describe('the description shape (BL-137)', () => {
   it("the agents' guide shows it as the new ticket's template, and keeps the When it's done lines current", () => {

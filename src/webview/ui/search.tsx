@@ -1,10 +1,25 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { ALL, type SearchGroup, type WorkstreamView } from '../protocol';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
+import {
+  matcher,
+  replacementFor,
+  type SearchOptions,
+} from '../../features/search/matcher';
+import {
+  ALL,
+  type SearchGroup,
+  type WorkstreamView,
+} from '../protocol';
 import { send } from './api';
 import type { Update } from './app';
 import { Virtual } from './virtual';
-import { searchRows, type SearchRow } from './rows';
+import {
+  type SearchRow,
+  searchRows,
+} from './rows';
 import './search.css';
 
 export interface SearchState {

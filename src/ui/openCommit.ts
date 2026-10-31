@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
+import {
+  openChangeDiff,
+  openChangesEditor,
+} from '../core/diff/openDiff';
 import { runGit } from '../core/git/gitCli';
 import { commitChanges } from '../features/history/log';
 

@@ -7,15 +7,25 @@ import {
   expect,
   it,
 } from 'vitest';
-import { computeMetrics, EventIndex } from '../../../../src/features/metrics/compute';
+import {
+  computeMetrics,
+  EventIndex,
+} from '../../../../src/features/metrics/compute';
 import {
   type EventData,
   type EventKind,
   type FlotillaEvent,
   readEvents,
 } from '../../../../src/features/metrics/events';
-import { criteriaCount, laneTimes } from '../../../../src/features/metrics/productivity';
-import { IDLE_MS, projectDirs, scanSpend } from '../../../../src/features/metrics/spendScan';
+import {
+  criteriaCount,
+  laneTimes,
+} from '../../../../src/features/metrics/productivity';
+import {
+  IDLE_MS,
+  projectDirs,
+  scanSpend,
+} from '../../../../src/features/metrics/spendScan';
 import { metricsSummary } from '../../../../src/features/metrics/summary';
 import { line } from './transcriptSpend.test';
 

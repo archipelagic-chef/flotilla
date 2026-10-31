@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { agentCountLabel } from '../../../src/webview/ui/agentCount';
 
 const state = (over: object) => ({ enabled: false, running: 0, max: 3, waiting: 0, elsewhere: false, ...over });

@@ -7,8 +7,15 @@ import {
   expect,
   it,
 } from 'vitest';
-import { guard, guardScript } from '../../../src/features/backlog/agentGuard';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  guard,
+  guardScript,
+} from '../../../src/features/backlog/agentGuard';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

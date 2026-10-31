@@ -1,4 +1,7 @@
-import type { CiRun, CiStatus } from '../ci/githubActions';
+import type {
+  CiRun,
+  CiStatus,
+} from '../ci/githubActions';
 import type { CiDecision } from './mergeCi';
 
 /**

@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { linkIssue, unlinkIssue } from '../../../features/backlog/backlog';
+import {
+  linkIssue,
+  unlinkIssue,
+} from '../../../features/backlog/backlog';
 import type { Handlers } from './context';
 import type { TrackerMessage } from './tracker.messages';
 

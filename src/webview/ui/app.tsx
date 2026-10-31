@@ -32,12 +32,24 @@ import {
   send,
   vscode,
 } from './api';
-import { ChatsBody, HooksNotice } from './chats';
+import {
+  ChatsBody,
+  HooksNotice,
+} from './chats';
 import { CiBody } from './ci';
-import { FilesBody, type Editing } from './files';
-import { Hover, WorktreeCard } from './hover';
+import {
+  type Editing,
+  FilesBody,
+} from './files';
+import {
+  Hover,
+  WorktreeCard,
+} from './hover';
 import { setIconTheme } from './icons';
-import { scopeState, scopeSummary } from '../../features/ci/summary';
+import {
+  scopeState,
+  scopeSummary,
+} from '../../features/ci/summary';
 import { Overview } from './overview';
 import {
   INITIAL_SEARCH,
@@ -45,13 +57,22 @@ import {
   type SearchState,
   SearchView,
 } from './search';
-import { Section, WorktreeHeader } from './section';
+import {
+  Section,
+  WorktreeHeader,
+} from './section';
 import { BacklogView } from './backlog';
 import { noteFinished } from './notes';
 import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
-import type { MetricsPeriod, MetricsView } from '../metricsProtocol';
-import { finished, pruneBusy } from './backlogBusy';
+import type {
+  MetricsPeriod,
+  MetricsView,
+} from '../metricsProtocol';
+import {
+  finished,
+  pruneBusy,
+} from './backlogBusy';
 import {
   TicketChangesBody,
   TicketCommitsBody,

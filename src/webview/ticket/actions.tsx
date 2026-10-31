@@ -1,5 +1,12 @@
-import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import type {
+  ComponentChildren,
+  JSX,
+} from 'preact';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { capitalize } from '../../features/backlog/mainDrift';
 import type { TicketWebviewMessage } from '../ticketProtocol';
 import { actionKey } from '../ticketActions';

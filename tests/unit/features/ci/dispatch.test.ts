@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { GitHubActions, dispatchInputs, isDispatchable } from '../../../../src/features/ci/githubActions';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  dispatchInputs,
+  GitHubActions,
+  isDispatchable,
+} from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 
 describe('dispatchInputs', () => {

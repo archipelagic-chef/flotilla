@@ -1,4 +1,7 @@
-import { fetchJson, type Fetch } from '../backlog/sources/source';
+import {
+  type Fetch,
+  fetchJson,
+} from '../backlog/sources/source';
 
 /** Where a deployment is: in progress (also queued or pending), live, failed, or no longer live. */
 export type DeploymentState = 'success' | 'failure' | 'in_progress' | 'inactive';

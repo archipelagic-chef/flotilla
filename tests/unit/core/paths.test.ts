@@ -1,6 +1,14 @@
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { isInside, samePath, toGitPath } from '../../../src/core/paths';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  isInside,
+  samePath,
+  toGitPath,
+} from '../../../src/core/paths';
 import { makeTempDir } from '../../helpers/gitRepo';
 
 describe('paths', () => {

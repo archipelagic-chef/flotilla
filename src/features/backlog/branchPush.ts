@@ -1,7 +1,10 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import picomatch from 'picomatch';
-import { GitError, runGit } from '../../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../../core/git/gitCli';
 import { gitHubRepo } from './sources/github';
 
 /**

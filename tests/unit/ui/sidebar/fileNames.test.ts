@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { copyName, isSelfOrInside, nameProblem } from '../../../../src/ui/sidebar/fileNames';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  copyName,
+  isSelfOrInside,
+  nameProblem,
+} from '../../../../src/ui/sidebar/fileNames';
 
 describe('nameProblem', () => {
   it.each(['a.ts', 'src/new/b.ts', '.env', 'with space.md', 'a\\b.ts'])('accepts %s', (name) => expect(nameProblem(name)).toBeUndefined());

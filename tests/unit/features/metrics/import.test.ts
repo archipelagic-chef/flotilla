@@ -1,10 +1,21 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { conflictRegions, parseConflictRegions } from '../../../../src/core/git/conflictRegions';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  conflictRegions,
+  parseConflictRegions,
+} from '../../../../src/core/git/conflictRegions';
 import { parseTicket } from '../../../../src/features/backlog/ticket';
 import { LocalBacklog } from '../../../../src/features/backlog/localBacklog';
-import { appendEvents, readEvents, type FlotillaEvent } from '../../../../src/features/metrics/events';
+import {
+  appendEvents,
+  type FlotillaEvent,
+  readEvents,
+} from '../../../../src/features/metrics/events';
 import {
   eventsFromTicket,
   historyImported,

@@ -1,4 +1,7 @@
-import type { CiRunView, CiView } from '../../webview/protocol';
+import type {
+  CiRunView,
+  CiView,
+} from '../../webview/protocol';
 import type { CiStatus } from './githubActions';
 
 /** Plain words for a state, as the sidebar says them. */

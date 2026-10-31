@@ -6,7 +6,11 @@ import {
   expect,
   it,
 } from 'vitest';
-import { parseTranscript, readTranscript, transcriptPath } from '../../../../src/features/chats/chats';
+import {
+  parseTranscript,
+  readTranscript,
+  transcriptPath,
+} from '../../../../src/features/chats/chats';
 import {
   type AgentActivity,
   DEFAULT_STUCK_RULES,
@@ -16,7 +20,10 @@ import {
   statusLine,
   toolPhrase,
 } from '../../../../src/features/chats/activity';
-import { makeTempDir, removeDir } from '../../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../../helpers/gitRepo';
 
 const T0 = '2026-10-24T10:00:00.000Z';
 const at = (min: number, sec = 0) => new Date(Date.parse(T0) + min * 60_000 + sec * 1000).toISOString();

@@ -1,6 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { eventsDir, readEventsFile, type FlotillaEvent } from './events';
+import {
+  eventsDir,
+  type FlotillaEvent,
+  readEventsFile,
+} from './events';
 
 /** How many months of events are kept whole; older months are rolled up into their totals. */
 export const KEEP_MONTHS = 12;

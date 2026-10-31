@@ -1,6 +1,12 @@
 import type { DiscussionView } from '../ticketProtocol';
-import { ActionButton, send } from './actions';
-import { ChatBody, type ChatMessages } from './ask';
+import {
+  ActionButton,
+  send,
+} from './actions';
+import {
+  ChatBody,
+  type ChatMessages,
+} from './ask';
 import { modelName } from './agents';
 import './ask.css';
 

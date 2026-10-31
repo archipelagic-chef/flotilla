@@ -1,4 +1,7 @@
-import { GitError, runGit } from '../../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../../core/git/gitCli';
 import {
   type FileMatches,
   highlight,
@@ -13,7 +16,10 @@ export type {
   SearchOptions,
   SearchResult,
 } from './matcher';
-export { highlight, matcher } from './matcher';
+export {
+  highlight,
+  matcher,
+} from './matcher';
 
 /** Parses `git grep -n -z` output: "path\0line\0text\n" per match. */
 export function parseGrep(out: string, re: RegExp, limit: number): SearchResult {

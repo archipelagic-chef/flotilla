@@ -8,9 +8,15 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../../src/features/backlog/backlog';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
-import { STUCK_MS, type ProcessInfo } from '../../../src/features/backlog/ticketCheck';
+import {
+  type ProcessInfo,
+  STUCK_MS,
+} from '../../../src/features/backlog/ticketCheck';
 import { transcriptPath } from '../../../src/features/chats/chats';
 import { TicketChecker } from '../../../src/ui/backlog/ticketCheck';
 import {

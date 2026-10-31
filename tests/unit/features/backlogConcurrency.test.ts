@@ -13,10 +13,17 @@ import {
   expect,
   it,
 } from 'vitest';
-import { addItem, parseNewItem } from '../../../src/features/backlog/backlog';
+import {
+  addItem,
+  parseNewItem,
+} from '../../../src/features/backlog/backlog';
 import { takeInbox } from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const run = promisify(execFile);
 const cleanup: string[] = [];

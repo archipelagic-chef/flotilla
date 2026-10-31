@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { cleanLog, GitHubActions } from '../../../../src/features/ci/githubActions';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  cleanLog,
+  GitHubActions,
+} from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 
 interface Reply {

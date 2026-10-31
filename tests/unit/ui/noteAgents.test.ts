@@ -53,7 +53,11 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
 
 import { NoteStore } from '../../../src/features/backlog/notes';
 import { accountLimit } from '../../../src/features/backlog/accountLimit';
-import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
+import {
+  eventsWritten,
+  readEvents,
+  setEventLog,
+} from '../../../src/features/metrics/events';
 import { NoteAgents } from '../../../src/ui/backlog/notes';
 
 describe('NoteAgents and Pause All (BL-193)', () => {

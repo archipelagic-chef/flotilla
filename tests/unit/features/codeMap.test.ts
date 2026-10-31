@@ -15,7 +15,11 @@ import {
   titleWords,
 } from '../../../src/features/backlog/codeMap';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

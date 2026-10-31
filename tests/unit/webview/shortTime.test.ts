@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { shortTime, stoppedLabel } from '../../../src/webview/shortTime';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  shortTime,
+  stoppedLabel,
+} from '../../../src/webview/shortTime';
 
 describe('shortTime (BL-132)', () => {
   const now = new Date(2026, 9, 20, 16, 40);

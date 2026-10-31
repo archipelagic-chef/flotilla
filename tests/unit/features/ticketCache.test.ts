@@ -7,7 +7,11 @@ import {
   it,
   vi,
 } from 'vitest';
-import { mentioningCommits, movesSince, ticketCommits } from '../../../src/features/history/log';
+import {
+  mentioningCommits,
+  movesSince,
+  ticketCommits,
+} from '../../../src/features/history/log';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import {
   git,

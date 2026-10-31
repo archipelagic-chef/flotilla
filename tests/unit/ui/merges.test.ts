@@ -6,7 +6,10 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import {
   git,

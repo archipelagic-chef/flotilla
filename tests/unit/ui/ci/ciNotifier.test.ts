@@ -6,7 +6,10 @@ import {
   vi,
 } from 'vitest';
 import { CiNotifier } from '../../../../src/ui/ci/ciNotifier';
-import type { CiJob, CiRun } from '../../../../src/features/ci/githubActions';
+import type {
+  CiJob,
+  CiRun,
+} from '../../../../src/features/ci/githubActions';
 import type { FinishedRun } from '../../../../src/features/ci/notify';
 
 const vs = vi.hoisted(() => ({

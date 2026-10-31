@@ -5,7 +5,10 @@ import {
   expect,
   it,
 } from 'vitest';
-import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../scripts/fake-github.mjs';
 import {
   type CiDecision,
   commitRuns,
@@ -14,7 +17,10 @@ import {
   passedNote,
   runsVerdict,
 } from '../../../src/features/backlog/mergeCi';
-import { GitHubActions, type CiRun } from '../../../src/features/ci/githubActions';
+import {
+  type CiRun,
+  GitHubActions,
+} from '../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import {
   git,

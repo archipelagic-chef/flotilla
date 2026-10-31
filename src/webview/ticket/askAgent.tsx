@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import { askLabel } from '../../features/backlog/askAgent';
 import { byPerson } from '../../features/backlog/ticket';
 import { clock } from '../../features/chats/activity';

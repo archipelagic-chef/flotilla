@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { activeAgents, lastReport, runningFor } from '../../../src/webview/activeAgents';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  activeAgents,
+  lastReport,
+  runningFor,
+} from '../../../src/webview/activeAgents';
 import type { TicketView } from '../../../src/webview/ticketProtocol';
 
 type Agent = TicketView['agents'][number];

@@ -17,7 +17,11 @@ import {
   removeDir,
   writeFile,
 } from '../../helpers/gitRepo';
-import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
+import {
+  eventsWritten,
+  readEvents,
+  setEventLog,
+} from '../../../src/features/metrics/events';
 import { accountLimit } from '../../../src/features/backlog/accountLimit';
 
 /** What the mocked VS Code answers and records. */

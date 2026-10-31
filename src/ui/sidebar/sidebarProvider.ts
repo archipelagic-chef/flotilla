@@ -8,10 +8,16 @@ import { setAgentDefault } from '../backlog/agentDefaults';
 import type { Autopilot } from '../backlog/autopilot';
 import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
-import { openChangeDiff, openChangesEditor } from '../../core/diff/openDiff';
+import {
+  openChangeDiff,
+  openChangesEditor,
+} from '../../core/diff/openDiff';
 import { resolveInside } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
-import { compareRefs, listRefs } from '../../features/diffs/compare';
+import {
+  compareRefs,
+  listRefs,
+} from '../../features/diffs/compare';
 import {
   acceptItem,
   type BacklogItem,
@@ -20,26 +26,58 @@ import {
   removeItem,
   updateItem,
 } from '../../features/backlog/backlog';
-import { discussable, findDiscussionChat, isDiscussionChat } from '../../features/backlog/shaping';
+import {
+  discussable,
+  findDiscussionChat,
+  isDiscussionChat,
+} from '../../features/backlog/shaping';
 import type { Shaping } from '../backlog/shaping';
-import { needOf, queuedNeed, resumeAsk } from '../../features/backlog/needs';
-import { checkingOf, setVerdict, stopCheck } from '../../features/backlog/sisterCheck';
+import {
+  needOf,
+  queuedNeed,
+  resumeAsk,
+} from '../../features/backlog/needs';
+import {
+  checkingOf,
+  setVerdict,
+  stopCheck,
+} from '../../features/backlog/sisterCheck';
 import { gatherAttachments } from '../../features/backlog/attachments';
 import { fraction } from '../../features/backlog/checksProgress';
 import type { ReviewLoop } from '../backlog/reviewLoop';
-import { cardSummaryOf, entryDate } from '../../features/backlog/ticket';
-import { pickRunBlock, placedRunBlocks } from '../../features/backlog/runBlocks';
+import {
+  cardSummaryOf,
+  entryDate,
+} from '../../features/backlog/ticket';
+import {
+  pickRunBlock,
+  placedRunBlocks,
+} from '../../features/backlog/runBlocks';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import type { Merges } from '../backlog/merges';
 import type { NoteAgents } from '../backlog/notes';
-import { agentChoice, freeMemoryMB, minFreeMemoryMB } from '../backlog/agentRunner';
-import { commitChanges, readLog } from '../../features/history/log';
+import {
+  agentChoice,
+  freeMemoryMB,
+  minFreeMemoryMB,
+} from '../backlog/agentRunner';
+import {
+  commitChanges,
+  readLog,
+} from '../../features/history/log';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { searchWorktree } from '../../features/search/gitGrep';
-import { matcher, replacementFor, type SearchOptions } from '../../features/search/matcher';
-import { needsYou, standing } from '../../features/backlog/autopilotIdle';
+import {
+  matcher,
+  replacementFor,
+  type SearchOptions,
+} from '../../features/search/matcher';
+import {
+  needsYou,
+  standing,
+} from '../../features/backlog/autopilotIdle';
 import {
   baseLabel,
   dependsOn,
@@ -64,16 +102,33 @@ import type { FinishedRun } from '../../features/ci/notify';
 import type { FileChange } from '../../core/git/porcelain';
 import type { ActiveWorktree } from '../activeWorktree';
 import { FileOps } from './fileOps';
-import { iconThemeRoot, loadIconTheme } from './iconTheme';
-import { excludeMatcher, listDirectory, markIgnored } from './files';
+import {
+  iconThemeRoot,
+  loadIconTheme,
+} from './iconTheme';
+import {
+  excludeMatcher,
+  listDirectory,
+  markIgnored,
+} from './files';
 import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
-import { changedViews, tabOrder, toWorkstreamView } from './viewModel';
+import {
+  changedViews,
+  tabOrder,
+  toWorkstreamView,
+} from './viewModel';
 import { stuckRules } from '../settings';
-import { changeMarks, ListedFolders } from './changeMarks';
+import {
+  changeMarks,
+  ListedFolders,
+} from './changeMarks';
 import { openCommit } from '../openCommit';
-import { onDidChangeProgress, progressByTool } from '../progress';
+import {
+  onDidChangeProgress,
+  progressByTool,
+} from '../progress';
 import { CiRuns } from '../ci/ciRuns';
 import { runWorkflowByHand } from '../ci/runWorkflow';
 import { webUrl } from '../../features/ci/githubDeployments';

@@ -6,8 +6,14 @@ import {
   expect,
   it,
 } from 'vitest';
-import { sendWindowRequest, takeWindowRequests } from '../../../src/features/workstreams/windowRequests';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  sendWindowRequest,
+  takeWindowRequests,
+} from '../../../src/features/workstreams/windowRequests';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

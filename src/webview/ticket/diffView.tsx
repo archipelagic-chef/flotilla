@@ -5,7 +5,10 @@ import {
   useRef,
   useState,
 } from 'preact/hooks';
-import type { FileDiff, TicketView } from '../ticketProtocol';
+import type {
+  FileDiff,
+  TicketView,
+} from '../ticketProtocol';
 import { send } from './actions';
 import { changeDiffReplies } from './changes';
 import {

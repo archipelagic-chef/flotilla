@@ -7,7 +7,11 @@ import {
   expect,
   it,
 } from 'vitest';
-import { clearCreatingRecord, CreatingWorktrees, readCreatingRecords } from '../../../src/features/backlog/creatingWorktrees';
+import {
+  clearCreatingRecord,
+  CreatingWorktrees,
+  readCreatingRecords,
+} from '../../../src/features/backlog/creatingWorktrees';
 
 describe('CreatingWorktrees', () => {
   it('runs one creation per ticket at a time; a second start meanwhile creates nothing', async () => {

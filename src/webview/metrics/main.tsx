@@ -1,5 +1,8 @@
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import type {
   MetricsHostMessage,
   MetricsPeriod,

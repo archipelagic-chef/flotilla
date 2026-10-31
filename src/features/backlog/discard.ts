@@ -1,8 +1,14 @@
 /** What Discard says about a ticket's started work (BL-210): its confirmation, and the entry once it's done. */
 
-import type { BacklogData, BacklogItem } from './backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from './backlog';
 import type { TicketEntry } from './ticket';
-import { dependencyDiscardedEntry, dependsOn } from './mainDrift';
+import {
+  dependencyDiscardedEntry,
+  dependsOn,
+} from './mainDrift';
 
 const code = (names: readonly string[]) => names.map((n) => `\`${n}\``).join(', ');
 

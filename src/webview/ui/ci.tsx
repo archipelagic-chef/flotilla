@@ -1,8 +1,14 @@
 import type { CiView } from '../protocol';
-import type { CiDeployment, DeploymentState } from '../../features/ci/githubDeployments';
+import type {
+  CiDeployment,
+  DeploymentState,
+} from '../../features/ci/githubDeployments';
 import { send } from './api';
 import { ago } from './ago';
-import { CiRunList, type CiActions } from './ciList';
+import {
+  type CiActions,
+  CiRunList,
+} from './ciList';
 
 /** The run list's requests, from the sidebar. */
 const ACTIONS: CiActions = {

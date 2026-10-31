@@ -1,7 +1,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import { samePath, toGitPath } from '../../core/paths';
+import {
+  samePath,
+  toGitPath,
+} from '../../core/paths';
 
 export const LOCK_REASON = 'flotilla: portable';
 

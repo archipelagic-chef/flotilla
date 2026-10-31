@@ -1,5 +1,9 @@
 import type { Workstream } from '../workstreams/workstream';
-import { isActive, type CiRun, type CiStatus } from './githubActions';
+import {
+  type CiRun,
+  type CiStatus,
+  isActive,
+} from './githubActions';
 import type { CiDeployment } from './githubDeployments';
 
 /** The CI/CD view looks again every minute while the sidebar is visible… */

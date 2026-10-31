@@ -2,7 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { defineConfig } from '@vscode/test-cli';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
-import { mainRoot, withDownloadLock } from './scripts/vscode-download.mjs';
+import {
+  mainRoot,
+  withDownloadLock,
+} from './scripts/vscode-download.mjs';
 
 // VS Code is downloaded once, into the main worktree's .vscode-test/, and every worktree's test run uses that copy:
 // left to itself, each worktree would download its own (~1 GB) into its own .vscode-test/.

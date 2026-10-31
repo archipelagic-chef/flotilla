@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { StartupClock } from '../../../src/core/startupClock';
 
 describe('StartupClock', () => {

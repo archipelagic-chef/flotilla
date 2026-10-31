@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
 import type { Workstream } from '../features/workstreams/workstream';
-import { ALL, type ActiveWorktree } from './activeWorktree';
-import { describeWorkstream, workstreamLabel } from './format';
+import {
+  type ActiveWorktree,
+  ALL,
+} from './activeWorktree';
+import {
+  describeWorkstream,
+  workstreamLabel,
+} from './format';
 import { tabOrder } from './sidebar/viewModel';
 import type { Commands } from './commandSet';
 import { quickOpenInWorktree } from './quickOpen';

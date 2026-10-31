@@ -9,7 +9,11 @@ import {
 } from 'vitest';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const showInformationMessage = vi.fn(async (..._args: unknown[]) => undefined as string | undefined);
 const showQuickPick = vi.fn(async (..._args: unknown[]) => undefined as unknown);

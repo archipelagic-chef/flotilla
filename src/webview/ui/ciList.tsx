@@ -1,5 +1,9 @@
 import { Fragment } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import type {
   CiJobView,
   CiRequest,
@@ -7,7 +11,10 @@ import type {
   RunBusy,
 } from '../protocol';
 import { isActive } from '../../features/ci/githubActions';
-import { runActions, type RunAction } from '../../features/ci/runActions';
+import {
+  type RunAction,
+  runActions,
+} from '../../features/ci/runActions';
 import { ago } from './ago';
 import './ci.css';
 

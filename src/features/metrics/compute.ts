@@ -7,7 +7,11 @@ import type {
   MetricsPeriod,
   MetricsView,
 } from '../../webview/metricsProtocol';
-import type { AgentRole, EventKind, FlotillaEvent } from './events';
+import type {
+  AgentRole,
+  EventKind,
+  FlotillaEvent,
+} from './events';
 import { productivitySection } from './productivity';
 import type { LiveSpend } from './spendScan';
 import { spendTimeline } from './spendTimeline';

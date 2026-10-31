@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { DEFAULT_STUCK_RULES, type StuckRules } from '../features/chats/activity';
+import {
+  DEFAULT_STUCK_RULES,
+  type StuckRules,
+} from '../features/chats/activity';
 import type { CiNotify } from '../features/ci/notify';
 import type { RemoveFinishedMode } from '../features/storage/finished';
 

@@ -1,9 +1,20 @@
-import { useLayoutEffect, useRef } from 'preact/hooks';
-import type { BacklogItemView, TicketVcView, WorkstreamView } from '../protocol';
+import {
+  useLayoutEffect,
+  useRef,
+} from 'preact/hooks';
+import type {
+  BacklogItemView,
+  TicketVcView,
+  WorkstreamView,
+} from '../protocol';
 import type { ChangedFile } from '../ticketProtocol';
 import type { TicketCommit } from '../../features/history/log';
 import { branchMatches } from '../../features/backlog/backlog';
-import { menuContext, run, send } from './api';
+import {
+  menuContext,
+  run,
+  send,
+} from './api';
 import { vcFileContext } from '../vcFile';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';

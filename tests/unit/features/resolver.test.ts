@@ -7,7 +7,10 @@ import {
 } from 'vitest';
 import { locateRepo } from '../../../src/core/repoLocator';
 import { makePortable } from '../../../src/features/worktrees/portability';
-import { resolveWorktrees, type ResolvedWorktree } from '../../../src/features/worktrees/resolver';
+import {
+  type ResolvedWorktree,
+  resolveWorktrees,
+} from '../../../src/features/worktrees/resolver';
 import {
   expectSamePath,
   git,

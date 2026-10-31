@@ -10,7 +10,11 @@ import {
   it,
 } from 'vitest';
 import { parseTicket } from '../../../src/features/backlog/ticket';
-import { parseVerdict, saysReadyForReview, saysWaitingForUser } from '../../../src/features/backlog/review';
+import {
+  parseVerdict,
+  saysReadyForReview,
+  saysWaitingForUser,
+} from '../../../src/features/backlog/review';
 import { parseUsageLimit } from '../../../src/features/backlog/limits';
 import {
   git,

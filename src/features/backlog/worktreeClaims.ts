@@ -1,5 +1,8 @@
 import type { CreatingRecord } from './creatingWorktrees';
-import { ago, type Claim } from './ticketCheck';
+import {
+  ago,
+  type Claim,
+} from './ticketCheck';
 
 /**
  * The worktree parts of a ticket's Check (BL-167): the worktrees a ticket names (its review's, its branches') and its

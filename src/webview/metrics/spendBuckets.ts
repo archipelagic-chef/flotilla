@@ -1,4 +1,7 @@
-import type { SpendCell, SpendTimeline } from '../metricsProtocol';
+import type {
+  SpendCell,
+  SpendTimeline,
+} from '../metricsProtocol';
 
 /** The Spend over time chart's columns (BL-202): a window's hours or days, and the chats stacked by name. */
 

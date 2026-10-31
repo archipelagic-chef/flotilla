@@ -4,7 +4,10 @@ import type { Workstream } from '../features/workstreams/workstream';
 import type { ActiveWorktree } from './activeWorktree';
 import { workstreamLabel } from './format';
 import type { NeedsYouNotifier } from './notifications';
-import { buildLine, onDidChangeBuild } from './selfUpdate';
+import {
+  buildLine,
+  onDidChangeBuild,
+} from './selfUpdate';
 
 /** Shows the active worktree (or All) and what needs you (the count, whatever the notify setting); click to switch. */
 export class WorkstreamStatusBar implements vscode.Disposable {

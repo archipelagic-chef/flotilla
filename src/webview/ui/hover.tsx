@@ -5,8 +5,14 @@ import {
   useRef,
   useState,
 } from 'preact/hooks';
-import { ciState, ciSummary } from '../../features/ci/summary';
-import type { CiView, WorkstreamView } from '../protocol';
+import {
+  ciState,
+  ciSummary,
+} from '../../features/ci/summary';
+import type {
+  CiView,
+  WorkstreamView,
+} from '../protocol';
 import { ATTENTION_ICON } from './section';
 import './hover.css';
 

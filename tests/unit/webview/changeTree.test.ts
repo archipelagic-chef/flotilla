@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   changeLink,
   changeRows,
@@ -9,7 +13,11 @@ import {
   sinceLastReview,
   withDiffs,
 } from '../../../src/webview/ticket/changeTree';
-import type { ChangeGroup, ChangedFile, TicketChange } from '../../../src/webview/ticketProtocol';
+import type {
+  ChangedFile,
+  ChangeGroup,
+  TicketChange,
+} from '../../../src/webview/ticketProtocol';
 
 const file = (p: string, added = 1, deleted = 0): ChangedFile => ({ path: p, kind: 'modified', added, deleted });
 const group = (label: string, files: ChangedFile[]): ChangeGroup => ({

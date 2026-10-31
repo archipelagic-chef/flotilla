@@ -1,11 +1,32 @@
-import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'preact/hooks';
 import type { ChangeKind } from '../../core/git/porcelain';
-import type { Target, WorkstreamView } from '../protocol';
-import { menuContext, run, send } from './api';
-import { dirKey, type FilesApi, type Update } from './app';
-import { fileIcon, folderIcon } from './icons';
+import type {
+  Target,
+  WorkstreamView,
+} from '../protocol';
+import {
+  menuContext,
+  run,
+  send,
+} from './api';
+import {
+  dirKey,
+  type FilesApi,
+  type Update,
+} from './app';
+import {
+  fileIcon,
+  folderIcon,
+} from './icons';
 import { Virtual } from './virtual';
-import { treeRows, type TreeRow } from './treeRows';
+import {
+  type TreeRow,
+  treeRows,
+} from './treeRows';
 import './files.css';
 
 export const CHANGE_LETTER: Record<ChangeKind, string> = {

@@ -6,8 +6,16 @@ import {
   expect,
   it,
 } from 'vitest';
-import { copySetupFiles, linkFolders, shareLinkedFolder } from '../../../src/features/worktrees/setup';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  copySetupFiles,
+  linkFolders,
+  shareLinkedFolder,
+} from '../../../src/features/worktrees/setup';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

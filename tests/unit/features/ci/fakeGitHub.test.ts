@@ -5,8 +5,15 @@ import {
   expect,
   it,
 } from 'vitest';
-import { startFakeGitHub, type FakeGitHub } from '../../../../scripts/fake-github.mjs';
-import { fakeApiOrigin, GitHubActions, type CiRun } from '../../../../src/features/ci/githubActions';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../../scripts/fake-github.mjs';
+import {
+  type CiRun,
+  fakeApiOrigin,
+  GitHubActions,
+} from '../../../../src/features/ci/githubActions';
 import type { Fetch } from '../../../../src/features/backlog/sources/source';
 import {
   git,

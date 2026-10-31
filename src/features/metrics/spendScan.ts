@@ -2,7 +2,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { encodeProjectDir } from '../chats/chats';
 import { mergeRoot } from '../backlog/merge';
-import { appendEvents, eventsDir, type FlotillaEvent } from './events';
+import {
+  appendEvents,
+  eventsDir,
+  type FlotillaEvent,
+} from './events';
 import {
   type SpendHour,
   type SpendPart,

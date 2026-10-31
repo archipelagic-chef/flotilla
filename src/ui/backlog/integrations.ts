@@ -5,7 +5,10 @@ import { runGit } from '../../core/git/gitCli';
 import { trackProgress } from '../progress';
 import type { IssueLink } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { GitHubSource, gitHubRepo } from '../../features/backlog/sources/github';
+import {
+  gitHubRepo,
+  GitHubSource,
+} from '../../features/backlog/sources/github';
 import { JiraSource } from '../../features/backlog/sources/jira';
 import { markdownToJira } from '../../features/backlog/sources/jiraMarkup';
 import type {

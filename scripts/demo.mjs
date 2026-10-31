@@ -17,7 +17,10 @@
 // opens on this worktree's .playground. Frames are that window's page as Chromium draws it (its screencast, through its
 // debugging port), never the screen, and each is kept only once a check after it found that window: if one doesn't,
 // nothing is saved.
-import { execFileSync, spawn } from 'node:child_process';
+import {
+  execFileSync,
+  spawn,
+} from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -30,8 +33,15 @@ import {
   installClaudeCode,
   writeProfileSettings,
 } from './debug-profile.mjs';
-import { mainRoot, withDownloadLock, withLock } from './vscode-download.mjs';
-import { recordEvent, ticketOfBranch } from './record-event.mjs';
+import {
+  mainRoot,
+  withDownloadLock,
+  withLock,
+} from './vscode-download.mjs';
+import {
+  recordEvent,
+  ticketOfBranch,
+} from './record-event.mjs';
 import {
   DEMOS_DIR,
   DEMO_TAG,

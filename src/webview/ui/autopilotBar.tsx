@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import type { AutopilotState } from '../protocol';
 import { send } from './api';
 import { shortTime } from '../shortTime';
-import { autopilotDetails, type DetailLine } from '../autopilotDetails';
+import {
+  autopilotDetails,
+  type DetailLine,
+} from '../autopilotDetails';
 import type { CardAgent } from '../../features/backlog/cardAgents';
-import { act, BusyButton, useBusy } from './backlogBusy';
-import { PauseOrResume, pausedAllLabel } from './pauseAll';
+import {
+  act,
+  BusyButton,
+  useBusy,
+} from './backlogBusy';
+import {
+  pausedAllLabel,
+  PauseOrResume,
+} from './pauseAll';
 import './autopilotBar.css';
 
 interface FoldProps {

@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
 import type { Leader } from '../features/backlog/leader';
 import { agentChatItem } from '../features/backlog/backlog';
-import { BIG_CHAT_HINT, formatTokens } from '../features/chats/usage';
+import {
+  BIG_CHAT_HINT,
+  formatTokens,
+} from '../features/chats/usage';
 import type { Workstream } from '../features/workstreams/workstream';
 
 export interface BigChatsDeps {

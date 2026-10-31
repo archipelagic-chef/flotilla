@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { failedJob } from '../../features/ci/failureTask';
 import type { GitHubActions } from '../../features/ci/githubActions';
-import { notifies, type FinishedRun } from '../../features/ci/notify';
+import {
+  type FinishedRun,
+  notifies,
+} from '../../features/ci/notify';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { workstreamLabel } from '../format';
 import { readSettings } from '../settings';

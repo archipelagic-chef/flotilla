@@ -1,6 +1,10 @@
 import type { BacklogItem } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { baseName, movesToDone, type MergeInfo } from '../../features/backlog/merged';
+import {
+  baseName,
+  type MergeInfo,
+  movesToDone,
+} from '../../features/backlog/merged';
 import { MergeReader } from '../../features/backlog/mergeReader';
 import { entryDate } from '../../features/backlog/ticket';
 import { resolveBase } from '../../features/workstreams/progress';

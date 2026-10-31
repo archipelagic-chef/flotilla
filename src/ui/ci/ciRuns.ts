@@ -2,7 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
-import { gitHubName, gitHubRepo } from '../../features/backlog/sources/github';
+import {
+  gitHubName,
+  gitHubRepo,
+} from '../../features/backlog/sources/github';
 import type { Fetch } from '../../features/backlog/sources/source';
 import {
   type CiJob,
@@ -12,7 +15,10 @@ import {
   isActive,
   splitUpstream,
 } from '../../features/ci/githubActions';
-import { GitHubDeployments, type CiDeployment } from '../../features/ci/githubDeployments';
+import {
+  type CiDeployment,
+  GitHubDeployments,
+} from '../../features/ci/githubDeployments';
 import {
   anyDeploymentActive,
   anyRunActive,
@@ -22,9 +28,15 @@ import {
   refreshDelay,
 } from '../../features/ci/refresh';
 import { failedJob } from '../../features/ci/failureTask';
-import { finished, type FinishedRun } from '../../features/ci/notify';
+import {
+  finished,
+  type FinishedRun,
+} from '../../features/ci/notify';
 import { fakeGitHubSession } from '../../features/ci/fakeSession';
-import { runActions, type RunAction } from '../../features/ci/runActions';
+import {
+  type RunAction,
+  runActions,
+} from '../../features/ci/runActions';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type {
   CiBusy,

@@ -1,6 +1,12 @@
 import type { ChatState } from '../../features/chats/chats';
-import type { ChatView, WorkstreamView } from '../protocol';
-import { menuContext, run } from './api';
+import type {
+  ChatView,
+  WorkstreamView,
+} from '../protocol';
+import {
+  menuContext,
+  run,
+} from './api';
 import type { Update } from './app';
 import './chats.css';
 

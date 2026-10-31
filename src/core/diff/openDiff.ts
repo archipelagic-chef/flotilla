@@ -3,7 +3,11 @@ import * as vscode from 'vscode';
 import type { FileChange } from '../git/porcelain';
 import { toWorkspaceUri } from '../uris';
 import { makeGitUri } from './gitContentProvider';
-import { sideRefsFor, WORKING, type DiffSide } from './refs';
+import {
+  type DiffSide,
+  sideRefsFor,
+  WORKING,
+} from './refs';
 
 /** Opens a file's change in the diff editor; returns its right side (the diff's tab is known by it). */
 export async function openChangeDiff(

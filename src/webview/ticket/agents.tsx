@@ -6,11 +6,26 @@ import {
   progress,
   type StuckRules,
 } from '../../features/chats/activity';
-import { SUMMARY_EVERY_MS, summaryWait } from '../../features/chats/summary';
-import { useEffect, useState } from 'preact/hooks';
-import type { AgentChatView, TicketView } from '../ticketProtocol';
-import { lastReport, runningFor } from '../activeAgents';
-import { ActionButton, send } from './actions';
+import {
+  SUMMARY_EVERY_MS,
+  summaryWait,
+} from '../../features/chats/summary';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
+import type {
+  AgentChatView,
+  TicketView,
+} from '../ticketProtocol';
+import {
+  lastReport,
+  runningFor,
+} from '../activeAgents';
+import {
+  ActionButton,
+  send,
+} from './actions';
 import { Rendered } from './markdownBox';
 import { FIX_TIP } from './reviewPanel';
 import { stoppedLabel } from '../shortTime';

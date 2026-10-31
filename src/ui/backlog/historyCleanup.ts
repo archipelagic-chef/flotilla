@@ -27,7 +27,10 @@ import * as chatUi from '../chatCommands';
 import type { CommandContext } from '../commands';
 import { workstreamLabel } from '../format';
 import { trackProgress } from '../progress';
-import { agentChoice, describeChoice } from './agentRunner';
+import {
+  agentChoice,
+  describeChoice,
+} from './agentRunner';
 import { readSettings } from '../settings';
 
 /** What the clean-ups need from the commands (worktrees are created and set up there). */

@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { shortTime } from '../../webview/shortTime';
-import { showError, type Commands } from '../commandSet';
+import {
+  type Commands,
+  showError,
+} from '../commandSet';
 import type { Autopilot } from './autopilot';
 import type { PauseAll } from './pauseAll';
 

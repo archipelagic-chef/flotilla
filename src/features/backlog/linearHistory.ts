@@ -1,9 +1,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import { conflictedFiles, removeMergeWorktree } from './merge';
+import {
+  conflictedFiles,
+  removeMergeWorktree,
+} from './merge';
 
-export { mergeStyle, type MergeStyle } from './tidyNotes';
+export {
+  type MergeStyle,
+  mergeStyle,
+} from './tidyNotes';
 
 /**
  * A tidy, linear history (BL-181): agents rebase their branch onto main instead of merging it in, and tidy their

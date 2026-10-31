@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { sessionOf, sinceTime } from '../../../scripts/bench-tokens.mjs';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  sessionOf,
+  sinceTime,
+} from '../../../scripts/bench-tokens.mjs';
 
 /** One assistant turn that read `read` cached tokens, and called a tool with id. */
 const turn = (n: number, read: number, toolId?: string) => ({

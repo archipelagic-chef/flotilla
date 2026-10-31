@@ -1,11 +1,23 @@
-import type { PullRequestInfo, PullRequestReview } from '../ci/pullRequests';
+import type {
+  PullRequestInfo,
+  PullRequestReview,
+} from '../ci/pullRequests';
 import type { PushedInfo } from './branchPush';
-import type { HistoryRewrite, HistoryVersion } from './history';
+import type {
+  HistoryRewrite,
+  HistoryVersion,
+} from './history';
 import type { MainCheck } from './mainDrift';
-import type { MergedInfo, MergeState } from './merge';
+import type {
+  MergedInfo,
+  MergeState,
+} from './merge';
 import type { MergeTrain } from './mergeTrain';
 import type { ReviewState } from './review';
-import type { SisterCheck, SisterVerdict } from './sisterCheck';
+import type {
+  SisterCheck,
+  SisterVerdict,
+} from './sisterCheck';
 /**
  * The backlog: work items in priority order, each to do, in progress or done. Items come from a source: the local
  * backlog (below) to begin with; Jira and GitHub Issues can be added as sources with the same item shape.

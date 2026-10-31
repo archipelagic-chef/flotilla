@@ -1,8 +1,14 @@
 import * as vscode from 'vscode';
-import { GitError, runGit } from '../../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../../core/git/gitCli';
 import { mergeConflicts } from '../../core/git/mergeCheck';
 import type { Repository } from '../../core/repository';
-import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  type BacklogItem,
+  branchMatches,
+} from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { recordEvent } from '../../features/metrics/events';
 import {
@@ -18,7 +24,10 @@ import {
   reusable,
 } from '../../features/backlog/mainDrift';
 import { entryDate } from '../../features/backlog/ticket';
-import { resolveBase, resolveCommit } from '../../features/workstreams/progress';
+import {
+  resolveBase,
+  resolveCommit,
+} from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { readSettings } from '../settings';
 import type { ReviewLoop } from './reviewLoop';

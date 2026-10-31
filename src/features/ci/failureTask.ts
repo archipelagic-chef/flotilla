@@ -1,4 +1,8 @@
-import { cleanLog, type CiRun, type GitHubActions } from './githubActions';
+import {
+  type CiRun,
+  cleanLog,
+  type GitHubActions,
+} from './githubActions';
 
 /**
  * What an agent is told to fix a failed CI job: the run, the job, its failed steps and commit, a link to the run, and

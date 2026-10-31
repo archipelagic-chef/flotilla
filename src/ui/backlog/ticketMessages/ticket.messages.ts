@@ -1,5 +1,8 @@
 /** A ticket tab's messages about the ticket itself: its title, description, status and priority, and how it shows: handled in ./ticket.ts. Type-only, as ticketProtocol.ts. */
-import type { BacklogPriority, BacklogStatus } from '../../../features/backlog/backlog';
+import type {
+  BacklogPriority,
+  BacklogStatus,
+} from '../../../features/backlog/backlog';
 
 export type TicketMessage =
   | { type: 'ready' }

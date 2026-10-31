@@ -1,5 +1,11 @@
-import type { HandledTicketMessage, TicketWebviewMessage } from '../../../webview/ticketProtocol';
-import type { Handlers, MessageContext } from './context';
+import type {
+  HandledTicketMessage,
+  TicketWebviewMessage,
+} from '../../../webview/ticketProtocol';
+import type {
+  Handlers,
+  MessageContext,
+} from './context';
 import { agentsHandlers } from './agents';
 import { checkHandlers } from './check';
 import { commentsHandlers } from './comments';

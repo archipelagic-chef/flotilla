@@ -4,10 +4,16 @@
  */
 import { descriptionHash } from './changes';
 import { LocalBacklog } from './localBacklog';
-import { parseVerdict, saysReadyForReview } from './review';
+import {
+  parseVerdict,
+  saysReadyForReview,
+} from './review';
 import type { TicketEntry } from './ticket';
 
-export { entryDate, formatTicket } from './ticket';
+export {
+  entryDate,
+  formatTicket,
+} from './ticket';
 export { descriptionHash };
 
 /** The key the review loop gives an activity entry. */

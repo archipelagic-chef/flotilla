@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'preact/hooks';
-import { fraction, progressLine, elapsed } from '../../features/backlog/checksProgress';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
+import {
+  elapsed,
+  fraction,
+  progressLine,
+} from '../../features/backlog/checksProgress';
 import type { ChecksRunRecord } from '../../features/backlog/merge';
 import type { MergeChecksView } from '../ticketProtocol';
-import { ActionButton, send } from './actions';
+import {
+  ActionButton,
+  send,
+} from './actions';
 import './checksPanel.css';
 
 /** Show All's replies (BL-169): a run's whole log, by request. */

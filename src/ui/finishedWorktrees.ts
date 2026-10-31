@@ -1,7 +1,10 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../core/repository';
-import { branchMatches, type BacklogItem } from '../features/backlog/backlog';
+import {
+  type BacklogItem,
+  branchMatches,
+} from '../features/backlog/backlog';
 import type { Leader } from '../features/backlog/leader';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import { entryDate } from '../features/backlog/ticket';

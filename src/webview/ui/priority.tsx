@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import type { BacklogPriority } from '../protocol';
 
 export const PRIORITY: Record<BacklogPriority, { label: string; icon: string }> = {

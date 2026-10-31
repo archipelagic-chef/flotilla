@@ -5,7 +5,10 @@ import type {
   MetricSection,
   MetricsPeriod,
 } from '../../webview/metricsProtocol';
-import type { EventKind, FlotillaEvent } from './events';
+import type {
+  EventKind,
+  FlotillaEvent,
+} from './events';
 import {
   PURPOSE_LABEL,
   SPEND_PURPOSES,

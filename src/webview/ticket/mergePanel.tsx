@@ -1,12 +1,25 @@
 import type { ComponentChildren } from 'preact';
 import type { BacklogStatus } from '../../features/backlog/backlog';
-import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import {
+  mergeLabel,
+  unmergedWarning,
+} from '../../features/backlog/merged';
 import { waitsForSignIn } from '../../features/backlog/needs';
 import { mergeActions } from '../../features/backlog/mergeStates';
-import { capitalize, conflictsOf } from '../../features/backlog/mainDrift';
-import type { TicketCiView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import {
+  capitalize,
+  conflictsOf,
+} from '../../features/backlog/mainDrift';
+import type {
+  TicketCiView,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 import { ciWord } from '../../features/ci/summary';
-import { ciMovedPast, type CiStop } from '../../features/backlog/ciStop';
+import {
+  ciMovedPast,
+  type CiStop,
+} from '../../features/backlog/ciStop';
 import {
   act,
   ActionButton,

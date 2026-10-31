@@ -1,6 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { runGit, type RunGitOptions } from '../../core/git/gitCli';
+import {
+  runGit,
+  type RunGitOptions,
+} from '../../core/git/gitCli';
 import type { FileChange } from '../../core/git/porcelain';
 
 /** Commit hooks and network operations can take a while. */

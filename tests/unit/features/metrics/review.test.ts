@@ -10,7 +10,11 @@ vi.mock('vscode', () => ({
   extensions: { getExtension: () => undefined },
 }));
 
-import type { EventData, EventKind, FlotillaEvent } from '../../../../src/features/metrics/events';
+import type {
+  EventData,
+  EventKind,
+  FlotillaEvent,
+} from '../../../../src/features/metrics/events';
 import {
   checkFix,
   fixesMarkdown,
@@ -23,7 +27,11 @@ import {
   reviewPrompt,
   reviewTools,
 } from '../../../../src/features/metrics/review';
-import { metricsSummary, summaryMarkdown, trend } from '../../../../src/features/metrics/summary';
+import {
+  metricsSummary,
+  summaryMarkdown,
+  trend,
+} from '../../../../src/features/metrics/summary';
 import { headlessArgs } from '../../../../src/ui/backlog/agentRunner';
 
 function ev<K extends EventKind>(at: string, kind: K, data: EventData[K], ticket?: string): FlotillaEvent<K> {

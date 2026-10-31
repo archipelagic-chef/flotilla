@@ -1,4 +1,8 @@
-import { entryAgent, type AgentChoice, type BacklogItem } from './backlog';
+import {
+  type AgentChoice,
+  type BacklogItem,
+  entryAgent,
+} from './backlog';
 import type { TicketEntry } from './ticket';
 import { formatTokens } from '../chats/usage';
 

@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { applyTicketParts, ticketUpdate } from '../../../src/webview/ticketParts';
-import type { TicketPartsMessage, TicketView } from '../../../src/webview/ticketProtocol';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  applyTicketParts,
+  ticketUpdate,
+} from '../../../src/webview/ticketParts';
+import type {
+  TicketPartsMessage,
+  TicketView,
+} from '../../../src/webview/ticketProtocol';
 
 /** A view with what the tests change; the rest is as a ticket without remote, worktrees or commits has it. */
 function view(over: Partial<TicketView> = {}): TicketView {

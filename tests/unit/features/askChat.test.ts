@@ -1,6 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
-import { AskChat, type AskChatDeps } from '../../../src/features/backlog/askChat';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  AskChat,
+  type AskChatDeps,
+} from '../../../src/features/backlog/askChat';
 import { FakeClaude } from '../../helpers/fakeClaude';
 
 const tick = () => new Promise((r) => setTimeout(r, 5));

@@ -6,8 +6,14 @@ import {
   needsYouRows,
   waitsForSignIn,
 } from '../../features/backlog/needs';
-import { fixesFor, fixLabel } from '../../features/backlog/review';
-import type { BacklogItemView as BacklogItem, NoteView } from '../protocol';
+import {
+  fixesFor,
+  fixLabel,
+} from '../../features/backlog/review';
+import type {
+  BacklogItemView as BacklogItem,
+  NoteView,
+} from '../protocol';
 import { send } from './api';
 import { BusyButton } from './backlogBusy';
 import { answerNote } from './notes';

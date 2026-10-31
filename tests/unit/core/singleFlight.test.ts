@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { singleFlight } from '../../../src/core/singleFlight';
 
 /** A run that finishes when it's told to, counting how many started. */

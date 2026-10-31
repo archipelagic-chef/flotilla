@@ -3,7 +3,10 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { currentPrefix } from '../../features/backlog/backlog';
-import { installCommitHook, markWorktree } from '../../features/backlog/commitHook';
+import {
+  installCommitHook,
+  markWorktree,
+} from '../../features/backlog/commitHook';
 import {
   agentGuide,
   type AgentTicketMode,

@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { parseUsageLimit, retryDelay } from '../../../src/features/backlog/limits';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  parseUsageLimit,
+  retryDelay,
+} from '../../../src/features/backlog/limits';
 
 // 2026-10-11 14:20 local time.
 const now = new Date(2026, 9, 11, 14, 20);

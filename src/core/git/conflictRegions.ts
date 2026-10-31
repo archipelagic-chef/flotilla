@@ -1,4 +1,7 @@
-import { GitError, runGit } from './gitCli';
+import {
+  GitError,
+  runGit,
+} from './gitCli';
 
 /** A conflicted file of a merge: its regions, each with its lines and whether both sides only added lines there. */
 export interface ConflictedFile {

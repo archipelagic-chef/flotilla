@@ -2,7 +2,10 @@
  * What a ticket's state card says: what's happening now, and what an agent asks of the user. Pure (no DOM, no vscode),
  * so the rules are tested apart from the view.
  */
-import { entryAgent, type BacklogStatus } from '../features/backlog/backlog';
+import {
+  type BacklogStatus,
+  entryAgent,
+} from '../features/backlog/backlog';
 
 /** A question an agent reports, with its numbered options (each one a button). */
 export interface Ask {

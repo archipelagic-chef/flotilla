@@ -1,4 +1,7 @@
-import type { ChangeKind, FileChange } from '../../core/git/porcelain';
+import type {
+  ChangeKind,
+  FileChange,
+} from '../../core/git/porcelain';
 
 const parentOf = (rel: string) => (rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '');
 

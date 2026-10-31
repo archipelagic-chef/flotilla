@@ -1,11 +1,17 @@
 import type { BacklogItem } from './backlog';
-import { entryAgent, sameAgent } from './backlog';
+import {
+  entryAgent,
+  sameAgent,
+} from './backlog';
 import { ordinal } from './agentQueue';
 import { resumeWaits } from './mainDrift';
 import { mergeStage } from './mergeStage';
 import { parseReport } from './report';
 import type { TicketEntry } from './ticket';
-import { turnOf, type QueuedStart } from './turn';
+import {
+  type QueuedStart,
+  turnOf,
+} from './turn';
 
 /** A ticket in review with no open pull request because you aren't signed in to GitHub (BL-232). */
 export const waitsForSignIn = (i: BacklogItem): boolean =>

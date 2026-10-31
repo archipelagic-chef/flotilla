@@ -1,7 +1,11 @@
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { mediaType, tooLarge, tooLargeNote } from '../../features/backlog/media';
+import {
+  mediaType,
+  tooLarge,
+  tooLargeNote,
+} from '../../features/backlog/media';
 import {
   askingEntry,
   becameText,
@@ -9,7 +13,11 @@ import {
   type NoteStore,
   withoutQuestions,
 } from '../../features/backlog/notes';
-import type { NoteHostMessage, NoteTabView, NoteWebviewMessage } from '../../webview/noteProtocol';
+import type {
+  NoteHostMessage,
+  NoteTabView,
+  NoteWebviewMessage,
+} from '../../webview/noteProtocol';
 import type { NoteView } from '../../webview/protocol';
 import { renderMarkdown } from './ticketPanel';
 

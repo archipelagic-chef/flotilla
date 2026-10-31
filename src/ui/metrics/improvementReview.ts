@@ -2,11 +2,17 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentName } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentName,
+} from '../../features/backlog/backlog';
 import { INBOX } from '../../features/backlog/inbox';
 import { criteriaCount } from '../../features/metrics/productivity';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { eventsDir, readEvents } from '../../features/metrics/events';
+import {
+  eventsDir,
+  readEvents,
+} from '../../features/metrics/events';
 import {
   checkFix,
   type FixCheck,
@@ -22,10 +28,17 @@ import {
   reviewsDir,
   reviewTools,
 } from '../../features/metrics/review';
-import { metricsSummary, summaryMarkdown } from '../../features/metrics/summary';
+import {
+  metricsSummary,
+  summaryMarkdown,
+} from '../../features/metrics/summary';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { AutopilotView } from '../backlog/autopilot';
-import { agentChoice, runAgentHeadless, type AgentRun } from '../backlog/agentRunner';
+import {
+  agentChoice,
+  type AgentRun,
+  runAgentHeadless,
+} from '../backlog/agentRunner';
 import { trackProgress } from '../progress';
 
 export interface ImprovementReviewDeps {

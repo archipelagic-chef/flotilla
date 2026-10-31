@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import {
   AGENT_EFFORTS,
   AGENT_MODELS,
@@ -6,7 +10,10 @@ import {
   modelLabel,
 } from '../../features/backlog/backlog';
 import type { BacklogMessage } from '../backlogActions';
-import { act, useBusy } from './backlogBusy';
+import {
+  act,
+  useBusy,
+} from './backlogBusy';
 
 interface Choice {
   key: string;

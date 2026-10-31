@@ -8,7 +8,11 @@ import {
   vi,
 } from 'vitest';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const settings: Record<string, unknown> = { linkFolders: ['node_modules'] };
 

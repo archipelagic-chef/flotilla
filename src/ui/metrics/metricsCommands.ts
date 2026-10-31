@@ -5,7 +5,10 @@ import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import { levelReport } from '../../features/backlog/modelLevel';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { modelLevels } from '../backlog/agentRunner';
-import { showError, type Commands } from '../commandSet';
+import {
+  type Commands,
+  showError,
+} from '../commandSet';
 import type { ImprovementReview } from './improvementReview';
 import type { Metrics } from './metrics';
 

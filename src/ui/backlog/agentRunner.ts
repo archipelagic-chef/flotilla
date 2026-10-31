@@ -1,10 +1,17 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { AGENT_EFFORTS, type AgentChoice, type AgentEffort } from '../../features/backlog/backlog';
+import {
+  AGENT_EFFORTS,
+  type AgentChoice,
+  type AgentEffort,
+} from '../../features/backlog/backlog';
 import {
   type Levels,
   lightNote,
@@ -13,7 +20,10 @@ import {
   weaker,
   workModel,
 } from '../../features/backlog/modelLevel';
-import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import {
+  parseUsageLimit,
+  type UsageLimit,
+} from '../../features/backlog/limits';
 import { accountLimit } from '../../features/backlog/accountLimit';
 import {
   LEAN_TOOLS,
@@ -32,10 +42,20 @@ import {
   summaryInput,
 } from '../../features/chats/summary';
 import { guardScript } from '../../features/backlog/agentGuard';
-import { formatMemory, shortageAfterStarting } from '../../features/workstreams/memory';
+import {
+  formatMemory,
+  shortageAfterStarting,
+} from '../../features/workstreams/memory';
 import { StartingAgents } from '../../features/workstreams/startingAgents';
-import { recordEvent, type AgentRole, type Tokens } from '../../features/metrics/events';
-import { finishChatRecords, transcriptPath } from '../../features/chats/chats';
+import {
+  type AgentRole,
+  recordEvent,
+  type Tokens,
+} from '../../features/metrics/events';
+import {
+  finishChatRecords,
+  transcriptPath,
+} from '../../features/chats/chats';
 import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 

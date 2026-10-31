@@ -8,7 +8,10 @@
 // fast-forwarded, BL-181), which leaves no merge commits: per ticket, its change (the ref before its commits to after
 // them) is merged with what landed on the ref since its branch was created (its reflog's "Created from"), as its
 // rebase did (BL-187).
-import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  execFileSync,
+  spawnSync,
+} from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

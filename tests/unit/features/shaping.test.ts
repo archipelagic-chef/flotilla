@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   discussable,
   discussionLead,
@@ -13,7 +17,11 @@ import {
   summarizedSince,
 } from '../../../src/features/backlog/shaping';
 import type { TicketEntry } from '../../../src/features/backlog/ticket';
-import { acceptItem, agentChatItem, agentLead } from '../../../src/features/backlog/backlog';
+import {
+  acceptItem,
+  agentChatItem,
+  agentLead,
+} from '../../../src/features/backlog/backlog';
 
 const entry = (author: string, body: string): TicketEntry => ({ date: '2026-10-12 10:00', author, body });
 

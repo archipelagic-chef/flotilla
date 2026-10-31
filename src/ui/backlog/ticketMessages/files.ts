@@ -2,8 +2,14 @@ import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
 import { openChangeEntries } from '../../../core/diff/openDiff';
-import { fileDiff, WHOLE_FILE } from '../../../features/diffs/fileDiff';
-import type { FileDiff, TicketHostMessage } from '../../../webview/ticketProtocol';
+import {
+  fileDiff,
+  WHOLE_FILE,
+} from '../../../features/diffs/fileDiff';
+import type {
+  FileDiff,
+  TicketHostMessage,
+} from '../../../webview/ticketProtocol';
 import { filterFiles } from '../../../webview/ticket/changeTree';
 import type { Handlers } from './context';
 import type { FilesMessage } from './files.messages';

@@ -1,8 +1,15 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 import { sweepDeadRuns } from '../../helpers/tempRoot';
 
 describe('the test run temp folder', () => {

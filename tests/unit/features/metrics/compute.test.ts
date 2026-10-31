@@ -1,11 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   computeMetrics,
   EventIndex,
   idleKind,
   ticketFlow,
 } from '../../../../src/features/metrics/compute';
-import type { EventData, EventKind, FlotillaEvent } from '../../../../src/features/metrics/events';
+import type {
+  EventData,
+  EventKind,
+  FlotillaEvent,
+} from '../../../../src/features/metrics/events';
 import type { MetricsView } from '../../../../src/webview/metricsProtocol';
 
 const NOW = Date.parse('2026-10-20T12:00:00Z');

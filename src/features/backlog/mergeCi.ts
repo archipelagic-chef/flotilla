@@ -5,7 +5,11 @@ import {
   type CiStatus,
   isActive,
 } from '../ci/githubActions';
-import { branchFilterWhy, PUSH_REMOTE, pushTrigger } from './branchPush';
+import {
+  branchFilterWhy,
+  PUSH_REMOTE,
+  pushTrigger,
+} from './branchPush';
 import { TRAIN_REMOTE_PREFIX } from './trainPush';
 
 /**

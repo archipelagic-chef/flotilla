@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { explainRunError, runActions } from '../../../../src/features/ci/runActions';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  explainRunError,
+  runActions,
+} from '../../../../src/features/ci/runActions';
 
 describe('runActions', () => {
   it('offers re-run for a finished run, and re-run failed jobs when one failed', () => {

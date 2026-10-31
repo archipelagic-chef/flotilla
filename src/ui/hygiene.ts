@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { pathKey } from '../core/paths';
-import { missingExclusions, WATCHER_GLOB, WORKTREES_FOLDER } from '../features/worktrees/exclusions';
+import {
+  missingExclusions,
+  WATCHER_GLOB,
+  WORKTREES_FOLDER,
+} from '../features/worktrees/exclusions';
 import { SLOW_STORAGE_DOCS } from '../features/storage/storage';
 import type { Commands } from './commandSet';
 import type { FinishedWorktrees } from './finishedWorktrees';

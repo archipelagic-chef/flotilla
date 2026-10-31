@@ -1,9 +1,19 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { openChangeDiff, openChangesEditor } from '../core/diff/openDiff';
-import { INDEX, WORKING } from '../core/diff/refs';
+import {
+  openChangeDiff,
+  openChangesEditor,
+} from '../core/diff/openDiff';
+import {
+  INDEX,
+  WORKING,
+} from '../core/diff/refs';
 import { GitError } from '../core/git/gitCli';
-import { isInside, resolveInside, samePath } from '../core/paths';
+import {
+  isInside,
+  resolveInside,
+  samePath,
+} from '../core/paths';
 import type { Repository } from '../core/repository';
 import { toWorkspaceUri } from '../core/uris';
 import {
@@ -36,9 +46,16 @@ import {
   finishCleanUp,
   startCleanUp,
 } from './backlog/historyCleanup';
-import { compareWithBase, type CompareMode } from '../features/diffs/compare';
+import {
+  type CompareMode,
+  compareWithBase,
+} from '../features/diffs/compare';
 import { resolveBase } from '../features/workstreams/progress';
-import { installCommitHook, markWorktree, type CommitPrefixMode } from '../features/backlog/commitHook';
+import {
+  type CommitPrefixMode,
+  installCommitHook,
+  markWorktree,
+} from '../features/backlog/commitHook';
 import { GUIDE } from '../features/backlog/inbox';
 import { entryDate } from '../features/backlog/ticket';
 import { creatingWorktrees } from '../features/backlog/creatingWorktrees';
@@ -50,8 +67,16 @@ import {
   mapFor,
   mapNote,
 } from '../features/backlog/codeMap';
-import { CONTEXT_NOTES, epicNote, reviewNotes } from '../features/backlog/review';
-import { failureTask, fixRefusal, parseFailedJob } from '../features/ci/failureTask';
+import {
+  CONTEXT_NOTES,
+  epicNote,
+  reviewNotes,
+} from '../features/backlog/review';
+import {
+  failureTask,
+  fixRefusal,
+  parseFailedJob,
+} from '../features/ci/failureTask';
 import { REPORT_FORMAT } from '../features/backlog/report';
 import {
   agentChoice,
@@ -63,12 +88,28 @@ import { envFromRemoteName } from '../features/workstreams/heartbeat';
 import type { Workstream } from '../features/workstreams/workstream';
 import type { ResolvedWorktree } from '../features/worktrees/resolver';
 import { branchNameProblem } from '../features/worktrees/layout';
-import { copySetupFiles, linkFolders } from '../features/worktrees/setup';
-import type { BranchList, CreateRequest, WorktreeService } from '../features/worktrees/worktreeService';
-import type { ChangeGroup, VcFileDiff } from '../webview/protocol';
+import {
+  copySetupFiles,
+  linkFolders,
+} from '../features/worktrees/setup';
+import type {
+  BranchList,
+  CreateRequest,
+  WorktreeService,
+} from '../features/worktrees/worktreeService';
+import type {
+  ChangeGroup,
+  VcFileDiff,
+} from '../webview/protocol';
 import { vcFileDiffOf } from '../webview/vcFile';
-import { backlogIdOf, linkedWorktrees } from './backlog/cardMenu';
-import { branchPickEntries, type BranchPickAction } from './branchPicker';
+import {
+  backlogIdOf,
+  linkedWorktrees,
+} from './backlog/cardMenu';
+import {
+  type BranchPickAction,
+  branchPickEntries,
+} from './branchPicker';
 import * as chatUi from './chatCommands';
 import {
   type Arg,
@@ -80,9 +121,15 @@ import {
   registerAll,
   type WithWorkstream,
 } from './commandSet';
-import { describeWorkstream, workstreamLabel } from './format';
+import {
+  describeWorkstream,
+  workstreamLabel,
+} from './format';
 import { maybeOfferHygiene } from './hygiene';
-import { removalToRun, type PendingRemoval } from './pending';
+import {
+  type PendingRemoval,
+  removalToRun,
+} from './pending';
 import {
   discardDetail,
   discardEntry,
@@ -93,7 +140,11 @@ import * as scmUi from './scmCommands';
 import { readSettings } from './settings';
 import { runWorkflowByHand } from './ci/runWorkflow';
 import { devGitHubApi } from './ci/devGitHub';
-import { addWorkspaceFolder, extraWorkspaceFolder, removeWorkspaceFolder } from './workspaceFolders';
+import {
+  addWorkspaceFolder,
+  extraWorkspaceFolder,
+  removeWorkspaceFolder,
+} from './workspaceFolders';
 
 /** What the sidebar offers to commands. */
 export interface SidebarHandle {

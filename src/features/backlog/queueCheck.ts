@@ -1,6 +1,13 @@
-import { readyToMerge, type BacklogData, type BacklogItem } from './backlog';
+import {
+  type BacklogData,
+  type BacklogItem,
+  readyToMerge,
+} from './backlog';
 import { ordinal } from './mergeTrain';
-import { ago, type Claim } from './ticketCheck';
+import {
+  ago,
+  type Claim,
+} from './ticketCheck';
 
 /**
  * What a Check finds of the merge queue and train, and of temporary merge worktrees (BL-166): kept apart from

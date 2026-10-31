@@ -1,6 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { GitError, runGit } from '../../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../../core/git/gitCli';
 import type { BacklogItem } from './backlog';
 import type { FailedTest } from './checksProgress';
 

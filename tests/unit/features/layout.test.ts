@@ -14,7 +14,11 @@ import {
   uniqueName,
   worktreesRoot,
 } from '../../../src/features/worktrees/layout';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

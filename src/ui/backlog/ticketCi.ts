@@ -3,7 +3,11 @@ import type { PushResult } from '../../features/backlog/branchPush';
 import { latestCi } from '../../features/ci/summary';
 import type { CiRuns } from '../ci/ciRuns';
 import type { CiView } from '../../webview/protocol';
-import type { TicketCiView, TicketHostMessage, TicketWebviewMessage } from '../../webview/ticketProtocol';
+import type {
+  TicketCiView,
+  TicketHostMessage,
+  TicketWebviewMessage,
+} from '../../webview/ticketProtocol';
 
 /** The key the tickets whose CI is kept open are remembered under, per repository. */
 const OPEN_KEY = 'flotilla.ticket.ciOpen';

@@ -1,5 +1,12 @@
-import type { CommitView, FileChangeView, SearchGroup } from '../protocol';
-import type { FileMatches, LineMatch } from '../../features/search/matcher';
+import type {
+  CommitView,
+  FileChangeView,
+  SearchGroup,
+} from '../protocol';
+import type {
+  FileMatches,
+  LineMatch,
+} from '../../features/search/matcher';
 
 /**
  * A row of a history: a commit; when it's expanded, its details (message, who and when) and then each file it changed.

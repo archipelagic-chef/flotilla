@@ -5,8 +5,15 @@ import {
   expect,
   it,
 } from 'vitest';
-import { rebaseInDir, rebaseResult } from '../../../src/features/backlog/linearHistory';
-import { fixupNote, mergeStyle, tidyNotes } from '../../../src/features/backlog/tidyNotes';
+import {
+  rebaseInDir,
+  rebaseResult,
+} from '../../../src/features/backlog/linearHistory';
+import {
+  fixupNote,
+  mergeStyle,
+  tidyNotes,
+} from '../../../src/features/backlog/tidyNotes';
 import {
   buildTrain,
   recordRebaseResolution,

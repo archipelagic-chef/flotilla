@@ -2,7 +2,10 @@
  * The speed demos play at (BL-218): one for every demo in the tab, the user's last pick. The host keeps it (in
  * Flotilla's global state), so every ticket's tab plays at it, after a reload too; the ticket's view brings it.
  */
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import {
   type DemoSpeed,
   demoSpeed,

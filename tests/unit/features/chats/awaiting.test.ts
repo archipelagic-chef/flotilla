@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { awaiting } from '../../../../src/features/chats/chats';
 
 describe('what a chat waits for', () => {

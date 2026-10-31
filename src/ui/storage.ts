@@ -1,7 +1,10 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
-import { runGit, GitError } from '../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../core/git/gitCli';
 import { pathKey } from '../core/paths';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
 import {

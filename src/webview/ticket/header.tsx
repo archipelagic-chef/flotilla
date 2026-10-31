@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import {
   AGENT_EFFORTS,
   AGENT_MODELS,
@@ -6,7 +9,10 @@ import {
   modelLabel,
   priorityFromName,
 } from '../../features/backlog/backlog';
-import type { TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 import { PRIORITY } from '../ui/priority';
 import {
   act,

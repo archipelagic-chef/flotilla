@@ -1,7 +1,11 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runGit } from '../core/git/gitCli';
-import { isInside, samePath, toGitPath } from '../core/paths';
+import {
+  isInside,
+  samePath,
+  toGitPath,
+} from '../core/paths';
 import { toWorkspaceUri } from '../core/uris';
 import type { Workstream } from '../features/workstreams/workstream';
 import { workstreamLabel } from './format';

@@ -1,11 +1,21 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { resolveInside, toGitPath } from '../../core/paths';
+import {
+  resolveInside,
+  toGitPath,
+} from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { HostMessage, Target } from '../../webview/protocol';
+import type {
+  HostMessage,
+  Target,
+} from '../../webview/protocol';
 import { workstreamLabel } from '../format';
-import { copyName, isSelfOrInside, nameProblem } from './fileNames';
+import {
+  copyName,
+  isSelfOrInside,
+  nameProblem,
+} from './fileNames';
 
 export interface FileOpsDeps {
   reference: vscode.Uri;

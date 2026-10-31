@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import { entryDate } from '../../features/backlog/ticket';
 import { act } from './actions';
 

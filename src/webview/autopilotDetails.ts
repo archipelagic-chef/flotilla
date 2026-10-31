@@ -1,4 +1,7 @@
-import type { AutopilotQueued, AutopilotState } from './protocol';
+import type {
+  AutopilotQueued,
+  AutopilotState,
+} from './protocol';
 import { runningFor } from './activeAgents';
 import { shortTime } from './shortTime';
 import type { CardAgent } from '../features/backlog/cardAgents';

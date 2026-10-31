@@ -1,12 +1,27 @@
 import * as path from 'node:path';
 import { samePath } from '../../core/paths';
 import { agentChatItem } from '../../features/backlog/backlog';
-import { awaiting, type Chat } from '../../features/chats/chats';
-import { DEFAULT_STUCK_RULES, health, type StuckRules } from '../../features/chats/activity';
+import {
+  awaiting,
+  type Chat,
+} from '../../features/chats/chats';
+import {
+  DEFAULT_STUCK_RULES,
+  health,
+  type StuckRules,
+} from '../../features/chats/activity';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { FileChange } from '../../core/git/porcelain';
-import { BIG_CHAT_HINT, formatTokens, usageTip } from '../../features/chats/usage';
-import type { ChatView, FileChangeView, WorkstreamView } from '../../webview/protocol';
+import {
+  BIG_CHAT_HINT,
+  formatTokens,
+  usageTip,
+} from '../../features/chats/usage';
+import type {
+  ChatView,
+  FileChangeView,
+  WorkstreamView,
+} from '../../webview/protocol';
 import { tabLabel } from './tabLabel';
 import {
   ATTENTION_LABEL,

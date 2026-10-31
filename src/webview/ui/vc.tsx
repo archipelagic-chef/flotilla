@@ -14,7 +14,11 @@ import type {
   VcView,
   WorkstreamView,
 } from '../protocol';
-import { menuContext, run, send } from './api';
+import {
+  menuContext,
+  run,
+  send,
+} from './api';
 import { vcFileContext } from '../vcFile';
 import type { Update } from './app';
 import { CHANGE_LETTER } from './files';
@@ -24,7 +28,10 @@ import { ago } from './ago';
 import './vc.css';
 
 export { ago };
-import { historyRows, type HistoryRow } from './rows';
+import {
+  type HistoryRow,
+  historyRows,
+} from './rows';
 
 interface Props {
   ws: WorkstreamView;

@@ -6,9 +6,16 @@ import {
   expect,
   it,
 } from 'vitest';
-import { excludeMatcher, listDirectory } from '../../../../src/ui/sidebar/files';
+import {
+  excludeMatcher,
+  listDirectory,
+} from '../../../../src/ui/sidebar/files';
 import { initials } from '../../../../src/ui/sidebar/viewModel';
-import { makeTempDir, removeDir, writeFile } from '../../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

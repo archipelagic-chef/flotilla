@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { type Seeing, playWhileSeen } from '../../../src/webview/ticket/seen';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  playWhileSeen,
+  type Seeing,
+} from '../../../src/webview/ticket/seen';
 
 /** BL-228: a looping demo plays only while its tab is showing and it's in view. */
 

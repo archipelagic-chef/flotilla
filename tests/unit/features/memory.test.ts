@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { formatMemory, isMemoryShort, shortageAfterStarting } from '../../../src/features/workstreams/memory';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  formatMemory,
+  isMemoryShort,
+  shortageAfterStarting,
+} from '../../../src/features/workstreams/memory';
 import { StartingAgents } from '../../../src/features/workstreams/startingAgents';
 
 describe('the memory check', () => {

@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { showJobLog, type JobLogProvider } from '../../features/ci/jobLog';
+import {
+  type JobLogProvider,
+  showJobLog,
+} from '../../features/ci/jobLog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import { newBacklogItem } from '../backlog/newItem';
 import type { Commands } from '../commandSet';

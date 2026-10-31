@@ -4,7 +4,10 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../../src/features/backlog/backlog';
 import { needOf } from '../../../src/features/backlog/needs';
 import {
   checkingOf,
@@ -13,7 +16,10 @@ import {
   SISTER_STALE_MS,
   stopCheck,
 } from '../../../src/features/backlog/sisterCheck';
-import type { Ticket, TicketEntry } from '../../../src/features/backlog/ticket';
+import type {
+  Ticket,
+  TicketEntry,
+} from '../../../src/features/backlog/ticket';
 
 vi.mock('vscode', () => ({}));
 vi.mock('../../../src/ui/progress', () => ({ trackProgress: () => undefined }));

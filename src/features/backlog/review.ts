@@ -1,9 +1,18 @@
 import type { BacklogItem } from './backlog';
-import { entryAgent, sameAgent } from './backlog';
-import { DESCRIPTION_CHECK, KEEP_WHEN_DONE } from './descriptionShape';
+import {
+  entryAgent,
+  sameAgent,
+} from './backlog';
+import {
+  DESCRIPTION_CHECK,
+  KEEP_WHEN_DONE,
+} from './descriptionShape';
 import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
-import { byPerson, type TicketEntry } from './ticket';
+import {
+  byPerson,
+  type TicketEntry,
+} from './ticket';
 
 /**
  * The review loop: when an item goes to review, a reviewer agent (not the one that did the work) reviews it and gives

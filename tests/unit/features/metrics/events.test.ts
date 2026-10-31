@@ -19,7 +19,10 @@ import {
   recordEvent,
   setEventLog,
 } from '../../../../src/features/metrics/events';
-import { failedTests, recordClickWait } from '../../../../src/features/metrics/record';
+import {
+  failedTests,
+  recordClickWait,
+} from '../../../../src/features/metrics/record';
 import {
   addTotals,
   firstKeptMonth,

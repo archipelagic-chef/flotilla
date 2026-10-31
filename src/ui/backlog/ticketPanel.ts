@@ -51,10 +51,17 @@ import type {
 } from '../../webview/ticketProtocol';
 import type { TicketVcView } from '../../webview/protocol';
 import { openChangeDiff } from '../../core/diff/openDiff';
-import { ATTENTION_LABEL, workstreamLabel } from '../format';
+import {
+  ATTENTION_LABEL,
+  workstreamLabel,
+} from '../format';
 import { runGit } from '../../core/git/gitCli';
 import { toWorkspaceUri } from '../../core/uris';
-import { parseFileLink, summaryOf, whenItsDone } from '../../features/backlog/ticket';
+import {
+  parseFileLink,
+  summaryOf,
+  whenItsDone,
+} from '../../features/backlog/ticket';
 import {
   answeredBy,
   deleteEntry,
@@ -65,27 +72,59 @@ import {
   showsDeleted,
 } from '../../features/backlog/commentEdits';
 import { compareRewrite } from '../../features/backlog/history';
-import { parseReport, reportAnswer, takeMedia } from '../../features/backlog/report';
+import {
+  parseReport,
+  reportAnswer,
+  takeMedia,
+} from '../../features/backlog/report';
 import {
   type MediaKind,
   mediaType,
   tooLarge,
   tooLargeNote,
 } from '../../features/backlog/media';
-import { gatherAttachments, type FolderFile } from '../../features/backlog/attachments';
-import { movesSince, ticketCommits, versionCommits } from '../../features/history/log';
-import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../features/backlog/refresh';
+import {
+  type FolderFile,
+  gatherAttachments,
+} from '../../features/backlog/attachments';
+import {
+  movesSince,
+  ticketCommits,
+  versionCommits,
+} from '../../features/history/log';
+import {
+  type OpenTicket,
+  ticketsForBacklogChange,
+  ticketsForRepositoryChange,
+} from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
-import { pickedChange, ticketChange } from '../../features/diffs/ticketChange';
-import { focusBeside, TicketDiffs, type DiffOrigin } from './ticketDiffs';
-import { baseName, type MergeInfo } from '../../features/backlog/merged';
+import {
+  pickedChange,
+  ticketChange,
+} from '../../features/diffs/ticketChange';
+import {
+  type DiffOrigin,
+  focusBeside,
+  TicketDiffs,
+} from './ticketDiffs';
+import {
+  baseName,
+  type MergeInfo,
+} from '../../features/backlog/merged';
 import type { Merges } from './merges';
-import { baseLabel, dependsOn as dependsOnIds, isOpen } from '../../features/backlog/mainDrift';
+import {
+  baseLabel,
+  dependsOn as dependsOnIds,
+  isOpen,
+} from '../../features/backlog/mainDrift';
 import { resumeAsk } from '../../features/backlog/needs';
 import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
 import type { Claim } from '../../features/backlog/ticketCheck';
-import { readSettings, stuckRules } from '../settings';
+import {
+  readSettings,
+  stuckRules,
+} from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
 import {
@@ -98,17 +137,36 @@ import {
   spawnAsk,
   summarizeAgent,
 } from './agentRunner';
-import { heldBy, startedInTerminal } from '../../features/backlog/review';
+import {
+  heldBy,
+  startedInTerminal,
+} from '../../features/backlog/review';
 import { AskChat } from '../../features/backlog/askChat';
-import { askContextText, askInstructions, postedAnswer } from '../../features/backlog/ask';
+import {
+  askContextText,
+  askInstructions,
+  postedAnswer,
+} from '../../features/backlog/ask';
 import { formatMemory } from '../../features/workstreams/memory';
-import { formatTokens, usageTip } from '../../features/chats/usage';
+import {
+  formatTokens,
+  usageTip,
+} from '../../features/chats/usage';
 import { ticketUpdate } from '../../webview/ticketParts';
-import { readTranscript, transcriptPath } from '../../features/chats/chats';
-import { summaryWait, type AgentSummary } from '../../features/chats/summary';
+import {
+  readTranscript,
+  transcriptPath,
+} from '../../features/chats/chats';
+import {
+  type AgentSummary,
+  summaryWait,
+} from '../../features/chats/summary';
 import type { Shaping } from './shaping';
 import type { AskAgent } from './askAgent';
-import { CHAT_LINK, discussable } from '../../features/backlog/shaping';
+import {
+  CHAT_LINK,
+  discussable,
+} from '../../features/backlog/shaping';
 import {
   demoPath,
   demoRun,
@@ -153,9 +211,16 @@ import {
   resolveEntry,
 } from '../../features/backlog/references';
 import type { CiRuns } from '../ci/ciRuns';
-import { pushBranch as pushBranchToOrigin, pushNote, type PushResult } from '../../features/backlog/branchPush';
+import {
+  pushBranch as pushBranchToOrigin,
+  pushNote,
+  type PushResult,
+} from '../../features/backlog/branchPush';
 import { runWorkflowByHand } from '../ci/runWorkflow';
-import { originIsLocal, pushItemBranch } from './branchPush';
+import {
+  originIsLocal,
+  pushItemBranch,
+} from './branchPush';
 import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
 import { recordClickWait } from '../../features/metrics/record';

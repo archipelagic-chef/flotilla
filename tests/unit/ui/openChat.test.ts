@@ -36,8 +36,14 @@ vi.mock('vscode', () => ({
   },
 }));
 
-import { readChatRecords, transcriptPath } from '../../../src/features/chats/chats';
-import { openChat, type ChatContext } from '../../../src/ui/chatCommands';
+import {
+  readChatRecords,
+  transcriptPath,
+} from '../../../src/features/chats/chats';
+import {
+  type ChatContext,
+  openChat,
+} from '../../../src/ui/chatCommands';
 import { TranscriptViews } from '../../../src/ui/transcriptView';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 

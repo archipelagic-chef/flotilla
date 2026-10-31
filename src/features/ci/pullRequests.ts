@@ -1,5 +1,8 @@
 import { gitHubName } from '../backlog/sources/github';
-import { type Fetch, fetchJson } from '../backlog/sources/source';
+import {
+  type Fetch,
+  fetchJson,
+} from '../backlog/sources/source';
 import type { Verdict } from '../backlog/review';
 
 /**

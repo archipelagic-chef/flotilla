@@ -2,7 +2,10 @@
  * The backlog's actions in progress (BL-117): a button shows it's working from the click until the host says it's done.
  * Pure (no DOM, no vscode): the host echoes a message back when it's done, as a copy, so the key must come out the same.
  */
-import type { BacklogItemView, WebviewMessage } from './protocol';
+import type {
+  BacklogItemView,
+  WebviewMessage,
+} from './protocol';
 
 export type BacklogMessage = Extract<WebviewMessage, { type: 'backlog' }>;
 

@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
-import { addItem, currentPrefix, parseNewItem } from '../../features/backlog/backlog';
+import {
+  addItem,
+  currentPrefix,
+  parseNewItem,
+} from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from './integrations';
 

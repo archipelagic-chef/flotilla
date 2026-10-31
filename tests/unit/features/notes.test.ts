@@ -7,7 +7,10 @@ import {
   it,
 } from 'vitest';
 import { addItem } from '../../../src/features/backlog/backlog';
-import { parseProposal, takeInbox } from '../../../src/features/backlog/inbox';
+import {
+  parseProposal,
+  takeInbox,
+} from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import {
   addedTo,
@@ -33,7 +36,11 @@ import {
   textChange,
   withoutQuestions,
 } from '../../../src/features/backlog/notes';
-import { initRepo, makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

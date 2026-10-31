@@ -4,7 +4,10 @@
  */
 import type { AgentActivity } from '../features/chats/activity';
 import type { ChangeKind } from '../core/git/porcelain';
-import type { MetricsHostMessage, MetricsWebviewMessage } from './metricsProtocol';
+import type {
+  MetricsHostMessage,
+  MetricsWebviewMessage,
+} from './metricsProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
 import type {
   AgentChoice,
@@ -18,11 +21,20 @@ import type { RunKind } from '../features/backlog/runBlocks';
 import type { ReviewFix } from '../features/backlog/review';
 import type { NoteOutcome } from '../features/backlog/notes';
 import type { Question } from '../features/backlog/report';
-import type { ChatState, LinkKind } from '../features/chats/chats';
-import type { CiJob, CiRun } from '../features/ci/githubActions';
+import type {
+  ChatState,
+  LinkKind,
+} from '../features/chats/chats';
+import type {
+  CiJob,
+  CiRun,
+} from '../features/ci/githubActions';
 import type { RunAction } from '../features/ci/runActions';
 import type { CiDeployment } from '../features/ci/githubDeployments';
-import type { FileMatches, SearchOptions } from '../features/search/gitGrep';
+import type {
+  FileMatches,
+  SearchOptions,
+} from '../features/search/gitGrep';
 import type { AttentionState } from '../features/workstreams/attention';
 import type { TicketCommit } from '../features/history/log';
 import type { TicketChange } from './ticketProtocol';
@@ -30,7 +42,11 @@ import type { TicketChange } from './ticketProtocol';
 /** The tools in the strip on the left. */
 export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
 
-export type { BacklogItem, BacklogPriority, BacklogStatus };
+export type {
+  BacklogItem,
+  BacklogPriority,
+  BacklogStatus,
+};
 export type { MergeInfo };
 
 /** A backlog item as the sidebar lists it: with the first line of its description and its activity count. */

@@ -4,9 +4,15 @@ import { ordinal } from './agentQueue';
 import { readyToMerge } from './backlog';
 import type { CardAgent } from './cardAgents';
 import { conflictsOf } from './mainDrift';
-import { mergeLabel, unmergedWarning } from './merged';
+import {
+  mergeLabel,
+  unmergedWarning,
+} from './merged';
 import { mergeStage } from './mergeStage';
-import { nextSteps, STEP } from './nextSteps';
+import {
+  nextSteps,
+  STEP,
+} from './nextSteps';
 import { queuedWhen } from './needs';
 import { turnOf } from './turn';
 

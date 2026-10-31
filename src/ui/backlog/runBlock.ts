@@ -5,7 +5,10 @@
 import * as vscode from 'vscode';
 import { samePath } from '../../core/paths';
 import { toWorkspaceUri } from '../../core/uris';
-import { planTerminal, unknownNameMessage } from '../../features/backlog/runWorktree';
+import {
+  planTerminal,
+  unknownNameMessage,
+} from '../../features/backlog/runWorktree';
 import { addWorkspaceFolder } from '../workspaceFolders';
 
 const APPROVALS = 'flotilla.backlog.runApprovals';

@@ -12,9 +12,16 @@ import {
   childrenOf,
   EMPTY_BACKLOG,
 } from '../../../src/features/backlog/backlog';
-import { addProposal, parseProposal, takeInbox } from '../../../src/features/backlog/inbox';
+import {
+  addProposal,
+  parseProposal,
+  takeInbox,
+} from '../../../src/features/backlog/inbox';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
-import { initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

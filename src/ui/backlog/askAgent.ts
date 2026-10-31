@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentName, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentName,
+  type BacklogItem,
+} from '../../features/backlog/backlog';
 import {
   type AnswerView,
   askPrompt,

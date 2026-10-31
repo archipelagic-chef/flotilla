@@ -1,6 +1,9 @@
 import type { Question } from '../features/backlog/report';
 import type { NoteView } from './protocol';
-import type { TicketHostMessage, TicketWebviewMessage } from './ticketProtocol';
+import type {
+  TicketHostMessage,
+  TicketWebviewMessage,
+} from './ticketProtocol';
 
 /** A sent note, as its tab shows it (BL-204): what you wrote, to edit, then its activity, then a box to write in. */
 export interface NoteTabView {

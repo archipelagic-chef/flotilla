@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { autopilotDetails } from '../../../src/webview/autopilotDetails';
 import type { AutopilotState } from '../../../src/webview/protocol';
 

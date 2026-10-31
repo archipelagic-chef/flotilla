@@ -6,8 +6,14 @@ import {
   expect,
   it,
 } from 'vitest';
-import { checksEnv, runInBackground } from '../../../src/features/backlog/checksRun';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  checksEnv,
+  runInBackground,
+} from '../../../src/features/backlog/checksRun';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

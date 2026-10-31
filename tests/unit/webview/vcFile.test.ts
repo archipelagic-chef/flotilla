@@ -1,7 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { vcFileContext, vcFileDiffOf } from '../../../src/webview/vcFile';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  vcFileContext,
+  vcFileDiffOf,
+} from '../../../src/webview/vcFile';
 
 type Menu = { command: string; when: string };
 const menus = (JSON.parse(fs.readFileSync(path.join(__dirname, '../../../package.json'), 'utf8')) as { contributes: { menus: { 'webview/context': Menu[] } } })

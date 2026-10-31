@@ -1,4 +1,7 @@
-import type { BacklogData, BacklogItem } from './backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from './backlog';
 import { waitChain } from './mainDrift';
 
 /**

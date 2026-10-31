@@ -1,5 +1,9 @@
 import { render } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import {
   type Answer,
   answerComment,
@@ -8,11 +12,19 @@ import {
   defaultAnswer,
   type Question,
 } from '../../features/backlog/report';
-import type { NoteHostMessage, NoteTabView, NoteWebviewMessage } from '../noteProtocol';
+import type {
+  NoteHostMessage,
+  NoteTabView,
+  NoteWebviewMessage,
+} from '../noteProtocol';
 // The ticket's shared rules (buttons, the comment box's layout) first, then the note's own.
 import '../ticket/ticket.css';
 import { send as sendTicket } from '../ticket/actions';
-import { imageReplies, MarkdownBox, previewReplies } from '../ticket/markdownBox';
+import {
+  imageReplies,
+  MarkdownBox,
+  previewReplies,
+} from '../ticket/markdownBox';
 import './note.css';
 
 /** The page's one VS Code API (the ticket's module acquired it), for the note's messages as well as the box's. */

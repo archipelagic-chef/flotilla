@@ -1,9 +1,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { GUIDE, INBOX } from './inbox';
+import {
+  GUIDE,
+  INBOX,
+} from './inbox';
 import { writeAtomic } from './localBacklog';
 import type { UsageLimit } from './limits';
-import { parseReport, type Question } from './report';
+import {
+  parseReport,
+  type Question,
+} from './report';
 import {
   entryDate,
   formatTicket,

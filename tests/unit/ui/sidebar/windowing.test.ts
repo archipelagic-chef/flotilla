@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { offsetsOf, visibleRange } from '../../../../src/webview/ui/windowing';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  offsetsOf,
+  visibleRange,
+} from '../../../../src/webview/ui/windowing';
 
 describe('windowed lists', () => {
   it('says where each row starts', () => {

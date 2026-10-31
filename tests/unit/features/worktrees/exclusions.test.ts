@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { isInWorktreesFolder, missingExclusions } from '../../../../src/features/worktrees/exclusions';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  isInWorktreesFolder,
+  missingExclusions,
+} from '../../../../src/features/worktrees/exclusions';
 
 const excluded = {
   watcherExclude: { '.worktrees/**': true },

@@ -1,4 +1,7 @@
-import { branchMatches, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  type BacklogItem,
+  branchMatches,
+} from '../../features/backlog/backlog';
 
 /**
  * The id of the backlog item a card's menu (or a command with a card's context) is about: the id itself, or the

@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
 import {
   entryRound,
@@ -19,7 +22,11 @@ import {
   defaultAnswer,
 } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
-import type { ReportView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  ReportView,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 import {
   Diagram,
   diagramsIn,
@@ -38,10 +45,25 @@ import {
   WorkingTag,
 } from './actions';
 import { ticketSteps } from './steps';
-import { REPLY_TO, sendComment, useSending } from './comments';
-import { AskButton, AskLine } from './askAgent';
-import { MarkdownBox, mentionPrefix, Rendered } from './markdownBox';
-import { ago, ChatCard, chatState } from './agents';
+import {
+  REPLY_TO,
+  sendComment,
+  useSending,
+} from './comments';
+import {
+  AskButton,
+  AskLine,
+} from './askAgent';
+import {
+  MarkdownBox,
+  mentionPrefix,
+  Rendered,
+} from './markdownBox';
+import {
+  ago,
+  ChatCard,
+  chatState,
+} from './agents';
 import './activity.css';
 
 type ActivityEntry = TicketView['activity'][number];

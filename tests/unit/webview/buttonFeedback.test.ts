@@ -1,6 +1,16 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  readdirSync,
+  readFileSync,
+} from 'node:fs';
+import {
+  join,
+  relative,
+} from 'node:path';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 /**
  * BL-118: a button whose action the host works on shows it's working (an ActionButton, act, a BusyButton) from the

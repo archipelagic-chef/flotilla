@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { type AgentChoice, type BacklogItem } from '../../../features/backlog/backlog';
+import {
+  type AgentChoice,
+  type BacklogItem,
+} from '../../../features/backlog/backlog';
 import { validModel } from '../agentRunner';
 import type { Handlers } from './context';
 import type { AgentsMessage } from './agents.messages';

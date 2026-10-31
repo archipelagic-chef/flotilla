@@ -7,8 +7,16 @@ import {
   expect,
   it,
 } from 'vitest';
-import { installCommitHook, markWorktree, PREVIOUS_HOOK } from '../../../src/features/backlog/commitHook';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  installCommitHook,
+  markWorktree,
+  PREVIOUS_HOOK,
+} from '../../../src/features/backlog/commitHook';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

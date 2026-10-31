@@ -3,9 +3,19 @@ import { trackProgress } from './progress';
 import type { FileChange } from '../core/git/porcelain';
 import * as scm from '../features/scm/operations';
 import type { Repository } from '../core/repository';
-import { withFreshStatus, type Workstream } from '../features/workstreams/workstream';
-import { syncKind, workstreamLabel } from './format';
-import { isTarget, type Commands, type WithWorkstream } from './commandSet';
+import {
+  withFreshStatus,
+  type Workstream,
+} from '../features/workstreams/workstream';
+import {
+  syncKind,
+  workstreamLabel,
+} from './format';
+import {
+  type Commands,
+  isTarget,
+  type WithWorkstream,
+} from './commandSet';
 
 export interface ScmContext {
   /** Updates ws's git status at once (when given), then refreshes everything in the background. */

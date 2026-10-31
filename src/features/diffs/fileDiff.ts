@@ -9,7 +9,11 @@ import type {
   FileDiff,
 } from '../../webview/ticketProtocol';
 
-export type { DiffHunk, DiffLine, FileDiff };
+export type {
+  DiffHunk,
+  DiffLine,
+  FileDiff,
+};
 
 /** More changed lines than this, and a file's diff isn't shown inline: the diff editor is the place for it. */
 export const MAX_INLINE_LINES = 2000;

@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
-import { acceptItem, removeItem, updateItem } from '../../../features/backlog/backlog';
-import { keepAttachmentsFolded, keepDemoSpeed, keepShowActivity } from '../ticketPanel';
+import {
+  acceptItem,
+  removeItem,
+  updateItem,
+} from '../../../features/backlog/backlog';
+import {
+  keepAttachmentsFolded,
+  keepDemoSpeed,
+  keepShowActivity,
+} from '../ticketPanel';
 import type { Handlers } from './context';
 import type { TicketMessage } from './ticket.messages';
 

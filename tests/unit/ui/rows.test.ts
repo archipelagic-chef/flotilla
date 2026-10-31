@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { historyRows, searchRows } from '../../../src/webview/ui/rows';
-import type { CommitView, SearchGroup } from '../../../src/webview/protocol';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  historyRows,
+  searchRows,
+} from '../../../src/webview/ui/rows';
+import type {
+  CommitView,
+  SearchGroup,
+} from '../../../src/webview/protocol';
 
 const commit = (hash: string) => ({ hash, subject: hash }) as CommitView;
 

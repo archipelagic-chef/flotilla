@@ -1,4 +1,7 @@
-import { isActive, type CiRun } from './githubActions';
+import {
+  type CiRun,
+  isActive,
+} from './githubActions';
 
 /** Which finished runs to tell the user about: the failures (default), every one, or none. */
 export type CiNotify = 'failures' | 'all' | 'off';

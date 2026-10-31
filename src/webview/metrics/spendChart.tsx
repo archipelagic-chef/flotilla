@@ -1,5 +1,9 @@
 import { useState } from 'preact/hooks';
-import type { SpendCell, SpendChat, SpendTimeline } from '../metricsProtocol';
+import type {
+  SpendCell,
+  SpendChat,
+  SpendTimeline,
+} from '../metricsProtocol';
 import {
   type Bucket,
   buckets,

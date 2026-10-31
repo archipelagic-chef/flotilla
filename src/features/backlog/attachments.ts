@@ -3,7 +3,10 @@
  * an activity entry), and the files in its folder (`<backlog>/<id>/`) nothing references. Each once, newest first.
  * Pure: the host lists the folder and resolves each source as it does the ticket's inline media.
  */
-import { mediaType, type MediaKind } from './media';
+import {
+  type MediaKind,
+  mediaType,
+} from './media';
 import { parseRunBlocks } from './runBlocks';
 
 export interface Attachment {

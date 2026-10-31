@@ -2,10 +2,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import { parseNameStatus, type FileChange } from '../../core/git/porcelain';
+import {
+  type FileChange,
+  parseNameStatus,
+} from '../../core/git/porcelain';
 import { WORKING } from '../../core/diff/refs';
 
-import type { CompareMode, RefCompareMode } from '../../webview/protocol';
+import type {
+  CompareMode,
+  RefCompareMode,
+} from '../../webview/protocol';
 
 export type { CompareMode };
 

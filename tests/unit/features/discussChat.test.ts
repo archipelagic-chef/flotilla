@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { discussArgs, discussionOpener, discussionTurns } from '../../../src/features/backlog/discussChat';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  discussArgs,
+  discussionOpener,
+  discussionTurns,
+} from '../../../src/features/backlog/discussChat';
 import { isDiscussionChat } from '../../../src/features/backlog/shaping';
 
 const SESSION = '11111111-2222-3333-4444-555555555555';

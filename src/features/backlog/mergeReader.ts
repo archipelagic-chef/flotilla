@@ -1,6 +1,14 @@
 import { runGit } from '../../core/git/gitCli';
-import { branchMatches, itemBranches, type BacklogItem } from './backlog';
-import { summarizeMerge, type BranchState, type MergeInfo } from './merged';
+import {
+  type BacklogItem,
+  branchMatches,
+  itemBranches,
+} from './backlog';
+import {
+  type BranchState,
+  type MergeInfo,
+  summarizeMerge,
+} from './merged';
 
 /**
  * Reads whether each item's branches are merged into the base, from git. A branch is merged when it's an ancestor of

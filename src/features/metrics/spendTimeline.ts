@@ -1,7 +1,15 @@
-import type { SpendCell, SpendChat, SpendTimeline } from '../../webview/metricsProtocol';
+import type {
+  SpendCell,
+  SpendChat,
+  SpendTimeline,
+} from '../../webview/metricsProtocol';
 import type { FlotillaEvent } from './events';
 import type { LiveSpend } from './spendScan';
-import { PURPOSE_LABEL, type SpendHour, type SpendPurpose } from './transcriptSpend';
+import {
+  PURPOSE_LABEL,
+  type SpendHour,
+  type SpendPurpose,
+} from './transcriptSpend';
 
 /** How far back the timeline goes. */
 export const TIMELINE_DAYS = 7;

@@ -5,9 +5,20 @@ import {
   it,
 } from 'vitest';
 import * as fs from 'node:fs';
-import { getGitVersion, versionAtLeast } from '../../../src/core/git/gitCli';
-import { indexConflicts, mergeConflicts, mergeTreeConflicts } from '../../../src/core/git/mergeCheck';
-import { git, initRepo, writeFile } from '../../helpers/gitRepo';
+import {
+  getGitVersion,
+  versionAtLeast,
+} from '../../../src/core/git/gitCli';
+import {
+  indexConflicts,
+  mergeConflicts,
+  mergeTreeConflicts,
+} from '../../../src/core/git/mergeCheck';
+import {
+  git,
+  initRepo,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const repos: string[] = [];
 afterEach(() => {

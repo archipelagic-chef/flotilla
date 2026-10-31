@@ -23,7 +23,11 @@ import {
   type SisterVerdict,
   verdictLine,
 } from '../../features/backlog/sisterCheck';
-import { entryDate, type Ticket, type TicketEntry } from '../../features/backlog/ticket';
+import {
+  entryDate,
+  type Ticket,
+  type TicketEntry,
+} from '../../features/backlog/ticket';
 import { trackProgress } from '../progress';
 import {
   agentChoice,

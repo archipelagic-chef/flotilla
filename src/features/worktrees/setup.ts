@@ -1,4 +1,7 @@
-import { constants, type Dirent } from 'node:fs';
+import {
+  constants,
+  type Dirent,
+} from 'node:fs';
 import * as path from 'node:path';
 import { glob } from 'tinyglobby';
 import { rawFs } from '../../core/rawFs';

@@ -1,6 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { GitHubSource, gitHubRepo } from '../../../src/features/backlog/sources/github';
-import { JiraSource, jiraStatus, missingFields } from '../../../src/features/backlog/sources/jira';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  gitHubRepo,
+  GitHubSource,
+} from '../../../src/features/backlog/sources/github';
+import {
+  JiraSource,
+  jiraStatus,
+  missingFields,
+} from '../../../src/features/backlog/sources/jira';
 import { markdownToJira } from '../../../src/features/backlog/sources/jiraMarkup';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 

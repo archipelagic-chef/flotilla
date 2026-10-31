@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   ciState,
   ciSummary,
@@ -6,7 +10,10 @@ import {
   scopeState,
   scopeSummary,
 } from '../../../../src/features/ci/summary';
-import type { CiRunView, CiView } from '../../../../src/webview/protocol';
+import type {
+  CiRunView,
+  CiView,
+} from '../../../../src/webview/protocol';
 
 const run = (workflow: string, status: CiRunView['status'], id = 1): CiRunView => ({
   id,

@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { parseTranscript } from '../../../src/features/chats/chats';
-import { addUsage, formatTokens } from '../../../src/features/chats/usage';
-import { NO_USAGE, runawayReason } from '../../../src/features/backlog/runaway';
+import {
+  addUsage,
+  formatTokens,
+} from '../../../src/features/chats/usage';
+import {
+  NO_USAGE,
+  runawayReason,
+} from '../../../src/features/backlog/runaway';
 
 const reply = (id: string, read: number, written: number, content: unknown[] = []) =>
   JSON.stringify({

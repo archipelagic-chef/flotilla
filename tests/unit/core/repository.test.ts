@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { Repository } from '../../../src/core/repository';
 
 describe('Repository', () => {

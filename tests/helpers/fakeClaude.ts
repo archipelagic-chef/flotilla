@@ -1,5 +1,8 @@
 import { EventEmitter } from 'node:events';
-import { PassThrough, Writable } from 'node:stream';
+import {
+  PassThrough,
+  Writable,
+} from 'node:stream';
 
 /** A Claude process as the chat sees it: what's written to it, and lines it prints. */
 export class FakeClaude extends EventEmitter {

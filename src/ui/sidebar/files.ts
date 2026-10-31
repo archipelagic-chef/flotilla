@@ -1,4 +1,7 @@
-import { GitError, runGit } from '../../core/git/gitCli';
+import {
+  GitError,
+  runGit,
+} from '../../core/git/gitCli';
 import { resolveInside } from '../../core/paths';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';

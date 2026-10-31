@@ -4,7 +4,10 @@ import './demo.css';
  * large and playing, as the demo unit (BL-111): "Recorded demo · 0:12", Try it yourself and Watch it live; when and by
  * whom it was recorded, whether the work changed since, and the earlier recordings, folded.
  */
-import type { ComponentChildren, JSX } from 'preact';
+import type {
+  ComponentChildren,
+  JSX,
+} from 'preact';
 import {
   useEffect,
   useMemo,
@@ -29,7 +32,11 @@ import {
   playVideoAtSpeed,
   useSpeed,
 } from './speed';
-import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  AttachmentView,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 
 /** The section's id: a review card's demo mark opens the ticket there. */
 export const DEMO_SECTION = 'demo';

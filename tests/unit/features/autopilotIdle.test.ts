@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import {
   awayLine,
   finished,
   idleReason,
   wasOvernight,
 } from '../../../src/features/backlog/autopilotIdle';
-import type { BacklogData, BacklogItem } from '../../../src/features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../../src/features/backlog/backlog';
 
 const at = '2026-10-21T00:00:00Z';
 const item = (id: string, status: BacklogItem['status'], more: Partial<BacklogItem> = {}): BacklogItem => ({ id, title: id, status, created: at, ...more });

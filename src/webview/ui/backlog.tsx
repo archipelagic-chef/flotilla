@@ -19,14 +19,24 @@ import type {
   WorkstreamView,
 } from '../protocol';
 import { send } from './api';
-import { act, BusyButton, useBusy } from './backlogBusy';
+import {
+  act,
+  BusyButton,
+  useBusy,
+} from './backlogBusy';
 import { withMoves } from '../backlogActions';
 import './priority.css';
 import { TitleBar } from './titleBar';
-import { AgentCount, AutopilotBar } from './autopilotBar';
+import {
+  AgentCount,
+  AutopilotBar,
+} from './autopilotBar';
 import { pausedAllLabel } from './pauseAll';
 import { NeedsYou } from './needsYou';
-import { DRAG_TYPE, ItemRow } from './card';
+import {
+  DRAG_TYPE,
+  ItemRow,
+} from './card';
 import { MergeQueueBar } from './mergeQueueBar';
 import { NotesLane } from './notes';
 import './backlog.css';

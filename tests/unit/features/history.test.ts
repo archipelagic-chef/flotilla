@@ -4,7 +4,11 @@ import {
   expect,
   it,
 } from 'vitest';
-import { commitChanges, readLog, ticketCommits } from '../../../src/features/history/log';
+import {
+  commitChanges,
+  readLog,
+  ticketCommits,
+} from '../../../src/features/history/log';
 import {
   git,
   initRepo,

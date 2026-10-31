@@ -1,4 +1,7 @@
-import { agentChatItem, type BacklogItem } from './backlog';
+import {
+  agentChatItem,
+  type BacklogItem,
+} from './backlog';
 import { isDiscussionChat } from './shaping';
 import { fromGitHub } from './ticket';
 

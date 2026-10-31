@@ -23,7 +23,10 @@ vi.mock('vscode', () => ({
   authentication: { getSession: vi.fn() },
 }));
 
-import { FakeGitHubSession, fakeGitHubSession } from '../../../../src/features/ci/fakeSession';
+import {
+  FakeGitHubSession,
+  fakeGitHubSession,
+} from '../../../../src/features/ci/fakeSession';
 import { signedInPullRequests } from '../../../../src/features/ci/jobLog';
 import { GitHubSignInNeeded } from '../../../../src/features/ci/pullRequests';
 

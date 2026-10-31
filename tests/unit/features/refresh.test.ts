@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { ticketsForBacklogChange, ticketsForRepositoryChange, type OpenTicket } from '../../../src/features/backlog/refresh';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  type OpenTicket,
+  ticketsForBacklogChange,
+  ticketsForRepositoryChange,
+} from '../../../src/features/backlog/refresh';
 
 const items = [{ id: 'BL-1' }, { id: 'BL-2', parent: 'BL-1' }, { id: 'BL-3', parent: 'BL-1' }, { id: 'BL-4' }];
 

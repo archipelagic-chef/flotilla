@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { ciMovedPast, type CiStop } from '../../../src/features/backlog/ciStop';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  ciMovedPast,
+  type CiStop,
+} from '../../../src/features/backlog/ciStop';
 
 const stop: CiStop = {
   kind: 'failed',

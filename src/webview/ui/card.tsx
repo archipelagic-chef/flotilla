@@ -1,15 +1,39 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { readyToMerge } from '../../features/backlog/backlog';
-import { CARD_AGENT_LABEL, type CardAgent } from '../../features/backlog/cardAgents';
+import {
+  CARD_AGENT_LABEL,
+  type CardAgent,
+} from '../../features/backlog/cardAgents';
 import { statusLine } from '../../features/chats/activity';
-import { mergeLabel, unmergedWarning } from '../../features/backlog/merged';
+import {
+  mergeLabel,
+  unmergedWarning,
+} from '../../features/backlog/merged';
 import { agentOf } from '../../features/backlog/activeAgent';
 import { conflictsOf } from '../../features/backlog/mainDrift';
 import { runLabel } from '../../features/backlog/runBlocks';
-import { TURN_ICON, TURN_LABEL, turnOf } from '../../features/backlog/turn';
-import type { BacklogItemView as BacklogItem, WorkstreamView } from '../protocol';
-import { menuContext, send } from './api';
-import { act, BusyButton, useBusy } from './backlogBusy';
+import {
+  TURN_ICON,
+  TURN_LABEL,
+  turnOf,
+} from '../../features/backlog/turn';
+import type {
+  BacklogItemView as BacklogItem,
+  WorkstreamView,
+} from '../protocol';
+import {
+  menuContext,
+  send,
+} from './api';
+import {
+  act,
+  BusyButton,
+  useBusy,
+} from './backlogBusy';
 import { stopControlClick } from './cardClick';
 import { PriorityPicker } from './priority';
 import {

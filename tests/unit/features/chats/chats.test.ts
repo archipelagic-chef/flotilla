@@ -26,7 +26,10 @@ import {
   transcriptPath,
   unlinkChat,
 } from '../../../../src/features/chats/chats';
-import { makeTempDir, removeDir } from '../../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

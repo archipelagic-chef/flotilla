@@ -16,8 +16,14 @@ import {
   readyToMerge,
 } from '../../features/backlog/backlog';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { ciStop, type CiStop } from '../../features/backlog/ciStop';
-import { pushTrain, trainRef } from '../../features/backlog/trainPush';
+import {
+  type CiStop,
+  ciStop,
+} from '../../features/backlog/ciStop';
+import {
+  pushTrain,
+  trainRef,
+} from '../../features/backlog/trainPush';
 import {
   type CiDecision,
   type CiReader,
@@ -99,7 +105,10 @@ import {
   recordConflicts,
   recordTrainConflicts,
 } from '../../features/metrics/record';
-import { ChecksReader, failureSummary } from '../../features/backlog/checksProgress';
+import {
+  ChecksReader,
+  failureSummary,
+} from '../../features/backlog/checksProgress';
 import { runInBackground } from '../../features/backlog/checksRun';
 import type { MergeChecksView } from '../../webview/ticketProtocol';
 

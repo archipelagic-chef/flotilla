@@ -6,7 +6,10 @@ import {
   expect,
   it,
 } from 'vitest';
-import { classifyActivity, lastActivity } from '../../../src/features/workstreams/activity';
+import {
+  classifyActivity,
+  lastActivity,
+} from '../../../src/features/workstreams/activity';
 import {
   AGENT_STATUS_FILE,
   clearAgentStatus,
@@ -21,7 +24,11 @@ import {
   readHeartbeat,
   writeHeartbeat,
 } from '../../../src/features/workstreams/heartbeat';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

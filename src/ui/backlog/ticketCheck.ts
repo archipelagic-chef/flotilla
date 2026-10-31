@@ -3,7 +3,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
-import type { BacklogData, BacklogItem } from '../../features/backlog/backlog';
+import type {
+  BacklogData,
+  BacklogItem,
+} from '../../features/backlog/backlog';
 import { transcriptBusy } from '../../features/backlog/busy';
 import {
   clearCreatingRecord,
@@ -11,8 +14,14 @@ import {
   pidAlive,
   readCreatingRecords,
 } from '../../features/backlog/creatingWorktrees';
-import { isMergeDir, removeMergeWorktree } from '../../features/backlog/merge';
-import { entryDate, type TicketEntry } from '../../features/backlog/ticket';
+import {
+  isMergeDir,
+  removeMergeWorktree,
+} from '../../features/backlog/merge';
+import {
+  entryDate,
+  type TicketEntry,
+} from '../../features/backlog/ticket';
 import {
   type ChatFacts,
   checkChat,
@@ -23,7 +32,11 @@ import {
   type ProcessInfo,
   processOf,
 } from '../../features/backlog/ticketCheck';
-import { checkBranchWorktrees, checkCreating, checkReviewWorktree } from '../../features/backlog/worktreeClaims';
+import {
+  checkBranchWorktrees,
+  checkCreating,
+  checkReviewWorktree,
+} from '../../features/backlog/worktreeClaims';
 import {
   checkOrphan,
   checkQueue,

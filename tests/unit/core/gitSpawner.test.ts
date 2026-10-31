@@ -11,7 +11,10 @@ import {
   runGit,
   runGitBytes,
 } from '../../../src/core/git/gitCli';
-import { setSpawnOnMainThread, spawnProcess } from '../../../src/core/git/gitSpawner';
+import {
+  setSpawnOnMainThread,
+  spawnProcess,
+} from '../../../src/core/git/gitSpawner';
 
 const options = { cwd: os.tmpdir(), encoding: 'utf8' as const };
 

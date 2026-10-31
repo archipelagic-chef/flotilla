@@ -4,11 +4,22 @@ import './attachments.css';
  * Mermaid diagrams (BL-136) as thumbnails, newest first; a click opens one large, in an overlay, with the next and previous.
  */
 import type { JSX } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { entryAgent } from '../../features/backlog/backlog';
-import type { AttachmentView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  AttachmentView,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 import { diagramSvg } from './diagrams';
-import { RecordingBar, type Action } from './demo';
+import {
+  type Action,
+  RecordingBar,
+} from './demo';
 import { playAtSpeed } from './speed';
 
 /** The window event "Show in activity" sends: the activity opens the entry (its detail: the entry's key) and goes there. */

@@ -1,8 +1,18 @@
 import { runGit } from '../../core/git/gitCli';
-import { readyToMerge, type BacklogData, type BacklogItem } from './backlog';
-import { rebaseInDir, rebasing } from './linearHistory';
+import {
+  type BacklogData,
+  type BacklogItem,
+  readyToMerge,
+} from './backlog';
+import {
+  rebaseInDir,
+  rebasing,
+} from './linearHistory';
 import type { MergeStyle } from './tidyNotes';
-import { conflictedFiles, removeMergeWorktree } from './merge';
+import {
+  conflictedFiles,
+  removeMergeWorktree,
+} from './merge';
 
 /**
  * The merge queue (BL-140): the tickets waiting to land, in order, and the train built from it: a throwaway branch

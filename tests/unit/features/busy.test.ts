@@ -7,8 +7,14 @@ import {
   expect,
   it,
 } from 'vitest';
-import { buildOrTestRunning, transcriptBusy } from '../../../src/features/backlog/busy';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  buildOrTestRunning,
+  transcriptBusy,
+} from '../../../src/features/backlog/busy';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 /** A transcript line: an assistant's Bash call, or its result. */
 const call = (id: string, command: string) =>

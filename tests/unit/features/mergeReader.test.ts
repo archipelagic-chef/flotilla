@@ -7,8 +7,16 @@ import {
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import { laneOf } from '../../../src/features/backlog/backlog';
 import { MergeReader } from '../../../src/features/backlog/mergeReader';
-import { mergeLabel, movesToDone, unmergedWarning } from '../../../src/features/backlog/merged';
-import { git, initRepo, removeDir } from '../../helpers/gitRepo';
+import {
+  mergeLabel,
+  movesToDone,
+  unmergedWarning,
+} from '../../../src/features/backlog/merged';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

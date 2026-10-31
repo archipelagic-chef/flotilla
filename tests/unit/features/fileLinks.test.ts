@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { agentGuide } from '../../../src/features/backlog/inbox';
 import {
   reviewerPrompt,

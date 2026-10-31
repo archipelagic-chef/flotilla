@@ -5,7 +5,10 @@ import {
   it,
 } from 'vitest';
 import { Leader } from '../../../src/features/backlog/leader';
-import { makeTempDir, removeDir } from '../../helpers/gitRepo';
+import {
+  makeTempDir,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(removeDir));

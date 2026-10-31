@@ -2,7 +2,10 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside } from '../core/paths';
-import { claudeHome, transcriptPath } from '../features/chats/chats';
+import {
+  claudeHome,
+  transcriptPath,
+} from '../features/chats/chats';
 import { transcriptMarkdown } from '../features/chats/transcriptMarkdown';
 import { runAgentInTerminal } from './backlog/agentRunner';
 

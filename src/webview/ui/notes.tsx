@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
-import type { NoteView, WebviewMessage } from '../protocol';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
+import type {
+  NoteView,
+  WebviewMessage,
+} from '../protocol';
 import { send } from './api';
 import { stopControlClick } from './cardClick';
 import './notes.css';

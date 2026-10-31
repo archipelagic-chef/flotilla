@@ -1,7 +1,13 @@
 import type { ComponentChildren } from 'preact';
 import type { AttentionState } from '../../features/workstreams/attention';
-import type { Tool, WorkstreamView } from '../protocol';
-import { menuContext, run } from './api';
+import type {
+  Tool,
+  WorkstreamView,
+} from '../protocol';
+import {
+  menuContext,
+  run,
+} from './api';
 import { dropTarget } from './files';
 import './section.css';
 

@@ -1,4 +1,7 @@
-import type { BacklogPriority, BacklogStatus } from '../backlog';
+import type {
+  BacklogPriority,
+  BacklogStatus,
+} from '../backlog';
 
 /** A connection to an issue tracker whose issues show in the backlog next to the local items. */
 export type IntegrationConfig =

@@ -8,9 +8,16 @@ import {
   type StepState,
 } from '../../features/backlog/nextSteps';
 import { latestCi } from '../../features/ci/summary';
-import type { TicketCiView, TicketView, TicketWebviewMessage } from '../ticketProtocol';
+import type {
+  TicketCiView,
+  TicketView,
+  TicketWebviewMessage,
+} from '../ticketProtocol';
 import { ActionButton } from './actions';
-import { LandResolvingButton, MergeButton } from './mergePanel';
+import {
+  LandResolvingButton,
+  MergeButton,
+} from './mergePanel';
 
 /** Its branch's latest CI run, when it failed: Fix CI with Agent fixes that one. */
 export function redRun(ci: TicketCiView | undefined): { branch: string; run: number } | undefined {

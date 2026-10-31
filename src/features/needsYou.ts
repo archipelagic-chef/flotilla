@@ -1,7 +1,10 @@
 import type { BacklogItem } from './backlog/backlog';
 import { noteNeed } from './backlog/needs';
 import { mergeStage } from './backlog/mergeStage';
-import { turnOf, type QueuedStart } from './backlog/turn';
+import {
+  type QueuedStart,
+  turnOf,
+} from './backlog/turn';
 import type { AttentionState } from './workstreams/attention';
 
 /**

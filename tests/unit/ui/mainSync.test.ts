@@ -18,7 +18,11 @@ vi.mock('vscode', () => ({
 }));
 vi.mock('../../../src/ui/settings', () => ({ readSettings: () => ({ defaultBase: '' }) }));
 
-import { addBranch, addItem, updateItem } from '../../../src/features/backlog/backlog';
+import {
+  addBranch,
+  addItem,
+  updateItem,
+} from '../../../src/features/backlog/backlog';
 import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
 import { MainSync } from '../../../src/ui/backlog/mainSync';
 import {

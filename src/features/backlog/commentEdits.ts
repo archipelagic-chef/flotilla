@@ -15,7 +15,11 @@
  * minute and author would otherwise take its anchor; otherwise it goes.
  */
 import { entryAgent } from './backlog';
-import { entryAnchors, parseReply, type TicketEntry } from './ticket';
+import {
+  entryAnchors,
+  parseReply,
+  type TicketEntry,
+} from './ticket';
 
 /** The author whose entries can be edited and deleted here: the user's own comments. */
 export const OWN_AUTHOR = 'You';

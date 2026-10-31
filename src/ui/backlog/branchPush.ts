@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { runGit } from '../../core/git/gitCli';
 import type { Repository } from '../../core/repository';
-import { itemBranches, type BacklogItem } from '../../features/backlog/backlog';
+import {
+  type BacklogItem,
+  itemBranches,
+} from '../../features/backlog/backlog';
 import { gitHubRepo } from '../../features/backlog/sources/github';
 import {
   isLocalUrl,
@@ -14,7 +17,10 @@ import {
   type PushSetting,
 } from '../../features/backlog/branchPush';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { entryDate, whenItsDone } from '../../features/backlog/ticket';
+import {
+  entryDate,
+  whenItsDone,
+} from '../../features/backlog/ticket';
 import {
   closeDiscarded,
   ensurePullRequest,

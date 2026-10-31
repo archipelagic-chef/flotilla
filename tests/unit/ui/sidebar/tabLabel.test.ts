@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { tabLabel } from '../../../../src/ui/sidebar/tabLabel';
 
 describe('tabLabel', () => {

@@ -8,9 +8,16 @@ import {
   type BacklogItem,
   updateItem,
 } from '../../features/backlog/backlog';
-import { type Chat, transcriptPath } from '../../features/chats/chats';
+import {
+  type Chat,
+  transcriptPath,
+} from '../../features/chats/chats';
 import { AskChat } from '../../features/backlog/askChat';
-import { DISCUSSION_DONE, discussionOpener, discussionTurns } from '../../features/backlog/discussChat';
+import {
+  DISCUSSION_DONE,
+  discussionOpener,
+  discussionTurns,
+} from '../../features/backlog/discussChat';
 import { formatMemory } from '../../features/workstreams/memory';
 import {
   CHAT_LINK,

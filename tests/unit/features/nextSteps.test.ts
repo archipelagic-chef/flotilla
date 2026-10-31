@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { nextSteps, stepLabel, type StepState } from '../../../src/features/backlog/nextSteps';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  nextSteps,
+  stepLabel,
+  type StepState,
+} from '../../../src/features/backlog/nextSteps';
 
 const approved: StepState = { status: 'review', canMerge: true, reviewing: true, hasRunBlock: true };
 

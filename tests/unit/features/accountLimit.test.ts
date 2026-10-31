@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { AccountLimit } from '../../../src/features/backlog/accountLimit';
 
 describe("the account's usage limit (BL-248)", () => {

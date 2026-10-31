@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { actionKey } from '../../../src/webview/ticketActions';
 
 describe('actionKey', () => {

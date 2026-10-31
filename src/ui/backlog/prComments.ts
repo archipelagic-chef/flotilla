@@ -3,8 +3,15 @@ import { runGit } from '../../core/git/gitCli';
 import type { BacklogItem } from '../../features/backlog/backlog';
 import { PUSH_REMOTE } from '../../features/backlog/branchPush';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
-import { commentEntries, planPosts } from '../../features/ci/prComments';
-import type { GitHubPullRequests, PullRequestInfo, PullRequestSetting } from '../../features/ci/pullRequests';
+import {
+  commentEntries,
+  planPosts,
+} from '../../features/ci/prComments';
+import type {
+  GitHubPullRequests,
+  PullRequestInfo,
+  PullRequestSetting,
+} from '../../features/ci/pullRequests';
 import { originPullRequests } from './branchPush';
 
 export interface PullRequestCommentsDeps {

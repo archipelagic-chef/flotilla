@@ -1,4 +1,7 @@
-import type { BacklogItemView, WorkstreamView } from '../../webview/protocol';
+import type {
+  BacklogItemView,
+  WorkstreamView,
+} from '../../webview/protocol';
 
 export type AgentState = 'running' | 'paused' | 'stopped';
 

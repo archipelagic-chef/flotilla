@@ -1,4 +1,7 @@
-import type { Target, WebviewMessage } from '../protocol';
+import type {
+  Target,
+  WebviewMessage,
+} from '../protocol';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;

@@ -8,9 +8,15 @@ import {
   it,
   vi,
 } from 'vitest';
-import { startFakeGitHub, type FakeGitHub } from '../../../scripts/fake-github.mjs';
+import {
+  type FakeGitHub,
+  startFakeGitHub,
+} from '../../../scripts/fake-github.mjs';
 import { GitHubActions } from '../../../src/features/ci/githubActions';
-import { failedJob, type FailedJob } from '../../../src/features/ci/failureTask';
+import {
+  type FailedJob,
+  failedJob,
+} from '../../../src/features/ci/failureTask';
 import type { Fetch } from '../../../src/features/backlog/sources/source';
 import type { BacklogItem } from '../../../src/features/backlog/backlog';
 import {
@@ -20,7 +26,11 @@ import {
   removeDir,
   writeFile,
 } from '../../helpers/gitRepo';
-import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
+import {
+  eventsWritten,
+  readEvents,
+  setEventLog,
+} from '../../../src/features/metrics/events';
 
 /** What the mocked VS Code answers and records. */
 const ui = {

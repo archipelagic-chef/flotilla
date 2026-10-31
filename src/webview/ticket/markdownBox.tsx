@@ -6,7 +6,10 @@ import {
   useRef,
   useState,
 } from 'preact/hooks';
-import { fileKind, tooLarge } from '../../features/backlog/media';
+import {
+  fileKind,
+  tooLarge,
+} from '../../features/backlog/media';
 import { drawDiagrams } from './diagrams';
 import { showAnchor } from './attachments';
 import {
@@ -23,7 +26,10 @@ import {
   pickSpeed,
   playAtSpeed,
 } from './speed';
-import { act, send } from './actions';
+import {
+  act,
+  send,
+} from './actions';
 import {
   matchEntries,
   matchTickets,
@@ -32,7 +38,10 @@ import {
   suggestQuery,
   type TicketSuggestion,
 } from './suggest';
-import type { EntrySuggestion, TicketChange } from '../ticketProtocol';
+import type {
+  EntrySuggestion,
+  TicketChange,
+} from '../ticketProtocol';
 import { changeLink } from './changeTree';
 import './markdownBox.css';
 

@@ -2,7 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
-import { agentChatItem, agentName } from '../../features/backlog/backlog';
+import {
+  agentChatItem,
+  agentName,
+} from '../../features/backlog/backlog';
 import { INBOX } from '../../features/backlog/inbox';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import {
@@ -21,15 +24,27 @@ import {
   type NoteStore,
   noteTools,
 } from '../../features/backlog/notes';
-import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
+import {
+  retryDelay,
+  type UsageLimit,
+} from '../../features/backlog/limits';
 import { accountLimit } from '../../features/backlog/accountLimit';
 import { recordEvent } from '../../features/metrics/events';
 import { transcriptPath } from '../../features/chats/chats';
 import type { PausedAgent } from '../../features/backlog/pausedAll';
 import type { Workstream } from '../../features/workstreams/workstream';
-import type { NoteView, WebviewMessage } from '../../webview/protocol';
-import { showError, type Commands } from '../commandSet';
-import { closeNotePanel, openNotePanel } from './notePanel';
+import type {
+  NoteView,
+  WebviewMessage,
+} from '../../webview/protocol';
+import {
+  type Commands,
+  showError,
+} from '../commandSet';
+import {
+  closeNotePanel,
+  openNotePanel,
+} from './notePanel';
 import { trackProgress } from '../progress';
 import {
   agentChoice,

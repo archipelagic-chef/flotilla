@@ -2,8 +2,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as zlib from 'node:zlib';
-import { describe, expect, it } from 'vitest';
-import { DEMO_TAG as READ_TAG, gifSeconds, recordedDemo } from '../../../src/features/backlog/demo';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  DEMO_TAG as READ_TAG,
+  gifSeconds,
+  recordedDemo,
+} from '../../../src/features/backlog/demo';
 import {
   commandMatches,
   decodePng,

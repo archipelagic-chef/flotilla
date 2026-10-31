@@ -1,5 +1,11 @@
-import { currentGitPriority, gitQueue } from './gitQueue';
-import { type SpawnResult, spawnProcess } from './gitSpawner';
+import {
+  currentGitPriority,
+  gitQueue,
+} from './gitQueue';
+import {
+  spawnProcess,
+  type SpawnResult,
+} from './gitSpawner';
 
 export class GitError extends Error {
   constructor(

@@ -15,8 +15,16 @@ import {
   installHooks,
   withFlotillaHooks,
 } from '../../../../src/features/chats/hookInstall';
-import { HOOK_EVENTS, hookCommand, hookSource } from '../../../../src/features/chats/hookScript';
-import { git, initRepo, removeDir } from '../../../helpers/gitRepo';
+import {
+  HOOK_EVENTS,
+  hookCommand,
+  hookSource,
+} from '../../../../src/features/chats/hookScript';
+import {
+  git,
+  initRepo,
+  removeDir,
+} from '../../../helpers/gitRepo';
 import { sessionAgentName } from '../../../../src/features/backlog/backlog';
 
 const cleanup: string[] = [];

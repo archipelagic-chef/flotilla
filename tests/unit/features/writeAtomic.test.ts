@@ -6,8 +6,15 @@ import {
   expect,
   it,
 } from 'vitest';
-import { LocalBacklog, writeAtomic } from '../../../src/features/backlog/localBacklog';
-import { makeTempDir, removeDir, writeFile } from '../../helpers/gitRepo';
+import {
+  LocalBacklog,
+  writeAtomic,
+} from '../../../src/features/backlog/localBacklog';
+import {
+  makeTempDir,
+  removeDir,
+  writeFile,
+} from '../../helpers/gitRepo';
 
 const cleanup: string[] = [];
 afterEach(() => cleanup.splice(0).forEach(removeDir));

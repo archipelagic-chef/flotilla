@@ -1,5 +1,9 @@
 import * as crypto from 'node:crypto';
-import { entryAgent, type BacklogItem, type BacklogStatus } from './backlog';
+import {
+  type BacklogItem,
+  type BacklogStatus,
+  entryAgent,
+} from './backlog';
 
 /**
  * What changed about an item, as sentences for its ticket's activity (its history): status, priority, title, parent,

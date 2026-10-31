@@ -1,6 +1,12 @@
 import { runGit } from '../../core/git/gitCli';
-import { parseNameStatus, type FileChange } from '../../core/git/porcelain';
-import { idMatcher, type RefMoves } from '../backlog/refresh';
+import {
+  type FileChange,
+  parseNameStatus,
+} from '../../core/git/porcelain';
+import {
+  idMatcher,
+  type RefMoves,
+} from '../backlog/refresh';
 import type { CommitView } from '../../webview/protocol';
 
 const FIELD = '\x1f';
