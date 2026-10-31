@@ -1,7 +1,9 @@
 {
   "title": "The merge panel's buttons show they're working: Run the Checks Again, Fix with Agent, Approve Fix, Cancel",
+  "ciPasses": true,
   "settings": {
-    "flotilla.merge.checks": "local"
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
   },
   "steps": [
     {

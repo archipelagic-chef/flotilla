@@ -77,6 +77,15 @@ describe('the fake GitHub, read by the CI/CD view', () => {
     expect(await statuses()).toBe('failure');
   });
 
+  it('with ciPasses, the newest run passes instead (BL-256)', async () => {
+    await fake.close();
+    fake = await startFakeGitHub({ port: 0, now: () => clock, ciPasses: true });
+    await actions().runs('main');
+    clock = T0 + QUEUE_MS + RUN_MS;
+
+    expect(ci(await actions().runs('main')).map((r) => r.status)).toEqual(['success', 'success', 'success']);
+  });
+
   it('answers no runs for a branch the repository lacks', async () => {
     const dir = initRepo(makeTempDir('fake-github-'));
     try {

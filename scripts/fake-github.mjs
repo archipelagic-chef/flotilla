@@ -5,7 +5,7 @@
 // It answers the routes under /repos/{owner}/{repo}/actions that Flotilla calls, from memory. A branch's runs are made
 // when they're first read, from the commits of a local repository (the playground, by default), and each run moves on
 // by the clock: queued, then running, then done. With runsOnPush, a branch pushed to the repository's origin meanwhile
-// gets a CI run of each push. Nothing is sent anywhere, and nothing is pushed.
+// gets a CI run of each push; with ciPasses, a branch's newest run passes too. Nothing is sent anywhere, and nothing is pushed.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -171,6 +171,7 @@ export async function startFakeGitHub({
   now = () => Date.now(),
   actionDelayMs = 0,
   runsOnPush = false,
+  ciPasses = false,
 } = {}) {
   const runs = [];
   const jobs = new Map(); // job id → { run, index }
@@ -221,7 +222,7 @@ export async function startFakeGitHub({
     return run;
   }
 
-  /** A branch's first runs: two that went well, a deploy, and the CI run that starts now and fails in its tests. */
+  /** A branch's first runs: two that went well, a deploy, and the CI run that starts now and fails in its tests (passes, with ciPasses). */
   function seedBranch(repo, branch) {
     const key = `${repo}@${branch}`;
     const [ci, deploy] = WORKFLOWS;
@@ -248,7 +249,7 @@ export async function startFakeGitHub({
     addRun(repo, ci, { branch, commit, event: 'push', createdAt: at - 3 * HOUR_MS, outcome: 'success' });
     addRun(repo, ci, { branch, commit, event: 'push', createdAt: at - 2 * HOUR_MS, outcome: 'success' });
     addRun(repo, deploy, { branch, commit, event: 'workflow_dispatch', createdAt: at - HOUR_MS, outcome: 'success' });
-    addRun(repo, ci, { branch, commit, event: 'push', createdAt: at, outcome: 'failure' });
+    addRun(repo, ci, { branch, commit, event: 'push', createdAt: at, outcome: ciPasses ? 'success' : 'failure' });
   }
 
   /** A run's phase at a time: queued, in progress (with how far along), or completed. */

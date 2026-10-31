@@ -12,6 +12,8 @@ export interface FakeGitHubOptions {
   actionDelayMs?: number;
   /** A branch pushed to repoDir's origin after the fake started gets a CI run of each push (BL-222); off by default. */
   runsOnPush?: boolean;
+  /** Each branch's seeded newest CI run passes instead of failing in its tests (BL-256); off by default. */
+  ciPasses?: boolean;
 }
 
 /** The delay the demo window's and npm run fake-github's fake answer actions after. */

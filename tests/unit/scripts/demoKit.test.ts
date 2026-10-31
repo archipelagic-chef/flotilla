@@ -106,6 +106,7 @@ describe('parseDemo', () => {
       ],
       settings: {},
       runsOnPush: false,
+      ciPasses: false,
       githubSignedOut: false,
     });
   });
@@ -119,6 +120,8 @@ describe('parseDemo', () => {
   it('turns on the fake GitHub runs on push for a demo that pushes (BL-222)', () => {
     expect(parseDemo('{"runsOnPush": true, "steps": [{"wait": 1}]}', 'd').runsOnPush).toBe(true);
     expect(() => parseDemo('{"runsOnPush": "yes", "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
+    expect(parseDemo('{"ciPasses": true, "steps": [{"wait": 1}]}', 'd').ciPasses).toBe(true);
+    expect(() => parseDemo('{"ciPasses": "yes", "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
     expect(parseDemo('{"githubSignedOut": true, "steps": [{"wait": 1}]}', 'd').githubSignedOut).toBe(true);
     expect(() => parseDemo('{"githubSignedOut": 1, "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
     expect(parseDemo('{"resetsTicket": "BL-18", "steps": [{"wait": 1}]}', 'd').resetsTicket).toBe('BL-18');
