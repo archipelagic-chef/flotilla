@@ -85,6 +85,7 @@ import {
   holdsUp,
   waitsOf,
 } from '../../features/backlog/mainDrift';
+import { heldUntil } from '../../features/backlog/notBefore';
 import {
   ALL,
   type BacklogItemView,
@@ -405,7 +406,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         const merge = this.merges?.get(item.id);
         const queued = this.queue?.queuedFor(item.id);
         // A review start waiting for a free agent is the reviewer agent's turn, not the user's (BL-212).
-        const need = needOf({ ...item, ...(queued ? { queued } : {}) }, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined);
+        // Held for a date (BL-261): nothing to do about it before then, so it doesn't need you.
+        const held = item.status === 'todo' ? heldUntil(ticket.description) : undefined;
+        const need = held
+          ? undefined
+          : (needOf({ ...item, ...(queued ? { queued } : {}) }, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined));
         // The ticket's run: its last run block (the one its Run button runs).
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
@@ -453,6 +458,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
             : {}),
           ...(run ? { run } : {}),
           ...(waitsFor.length ? { waitsFor, waitsOn } : {}),
+          ...(held ? { notBefore: held.toISOString() } : {}),
           ...(holders.has(item.id) ? { holdsUp: holders.get(item.id) } : {}),
           ...(depsDiscarded.length ? { depsDiscarded } : {}),
           ...(parts ? { parts } : {}),

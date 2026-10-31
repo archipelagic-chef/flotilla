@@ -37,6 +37,12 @@ describe('cardStatus', () => {
     expect(line(item('done', { merge: { base: 'main', state: 'merged', commits: 0, branches: [] } }))).toEqual(['Done · merged into main', '', '', '']);
   });
 
+  it('says from when a ticket held for a date can start, with Start to go ahead anyway (BL-261)', () => {
+    const at = new Date(2026, 10, 7).toISOString();
+    expect(cardStatus(item('todo', { notBefore: at }), [], false, new Date(2026, 9, 31).getTime()).text).toBe('From 7 Nov');
+    expect(line(item('todo', { notBefore: at }))[3]).toBe('Start');
+  });
+
   it('says when a discarded ticket was discarded, with Reopen as its next step (BL-209)', () => {
     const at = '2026-10-26T06:40:00Z';
     expect(line(item('doing', { discarded: { at }, review: review('yours') }))).toEqual([discardedLabel(at), '', '', 'Reopen']);
