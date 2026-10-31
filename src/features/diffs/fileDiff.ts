@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from '../../core/git/gitCli';
 import { WORKING } from '../../core/diff/refs';
+import { highlightHunks } from './highlight';
 import type {
   ChangedFile,
   DiffHunk,
@@ -30,7 +31,8 @@ export async function fileDiff(dir: string, file: ChangedFile, left: string, rig
     const text = await fs.promises.readFile(path.join(dir, file.path), 'utf8');
     const lines = text.split('\n');
     if (lines[lines.length - 1] === '') lines.pop();
-    return { hunks: lines.length ? [{ oldStart: 0, newStart: 1, lines: lines.map((t, i) => ({ kind: 'added', text: t, new: i + 1 })) }] : [] };
+    const hunks: DiffHunk[] = lines.length ? [{ oldStart: 0, newStart: 1, lines: lines.map((t, i) => ({ kind: 'added', text: t, new: i + 1 })) }] : [];
+    return { hunks: highlightHunks(file.path, hunks) };
   }
   const paths = file.origPath ? [file.origPath, file.path] : [file.path];
   const out = await runGit(['diff', '--no-color', '--no-ext-diff', `-U${context}`, '-M', left, ...(right === WORKING ? [] : [right]), '--', ...paths], {
@@ -38,7 +40,7 @@ export async function fileDiff(dir: string, file: ChangedFile, left: string, rig
   });
   const hunks = parseHunks(out);
   if (!hunks.length) return { note: file.kind === 'renamed' ? 'Renamed, its lines unchanged.' : 'No lines changed.' };
-  return { hunks };
+  return { hunks: highlightHunks(file.path, hunks) };
 }
 
 /** The hunks of a unified diff (git diff's output), with each line's numbers on either side. */

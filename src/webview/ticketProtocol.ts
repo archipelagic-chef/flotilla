@@ -394,6 +394,14 @@ export interface DiffLine {
   text: string;
   old?: number;
   new?: number;
+  /** Its code's syntax colouring (BL-208), when the file's language is known: the line's text, in tokens. */
+  tokens?: DiffToken[];
+}
+
+/** A run of a diff line's text, with its highlight.js scope (keyword, string, comment…); plain text has none. */
+export interface DiffToken {
+  text: string;
+  kind?: string;
 }
 
 /** A hunk of a file's inline diff: where it starts on each side, and its lines. */

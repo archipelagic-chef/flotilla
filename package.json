@@ -2287,6 +2287,7 @@
   },
   "dependencies": {
     "@vscode/codicons": "0.0.45",
+    "highlight.js": "11.12.0",
     "mermaid": "12.2.0",
     "picomatch": "4.0.7",
     "preact": "10.29.8",
