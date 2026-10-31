@@ -310,6 +310,13 @@ describe('Expand in Changes (BL-171)', () => {
     expect(showTicketChanges).not.toHaveBeenCalled();
   });
 
+  it('has the sidebar show the Backlog again on Back from the expanded file (BL-211)', async () => {
+    const leaveTicketChanges = vi.fn(async () => undefined);
+    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { leaveTicketChanges } });
+    await panels.onMessage('BL-1', tab(), { type: 'collapseChange' });
+    expect(leaveTicketChanges).toHaveBeenCalledOnce();
+  });
+
   it("shows the whole diff in the ticket's tab of a file picked in Version Control", async () => {
     const { panels } = expandable();
     const t = tab();

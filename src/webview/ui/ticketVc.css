@@ -7,21 +7,6 @@
   border-bottom: 1px solid var(--border);
   min-width: 0;
 }
-.ticket-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  padding: 1px 8px;
-  border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 2px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  cursor: pointer;
-}
-.ticket-back:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
 .ticket-vc-title {
   flex: 1 1 0;
   min-width: 0;

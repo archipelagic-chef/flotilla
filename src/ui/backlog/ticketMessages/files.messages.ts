@@ -10,6 +10,8 @@ export type FilesMessage =
   | { type: 'openChange'; group: number; path: string; line?: number }
   /** Expand (BL-171): the sidebar's Version Control on the ticket's Changes, that file selected (the tab shows its diff). */
   | { type: 'expandChange'; group: number; path: string }
+  /** Back from the expanded file (BL-211): the sidebar shows the Backlog again, if it's still where Expand left it. */
+  | { type: 'collapseChange' }
   /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
   | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
   /** Open All Changes: those the path filter leaves (filter, BL-174), else all. */

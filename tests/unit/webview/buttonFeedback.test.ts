@@ -22,7 +22,6 @@ const INSTANT = new Set([
   'openChange',
   'expandChange',
   'openTicketChange',
-  'backToTicket',
   'noteOpen',
   'openChat',
   'openCommit',
