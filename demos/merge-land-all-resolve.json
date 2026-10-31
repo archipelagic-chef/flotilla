@@ -21,10 +21,9 @@
     { "click": ".merge-queue-bar button:has-text(\"Resolving Conflicts\")" },
     { "waitFor": ".merge-queue-bar:has-text(\"BL-15 (resolving)\")", "timeout": 30000 },
     { "wait": 1500 },
-    { "caption": "A resolution is approved without asking and lands after its checks; one the agent can't make waits for you" },
-    { "waitFor": ".notification-toast:has-text(\"Land All, Resolving Conflicts landed BL-10.\")", "timeout": 90000 },
-    { "caption": "BL-10 landed. The fake agent can't resolve BL-15: the queue marks it, and its ticket says why" },
-    { "hover": ".merge-queue-bar a:has-text(\"BL-15\")" },
+    { "caption": "Its resolution is approved without asking and lands after its checks; one the agent can't make waits for you" },
+    { "waitFor": ".notification-toast:has-text(\"Land All, Resolving Conflicts landed BL-10, BL-15\")", "timeout": 90000 },
+    { "caption": "BL-10 landed, then BL-15 with its resolution: nobody was asked" },
     { "wait": 3000 },
     { "caption": "" }
   ]
