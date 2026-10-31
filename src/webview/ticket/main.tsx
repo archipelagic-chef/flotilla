@@ -104,7 +104,7 @@ function App() {
    * A file of its Changes expanded to the whole tab (BL-171): only its diff shows, under a header that leads back,
    * the ticket kept as it was underneath (its folds, drafts); Back shows it again where it was scrolled to, the file
    * marked. The sidebar's Version Control follows, on the ticket's Changes with that file selected (unless it's the
-   * one that asked: from: 'host').
+   * one that asked: from: 'host'); Back has it show the Backlog again (BL-211).
    */
   const [full, setFull] = useState<FullAt>();
   const [marked, setMarked] = useState<string>();
@@ -118,7 +118,10 @@ function App() {
     setMarked(at.path);
     if (from !== 'host') send({ type: 'expandChange', group: at.group, path: at.path });
   };
-  const back = () => setFull(undefined);
+  const back = () => {
+    setFull(undefined);
+    send({ type: 'collapseChange' });
+  };
   useEffect(() => {
     if (full || scrolled.current === undefined) return;
     window.scrollTo(0, scrolled.current);

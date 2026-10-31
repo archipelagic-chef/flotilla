@@ -58,6 +58,7 @@ import {
   TicketHeader,
   ticketOf,
 } from './ticketVc';
+import { backFromTicketChanges } from './ticketBack';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -452,6 +453,9 @@ export function App() {
           setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
+        case 'leaveTicketChanges':
+          update(backFromTicketChanges);
+          return;
         case 'showCommits':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
@@ -750,7 +754,7 @@ export function App() {
     content = (
       <div class="single" data-section={activeWs.key}>
         {tool === 'chats' && <HooksNotice missing={activeWs.reachable && !activeWs.hasHooks ? 1 : 0} />}
-        {tool === 'vc' && ticket && <TicketHeader item={ticket} path={ticketFile[ticket.id]} />}
+        {tool === 'vc' && ticket && <TicketHeader item={ticket} />}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>

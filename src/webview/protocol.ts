@@ -302,6 +302,8 @@ export type HostMessage =
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** Expand in a ticket's Changes (BL-171): Version Control on the ticket's Changes in its worktree, that file selected. */
   | { type: 'showTicketChanges'; key: string; ticket: string; path: string }
+  /** Back from an expanded file (BL-211): the Backlog, if Version Control is still on a ticket's Changes. */
+  | { type: 'leaveTicketChanges' }
   /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
   /** The active worktree changed outside the webview (shortcut, status bar). */
@@ -480,8 +482,6 @@ export type WebviewMessage =
   | { type: 'ticketVc'; id: string }
   /** A file of a ticket's Changes in the diff editor (group: its index in the ticket's change). */
   | { type: 'openTicketChange'; id: string; group: number; path: string }
-  /** Back to the ticket, its Changes at that file. */
-  | { type: 'backToTicket'; id: string; path?: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
   | ({ type: 'ci' } & CiRequest)

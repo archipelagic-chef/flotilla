@@ -12,7 +12,7 @@ import type { CommitFiles } from './vc';
 import './ticketVc.css';
 
 /**
- * Version Control when a worktree is a ticket's (BL-171): a header leading back to the ticket, and two views of its
+ * Version Control when a worktree is a ticket's (BL-171): a header naming the ticket, and two views of its
  * own: its Changes (every file it changes, as the ticket's Changes section lists them, in full) and its Commits (one at
  * a time, stepped through with Previous and Next).
  */
@@ -23,18 +23,10 @@ export function ticketOf(ws: WorkstreamView | undefined, backlog: BacklogItemVie
   return backlog?.find((i) => !i.source && !i.proposed && branchMatches(i, ws.branch));
 }
 
-/** Above the worktree's header in every Version Control view: the ticket, and Back to it. */
-export function TicketHeader({ item, path }: { item: Pick<BacklogItemView, 'id' | 'title'>; path?: string }) {
+/** Above the worktree's header in every Version Control view: the ticket, as plain text (Back to it is in the ticket's tab, BL-211). */
+export function TicketHeader({ item }: { item: Pick<BacklogItemView, 'id' | 'title'> }) {
   return (
     <div class="ticket-vc-head">
-      <button
-        class="ticket-back"
-        data-tip={`Back to ${item.id}, its Changes${path ? ` at ${path.split('/').pop()}` : ''}`}
-        onClick={() => send({ type: 'backToTicket', id: item.id, ...(path ? { path } : {}) })}
-      >
-        <i class="codicon codicon-arrow-left" />
-        Back to {item.id}
-      </button>
       <span class="ticket-vc-title" data-tip={item.title} data-tip-if-cut>
         <span class="ticket-vc-id">{item.id}</span> {item.title}
       </span>
@@ -113,11 +105,6 @@ export function TicketChangesBody({
                 <span class="dir">{parts.join('/')}</span>
                 {f.uncommitted && <i class="codicon codicon-circle-filled uncommitted" aria-label="Not committed yet" />}
                 <Counts f={f} />
-                <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
-                  <button class="icon" aria-label="Back to the Ticket" onClick={() => send({ type: 'backToTicket', id: view.id, path: f.path })}>
-                    <i class="codicon codicon-arrow-left" />
-                  </button>
-                </span>
                 <span class={`letter k-${f.kind}`}>{CHANGE_LETTER[f.kind]}</span>
               </div>
             );

@@ -93,8 +93,6 @@ const LOG_PAGE = 50;
 export interface TicketVc {
   ticketVc(id: string): Promise<TicketVcView | undefined>;
   openTicketChange(id: string, group: number, path: string): Promise<void>;
-  /** Back to the ticket, its Changes at that file. */
-  showChange(o: { id: string; path?: string }): Promise<void>;
 }
 
 export interface SidebarDeps {
@@ -737,6 +735,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'showTicketChanges', key, ticket, path });
   }
 
+  /** Back from an expanded file (BL-211): the sidebar's page shows the Backlog, if it's still on a ticket's Changes. */
+  async leaveTicketChanges(): Promise<void> {
+    this.act({ type: 'leaveTicketChanges' });
+  }
+
   /** Brings the sidebar into view, the focus staying in the editor (the ticket). */
   private async showKeepingFocus(): Promise<void> {
     if (this.view) this.view.show(true);
@@ -946,9 +949,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'openTicketChange':
         await this.tickets?.openTicketChange(m.id, m.group, m.path);
-        return;
-      case 'backToTicket':
-        await this.tickets?.showChange({ id: m.id, ...(m.path ? { path: m.path } : {}) });
         return;
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);

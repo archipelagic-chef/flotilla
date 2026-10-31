@@ -58,6 +58,9 @@ export const filesHandlers: Handlers<FilesMessage> = {
   expandChange: async ({ item, panels }, m) => {
     await panels.expandChange(item, m.group, m.path);
   },
+  collapseChange: async ({ panels }) => {
+    await panels.deps.leaveTicketChanges();
+  },
   readChangeDiff: async ({ item, panel, panels }, m) => {
     const g = (await panels.changesShown(item)).groups[m.group];
     const f = g?.files.find((x) => x.path === m.path);

@@ -41,9 +41,6 @@
   padding: 1px 4px;
   border-radius: 3px;
 }
-.diff-view-crumbs button.crumb:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
 .diff-view-crumbs .crumb-title {
   color: var(--muted);
 }

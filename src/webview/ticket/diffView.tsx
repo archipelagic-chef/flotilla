@@ -95,13 +95,11 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
           <i class="codicon codicon-arrow-left" /> Back to {ticket.item.id}
         </button>
         <nav class="diff-view-crumbs" aria-label="Where this is">
-          <button class="crumb" onClick={back} title={`Back to ${ticket.item.id}`}>
+          <span class="crumb">
             <i class="codicon codicon-issues" /> <span class="ticket-id">{ticket.item.id}</span> <span class="crumb-title">{ticket.item.title}</span>
-          </button>
+          </span>
           <i class="codicon codicon-chevron-right muted" />
-          <button class="crumb" onClick={back} title={`Back to ${ticket.item.id}'s Changes`}>
-            Changes
-          </button>
+          <span class="crumb">Changes</span>
           <i class="codicon codicon-chevron-right muted" />
           <span class="crumb current">{at.path}</span>
         </nav>

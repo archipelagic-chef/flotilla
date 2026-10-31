@@ -180,6 +180,8 @@ export interface TicketDeps {
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
   /** Shows the ticket's Changes in a worktree's Version Control in the sidebar, that file selected (BL-171). */
   showTicketChanges(key: string, ticket: string, path: string): Promise<void>;
+  /** Back from an expanded file (BL-211): the sidebar shows the Backlog again, if it's still on a ticket's Changes. */
+  leaveTicketChanges(): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
