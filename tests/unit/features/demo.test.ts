@@ -13,6 +13,7 @@ import {
   wantsDemo,
   withDemoUnits,
 } from '../../../src/features/backlog/demo';
+import { gatherAttachments } from '../../../src/features/backlog/attachments';
 import { parseRunBlocks, withRunButtons } from '../../../src/features/backlog/runBlocks';
 
 const report = (key: string, date: string, body: string) => ({ key, date, author: 'Agent Iris-3', body });
@@ -56,6 +57,21 @@ describe('ticketDemo', () => {
       { date: at(8, 0), subject: 'BL-1: Before' },
     ];
     expect(ticketDemo([latest], entries, commits)?.since).toBe(2);
+  });
+
+  it('shows a demo recorded again under a new name (BL-251), while the first round keeps its own', () => {
+    const rounds = [
+      report('e1', '2026-10-20 07:00', `![First](BL-1/demo.mp4)\n\n${demoBlock('first')}`),
+      report('e4', '2026-10-20 09:00', `![Again](BL-1/demo-2.mp4)\n\n${demoBlock('first')}`),
+    ];
+    const folder = [
+      { path: 'BL-1/demo.mp4', date: '2026-10-20 07:00' },
+      { path: 'BL-1/demo-2.mp4', date: '2026-10-20 09:00' },
+    ];
+    const found = gatherAttachments('', rounds, folder);
+    const demo = ticketDemo(found, rounds, []);
+    expect(demo?.latest).toMatchObject({ src: 'BL-1/demo-2.mp4', entry: 1 });
+    expect(demo?.earlier).toEqual([expect.objectContaining({ src: 'BL-1/demo.mp4', entry: 0 })]);
   });
 
   it('is undefined without a demo', () => {
