@@ -81,3 +81,23 @@ describe('what the autopilot did while the user was away (BL-142)', () => {
     expect(wasOvernight(new Date(2026, 9, 21, 2, 0), new Date(2026, 9, 21, 4, 0))).toBe(false);
   });
 });
+
+describe('why the autopilot is idle, with tickets held for a date (BL-261)', () => {
+  it('passes over them: another To Do ticket can start', () => {
+    const d = data(item('BL-1', 'todo'), item('BL-2', 'todo'));
+    expect(idleReason(d, new Map(), new Set(), new Map([['BL-1', new Date(2026, 10, 7)]]))).toBeUndefined();
+  });
+
+  it('with only them left, says when the first starts, which is no stop that needs you', async () => {
+    const { nothingToStart } = await import('../../../src/features/backlog/autopilotIdle');
+    const d = data(item('BL-1', 'todo'), item('BL-2', 'todo'));
+    const held = new Map([
+      ['BL-1', new Date(2026, 10, 9)],
+      ['BL-2', new Date(2026, 10, 7)],
+    ]);
+    const reason = idleReason(d, new Map(), new Set(), held, new Date(2026, 9, 31).getTime());
+    expect(reason).toBe('nothing to start until 7 Nov (BL-2)');
+    expect(nothingToStart(reason!)).toBe(true);
+    expect(nothingToStart('BL-130 waits for BL-126 (in review)')).toBe(false);
+  });
+});

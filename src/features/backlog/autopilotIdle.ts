@@ -3,6 +3,7 @@ import type {
   BacklogItem,
 } from './backlog';
 import { waitChain } from './mainDrift';
+import { fromLabel } from './notBefore';
 
 /**
  * Why the autopilot is idle, and what it did while the user was away (BL-142): the lines its bar shows when it has
@@ -41,12 +42,29 @@ function listed(ids: string[]): string {
   return ids.length > 2 ? `${ids.slice(0, 2).join(', ')}, …` : ids.join(', ');
 }
 
+/** Nothing to start: nothing left, or only tickets held for a date (BL-261). Neither is a stop that needs the user. */
+export function nothingToStart(reason: string): boolean {
+  return reason === NOTHING_LEFT || reason.startsWith(NOTHING_UNTIL);
+}
+
+const NOTHING_LEFT = 'nothing left in To Do';
+const NOTHING_UNTIL = 'nothing to start until ';
+
 /**
  * Why nothing starts: the To Do tickets that wait for others (`waits`: each open one's unmerged dependencies, BL-55), the
- * merges that failed, the starts that failed, or nothing left. Undefined when a ticket could start.
+ * merges that failed, the starts that failed, or nothing left. Undefined when a ticket could start. Those held for a
+ * date (`held`, BL-261) wait for no one: with only them left, it says when the first can start.
  */
-export function idleReason(data: BacklogData, waits: ReadonlyMap<string, readonly string[]>, failedStarts: ReadonlySet<string>): string | undefined {
-  const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !data.items.some((c) => c.parent === i.id));
+export function idleReason(
+  data: BacklogData,
+  waits: ReadonlyMap<string, readonly string[]>,
+  failedStarts: ReadonlySet<string>,
+  held: ReadonlyMap<string, Date> = new Map(),
+  now = Date.now(),
+): string | undefined {
+  const todo = data.items.filter(
+    (i) => i.status === 'todo' && !i.proposed && !i.discarded && !i.shaping && !held.has(i.id) && !data.items.some((c) => c.parent === i.id),
+  );
   const failedMerges = data.items.filter((i) => i.status !== 'done' && i.merging?.state === 'failed').map((i) => i.id);
   const merges = failedMerges.length
     ? `${failedMerges.length} merge${failedMerges.length === 1 ? '' : 's'} failed (${listed(failedMerges)}): ${failedMerges.length === 1 ? 'it needs' : 'they need'} you`
@@ -66,7 +84,9 @@ export function idleReason(data: BacklogData, waits: ReadonlyMap<string, readonl
   }
   if (merges) parts.push(merges);
   if (cantStart.length) parts.push(`${listed(cantStart.map((i) => i.id))} couldn't start: start ${cantStart.length === 1 ? 'it' : 'them'} yourself`);
-  return parts.length ? parts.join(' · ') : 'nothing left in To Do';
+  if (parts.length) return parts.join(' · ');
+  const first = [...held].sort((a, b) => a[1].getTime() - b[1].getTime())[0];
+  return first ? `${NOTHING_UNTIL}${fromLabel(first[1], now).replace(/^From /, '')} (${first[0]})` : NOTHING_LEFT;
 }
 
 /** The tickets whose agents are through (in review, or merged): what's new among them is the work done meanwhile. */

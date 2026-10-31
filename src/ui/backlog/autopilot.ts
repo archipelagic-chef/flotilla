@@ -39,8 +39,10 @@ import {
   awayLine,
   finished,
   idleReason,
+  nothingToStart,
   wasOvernight,
 } from '../../features/backlog/autopilotIdle';
+import { heldUntil } from '../../features/backlog/notBefore';
 
 /** The autopilot's switch, shared by every window (in the backlog's folder). */
 export const AUTOPILOT_FILE = 'autopilot.json';
@@ -257,7 +259,7 @@ export class Autopilot implements vscode.Disposable {
   /** Notes why it's idle; after half an hour of it with tickets waiting, a notification says so, once. */
   private setIdle(reason: string | undefined, now = Date.now()): void {
     // Idle only with no agent at work; tickets wait unless nothing is left.
-    const waits = reason !== undefined && reason !== 'nothing left in To Do' && this.deps.reviews.running === 0;
+    const waits = reason !== undefined && !nothingToStart(reason) && this.deps.reviews.running === 0;
     if (!waits) {
       this.idleSince = undefined;
       this.idleNoticed = false;
@@ -350,6 +352,13 @@ export class Autopilot implements vscode.Disposable {
     return waitsOf(data, async (i) => (await this.deps.backlog.readTicketCached(i)).description);
   }
 
+  /** The To Do tickets held until a date ("Not before: 2026-11-07" in their description, BL-261), and until when. */
+  private async held(data: BacklogData, now = Date.now()): Promise<Map<string, Date>> {
+    const todo = data.items.filter((i) => i.status === 'todo' && !i.proposed && !i.discarded);
+    const until = await Promise.all(todo.map(async (i) => heldUntil((await this.deps.backlog.readTicketCached(i)).description, now)));
+    return new Map(todo.flatMap((i, n) => (until[n] ? [[i.id, until[n]] as const] : [])));
+  }
+
   /**
    * Try Now (BL-132): the agents paused on a usage limit go on now if Claude takes work again (see
    * ReviewLoop.tryPausedNow), and the autopilot takes To Do tickets again; if it doesn't, it waits on, and says when it
@@ -385,9 +394,10 @@ export class Autopilot implements vscode.Disposable {
         if (changed) this.changed.fire();
         await this.noteClashes(data);
         const waits = await this.waiting(data);
-        const item = nextForAutopilot(data, new Set([...this.failed, ...waits.keys(), ...clashes.keys()]));
+        const held = await this.held(data);
+        const item = nextForAutopilot(data, new Set([...this.failed, ...waits.keys(), ...held.keys(), ...clashes.keys()]));
         if (!item) {
-          idle = clashes.size ? undefined : idleReason(data, waits, this.failed);
+          idle = clashes.size ? undefined : idleReason(data, waits, this.failed, held);
           return;
         }
         // A note is due: its agent takes this slot first, and the next tick (a run's end, the timer) goes on.
