@@ -668,13 +668,19 @@ export class Merger implements vscode.Disposable {
     });
   }
 
-  /** Merge Next (BL-144): moves a queued ticket to the front of the queue, and rebuilds the train. */
-  mergeNext(id: string): Promise<void> {
-    return this.serial({ id, what: `moving ${id} to the front of the merge queue` }, async () => {
+  /**
+   * Merge Next (BL-144): moves a queued ticket to the front of the queue and rebuilds the train, then lands it alone
+   * as Merge to main does, once the merge going on now is done (BL-254). Its merge joins the serial line right behind
+   * the reorder, not from inside it (that would wait for itself), so meanwhile it shows as waiting.
+   */
+  mergeNext(id: string): Promise<MergeEnd> {
+    const moved = this.serial({ id, what: `moving ${id} to the front of the merge queue` }, async () => {
       if (!(await this.changeQueue((q) => (q.includes(id) ? [id, ...dequeue(q, [id])] : q)))) return;
-      await this.note(id, 'You moved it to the front of the merge queue (Merge Next).');
+      await this.note(id, 'You moved it to the front of the merge queue (Merge Next): it lands next.');
       await this.currentTrain();
     });
+    const merged = this.merge(id);
+    return moved.then(() => merged);
   }
 
   /** Changes the saved queue; whether it changed. */

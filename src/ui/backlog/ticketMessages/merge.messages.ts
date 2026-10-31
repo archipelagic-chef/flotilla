@@ -28,7 +28,7 @@ export type MergeMessage =
   | { type: 'mergeQueueRemove' }
   /** Resolve its conflicts with the tickets ahead of it in the merge train, in its merge there (BL-146). */
   | { type: 'mergeQueueResolve' }
-  /** Merge Next (BL-144): to the front of the merge queue. */
+  /** Merge Next (BL-144): to the front of the merge queue, then it lands (BL-254). */
   | { type: 'mergeNext' }
   | { type: 'push' }
   /** Done with unmerged work: a sibling ticket to merge a branch (asks which, unless given); or dismiss the warning. */

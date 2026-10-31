@@ -1226,11 +1226,38 @@ describe('The merge queue (BL-140)', () => {
       { id: 'BL-2', state: 'conflicts' },
     ]);
 
-    await merger.mergeNext('BL-2');
+    await merger.reorderQueue(['BL-2', 'BL-3']);
     expect((await backlog.read()).mergeQueue).toEqual(['BL-2', 'BL-3', 'BL-1']);
     expect(merger.queuePlace('BL-2')).toMatchObject({ place: '1st of 3', ahead: [] });
     expect(merger.queuePlace('BL-3')).toMatchObject({ state: 'Conflicts with main + BL-2 in `shared.txt`.' });
-    expect((await backlog.readTicket(await item('BL-2'))).activity.map((e) => e.body)).toContain('You moved it to the front of the merge queue (Merge Next).');
+    merger.dispose();
+  });
+
+  it('Merge Next lands the ticket alone, after the merge going on now, without another click (BL-254)', async () => {
+    const { repo, backlog, merger, item } = await setup([approved('BL-1'), approved('BL-3'), approved('BL-2')]);
+    branches(repo);
+    const before = git(repo, 'rev-parse', 'main');
+    ui.settings['merge.onApprove'] = 'off';
+    for (const id of ['BL-1', 'BL-3', 'BL-2']) await merger.approved(id, 'Rex-1');
+    await merger.refreshTrain();
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-1', 'BL-3', 'BL-2']);
+
+    const first = merger.merge('BL-1');
+    const next = merger.mergeNext('BL-2');
+    expect(merger.mergeProgress('BL-2')).toEqual({ waitsFor: "BL-1's merge" });
+
+    expect(await first).toBe('merged');
+    expect(await next).toBe('merged');
+
+    expect(git(repo, 'log', '--first-parent', '--format=%s', `${before}..main`).split('\n')).toEqual(['Merge BL-2: Item BL-2', 'Merge BL-1: Item BL-1']);
+    expect(ui.messages.some((m) => / too: /.test(m))).toBe(false);
+    expect((await item('BL-2')).status).toBe('done');
+    expect((await item('BL-3')).status).toBe('review');
+    expect((await backlog.read()).mergeQueue).toEqual(['BL-3']);
+    expect(merger.mergeProgress('BL-2')).toBeUndefined();
+    expect((await backlog.readTicket(await item('BL-2'))).activity.map((e) => e.body)).toContain(
+      'You moved it to the front of the merge queue (Merge Next): it lands next.',
+    );
     merger.dispose();
   });
 });

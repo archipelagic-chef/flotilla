@@ -71,7 +71,7 @@ const MESSAGE: Partial<Record<StepOp, (ci: TicketCiView | undefined) => TicketWe
 const TIP: Partial<Record<StepOp, string>> = {
   updateAndMerge: 'Merges main into its branch (its agent resolves the conflicts, when there are any), then merges it: the checks first, as Merge to main does',
   fixCi: "An agent reads the failed job's log, fixes it on the branch and pushes; CI runs again",
-  mergeNext: 'Moves it to the front of the merge queue: the train is rebuilt in the new order',
+  mergeNext: 'Moves it to the front of the merge queue and lands it next, on its own, once the merge going on now is done',
   mergeQueueRemove: 'Takes it out of the merge queue: the train is rebuilt without it; nothing is reverted',
 };
 
