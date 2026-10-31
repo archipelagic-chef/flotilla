@@ -1910,9 +1910,10 @@ export class TicketPanels implements vscode.Disposable {
     return { chat: !found ? 'pending' : found.chat.open ? 'open' : 'closed' };
   }
 
-  async openHref(item: BacklogItem, href: string): Promise<void> {
+  /** Opens a link of a ticket's page, or (no item) of another page like it: a scheduled task's report (BL-260). */
+  async openHref(item: BacklogItem | undefined, href: string): Promise<void> {
     // A reference to a ticket, or to a comment in one (BL-130).
-    const ref = parseReferenceLink(href, item.id);
+    const ref = parseReferenceLink(href, item?.id ?? '');
     if (ref && (await this.openReference(ref))) return;
     // A note's link to a discussion's chat (BL-188).
     if (href.startsWith(CHAT_LINK)) {
@@ -1926,14 +1927,18 @@ export class TicketPanels implements vscode.Disposable {
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return;
     const link = parseFileLink(/^file:/i.test(href) ? vscode.Uri.parse(href).fsPath + (href.includes('#') ? href.slice(href.indexOf('#')) : '') : href);
-    const roots = [...this.worktreesOf(item).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])), this.deps.mainRoot, this.deps.backlog.dir];
+    const roots = [
+      ...(item ? this.worktreesOf(item) : []).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])),
+      this.deps.mainRoot,
+      this.deps.backlog.dir,
+    ];
     const candidates = path.isAbsolute(link.path) ? [link.path] : roots.map((r) => path.join(r, link.path));
     const found = candidates.find((f) => fs.existsSync(f));
     if (!found) {
       // A "From notes" link to a note that was deleted (BL-215).
       const note = /(?:^|[\\/])notes[\\/](NOTE-\d+)\.md$/.exec(link.path)?.[1];
       if (note) return void vscode.window.showInformationMessage(`${note} was deleted: the tickets it became stay.`);
-      void vscode.window.showWarningMessage(`${link.path} isn't there (anymore): not in ${item.id}'s worktrees, nor in the main worktree.`);
+      void vscode.window.showWarningMessage(`${link.path} isn't there (anymore): not in ${item ? `${item.id}'s worktrees, nor in ` : ''}the main worktree.`);
       return;
     }
     const uri = toWorkspaceUri(this.deps.reference, found);
