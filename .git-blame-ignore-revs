@@ -2,3 +2,5 @@
 # The merge past one of them is in CONTRIBUTING, "Merging main past the reformat".
 # BL-155: Prettier on the whole repository.
 4da03916235b7d443ac594c9a7353afebb4fc1e3
+# BL-252: Imports of two names or more one per line.
+4e93a711cbefc09ec5bc85227f0bab06c57edba9
