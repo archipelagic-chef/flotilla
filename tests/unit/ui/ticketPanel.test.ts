@@ -8,9 +8,10 @@ import {
 const vscode = vi.hoisted(() => ({
   commands: { executeCommand: vi.fn(async () => undefined) },
   window: { showWarningMessage: vi.fn(async () => undefined) },
-  workspace: { onDidChangeConfiguration: () => ({ dispose() {} }) },
+  workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }) },
 }));
 vi.mock('vscode', () => vscode);
+const { applyTicketParts } = await import('../../../src/webview/ticketParts');
 const { attachmentsFolded, keepAttachmentsFolded, keepShowActivity, showActivityKept, TicketPanels } = await import('../../../src/ui/backlog/ticketPanel');
 
 /** A memento as VS Code's global state is: values kept by key, read synchronously. */
@@ -330,5 +331,89 @@ describe('Expand in Changes (BL-171)', () => {
     const { panels } = expandable();
     expect(await panels.ticketVc('BL-1')).toEqual({ id: 'BL-1', title: 'A ticket', change, commits });
     expect(await panels.ticketVc('BL-404')).toBeUndefined();
+  });
+});
+
+describe('a merge landing while the view is built (BL-253)', () => {
+  const checks = { command: 'npm test', started: 0, log: '/logs/checks.log', progress: { passed: 3 }, tail: [], earlier: [] };
+
+  /**
+   * Ticket panels over a ticket whose merge runs its checks, with a tab open. Its file takes a moment to read (a busy
+   * machine): onRead runs as each view reads it, with its count, which is where changes come in meanwhile.
+   */
+  function landing(onRead: (n: number) => void) {
+    const state = { checking: true, item: { id: 'BL-1', title: 'A ticket', status: 'review', created: '' } as Record<string, unknown> };
+    const none = { dispose: () => undefined };
+    let reads = 0;
+    const backlog = {
+      dir: '/nonexistent/backlog',
+      read: async () => ({ items: [{ ...state.item }] }),
+      change: async () => undefined,
+      watch: () => none,
+      readTicket: async () => ({ description: '', activity: [] }),
+      readTicketCached: async () => {
+        onRead(++reads);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { description: '', activity: [] };
+      },
+    };
+    const panels = panelsWith(async () => undefined, { deps: { backlog } }) as ReturnType<typeof panelsWith> & Record<string, unknown>;
+    panels.post = (id, panel) => (TicketPanels.prototype as unknown as { post: typeof panels.post }).post.call(panels, id, panel);
+    panels.merger = new Proxy(
+      {
+        checksView: () => (state.checking ? checks : undefined),
+        isRunning: () => state.checking,
+        baseBranch: async () => 'main',
+        unpushed: async () => undefined,
+      },
+      { get: (target, key) => (target as Record<string | symbol, unknown>)[key] ?? (() => undefined) },
+    );
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    // What the tab shows: the views and parts it's sent, put together as the webview does.
+    const shows = () => {
+      let view: Record<string, unknown> | undefined;
+      for (const [m] of t.webview.postMessage.mock.calls as Array<[{ type: string; ticket?: never }]>) {
+        if (m.type === 'ticket') view = m.ticket;
+        if (m.type === 'ticketParts' && view) view = applyTicketParts(view as never, m as never) as never;
+      }
+      return view as { item: { status: string }; mergeChecks?: unknown } | undefined;
+    };
+    const land = () => {
+      state.checking = false;
+      state.item = { ...state.item, status: 'done', merged: { into: 'main', commit: 'abc1234', date: '2026-10-31T16:05:00Z' } };
+    };
+    const post = () => panels.post('BL-1', t);
+    const settled = () => (panels as unknown as { settled: (panel: unknown) => Promise<void> }).settled(t);
+    return { post, settled, shows, land };
+  }
+
+  it('shows it landed at once, though a change comes in while each view is built', async () => {
+    let shown: ReturnType<ReturnType<typeof landing>['shows']>;
+    const { post, settled, shows, land } = landing((n) => {
+      if (n === 2) land();
+      // The merger's changes, the backlog's writes, the refs that move: one more while each view is read, for a while.
+      if (n < 10) void post();
+      if (n === 6) shown = shows();
+    });
+    await post();
+    await settled();
+    expect(shown?.item.status).toBe('done');
+    expect(shown?.mergeChecks).toBeUndefined();
+  });
+
+  it("doesn't show checks that ended while the view was being built", async () => {
+    const { post, settled, shows, land } = landing((n) => {
+      // The checks end and it lands while the first view is read; their change's post comes after it.
+      if (n === 1) {
+        land();
+        void post();
+      }
+    });
+    const first = post();
+    await first;
+    expect(shows()?.mergeChecks).toBeUndefined();
+    await settled();
+    expect(shows()?.item.status).toBe('done');
   });
 });
