@@ -1,17 +1,59 @@
 {
-  "title": "A ticket held for a date says from when the autopilot takes it",
+  "title": "A ticket held for a date says from when the autopilot takes it, on its card and in its ticket",
   "steps": [
-    { "wait": 1000 },
-    { "click": "[aria-label=\"Backlog\"]" },
-    { "click": "[aria-label=\"Hide what needs you\"]" },
-    { "waitFor": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status:has-text(\"From \")" },
-    { "highlight": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status" },
-    { "caption": "\"Not before:\" in its description: the card says from when it can start" },
-    { "wait": 2500 },
-    { "caption": "Its hover says the autopilot takes it on that date" },
-    { "hover": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .name" },
-    { "wait": 2500 },
-    { "highlight": "" },
-    { "caption": "" }
+    {
+      "wait": 1000
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": "[aria-label=\"Hide what needs you\"]"
+    },
+    {
+      "waitFor": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status:has-text(\"From \")"
+    },
+    {
+      "highlight": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status"
+    },
+    {
+      "caption": "\"Not before:\" in its description: the card says from when it can start"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": "Its hover says the autopilot takes it on that date"
+    },
+    {
+      "hover": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .name"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "caption": "Its ticket says so too"
+    },
+    {
+      "click": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .name"
+    },
+    {
+      "waitFor": ".main-note:has-text(\"can't start before then\")"
+    },
+    {
+      "highlight": ".main-note:has-text(\"can't start before then\")"
+    },
+    {
+      "caption": "\"From \u2026\": the autopilot starts it on that date; Start an Agent asks first"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
   ]
 }
