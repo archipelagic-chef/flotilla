@@ -1,0 +1,17 @@
+{
+  "title": "A ticket held for a date says from when the autopilot takes it",
+  "steps": [
+    { "wait": 1000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label=\"Hide what needs you\"]" },
+    { "waitFor": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status:has-text(\"From \")" },
+    { "highlight": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .card-status" },
+    { "caption": "\"Not before:\" in its description: the card says from when it can start" },
+    { "wait": 2500 },
+    { "caption": "Its hover says the autopilot takes it on that date" },
+    { "hover": ".backlog-item.compact:has-text(\"Measure how long a reload takes\") .name" },
+    { "wait": 2500 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}
