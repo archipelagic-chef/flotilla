@@ -8,7 +8,10 @@ import python from 'highlight.js/lib/languages/python';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
-import type { DiffHunk, DiffToken } from '../../webview/ticketProtocol';
+import type {
+  DiffHunk,
+  DiffToken,
+} from '../../webview/ticketProtocol';
 
 // Only these languages are bundled (BL-208), not highlight.js with every grammar.
 hljs.registerLanguage('bash', bash);

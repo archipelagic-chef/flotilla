@@ -1,6 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { highlightHunks, highlightLines, languageOf } from '../../../src/features/diffs/highlight';
-import type { DiffHunk, DiffToken } from '../../../src/webview/ticketProtocol';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  highlightHunks,
+  highlightLines,
+  languageOf,
+} from '../../../src/features/diffs/highlight';
+import type {
+  DiffHunk,
+  DiffToken,
+} from '../../../src/webview/ticketProtocol';
 
 const kinds = (tokens: DiffToken[] | undefined) => tokens?.filter((t) => t.kind).map((t) => `${t.kind}:${t.text}`);
 
