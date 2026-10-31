@@ -40,6 +40,10 @@ import {
 export const INBOX = 'inbox';
 export const GUIDE = 'AGENTS.md';
 
+/** What an agent does when its ticket's work can't be done before a date (BL-261): the guide and the prompt say it. */
+export const NOT_BEFORE_NOTE =
+  'When the work can\'t be done before a date (a measurement a week after a fix), add a line `Not before: YYYY-MM-DD` (optionally with a time, `Not before: 2026-11-07 09:00`) to the description, report why, and end your turn without "Ready for review.": Flotilla moves the ticket back to To Do, and the autopilot starts it on that date.';
+
 /** Whether agents' tickets wait for the user to accept them, or join the backlog at once. */
 export type AgentTicketMode = 'propose' | 'add';
 
@@ -276,6 +280,7 @@ explanations that change nothing don't need one.
    that it waits for that one to be merged.
    Use \`Depends on:\` only when a ticket builds on another's work or reshapes the same feature, not because both
    change the same files: tickets start from main at once, and overlapping changes are reconciled when they merge.
+8. ${NOT_BEFORE_NOTE}
 
 ## Adding tickets
 

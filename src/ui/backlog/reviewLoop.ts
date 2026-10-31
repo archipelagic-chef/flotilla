@@ -9,9 +9,14 @@ import {
   type BacklogStatus,
   branchMatches,
   entryAgent,
+  moveItem,
   sameAgent,
   updateItem,
 } from '../../features/backlog/backlog';
+import {
+  heldEntry,
+  heldUntil,
+} from '../../features/backlog/notBefore';
 import { isDiscussionChat } from '../../features/backlog/shaping';
 import { GUIDE } from '../../features/backlog/inbox';
 import { LocalBacklog } from '../../features/backlog/localBacklog';
@@ -2152,8 +2157,24 @@ export class ReviewLoop implements vscode.Disposable {
     if (this.runs.has(id)) return;
     const item = (await this.deps.backlog.read()).items.find((i) => i.id === id);
     if ((item?.review?.state === 'revising' || item?.review?.state === 'working') && item.status !== 'review') {
-      // It asked the user something: it waits for their answer (a comment).
       const ticket = await this.deps.backlog.readTicket(item);
+      // Its work can't start yet (BL-261): it set "Not before:", and waits in To Do for the autopilot to start it then.
+      const held = heldUntil(ticket.description);
+      if (held) {
+        this.statuses.set(id, 'todo');
+        // First in To Do: it was next before it started, and is again on its date.
+        await this.deps.backlog.change(
+          (d) => {
+            const moved = moveItem(d, id, 'todo', d.items.find((i) => i.status === 'todo' && i.id !== id)?.id);
+            return { ...moved, items: moved.items.map((i) => (i.id === id ? withoutReview(i) : i)) };
+          },
+          { by: 'Flotilla' },
+        );
+        await this.deps.backlog.appendActivity(item, { date: entryDate(new Date()), author: 'Flotilla', body: heldEntry(held) });
+        this.changed.fire(id);
+        return;
+      }
+      // It asked the user something: it waits for their answer (a comment).
       const last = ticket.activity.filter((e) => sameAgent(entryAgent(e.author), item.review!.implementer)).at(-1);
       if (last && saysWaitingForUser(last.body)) {
         await this.setReview(id, (r) => ({ ...r!, state: 'asking', handled: [...(r!.handled ?? []), this.key(id)(last)] }));

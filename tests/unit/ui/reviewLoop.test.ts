@@ -1387,6 +1387,7 @@ describe('agents lost to a reload (BL-87)', () => {
   let chats: Array<Record<string, unknown>>;
   let loop: { dispose(): void };
   let recover: (now?: number) => Promise<void>;
+  let description = '';
   const now = Date.parse('2026-10-18T12:00:00Z');
   const review = () => data.items[0].review as { state: string; reason?: string; worktree?: string; stop?: { kind: string; task?: { prompt: string } } };
 
@@ -1408,6 +1409,7 @@ describe('agents lost to a reload (BL-87)', () => {
       ],
     };
     chats = [];
+    description = '';
     const { ReviewLoop } = await import('../../../src/ui/backlog/reviewLoop');
     const backlog = {
       dir: '/unused',
@@ -1416,7 +1418,7 @@ describe('agents lost to a reload (BL-87)', () => {
       change: async (fn: (d: typeof data) => typeof data) => {
         data = fn(data);
       },
-      readTicket: async () => ({ title: 'Fix me', description: '', activity: [] }),
+      readTicket: async () => ({ title: 'Fix me', description, activity: [] }),
       writeTicket: async () => undefined,
       ensureDocument: async () => '/unused/BL-1.md',
       docPath: () => '/unused/BL-1.md',
@@ -1473,6 +1475,22 @@ describe('agents lost to a reload (BL-87)', () => {
     finish[1]({});
     await tick();
     expect(revise.hasEnded(session)).toBe(true);
+    loop.dispose();
+  });
+  it('an agent that ends its turn having set "Not before:" sends its ticket back to To Do, first in line (BL-261)', async () => {
+    let finish: (r: object) => void = () => undefined;
+    spawn.mockImplementation(() => ({ sessionId: session, done: new Promise((resolve) => (finish = resolve)), stop() {} }));
+    data.items.push({ id: 'BL-2', title: 'Next', status: 'todo', created: at });
+    const revise = loop as unknown as { startRevision(item: unknown, task: unknown): Promise<void> };
+    await revise.startRevision(structuredClone(data.items[0]), { prompt: 'Measure it.', why: 'you started it' });
+    description = 'Measure the week.\n\nNot before: 2099-11-07';
+    finish({});
+    await tick();
+    expect(data.items.map((i) => [i.id, i.status])).toEqual([
+      ['BL-1', 'todo'],
+      ['BL-2', 'todo'],
+    ]);
+    expect(data.items[0].review).toBeUndefined();
     loop.dispose();
   });
   it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
