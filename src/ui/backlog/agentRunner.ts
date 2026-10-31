@@ -14,6 +14,7 @@ import {
   workModel,
 } from '../../features/backlog/modelLevel';
 import { parseUsageLimit, type UsageLimit } from '../../features/backlog/limits';
+import { accountLimit } from '../../features/backlog/accountLimit';
 import {
   LEAN_TOOLS,
   leanFlags,
@@ -549,6 +550,9 @@ export function runAgentHeadless(o: {
         .then((repo) => repo && finishChatRecords(repo.commonDir, sessionId))
         .catch(() => undefined);
       const result = agentOutcome({ code, stdout, stderr, now: new Date() });
+      // The account's limit (BL-248): a reset said holds every start; a run begun since that got through lifts it.
+      if (result.limit) accountLimit.hit(result.limit);
+      else if (!result.error) accountLimit.gotThrough(spawnedAt);
       if (result.limit)
         o.output.appendLine(
           `${o.name} hit a ${result.limit.kind} limit; it goes on at ${result.limit.until.toLocaleString()}.${result.limit.said ? ` Claude said: ${result.limit.said} (reset time not understood).` : ''}`,
@@ -608,6 +612,8 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
       clearTimeout(timer);
       const failed = code !== 0 || /"is_error"\s*:\s*true/.test(out);
       const limit = failed ? parseUsageLimit(out, new Date()) : undefined;
+      if (limit) accountLimit.hit(limit);
+      else if (!failed) accountLimit.lift();
       o.output.appendLine(
         limit
           ? `Claude is still limited (${limit.kind}).${limit.said ? ` Claude said: ${limit.said}` : ''}`
