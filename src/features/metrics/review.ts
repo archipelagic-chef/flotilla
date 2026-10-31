@@ -1,5 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  type RunConditions,
+  taskBlocked,
+} from '../schedules/schedule';
 
 /**
  * The improvement review (BL-159): an agent reads the metrics' summary and the code, and writes a short report of the
@@ -36,23 +40,9 @@ export function reviewDue(o: { last?: string; every: number; now: Date }): boole
   return o.now.getTime() - last >= o.every * DAY_MS - DAY_MS / 2;
 }
 
-/** What keeps a review from starting now; undefined when it may. */
-export function reviewBlocked(v: {
-  running: number;
-  waiting: number;
-  waitingUntil?: string;
-  pausedAll?: number;
-  enabled: boolean;
-  idle?: string;
-  elsewhere: boolean;
-}): string | undefined {
-  if (v.elsewhere) return 'another window runs the autopilot';
-  if (v.pausedAll) return 'all agents are paused';
-  if (v.waitingUntil) return 'agents wait for a usage limit';
-  if (v.running) return `${v.running === 1 ? 'an agent is' : `${v.running} agents are`} working`;
-  if (v.waiting) return 'starts are waiting for a slot';
-  if (v.enabled && !v.idle) return 'the autopilot has tickets to start';
-  return undefined;
+/** What keeps a review from starting now; undefined when it may: as an idle scheduled task. */
+export function reviewBlocked(v: RunConditions): string | undefined {
+  return taskBlocked(v, 'idle');
 }
 
 /**
