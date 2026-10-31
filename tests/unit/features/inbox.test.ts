@@ -122,6 +122,34 @@ describe('backlog inbox', () => {
     const ticket = await store.readTicket({ id: 'BL-2', title: '' });
     expect(ticket).toMatchObject({ title: 'Log out of the IdP too', activity: [{ author: 'Agent Nova-7', body: 'Added this ticket and started on it.' }] });
   });
+
+  it('saves a proposed scheduled task to schedules/, to run once accepted (BL-260)', async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const inbox = path.join(store.dir, 'inbox');
+    fs.mkdirSync(inbox, { recursive: true });
+    const old = new Date(Date.now() - 5000);
+    const task = '---\nschedule: docs-check\nevery: Mondays at 06:00\nagent: Nova-7\n---\nCheck the docs.\n';
+    for (const [name, text] of [
+      ['a.md', task],
+      ['b.md', task],
+      ['c.md', '---\nschedule: docs\n---\nNo schedule.\n'],
+    ]) {
+      fs.writeFileSync(path.join(inbox, name), text);
+      fs.utimesSync(path.join(inbox, name), old, old);
+    }
+    const proposed: string[] = [];
+    const added = await takeInbox(store, { prefix: 'BL', mode: 'propose', taken: [], onTaskProposed: (n) => void proposed.push(n) });
+    expect(added).toEqual([]);
+    expect(proposed).toEqual(['docs-check']);
+    expect(fs.readFileSync(path.join(store.dir, 'schedules', 'docs-check.md'), 'utf8')).toBe(
+      '---\nevery: Mondays at 06:00\nproposed: Nova-7\n---\nCheck the docs.\n',
+    );
+    expect(fs.readFileSync(path.join(inbox, 'a.added'), 'utf8').trim()).toBe('schedules/docs-check.md');
+    expect(fs.readFileSync(path.join(inbox, 'b.error'), 'utf8')).toMatch(/there already/);
+    expect(fs.readFileSync(path.join(inbox, 'c.error'), 'utf8')).toMatch(/not when it runs/);
+  });
 });
 
 describe('claims', () => {
