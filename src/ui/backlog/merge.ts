@@ -680,7 +680,7 @@ export class Merger implements vscode.Disposable {
       await this.currentTrain();
     });
     const merged = this.merge(id);
-    return moved.then(() => merged);
+    return Promise.all([moved, merged]).then(([, end]) => end);
   }
 
   /** Changes the saved queue; whether it changed. */
