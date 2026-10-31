@@ -3,8 +3,8 @@
 // line whenever they fit, where any two additions collide (BL-155).
 import * as estree from 'prettier/plugins/estree';
 
-/** From this many names on, an import lists them one per line. */
-export const ONE_PER_LINE = 4;
+/** From this many names on, an import lists them one per line: from two, so adding a name never rewraps the list (BL-252). */
+export const ONE_PER_LINE = 2;
 
 const base = estree.printers.estree;
 

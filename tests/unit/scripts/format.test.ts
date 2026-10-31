@@ -9,7 +9,11 @@ import {
   expect,
   it,
 } from 'vitest';
-import { installPreCommit, PRE_COMMIT_HOOK, PREVIOUS_HOOK } from '../../../scripts/install-hooks.mjs';
+import {
+  installPreCommit,
+  PRE_COMMIT_HOOK,
+  PREVIOUS_HOOK,
+} from '../../../scripts/install-hooks.mjs';
 import * as imports from '../../../scripts/prettier-imports.mjs';
 
 const ROOT = path.resolve(__dirname, '../../..');
@@ -49,8 +53,13 @@ describe('the import plugin', () => {
     expect(await format("export { d, b, c, a as e } from './z';\n")).toBe("export {\n  a as e,\n  b,\n  c,\n  d,\n} from './z';\n");
   });
 
-  it('keeps a short import on one line, in its order', async () => {
-    expect(await format("import {\n  b,\n  a,\n  c,\n} from './x';\n")).toBe("import { b, a, c } from './x';\n");
+  it('lists an import of two names one per line, so adding a third changes only its own line', async () => {
+    expect(await format("import { b, a } from './x';\n")).toBe("import {\n  a,\n  b,\n} from './x';\n");
+    expect(await format("import { b, a, c } from './x';\n")).toBe("import {\n  a,\n  b,\n  c,\n} from './x';\n");
+  });
+
+  it('keeps an import of one name on one line', async () => {
+    expect(await format("import {\n  a,\n} from './x';\nimport x, { b } from './y';\n")).toBe("import { a } from './x';\nimport x, { b } from './y';\n");
   });
 
   it('is stable: formatting its output again changes nothing', async () => {

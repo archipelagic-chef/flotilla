@@ -141,7 +141,7 @@ So:
   JavaScript and CSS; Markdown and `package.json` keep theirs. `npm install` installs a pre-commit hook
   ([scripts/install-hooks.mjs](scripts/install-hooks.mjs)) that formats the staged files, in every worktree, and
   `npm test` fails on a file that isn't formatted (`npm run format` fixes it). Don't reformat what you don't change.
-- **Imports.** An import of four names or more lists them one per line, sorted
+- **Imports.** An import of two names or more lists them one per line, sorted
   ([scripts/prettier-imports.mjs](scripts/prettier-imports.mjs) does it), so two added names land on different lines.
   Keep it that way when you add one: Prettier puts it in its place.
 - **Ticket tab messages**: in their group's files, as in "Where a part goes" above.
