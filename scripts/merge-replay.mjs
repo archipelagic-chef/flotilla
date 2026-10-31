@@ -3,6 +3,11 @@
 // places, and how many of those places were pure additions: both sides only added lines at the same spot, with
 // nothing removed or changed (BL-155). The merges are the merge commits reachable from the ref: merges into it, and
 // agents' merges of main into their branches.
+//
+// With `--landed`, it replays the tickets that landed on the ref as a straight line of commits (rebased and
+// fast-forwarded, BL-181), which leaves no merge commits: per ticket, its change (the ref before its commits to after
+// them) is merged with what landed on the ref since its branch was created (its reflog's "Created from"), as its
+// rebase did (BL-187).
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,11 +16,20 @@ function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 }
 
+/** Whether the lines of `part` appear in `whole`, in order (others between them). */
+const within = (part, whole) => {
+  let i = 0;
+  for (const line of whole) if (line === part[i]) i++;
+  return i === part.length;
+};
+
 /**
  * The conflicts in a file merged with diff3 markers: per place, the lines of each side and of the base. A place is a
- * pure addition when its base is empty (both sides added lines there).
+ * pure addition when its base is empty (both sides added lines there). A landing's replay is merged the other way
+ * round (`reversed`: base is the ref before the ticket, theirs undoes what landed since it started), so there a pure
+ * addition is a place where ours only adds to the base and theirs only removes from it.
  */
-export function conflictsOf(text) {
+export function conflictsOf(text, reversed = false) {
   const places = [];
   let place;
   let side;
@@ -28,7 +42,7 @@ export function conflictsOf(text) {
     else if (place && line.startsWith('>>>>>>> ')) {
       places.push({
         ...place,
-        pureAddition: place.base.length === 0,
+        pureAddition: reversed ? within(place.base, place.ours) && within(place.theirs, place.base) : place.base.length === 0,
         imports: [...place.ours, ...place.theirs].some((l) => /^\s*(import|export) .* from /.test(l)),
       });
       place = undefined;
@@ -37,9 +51,14 @@ export function conflictsOf(text) {
   return places;
 }
 
-/** Replays one merge: undefined when it merged cleanly, else its conflicted files with their places. */
-export function replay(cwd, first, second) {
-  const r = spawnSync('git', ['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '-z', first, second], {
+/**
+ * Replays one merge: undefined when it merged cleanly, else its conflicted files with their places. Without a base,
+ * git finds the merge base.
+ */
+export function replay(cwd, first, second, base, reversed = false) {
+  const args = ['-c', 'merge.conflictStyle=diff3', 'merge-tree', '--write-tree', '--name-only', '-z'];
+  if (base) args.push(`--merge-base=${base}`);
+  const r = spawnSync('git', [...args, first, second], {
     cwd,
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
@@ -58,9 +77,53 @@ export function replay(cwd, first, second) {
     } catch {
       // Deleted on one side: a conflict without markers.
     }
-    files.push({ name, places: conflictsOf(text) });
+    files.push({ name, places: conflictsOf(text, reversed) });
   }
   return files;
+}
+
+/**
+ * The tickets that landed on the ref as runs of commits: per run, the ticket's id, the commit before its first one
+ * and its last one. A ticket's merge commit ("Merge BL-12: ...") is a run of its own; other merges end a run.
+ */
+export function landings(cwd, ref, since, until) {
+  const range = ['rev-list', '--first-parent', '--reverse', '--parents', '--format=%s', `--since=${since}`, ...(until ? [`--until=${until}`] : []), ref];
+  const runs = [];
+  let run;
+  const lines = git(range, cwd).split('\n');
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const [, commit, parent, other] = lines[i].split(' ');
+    const subject = lines[i + 1];
+    const id = /^(?:Merge )?(\w+-\d+)\b/.exec(subject)?.[1];
+    // A ticket merged into the ref (before BL-181) lands as its merge commit, a run of its own.
+    if (other && id && subject.startsWith('Merge ')) runs.push((run = { id, before: parent, last: commit, merged: true }));
+    else if (other || !id) run = undefined;
+    else if (run?.id === id && run.last === parent) run.last = commit;
+    else runs.push((run = { id, before: parent, last: commit }));
+  }
+  return runs;
+}
+
+/** The commit a ticket's branch was created from, by its reflog; undefined when no branch or reflog is left. */
+export function branchStart(cwd, id) {
+  const branches = git(['branch', '--list', '--format=%(refname:short)', `*/${id}-*`, `${id}-*`], cwd)
+    .split('\n')
+    .filter(Boolean);
+  for (const branch of branches) {
+    const log = spawnSync('git', ['reflog', 'show', '--format=%H %gs', branch], { cwd, encoding: 'utf8' }).stdout ?? '';
+    const created = log.split('\n').find((l) => / branch: Created from /.test(l));
+    if (created) return created.split(' ')[0];
+  }
+  return undefined;
+}
+
+/**
+ * Replays a landed ticket's rebase: its change merged with what landed since it started. Undefined when it merged
+ * cleanly (or nothing landed in between), else its conflicted files.
+ */
+export function replayLanding(cwd, { before, last }, start) {
+  if (git(['rev-parse', start], cwd) === git(['rev-parse', before], cwd)) return undefined;
+  return replay(cwd, last, start, before, true);
 }
 
 export function summarize(results) {
@@ -89,15 +152,26 @@ function main(argv) {
   const ref = opt('ref', 'main');
   const since = opt('since', new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));
   const until = opt('until');
-  const range = ['rev-list', '--merges', '--parents', `--since=${since}`, ...(until ? [`--until=${until}`] : []), ref];
+  const landed = argv.includes('--landed');
   const results = [];
-  for (const line of git(range, cwd).split('\n').filter(Boolean)) {
-    const [commit, first, second] = line.split(' ');
-    results.push({ commit, files: replay(cwd, first, second) });
+  const unknown = [];
+  if (landed) {
+    for (const run of landings(cwd, ref, since, until)) {
+      const start = branchStart(cwd, run.id);
+      if (start) results.push({ commit: run.last, id: run.id, files: replayLanding(cwd, run, start) });
+      else unknown.push(run.id);
+    }
+  } else {
+    const range = ['rev-list', '--merges', '--parents', `--since=${since}`, ...(until ? [`--until=${until}`] : []), ref];
+    for (const line of git(range, cwd).split('\n').filter(Boolean)) {
+      const [commit, first, second] = line.split(' ');
+      results.push({ commit, files: replay(cwd, first, second) });
+    }
   }
   const s = summarize(results);
-  if (argv.includes('--json')) return console.log(JSON.stringify({ since, until, ref, ...s }, null, 2));
-  console.log(`Merges of ${ref} since ${since}${until ? ` until ${until}` : ''}: ${s.merges}`);
+  if (argv.includes('--json')) return console.log(JSON.stringify({ since, until, ref, landed, ...s, unknown }, null, 2));
+  console.log(`${landed ? 'Tickets landed on' : 'Merges of'} ${ref} since ${since}${until ? ` until ${until}` : ''}: ${s.merges}`);
+  if (unknown.length) console.log(`Not replayed (no branch reflog left): ${unknown.join(', ')}`);
   console.log(`Conflicted: ${s.conflicted} (${pct(s.conflicted, s.merges)}), in ${s.places} places`);
   console.log(`Pure additions: ${s.pureAdditions} places (${pct(s.pureAdditions, s.places)}); in imports: ${s.imports} (${pct(s.imports, s.places)})`);
   if (s.mostConflicted.length) console.log(`Most conflicted: ${s.mostConflicted.map(([f, n]) => `${f} (${n})`).join(', ')}`);
