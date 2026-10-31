@@ -1,0 +1,81 @@
+{
+  "title": "Land, Resolving Conflicts on one ticket: an agent resolves its conflict, the resolution is approved without asking, and it lands",
+  "settings": {
+    "flotilla.merge.checks": "local",
+    "flotilla.merge.onApprove": "off"
+  },
+  "steps": [
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open ticket\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "waitFor": ".merge-queue-bar:has-text(\"BL-10\")",
+      "timeout": 60000
+    },
+    {
+      "click": ".backlog-item:has-text(\"Remember the last open tab\") .name"
+    },
+    {
+      "waitFor": "h1:has-text(\"Remember the last open tab\")"
+    },
+    {
+      "click": ".review-panel button:has-text(\"Approve\")"
+    },
+    {
+      "caption": "BL-15 conflicts with BL-10, ahead of it in the queue. Next to Merge to main: Land, Resolving Conflicts"
+    },
+    {
+      "highlight": ".review-panel:has-text(\"2nd of 2\") button.land-resolving"
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": ".review-panel:has-text(\"2nd of 2\") button.land-resolving"
+    },
+    {
+      "caption": "One click, no dialogs: an agent resolves BL-15's conflict, and its resolution is approved without asking"
+    },
+    {
+      "waitFor": ".merge-queue-bar:has-text(\"BL-15 (resolving)\")",
+      "timeout": 60000
+    },
+    {
+      "highlight": ".merge-queue-bar a:has-text(\"BL-15\")"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "caption": "Its resolution is approved without asking: BL-10, ahead of it, lands first, then BL-15, each after its checks"
+    },
+    {
+      "waitFor": ".notification-toast:has-text(\"Merged BL-15 into main\")",
+      "timeout": 120000
+    },
+    {
+      "caption": "Both landed, and nobody was asked: BL-15 is Done, merged into main"
+    },
+    {
+      "highlight": "div.segmented[aria-label=\"Status\"]"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
