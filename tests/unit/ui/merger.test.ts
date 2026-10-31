@@ -200,9 +200,10 @@ describe('Merge to main', () => {
     const updates: string[] = [];
     merger.onDidChecks((id) => updates.push(id));
     const merging = merger.merge('BL-1');
-    for (let i = 0; i < 200 && !updates.length; i++) await new Promise((r) => setTimeout(r, 25));
+    // Until the progress is sent (a second after the output): under a busy full suite, starting the merge and its
+    // checks can take more than the 5 s this waited before.
+    await vi.waitFor(() => expect(updates).toContain('BL-1'), { timeout: 20_000, interval: 25 });
     const view = merger.checksView('BL-1')!;
-    expect(updates).toContain('BL-1');
     expect(view).toMatchObject({ command: slow, progress: { step: 'Tests', files: 1, failedFiles: 0 }, earlier: [] });
     expect(view.tail.at(-1)).toBe(' ✓ tests/a.test.ts (2 tests) 5ms');
     expect(view.log).toBe(path.join(repo, '.git', 'flotilla', 'merges', 'BL-1', 'checks.log'));
