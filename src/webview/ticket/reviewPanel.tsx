@@ -235,90 +235,95 @@ export function ReviewPanel({ ticket, ci }: { ticket: TicketView; ci?: TicketCiV
     <>
       <div class={`review-panel ${cls}`}>
         <i class={`codicon codicon-${icon}${r.running ? ' pulse' : ''}`} />
-        <span class="review-text">
-          <strong>{label}</strong> {text}
-          {todo && <span class="muted review-todo"> {todo}</span>}
-          <StepStatus steps={steps} />
-        </span>
-        {r.state === 'paused' &&
-          (r.paused?.byUser ? (
-            <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
-              <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
-            </ActionButton>
-          ) : (
-            <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
-              <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
-            </ActionButton>
-          ))}
-        {running && !yours && !turn?.queued && (
-          <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
-            <i class="codicon codicon-debug-pause" /> Pause
-          </ActionButton>
-        )}
-        {yours ? (
-          <>
-            <button
-              class="button secondary"
-              onClick={() => {
-                // What should change is written in the comment box: Request Changes sends it.
-                const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
-                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                box?.focus();
-              }}
-              title="Write what should change below, then Request Changes"
-            >
-              <i class="codicon codicon-request-changes" /> Request Changes…
-            </button>
-            <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
-              <i class="codicon codicon-check" /> Approve
-            </ActionButton>
-          </>
-        ) : active ? (
-          <>
-            {resume && (
-              <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
-                <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
+        {/* The sentence, then the buttons: they move under it when they don't fit beside it (BL-255). */}
+        <div class="review-body">
+          <span class="review-text">
+            <strong>{label}</strong> {text}
+            {todo && <span class="muted review-todo"> {todo}</span>}
+            <StepStatus steps={steps} />
+          </span>
+          <div class="review-actions">
+            {r.state === 'paused' &&
+              (r.paused?.byUser ? (
+                <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={FIX_TIP.resume}>
+                  <i class={`codicon codicon-${FIX_ICON.resume}`} /> {fixLabel('resume', undefined)}
+                </ActionButton>
+              ) : (
+                <ActionButton class="button secondary" message={{ type: 'reviewFix', fix: 'resumeNow' }} working="Going on…" title={FIX_TIP.resumeNow}>
+                  <i class={`codicon codicon-${FIX_ICON.resumeNow}`} /> {fixLabel('resumeNow', undefined)}
+                </ActionButton>
+              ))}
+            {running && !yours && !turn?.queued && (
+              <ActionButton class="button secondary" message={{ type: 'agent', action: 'pause' }} working="Pausing…" title={PAUSE_TIP}>
+                <i class="codicon codicon-debug-pause" /> Pause
               </ActionButton>
             )}
-            {/* While a reviewer agent works, its Stop is Review It Myself: Approve and Request Changes come back with it (BL-154). */}
-            {steps.others.includes('reviewMyself') ? (
-              <ActionButton
-                class="button secondary"
-                message={{ type: 'stopReview' }}
-                working="Stopping…"
-                title="Stops the reviewer agent: Approve and Request Changes are yours, below"
-              >
-                <i class="codicon codicon-eye" /> Review It Myself
-              </ActionButton>
+            {yours ? (
+              <>
+                <button
+                  class="button secondary"
+                  onClick={() => {
+                    // What should change is written in the comment box: Request Changes sends it.
+                    const box = document.querySelector<HTMLTextAreaElement>('.comment-box textarea');
+                    box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    box?.focus();
+                  }}
+                  title="Write what should change below, then Request Changes"
+                >
+                  <i class="codicon codicon-request-changes" /> Request Changes…
+                </button>
+                <ActionButton class="button" message={{ type: 'userReview', verdict: 'approved', text: '' }} working="Sending…">
+                  <i class="codicon codicon-check" /> Approve
+                </ActionButton>
+              </>
+            ) : active ? (
+              <>
+                {resume && (
+                  <ActionButton class="button" message={{ type: 'agent', action: 'resume' }} working="Resuming…" title={RESUME_TIP}>
+                    <i class={`codicon codicon-${STEP.resume.icon}`} /> {STEP.resume.label}
+                  </ActionButton>
+                )}
+                {/* While a reviewer agent works, its Stop is Review It Myself: Approve and Request Changes come back with it (BL-154). */}
+                {steps.others.includes('reviewMyself') ? (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'stopReview' }}
+                    working="Stopping…"
+                    title="Stops the reviewer agent: Approve and Request Changes are yours, below"
+                  >
+                    <i class="codicon codicon-eye" /> Review It Myself
+                  </ActionButton>
+                ) : (
+                  <ActionButton
+                    class="button secondary"
+                    message={{ type: 'stopReview' }}
+                    working="Stopping…"
+                    title={running ? STOP_TIP : 'Stops the review and the handoffs'}
+                  >
+                    <i class="codicon codicon-debug-stop" /> Stop
+                  </ActionButton>
+                )}
+              </>
+            ) : r.state === 'stopped' ? (
+              // Fixes for why it stopped, the first one first.
+              fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
+                <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
+                  <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
+                </ActionButton>
+              ))
             ) : (
-              <ActionButton
-                class="button secondary"
-                message={{ type: 'stopReview' }}
-                working="Stopping…"
-                title={running ? STOP_TIP : 'Stops the review and the handoffs'}
-              >
-                <i class="codicon codicon-debug-stop" /> Stop
-              </ActionButton>
+              <>
+                {ticket.canReview && (
+                  <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
+                    <i class="codicon codicon-eye" /> Review Again
+                  </ActionButton>
+                )}
+                {ticket.canMerge && <MergeStep ticket={ticket} ci={ci} steps={steps} />}
+              </>
             )}
-          </>
-        ) : r.state === 'stopped' ? (
-          // Fixes for why it stopped, the first one first.
-          fixesFor(r.stop?.kind, !!r.stop?.task, held).map((fix, i) => (
-            <ActionButton key={fix} class={`button${i ? ' secondary' : ''}`} message={{ type: 'reviewFix', fix }} working="Going on…" title={FIX_TIP[fix]}>
-              <i class={`codicon codicon-${FIX_ICON[fix]}`} /> {fixLabel(fix, r.stop?.kind)}
-            </ActionButton>
-          ))
-        ) : (
-          <>
-            {ticket.canReview && (
-              <ActionButton class="button secondary" message={{ type: 'startReview' }} working="Starting the review…">
-                <i class="codicon codicon-eye" /> Review Again
-              </ActionButton>
-            )}
-            {ticket.canMerge && <MergeStep ticket={ticket} ci={ci} steps={steps} />}
-          </>
-        )}
-        <PullRequestLinks ticket={ticket} />
+            <PullRequestLinks ticket={ticket} />
+          </div>
+        </div>
       </div>
       {ticket.canMerge && ticket.mergeStop && !active && <MergeStop stop={ticket.mergeStop} />}
       {ticket.canMerge && ticket.mergeQueue && !active && <QueuePlace queue={ticket.mergeQueue} />}
