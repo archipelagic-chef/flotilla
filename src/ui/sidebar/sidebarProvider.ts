@@ -139,6 +139,7 @@ import { removingWorktrees } from '../../features/workstreams/removingWorktrees'
 import { recordClickWait } from '../../features/metrics/record';
 import type { MetricsPeriod } from '../../webview/metricsProtocol';
 import type { Metrics } from '../metrics/metrics';
+import type { Scheduler } from '../schedules/scheduler';
 
 /** How long after a dispatch the CI/CD view reads the runs again (GitHub takes a moment to list a new one). */
 const RUN_LISTED_MS = 5_000;
@@ -294,6 +295,38 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.queue = queue;
     this.subscriptions.push(queue.onDidChange(() => void this.postBacklog()));
     void this.postBacklog();
+  }
+
+  /** The scheduled tasks (BL-260), listed in the Scheduled tool (created after the sidebar). */
+  useScheduler(scheduler: Scheduler): void {
+    this.scheduler = scheduler;
+    this.subscriptions.push(scheduler.onDidChange(() => void this.postScheduled()));
+    // What a due task waits for changes as agents start and end: shown again every half minute while it's open.
+    const timer = setInterval(() => void this.postScheduled(), 30_000);
+    this.subscriptions.push({ dispose: () => clearInterval(timer) });
+  }
+
+  private scheduler: Scheduler | undefined;
+  private scheduledShown = false;
+
+  private async postScheduled(): Promise<void> {
+    if (!this.scheduledShown || !this.scheduler) return;
+    const view = await this.scheduler.view();
+    if (this.scheduledShown) this.post({ type: 'scheduledView', view });
+  }
+
+  /** The Scheduled tool's buttons. */
+  private async scheduledAction(m: Extract<WebviewMessage, { type: 'scheduledAction' }>): Promise<void> {
+    const s = this.scheduler;
+    if (!s) return;
+    if (m.op === 'folder') return s.openFolder();
+    if (!m.name) return;
+    if (m.op === 'run') await s.runNow(m.name);
+    else if (m.op === 'report') await s.openReport(m.name, m.day);
+    else if (m.op === 'edit') await s.edit(m.name);
+    else if (m.op === 'accept') await s.accept(m.name);
+    else if (m.op === 'dismiss') await s.dismiss(m.name);
+    await this.postScheduled();
   }
 
   /** The autopilot, shown (and switched) in the backlog's title (created after the sidebar). */
@@ -891,6 +924,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'metricsClosed':
         this.metricsPeriod = undefined;
+        return;
+      case 'scheduled':
+        this.scheduledShown = true;
+        await this.postScheduled();
+        return;
+      case 'scheduledClosed':
+        this.scheduledShown = false;
+        return;
+      case 'scheduledAction':
+        await this.scheduledAction(m).catch((e: unknown) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
         return;
       case 'metricsOpen':
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);

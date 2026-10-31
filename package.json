@@ -487,6 +487,16 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.runScheduledTaskNow",
+        "title": "Run a Scheduled Task Now",
+        "category": "Flotilla"
+      },
+      {
+        "command": "flotilla.openScheduledTaskReport",
+        "title": "Open a Scheduled Task's Report",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.pauseAllAgents",
         "title": "Pause All Agents",
         "category": "Flotilla",

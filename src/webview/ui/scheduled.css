@@ -1,0 +1,70 @@
+/* The Scheduled tool (BL-260): a card per scheduled task, with its status, its reports and its actions. */
+.scheduled {
+  padding: 4px 0 12px;
+}
+.scheduled-task {
+  margin: 2px 8px 4px;
+  padding: 3px 8px 4px;
+  border-left: 2px solid var(--vscode-focusBorder);
+  background: var(--vscode-editorWidget-background, transparent);
+  border-radius: 3px;
+}
+.scheduled-task.is-proposed {
+  border-left-color: var(--waiting);
+}
+.scheduled-task.is-wrong {
+  border-left-color: var(--vscode-errorForeground);
+}
+.scheduled-head,
+.scheduled-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.scheduled-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scheduled-schedule {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scheduled-actions {
+  display: flex;
+  flex: none;
+  margin-left: auto;
+}
+.scheduled-status,
+.scheduled-none,
+.scheduled-more {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scheduled-status.waiting,
+.scheduled-status.proposed {
+  color: var(--waiting);
+}
+.scheduled-status.error {
+  color: var(--vscode-errorForeground);
+}
+.scheduled-reports {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: 12px;
+}
+.scheduled-foot {
+  margin: 6px 16px 0;
+  font-size: 12px;
+}

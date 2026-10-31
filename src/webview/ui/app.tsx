@@ -66,6 +66,8 @@ import { BacklogView } from './backlog';
 import { noteFinished } from './notes';
 import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
+import type { ScheduledView } from '../scheduledProtocol';
+import { ScheduledBody } from './scheduled';
 import type {
   MetricsPeriod,
   MetricsView,
@@ -174,6 +176,7 @@ const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'backlog', label: 'Backlog', icon: 'checklist' },
   { id: 'metrics', label: 'Metrics', icon: 'graph' },
+  { id: 'scheduled', label: 'Scheduled', icon: 'clock' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'vc', label: 'Version Control', icon: 'source-control' },
@@ -227,6 +230,7 @@ export function App() {
   const [ci, setCi] = useState<Record<string, CiView>>({});
   const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
   const [metrics, setMetrics] = useState<{ view?: MetricsView; error?: string }>({});
+  const [scheduled, setScheduled] = useState<ScheduledView | undefined>(undefined);
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
   const [highlight, setHighlight] = useState<CommitHighlight>();
   /** What the extension says is in progress, per tool. */
@@ -377,6 +381,9 @@ export function App() {
           return;
         case 'metricsError':
           setMetrics((prev) => ({ ...prev, error: m.message }));
+          return;
+        case 'scheduledView':
+          setScheduled(m.view);
           return;
         case 'searchResults':
           if (m.id === searchId.current) setResults({ id: m.id, groups: m.groups, truncated: m.truncated, limit: m.limit, error: m.error });
@@ -537,6 +544,14 @@ export function App() {
     send({ type: 'metrics', period: metricsShown });
     return () => send({ type: 'metricsClosed' });
   }, [metricsShown]);
+
+  // The Scheduled tool (BL-260) asks for its tasks while it's shown; the host sends them again as they change.
+  const scheduledShown = persisted.tool === 'scheduled';
+  useEffect(() => {
+    if (!scheduledShown) return;
+    send({ type: 'scheduled' });
+    return () => send({ type: 'scheduledClosed' });
+  }, [scheduledShown]);
 
   // Keep the active worktree tab visible when there are more tabs than room.
   useEffect(() => {
@@ -754,6 +769,8 @@ export function App() {
         reviewNow={() => send({ type: 'metricsReviewNow' })}
       />
     );
+  } else if (tool === 'scheduled') {
+    content = <ScheduledBody view={scheduled} />;
   } else if (tool === 'overview') {
     content = (
       <Overview

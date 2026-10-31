@@ -47,6 +47,7 @@ const { activeWorktreeCommands } = await import('../../../src/ui/activeWorktreeC
 const { hygieneCommands } = await import('../../../src/ui/hygiene');
 const { noteCommands } = await import('../../../src/ui/backlog/notes');
 const { discussionCommands } = await import('../../../src/ui/backlog/discussions');
+const { scheduleCommands } = await import('../../../src/ui/schedules/scheduler');
 
 const root = path.join(__dirname, '../../..');
 /** The features' command lists extension.ts registers (BL-185): a new feature's goes here too. */
@@ -60,6 +61,7 @@ const features = {
   hygieneCommands,
   noteCommands,
   discussionCommands,
+  scheduleCommands,
 };
 
 describe('commands', () => {
