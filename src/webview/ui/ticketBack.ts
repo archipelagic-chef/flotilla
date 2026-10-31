@@ -1,4 +1,7 @@
-import type { Tool, VcView } from '../protocol';
+import type {
+  Tool,
+  VcView,
+} from '../protocol';
 
 /**
  * Back from a file expanded in the ticket's tab (BL-211): the sidebar shows the Backlog again, if it's still on the

@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { backFromTicketChanges } from '../../../src/webview/ui/ticketBack';
 
 describe('Back from an expanded file (BL-211)', () => {
