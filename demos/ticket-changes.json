@@ -1,5 +1,5 @@
 {
-  "title": "A ticket's Changes preview its files; Expand shows only the file's diff, under a header that says it's the ticket's and leads back; the sidebar's Version Control follows on the ticket's Changes",
+  "title": "A ticket's Changes preview its files; Expand shows only the file's diff, under a header that says it's the ticket's, with one Back to it; the sidebar's Version Control follows on the ticket's Changes",
   "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
   "steps": [
     { "command": "Close All Editor Groups" },
@@ -21,7 +21,7 @@
     { "click": ":nth-match(.change-hunk, 2) .change-action" },
     { "waitFor": ".diff-view .full-gap" },
     { "wait": 2000 },
-    { "caption": "Its header says it's BL-3's: ← Back to BL-3, BL-3 › Changes › src/reload.js" },
+    { "caption": "Its header: ← Back to BL-3, and where it is, BL-3 › Changes › src/reload.js" },
     { "hover": ".diff-view-crumbs" },
     { "wait": 2500 },
     { "caption": "The lines between the changes fold; a click shows them" },
@@ -39,11 +39,12 @@
     { "click": ".ticket-file:has-text(\"chats.js\")" },
     { "waitFor": ".diff-view-crumbs:has-text(\"src/chats.js\")" },
     { "wait": 2200 },
-    { "caption": "3. Back to BL-3: the ticket again, at that file" },
+    { "caption": "3. Back to BL-3: the ticket again, at that file, and the sidebar on the Backlog" },
     { "hover": ".diff-view-back" },
     { "wait": 1000 },
     { "click": ".diff-view-back" },
     { "waitFor": ".change-file.current:has-text(\"chats.js\")" },
+    { "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
     { "wait": 2500 },
     { "caption": "" }
   ]
