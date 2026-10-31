@@ -159,6 +159,36 @@ describe('the fake claude', () => {
     expect(activity(s).at(-1)!.body).toMatch(/Ready for review\.$/);
   });
 
+  it.each(['merging', 'rebasing'] as const)(
+    "resolves a merge's conflicts %s, keeping the branch's side, and reports (BL-247)",
+    (how) => {
+      const s = setup('Its merge conflicts.\n\nfake: wait 60s');
+      fs.writeFileSync(path.join(s.worktree, 'f.txt'), 'branch\n');
+      git(s.worktree, 'add', '.');
+      git(s.worktree, 'commit', '-q', '-m', 'BL-33: f.txt');
+      fs.writeFileSync(path.join(s.repo, 'f.txt'), 'main\n');
+      git(s.repo, 'add', '.');
+      git(s.repo, 'commit', '-q', '-m', 'main: f.txt');
+      // In the middle of the merge (or the rebase) Flotilla hands its agent.
+      if (how === 'merging') {
+        git(s.worktree, 'checkout', '-q', '--detach', 'main');
+        expect(() => git(s.worktree, 'merge', '--no-ff', '--no-edit', 'feature/BL-33-try')).toThrow();
+      } else expect(() => git(s.worktree, 'rebase', 'main')).toThrow();
+      const verb = how === 'merging' ? 'into' : 'onto';
+      const r = run(s, {
+        name: 'BL-33 merge',
+        prompt: `Your task: resolve the conflicts of ${how} BL-33's branch feature/BL-33-try ${verb} main. Its ticket ${s.ticket}.`,
+      });
+
+      expect(r.json?.result).toBe('Fake resolver: resolved `f.txt`.');
+      expect(fs.readFileSync(path.join(s.worktree, 'f.txt'), 'utf8')).toBe('branch\n');
+      expect(git(s.worktree, 'status', '--porcelain')).toBe('');
+      expect(git(s.worktree, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')).toHaveLength(how === 'merging' ? 3 : 2);
+      expect(activity(s).at(-1)?.body).toContain("Resolved the conflicts in `f.txt`, keeping this branch's side");
+    },
+    15_000,
+  );
+
   it('answers a run that names no ticket without touching anything', () => {
     const s = setup('fake: wait 0s');
     const r = run(s, { prompt: 'Say hello.', name: 'Ada-3' });

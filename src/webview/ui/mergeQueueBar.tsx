@@ -60,7 +60,7 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
                 }
                 title={`${
                   e.run === 'resolving'
-                    ? `${e.id}: an agent resolves its conflicts with the tickets ahead of it (Land All, Resolving Conflicts)`
+                    ? `${e.id}: an agent resolves its conflicts (${e.auto ? 'Land, Resolving Conflicts' : 'Land All, Resolving Conflicts'})`
                     : e.run === 'needs you'
                       ? `${e.id} needs you: its ticket says why`
                       : e.state === 'conflicts'
@@ -68,14 +68,20 @@ export function MergeQueueBar({ queue }: { queue: MergeQueueView }) {
                         : e.state === 'clean'
                           ? `${e.id} merges cleanly onto main and the tickets ahead`
                           : `${e.id}: the merge train is being built`
-                } · drag to change the order`}
+                }${e.auto && e.run !== 'needs you' ? ': it lands on its own (Land, Resolving Conflicts): an agent resolves its conflicts, approved without asking you' : ''} · drag to change the order`}
                 onClick={(ev) => {
                   ev.preventDefault();
                   send({ type: 'backlog', op: 'open', id: e.id });
                 }}
               >
                 {e.id}
-                {e.run === 'resolving' ? ' (resolving)' : e.run === 'needs you' ? ' (needs you)' : e.state === 'conflicts' && ' (conflicts)'}
+                {e.run === 'resolving'
+                  ? ' (resolving)'
+                  : e.run === 'needs you'
+                    ? ' (needs you)'
+                    : e.auto
+                      ? ' (lands on its own)'
+                      : e.state === 'conflicts' && ' (conflicts)'}
               </a>
               <BusyButton
                 class="dequeue"

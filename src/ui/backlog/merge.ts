@@ -226,7 +226,8 @@ export class Merger implements vscode.Disposable {
    */
   private run?: AutoRun;
   /** The queue, and the train; shown: with the tickets whose train conflict is being resolved, when there are any. */
-  private queueSeen: { queue: string[]; train?: MergeTrain; shown?: string[] } = { queue: [] };
+  /** auto: the tickets that land on their own (BL-247), and needs: those of them that stopped for you. */
+  private queueSeen: { queue: string[]; train?: MergeTrain; shown?: string[]; auto?: string[]; needs?: string[] } = { queue: [] };
   private trainTimer?: ReturnType<typeof setTimeout>;
   /** Your answer to pushing the merge train in this window (BL-145); undefined: not asked yet. */
   private trainPushAllowed?: boolean;
@@ -504,7 +505,10 @@ export class Merger implements vscode.Disposable {
       const state = e?.commit ? ('clean' as const) : e?.conflicts ? ('conflicts' as const) : ('unknown' as const);
       // Land All, Resolving Conflicts (BL-226): its agent at the conflict, or it needs you.
       const run = this.run?.resolving.has(id) ? ('resolving' as const) : this.run?.needs.includes(id) ? ('needs you' as const) : undefined;
-      return { id, state, ...(run ? { run } : {}) };
+      // Land, Resolving Conflicts (BL-247): it lands on its own; its agent at the conflict, or it stopped for you.
+      const auto = !!this.queueSeen.auto?.includes(id);
+      const own = !auto ? undefined : this.queueSeen.needs?.includes(id) ? ('needs you' as const) : this.runs.has(id) ? ('resolving' as const) : undefined;
+      return { id, state, ...(run || own ? { run: run ?? own } : {}), ...(auto ? { auto } : {}) };
     });
     return { entries, ...(this.tasks[0] ? { working: this.tasks[0].what } : {}) };
   }
@@ -524,7 +528,16 @@ export class Merger implements vscode.Disposable {
     const held = new Set(data.items.filter((i) => i.merging?.train).map((i) => i.id));
     const queue = queuedItems(data).map((i) => i.id);
     const shown = (data.mergeQueue ?? []).filter((id) => queue.includes(id) || held.has(id));
-    const seen = { queue, train: data.mergeTrain, ...(shown.length > queue.length ? { shown } : {}) };
+    const auto = (data.autoLand ?? []).filter((id) => queue.includes(id) || held.has(id));
+    // One that lands on its own stopped for you (BL-247): its agent couldn't resolve it, or its checks fail.
+    const needs = data.items.filter((i) => auto.includes(i.id) && i.merging?.auto && i.merging.state === 'failed' && !this.runs.has(i.id)).map((i) => i.id);
+    const seen = {
+      queue,
+      train: data.mergeTrain,
+      ...(shown.length > queue.length ? { shown } : {}),
+      ...(auto.length ? { auto } : {}),
+      ...(needs.length ? { needs } : {}),
+    };
     if (JSON.stringify(seen) !== JSON.stringify(this.queueSeen)) {
       this.queueSeen = seen;
       this.changed.fire();
@@ -543,7 +556,7 @@ export class Merger implements vscode.Disposable {
     const out = await this.changeQueue((q) => dequeue(q, [id]));
     const m = (await this.item(id))?.merging;
     const run = this.run && !this.run.ended ? this.run : undefined;
-    const stopped = !!m?.auto && run?.resolving.has(id);
+    const stopped = !!m?.auto && this.runs.has(id);
     if (stopped) {
       this.runs.get(id)?.stop();
       this.runs.delete(id);
@@ -553,6 +566,7 @@ export class Merger implements vscode.Disposable {
       run.needs = run.needs.filter((n) => n !== id);
       if (!run.removed.includes(id)) run.removed.push(id);
     }
+    await this.markAutoLand(id, false);
     if (out || stopped) await this.readQueue();
     return this.serial({ id, what: `taking ${id} out of the merge queue` }, async () => {
       // Its resolution by Land All, Resolving Conflicts isn't approved or landed: its worktree goes.
@@ -599,6 +613,38 @@ export class Merger implements vscode.Disposable {
     this.changed.fire();
     if (!run.needs.length) void vscode.window.showInformationMessage(message);
     else void vscode.window.showWarningMessage(message, 'Open').then((c) => c && this.deps.openTicket(run.needs[0]));
+  }
+
+  /** Marks a ticket to land on its own (BL-247: Land, Resolving Conflicts), or drops its mark. */
+  private async markAutoLand(id: string, on: boolean): Promise<void> {
+    await this.deps.backlog.change(
+      (d) => {
+        const was = d.autoLand ?? [];
+        if (was.includes(id) === on) return d;
+        const { autoLand: _a, ...rest } = d;
+        const next = on ? [...was, id] : was.filter((a) => a !== id);
+        return next.length ? { ...rest, autoLand: next } : rest;
+      },
+      { by: 'Flotilla' },
+    );
+  }
+
+  /** What approves a ticket's resolution without asking: Land All's run, or the ticket's own Land, Resolving Conflicts. */
+  private autoBy(id: string): string {
+    return this.run && !this.run.ended && this.run.resolving.has(id) ? 'Land All, Resolving Conflicts' : 'Land, Resolving Conflicts';
+  }
+
+  /**
+   * An auto-approved resolution ended: in Land All's run, the run counts it; else a ticket that stopped for you (its
+   * agent couldn't resolve it, or its checks fail) says so, with a link to its ticket (BL-247).
+   */
+  private async autoEnded(id: string, end: MergeEnd | 'failed'): Promise<void> {
+    if (this.run && !this.run.ended && this.run.resolving.has(id)) return this.resolvedInRun(id, end);
+    const data = await this.readQueue();
+    if (end === 'merged' || end === 'waiting' || !(data.mergeQueue ?? []).includes(id)) return;
+    void vscode.window
+      .showWarningMessage(`${id} needs you: Land, Resolving Conflicts stopped. Its ticket says why.`, 'Open')
+      .then((c) => c && this.deps.openTicket(id));
   }
 
   /** A resolution of the run ended (BL-226): landed, waiting for CI, or needing you. */
@@ -1036,27 +1082,37 @@ export class Merger implements vscode.Disposable {
    * Merges an item's branch into the base branch. batch (Merge All Ready): nothing is asked; anything that needs a
    * decision stops it.
    */
-  merge(id: string, o: { batch?: boolean } = {}): Promise<MergeEnd> {
+  merge(id: string, o: { batch?: boolean; auto?: boolean } = {}): Promise<MergeEnd> {
     // One merge of a ticket at a time (BL-227): Merge to main, an approval and Update from Main and Merge join it.
     const going = this.pendingMerges.get(id);
     if (going) return going;
     if (this.tasks.length) this.deps.output.appendLine(`Merge: ${id} waits for ${this.tasks[0].what}.`);
     this.merging.add(id);
-    const merged = this.serial({ id, what: `${id}'s merge` }, () => trackProgress('backlog', `Merging ${id}`, () => this.doMerge(id, !!o.batch))).finally(
-      () => {
-        this.merging.delete(id);
-        this.pendingMerges.delete(id);
-        this.changed.fire();
-      },
-    );
+    const merged = this.serial({ id, what: `${id}'s merge` }, () =>
+      trackProgress('backlog', `Merging ${id}`, async () => {
+        // Land, Resolving Conflicts (BL-247): marked, it lands on its own from now on, until it lands or leaves the queue.
+        if (o.auto) await this.markAutoLand(id, true);
+        return this.doMerge(id, !!o.batch);
+      }),
+    ).finally(() => {
+      this.merging.delete(id);
+      this.pendingMerges.delete(id);
+      this.changed.fire();
+    });
     this.pendingMerges.set(id, merged);
     return merged;
   }
 
-  /** rerere: a rebase reuses the resolutions approved before (an approved merge made again from the branch as it is). */
-  private async doMerge(id: string, batch: boolean, o: { rerere?: boolean } = {}): Promise<MergeEnd> {
+  /**
+   * rerere: a rebase reuses the resolutions approved before (an approved merge made again from the branch as it is).
+   * A ticket marked by Land, Resolving Conflicts (BL-247) merges as batch does, and its conflicts go to an agent whose
+   * resolution is approved without asking. again: its train conflict was gone when its agent was to start.
+   */
+  private async doMerge(id: string, asked: boolean, o: { rerere?: boolean; again?: boolean } = {}): Promise<MergeEnd> {
     const item = await this.item(id);
     if (!item) return 'stopped';
+    const auto = !!(await this.deps.backlog.read()).autoLand?.includes(id);
+    const batch = asked || auto;
     if (this.ciWaits.has(id)) {
       if (!batch) void vscode.window.showInformationMessage(`${id} merges when CI passes: its ticket shows the runs.`);
       return 'waiting';
@@ -1126,6 +1182,12 @@ export class Merger implements vscode.Disposable {
       const byTrain = await this.landsByTrain();
       const end = await this.landByTrain(item, base, batch, byTrain);
       if (end) return end;
+      // It conflicts with the tickets ahead of it in the train: an agent resolves it there, and it lands once approved.
+      if (auto) {
+        const started = await this.startTrainResolve(item, true);
+        if (started === 'started') return 'stopped';
+        if (started === 'clean' && !o.again) return this.doMerge(id, asked, { ...o, again: true });
+      }
     }
     const ci = await this.decideCi(item, branch, check);
     const stop = ciStop(ci, branch, base);
@@ -1175,6 +1237,13 @@ export class Merger implements vscode.Disposable {
         reason: conflictsReason(outcome.files),
         started: new Date().toISOString(),
       };
+      if (auto) {
+        // Land, Resolving Conflicts (BL-247): no question; its agent's resolution is approved without asking.
+        await this.setMerge(id, { ...state, auto });
+        await this.startResolver(id);
+        await this.readQueue();
+        return 'stopped';
+      }
       if (batch) {
         await this.setMerge(id, state);
         await this.note(id, `${doing} stopped on conflicts in ${outcome.files.map((f) => `\`${f}\``).join(', ')}: resolve them with an agent, or cancel.`);
@@ -1198,7 +1267,7 @@ export class Merger implements vscode.Disposable {
       if (now && now !== check.tip) {
         await this.removeDir(dir);
         this.deps.output.appendLine(`Merge: ${branch} moved while you were asked (${check.tip.slice(0, 7)} → ${now.slice(0, 7)}): merging it again.`);
-        return this.doMerge(id, batch, o);
+        return this.doMerge(id, asked, o);
       }
       await this.setMerge(id, state);
       await this.startResolver(id);
@@ -1499,6 +1568,8 @@ export class Merger implements vscode.Disposable {
     const count = m.already ? 0 : Number((await runGit(['rev-list', '--count', range], { cwd: root }).catch(() => '0')).trim());
     const moved = linear ? await this.moveBranchTo(m.branch, m.commit) : '';
     const fixes = m.fixes?.length ? ` On top of it, the fix${m.fixes.length === 1 ? '' : 'es'} of the checks: ${m.fixes.map((f) => `"${f}"`).join(', ')}.` : '';
+    // Landed: its mark to land on its own goes (BL-247).
+    await this.markAutoLand(item.id, false);
     await this.deps.backlog.change(
       (d) => ({
         ...d,
@@ -1507,6 +1578,7 @@ export class Merger implements vscode.Disposable {
           const { merging: _m, ...rest } = i;
           return { ...rest, status: 'done' as const, ...(m.already ? {} : { merged: { into: m.base, commit: m.commit, date: new Date().toISOString() } }) };
         }),
+        // Landed: its mark to land on its own goes (BL-247).
       }),
       { by: 'Flotilla' },
     );
@@ -1814,7 +1886,7 @@ export class Merger implements vscode.Disposable {
         : `fix the merge (${m.reason ?? 'it stopped'})`;
     await this.note(
       id,
-      `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. ${m.auto ? 'Its resolution is approved without asking you (Land All, Resolving Conflicts), and lands after its checks.' : 'It reports here for you to approve.'}`,
+      `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. ${m.auto && !failedChecks ? `Its resolution is approved without asking you (${this.autoBy(id)}), and lands after its checks.` : 'It reports here for you to approve.'}`,
     );
     void run.done.then((result) => this.afterResolver(id, run, result.error, result.limit));
   }
@@ -1956,7 +2028,7 @@ export class Merger implements vscode.Disposable {
       const reason = `${agent} stopped before the merge was ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}${error ? ` (${error.slice(0, 200)})` : ''}`;
       await this.setMerge(id, { ...m, state: 'failed', reason });
       await this.note(id, `${reason} ${again} again, or cancel the merge.`);
-      if (m.auto) return this.resolvedInRun(id, 'failed');
+      if (m.auto && !m.checks) return this.autoEnded(id, 'failed');
       void vscode.window
         .showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`, 'Open')
         .then((c) => c && this.deps.openTicket(id));
@@ -1986,7 +2058,7 @@ export class Merger implements vscode.Disposable {
         this.deps.output.appendLine(`Merge: ${id}'s resolution not landed: ${e instanceof Error ? e.message : String(e)}`);
         return 'stopped' as const;
       });
-      return this.resolvedInRun(id, end);
+      return this.autoEnded(id, end);
     }
     void vscode.window
       .showInformationMessage(
@@ -1998,7 +2070,10 @@ export class Merger implements vscode.Disposable {
       .then((c) => c && this.deps.openTicket(id));
   }
 
-  /** The user approved the agent's resolution: the checks, then the fast-forward. auto: Land All, Resolving Conflicts did (BL-226). */
+  /**
+   * The user approved the agent's resolution: the checks, then the fast-forward. auto: Land All, Resolving Conflicts
+   * did (BL-226), or the ticket's own Land, Resolving Conflicts (BL-247).
+   */
   approveResolution(id: string, o: { auto?: boolean } = {}): Promise<MergeEnd> {
     return this.serial({ id, what: `${id}'s merge` }, () =>
       trackProgress('backlog', `Merging ${id}`, async () => {
@@ -2014,12 +2089,19 @@ export class Merger implements vscode.Disposable {
           void vscode.window.showWarningMessage(`The merge of ${id} isn't ${m.checks ? 'fixed' : 'resolved'}: ${result.problem}`);
           return 'stopped';
         }
-        recordEvent('merge-approved', { ticket: id, data: { by: o.auto ? 'Land All, Resolving Conflicts' : 'You' } });
+        recordEvent('merge-approved', { ticket: id, data: { by: o.auto ? this.autoBy(id) : 'You' } });
         const tip = await this.tip(m.branch);
         if (m.tip && tip && tip !== m.tip && !m.checks) return this.mergeMovedBranch(item, m, tip, result.merge, !!o.auto);
         if (m.train) return this.landResolved(item, m, result, !!o.auto);
-        await this.note(id, m.checks ? `You approved the fix of the checks on the merge.` : `You approved the resolution of the merge's conflicts.`);
-        return this.landApproved(item, m, result);
+        await this.note(
+          id,
+          o.auto
+            ? `Approved automatically (${this.autoBy(id)}): ${m.agent ?? 'the agent'}'s resolution of the merge's conflicts (its report is above). It lands after its checks.`
+            : m.checks
+              ? `You approved the fix of the checks on the merge.`
+              : `You approved the resolution of the merge's conflicts.`,
+        );
+        return this.landApproved(item, m, result, !!o.auto);
       }),
     );
   }
@@ -2036,7 +2118,7 @@ export class Merger implements vscode.Disposable {
     await this.setMerge(item.id, undefined);
     await this.note(
       item.id,
-      `${auto ? 'Approved automatically (Land All, Resolving Conflicts)' : 'You approved the resolution'}, but \`${m.branch}\` moved since its ${m.rebase ? 'rebase' : 'merge'} was made (it was at ${m.tip!.slice(0, 7)}, it's at ${tip.slice(0, 7)}): it's merged again as it is now, reusing the resolution where it still applies.`,
+      `${auto ? `Approved automatically (${this.autoBy(item.id)})` : 'You approved the resolution'}, but \`${m.branch}\` moved since its ${m.rebase ? 'rebase' : 'merge'} was made (it was at ${m.tip!.slice(0, 7)}, it's at ${tip.slice(0, 7)}): it's merged again as it is now, reusing the resolution where it still applies.`,
     );
     return this.doMerge(item.id, auto, { rerere: true });
   }
@@ -2071,7 +2153,7 @@ export class Merger implements vscode.Disposable {
   ): Promise<MergeEnd> {
     const { merge } = result;
     const approved = auto
-      ? `Approved automatically (Land All, Resolving Conflicts): ${m.agent ?? 'the agent'}'s resolution (its report is above)`
+      ? `Approved automatically (${this.autoBy(item.id)}): ${m.agent ?? 'the agent'}'s resolution (its report is above)`
       : 'You approved the resolution';
     const files = m.rebase
       ? await recordRebaseResolution(m.dir, { onto: m.baseTip, tip: `refs/heads/${m.branch}`, resolved: merge })
