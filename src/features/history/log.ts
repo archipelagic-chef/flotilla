@@ -84,6 +84,8 @@ export interface TicketCommit {
   hash: string;
   short: string;
   subject: string;
+  /** The rest of its message (BL-213); missing on commits read before it was kept. */
+  body?: string;
   author: string;
   /** ISO 8601. */
   date: string;
@@ -230,8 +232,8 @@ export async function ticketCommits(cwd: string, opts: { branches: string[]; bas
     mentioningCommits(cwd, opts.ids, opts.limit),
   ]);
   const byHash = new Map<string, TicketCommit>();
-  const add = (c: Pick<TicketCommit, 'hash' | 'short' | 'subject' | 'author' | 'date'>, branch?: string) => {
-    const known = byHash.get(c.hash) ?? { hash: c.hash, short: c.short, subject: c.subject, author: c.author, date: c.date, branches: [] };
+  const add = (c: Pick<TicketCommit, 'hash' | 'short' | 'subject' | 'body' | 'author' | 'date'>, branch?: string) => {
+    const known = byHash.get(c.hash) ?? { hash: c.hash, short: c.short, subject: c.subject, body: c.body, author: c.author, date: c.date, branches: [] };
     if (branch && !known.branches.includes(branch)) known.branches.push(branch);
     byHash.set(c.hash, known);
   };
@@ -245,5 +247,17 @@ export async function versionCommits(cwd: string, base: string, tip: string, lim
   const commits = await runGit(['-c', 'log.showSignature=false', 'log', `--format=${FORMAT}`, '-n', String(limit), `${base}..${tip}`, '--'], { cwd })
     .then(parseLog)
     .catch(() => []);
-  return commits.map((c) => ({ hash: c.hash, short: c.short, subject: c.subject, author: c.author, date: c.date, branches: [] }));
+  return commits.map((c) => ({ hash: c.hash, short: c.short, subject: c.subject, body: c.body, author: c.author, date: c.date, branches: [] }));
+}
+
+/** Which of the commits change one of the paths (a file and its name before a rename): one git process. */
+export async function commitsTouching(cwd: string, hashes: readonly string[], paths: readonly string[]): Promise<Set<string>> {
+  if (!hashes.length || !paths.length) return new Set();
+  const out = await runGit(['-c', 'log.showSignature=false', 'log', '--no-walk=unsorted', '--format=%H', ...hashes, '--', ...paths], { cwd }).catch(() => '');
+  return new Set(out.split('\n').filter(Boolean));
+}
+
+/** The commit to go through a ticket by commit from (BL-213): the latest that changes the file, else the latest. Newest first. */
+export function startCommit(commits: ReadonlyArray<{ hash: string }>, touching: ReadonlySet<string>): string | undefined {
+  return (commits.find((c) => touching.has(c.hash)) ?? commits[0])?.hash;
 }
