@@ -1493,6 +1493,22 @@ describe('agents lost to a reload (BL-87)', () => {
     expect(data.items[0].review).toBeUndefined();
     loop.dispose();
   });
+  it.each([
+    ['keeps a ticket started anyway (its date was there as it started) where it is', 'Not before: 2099-11-07', 'doing'],
+    ['sends one back when its agent moved the date', 'Not before: 2099-11-14', 'todo'],
+  ])('an agent ending its turn with "Not before:" %s (BL-261)', async (_name, after, status) => {
+    let finish: (r: object) => void = () => undefined;
+    spawn.mockImplementation(() => ({ sessionId: session, done: new Promise((resolve) => (finish = resolve)), stop() {} }));
+    description = 'Measure the week.\n\nNot before: 2099-11-07';
+    const revise = loop as unknown as { startRevision(item: unknown, task: unknown): Promise<void> };
+    await revise.startRevision(structuredClone(data.items[0]), { prompt: 'Measure it.', why: 'you started it' });
+    description = `Measure the week.\n\n${after}`;
+    finish({});
+    await tick();
+    expect(data.items[0].status).toBe(status);
+    expect(!!data.items[0].review).toBe(status === 'doing');
+    loop.dispose();
+  });
   it("a Check's Clean Up stops a lost agent's review with its way on, and no note of its own (BL-163)", async () => {
     const check = loop as unknown as { stopForCheck(id: string, what: 'lost' | 'paused-gone', reason: string): Promise<boolean> };
     expect(await check.stopForCheck('BL-1', 'paused-gone', 'gone')).toBe(false); // it isn't paused
