@@ -16,6 +16,7 @@ import {
   DESCRIPTION_SHAPE,
   KEEP_WHEN_DONE,
 } from './descriptionShape';
+import { mockupsRule } from './design';
 import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
 import {
@@ -251,6 +252,7 @@ explanations that change nothing don't need one.
 1. Find the ticket: the one the user names ("BL-3"), or one in \`backlog.json\` whose title and description cover the
    task. If none does, add one with \`start: true\` (see "Adding tickets").
 2. Claim it before you start: write an inbox file (below) with \`claim: BL-3\` and your branch. Read its ticket.
+   ${mockupsRule('<id>', path.join(backlogDir, '<id>') + path.sep)}
 3. Start every commit message with its id: \`BL-3: Fix the token refresh\`.
 4. Report in its ticket: append entries at the end of "## Activity", each headed
    \`### YYYY-MM-DD HH:MM · Agent <your name>\` (local time): your plan when you start, and what you did when you

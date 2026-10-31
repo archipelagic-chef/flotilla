@@ -6,7 +6,10 @@ import {
 import { ordinal } from './agentQueue';
 import { resumeWaits } from './mainDrift';
 import { mergeStage } from './mergeStage';
-import { parseReport } from './report';
+import {
+  parseReport,
+  picksPicture,
+} from './report';
 import type { TicketEntry } from './ticket';
 import {
   type QueuedStart,
@@ -60,6 +63,8 @@ export function needOf(item: BacklogItem & { queued?: QueuedStart }, activity: T
   if (turn?.mine) {
     if (r?.state === 'asking') {
       const report = activity.filter((e) => sameAgent(entryAgent(e.author), r.implementer)).at(-1);
+      // Mockups to pick before it's built (BL-257).
+      if (report && parseReport(report.body).questions.some(picksPicture)) return { kind: 'asking', since: r.since, line: 'Pick a design' };
       return { kind: 'asking', since: r.since, line: firstLine(report?.body ?? '') || `${r.implementer ?? 'The agent'} has a question` };
     }
     if (r?.state === 'approved') return { kind: 'approved', since: r.since, line: `Approved by ${r.byUser ? 'you' : r.reviewer}. Ready to merge.` };

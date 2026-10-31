@@ -20,6 +20,7 @@ import {
   answersIn,
   choose,
   defaultAnswer,
+  picksPicture,
 } from '../../features/backlog/report';
 import { summaryOf } from '../../features/backlog/ticket';
 import type {
@@ -109,8 +110,10 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
         const a = shown[qi];
         const other = q.options.length;
         const type = q.kind === 'several' ? 'checkbox' : 'radio';
+        // Mockups to pick (BL-257): each choice is its picture, clicked as a whole; the free answer is "None of these".
+        const pictures = picksPicture(q);
         return (
-          <fieldset class="question" key={qi}>
+          <fieldset class={`question${pictures ? ' pictures' : ''}`} key={qi}>
             <legend>{q.text}</legend>
             {q.kind === 'text' ? (
               interactive ? (
@@ -129,19 +132,24 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
               )
             ) : (
               <>
-                {q.options.map((o, i) => (
-                  <label class="choice" key={i}>
-                    <input
-                      type={type}
-                      name={`${name}-${qi}`}
-                      checked={a.picked.includes(i)}
-                      disabled={!interactive}
-                      onChange={() => update(qi, (x) => choose(q, x, i))}
-                    />
-                    <span>{o.text}</span>
-                    {o.recommended && <span class="recommended">recommended</span>}
-                  </label>
-                ))}
+                <div class={pictures ? 'picks' : 'choices'}>
+                  {q.options.map((o, i) => (
+                    <label class={`choice${o.image ? ' pick' : ''}${a.picked.includes(i) ? ' picked' : ''}`} key={i}>
+                      {o.image && <img src={o.image} alt={o.text} loading="lazy" />}
+                      <span class="pick-line">
+                        <input
+                          type={type}
+                          name={`${name}-${qi}`}
+                          checked={a.picked.includes(i)}
+                          disabled={!interactive}
+                          onChange={() => update(qi, (x) => choose(q, x, i))}
+                        />
+                        <span>{o.text}</span>
+                        {o.recommended && <span class="recommended">recommended</span>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
                 {q.kind !== 'yesno' && (
                   <label class="choice">
                     <input
@@ -151,7 +159,7 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
                       disabled={!interactive}
                       onChange={() => update(qi, (x) => choose(q, x, other))}
                     />
-                    <span>Other…</span>
+                    <span>{pictures ? 'None of these…' : 'Other…'}</span>
                   </label>
                 )}
                 {q.kind !== 'yesno' &&
@@ -160,7 +168,7 @@ function Needs({ report, name, live }: { report: ReportView; name: string; live:
                     <MarkdownBox
                       value={a.other}
                       setValue={(text) => update(qi, (x) => ({ ...x, other: text }))}
-                      placeholder="Your answer (Markdown)"
+                      placeholder={pictures ? 'What to change: the agent draws a new round (Markdown)' : 'Your answer (Markdown)'}
                       label={`Your answer to: ${q.text}`}
                       onSubmit={submit}
                       images={false}

@@ -1,5 +1,9 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import {
+  pickedMockup,
+  withDesign,
+} from '../../../features/backlog/design';
 import { entryAnchors } from '../../../features/backlog/ticket';
 import {
   mediaType,
@@ -23,7 +27,21 @@ export const commentsHandlers: Handlers<CommentsMessage> = {
       return;
     } else {
       // A comment starts no agent by itself (Discuss opens a chat for that, BL-188), unless you ask one to answer it (BL-127).
+      const before = await backlog.readTicket(item);
       await panels.addActivity(id, 'You', await panels.withReplyLine(item, m.text, m.replyTo));
+      // Picking a mockup (BL-257): the description's Mockups becomes its Design, the others are linked from here.
+      const mockup = pickedMockup(before.activity, m.text);
+      const design = mockup && withDesign(before.description, mockup.choice);
+      if (mockup && design) {
+        await panels.changeTicket(item, (t) => ({ ...t, title: item.title, description: design }));
+        await backlog.noteDescriptions({ id, before: before.description, by: 'You' });
+        const others = mockup.others.map((o) => `[${o.text}](${o.image})`).join(', ');
+        await panels.addActivity(
+          id,
+          'Flotilla',
+          `You picked ${mockup.choice.text}: it's the description's **Design** now.${others ? ` The others: ${others}.` : ''}`,
+        );
+      }
       if (m.ask && panels.answers) {
         const activity = (await backlog.readTicket(item)).activity;
         const anchor = entryAnchors(activity).at(-1);

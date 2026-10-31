@@ -24,6 +24,8 @@ export type QuestionKind = 'one' | 'several' | 'yesno' | 'text';
 export interface QuestionOption {
   text: string;
   recommended: boolean;
+  /** Its picture (BL-257: a mockup to pick), as the choice's Markdown links it (relative to the ticket's folder). */
+  image?: string;
 }
 
 export interface Question {
@@ -194,7 +196,7 @@ export function parseQuestion(inner: string): Question | undefined {
     if (choose) kind = KINDS[choose[1].trim().toLowerCase()] ?? kind;
     else if (option) {
       const recommended = /\s*\(recommended\)\s*$/i.test(option[1]);
-      options.push({ text: option[1].replace(/\s*\(recommended\)\s*$/i, '').trim(), recommended });
+      options.push(parseChoice(option[1].replace(/\s*\(recommended\)\s*$/i, '').trim(), recommended));
     } else if (!options.length) text.push(line);
   }
   const question = text.join(' ').trim();
@@ -211,6 +213,21 @@ export function parseQuestion(inner: string): Question | undefined {
           ]
         : options;
   return { text: question, kind: resolved, options: choices };
+}
+
+const CHOICE_IMAGE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/;
+
+/** A choice's text and its picture, if it names one ("- ![A: in the header](BL-7/mockup-a.svg) A"): the text, else its caption. */
+function parseChoice(line: string, recommended: boolean): QuestionOption {
+  const image = CHOICE_IMAGE.exec(line);
+  if (!image) return { text: line, recommended };
+  const text = line.replace(image[0], ' ').replace(/\s+/g, ' ').trim() || image[1].trim() || image[2];
+  return { text, recommended, image: image[2] };
+}
+
+/** A question whose choices are pictures (BL-257: mockups to pick): its free answer is "None of these". */
+export function picksPicture(q: Pick<Question, 'options'>): boolean {
+  return q.options.some((o) => o.image);
 }
 
 /** The user's comment after a report that answers it: the first of theirs (undefined: not answered yet). */

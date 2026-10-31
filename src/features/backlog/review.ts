@@ -7,6 +7,7 @@ import {
   DESCRIPTION_CHECK,
   KEEP_WHEN_DONE,
 } from './descriptionShape';
+import { DESIGN_CHECK } from './design';
 import { fixupNote } from './tidyNotes';
 import { parseReport } from './report';
 import {
@@ -358,6 +359,7 @@ export function reviewerPrompt(o: {
     `Don't change the code: only review. Report in the ticket: append an entry at the end of its "## Activity" section, a heading "### YYYY-MM-DD HH:MM · Agent ${o.reviewer}" (local time). Start the entry with your verdict as a line, exactly "Verdict: approved" or "Verdict: changes requested", then at most 3 lines right under it, with no blank line between (what's good, and what must change); then a blank line and the details: what must change, as a checklist, specific enough to act on; what you ran and what it gave (or why you didn't run it); and any files the run left changed in \`git status\`.`,
     `If the work changes what the user sees (the UI), the report must show it: a screenshot, before and after, or a demo GIF or video. When it doesn't, request one in your checklist.`,
     DEMO_CHECK,
+    DESIGN_CHECK,
     `Approve when it's good enough to merge: it does what the ticket asks, it's tested, and nothing important is wrong. Don't hold it up for matters of taste; mention those without requesting them.`,
     DESCRIPTION_CHECK,
     ...(epic ? [epic] : []),

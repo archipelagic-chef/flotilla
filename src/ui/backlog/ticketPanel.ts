@@ -71,9 +71,11 @@ import {
   repliesOf,
   showsDeleted,
 } from '../../features/backlog/commentEdits';
+import { designOf } from '../../features/backlog/design';
 import { compareRewrite } from '../../features/backlog/history';
 import {
   parseReport,
+  type Question,
   reportAnswer,
   takeMedia,
 } from '../../features/backlog/report';
@@ -1230,9 +1232,21 @@ export class TicketPanels implements vscode.Disposable {
       ...(ledBy.trim() ? { media: ledBy.trim() } : {}),
       asks: parts.asks,
       ...(parts.asks && parts.needs ? { needs: await renderMarkdown(parts.needs, webview, this.deps.backlog.dir, roots) } : {}),
-      questions: parts.questions,
+      questions: await Promise.all(parts.questions.map((q) => this.withPictures(q, webview, roots))),
       ...(answer !== undefined ? { answer } : {}),
     };
+  }
+
+  /** A question whose choices name pictures (BL-257: mockups), with each picture as the webview loads it (none it can't find). */
+  private async withPictures(q: Question, webview: vscode.Webview, roots: readonly string[]): Promise<Question> {
+    if (!q.options.some((o) => o.image)) return q;
+    const options = await Promise.all(
+      q.options.map(async ({ image, ...o }) => {
+        const media = image ? await resolveMedia(image, webview, this.deps.backlog.dir, roots).catch(() => undefined) : undefined;
+        return media && 'src' in media ? { ...o, image: media.src } : o;
+      }),
+    );
+    return { ...q, options };
   }
 
   /** The chats of agents started for an item (their first message names it), in its worktrees, oldest first. */
@@ -1622,7 +1636,8 @@ export class TicketPanels implements vscode.Disposable {
       } else {
         const ticket = await this.deps.backlog.readTicketCached(item);
         const attachments = await this.attachments(item, ticket.description, ticket.activity, panel.webview);
-        const done = whenItsDone(ticket.description);
+        // Folded, it shows its mockups too, while they wait for your pick, and then the Design picked (BL-257).
+        const done = [whenItsDone(ticket.description), designOf(ticket.description)].filter(Boolean).join('\n\n');
         send({
           ...base,
           description: ticket.description,

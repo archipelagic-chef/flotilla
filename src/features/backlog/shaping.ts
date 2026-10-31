@@ -107,6 +107,16 @@ export function isDiscussionChat(firstPrompt: string | undefined): boolean {
   return /^You are agent [A-Za-z0-9-]+, working on backlog item [A-Za-z0-9_-]+, discussing it with its owner/.test(firstPrompt?.trim() ?? '');
 }
 
+/**
+ * Mockups in a discussion (BL-257): for a ticket that changes the UI, the look is agreed in the chat before anyone
+ * builds it, with pictures in the description, as an implementer would ask for them in the activity.
+ */
+function discussMockups(id: string, ticket: string): string {
+  // Next to the ticket's file (no node:path here: the webview loads this module too).
+  const folder = `${ticket.replace(/[^/\\]*$/, '')}${id}/`;
+  return `When the ticket changes something the user sees or clicks (a view, a panel, a button, a flow) and its description has no **Design** yet, offer to agree on its look here: draw 2–3 small mockups (SVG, in ${folder}: mockup-a.svg, mockup-b.svg…, each showing the changed part in its real surroundings with the change marked), put them in the description under a line "**Mockups** (pick one in the Discuss chat):", side by side on one line, each captioned with how it differs (![A: Expand in the card's header](${id}/mockup-a.svg)), and ask in the chat which one to build. When the owner picks one, replace that Mockups section with "**Design** (you picked A: …; build and review against it):", the picked picture and what the owner said with it; when none fits, draw a new round from what they said.`;
+}
+
 /** The first message of a discussion's chat: who it is, what it does in the chat and in the ticket, and how it opens. */
 export function discussionPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; agent: string; ticket: string }): string {
   return [
@@ -115,6 +125,7 @@ export function discussionPrompt(o: { item: Pick<BacklogItem, 'id' | 'title'>; a
     `Its ticket is ${o.ticket}: Markdown with the title, the description, then an "## Activity" log of comments and reports. Read it first, with any images it links (paths relative to the ticket's folder).`,
     `Open the conversation now, without waiting for the owner: in a few lines, what you understood the ticket is for, what you checked in the code (with links like [src/a.ts:42](src/a.ts#L42)), and your first questions as a short numbered list. Then talk it through here, as in any chat: ask what you need to know; propose, don't assume.`,
     `As you agree on things, write them into the ticket's description at once (the title too, when it changes): the goal ("**When it's done:**" first), why, and the acceptance criteria as a checklist. Where it has a shape (a flow, a sequence, a structure), show it with a \`\`\`mermaid diagram next to the text it explains. Edit only the description, and only what's agreed; leave the rest of the file as it is, never rewrite the whole file, and don't write in the Activity while you talk.`,
+    discussMockups(o.item.id, o.ticket),
     `When this ticket builds on another's work, or reshapes the same feature as another ticket, add a line "Depends on: <its id>" to the description. Not when they merely change the same files.`,
     `When you think the ticket is ready to start, add a short "### Where to start" section at the end of the description, for the agent who'll do the work: the files and functions it touches (as links with lines) and the approach you agreed.`,
     `When the owner says the discussion is over, append one entry at the end of the ticket's "## Activity" section: a heading "### YYYY-MM-DD HH:MM · Agent ${o.agent}" (local time), then a short summary: "Discussed with you: agreed …; open …". When the ticket is ready to start, end it with the line "${READY_TO_START}". Then say in the chat that it's in the ticket.`,

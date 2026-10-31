@@ -200,6 +200,18 @@ h2 {
   max-width: 100%;
   border-radius: 3px;
 }
+/* Pictures on one line (BL-257: a ticket's mockups) sit side by side, sharing its width. */
+.rendered p:has(> img ~ img) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+.rendered p:has(> img ~ img) > img {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 360px;
+}
 /* Videos (BL-79): a player with its controls, as wide as the text at most. */
 .rendered video.media {
   display: block;
@@ -290,6 +302,40 @@ h2 {
   gap: 6px;
   padding: 2px 0;
   cursor: pointer;
+}
+.pick-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Mockups to pick (BL-257): the pictures side by side, each clicked as a whole. */
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+}
+.choice.pick {
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1 1 200px;
+  max-width: 360px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.choice.pick:hover {
+  border-color: var(--vscode-focusBorder);
+}
+.choice.pick.picked {
+  border-color: var(--vscode-focusBorder);
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.choice.pick > img {
+  width: 100%;
+  height: auto;
+  border-radius: 2px;
+  background: var(--vscode-editor-background);
 }
 .comment-box {
   margin-top: 4px;

@@ -35,6 +35,7 @@ import {
 } from '../features/backlog/backlog';
 import { tidyNotes } from '../features/backlog/tidyNotes';
 import type { LocalBacklog } from '../features/backlog/localBacklog';
+import { mockupsRule } from '../features/backlog/design';
 import { KEEP_WHEN_DONE } from '../features/backlog/descriptionShape';
 import type { RemoteIssue } from '../features/backlog/sources/source';
 import type { BacklogIntegrations } from './backlog/integrations';
@@ -811,6 +812,7 @@ export function agentPrompt(
     ...(mapNote(map) ? [mapNote(map)!] : []),
     `Work in this git worktree, on branch ${branch}. Commit your work there with clear messages, each starting with "${item.id}: " (a git hook refuses others); don't push.`,
     `Report in the ticket: append entries at the end of its "## Activity" section (add the section if it's missing), each a heading "### YYYY-MM-DD HH:MM · Agent ${agent}" (local time; sign every entry as Agent ${agent}, which links it to this chat) followed by your report in Markdown. ${REPORT_FORMAT} Report your plan when you start, and when you finish what you did, how to try it and what's left. Don't change the title. Keep the description what's to be done: when the user asks for more or for something else, work it into the description (usually as acceptance criteria). ${KEEP_WHEN_DONE}`,
+    mockupsRule(item.id, path.join(path.dirname(guide), item.id) + path.sep),
     PLAN_NOTE,
     `When the work is done, end your final report with a line "Ready for review." It's then reviewed (by another agent, or by the user); you may be asked to make changes.`,
     ...(level ? [level] : []),
