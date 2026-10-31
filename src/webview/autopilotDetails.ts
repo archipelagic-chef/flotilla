@@ -47,6 +47,7 @@ const KIND: Record<AutopilotQueued['kind'], string> = {
 function why(q: AutopilotQueued, a: AutopilotState, now: Date): string {
   if (a.waitingUntil) return `waits for Claude's usage limit (until ${shortTime(a.waitingUntil, now)})`;
   if (q.reason === 'memory') return 'waits for free memory';
+  if (q.reason === 'limit') return "waits for Claude's usage limit";
   return `waits for a free agent (the limit, ${a.max})`;
 }
 

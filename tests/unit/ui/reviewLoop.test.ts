@@ -1,4 +1,8 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -640,6 +644,69 @@ describe('the agent limit', () => {
     expect(started()).toHaveLength(1);
     expect(notes).toEqual(['BL-3: The limit reset: resumed the chat for agent Ada-3 to go on.']);
     loop.dispose();
+  });
+
+  describe("the account's usage limit, known to hold (BL-248)", () => {
+    // Imported as the loop imports them (the modules are reset for each test).
+    let accountLimit: typeof import('../../../src/features/backlog/accountLimit').accountLimit;
+    let events: typeof import('../../../src/features/metrics/events');
+    beforeEach(async () => {
+      ({ accountLimit } = await import('../../../src/features/backlog/accountLimit'));
+      events = await import('../../../src/features/metrics/events');
+    });
+    afterEach(() => accountLimit.lift());
+
+    it('queues a start by hand, saying when the limit lifts, and starts it then', async () => {
+      const reset = new Date(Date.now() + 60 * 60_000);
+      accountLimit.holdUntil(reset);
+      await loop.start('BL-1', true);
+      expect(started()).toHaveLength(0);
+      expect(loop.queuedFor('BL-1')).toMatchObject({ reason: 'limit', until: reset.toISOString(), place: 1 });
+      expect(notes.at(-1)).toMatch(
+        /^BL-1: Queued: Claude's usage limit holds until .+, and an agent takes this up when it lifts \(1st in line\)\. Prioritize tries it now anyway\.$/,
+      );
+      expect(await loop.pausedUntil()).toEqual(reset);
+
+      accountLimit.lift();
+      await settle();
+      expect(started()).toHaveLength(1);
+      expect(started()[0]).toContain('BL-1');
+      loop.dispose();
+    });
+
+    it("holds a paused agent whose own reset passed until the account's lifts, and counts its wait's minutes", async () => {
+      const log = fs.mkdtempSync(path.join(os.tmpdir(), 'events-'));
+      events.setEventLog(log);
+      const since = new Date(Date.now() - 90 * 60_000).toISOString();
+      data.items[2].review = {
+        round: 1,
+        state: 'paused',
+        reviewer: '',
+        paused: { until: at, known: true, since, phase: 'work', session: 'session-9', agent: 'Ada-3', resume: 'revising' },
+      };
+      accountLimit.holdUntil(new Date(Date.now() + 60 * 60_000));
+      await loop.resumePaused();
+      await settle();
+      expect(started()).toHaveLength(0);
+
+      accountLimit.lift();
+      await vi.waitFor(() => expect(started()).toHaveLength(1));
+      await events.eventsWritten();
+      events.setEventLog(undefined);
+      const lifted = (await events.readEvents(log)).filter((e) => e.kind === 'limit-lifted');
+      expect(lifted).toEqual([expect.objectContaining({ ticket: 'BL-3', data: { minutes: expect.any(Number) } })]);
+      expect((lifted[0].data as { minutes: number }).minutes).toBeGreaterThanOrEqual(89);
+      fs.rmSync(log, { recursive: true, force: true });
+      loop.dispose();
+    });
+
+    it('records when a pause on a known reset began', async () => {
+      await loop.start('BL-1');
+      finish[0]({ code: 1, limit: { until: new Date(Date.now() + 60 * 60_000), known: true, kind: 'usage' } } as never);
+      await settle();
+      expect(data.items[0].review).toMatchObject({ state: 'paused', paused: { known: true, since: expect.any(String) } });
+      loop.dispose();
+    });
   });
 
   const pauseOn = (n: number, until: string) =>

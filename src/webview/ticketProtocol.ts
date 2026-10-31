@@ -94,7 +94,9 @@ export type AgentChatView =
 
 /** A start that waits: why, its place in the queue, and the agents running now out of the limit. */
 export interface QueuedView {
-  reason: 'slot' | 'memory';
+  reason: 'slot' | 'memory' | 'limit';
+  /** When the account's usage limit lifts (reason limit), ISO 8601. */
+  until?: string;
   place: number;
   running: number;
   limit: number;

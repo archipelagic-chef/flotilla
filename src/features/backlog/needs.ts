@@ -91,12 +91,22 @@ export function resumeAsk(
 }
 
 /** A user's reply waiting for an agent (see agentQueue.ts): Prioritize starts it now. */
-export function queuedNeed(q: { reason: 'slot' | 'memory'; place: number; since?: string }): Need {
+export function queuedNeed(q: { reason: 'slot' | 'memory' | 'limit'; until?: string; place: number; since?: string }): Need {
   return {
     kind: 'queued',
     ...(q.since ? { since: q.since } : {}),
-    line: `Queued: an agent takes this up when ${q.reason === 'memory' ? "there's free memory" : 'one is free'} (${ordinal(q.place)} in line)`,
+    line: `Queued: an agent takes this up when ${queuedWhen(q)} (${ordinal(q.place)} in line)`,
   };
+}
+
+/** When a queued start goes on: there's free memory, an agent is free, or Claude's usage limit lifts (BL-248). */
+export function queuedWhen(q: { reason: 'slot' | 'memory' | 'limit'; until?: string }): string {
+  if (q.reason === 'memory') return "there's free memory";
+  if (q.reason !== 'limit') return 'one is free';
+  const at = q.until ? new Date(q.until) : undefined;
+  return at && !Number.isNaN(at.getTime())
+    ? `Claude's usage limit lifts (${at.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })})`
+    : "Claude's usage limit lifts";
 }
 
 /** Oldest waiting first; those whose start isn't known go last. */

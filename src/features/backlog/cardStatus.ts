@@ -7,6 +7,7 @@ import { conflictsOf } from './mainDrift';
 import { mergeLabel, unmergedWarning } from './merged';
 import { mergeStage } from './mergeStage';
 import { nextSteps, STEP } from './nextSteps';
+import { queuedWhen } from './needs';
 import { turnOf } from './turn';
 
 /**
@@ -130,7 +131,7 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         if (turn.queued && item.queued)
           return {
             text: `Queued for an agent review · ${ordinal(item.queued.place)} in line`,
-            tip: `A reviewer agent takes it up when ${item.queued.reason === 'memory' ? "there's free memory" : 'one is free'}.`,
+            tip: `A reviewer agent takes it up when ${queuedWhen(item.queued)}.`,
           };
         return { text: `In review · ${turn.who} reviewing${r?.round ? ` · ${rounds(r.round)}` : ''}`, working: true };
       case 'agent-revising':

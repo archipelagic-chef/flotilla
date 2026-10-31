@@ -65,6 +65,7 @@ import { readTranscript, type ChatUsage } from '../../features/chats/chats';
 import { transcriptBusy } from '../../features/backlog/busy';
 import { transcriptPath } from '../../features/chats/chats';
 import { retryDelay, type UsageLimit } from '../../features/backlog/limits';
+import { accountLimit } from '../../features/backlog/accountLimit';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import { agentPrompt } from '../commands';
@@ -154,6 +155,9 @@ interface Running {
 /** The start that waits: runs with the item as it is then. */
 type StartFn = (item: BacklogItem) => Promise<void>;
 
+/** Claude's longest usage limit: a reset said further off isn't one (see resumePaused). */
+const WEEK_MS = 7 * 24 * 3600_000;
+
 /** How long a chat that should be at work stays still before its agent counts as lost (see recoverLost). */
 const LOST_AFTER_MS = 2 * 60_000;
 
@@ -226,7 +230,14 @@ export class ReviewLoop implements vscode.Disposable {
     // Agents paused on a usage limit go on when it resets, and waiting starts go on when there's room (each minute: a
     // sleeping computer skips timers).
     this.ticker = setInterval(() => this.scheduleRetry(), 60_000);
+    // The account's limit lifted: the paused agents go on first (at the head of the queue), then the queued starts.
+    this.lifted = accountLimit.onLifted(() => {
+      this.scheduleRetry();
+      this.queue = this.queue.then(() => this.dispatch()).catch(() => undefined);
+    });
   }
+
+  private readonly lifted: { dispose(): void };
 
   /** Retries run in the same queue as the scans: they read and write backlog.json too. */
   private scheduleRetry(): void {
@@ -253,6 +264,7 @@ export class ReviewLoop implements vscode.Disposable {
     this.repoWatcher.dispose();
     clearInterval(this.ticker);
     clearTimeout(this.resumeTimer);
+    this.lifted.dispose();
     this.runs.forEach((r) => r.run.stop());
     this.changed.dispose();
     this.agentsChanged.dispose();
@@ -398,8 +410,10 @@ export class ReviewLoop implements vscode.Disposable {
    */
   private roomFor(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): boolean {
     const prioritized = this.priority === item.id;
-    // While Pause All holds, only the user's own starts run (BL-160).
+    // While Pause All holds, only the user's own starts run (BL-160). While the account's usage limit is known to hold,
+    // none does but a prioritized one (Prioritize tries it anyway): it would stop at once (BL-248).
     const may =
+      (prioritized || !accountLimit.holds()) &&
       (!!o.manual || !!o.all || !this.deps.pausedAll?.()) &&
       mayStartNow({
         manual: !!o.manual,
@@ -477,12 +491,13 @@ export class ReviewLoop implements vscode.Disposable {
   private async wait(item: BacklogItem, kind: StartKind, o: StartOptions, start: StartFn): Promise<void> {
     const before = this.waiting.get(item.id);
     const short = memoryShortage();
+    const held = accountLimit.heldUntil();
     // An agent paused to make room keeps its head of the queue, however often it waits again (see pauseFor).
     this.waiting.add({
       id: item.id,
       kind,
       manual: !!o.manual,
-      reason: short ? 'memory' : 'slot',
+      reason: held ? 'limit' : short ? 'memory' : 'slot',
       since: stateOf(item),
       at: before?.at ?? Date.now(),
       // So is one paused on a limit that lifted: those go on before any other work (BL-179).
@@ -494,9 +509,11 @@ export class ReviewLoop implements vscode.Disposable {
     const place = ordinal(this.waiting.place(item.id) ?? 1);
     await this.note(
       item.id,
-      short
-        ? `Queued: an agent takes this up when there's free memory (${place} in line).`
-        : `Queued: an agent takes this up when one is free (${place} in line).`,
+      held
+        ? `Queued: Claude's usage limit holds until ${held.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}, and an agent takes this up when it lifts (${place} in line). Prioritize tries it now anyway.`
+        : short
+          ? `Queued: an agent takes this up when there's free memory (${place} in line).`
+          : `Queued: an agent takes this up when one is free (${place} in line).`,
     );
   }
 
@@ -505,7 +522,8 @@ export class ReviewLoop implements vscode.Disposable {
    * one needs a free slot. Nothing starts while memory is short (the admitted starts count, see take).
    */
   private async dispatch(): Promise<void> {
-    if (this.deps.pausedAll?.()) return;
+    // Nothing starts into the account's usage limit: the queue goes on when it lifts (BL-248).
+    if (this.deps.pausedAll?.() || accountLimit.holds()) return;
     for (const w of this.waiting.ordered()) {
       if (memoryShortage()) break;
       if (!w.manual && this.running >= this.limit) continue;
@@ -575,7 +593,7 @@ export class ReviewLoop implements vscode.Disposable {
 
   /** Whether an automatic start may begin now: a slot is free, and nothing waits ahead of it. */
   canStartNew(): boolean {
-    return this.running < this.limit && this.waiting.size === 0 && !this.deps.pausedAll?.();
+    return this.running < this.limit && this.waiting.size === 0 && !this.deps.pausedAll?.() && !accountLimit.holds();
   }
 
   /**
@@ -603,7 +621,16 @@ export class ReviewLoop implements vscode.Disposable {
     const w = this.waiting.get(id);
     const place = this.waiting.place(id);
     if (!w || place === undefined) return undefined;
-    return { reason: w.reason, place, running: this.running, limit: this.limit, kind: w.kind, ...(w.at ? { since: new Date(w.at).toISOString() } : {}) };
+    const until = w.reason === 'limit' ? accountLimit.heldUntil() : undefined;
+    return {
+      reason: w.reason,
+      ...(until ? { until: until.toISOString() } : {}),
+      place,
+      running: this.running,
+      limit: this.limit,
+      kind: w.kind,
+      ...(w.at ? { since: new Date(w.at).toISOString() } : {}),
+    };
   }
 
   /** Whether the item is still in the state it had when its start was admitted (`since`, see admitStart). */
@@ -688,7 +715,9 @@ export class ReviewLoop implements vscode.Disposable {
         session: o.session,
         agent: o.agent,
         resume: o.resume,
-        ...(o.limit.known ? {} : { kind: o.limit.kind, tries: again?.tries ?? 0, since: again?.since ?? new Date().toISOString() }),
+        ...(o.limit.known ? {} : { kind: o.limit.kind, tries: again?.tries ?? 0 }),
+        // When the wait began, known or not: its limit-lifted has its minutes (BL-248).
+        since: again?.since ?? new Date().toISOString(),
       },
     }));
     if (!again) {
@@ -828,6 +857,9 @@ export class ReviewLoop implements vscode.Disposable {
    * BL-132) waits for a slot, not for the limit: the queue holds new work back for it.
    */
   async pausedUntil(): Promise<Date | undefined> {
+    // The account's limit known to hold (any agent's hit, BL-248): nothing starts before it lifts.
+    const held = accountLimit.heldUntil();
+    if (held) return held;
     const d = await this.deps.backlog.read();
     const times = d.items.flatMap((i) => {
       const p = i.review?.state === 'paused' ? i.review.paused : undefined;
@@ -847,8 +879,14 @@ export class ReviewLoop implements vscode.Disposable {
     const limitPaused = (i: BacklogItem) => i.review?.state === 'paused' && !!i.review.paused && !i.review.paused.byUser && !i.review.paused.for;
     const paused = (await this.deps.backlog.read()).items.filter(limitPaused);
     const first = paused[0]?.review?.paused;
-    if (!first) return undefined;
     const tried = new Date();
+    if (!first) {
+      // Held by a merge's or a note's agent's hit alone (BL-248): the probe lifts it when Claude takes work again.
+      if (!accountLimit.holds()) return undefined;
+      await probeLimit({ choice: agentChoice(undefined), output: this.deps.output });
+      const held = accountLimit.heldUntil();
+      return { tried, resumed: 0, ...(held ? { limited: held } : {}) };
+    }
     const limit = await probeLimit({ choice: agentChoice(paused[0], first.phase === 'review' ? 'review' : 'work'), output: this.deps.output });
     if (limit) {
       // A reset said now replaces the top one's; a guessed-at one keeps its wait (the user's try doesn't lengthen it).
@@ -943,6 +981,15 @@ export class ReviewLoop implements vscode.Disposable {
   async resumePaused(force?: string): Promise<void> {
     if (!force && this.deps.isLeader && !this.deps.isLeader()) return;
     const d = await this.deps.backlog.read();
+    // A known reset recorded before this window started (or by another) holds the account's limit too (BL-248): one
+    // within a week (Claude's longest limit), not a pause kept for longer on purpose.
+    for (const item of d.items) {
+      const p = item.review?.state === 'paused' ? item.review.paused : undefined;
+      const until = p?.known && p.until && !p.for && !p.byUser ? Date.parse(p.until) : NaN;
+      if (until - Date.now() <= WEEK_MS) accountLimit.holdUntil(new Date(until));
+    }
+    // While it holds, the paused agents wait for it to lift, a probe too (it would only hit it): see the constructor.
+    if (!force && accountLimit.holds()) return this.scheduleResume();
     // The pauses on a limit whose reset wasn't said, by the limit they wait on: one probe asks for them all.
     const guessed = new Map<string, Array<{ item: BacklogItem; p: NonNullable<ReviewState['paused']> }>>();
     for (const item of d.items) {
