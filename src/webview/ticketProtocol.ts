@@ -312,6 +312,8 @@ export interface TicketView {
    * done, unless discarded (BL-235).
    */
   dependsOn: Array<{ id: string; title: string; status: BacklogStatus; discarded?: boolean }>;
+  /** When its work can start ("Not before: 2026-11-07" in its description, BL-261), while that's to come (ISO 8601). */
+  notBefore?: string;
   /**
    * Its agent stopped without a question, to be resumed (BL-198): Resume goes on in its chat. after: the tickets its
    * report says it waits for, and whether each is merged.

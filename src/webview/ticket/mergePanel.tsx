@@ -5,6 +5,7 @@ import {
   unmergedWarning,
 } from '../../features/backlog/merged';
 import { waitsForSignIn } from '../../features/backlog/needs';
+import { heldNote } from '../../features/backlog/notBefore';
 import { mergeActions } from '../../features/backlog/mergeStates';
 import {
   capitalize,
@@ -509,7 +510,8 @@ export function MainState({ ticket }: { ticket: TicketView }) {
   const update = ticket.updateFromMain;
   // The tickets its agent said it waits for to be merged, to be resumed (BL-198).
   const resumeAfter = ticket.resume?.after ?? [];
-  if (!conflicts.length && !waiting.length && !dropped.length && !resumeAfter.length) return null;
+  const held = ticket.notBefore ? heldNote(new Date(ticket.notBefore)) : undefined;
+  if (!conflicts.length && !waiting.length && !dropped.length && !resumeAfter.length && !held) return null;
   const label = (s: BacklogStatus) => STATUSES.find((x) => x.status === s)?.label ?? s;
   return (
     <>
@@ -525,6 +527,11 @@ export function MainState({ ticket }: { ticket: TicketView }) {
           )}
         </div>
       ))}
+      {held && (
+        <div class="main-note">
+          <i class="codicon codicon-calendar" /> {held}
+        </div>
+      )}
       {waiting.length > 0 && (
         <div class="error-note main-note">
           <i class="codicon codicon-debug-pause" /> Waits for{' '}

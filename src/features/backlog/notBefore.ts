@@ -30,6 +30,11 @@ export function fromLabel(at: Date, now = Date.now()): string {
   return `From ${at.getDate()} ${MONTHS[at.getMonth()]}${year}${time}`;
 }
 
+/** The ticket view's note on a held ticket: "From 7 Nov: …" (its status, as the card's). */
+export function heldNote(at: Date, now = Date.now()): string {
+  return `${fromLabel(at, now)}: its work can't start before then ("Not before:" in its description). The autopilot starts it on that date; Start an Agent asks first.`;
+}
+
 /** The Flotilla entry on a ticket its agent found too early, moved back to To Do (the move is noted on its own). */
 export function heldEntry(at: Date, now = Date.now()): string {
   return `Its work can't start yet ("Not before:" in its description): it waits in To Do, and the autopilot starts it ${fromLabel(at, now).replace(/^From/, 'on')}.`;

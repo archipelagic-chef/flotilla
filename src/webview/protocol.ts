@@ -69,6 +69,8 @@ export interface BacklogItemView extends BacklogItem {
   queued?: { kind: 'reply' | 'review' | 'resume' | 'new'; reason: 'slot' | 'memory' | 'limit'; until?: string; place: number; since?: string };
   /** The tickets it depends on that aren't done ("Depends on: BL-12" in its description): it waits for them. */
   waitsFor?: string[];
+  /** When its work can start ("Not before: 2026-11-07" in its description, BL-261), while that's still to come (ISO 8601). */
+  notBefore?: string;
   /** The open tickets that wait for it (BL-238), directly or through a chain: its "Needs you" row says it holds them up. */
   holdsUp?: string[];
   /** Where each of those stands (BL-205): what it waits for you to do, or else how far it is ("in progress", "merge failed"). */

@@ -9,6 +9,7 @@ import {
   unmergedWarning,
 } from './merged';
 import { mergeStage } from './mergeStage';
+import { fromLabel } from './notBefore';
 import {
   nextSteps,
   STEP,
@@ -53,6 +54,7 @@ export type CardStatusItem = Pick<
   | 'startFailed'
   | 'clash'
   | 'waitsFor'
+  | 'notBefore'
   | 'waitsOn'
   | 'depsDiscarded'
   | 'parts'
@@ -187,6 +189,13 @@ export function cardStatus(item: CardStatusItem, agents: readonly CardAgent[], q
         return {
           text: `In discussion with ${item.shaping.agent}`,
           tip: "The autopilot doesn't take it while it's discussed: accepting it or starting it ends the discussion.",
+          next: START,
+        };
+      // Held for a date (BL-261): the autopilot takes it then; Start goes ahead now, after asking.
+      if (item.notBefore)
+        return {
+          text: fromLabel(new Date(item.notBefore), now),
+          tip: `Its work can't start before then ("Not before:" in its description): the autopilot takes it on that date.`,
           next: START,
         };
       // What it depended on was discarded (BL-235): it waits for it no more, and is taken like any other.
