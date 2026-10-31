@@ -273,7 +273,10 @@ export class NoteAgents implements vscode.Disposable {
     return nextNotes(await this.deps.notes.list(), busy, Date.now())?.[0].id;
   }
 
-  /** Starts agents for the notes that are due, while slots are free. */
+  /**
+   * Starts agents for the notes that are due, while slots are free. Asked for while one runs, it waits for that one and
+   * looks again: a change that one read too early to see (a limit lifted, a run ended) isn't missed.
+   */
   async tick(): Promise<void> {
     if (!this.deps.isLeader()) return;
     // Asked while one runs (a note's file written, a limit lifted), it looks again after it: that one may have read the
