@@ -121,6 +121,8 @@ describe('parseDemo', () => {
     expect(() => parseDemo('{"runsOnPush": "yes", "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
     expect(parseDemo('{"githubSignedOut": true, "steps": [{"wait": 1}]}', 'd').githubSignedOut).toBe(true);
     expect(() => parseDemo('{"githubSignedOut": 1, "steps": [{"wait": 1}]}', 'd')).toThrow(/true or false/);
+    expect(parseDemo('{"resetsTicket": "BL-18", "steps": [{"wait": 1}]}', 'd').resetsTicket).toBe('BL-18');
+    expect(() => parseDemo('{"resetsTicket": 18, "steps": [{"wait": 1}]}', 'd')).toThrow(/a ticket.s id/);
   });
 
   it('says what is wrong, and in which step', () => {

@@ -710,6 +710,46 @@ const TICKETS = [
       },
     ],
   },
+  {
+    id: 'BL-18',
+    title: 'Pin a ticket to the top of the backlog',
+    status: 'doing',
+    daysAgo: 1,
+    // Its agent drew two mockups before building and asks which (BL-257's demo: you pick one by its picture, and the
+    // description's Mockups becomes its Design). The demo puts it back as seeded before it plays (resetTicket).
+    description: [
+      "**When it's done:** a pin on a card keeps that ticket at the top of the backlog until it's unpinned.",
+      '',
+      '**Mockups** (pick one in the activity):',
+      '',
+      "![A: a pin button in the card's header](BL-18/mockup-a.svg) ![B: a Pinned group above the list](BL-18/mockup-b.svg)",
+      '',
+      'Acceptance criteria:',
+      '- [ ] A pinned ticket stays first, whatever its priority.',
+    ].join('\n'),
+    review: { round: 0, state: 'asking', implementer: 'Iris-4', reviewer: '' },
+    activity: [
+      {
+        ago: 20,
+        author: 'Agent Iris-4',
+        body: [
+          'Two ways to show a pinned ticket, drawn in the description before I build either.',
+          '',
+          'Needs from you: pick a design',
+          '',
+          '```question',
+          'Which should I build?',
+          "- ![A: a pin button in the card's header](BL-18/mockup-a.svg) A: a pin in the card's header (recommended)",
+          '- ![B: a Pinned group above the list](BL-18/mockup-b.svg) B: a Pinned group above the list',
+          '```',
+        ].join('\n'),
+      },
+    ],
+    files: {
+      'mockup-a.svg': mockup('a'),
+      'mockup-b.svg': mockup('b'),
+    },
+  },
 ];
 
 /** Writes files in a repo (or a worktree), then commits exactly those files. */
@@ -827,6 +867,27 @@ function picture(colour, label) {
 }
 
 /**
+ * A mockup of the backlog (BL-18's, for BL-257's demo): its cards, with the change marked in orange. `a`: a pin in
+ * the first card's header; `b`: a Pinned group above the list.
+ */
+function mockup(variant) {
+  const mark = '#f0a030';
+  const card = (y, title, pin) =>
+    `<rect x="16" y="${y}" width="288" height="36" rx="4" fill="#2a2d2e" stroke="#444"/><text x="28" y="${y + 23}" font-family="sans-serif" font-size="12" fill="#ccc">${title}</text>` +
+    (pin
+      ? `<rect x="262" y="${y + 6}" width="34" height="24" rx="4" fill="none" stroke="${mark}" stroke-width="2"/><text x="271" y="${y + 23}" font-size="13" fill="${mark}">📌</text>`
+      : '');
+  const body =
+    variant === 'a'
+      ? card(44, 'BL-4 Pin a ticket', true) + card(88, 'BL-2 Keep the scroll', false) + card(132, 'BL-3 Keep chats', false)
+      : `<rect x="10" y="38" width="300" height="56" rx="6" fill="none" stroke="${mark}" stroke-width="2" stroke-dasharray="5 3"/><text x="18" y="52" font-family="sans-serif" font-size="10" fill="${mark}">PINNED</text>` +
+        card(56, 'BL-4 Pin a ticket', false) +
+        card(108, 'BL-2 Keep the scroll', false) +
+        card(152, 'BL-3 Keep chats', false);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" rx="6" fill="#1e1e1e"/><text x="16" y="26" font-family="sans-serif" font-size="13" font-weight="bold" fill="#eee">Backlog</text>${body}</svg>\n`;
+}
+
+/**
  * A small recording: a window whose bar fills up, a frame each half second (`frames` of them), as a demo GIF looks
  * like in a ticket (BL-135).
  */
@@ -851,26 +912,47 @@ function recording(colour, frames) {
 /** backlog.json and the tickets: each ticket's file, its review's handled reports, and its description's fingerprint. */
 function writeBacklog(backlog, now) {
   fs.mkdirSync(backlog, { recursive: true });
-  const items = TICKETS.map((t) => {
-    const activity = t.activity.map((e) => ({ date: entryDate(new Date(now.getTime() - e.ago * 60_000)), author: e.author, body: e.body }));
-    const item = { id: t.id, title: t.title, status: t.status, created: new Date(now.getTime() - t.daysAgo * 86_400_000).toISOString() };
-    if (t.priority) item.priority = t.priority;
-    if (t.proposed) item.proposed = t.proposed;
-    if (t.parent) item.parent = t.parent;
-    if (t.links) item.links = t.links;
-    if (t.branch) item.branches = [t.branch];
-    if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
-    item.descriptionHash = descriptionHash(t.description);
-    for (const [name, text] of Object.entries(t.files ?? {})) {
-      fs.mkdirSync(path.join(backlog, t.id), { recursive: true });
-      fs.writeFileSync(path.join(backlog, t.id, name), text);
-    }
-    fs.writeFileSync(path.join(backlog, `${t.id}.md`), formatTicket({ title: t.title, description: t.description, activity }));
-    return item;
-  });
+  const items = TICKETS.map((t) => writeTicket(backlog, t, now));
   // Last: the backlog's presence says the playground is seeded.
   const data = { version: 1, next: TICKETS.length + 1, counters: { BL: TICKETS.length }, items };
   fs.writeFileSync(path.join(backlog, 'backlog.json'), `${JSON.stringify(data, null, 1)}\n`);
+}
+
+/** A ticket's file and its folder's files, as seeded; its item in backlog.json. */
+function writeTicket(backlog, t, now) {
+  const activity = t.activity.map((e) => ({ date: entryDate(new Date(now.getTime() - e.ago * 60_000)), author: e.author, body: e.body }));
+  const item = { id: t.id, title: t.title, status: t.status, created: new Date(now.getTime() - t.daysAgo * 86_400_000).toISOString() };
+  if (t.priority) item.priority = t.priority;
+  if (t.proposed) item.proposed = t.proposed;
+  if (t.parent) item.parent = t.parent;
+  if (t.links) item.links = t.links;
+  if (t.branch) item.branches = [t.branch];
+  if (t.review) item.review = { ...t.review, handled: activity.filter(actionable).map((e) => entryKey(t.id, e)) };
+  item.descriptionHash = descriptionHash(t.description);
+  for (const [name, text] of Object.entries(t.files ?? {})) {
+    fs.mkdirSync(path.join(backlog, t.id), { recursive: true });
+    fs.writeFileSync(path.join(backlog, t.id, name), text);
+  }
+  fs.writeFileSync(path.join(backlog, `${t.id}.md`), formatTicket({ title: t.title, description: t.description, activity }));
+  return item;
+}
+
+/**
+ * Puts a ticket back as seeded, in a playground that already is (BL-257: a demo that answers its question plays it
+ * again from the start). Nothing else of the backlog changes.
+ */
+export function resetTicket(dir, id, now = new Date()) {
+  const backlog = path.join(dir, '.flotilla', 'backlog');
+  const file = path.join(backlog, 'backlog.json');
+  const t = TICKETS.find((x) => x.id === id);
+  if (!t || !fs.existsSync(file)) return false;
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const item = writeTicket(backlog, t, now);
+  const at = data.items.findIndex((i) => i.id === id);
+  if (at < 0) return false;
+  data.items[at] = item;
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 1)}\n`);
+  return true;
 }
 
 // ---- chats (BL-123) ----

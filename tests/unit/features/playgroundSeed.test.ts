@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import {
   appendAgentTurn,
+  resetTicket,
   seedChats,
   seedCreating,
   seedPlayground,
@@ -81,6 +82,7 @@ const STATES: Record<string, [status: string, review?: string]> = {
   'BL-15': ['review', 'yours'],
   'BL-16': ['review', 'approved'],
   'BL-17': ['doing', 'asking'],
+  'BL-18': ['doing', 'asking'],
 };
 
 /** Each branch's commits ahead of main and behind it, and the status of its worktree, by ticket. */
@@ -102,7 +104,7 @@ describe('playground seed', () => {
     const { backlog } = seeded();
     const data = await backlog.read();
     expect(data.items.map((i) => i.id)).toEqual(Object.keys(STATES));
-    expect(data.counters).toEqual({ BL: 17 });
+    expect(data.counters).toEqual({ BL: 18 });
     for (const item of data.items) {
       const [status, review] = STATES[item.id];
       expect(ID_PATTERN.test(item.id), item.id).toBe(true);
@@ -218,6 +220,18 @@ describe('playground seed', () => {
     const before = await backlog.read();
     expect(seedPlayground(dir, new Date('2030-01-01T00:00:00'))).toBe(false);
     expect(await backlog.read()).toEqual(before);
+  });
+
+  it('puts a ticket back as seeded for a demo that answers it (BL-257), leaving the rest', async () => {
+    const { dir, backlog } = seeded();
+    const before = await backlog.read();
+    const file = path.join(dir, '.flotilla', 'backlog', 'BL-18.md');
+    const seededText = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, seededText.replace('**Mockups**', '**Design**'));
+    await backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === 'BL-18' ? { ...i, review: { ...i.review!, state: 'working' } } : i)) }));
+    expect(resetTicket(dir, 'BL-18', now)).toBe(true);
+    expect(fs.readFileSync(file, 'utf8')).toBe(seededText);
+    expect((await backlog.read()).items).toEqual(before.items);
   });
 
   it("seeds a record of BL-5's worktree being created by a window that's gone: it blocks nothing, for a Check to clear", () => {

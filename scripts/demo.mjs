@@ -678,6 +678,8 @@ async function show(mode, demo, out, still, display) {
   if (demo.runsOnPush) (await import('./playground-seed.mjs')).unpublishSeeded(playground);
   // A demo of the GitHub sign-in finds its tickets' pull requests not opened yet, every time it plays (BL-245).
   if (demo.githubSignedOut) (await import('./playground-seed.mjs')).forgetPullRequests(playground);
+  // A demo that answers a ticket's question finds it unanswered again, every time it plays (BL-257).
+  if (demo.resetsTicket) (await import('./playground-seed.mjs')).resetTicket(playground, demo.resetsTicket);
   const { ACTION_DELAY_MS, startFakeGitHub } = await import('./fake-github.mjs');
   const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS, runsOnPush: demo.runsOnPush });
   prepareProfile(github.url, { ...demo.settings, ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}) });

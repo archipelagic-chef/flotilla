@@ -77,12 +77,15 @@ export function parseDemo(text, name = 'demo') {
   if (demo.runsOnPush !== undefined && typeof demo.runsOnPush !== 'boolean') throw new Error(`${name}: "runsOnPush" is true or false`);
   // The fake GitHub starts signed out (BL-245), for a demo of the sign-in prompts.
   if (demo.githubSignedOut !== undefined && typeof demo.githubSignedOut !== 'boolean') throw new Error(`${name}: "githubSignedOut" is true or false`);
+  // The ticket a demo answers is put back as seeded before it plays (BL-257), for a demo that changes it.
+  if (demo.resetsTicket !== undefined && typeof demo.resetsTicket !== 'string') throw new Error(`${name}: "resetsTicket" is a ticket's id`);
   return {
     title: typeof demo.title === 'string' ? demo.title : name,
     steps,
     settings,
     runsOnPush: demo.runsOnPush === true,
     githubSignedOut: demo.githubSignedOut === true,
+    ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
   };
 }
 
