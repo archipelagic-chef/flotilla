@@ -602,6 +602,28 @@ h2 {
 .review-text {
   flex: 1;
 }
+/* The sentence and its buttons: the buttons stay beside the sentence while it keeps a readable width, else they move
+   to a row of their own under it, and wrap there (BL-255). */
+.review-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.review-body > .review-text {
+  flex: 1 1 220px;
+}
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.review-actions:empty {
+  display: none;
+}
 .review-panel.working {
   border-left-color: var(--working);
 }
