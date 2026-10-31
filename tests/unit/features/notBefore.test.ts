@@ -6,6 +6,7 @@ import {
 import {
   fromLabel,
   heldEntry,
+  heldNote,
   heldUntil,
   notBefore,
 } from '../../../src/features/backlog/notBefore';
@@ -44,5 +45,6 @@ describe('"Not before:" in a description (BL-261)', () => {
     expect(fromLabel(local(2026, 11, 7, 9, 0), now)).toBe('From 7 Nov 09:00');
     expect(fromLabel(local(2027, 1, 7), now)).toBe('From 7 Jan 2027');
     expect(heldEntry(local(2026, 11, 7), now)).toContain('the autopilot starts it on 7 Nov.');
+    expect(heldNote(local(2026, 11, 7), now)).toMatch(/^From 7 Nov: its work can't start before then/);
   });
 });

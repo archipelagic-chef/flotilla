@@ -119,6 +119,7 @@ import {
   dependsOn as dependsOnIds,
   isOpen,
 } from '../../features/backlog/mainDrift';
+import { heldUntil } from '../../features/backlog/notBefore';
 import { resumeAsk } from '../../features/backlog/needs';
 import type { MainSync } from './mainSync';
 import type { TicketChecker } from './ticketCheck';
@@ -1687,7 +1688,7 @@ export class TicketPanels implements vscode.Disposable {
     item: BacklogItem,
     description: string,
     activity: TicketEntry[],
-  ): Promise<Pick<TicketView, 'dependsOn' | 'updateFromMain' | 'resume'>> {
+  ): Promise<Pick<TicketView, 'dependsOn' | 'notBefore' | 'updateFromMain' | 'resume'>> {
     const data = await this.deps.backlog.read();
     const known = (ids: string[]) =>
       ids.flatMap((id) => {
@@ -1698,7 +1699,14 @@ export class TicketPanels implements vscode.Disposable {
     const asks = resumeAsk(item, activity);
     const resume = asks && { after: known(asks.waits).map((d) => ({ ...d, merged: d.status === 'done' || !!data.items.find((i) => i.id === d.id)?.merged })) };
     const base = this.mainSync && isOpen(item) && this.worktreesOf(item).length ? await this.mainSync.base() : undefined;
-    return { dependsOn, ...(resume ? { resume } : {}), ...(base ? { updateFromMain: { base: baseLabel(base) } } : {}) };
+    // Held for a date (BL-261): it says from when, as its card does.
+    const held = item.status === 'todo' || item.status === 'doing' ? heldUntil(description) : undefined;
+    return {
+      dependsOn,
+      ...(held ? { notBefore: held.toISOString() } : {}),
+      ...(resume ? { resume } : {}),
+      ...(base ? { updateFromMain: { base: baseLabel(base) } } : {}),
+    };
   }
 
   /** A ticket's view without its description and activity. */
