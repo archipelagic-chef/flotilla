@@ -18,6 +18,7 @@ import {
   writeFile,
 } from '../../helpers/gitRepo';
 import { eventsWritten, readEvents, setEventLog } from '../../../src/features/metrics/events';
+import { accountLimit } from '../../../src/features/backlog/accountLimit';
 
 /** What the mocked VS Code answers and records. */
 const ui = {
@@ -55,14 +56,19 @@ vi.mock('vscode', () => {
 });
 
 /** The resolving agent: never started for real; the test does its work in the merge's worktree. */
-const agents = { prompts: [] as string[], runs: [] as Array<{ cwd: string; resume?: string; stopped: boolean }> };
+const agents = {
+  prompts: [] as string[],
+  runs: [] as Array<{ cwd: string; resume?: string; stopped: boolean; finish?: (r: { code: number; error?: string; limit?: unknown }) => void }>,
+};
 vi.mock('../../../src/ui/backlog/agentRunner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/ui/backlog/agentRunner')>()),
   runAgentHeadless: (o: { prompt: string; cwd: string; resume?: string }) => {
     agents.prompts.push(o.prompt);
-    const r = { cwd: o.cwd, resume: o.resume, stopped: false };
+    const r: (typeof agents.runs)[number] = { cwd: o.cwd, resume: o.resume, stopped: false };
     agents.runs.push(r);
-    return { sessionId: o.resume ?? 'session', done: new Promise(() => undefined), stop: () => void (r.stopped = true) };
+    // It runs until the test finishes it (most never do).
+    const done = new Promise((resolve) => (r.finish = resolve));
+    return { sessionId: o.resume ?? 'session', done, stop: () => void (r.stopped = true) };
   },
 }));
 
@@ -520,6 +526,67 @@ describe('Merge to main', () => {
     expect((await item('BL-1')).merging!.paused).toBeUndefined();
     await merger.cancel('BL-1');
     merger.dispose();
+  });
+
+  describe("Claude's usage limit (BL-248)", () => {
+    afterEach(() => accountLimit.lift());
+
+    /** A merge that conflicts, waiting for its agent. */
+    const conflicted = async (o: { held?: boolean } = {}) => {
+      const s = await setup([approved('BL-1')]);
+      git(s.repo, 'checkout', '-q', '-b', 'feature/BL-1');
+      commit(s.repo, 'a.txt', 'one\n', 'BL-1: a');
+      git(s.repo, 'checkout', '-q', 'main');
+      commit(s.repo, 'a.txt', 'two\n', 'other: a');
+      agents.runs = [];
+      ui.answers = ['Resolve with Agent'];
+      if (o.held) accountLimit.holdUntil(new Date(Date.now() + 60 * 60_000));
+      expect(await s.merger.merge('BL-1')).toBe('stopped');
+      cleanup.push((await s.item('BL-1')).merging!.dir);
+      return s;
+    };
+
+    it("starts no merge agent while the account's limit is known to hold, and starts it when it lifts, counting the wait", async () => {
+      const log = makeTempDir();
+      setEventLog(log);
+      const { merger, item } = await conflicted({ held: true });
+      expect(agents.runs).toHaveLength(0);
+      // Asked again by hand, it waits on.
+      await merger.resolveWithAgent('BL-1');
+      expect(agents.runs).toHaveLength(0);
+      expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', limit: { known: true, since: expect.any(String) } });
+      expect((await item('BL-1')).merging!.reason).toMatch(/^Its agent starts when the limit lifts/);
+
+      accountLimit.lift();
+      await vi.waitFor(() => expect(agents.runs).toHaveLength(1));
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving' }));
+      expect((await item('BL-1')).merging!.limit).toBeUndefined();
+      expect(agents.runs[0].resume).toBeUndefined();
+      await eventsWritten();
+      setEventLog(undefined);
+      expect((await readEvents(log)).filter((e) => e.kind === 'limit-lifted')).toEqual([
+        expect.objectContaining({ ticket: 'BL-1', data: { minutes: expect.any(Number) } }),
+      ]);
+      await merger.cancel('BL-1');
+      merger.dispose();
+    });
+
+    it('a merge agent that hits the limit waits for it, its chat kept, and goes on there when it lifts', async () => {
+      const { merger, item } = await conflicted();
+      expect(agents.runs).toHaveLength(1);
+      agents.runs[0].finish!({ code: 1, error: 'limit', limit: { until: new Date(Date.now() + 60 * 60_000), known: true, kind: 'usage' } });
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', session: 'session', limit: { resume: true } }));
+      expect(merger.isRunning('BL-1')).toBe(false);
+
+      accountLimit.holdUntil(new Date(Date.now() + 60 * 60_000));
+      accountLimit.lift();
+      await vi.waitFor(() => expect(agents.runs).toHaveLength(2));
+      expect(agents.runs[1]).toMatchObject({ resume: 'session' });
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session' }));
+      expect((await item('BL-1')).merging!.limit).toBeUndefined();
+      await merger.cancel('BL-1');
+      merger.dispose();
+    });
   });
 
   it("a Check's Clean Up fails a merge whose agent runs nowhere, and clears one whose worktree is gone (BL-163)", async () => {

@@ -24,6 +24,12 @@ export interface MergeState {
   session?: string;
   /** ISO 8601: Pause All paused its agent (state resolving, BL-164); Resume All, or Resolve with Agent, resumes its chat. */
   paused?: string;
+  /**
+   * Its agent waits for Claude's limit (BL-248): to start, or, when it hit it (`session` kept), to go on in its chat.
+   * `until`: when it lifts, ISO 8601; `known`: the reset was said, not guessed; `since`: when the wait began; `resume`:
+   * it hit the limit, and goes on in its chat.
+   */
+  limit?: { until: string; since: string; known: boolean; resume?: boolean };
   reason?: string;
   /** The checks failed on the merge (state failed): their command, and the end of their output. */
   checks?: {

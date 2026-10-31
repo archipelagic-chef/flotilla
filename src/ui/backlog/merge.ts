@@ -91,6 +91,8 @@ import {
   runAgentHeadless,
 } from './agentRunner';
 import { recordEvent } from '../../features/metrics/events';
+import { accountLimit } from '../../features/backlog/accountLimit';
+import type { UsageLimit } from '../../features/backlog/limits';
 import {
   failedTests,
   recordCiStop,
@@ -236,9 +238,18 @@ export class Merger implements vscode.Disposable {
   /** A ticket's checks made progress (about once a second while they run): checksView has it. */
   readonly onDidChecks = this.checksChanged.event;
 
-  constructor(private readonly deps: MergeDeps) {}
+  constructor(private readonly deps: MergeDeps) {
+    // The account's limit lifted (BL-248): the merges whose agent waited on it start, or go on in their chats.
+    this.lifted = accountLimit.onLifted(() => void this.afterLimit().catch(showError));
+  }
+
+  private readonly lifted: { dispose(): void };
+  /** The merges waiting on a guessed-at limit (see waitForLimit): tried again at its time. */
+  private readonly limitTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   dispose(): void {
+    this.lifted.dispose();
+    this.limitTimers.forEach((t) => clearTimeout(t));
     clearTimeout(this.trainTimer);
     clearInterval(this.chainTimer);
     this.runs.forEach((r) => r.stop());
@@ -1728,6 +1739,10 @@ export class Merger implements vscode.Disposable {
     const m = item?.merging;
     if (!item || !m || this.runs.has(id)) return;
     if (!isMergeDir(m.dir, os.tmpdir())) throw new Error(`${id}'s merge isn't in a temporary merge worktree; cancel it.`);
+    // None starts into the account's usage limit, known to hold (BL-248): it waits, and starts when it lifts.
+    const held = accountLimit.heldUntil();
+    if (held) return this.waitForLimit(id, m, { until: held, known: true });
+    if (m.limit) return this.limitLifted(item, { ...m, limit: m.limit });
     // Paused by Pause All (BL-164): it goes on in its chat.
     if (m.paused && m.session) return this.resumeResolver(item, { ...m, session: m.session });
     const root = this.deps.mainRoot;
@@ -1801,7 +1816,57 @@ export class Merger implements vscode.Disposable {
       id,
       `Merging \`${m.branch}\` into \`${m.base}\`: opened a chat for agent ${agent}${describeChoice(choice)} to ${task}, in a temporary worktree. ${m.auto ? 'Its resolution is approved without asking you (Land All, Resolving Conflicts), and lands after its checks.' : 'It reports here for you to approve.'}`,
     );
-    void run.done.then((result) => this.afterResolver(id, run, result.error));
+    void run.done.then((result) => this.afterResolver(id, run, result.error, result.limit));
+  }
+
+  /**
+   * A merge's agent waits for Claude's limit (BL-248): before it starts (the account's is known to hold), or after it hit
+   * one (its chat kept, to go on in). It starts when the limit lifts (see afterLimit), or, for a guessed-at reset, at
+   * its time; the merge says so, once per wait.
+   */
+  private async waitForLimit(id: string, m: MergeState, limit: Pick<UsageLimit, 'until' | 'known'>, agent?: string): Promise<void> {
+    const until = limit.until.toISOString();
+    await this.setMerge(id, {
+      ...m,
+      state: 'failed',
+      limit: { until, known: limit.known, since: m.limit?.since ?? new Date().toISOString(), ...(agent || m.limit?.resume ? { resume: true } : {}) },
+      reason: `${agent ? `${agent} stopped on Claude's limit. It goes on in its chat` : 'Its agent starts'} when the limit lifts (${limit.until.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}).`,
+    });
+    clearTimeout(this.limitTimers.get(id));
+    if (!limit.known)
+      this.limitTimers.set(
+        id,
+        setTimeout(() => (this.limitTimers.delete(id), void this.resolveWithAgent(id).catch(showError)), Math.max(1000, limit.until.getTime() - Date.now())),
+      );
+    if (m.limit) return;
+    await this.note(
+      id,
+      agent
+        ? `${agent} stopped on Claude's limit while working on the merge: its chat is kept, and it goes on there when the limit lifts (${limit.until.toLocaleString()}).`
+        : `Claude's usage limit holds until ${limit.until.toLocaleString()}: the merge's agent starts when it lifts, rather than into it.`,
+    );
+  }
+
+  /** The limit a merge's agent waited on lifted: the wait is counted (BL-248), and the agent starts or goes on in its chat. */
+  private async limitLifted(item: BacklogItem, m: MergeState & { limit: NonNullable<MergeState['limit']> }): Promise<void> {
+    clearTimeout(this.limitTimers.get(item.id));
+    this.limitTimers.delete(item.id);
+    recordEvent('limit-lifted', {
+      ticket: item.id,
+      agent: m.agent,
+      data: { minutes: Math.round((Date.now() - Date.parse(m.limit.since)) / 600) / 100 },
+    });
+    const { limit: _limit, ...rest } = m;
+    // One that hit it goes on in its chat, as one Pause All paused does.
+    const went = m.limit.resume && rest.session ? { ...rest, state: 'resolving' as const, paused: rest.paused ?? m.limit.since } : rest;
+    await this.setMerge(item.id, went);
+    return this.startResolver(item.id);
+  }
+
+  /** The account's limit lifted: the merges whose agents waited on it go on (the leading window's, one at a time). */
+  private async afterLimit(): Promise<void> {
+    if (this.deps.isLeader?.() === false) return;
+    for (const i of (await this.deps.backlog.read()).items) if (i.merging?.limit && !this.runs.has(i.id)) await this.resolveWithAgent(i.id);
   }
 
   /** A merge's agent Pause All paused, resumed in its chat in the merge's worktree (BL-164). */
@@ -1820,10 +1885,10 @@ export class Merger implements vscode.Disposable {
       track: { ticket: id, agent, role: 'merge' },
     });
     this.runs.set(id, run);
-    const { paused: _paused, ...rest } = m;
+    const { paused: _paused, limit: _limit, ...rest } = m;
     await this.setMerge(id, { ...rest, state: 'resolving', session: run.sessionId });
     await this.note(id, `Merging \`${m.branch}\` into \`${m.base}\`: resumed ${agent} in its chat, where it was paused.`);
-    void run.done.then((result) => this.afterResolver(id, run, result.error));
+    void run.done.then((result) => this.afterResolver(id, run, result.error, result.limit));
   }
 
   /**
@@ -1877,12 +1942,14 @@ export class Merger implements vscode.Disposable {
     return [...this.liveChecks.keys()];
   }
 
-  private async afterResolver(id: string, run: AgentRun, error: string | undefined): Promise<void> {
+  private async afterResolver(id: string, run: AgentRun, error: string | undefined, limit?: UsageLimit): Promise<void> {
     if (this.runs.get(id) !== run) return; // stopped
     this.runs.delete(id);
     const m = (await this.item(id))?.merging;
     if (!m) return;
     const agent = m.agent ?? 'The agent';
+    // Stopped on a limit, it waits for it as a ticket's agent does, and goes on in its chat (BL-248).
+    if (limit) return this.waitForLimit(id, { ...m, session: run.sessionId }, limit, agent);
     const again = m.checks ? 'Fix with Agent' : 'Resolve with Agent';
     const result = await this.resultOf(m, id).catch((e: unknown) => ({ problem: e instanceof Error ? e.message : String(e) }));
     if ('problem' in result) {
