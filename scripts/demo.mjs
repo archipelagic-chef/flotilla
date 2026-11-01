@@ -691,7 +691,7 @@ async function show(mode, demo, out, still, display) {
   // A month of events up to now, for the Metrics view (BL-158).
   seedEvents(playground);
   // Two improvement reviews, the next one not due yet, for the Metrics view's Reviews (BL-177).
-  seedReviews(playground);
+  seedReviews(playground, new Date(), demo.reviewsDaysAgo);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 

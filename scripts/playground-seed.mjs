@@ -1430,14 +1430,14 @@ function localDay(at) {
 /**
  * Seeds two improvement reviews (BL-177's Reviews in the Metrics view), 3 and 10 days before now, so the next isn't
  * due yet (none starts as the window opens): each with a diagram, a link to a file at its lines and a ticket
- * reference, as a review agent writes them. Written again on every call, in place of the reviews there were. Returns
- * the days written.
+ * reference, as a review agent writes them; a demo may seed them older (`reviewsDaysAgo`), so one is due. Written again
+ * on every call, in place of the reviews there were. Returns the days written.
  */
-export function seedReviews(dir, now = new Date()) {
+export function seedReviews(dir, now = new Date(), daysAgo = [3, 10]) {
   const reviews = path.join(dir, '.flotilla', 'backlog', 'reviews');
   fs.rmSync(reviews, { recursive: true, force: true });
   fs.mkdirSync(reviews, { recursive: true });
-  const days = [3, 10].map((d) => localDay(new Date(now.getTime() - d * 86_400_000)));
+  const days = daysAgo.map((d) => localDay(new Date(now.getTime() - d * 86_400_000)));
   const [latest, earlier] = days;
   fs.writeFileSync(
     path.join(reviews, `${latest}.md`),

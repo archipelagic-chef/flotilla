@@ -27,6 +27,7 @@ export function parseDemo(
   ciPasses: boolean;
   githubSignedOut: boolean;
   resetsTicket?: string;
+  reviewsDaysAgo?: number[];
 };
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];
