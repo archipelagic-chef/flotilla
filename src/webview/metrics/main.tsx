@@ -50,6 +50,8 @@ function App() {
       openTicket={(ticket) => vscode.postMessage({ type: 'metricsOpen', ticket })}
       openChat={(session, cwd) => vscode.postMessage({ type: 'metricsOpenChat', session, ...(cwd ? { cwd } : {}) })}
       wide
+      openReview={(day) => vscode.postMessage({ type: 'metricsReview', day })}
+      reviewNow={() => vscode.postMessage({ type: 'metricsReviewNow' })}
     />
   );
 }

@@ -643,8 +643,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     commonDir: location.commonDir,
     mainRoot: location.mainRoot,
     output,
+    extensionUri: context.extensionUri,
+    reference: folder.uri,
   });
   context.subscriptions.push(improvement);
+  metrics.reviews = improvement;
   registerAll(context.subscriptions, metricsCommands({ backlog, repository, metrics, improvement, output }));
   context.subscriptions.push(
     autopilot,

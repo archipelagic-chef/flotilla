@@ -340,3 +340,73 @@
 .spend-over-time .metrics-column .stack span:last-child {
   border-radius: 2px 2px 0 0;
 }
+
+/* The improvement reviews (BL-177): Review Now and when the next is due, then the reviews, newest first. */
+.metrics-reviews-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.metrics .metrics-review-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 2px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.metrics .metrics-review-now:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.metrics-reviews-next,
+.metrics-reviews-running {
+  color: var(--vscode-descriptionForeground);
+}
+
+.metrics-reviews-refused {
+  margin: 6px 0 0;
+  color: var(--vscode-errorForeground);
+}
+
+.metrics-reviews-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.metrics .metrics-reviews-list button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.metrics .metrics-reviews-list button:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.metrics-reviews-list .day {
+  flex: none;
+  min-width: 80px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-reviews-list .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metrics .metrics-reviews-all {
+  margin-top: 4px;
+  padding: 2px 6px;
+  color: var(--vscode-textLink-foreground);
+}

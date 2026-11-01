@@ -744,6 +744,8 @@ export function App() {
         openTicket={(ticket) => send({ type: 'metricsOpen', ticket })}
         openChat={(session, cwd) => send({ type: 'metricsOpenChat', session, ...(cwd ? { cwd } : {}) })}
         openEditor={() => send({ type: 'metricsEditor', period })}
+        openReview={(day) => send({ type: 'metricsReview', day })}
+        reviewNow={() => send({ type: 'metricsReviewNow' })}
       />
     );
   } else if (tool === 'overview') {
