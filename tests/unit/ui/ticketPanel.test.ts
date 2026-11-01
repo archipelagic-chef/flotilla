@@ -288,14 +288,15 @@ describe('Expand in Changes (BL-171)', () => {
   const commits = [{ hash: 'b'.repeat(40), short: 'bbbbbbb', subject: 'Second', author: 'A', date: '2026-10-25T10:00:00Z', branches: [] }];
   function expandable() {
     const showTicketChanges = vi.fn(async () => undefined);
-    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { showTicketChanges } }) as ReturnType<typeof panelsWith> & {
+    const showTicketCommits = vi.fn(async () => undefined);
+    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { showTicketChanges, showTicketCommits } }) as ReturnType<typeof panelsWith> & {
       changesShown: () => Promise<unknown>;
       work: () => Promise<unknown>;
       ticketVc: (id: string) => Promise<unknown>;
     };
     panels.changesShown = async () => change;
     panels.work = async () => ({ commits });
-    return { panels, showTicketChanges };
+    return { panels, showTicketChanges, showTicketCommits };
   }
 
   it("opens the sidebar's Version Control on the ticket's Changes in the file's worktree, that file selected", async () => {
@@ -324,6 +325,22 @@ describe('Expand in Changes (BL-171)', () => {
     await (panels as unknown as { openTicketChange: (id: string, group: number, path: string) => Promise<void> }).openTicketChange('BL-1', 0, 'src/reload.js');
     expect(t.reveal).toHaveBeenCalled();
     expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showFull', group: 0, path: 'src/reload.js' });
+  });
+
+  it("goes By commit: the tab at the latest commit, the sidebar on the ticket's commits there (BL-213)", async () => {
+    const { panels, showTicketCommits } = expandable();
+    const t = tab();
+    await panels.onMessage('BL-1', t, { type: 'byCommit', group: 0, path: 'src/reload.js' });
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showCommit', hash: commits[0].hash });
+    expect(showTicketCommits).toHaveBeenCalledWith(ws.key, 'BL-1', commits[0].hash);
+  });
+
+  it('shows a commit picked in the sidebar in the tab (BL-213)', () => {
+    const { panels } = expandable();
+    const t = tab();
+    panels.panels.set('BL-1', t);
+    (panels as unknown as { pickTicketCommit: (id: string, hash: string) => void }).pickTicketCommit('BL-1', commits[0].hash);
+    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showCommit', hash: commits[0].hash });
   });
 
   it("gives Version Control the ticket's title, Changes and commits", async () => {

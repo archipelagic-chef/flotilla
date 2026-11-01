@@ -474,6 +474,12 @@ export function App() {
           setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
+        case 'showTicketCommits':
+          setActive(m.key);
+          update((prev) => ({ ...prev, tool: 'vc', vcView: 'ticketCommits' }));
+          if (m.hash) setTicketCommit((prev) => ({ ...prev, [m.ticket]: m.hash! }));
+          send({ type: 'ticketVc', id: m.ticket });
+          return;
         case 'leaveTicketChanges':
           update(backFromTicketChanges);
           return;
@@ -667,7 +673,10 @@ export function App() {
           ws={ws}
           view={ticketView}
           selected={ticketCommit[ticket.id]}
-          select={(hash) => setTicketCommit((prev) => ({ ...prev, [ticket.id]: hash }))}
+          select={(hash) => {
+            setTicketCommit((prev) => ({ ...prev, [ticket.id]: hash }));
+            send({ type: 'pickTicketCommit', id: ticket.id, hash });
+          }}
           files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
           requestFiles={requestCommitFiles}
         />

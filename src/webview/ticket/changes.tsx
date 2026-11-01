@@ -34,7 +34,7 @@ const MAX_HEIGHT = 440;
 const MAX_HEIGHT_DIFFS = 640;
 
 /** The inline diffs' replies (readChangeDiff), by request. */
-export const changeDiffReplies = new Map<number, (diff: FileDiff) => void>();
+export const changeDiffReplies = new Map<number, (diff: FileDiff, file?: ChangedFile) => void>();
 let nextDiff = 1;
 
 function Counts({ added, deleted, binary }: { added: number; deleted: number; binary?: boolean }) {

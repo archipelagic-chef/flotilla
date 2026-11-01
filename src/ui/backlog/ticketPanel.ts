@@ -90,7 +90,9 @@ import {
   gatherAttachments,
 } from '../../features/backlog/attachments';
 import {
+  commitsTouching,
   movesSince,
+  startCommit,
   ticketCommits,
   versionCommits,
 } from '../../features/history/log';
@@ -247,7 +249,9 @@ export interface TicketDeps {
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
   /** Shows the ticket's Changes in a worktree's Version Control in the sidebar, that file selected (BL-171). */
   showTicketChanges(key: string, ticket: string, path: string): Promise<void>;
-  /** Back from an expanded file (BL-211): the sidebar shows the Backlog again, if it's still on a ticket's Changes. */
+  /** Shows the ticket's commits in a worktree's Version Control in the sidebar, at that commit (By commit, BL-213). */
+  showTicketCommits(key: string, ticket: string, hash?: string): Promise<void>;
+  /** Back from an expanded file (BL-211): the sidebar shows the Backlog again, if it's still on a ticket's Changes or commits. */
   leaveTicketChanges(): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
@@ -841,6 +845,32 @@ export class TicketPanels implements vscode.Disposable {
     if (!g?.files.some((f) => f.path === path)) return;
     const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
     if (ws) await this.deps.showTicketChanges(ws.key, item.id, path);
+  }
+
+  /**
+   * By commit on the file expanded in the ticket's tab (BL-213): the tab shows the file in the latest of the ticket's
+   * commits that changes it (else the latest), and the sidebar follows, its Version Control on the ticket's commits at
+   * that one, to step through them.
+   */
+  async byCommit(item: BacklogItem, panel: vscode.WebviewPanel, group: number, path: string): Promise<void> {
+    const g = (await this.changesShown(item)).groups[group];
+    const f = g?.files.find((x) => x.path === path);
+    if (!g || !f) return;
+    const { commits } = await this.work(item);
+    const touching = await commitsTouching(
+      g.dir,
+      commits.map((c) => c.hash),
+      f.origPath ? [f.path, f.origPath] : [f.path],
+    );
+    const hash = startCommit(commits, touching);
+    void panel.webview.postMessage({ type: 'showCommit', hash } satisfies TicketHostMessage);
+    const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
+    if (ws) await this.deps.showTicketCommits(ws.key, item.id, hash);
+  }
+
+  /** A commit picked in the sidebar's ticket commits (BL-213): the ticket's tab, if open, shows its expanded file in it. */
+  pickTicketCommit(id: string, hash: string): void {
+    void this.panels.get(id)?.webview.postMessage({ type: 'showCommit', hash } satisfies TicketHostMessage);
   }
 
   /** A ticket as the sidebar's Version Control shows it (BL-171): its changes and commits; undefined when there's no such item. */

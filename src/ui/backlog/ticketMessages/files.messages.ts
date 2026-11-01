@@ -12,6 +12,10 @@ export type FilesMessage =
   | { type: 'expandChange'; group: number; path: string }
   /** Back from the expanded file (BL-211): the sidebar shows the Backlog again, if it's still where Expand left it. */
   | { type: 'collapseChange' }
+  /** By commit on the expanded file (BL-213): the sidebar's Version Control on the ticket's commits, at the one to start from (answered with showCommit). */
+  | { type: 'byCommit'; group: number; path: string }
+  /** The expanded file as one of the ticket's commits changed it (BL-213), all of it (answered with changeDiff). */
+  | { type: 'readCommitDiff'; requestId: number; group: number; path: string; hash: string }
   /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
   | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
   /** Open All Changes: those the path filter leaves (filter, BL-174), else all. */

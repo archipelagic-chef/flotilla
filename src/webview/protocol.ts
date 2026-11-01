@@ -318,7 +318,9 @@ export type HostMessage =
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** Expand in a ticket's Changes (BL-171): Version Control on the ticket's Changes in its worktree, that file selected. */
   | { type: 'showTicketChanges'; key: string; ticket: string; path: string }
-  /** Back from an expanded file (BL-211): the Backlog, if Version Control is still on a ticket's Changes. */
+  /** By commit on an expanded file (BL-213): Version Control on the ticket's commits in its worktree, at that commit. */
+  | { type: 'showTicketCommits'; key: string; ticket: string; hash?: string }
+  /** Back from an expanded file (BL-211): the Backlog, if Version Control is still on a ticket's Changes or commits. */
   | { type: 'leaveTicketChanges' }
   /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
@@ -498,6 +500,8 @@ export type WebviewMessage =
   | { type: 'ticketVc'; id: string }
   /** A file of a ticket's Changes in the diff editor (group: its index in the ticket's change). */
   | { type: 'openTicketChange'; id: string; group: number; path: string }
+  /** A commit picked in Version Control's ticket commits (BL-213): the ticket's expanded file shows it, when By commit is on. */
+  | { type: 'pickTicketCommit'; id: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
   | ({ type: 'ci' } & CiRequest)

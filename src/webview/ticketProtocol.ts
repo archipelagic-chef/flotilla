@@ -458,8 +458,10 @@ export type TicketHostMessage =
   | { type: 'ci'; ci: TicketCiView }
   /** A run's whole log, for Show All (BL-169). */
   | { type: 'checksLog'; requestId: number; text: string }
-  /** A file's inline diff (BL-171), for readChangeDiff. */
-  | { type: 'changeDiff'; requestId: number; diff: FileDiff };
+  /** A file's inline diff (BL-171), for readChangeDiff; for readCommitDiff, the file as the commit changed it too. */
+  | { type: 'changeDiff'; requestId: number; diff: FileDiff; file?: ChangedFile }
+  /** The commit the expanded file shows By commit (BL-213): where it starts, or the one picked in the sidebar; none: the ticket has no commits. */
+  | { type: 'showCommit'; hash?: string };
 
 /** A ticket's Discuss pane (BL-241): its agent, its chat, and whether it was summarized (Done) or paused. */
 export interface DiscussionView {

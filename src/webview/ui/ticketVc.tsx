@@ -126,7 +126,10 @@ export function TicketChangesBody({
   );
 }
 
-/** The ticket's commits, oldest first, one at a time: Previous and Next step through them; the list jumps. */
+/**
+ * The ticket's commits, oldest first, one at a time, each with its whole message: Previous and Next step through them;
+ * the list jumps. By commit in the ticket's tab (BL-213) opens it, and follows the commit picked here.
+ */
 export function TicketCommitsBody({
   ws,
   view,
@@ -169,6 +172,7 @@ export function TicketCommitsBody({
       </div>
       <div class="ticket-commit">
         <div class="ticket-commit-subject">{commit.subject}</div>
+        {commit.body && <div class="ticket-commit-body">{commit.body}</div>}
         <div class="commit-meta">
           <span>{commit.author}</span>
           <span data-tip={date.toLocaleString()}>{ago(commit.date)}</span>

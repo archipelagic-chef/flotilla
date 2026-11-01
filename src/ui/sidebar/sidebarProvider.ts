@@ -148,6 +148,7 @@ const LOG_PAGE = 50;
 export interface TicketVc {
   ticketVc(id: string): Promise<TicketVcView | undefined>;
   openTicketChange(id: string, group: number, path: string): Promise<void>;
+  pickTicketCommit(id: string, hash: string): void;
 }
 
 export interface SidebarDeps {
@@ -790,7 +791,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'showTicketChanges', key, ticket, path });
   }
 
-  /** Back from an expanded file (BL-211): the sidebar's page shows the Backlog, if it's still on a ticket's Changes. */
+  /** Shows a worktree's Version Control on its ticket's commits, at that one (By commit in the ticket, BL-213). */
+  async showTicketCommits(key: string, ticket: string, hash?: string): Promise<void> {
+    await this.showKeepingFocus();
+    this.act({ type: 'showTicketCommits', key, ticket, hash });
+  }
+
+  /** Back from an expanded file (BL-211): the sidebar's page shows the Backlog, if it's still on a ticket's Changes or commits. */
   async leaveTicketChanges(): Promise<void> {
     this.act({ type: 'leaveTicketChanges' });
   }
@@ -1004,6 +1011,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'openTicketChange':
         await this.tickets?.openTicketChange(m.id, m.group, m.path);
+        return;
+      case 'pickTicketCommit':
+        this.tickets?.pickTicketCommit(m.id, m.hash);
         return;
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);

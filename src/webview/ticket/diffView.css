@@ -27,6 +27,31 @@
 .diff-view-back:hover {
   background: var(--vscode-button-hoverBackground);
 }
+/* Whole change / By commit (BL-213): two buttons as one switch. */
+.diff-view-mode {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 2px;
+  overflow: hidden;
+}
+.diff-view-mode button {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 0;
+  color: var(--vscode-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+.diff-view-mode button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+/* On as VS Code's toggles are (Match Case and the like). */
+.diff-view-mode button.on {
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  background: var(--vscode-inputOption-activeBackground, var(--vscode-toolbar-activeBackground));
+  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
+}
 .diff-view-crumbs {
   display: flex;
   align-items: center;

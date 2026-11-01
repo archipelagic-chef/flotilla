@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
 import { openChangeEntries } from '../../../core/diff/openDiff';
+import { commitFileDiff } from '../../../features/diffs/commitFileDiff';
 import {
   fileDiff,
   WHOLE_FILE,
@@ -66,6 +67,21 @@ export const filesHandlers: Handlers<FilesMessage> = {
   },
   collapseChange: async ({ panels }) => {
     await panels.deps.leaveTicketChanges();
+  },
+  byCommit: async ({ item, panel, panels }, m) => {
+    await panels.byCommit(item, panel, m.group, m.path);
+  },
+  readCommitDiff: async ({ item, panel, panels }, m) => {
+    const g = (await panels.changesShown(item)).groups[m.group];
+    const f = g?.files.find((x) => x.path === m.path);
+    const { diff, file } =
+      !g || !f
+        ? { diff: { note: 'No longer in its changes.' }, file: undefined }
+        : await commitFileDiff(g.dir, m.hash, f.origPath ? [f.path, f.origPath] : [f.path]).catch((e: Error) => ({
+            diff: { note: `Couldn't read its diff: ${e.message}` },
+            file: undefined,
+          }));
+    void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff, ...(file ? { file } : {}) } satisfies TicketHostMessage);
   },
   readChangeDiff: async ({ item, panel, panels }, m) => {
     const g = (await panels.changesShown(item)).groups[m.group];

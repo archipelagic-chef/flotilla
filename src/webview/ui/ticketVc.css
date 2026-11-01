@@ -71,6 +71,14 @@
   padding: 0 8px 2px;
   font-weight: 600;
 }
+.ticket-commit-body {
+  padding: 0 8px 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--vscode-descriptionForeground);
+  max-height: 12em;
+  overflow-y: auto;
+}
 .ticket-commit .commit-meta {
   padding-left: 8px;
 }

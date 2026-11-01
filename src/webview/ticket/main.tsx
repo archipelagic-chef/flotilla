@@ -149,16 +149,32 @@ function App() {
   const scrolled = useRef<number>();
   const fullRef = useRef<FullAt>();
   fullRef.current = full;
+  /**
+   * By commit on the expanded file (BL-213): the file as the commit picked changed it (hash: none until the host says
+   * where to start, or when there are no commits). The sidebar's Version Control is on the ticket's commits meanwhile,
+   * so stepping to another file keeps it there; a file picked in its Changes (from: 'host') is the whole change again.
+   */
+  const [byCommit, setByCommit] = useState<{ hash?: string }>();
+  const byCommitRef = useRef(byCommit);
+  byCommitRef.current = byCommit;
   const expand = (at: FullAt, from?: 'host') => {
     if (!fullRef.current) scrolled.current = window.scrollY;
+    if (!fullRef.current || from === 'host') setByCommit((byCommitRef.current = undefined));
     fullRef.current = at;
     setFull(at);
     setMarked(at.path);
-    if (from !== 'host') send({ type: 'expandChange', group: at.group, path: at.path });
+    if (from !== 'host' && !byCommitRef.current) send({ type: 'expandChange', group: at.group, path: at.path });
   };
   const back = () => {
     setFull(undefined);
+    setByCommit(undefined);
     send({ type: 'collapseChange' });
+  };
+  const mode = (commits: boolean) => {
+    const at = fullRef.current;
+    if (!at || commits === !!byCommitRef.current) return;
+    setByCommit((byCommitRef.current = commits ? {} : undefined));
+    send(commits ? { type: 'byCommit', group: at.group, path: at.path } : { type: 'expandChange', group: at.group, path: at.path });
   };
   useEffect(() => {
     if (full || scrolled.current === undefined) return;
@@ -194,7 +210,10 @@ function App() {
       // Back from VS Code's diff editor: the ticket at its Changes (which scroll there themselves).
       // A file of its Changes picked in the sidebar's Version Control: its diff.
       else if (m.type === 'showFull') expand({ group: m.group, path: m.path }, 'host');
-      else if (m.type === 'showChange') {
+      // The commit to show By commit: where it starts, or the one picked in the sidebar (ignored when it's off).
+      else if (m.type === 'showCommit') {
+        if (fullRef.current && byCommitRef.current) setByCommit((byCommitRef.current = { hash: m.hash }));
+      } else if (m.type === 'showChange') {
         scrolled.current = undefined;
         setFull(undefined);
       } else if (m.type === 'ci') setCi(m.ci);
@@ -208,7 +227,7 @@ function App() {
         entryReplies.get(m.requestId)?.(m.entries);
         entryReplies.delete(m.requestId);
       } else if (m.type === 'changeDiff') {
-        changeDiffReplies.get(m.requestId)?.(m.diff);
+        changeDiffReplies.get(m.requestId)?.(m.diff, m.file);
         changeDiffReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
@@ -251,7 +270,7 @@ function App() {
   return (
     // The ticket's change for the diff marks on links to its files (BL-174).
     <ChangeLinks.Provider value={ticket.changes}>
-      {full && <DiffView ticket={ticket} at={full} back={back} go={expand} />}
+      {full && <DiffView ticket={ticket} at={full} back={back} go={expand} byCommit={byCommit} mode={mode} />}
       <main class="ticket" hidden={!!full}>
         <header>
           <div class="meta">

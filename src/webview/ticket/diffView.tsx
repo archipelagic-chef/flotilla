@@ -6,6 +6,7 @@ import {
   useState,
 } from 'preact/hooks';
 import type {
+  ChangedFile,
   FileDiff,
   TicketView,
 } from '../ticketProtocol';
@@ -34,12 +35,34 @@ let nextDiff = 1_000_000;
 /**
  * A file of the ticket's Changes, expanded to the ticket's whole tab (BL-171): its whole diff, unchanged stretches
  * folded. The bar at its top keeps it the ticket's: its id and title, Changes, the file, with Back to the ticket where
- * it was (Escape too), the files before and after it, and Open in Diff Editor (VS Code's, beside the ticket).
+ * it was (Escape too), the files before and after it, and Open in Diff Editor (VS Code's, beside the ticket). Its
+ * switch goes through the ticket By commit (BL-213): the file as the commit picked in the sidebar changed it.
  */
-export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: FullAt; back: () => void; go: (at: FullAt) => void }) {
+export function DiffView({
+  ticket,
+  at,
+  back,
+  go,
+  byCommit,
+  mode,
+}: {
+  ticket: TicketView;
+  at: FullAt;
+  back: () => void;
+  go: (at: FullAt) => void;
+  byCommit?: { hash?: string };
+  mode: (commits: boolean) => void;
+}) {
   const change = ticket.changes;
   const group = change?.groups[at.group];
   const file = group?.files.find((f) => f.path === at.path);
+  // Oldest first, as the sidebar steps through them.
+  const commits = useMemo(() => [...ticket.commits].reverse(), [ticket.commits]);
+  const commitAt = byCommit?.hash ? commits.findIndex((c) => c.hash === byCommit.hash) : -1;
+  const commit = commits[commitAt] as (typeof commits)[number] | undefined;
+  /** The file as the commit changed it (its counts), with its diff; none when the commit doesn't change it. */
+  const [commitFile, setCommitFile] = useState<ChangedFile>();
+  const hash = byCommit ? (byCommit.hash ?? null) : undefined;
   /** The files in the order Changes lists them, for Previous and Next. */
   const order = useMemo(
     () => (change ? changeRows(change, new Set()).flatMap((r) => (r.kind === 'file' ? [{ group: r.group, path: r.file.path }] : [])) : []),
@@ -51,18 +74,26 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(600);
   const body = useRef<HTMLDivElement>(null);
-  // Read again for another file, and when the change is new.
+  // Read again for another file, another commit, and when the change is new.
   useEffect(() => {
-    if (!file) return;
+    if (!file || hash === null) return;
     const requestId = nextDiff++;
-    changeDiffReplies.set(requestId, setDiff);
-    send({ type: 'readChangeDiff', requestId, group: at.group, path: at.path, whole: true });
+    changeDiffReplies.set(requestId, (d, f) => {
+      setDiff(d);
+      setCommitFile(f);
+    });
+    send(
+      hash === undefined
+        ? { type: 'readChangeDiff', requestId, group: at.group, path: at.path, whole: true }
+        : { type: 'readCommitDiff', requestId, group: at.group, path: at.path, hash },
+    );
     return () => changeDiffReplies.delete(requestId);
-  }, [at.group, at.path, change]);
+  }, [at.group, at.path, change, hash]);
   useEffect(() => {
     setDiff(undefined);
+    setCommitFile(undefined);
     setShown(new Set());
-  }, [at.group, at.path]);
+  }, [at.group, at.path, hash]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && back();
     window.addEventListener('keydown', key);
@@ -87,6 +118,7 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
       : rows.findIndex((r) => r.kind === 'line' && r.line.kind !== 'context');
     body.current.scrollTop = Math.max(0, i * ROW - height / 3);
   }, [rows, at]);
+  const shownFile = byCommit ? commitFile : file;
   const { start, end } = rowWindow(rows.length, scrollTop, height, ROW);
   const step = (d: number) => {
     const next = order[index + d];
@@ -98,29 +130,49 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
         <button class="primary diff-view-back" onClick={back} title={`Back to ${ticket.item.id}, where you were (Escape)`}>
           <i class="codicon codicon-arrow-left" /> Back to {ticket.item.id}
         </button>
+        <div class="diff-view-mode" role="group" aria-label="What it shows">
+          <button
+            class={!byCommit ? 'on' : ''}
+            aria-pressed={!byCommit}
+            onClick={() => mode(false)}
+            title="The ticket's whole change to this file (the sidebar shows its Changes)"
+          >
+            Whole change
+          </button>
+          <button
+            class={byCommit ? 'on' : ''}
+            aria-pressed={!!byCommit}
+            onClick={() => mode(true)}
+            title="This file in one commit at a time: step through them in the sidebar's Version Control"
+          >
+            By commit
+          </button>
+        </div>
         <nav class="diff-view-crumbs" aria-label="Where this is">
           <span class="crumb">
             <i class="codicon codicon-issues" /> <span class="ticket-id">{ticket.item.id}</span> <span class="crumb-title">{ticket.item.title}</span>
           </span>
           <i class="codicon codicon-chevron-right muted" />
-          <span class="crumb">Changes</span>
+          <span class="crumb">{byCommit ? (commit ? `Commit ${commitAt + 1} of ${commits.length}` : 'Commits') : 'Changes'}</span>
           <i class="codicon codicon-chevron-right muted" />
           <span class="crumb current">{at.path}</span>
         </nav>
       </div>
       <div class="diff-view-file">
-        {file && <span class={`change-letter kind-${changeLetter(file)}`}>{changeLetter(file)}</span>}
-        <span class="diff-view-path" title={file?.origPath ? `${file.origPath} → ${file.path}` : at.path}>
-          {file?.origPath ? `${file.origPath} → ` : ''}
-          {at.path}
+        {shownFile && <span class={`change-letter kind-${changeLetter(shownFile)}`}>{changeLetter(shownFile)}</span>}
+        <span class="diff-view-path" title={shownFile?.origPath ? `${shownFile.origPath} → ${shownFile.path}` : at.path}>
+          {shownFile?.origPath ? `${shownFile.origPath} → ` : ''}
+          {shownFile?.path ?? at.path}
         </span>
-        {file?.uncommitted && <span class="change-uncommitted">uncommitted</span>}
-        {file && (
+        {shownFile?.uncommitted && <span class="change-uncommitted">uncommitted</span>}
+        {shownFile && (
           <span class="change-counts">
-            <span class="added">+{file.added}</span> <span class="deleted">−{file.deleted}</span>
+            <span class="added">+{shownFile.added}</span> <span class="deleted">−{shownFile.deleted}</span>
           </span>
         )}
-        <span class="muted diff-view-compared">{group?.compared}</span>
+        <span class="muted diff-view-compared" title={commit ? commit.subject : undefined}>
+          {byCommit ? commit && `In ${commit.short}: ${commit.subject}` : group?.compared}
+        </span>
         <span class="diff-view-actions">
           <button class="text-button" disabled={index <= 0} onClick={() => step(-1)} title="The file before it in Changes">
             <i class="codicon codicon-arrow-up" /> Previous
@@ -143,6 +195,8 @@ export function DiffView({ ticket, at, back, go }: { ticket: TicketView; at: Ful
       <div class="diff-view-body" ref={body} onScroll={(e) => setScrollTop((e.currentTarget as HTMLElement).scrollTop)}>
         {!file ? (
           <div class="work-empty muted">It's no longer in the ticket's changes.</div>
+        ) : byCommit && !byCommit.hash ? (
+          <div class="work-empty muted">{'hash' in byCommit ? `${ticket.item.id} has no commits yet.` : 'Finding the commit to start at…'}</div>
         ) : !diff ? (
           <div class="work-empty muted">Reading its diff…</div>
         ) : 'note' in diff ? (
