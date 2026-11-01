@@ -93,6 +93,20 @@ export interface SpendTimeline {
   hours: Array<{ at: string; cells: SpendCell[] }>;
 }
 
+/** The improvement reviews (BL-177), at the end of the view: the reviews written, and when the next one runs. */
+export interface MetricsReviews {
+  /** Newest first: each review's day (YYYY-MM-DD, its file's name) and its first heading. */
+  list: Array<{ day: string; title: string }>;
+  /** The agent writing one now. */
+  running?: string;
+  /** When the next scheduled one is due (YYYY-MM-DD); none when flotilla.metrics.reviewEvery is 0. */
+  nextDue?: string;
+  /** What keeps a due one from starting (reviewBlocked), while it's due. */
+  waiting?: string;
+  /** Why Review Now couldn't start one, when it was last clicked and couldn't. */
+  refused?: string;
+}
+
 export interface MetricsView {
   period: MetricsPeriod;
   /** The period's start and end (ISO). */
@@ -103,6 +117,7 @@ export interface MetricsView {
   events: number;
   /** The chats' spend over time, for the Spend over time chart (its own window: 6 hours to 7 days). */
   spend?: SpendTimeline;
+  reviews?: MetricsReviews;
 }
 
 /** From a Metrics webview (the sidebar's tool, or the editor tab). */
@@ -114,7 +129,11 @@ export type MetricsWebviewMessage =
   | { type: 'metricsOpen'; ticket: string }
   /** Open a chat (BL-202): in the worktree it ran in. */
   | { type: 'metricsOpenChat'; session: string; cwd?: string }
-  | { type: 'metricsEditor'; period: MetricsPeriod };
+  | { type: 'metricsEditor'; period: MetricsPeriod }
+  /** Open an improvement review (BL-177), by its day. */
+  | { type: 'metricsReview'; day: string }
+  /** Review Now (BL-177). */
+  | { type: 'metricsReviewNow' };
 
 /** To a Metrics webview. */
 export type MetricsHostMessage = { type: 'metricsView'; view: MetricsView } | { type: 'metricsError'; message: string };

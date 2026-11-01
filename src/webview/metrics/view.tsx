@@ -7,6 +7,7 @@ import type {
   MetricNumber,
   MetricRow,
   MetricsPeriod,
+  MetricsReviews,
   MetricsView,
   MetricUnit,
 } from '../metricsProtocol';
@@ -83,9 +84,13 @@ interface Props {
   openEditor?(): void;
   /** In the editor tab: the sections side by side when there's room. */
   wide?: boolean;
+  /** Opens an improvement review (BL-177), by its day. */
+  openReview?(day: string): void;
+  /** Review Now (BL-177). */
+  reviewNow?(): void;
 }
 
-export function MetricsBody({ view, error, period, setPeriod, openTicket, openChat, openEditor, wide }: Props) {
+export function MetricsBody({ view, error, period, setPeriod, openTicket, openChat, openEditor, wide, openReview, reviewNow }: Props) {
   const [opened, setOpened] = useState<Opened | undefined>();
   // What was opened belongs to the numbers it was opened from.
   useEffect(() => setOpened(undefined), [period]);
@@ -160,8 +165,69 @@ export function MetricsBody({ view, error, period, setPeriod, openTicket, openCh
               {s.id === 'cost' && view.spend && <SpendOverTime timeline={view.spend} now={Date.parse(view.to)} openTicket={openTicket} openChat={openChat} />}
             </section>
           ))}
+        {view?.reviews && openReview && reviewNow && <Reviews reviews={view.reviews} open={openReview} reviewNow={reviewNow} />}
       </div>
     </div>
+  );
+}
+
+/** How many reviews show before "Show all". */
+const REVIEWS_SHOWN = 5;
+
+/** A day (YYYY-MM-DD) as the view reads it: "Mon, Nov 3". */
+function dayLabel(day: string): string {
+  return new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/**
+ * The improvement reviews (BL-177): what an agent concluded from these numbers, newest first, each opening as a ticket
+ * does; Review Now writes one, and a line says when the next is due and what holds it back.
+ */
+function Reviews({ reviews, open, reviewNow }: { reviews: MetricsReviews; open(day: string): void; reviewNow(): void }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? reviews.list : reviews.list.slice(0, REVIEWS_SHOWN);
+  const today = new Date().toLocaleDateString('en-CA');
+  const next = reviews.nextDue
+    ? reviews.nextDue <= today
+      ? `The next review is due now${reviews.waiting ? `, waiting: ${reviews.waiting}` : ''}.`
+      : `The next review is due on ${dayLabel(reviews.nextDue)}.`
+    : 'No scheduled reviews (flotilla.metrics.reviewEvery is 0).';
+  return (
+    <section class="metrics-section metrics-reviews" aria-label="Improvement reviews">
+      <h3>Improvement reviews</h3>
+      <div class="metrics-reviews-bar">
+        {reviews.running ? (
+          <span class="metrics-reviews-running">
+            <i class="codicon codicon-loading codicon-modifier-spin" /> {reviews.running} is writing the review
+          </span>
+        ) : (
+          <button class="metrics-review-now" title="An agent reads these numbers and the code, and proposes tickets" onClick={reviewNow}>
+            <i class="codicon codicon-lightbulb-sparkle" /> Review Now
+          </button>
+        )}
+        {!reviews.running && <span class="metrics-reviews-next">{next}</span>}
+      </div>
+      {reviews.refused && <p class="metrics-reviews-refused">Review Now couldn't start one: {reviews.refused}.</p>}
+      {reviews.list.length ? (
+        <ul class="metrics-reviews-list">
+          {shown.map((r) => (
+            <li key={r.day}>
+              <button onClick={() => open(r.day)} title={`Open the review of ${r.day}`}>
+                <span class="day">{dayLabel(r.day)}</span>
+                <span class="title">{r.title.replace(/^Improvement review\s+\d{4}-\d{2}-\d{2}\s*[:·–-]?\s*/, '') || r.title}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="metrics-empty">No review yet: Review Now writes the first.</p>
+      )}
+      {reviews.list.length > REVIEWS_SHOWN && (
+        <button class="metrics-reviews-all" onClick={() => setAll((a) => !a)}>
+          {all ? 'Show fewer' : `Show all ${reviews.list.length}`}
+        </button>
+      )}
+    </section>
   );
 }
 

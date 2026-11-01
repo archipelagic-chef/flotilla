@@ -887,6 +887,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'metricsEditor':
         this.deps.metrics?.openEditor(m.period);
         return;
+      case 'metricsReview':
+      case 'metricsReviewNow':
+        this.deps.metrics?.review(m);
+        return;
       case 'ready':
         this.deps.startup?.mark('page ready');
         this.pageLoaded = true;

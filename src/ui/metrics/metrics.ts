@@ -8,9 +8,18 @@ import { MetricsStore } from '../../features/metrics/store';
 import type {
   MetricsHostMessage,
   MetricsPeriod,
+  MetricsReviews,
   MetricsView,
   MetricsWebviewMessage,
 } from '../../webview/metricsProtocol';
+
+/** The improvement reviews, as the view shows them (BL-177): ImprovementReview. */
+export interface MetricsReviewSource {
+  status(): Promise<MetricsReviews>;
+  open(day: string): void;
+  reviewNow(): Promise<void>;
+  readonly onDidChange: vscode.Event<void>;
+}
 
 /** Events come in bursts (a merge records several): the views are counted again this long after the last. */
 const SETTLE_MS = 2000;
@@ -40,6 +49,9 @@ export class Metrics implements vscode.Disposable {
   /** Called as a view is counted (BL-202): the chats' spend is read again soon, so a running chat's latest turns show. */
   onView?: () => void;
 
+  private reviewSource: MetricsReviewSource | undefined;
+  private reviewSub: vscode.Disposable | undefined;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly commonDir: string,
@@ -50,11 +62,26 @@ export class Metrics implements vscode.Disposable {
     this.store = new MetricsStore(commonDir);
   }
 
+  /** The improvement reviews to show at the end of the view (BL-177); the view counts again as they change. */
+  set reviews(source: MetricsReviewSource | undefined) {
+    this.reviewSub?.dispose();
+    this.reviewSource = source;
+    this.reviewSub = source?.onDidChange(() => this.changed.fire());
+  }
+
   async view(period: MetricsPeriod): Promise<MetricsView> {
     this.watch();
     this.onView?.();
     await this.readCriteria().catch(() => undefined);
-    return this.store.view(period, Date.now(), { limit: agentLimit(), criteria: this.criteria });
+    const view = await this.store.view(period, Date.now(), { limit: agentLimit(), criteria: this.criteria });
+    const reviews = await this.reviewSource?.status().catch(() => undefined);
+    return reviews ? { ...view, reviews } : view;
+  }
+
+  /** A review's messages (BL-177), from the sidebar's tool or the editor tab: open one, or Review Now. */
+  review(m: Extract<MetricsWebviewMessage, { type: 'metricsReview' | 'metricsReviewNow' }>): void {
+    if (m.type === 'metricsReview') this.reviewSource?.open(m.day);
+    else void this.reviewSource?.reviewNow().catch((e) => void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e)));
   }
 
   /** Counts the criteria of the done tickets not counted yet: for those done before the move recorded them. */
@@ -128,6 +155,7 @@ export class Metrics implements vscode.Disposable {
         void this.post(m.period);
       } else if (m.type === 'metricsOpen') void vscode.commands.executeCommand('flotilla.openBacklogItem', m.ticket);
       else if (m.type === 'metricsOpenChat') this.openChat(m.session, m.cwd);
+      else if (m.type === 'metricsReview' || m.type === 'metricsReviewNow') this.review(m);
     });
   }
 
@@ -139,6 +167,7 @@ export class Metrics implements vscode.Disposable {
   dispose(): void {
     if (this.timer) clearTimeout(this.timer);
     this.watcher?.close();
+    this.reviewSub?.dispose();
     this.changed.dispose();
     this.panel?.panel.dispose();
   }
