@@ -1421,3 +1421,58 @@ export function seedEvents(dir, now = new Date()) {
   for (const [month, text] of byMonth) fs.appendFileSync(path.join(metrics, `events-${month}.jsonl`), text);
   return events.length;
 }
+
+/** A local day (YYYY-MM-DD), as a review's name. */
+function localDay(at) {
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Seeds two improvement reviews (BL-177's Reviews in the Metrics view), 3 and 10 days before now, so the next isn't
+ * due yet (none starts as the window opens): each with a diagram, a link to a file at its lines and a ticket
+ * reference, as a review agent writes them; a demo may seed them older (`reviewsDaysAgo`), so one is due. Written again
+ * on every call, in place of the reviews there were. Returns the days written.
+ */
+export function seedReviews(dir, now = new Date(), daysAgo = [3, 10]) {
+  const reviews = path.join(dir, '.flotilla', 'backlog', 'reviews');
+  fs.rmSync(reviews, { recursive: true, force: true });
+  fs.mkdirSync(reviews, { recursive: true });
+  const days = daysAgo.map((d) => localDay(new Date(now.getTime() - d * 86_400_000)));
+  const [latest, earlier] = days;
+  fs.writeFileSync(
+    path.join(reviews, `${latest}.md`),
+    `# Improvement review ${latest}: merges wait for checks
+
+Period of 7 days, next to the week before. The biggest problem: merges wait for their checks longer than tickets take to build.
+
+## 1. Merges wait for checks
+
+| Metric | This week | Before |
+| --- | --- | --- |
+| Merge checks that timed out | 3 | 1 |
+| Median hours from In Progress to Done | 9.4 h | 7.1 h |
+
+\`\`\`mermaid
+flowchart LR
+  A[Approved] --> Q[Merge queue] --> C[Checks] --> M[Merged]
+  C -- timeout --> Q
+\`\`\`
+
+**Evidence:** the greeting is built again on every run ([src/greeting.js:1-3](src/greeting.js#L1-L3)), and BL-2 waited twice for it.
+
+**Proposed:** BL-1's follow-up, with \`Improves: check-timeouts from 3 to 1\`.
+
+## 2. Idle nights
+
+The autopilot stood idle 4 times with tickets waiting, all for a usage limit. Nothing to propose: BL-3 covers it.
+`,
+  );
+  fs.writeFileSync(
+    path.join(reviews, `${earlier}.md`),
+    `# Improvement review ${earlier}: reviews ask for changes
+
+Half the verdicts asked for changes, most for missing tests. Proposed BL-4.
+`,
+  );
+  return days;
+}

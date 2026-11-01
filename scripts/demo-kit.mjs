@@ -81,6 +81,10 @@ export function parseDemo(text, name = 'demo') {
   if (demo.githubSignedOut !== undefined && typeof demo.githubSignedOut !== 'boolean') throw new Error(`${name}: "githubSignedOut" is true or false`);
   // The ticket a demo answers is put back as seeded before it plays (BL-257), for a demo that changes it.
   if (demo.resetsTicket !== undefined && typeof demo.resetsTicket !== 'string') throw new Error(`${name}: "resetsTicket" is a ticket's id`);
+  // How old the seeded improvement reviews are (BL-177), for a demo where one is due.
+  const days = demo.reviewsDaysAgo;
+  if (days !== undefined && !(Array.isArray(days) && days.every((d) => Number.isInteger(d) && d >= 0)))
+    throw new Error(`${name}: "reviewsDaysAgo" is a list of whole days, newest first`);
   return {
     title: typeof demo.title === 'string' ? demo.title : name,
     steps,
@@ -89,6 +93,7 @@ export function parseDemo(text, name = 'demo') {
     ciPasses: demo.ciPasses === true,
     githubSignedOut: demo.githubSignedOut === true,
     ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
+    ...(days ? { reviewsDaysAgo: days } : {}),
   };
 }
 
