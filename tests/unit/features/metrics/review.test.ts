@@ -22,9 +22,11 @@ import {
   readImproves,
 } from '../../../../src/features/metrics/improves';
 import {
+  nextReviewDay,
   reviewBlocked,
   reviewDue,
   reviewPrompt,
+  reviewTitle,
   reviewTools,
 } from '../../../../src/features/metrics/review';
 import {
@@ -153,6 +155,20 @@ describe('the review itself (BL-159)', () => {
     expect(reviewDue({ last: '2026-10-10', every: 7, now: new Date('2026-10-16T09:00') })).toBe(false);
     expect(reviewDue({ last: '2026-10-08', every: 7, now: new Date('2026-10-15T09:00') })).toBe(true);
     expect(reviewDue({ every: 0, now: NOW })).toBe(false);
+  });
+
+  it('says the day the next one is due, as reviewDue counts it (BL-177)', () => {
+    expect(nextReviewDay({ every: 7, now: new Date('2026-10-16T09:00') })).toBe('2026-10-16');
+    expect(nextReviewDay({ last: '2026-10-10', every: 7, now: new Date('2026-10-12T09:00') })).toBe('2026-10-16');
+    expect(reviewDue({ last: '2026-10-10', every: 7, now: new Date('2026-10-16T12:00') })).toBe(true);
+    // Overdue: today.
+    expect(nextReviewDay({ last: '2026-10-01', every: 7, now: new Date('2026-10-16T09:00') })).toBe('2026-10-16');
+    expect(nextReviewDay({ last: '2026-10-10', every: 0, now: NOW })).toBeUndefined();
+  });
+
+  it('is titled by its first heading (BL-177)', () => {
+    expect(reviewTitle('intro\n# Improvement review 2026-10-24: merges\n## One', '2026-10-24')).toBe('Improvement review 2026-10-24: merges');
+    expect(reviewTitle('no heading', '2026-10-24')).toBe('Improvement review 2026-10-24');
   });
 
   it('waits while the autopilot is busy, on a limit, or paused', () => {

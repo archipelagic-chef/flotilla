@@ -36,6 +36,20 @@ export function reviewDue(o: { last?: string; every: number; now: Date }): boole
   return o.now.getTime() - last >= o.every * DAY_MS - DAY_MS / 2;
 }
 
+/** The day the next review is due (YYYY-MM-DD): today when none was written yet; none when `every` is 0. */
+export function nextReviewDay(o: { last?: string; every: number; now: Date }): string | undefined {
+  if (!(o.every > 0)) return undefined;
+  if (!o.last) return reviewDay(o.now);
+  // When reviewDue turns true.
+  const due = new Date(new Date(`${o.last}T00:00:00`).getTime() + o.every * DAY_MS - DAY_MS / 2);
+  return reviewDay(due < o.now ? o.now : due);
+}
+
+/** A review's title: its first heading, else "Improvement review <day>". */
+export function reviewTitle(text: string, day: string): string {
+  return /^#\s+(.+)$/m.exec(text)?.[1].trim() || `Improvement review ${day}`;
+}
+
 /** What keeps a review from starting now; undefined when it may. */
 export function reviewBlocked(v: {
   running: number;
