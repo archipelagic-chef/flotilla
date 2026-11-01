@@ -64,6 +64,11 @@ export interface ImprovementReviewDeps {
 /** The id its slot is taken under. */
 const SLOT_ID = 'improvement-review';
 const CHECK_MS = 60 * 60_000;
+/**
+ * How long after the window opens the scheduled review waits (BL-177): the agents already working are counted by then,
+ * so it doesn't take their window's first moments for idle. It checks again once that's past.
+ */
+const SETTLE_MS = 2 * 60_000;
 /** How long the view says why Review Now couldn't start one (BL-177). */
 const REFUSED_MS = 5 * 60_000;
 
@@ -82,6 +87,8 @@ export class ImprovementReview implements vscode.Disposable {
   private writer: string | undefined;
   private starting = false;
   private readonly timer: NodeJS.Timeout;
+  private readonly settle: NodeJS.Timeout;
+  private readonly opened = Date.now();
   /** Why Review Now last couldn't start one, and when. */
   private refused: { why: string; at: number } | undefined;
   private readonly changed = new vscode.EventEmitter<void>();
@@ -90,10 +97,12 @@ export class ImprovementReview implements vscode.Disposable {
 
   constructor(private readonly deps: ImprovementReviewDeps) {
     this.timer = setInterval(() => void this.tick().catch(() => undefined), CHECK_MS);
+    this.settle = setTimeout(() => void this.tick().catch(() => undefined), SETTLE_MS);
   }
 
   dispose(): void {
     clearInterval(this.timer);
+    clearTimeout(this.settle);
     this.changed.dispose();
   }
 
@@ -103,7 +112,7 @@ export class ImprovementReview implements vscode.Disposable {
 
   /** Starts the review when one is due and nothing keeps it (see reviewBlocked). */
   async tick(now = new Date()): Promise<void> {
-    if (this.running || !this.deps.isLeader()) return;
+    if (this.running || !this.deps.isLeader() || now.getTime() - this.opened < SETTLE_MS - 1000) return;
     if (!reviewDue({ last: (await listReviews(this.deps.backlog.dir))[0], every: every(), now })) return;
     const blocked = reviewBlocked(this.deps.autopilot());
     if (blocked) return;
@@ -119,6 +128,8 @@ export class ImprovementReview implements vscode.Disposable {
     const why = await this.start(new Date());
     this.refused = why ? { why, at: Date.now() } : undefined;
     this.changed.fire();
+    // The view counts again once it's past, so the line goes in a view nothing else changes.
+    if (why) setTimeout(() => this.changed.fire(), REFUSED_MS + 1000).unref?.();
     if (why) void vscode.window.showWarningMessage(`Flotilla can't start the improvement review now: ${why}.`);
   }
 
