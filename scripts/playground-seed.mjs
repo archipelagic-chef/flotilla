@@ -191,7 +191,12 @@ const TICKETS = [
         files: { 'src/chats.js': 'export function saveChat(store, worktree, id) {\n  store[worktree] = id;\n  return store;\n}\n' },
       },
       {
-        message: 'BL-3: Find the chat again after a reload',
+        message: [
+          'BL-3: Find the chat again after a reload',
+          '',
+          "A reload looks the worktree's chat up by the id saved with it,",
+          'so the chat it had before comes back instead of a new one.',
+        ].join('\n'),
         files: {
           'src/chats.js':
             'export function saveChat(store, worktree, id) {\n  store[worktree] = id;\n  return store;\n}\n\nexport function chatOf(store, worktree) {\n  return store[worktree];\n}\n',
