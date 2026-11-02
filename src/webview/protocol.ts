@@ -8,6 +8,10 @@ import type {
   MetricsHostMessage,
   MetricsWebviewMessage,
 } from './metricsProtocol';
+import type {
+  ScheduledHostMessage,
+  ScheduledWebviewMessage,
+} from './scheduledProtocol';
 import type { MergeInfo } from '../features/backlog/merged';
 import type {
   AgentChoice,
@@ -40,7 +44,7 @@ import type { TicketCommit } from '../features/history/log';
 import type { TicketChange } from './ticketProtocol';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'overview' | 'backlog' | 'metrics' | 'scheduled' | 'files' | 'search' | 'vc' | 'chats';
 
 export type {
   BacklogItem,
@@ -304,6 +308,7 @@ export interface CommitView {
 
 export type HostMessage =
   | MetricsHostMessage
+  | ScheduledHostMessage
   /** The worktrees whose view changed since the last state, and every key in order (a worktree that's gone is left out). */
   | { type: 'state'; workstreams: WorkstreamView[]; keys: string[]; machine: MachineState }
   | { type: 'dir'; key: string; path: string; entries: DirEntry[] }
@@ -475,6 +480,7 @@ export interface Target {
 
 export type WebviewMessage =
   | MetricsWebviewMessage
+  | ScheduledWebviewMessage
   | { type: 'ready' }
   | { type: 'listDir'; key: string; path: string }
   | { type: 'openFile'; key: string; path: string; preview: boolean; line?: number; range?: [number, number] }

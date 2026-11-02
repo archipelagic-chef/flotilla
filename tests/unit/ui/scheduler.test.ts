@@ -15,7 +15,14 @@ const runs = vi.hoisted(() => ({
   started: [] as Array<{ prompt: string; tools?: string[]; choice?: { model?: string; effort?: string }; resolve: (r: Finished) => void }>,
 }));
 
-vi.mock('vscode', () => ({ window: { showInformationMessage: async () => undefined, showWarningMessage: async () => undefined } }));
+vi.mock('vscode', () => ({
+  EventEmitter: class {
+    event = () => ({ dispose() {} });
+    fire() {}
+    dispose() {}
+  },
+  window: { showInformationMessage: async () => undefined, showWarningMessage: async () => undefined },
+}));
 vi.mock('../../../src/ui/progress', () => ({ trackProgress: () => undefined }));
 vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   agentChoice: () => ({ effort: 'medium' }),
@@ -60,23 +67,24 @@ function setup(files: Record<string, string>, view: Partial<AutopilotView> = {})
 
 describe('the scheduler', () => {
   it('starts a due task on a slot, with its tools and model, and saves the reply as its report when it wrote none', async () => {
+    // A date after the files are made: a new task's first run is due at once.
     const { backlogDir, scheduler, slots, given } = setup({ 'docs-check.md': '---\nevery: 7 days\nmodel: opus\n---\nCheck the docs.\n' });
-    await scheduler.tick(new Date(2026, 10, 2, 9));
+    await scheduler.tick(new Date(2030, 0, 7, 9));
     expect(slots).toEqual(['scheduled-docs-check']);
     expect(runs.started).toHaveLength(1);
     expect(runs.started[0].prompt).toContain('Check the docs.');
     expect(runs.started[0].tools).toContain(`Edit(/${path.join(backlogDir, 'inbox')}/docs-check-*.md)`);
     expect(runs.started[0].choice).toEqual({ effort: 'medium', model: 'opus' });
     // Running already: not started again.
-    await scheduler.tick(new Date(2026, 10, 2, 9));
+    await scheduler.tick(new Date(2030, 0, 7, 9));
     expect(runs.started).toHaveLength(1);
     runs.started[0].resolve({ code: 0, reply: 'All fine.' });
-    await vi.waitFor(() => expect(fs.existsSync(path.join(backlogDir, 'schedules', 'docs-check', '2026-11-02.md'))).toBe(true));
-    expect(fs.readFileSync(path.join(backlogDir, 'schedules', 'docs-check', '2026-11-02.md'), 'utf8')).toBe('# Docs check 2026-11-02\n\nAll fine.\n');
+    await vi.waitFor(() => expect(fs.existsSync(path.join(backlogDir, 'schedules', 'docs-check', '2030-01-07.md'))).toBe(true));
+    expect(fs.readFileSync(path.join(backlogDir, 'schedules', 'docs-check', '2030-01-07.md'), 'utf8')).toBe('# Docs check 2030-01-07\n\nAll fine.\n');
     expect(given).toEqual([1]);
     expect(scheduler.running('docs-check')).toBe(false);
     // Its report is its last run: not due again until 7 days on.
-    await scheduler.tick(new Date(2026, 10, 3, 9));
+    await scheduler.tick(new Date(2030, 0, 8, 9));
     expect(runs.started).toHaveLength(1);
   });
 
@@ -101,5 +109,37 @@ describe('the scheduler', () => {
     const paused = setup({ 'any.md': '---\nevery: day\nwhen: any\n---\nDo it.\n' }, { pausedAll: 2 });
     await paused.scheduler.tick();
     expect(runs.started).toHaveLength(1);
+  });
+
+  it('shows each task: when it runs next, what a due one waits for, its reports; a proposed one until accepted', async () => {
+    const { backlogDir, scheduler } = setup(
+      {
+        'weekly.md': '---\nevery: Mondays at 06:00\n---\nDo it.\n',
+        'due.md': '---\nevery: 7 days\n---\nDo it.\n',
+        'wrong.md': '---\nevery: fortnightly\n---\nDo it.\n',
+        'offered.md': '---\nevery: day\nproposed: Nova-1\n---\nDo it.\n',
+      },
+      { running: 1 },
+    );
+    fs.mkdirSync(path.join(backlogDir, 'schedules', 'weekly'));
+    for (const day of ['2029-12-31', '2030-01-07']) fs.writeFileSync(path.join(backlogDir, 'schedules', 'weekly', `${day}.md`), '# Weekly\n');
+    const view = await scheduler.view(new Date(2030, 0, 9, 9));
+    const byName = Object.fromEntries(view.tasks.map((t) => [t.name, t]));
+    expect(byName.weekly).toMatchObject({
+      title: 'Weekly',
+      schedule: 'Mondays at 06:00, when idle',
+      next: new Date(2030, 0, 14, 6).toISOString(),
+      reports: ['2030-01-07', '2029-12-31'],
+    });
+    expect(byName.weekly.due).toBeUndefined();
+    expect(byName.due).toMatchObject({ due: true, waits: 'an agent is working', reports: [] });
+    expect(byName.wrong).toMatchObject({ error: expect.stringMatching(/isn't a schedule/) });
+    expect(byName.offered).toMatchObject({ proposed: 'Nova-1' });
+    expect(byName.offered.due).toBeUndefined();
+    await scheduler.accept('offered');
+    expect((await scheduler.view()).tasks.find((t) => t.name === 'offered')?.proposed).toBeUndefined();
+    await scheduler.dismiss('offered');
+    expect((await scheduler.view()).tasks.map((t) => t.name)).not.toContain('offered');
+    await expect(scheduler.accept('../x')).rejects.toThrow(/Not a scheduled task/);
   });
 });

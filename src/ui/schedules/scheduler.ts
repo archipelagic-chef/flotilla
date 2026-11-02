@@ -11,6 +11,7 @@ import { writeAtomic } from '../../features/backlog/localBacklog';
 import {
   acceptedTask,
   listTaskReports,
+  nextRun,
   parseTask,
   type ScheduledTask,
   schedulesDir,
@@ -21,8 +22,13 @@ import {
   taskDue,
   taskPrompt,
   taskTools,
+  validTaskName,
 } from '../../features/schedules/schedule';
 import type { Workstream } from '../../features/workstreams/workstream';
+import type {
+  ScheduledTaskView,
+  ScheduledView,
+} from '../../webview/scheduledProtocol';
 import type { AutopilotView } from '../backlog/autopilot';
 import {
   agentChoice,
@@ -65,6 +71,9 @@ export class Scheduler implements vscode.Disposable {
   /** The runs going, by task. */
   private readonly runs = new Map<string, AgentRun | 'starting'>();
   private readonly timer: NodeJS.Timeout;
+  private readonly changed = new vscode.EventEmitter<void>();
+  /** A run started or ended, or a task's file or report changed: the Scheduled tool shows it again. */
+  readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: SchedulerDeps) {
     this.timer = setInterval(() => void this.tick().catch(() => undefined), CHECK_MS);
@@ -72,6 +81,77 @@ export class Scheduler implements vscode.Disposable {
 
   dispose(): void {
     clearInterval(this.timer);
+    this.changed.dispose();
+  }
+
+  /** Watches the tasks' files and reports, for onDidChange. */
+  watch(): vscode.Disposable {
+    const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(schedulesDir(this.deps.backlogDir)), '**/*'));
+    const fire = () => this.changed.fire();
+    w.onDidCreate(fire);
+    w.onDidChange(fire);
+    w.onDidDelete(fire);
+    return w;
+  }
+
+  /** The Scheduled tool's view (BL-260): each task, when it runs next, what a due one waits for, its reports. */
+  async view(now = new Date()): Promise<ScheduledView> {
+    const v = this.deps.autopilot();
+    const tasks: ScheduledTaskView[] = [];
+    for (const t of await this.tasks()) {
+      const reports = await listTaskReports(this.deps.backlogDir, t.name);
+      if (!('task' in t)) {
+        tasks.push({ name: t.name, title: t.name, error: t.error, reports });
+        continue;
+      }
+      const { task } = t;
+      const next = nextRun(task.schedule, { ...(reports[0] ? { last: reports[0] } : {}), created: t.created });
+      const running = this.running(t.name);
+      const due = !!next && next.getTime() <= now.getTime() && !running && !task.proposed;
+      const waits = due ? (taskBlocked(v, task.when) ?? (v.running >= v.max ? `all ${v.max} agent slots are taken` : undefined)) : undefined;
+      tasks.push({
+        name: t.name,
+        title: task.title,
+        schedule: `${scheduleText(task.schedule)}${task.when === 'any' ? '' : ', when idle'}`,
+        ...(next ? { next: next.toISOString() } : {}),
+        ...(due ? { due } : {}),
+        ...(waits ? { waits } : {}),
+        ...(running ? { running } : {}),
+        ...(task.proposed ? { proposed: task.proposed } : {}),
+        reports,
+      });
+    }
+    return { tasks, dir: schedulesDir(this.deps.backlogDir) };
+  }
+
+  /** Accept a proposed task: it runs on its schedule from now. */
+  async accept(name: string): Promise<void> {
+    const file = this.fileOf(name);
+    await fs.promises.writeFile(file, acceptedTask(await fs.promises.readFile(file, 'utf8')));
+    this.changed.fire();
+  }
+
+  /** Dismiss a proposed task: its file is deleted. */
+  async dismiss(name: string): Promise<void> {
+    await fs.promises.rm(this.fileOf(name), { force: true });
+    await fs.promises.rm(path.join(schedulesDir(this.deps.backlogDir), `${name}.error`), { force: true });
+    this.changed.fire();
+  }
+
+  /** Edit: the task's file in an editor. */
+  async edit(name: string): Promise<void> {
+    await vscode.window.showTextDocument(vscode.Uri.file(this.fileOf(name)));
+  }
+
+  /** The tasks' folder, in the Explorer (made if it isn't there yet). */
+  async openFolder(): Promise<void> {
+    await fs.promises.mkdir(schedulesDir(this.deps.backlogDir), { recursive: true });
+    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(schedulesDir(this.deps.backlogDir)));
+  }
+
+  private fileOf(name: string): string {
+    if (!validTaskName(name)) throw new Error(`Not a scheduled task: ${name}`);
+    return path.join(schedulesDir(this.deps.backlogDir), `${name}.md`);
   }
 
   running(name: string): boolean {
@@ -146,9 +226,9 @@ export class Scheduler implements vscode.Disposable {
       'Open',
       'Dismiss',
     );
-    if (choice === 'Accept') await fs.promises.writeFile(t.file, acceptedTask(await fs.promises.readFile(t.file, 'utf8')));
-    else if (choice === 'Dismiss') await fs.promises.rm(t.file, { force: true });
-    else if (choice === 'Open') await vscode.window.showTextDocument(vscode.Uri.file(t.file));
+    if (choice === 'Accept') await this.accept(name);
+    else if (choice === 'Dismiss') await this.dismiss(name);
+    else if (choice === 'Open') await this.edit(name);
   }
 
   private async pick(name: string | undefined, title: string): Promise<TaskFile | undefined> {
@@ -168,9 +248,11 @@ export class Scheduler implements vscode.Disposable {
   /** Starts a task's agent; what kept it from starting, if anything did. */
   private async start(task: ScheduledTask, now: Date): Promise<string | undefined> {
     this.runs.set(task.name, 'starting');
+    this.changed.fire();
     const slot = this.deps.admit(`scheduled-${task.name}`);
     if (slot === undefined) {
       this.runs.delete(task.name);
+      this.changed.fire();
       const v = this.deps.autopilot();
       return `${v.running} of ${v.max} agents are running${v.waiting ? `, ${v.waiting} waiting` : ''}`;
     }
@@ -198,9 +280,11 @@ export class Scheduler implements vscode.Disposable {
       });
       const going = run;
       this.runs.set(task.name, going);
+      this.changed.fire();
       void trackProgress('backlog', `${agent} is running ${task.title}`, () => going.done);
       void going.done.then(async (result) => {
         this.runs.delete(task.name);
+        this.changed.fire();
         this.deps.giveBack(slot);
         const written = await fs.promises.stat(reportFile).then(
           (s) => s.mtimeMs >= started,
@@ -213,6 +297,7 @@ export class Scheduler implements vscode.Disposable {
             `${agent} stopped without a report (${result.limit ? `a ${result.limit.kind} limit` : (result.error?.slice(0, 200) ?? `exit code ${result.code}`)}).`;
           await fs.promises.writeFile(reportFile, `# ${task.title} ${day}\n\n${body}\n`).catch(() => undefined);
         }
+        this.changed.fire();
         const open = await vscode.window.showInformationMessage(`${task.title} ran: its report of ${day} is written.`, 'Open Report');
         if (open) this.deps.openPage(reportFile, `${task.title} ${day}`);
       });
@@ -221,6 +306,7 @@ export class Scheduler implements vscode.Disposable {
       if (!run) {
         this.deps.giveBack(slot);
         this.runs.delete(task.name);
+        this.changed.fire();
       }
       throw e;
     }
