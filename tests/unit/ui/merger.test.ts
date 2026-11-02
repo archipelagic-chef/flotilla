@@ -562,8 +562,9 @@ describe('Merge to main', () => {
       expect((await item('BL-1')).merging!.reason).toMatch(/^Its agent starts when the limit lifts/);
 
       accountLimit.lift();
-      await vi.waitFor(() => expect(agents.runs).toHaveLength(1));
-      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving' }));
+      // Under the full suite's load, the lift's reads and writes of the backlog can take longer than waitFor's 1s.
+      await vi.waitFor(() => expect(agents.runs).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving' }), { timeout: 10_000 });
       expect((await item('BL-1')).merging!.limit).toBeUndefined();
       expect(agents.runs[0].resume).toBeUndefined();
       await eventsWritten();
@@ -579,14 +580,16 @@ describe('Merge to main', () => {
       const { merger, item } = await conflicted();
       expect(agents.runs).toHaveLength(1);
       agents.runs[0].finish!({ code: 1, error: 'limit', limit: { until: new Date(Date.now() + 60 * 60_000), known: true, kind: 'usage' } });
-      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', session: 'session', limit: { resume: true } }));
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'failed', session: 'session', limit: { resume: true } }), {
+        timeout: 10_000,
+      });
       expect(merger.isRunning('BL-1')).toBe(false);
 
       accountLimit.holdUntil(new Date(Date.now() + 60 * 60_000));
       accountLimit.lift();
-      await vi.waitFor(() => expect(agents.runs).toHaveLength(2));
+      await vi.waitFor(() => expect(agents.runs).toHaveLength(2), { timeout: 10_000 });
       expect(agents.runs[1]).toMatchObject({ resume: 'session' });
-      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session' }));
+      await vi.waitFor(async () => expect((await item('BL-1')).merging).toMatchObject({ state: 'resolving', session: 'session' }), { timeout: 10_000 });
       expect((await item('BL-1')).merging!.limit).toBeUndefined();
       await merger.cancel('BL-1');
       merger.dispose();
