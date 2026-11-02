@@ -1,5 +1,6 @@
 import {
   type ChildProcessWithoutNullStreams,
+  execFileSync,
   spawn,
 } from 'node:child_process';
 import * as crypto from 'node:crypto';
@@ -53,9 +54,21 @@ import {
   type Tokens,
 } from '../../features/metrics/events';
 import {
+  encodeProjectDir,
   finishChatRecords,
   transcriptPath,
 } from '../../features/chats/chats';
+import {
+  deleteArgs,
+  gitDirsOf,
+  runQuietly,
+  sandboxedCommand,
+  sandboxMounts,
+  sandboxName,
+  sandboxPolicy,
+  stopArgs,
+  writeLauncher,
+} from '../../features/sandbox/openshell';
 import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 
@@ -88,6 +101,78 @@ export function setAgentDirs(dirs: readonly string[]): void {
 
 /** Where Flotilla writes its agents' settings files and guard script. */
 const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
+
+/** Whether agents start in OpenShell sandboxes (flotilla.agents.sandbox, BL-270), or on this machine. */
+export function sandboxKind(): 'none' | 'openshell' {
+  return vscode.workspace.getConfiguration('flotilla').get<string>('agents.sandbox', 'none') === 'openshell' ? 'openshell' : 'none';
+}
+
+/** How claude starts: the command, its arguments and environment, and the sandbox it runs in, when it does. */
+export interface AgentCommand {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  sandbox?: string;
+}
+
+/**
+ * How claude starts with args in cwd: on this machine, or in cwd's OpenShell sandbox (flotilla.agents.sandbox), every
+ * start the same way. The sandbox reaches cwd, the agents' folders (setAgentDirs), cwd's git dirs, Flotilla's agent files
+ * and cwd's transcript folder, all at their paths here, so the hooks, transcripts and token counts work as for a local
+ * agent. scratch: a run that needs no folder (a probe, a summary) runs in a sandbox of its own, which reaches only the
+ * agent files. tty: in a terminal.
+ */
+export function agentCommand(args: string[], cwd: string, o: { tty?: boolean; scratch?: boolean } = {}): AgentCommand {
+  if (sandboxKind() !== 'openshell') return { command: claudeBinary(), args, env: { ...process.env } };
+  const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+  const transcripts = o.scratch ? undefined : path.join(configDir, 'projects', encodeProjectDir(cwd));
+  // A bind mount's folder must be there before the sandbox is made.
+  for (const dir of [AGENT_FILES, ...(transcripts ? [transcripts] : [])]) fs.mkdirSync(dir, { recursive: true });
+  const mounts = o.scratch
+    ? sandboxMounts({ cwd: AGENT_FILES, dirs: [], gitDirs: [], agentFiles: AGENT_FILES }).filter((m) => m.readOnly)
+    : sandboxMounts({ cwd, dirs: agentDirs, gitDirs: gitDirsOf(cwd), agentFiles: AGENT_FILES, transcripts });
+  const policy = writeOnce(AGENT_FILES, 'flotilla-openshell-policy', 'yaml', sandboxPolicy(mounts, process.getuid?.(), process.getgid?.()));
+  const image = vscode.workspace.getConfiguration('flotilla').get<string>('agents.sandboxImage', '').trim();
+  const cmd = sandboxedCommand({
+    launcher: writeLauncher(AGENT_FILES),
+    args,
+    cwd: o.scratch ? '/sandbox' : cwd,
+    name: o.scratch ? 'flotilla-scratch' : sandboxName(cwd),
+    mounts,
+    policyFile: policy,
+    tty: o.tty,
+    ...(image ? { image } : {}),
+    ...(o.scratch ? {} : { identity: gitIdentity(cwd) }),
+  });
+  return { command: cmd.command, args: cmd.args, env: { ...process.env, ...cmd.env }, sandbox: cmd.sandbox };
+}
+
+/** The git identity commits in cwd get (the repository's, else the user's): the sandbox has no ~/.gitconfig. */
+function gitIdentity(cwd: string): { name?: string; email?: string } {
+  const read = (key: string) => {
+    try {
+      return execFileSync('git', ['config', key], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const name = read('user.name');
+  const email = read('user.email');
+  return { ...(name ? { name } : {}), ...(email ? { email } : {}) };
+}
+
+/**
+ * Removes the sandbox of a worktree that was removed. Whatever the setting says now: it may have been on when its agents
+ * ran. Without OpenShell, or without a sandbox, nothing happens.
+ */
+export function removeSandboxOf(worktree: string): void {
+  runQuietly(deleteArgs(sandboxName(worktree)));
+}
+
+/** Ends a session's claude in its sandbox too (Stop): ending the CLI on this machine may leave it running there. */
+function stopInSandbox(sandbox: string | undefined, sessionId: string): void {
+  if (sandbox) runQuietly(stopArgs(sandbox, sessionId));
+}
 
 /**
  * How an agent on model (in cwd) starts, to keep what it re-reads on every turn small; undefined when nothing applies.
@@ -322,6 +407,8 @@ export interface AgentTrack {
 
 /** Agents running in a terminal this window opened, by session: they're stopped by ending the terminal's process. */
 const terminals = new Map<string, vscode.Terminal>();
+/** The sandboxes of the agents in those terminals that run in one (BL-270), by session. */
+const terminalSandboxes = new Map<string, string>();
 
 /**
  * Starts an interactive Claude Code session in a terminal (in cwd): a new chat with prompt (its session chosen here, so
@@ -340,11 +427,8 @@ export function runAgentInTerminal(o: {
   const sessionId = o.resume ?? crypto.randomUUID();
   // A lean start's tool list takes several values: the --name after it ends it, before the prompt.
   const lean = agentStart(o.cwd, o.choice?.model);
-  const terminal = vscode.window.createTerminal({
-    name: o.name,
-    cwd: o.cwd,
-    shellPath: claudeBinary(),
-    shellArgs: [
+  const cmd = agentCommand(
+    [
       ...choiceArgs(o.choice ?? {}),
       ...(lean ? [...lean.flags, ...(lean.tools ? ['--tools', lean.tools.join(',')] : [])] : []),
       ...(o.resume ? ['--resume', o.resume] : ['--session-id', sessionId]),
@@ -353,9 +437,19 @@ export function runAgentInTerminal(o: {
       // Resumed without a prompt, it waits for one.
       ...(o.prompt ? [o.prompt] : []),
     ],
-    iconPath: new vscode.ThemeIcon('hubot'),
+    o.cwd,
+    { tty: true },
+  );
+  const terminal = vscode.window.createTerminal({
+    name: cmd.sandbox ? `${o.name} (sandboxed)` : o.name,
+    cwd: o.cwd,
+    shellPath: cmd.command,
+    shellArgs: cmd.args,
+    env: cmd.env as Record<string, string>,
+    iconPath: new vscode.ThemeIcon(cmd.sandbox ? 'shield' : 'hubot'),
   });
   terminals.set(sessionId, terminal);
+  if (cmd.sandbox) terminalSandboxes.set(sessionId, cmd.sandbox);
   if (o.track) {
     const data = {
       role: o.track.role,
@@ -429,9 +523,12 @@ export function isWorkingHere(sessionId: string): boolean {
 export async function stopTerminalAgent(sessionId: string): Promise<boolean> {
   const t = terminals.get(sessionId);
   terminals.delete(sessionId);
+  const sandbox = terminalSandboxes.get(sessionId);
+  terminalSandboxes.delete(sessionId);
   // Stopped: its terminal may stay open, so its end is recorded now.
   void endTerminalRun(sessionId, t?.exitStatus?.code ?? null);
   if (!t || t.exitStatus !== undefined) return false;
+  stopInSandbox(sandbox, sessionId);
   const pid = await t.processId;
   try {
     if (pid === undefined) throw new Error('no process');
@@ -529,10 +626,18 @@ export function runAgentHeadless(o: {
   const args = headlessArgs({ prompt: o.prompt, name: o.name, choice: o.choice, resume: o.resume, sessionId, mode, tools: o.tools, offer: o.offer, lean });
   // A missing one shows: the agent then starts without Flotilla's settings (BL-85).
   const settingsFile = settingsFileOf(lean?.flags ?? []);
+  let cmd: AgentCommand;
+  try {
+    cmd = agentCommand(args, o.cwd);
+  } catch (e) {
+    // A sandbox's start that can't be put together doesn't start at all, sandboxed or not.
+    releaseStart(o.slot);
+    throw e;
+  }
   o.output.appendLine(
-    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}, ${settingsFile ? `settings ${settingsFile}` : 'no settings file'}).`,
+    `Starting ${o.name} in ${o.cwd} (${o.resume ? `resuming ${o.resume}` : `session ${sessionId}`}, permission mode ${mode}${o.choice?.model ? `, model ${o.choice.model}` : ''}${o.choice?.effort ? `, ${o.choice.effort} effort` : ''}${lean?.tools ? ', lean start' : ''}, ${settingsFile ? `settings ${settingsFile}` : 'no settings file'}${cmd.sandbox ? `, sandboxed in OpenShell sandbox ${cmd.sandbox}` : ''}).`,
   );
-  const child = spawn(claudeBinary(), args, { cwd: o.cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(cmd.command, cmd.args, { cwd: o.cwd, env: cmd.env, stdio: ['ignore', 'pipe', 'pipe'] });
   running.set(sessionId, o.name);
   const spawnedAt = Date.now();
   const track = o.track;
@@ -594,7 +699,14 @@ export function runAgentHeadless(o: {
       resolve(result);
     });
   });
-  return { sessionId, done, stop: () => child.kill() };
+  return {
+    sessionId,
+    done,
+    stop: () => {
+      child.kill();
+      stopInSandbox(cmd.sandbox, sessionId);
+    },
+  };
 }
 
 /**
@@ -623,7 +735,8 @@ export function probeLimit(o: { choice?: AgentChoice; output: vscode.OutputChann
   ];
   return new Promise((resolve) => {
     let out = '';
-    const child = spawn(claudeBinary(), args, { cwd: os.tmpdir(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const cmd = agentCommand(args, os.tmpdir(), { scratch: true });
+    const child = spawn(cmd.command, cmd.args, { cwd: os.tmpdir(), env: cmd.env, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => child.kill(), 120_000);
     child.stdout.on('data', (d: Buffer) => (out = (out + d.toString()).slice(-4000)));
     child.stderr.on('data', (d: Buffer) => (out = (out + d.toString()).slice(-4000)));
@@ -669,7 +782,8 @@ export async function summarizeAgent(transcript: string, o: { output: vscode.Out
   o.output.appendLine(`Summarize: ${transcript} (model ${model}, ${input.length} characters).`);
   return new Promise((resolve) => {
     let out = '';
-    const child = spawn(claudeBinary(), summaryArgs(model), { cwd: os.tmpdir(), env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const cmd = agentCommand(summaryArgs(model), os.tmpdir(), { scratch: true });
+    const child = spawn(cmd.command, cmd.args, { cwd: os.tmpdir(), env: cmd.env, stdio: ['pipe', 'pipe', 'pipe'] });
     const timer = setTimeout(() => child.kill(), 120_000);
     child.stdout.on('data', (d: Buffer) => (out += d.toString()));
     child.on('error', (e) => (clearTimeout(timer), resolve({ error: e.message })));
@@ -701,10 +815,11 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
     // Started with them.
   }
   const model = askModel();
-  o.output.appendLine(`Ask: starting in ${cwd} (model ${model}).`);
-  const child = spawn(claudeBinary(), askArgs({ model, instructions: o.instructions, plugins }), {
+  const cmd = agentCommand(askArgs({ model, instructions: o.instructions, plugins }), cwd);
+  o.output.appendLine(`Ask: starting in ${cwd} (model ${model}${cmd.sandbox ? `, sandboxed in OpenShell sandbox ${cmd.sandbox}` : ''}).`);
+  const child = spawn(cmd.command, cmd.args, {
     cwd,
-    env: { ...process.env },
+    env: cmd.env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const slot = starting.begin();
@@ -740,11 +855,12 @@ export function spawnDiscussion(
     // Started with them.
   }
   const model = validModel(o.choice?.model);
-  o.output.appendLine(
-    `Discussion of ${o.ticket}: ${o.agent} ${o.resume ? `resuming ${o.session}` : `in session ${o.session}`} in ${cwd}${model ? ` (model ${model})` : ''}.`,
-  );
   const args = discussArgs({ choice: choiceArgs(o.choice ?? {}), instructions: o.instructions, plugins, session: o.session, resume: o.resume, tools: o.tools });
-  const child = spawn(claudeBinary(), args, { cwd, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const cmd = agentCommand(args, cwd);
+  o.output.appendLine(
+    `Discussion of ${o.ticket}: ${o.agent} ${o.resume ? `resuming ${o.session}` : `in session ${o.session}`} in ${cwd}${model ? ` (model ${model})` : ''}${cmd.sandbox ? `, sandboxed in OpenShell sandbox ${cmd.sandbox}` : ''}.`,
+  );
+  const child = spawn(cmd.command, cmd.args, { cwd, env: cmd.env, stdio: ['pipe', 'pipe', 'pipe'] });
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));

@@ -107,6 +107,8 @@ export interface WorktreeServiceOptions {
   autoAdopt: boolean;
   /** Called when auto-adoption of a worktree fails; that worktree is listed as not portable. */
   onAdoptError?: (wt: ResolvedWorktree, error: unknown) => void;
+  /** Called with a worktree's path once it's removed (its OpenShell sandbox goes with it, BL-270). */
+  onRemoved?: (path: string) => void;
 }
 
 export class WorktreeService {
@@ -230,6 +232,7 @@ export class WorktreeService {
       }
       throw error;
     }
+    this.options().onRemoved?.(wt.path);
   }
 
   /**

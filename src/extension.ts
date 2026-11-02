@@ -86,6 +86,7 @@ import { Merger } from './ui/backlog/merge';
 import { BigChats } from './ui/bigChats';
 import {
   isWorkingHere,
+  removeSandboxOf,
   setAgentDirs,
   trackTerminals,
 } from './ui/backlog/agentRunner';
@@ -234,6 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     autoAdopt: readSettings().autoAdopt,
     onAdoptError: (wt, error) =>
       output.appendLine(`Could not make ${wt.path ?? wt.adminDir} portable: ${error instanceof Error ? error.message : String(error)}`),
+    onRemoved: removeSandboxOf,
   }));
   const repository: Repository<Workstream> = new Repository<Workstream>(
     (scope) => {

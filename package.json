@@ -1966,6 +1966,23 @@
           "maximum": 10,
           "markdownDescription": "How many review rounds the reviewer and the implementer go through before the loop stops and leaves the decision to you."
         },
+        "flotilla.agents.sandbox": {
+          "type": "string",
+          "scope": "machine",
+          "enum": ["none", "openshell"],
+          "enumDescriptions": [
+            "Agents run on this machine, with your rights.",
+            "Every agent runs in its worktree's own NVIDIA OpenShell sandbox. It reaches only its worktree, the backlog folder, its git dirs and Flotilla's agent files. When OpenShell can't start it, it doesn't start."
+          ],
+          "default": "none",
+          "markdownDescription": "Where the agents Flotilla starts run (ticket agents, reviewers, the autopilot's, notes' and Ask's). `openshell` needs the [OpenShell](https://github.com/NVIDIA/OpenShell) CLI and a running gateway that allows bind mounts (`[openshell.drivers.docker] enable_bind_mounts = true`). Claude's login reaches the sandbox through an OpenShell provider, `flotilla-claude`, made from `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`). Set in your user settings only: a repository can't change it."
+        },
+        "flotilla.agents.sandboxImage": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "markdownDescription": "The image OpenShell sandboxes start from (`openshell sandbox create --from`): a community sandbox's name, a Dockerfile's folder or an image. It needs `claude`, `node` and `git`. Empty: OpenShell's default. Only with `#flotilla.agents.sandbox#` set to `openshell`."
+        },
         "flotilla.agents.permissionMode": {
           "type": "string",
           "scope": "machine",
