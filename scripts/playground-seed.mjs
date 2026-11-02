@@ -1013,6 +1013,21 @@ function seedSchedules(backlog, now) {
       '',
     ].join('\n'),
   );
+  // The run the week before, and a task an agent proposed, for the Scheduled view.
+  const before = new Date(day.getTime() - 7 * 86_400_000);
+  const earlier = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, '0')}-${String(before.getDate()).padStart(2, '0')}`;
+  fs.writeFileSync(path.join(dir, 'docs-check', `${earlier}.md`), `# Docs check ${earlier}\n\nThe README matches the code. Nothing to propose.\n`);
+  fs.writeFileSync(
+    path.join(dir, 'test-gaps.md'),
+    '---\nevery: Fridays at 17:00\nproposed: Vega-2\n---\nList the code changed this week that no test covers; propose a ticket for each gap.\n',
+  );
+}
+
+/** The scheduled tasks as seeded, fresh, every time a demo plays (BL-260: one accepts the proposed task). */
+export function seedScheduledTasks(dir, now = new Date()) {
+  const backlog = path.join(dir, '.flotilla', 'backlog');
+  fs.rmSync(path.join(backlog, 'schedules'), { recursive: true, force: true });
+  seedSchedules(backlog, now);
 }
 
 // ---- chats (BL-123) ----
