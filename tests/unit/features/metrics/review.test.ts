@@ -59,6 +59,20 @@ const EVENTS: FlotillaEvent[] = [
   ev('2026-10-11T10:00Z', 'merge-landed', { into: 'main', commit: 'c5' }, 'BL-5'),
   ev('2026-10-12T10:00Z', 'merge-landed', { into: 'main', commit: 'c6' }, 'BL-6'),
   ev('2026-10-12T12:00Z', 'agent-ended', { role: 'work', session: 's', code: 0, ok: true, minutes: 90, costUsd: 3 }, 'BL-3'),
+  ev(
+    '2026-10-12T12:00Z',
+    'agent-spend',
+    {
+      session: 's',
+      purpose: 'first',
+      to: '2026-10-12T12:00Z',
+      tokens: { input: 1, output: 1, cacheRead: 0, cacheCreation: 0 },
+      costUsd: 3,
+      contextK: [40],
+      tools: {},
+    },
+    'BL-3',
+  ),
   ev('2026-10-12T13:00Z', 'review-verdict', { verdict: 'changes', round: 1, by: 'X' }, 'BL-3'),
   ev('2026-10-12T14:00Z', 'review-verdict', { verdict: 'approved', round: 2, by: 'X' }, 'BL-3'),
 ];
@@ -71,21 +85,22 @@ describe('metricsSummary (BL-159)', () => {
 
   it('counts each metric this period and the one before', () => {
     expect(s.from).toBe('2026-10-08T00:00:00.000Z');
-    expect(s.events).toBe(10);
+    expect(s.events).toBe(11);
     expect(m('merges')).toMatchObject({ value: 4, previous: 3 });
     expect(m('conflicts-per-merge')).toMatchObject({ value: 0.25, previous: 2 / 3 });
-    expect(m('additions-only-share')).toMatchObject({ value: 1, previous: 1 / 3 });
-    expect(m('tickets-done')).toMatchObject({ value: 1, previous: 1 });
+    expect(m('additions-only-share')).toMatchObject({ value: 1, previous: 0 });
+    // The tickets that landed, merged or moved to Done, as the Metrics view counts them (BL-265).
+    expect(m('tickets-done')).toMatchObject({ value: 4, previous: 3 });
     expect(m('lead-time-hours')).toMatchObject({ value: 6, previous: 25 });
     expect(m('changes-per-verdict').value).toBe(0.5);
     expect(m('agent-hours').value).toBe(1.5);
     expect(m('cost-per-ticket').value).toBe(3);
   });
 
-  it("counts in the cost per ticket only the tickets whose agents' runs were recorded (BL-178)", () => {
-    const readIn = { ...ev('2026-10-10T12:00Z', 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla' }, 'BL-4'), imported: true as const };
+  it("counts in the cost per ticket only the tickets whose agents' spend was recorded (BL-178)", () => {
+    const readIn = { ...ev('2026-10-10T12:00Z', 'ticket-moved', { from: 'review', to: 'done', by: 'Flotilla' }, 'BL-7'), imported: true as const };
     const t = metricsSummary([...EVENTS, readIn], { to: NOW, days: 7 });
-    expect(t.metrics.find((x) => x.id === 'tickets-done')!.value).toBe(2);
+    expect(t.metrics.find((x) => x.id === 'tickets-done')!.value).toBe(5);
     expect(t.metrics.find((x) => x.id === 'cost-per-ticket')!.value).toBe(3);
   });
 
@@ -97,13 +112,13 @@ describe('metricsSummary (BL-159)', () => {
   it('says which way each went, by which way is better', () => {
     expect(trend(m('conflicts-per-merge'))).toBe('better');
     expect(trend(m('additions-only-share'))).toBe('worse');
-    expect(trend(m('tickets-done'))).toBe('same');
+    expect(trend(m('tickets-done'))).toBe('better');
     expect(trend(m('cost-usd'))).toBeUndefined();
   });
 
   it('is a table with the ids a proposal names', () => {
     const md = summaryMarkdown(s);
-    expect(md).toContain('Period 2026-10-08 to 2026-10-15 (10 events)');
+    expect(md).toContain('Period 2026-10-08 to 2026-10-15 (11 events)');
     expect(md).toMatch(/\| Merges that conflicted, per merge landed \(`conflicts-per-merge`, lower is better\) \| 0.25 \| 0.67 \| ↑ better \|/);
     expect(md).toContain('| $3.00 |');
   });

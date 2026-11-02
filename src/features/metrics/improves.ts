@@ -1,6 +1,5 @@
 import type { FlotillaEvent } from './events';
 import {
-  eventsBetween,
   formatValue,
   metricDefs,
   trend,
@@ -74,8 +73,8 @@ export function checkFix(
   const landed = landedAt(events, o.ticket);
   if (!def || !landed) return { ...base, ...(landed ? { landed: landed.toISOString() } : {}), verdict: 'unknown' };
   const end = new Date(Math.min(o.now.getTime(), landed.getTime() + days * DAY_MS));
-  const before = def.value(eventsBetween(events, new Date(landed.getTime() - days * DAY_MS), landed));
-  const after = def.value(eventsBetween(events, landed, end));
+  const before = def.value({ from: landed.getTime() - days * DAY_MS, to: landed.getTime() });
+  const after = def.value({ from: landed.getTime(), to: end.getTime() });
   const out = { ...base, landed: landed.toISOString(), before, after, unit: def.unit };
   if (o.now.getTime() - landed.getTime() < (o.minDays ?? 3) * DAY_MS) return { ...out, verdict: 'early' };
   const t = trend({ value: after, previous: before, better: def.better });
