@@ -40,9 +40,13 @@ const INSTANT = new Set([
   'backlog:comment',
   'backlog:demo',
   'note:open',
+  'discussion:open',
   // Opening a prompt or a form of VS Code's: the user goes on there.
   'backlog:new',
   'note:new',
+  'discussion:new',
+  'discussion:rename',
+  'discussion:delete',
   'backlog:integrations',
   'ci:signIn',
   'copy',

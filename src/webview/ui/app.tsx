@@ -13,6 +13,7 @@ import {
   type BacklogProblem,
   type CiView,
   type DirEntry,
+  type DiscussionRowView,
   type HostMessage,
   type MachineState,
   type MergeQueueView,
@@ -221,6 +222,7 @@ export function App() {
   const [refs, setRefs] = useState<Refs | undefined>(undefined);
   const [backlog, setBacklog] = useState<BacklogItemView[] | undefined>(undefined);
   const [notes, setNotes] = useState<NoteView[]>([]);
+  const [discussions, setDiscussions] = useState<DiscussionRowView[]>([]);
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
   const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
@@ -418,6 +420,9 @@ export function App() {
           return;
         case 'notes':
           setNotes(m.notes);
+          return;
+        case 'discussions':
+          setDiscussions(m.discussions);
           return;
         case 'noteDone':
           noteFinished(m.message);
@@ -697,6 +702,7 @@ export function App() {
         agentDefaults={backlogInfo.agentDefaults}
         mergeQueue={backlogInfo.mergeQueue}
         notes={notes}
+        discussions={discussions}
         workstreams={workstreams}
         colors={colors}
         workingOnly={!!persisted.workingOnly}

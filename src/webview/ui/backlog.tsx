@@ -14,6 +14,7 @@ import type {
   BacklogItemView as BacklogItem,
   BacklogProblem,
   BacklogStatus,
+  DiscussionRowView,
   MergeQueueView,
   NoteView,
   WorkstreamView,
@@ -38,6 +39,7 @@ import {
   ItemRow,
 } from './card';
 import { MergeQueueBar } from './mergeQueueBar';
+import { DiscussionsLane } from './discussions';
 import { NotesLane } from './notes';
 import './backlog.css';
 
@@ -69,6 +71,8 @@ export interface Props {
   mergeQueue?: MergeQueueView;
   /** The notes (BL-182): the Notes box and lane at the top. */
   notes: NoteView[];
+  /** The discussions talked in (BL-267), newest first: the Discussions section under Notes. */
+  discussions: DiscussionRowView[];
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -95,6 +99,7 @@ export function BacklogView({
   agentDefaults,
   mergeQueue,
   notes,
+  discussions,
   workstreams,
   colors,
   workingOnly,
@@ -196,6 +201,7 @@ export function BacklogView({
         </div>
       )}
       {!workingOnly && <NotesLane notes={notes} />}
+      {!workingOnly && <DiscussionsLane discussions={discussions} />}
       {proposed.length > 0 && (
         <div class="group lane proposed-lane">
           <div class="row group-head">

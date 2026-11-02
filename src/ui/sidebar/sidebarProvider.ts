@@ -56,6 +56,7 @@ import {
 import { LocalBacklog } from '../../features/backlog/localBacklog';
 import type { BacklogIntegrations } from '../backlog/integrations';
 import type { Merges } from '../backlog/merges';
+import type { Discussions } from '../backlog/discussions';
 import type { NoteAgents } from '../backlog/notes';
 import {
   agentChoice,
@@ -358,6 +359,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.notes = notes;
     this.subscriptions.push(notes.onDidChange(() => void this.postNotes()));
     void this.postNotes();
+  }
+
+  private discussions: Discussions | undefined;
+
+  /** The Discussions section (BL-267): posted at start and whenever one changes. */
+  useDiscussions(discussions: Discussions): void {
+    this.discussions = discussions;
+    this.subscriptions.push(discussions.onDidChange(() => void this.postDiscussions()));
+    void this.postDiscussions();
+  }
+
+  private async postDiscussions(): Promise<void> {
+    if (this.discussions) this.post({ type: 'discussions', discussions: await this.discussions.views() });
   }
 
   private async postNotes(): Promise<void> {
@@ -903,6 +917,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
         void this.postBacklog();
         void this.postNotes();
+        void this.postDiscussions();
         this.post({ type: 'progress', tools: progressByTool() });
         this.post({ type: 'ci', views: this.ci.snapshot() });
         this.postStorage();
@@ -983,6 +998,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         return;
       }
+      case 'discussion':
+        await this.discussions?.onMessage(m);
+        return;
       case 'note': {
         let failed = false;
         try {

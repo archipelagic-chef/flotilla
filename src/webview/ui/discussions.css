@@ -1,0 +1,24 @@
+/* The Discussions section (BL-267): a row per discussion, its title, when it was last talked in, and on hover its actions. */
+.discussion-row {
+  gap: 6px;
+  cursor: pointer;
+}
+.discussion-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discussion-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.discussion-actions {
+  display: none;
+  flex: none;
+}
+.discussion-row:hover .discussion-actions,
+.discussion-row:focus-within .discussion-actions {
+  display: flex;
+}

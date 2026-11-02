@@ -68,6 +68,13 @@ export function TitleBar({
           </button>
           <button
             class="icon"
+            aria-label="New Discussion: talk an idea through with an agent, no ticket expected"
+            onClick={() => send({ type: 'discussion', op: 'new' })}
+          >
+            <i class="codicon codicon-comment-discussion" />
+          </button>
+          <button
+            class="icon"
             aria-label="New Note: write a request in the editor, and an agent turns it into ticket proposals"
             onClick={() => send({ type: 'note', op: 'new' })}
           >

@@ -98,6 +98,14 @@ export interface BacklogItemView extends BacklogItem {
 }
 
 /** A note (BL-182), as the backlog's Notes lane shows it. */
+/** A kept discussion (BL-267), as the Discussions section lists it. */
+export interface DiscussionRowView {
+  id: string;
+  title: string;
+  /** When it was last talked in (ISO 8601). */
+  talked: string;
+}
+
 export interface NoteView {
   id: string;
   title: string;
@@ -362,6 +370,8 @@ export type HostMessage =
     }
   /** The notes (BL-182), oldest first; sent at start and whenever they change. */
   | { type: 'notes'; notes: NoteView[] }
+  /** The discussions talked in (BL-267), newest first; sent at start and whenever they change. */
+  | { type: 'discussions'; discussions: DiscussionRowView[] }
   /** A note's action is finished (as a backlog action's is): a card's × shows working until then (BL-215). */
   | { type: 'noteDone'; message: Extract<WebviewMessage, { type: 'note' }>; failed?: boolean }
   /** A backlog action (the webview's message, as it was sent) is finished, the board posted: failed if it threw (BL-117). */
@@ -518,6 +528,8 @@ export type WebviewMessage =
   | { type: 'note'; op: 'new' }
   | { type: 'note'; op: 'open'; id: string; answer?: boolean }
   | { type: 'note'; op: 'delete'; id: string }
+  | { type: 'discussion'; op: 'new' }
+  | { type: 'discussion'; op: 'open' | 'rename' | 'delete'; id: string }
   /** Add an item (VS Code's input box asks for its title). */
   | { type: 'backlog'; op: 'new' }
   /** priority null clears it. */
