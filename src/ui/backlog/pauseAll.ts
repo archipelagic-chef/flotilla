@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
+import { isDiscussionId } from '../../features/backlog/discussions';
 import type { Merger } from './merge';
 import {
   checksDetail,
@@ -12,6 +13,7 @@ import {
   resumedMessage,
   resumeOrder,
 } from '../../features/backlog/pausedAll';
+import type { Discussions } from './discussions';
 import type { NoteAgents } from './notes';
 import type { ReviewLoop } from './reviewLoop';
 import type { Shaping } from './shaping';
@@ -24,6 +26,8 @@ export interface PauseAllDeps {
   merges?: Pick<Merger, 'pauseForAll' | 'resumeForAll' | 'checksRunning' | 'stopChecks'>;
   /** The note agents (BL-193). */
   notes?: Pick<NoteAgents, 'pauseForAll' | 'resumeForAll'>;
+  /** The free discussions' chats (BL-267). */
+  discussions?: Pick<Discussions, 'pauseForAll' | 'resumeForAll'>;
   store: PausedAllStore;
   /** The hold is lifted (Resume All, here or in another window): the queue and the autopilot go on. */
   lifted?(): void;
@@ -70,8 +74,8 @@ export class PauseAll implements vscode.Disposable {
   }
 
   /**
-   * Pauses every agent working on a ticket (merges' too), then the note agents, top of the backlog first; the set is added to one already
-   * paused. stopChecks: merges' checks running now stop as well (their merges can be run again); else they finish.
+   * Pauses every agent working on a ticket (merges' too), then the note agents and the discussions answering (BL-267),
+   * top of the backlog first; the set is added to one already paused. stopChecks: merges' checks running now stop as well (their merges can be run again); else they finish.
    */
   async pause(o: { stopChecks?: boolean } = {}): Promise<PauseAllResult> {
     const before = this.deps.store.read()?.agents ?? [];
@@ -98,7 +102,7 @@ export class PauseAll implements vscode.Disposable {
         if (paused.length) await this.deps.store.write({ at: new Date().toISOString(), agents: mergePaused(before, paused) });
       }
     }
-    const notes = (await this.deps.notes?.pauseForAll()) ?? [];
+    const notes = [...((await this.deps.notes?.pauseForAll()) ?? []), ...(this.deps.discussions?.pauseForAll() ?? [])];
     if (notes.length) {
       paused.push(...notes);
       await this.deps.store.write({ at: new Date().toISOString(), agents: mergePaused(before, paused) });
@@ -116,6 +120,10 @@ export class PauseAll implements vscode.Disposable {
     let resumed = 0;
     let waiting = 0;
     for (const a of resumeOrder((await this.deps.backlog.read()).items, set)) {
+      if (a.kind === 'discussion' && isDiscussionId(a.id)) {
+        this.deps.discussions?.resumeForAll(a.id);
+        continue;
+      }
       if (a.kind === 'discussion') {
         const item = (await this.deps.backlog.read()).items.find((i) => i.id === a.id);
         if (item?.shaping?.held?.kind !== 'paused') continue;

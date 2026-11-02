@@ -1,0 +1,21 @@
+/* A discussion's tab (BL-267): a page as wide as a ticket's, its title with Rename and Delete beside it. */
+.discussion {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 16px 20px 48px;
+}
+.discussion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.discussion-head h1 {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 0;
+}
+.discussion-empty {
+  padding: 16px 20px;
+  color: var(--vscode-descriptionForeground);
+}

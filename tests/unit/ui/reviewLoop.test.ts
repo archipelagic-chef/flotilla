@@ -1709,6 +1709,24 @@ describe('Pause All and Resume All (BL-160)', () => {
     loop.dispose();
   });
 
+  it('stops the free discussions answering, saved as kind discussion, and lets them go on with Resume All (BL-267)', async () => {
+    const calls: string[] = [];
+    const discussions = {
+      pauseForAll: () => (calls.push('pause discussions'), [{ id: 'DISC-1', kind: 'discussion' as const }]),
+      resumeForAll: (id: string) => void calls.push(`resume ${id}`),
+    };
+    const { PauseAll } = await import('../../../src/ui/backlog/pauseAll');
+    const withDiscussions = new PauseAll({ backlog: backlog as never, reviews: loop as never, store, discussions });
+    const { paused } = await withDiscussions.pause();
+    expect(paused).toContainEqual({ id: 'DISC-1', kind: 'discussion' });
+    expect(store.read()?.agents).toContainEqual({ id: 'DISC-1', kind: 'discussion' });
+    await withDiscussions.resume();
+    expect(calls).toEqual(['pause discussions', 'resume DISC-1']);
+    withDiscussions.dispose();
+    all.dispose();
+    loop.dispose();
+  });
+
   it('holds and resumes after a restart: the set is read from the repository', async () => {
     await all.pause();
     all.dispose();

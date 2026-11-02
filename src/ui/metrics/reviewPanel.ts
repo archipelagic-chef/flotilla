@@ -73,7 +73,7 @@ export function openReviewPanel(deps: ReviewPanelDeps, day: string): vscode.Webv
   panel.webview.onDidReceiveMessage(async (m: ReviewWebviewMessage) => {
     try {
       if (m.type === 'ready') await post();
-      else if (m.type === 'openHref') await openHref(deps, m.href);
+      else if (m.type === 'openHref') await openLink(deps.reference, m.href, [dir, deps.mainRoot, deps.backlogDir]);
       else if (m.type === 'openFile') await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
     } catch (e) {
       void vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
@@ -87,8 +87,11 @@ export function openReviewPanel(deps: ReviewPanelDeps, day: string): vscode.Webv
   return panel;
 }
 
-/** A link of a review: a ticket (or an entry of one), a web page, or a file (from the repository's root, or the review's folder). */
-async function openHref(deps: ReviewPanelDeps, href: string): Promise<void> {
+/**
+ * A link of a review (or of a discussion's answer, BL-267): a ticket (or an entry of one), a web page, or a file, found
+ * in the first of roots that has it.
+ */
+export async function openLink(reference: vscode.Uri, href: string, roots: readonly string[]): Promise<void> {
   const ref = parseReferenceLink(href, '');
   if (ref?.id) {
     await vscode.commands.executeCommand('flotilla.openBacklogItem', ref.id);
@@ -100,13 +103,12 @@ async function openHref(deps: ReviewPanelDeps, href: string): Promise<void> {
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return;
   const link = parseFileLink(/^file:/i.test(href) ? vscode.Uri.parse(href).fsPath + (href.includes('#') ? href.slice(href.indexOf('#')) : '') : href);
-  const roots = [reviewsDir(deps.backlogDir), deps.mainRoot, deps.backlogDir];
   const found = (path.isAbsolute(link.path) ? [link.path] : roots.map((r) => path.join(r, link.path))).find((f) => fs.existsSync(f));
   if (!found) {
-    void vscode.window.showWarningMessage(`${link.path} isn't there (anymore): not in the main worktree, nor next to the reviews.`);
+    void vscode.window.showWarningMessage(`${link.path} isn't there (anymore).`);
     return;
   }
-  const uri = toWorkspaceUri(deps.reference, found);
+  const uri = toWorkspaceUri(reference, found);
   if (fs.statSync(found).isDirectory()) {
     await vscode.commands.executeCommand('revealInExplorer', uri);
     return;

@@ -75,11 +75,16 @@ import { MainSync } from './ui/backlog/mainSync';
 import { TicketChecker } from './ui/backlog/ticketCheck';
 import { installCommitHook } from './features/backlog/commitHook';
 import { writeChecksConfig } from './features/backlog/checksConfig';
+import {
+  discussionCommands,
+  Discussions,
+} from './ui/backlog/discussions';
 import { BacklogInbox } from './ui/backlog/inboxWatcher';
 import {
   NoteAgents,
   noteCommands,
 } from './ui/backlog/notes';
+import { DiscussionStore } from './features/backlog/discussions';
 import { NoteStore } from './features/backlog/notes';
 import { ReviewLoop } from './ui/backlog/reviewLoop';
 import { Merger } from './ui/backlog/merge';
@@ -528,12 +533,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   registerAll(context.subscriptions, noteCommands(notes));
   sidebar.useNotes(notes);
+  // Discussions (BL-267): an idea talked through with an agent, no ticket expected.
+  const discussions = new Discussions({
+    extensionUri: context.extensionUri,
+    store: new DiscussionStore(backlog.dir),
+    mainRoot: location.mainRoot,
+    reference: folder.uri,
+    output,
+  });
+  context.subscriptions.push(discussions);
+  registerAll(context.subscriptions, discussionCommands(discussions));
+  sidebar.useDiscussions(discussions);
   const pauseAll = new PauseAll({
     backlog,
     reviews,
     shaping,
     merges: merger,
     notes,
+    discussions,
     store: pausedAll,
     lifted: () => (reviews.dispatchQueued(), void notes.tick()),
   });
