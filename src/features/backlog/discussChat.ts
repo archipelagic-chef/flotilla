@@ -20,6 +20,8 @@ export function discussArgs(o: {
   resume: boolean;
   /** shapingTools(ticket): their names offered, and their rules (Edit of the ticket only) allowed. */
   tools: readonly string[];
+  /** Rules refused even where tools allow them (a free discussion's: ASK_DENIED, BL-267). */
+  denied?: readonly string[];
 }): string[] {
   return [
     '-p',
@@ -39,6 +41,7 @@ export function discussArgs(o: {
     // No hooks: it isn't one of the worktree's chats (Discuss doesn't open one), and isn't handed the backlog guide.
     '--settings',
     askSettings(o.plugins),
+    ...(o.denied?.length ? ['--disallowedTools', ...o.denied] : []),
     // Last: the lists are variadic.
     '--tools',
     [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','),
@@ -67,9 +70,11 @@ function textOf(content: unknown): string {
 
 /**
  * A kept discussion's chat, read back from its transcript (JSON lines): each of the owner's messages and the answer it
- * got (its last message with text, as a finished answer is shown). The first message is the opener, not shown.
+ * got (its last message with text, as a finished answer is shown). The first message is the opener, not shown, unless
+ * the chat has none (a free discussion's first message is the owner's, BL-267).
  */
-export function discussionTurns(jsonl: string): AskTurn[] {
+export function discussionTurns(jsonl: string, o: { opener?: boolean } = {}): AskTurn[] {
+  const opener = o.opener ?? true;
   const turns: AskTurn[] = [];
   for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue;
@@ -86,7 +91,7 @@ export function discussionTurns(jsonl: string): AskTurn[] {
       if (Array.isArray(content) && content.some((c: { type?: string }) => c?.type === 'tool_result')) continue;
       const question = textOf(content).trim();
       if (!question) continue;
-      turns.push({ question, answer: '', state: 'done', ...(turns.length ? {} : { opener: true }) });
+      turns.push({ question, answer: '', state: 'done', ...(turns.length || !opener ? {} : { opener: true }) });
     } else if (m.type === 'assistant') {
       const text = textOf(m.message?.content);
       const turn = turns[turns.length - 1];

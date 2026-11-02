@@ -28,6 +28,8 @@ export interface AskChatDeps {
   log(line: string): void;
   /** Its process keeps the chat (a discussion, BL-241): one that starts over resumes it, so it isn't given the chat so far. */
   kept?: boolean;
+  /** What a starting process says it does ("Reading the ticket…" when none is given). */
+  starting?: string;
   /** An answer is finished (done, stopped or failed), its process still there or not. */
   answered?(turn: AskTurn): void;
 }
@@ -102,7 +104,7 @@ export class AskChat {
           await new Promise((r) => setTimeout(r, this.timing.memoryRetryMs));
           if (gone()) return;
         }
-        turn.activity = 'Reading the ticket…';
+        turn.activity = this.d.starting ?? 'Reading the ticket…';
         this.d.changed();
         const context = await this.d.context();
         if (gone()) return;

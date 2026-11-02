@@ -841,6 +841,8 @@ export function spawnDiscussion(
     session: string;
     resume: boolean;
     tools: readonly string[];
+    /** See discussArgs. */
+    denied?: readonly string[];
     choice?: AgentChoice;
     output: vscode.OutputChannel;
     ticket: string;
@@ -855,7 +857,15 @@ export function spawnDiscussion(
     // Started with them.
   }
   const model = validModel(o.choice?.model);
-  const args = discussArgs({ choice: choiceArgs(o.choice ?? {}), instructions: o.instructions, plugins, session: o.session, resume: o.resume, tools: o.tools });
+  const args = discussArgs({
+    choice: choiceArgs(o.choice ?? {}),
+    instructions: o.instructions,
+    plugins,
+    session: o.session,
+    resume: o.resume,
+    tools: o.tools,
+    denied: o.denied,
+  });
   const cmd = agentCommand(args, cwd);
   o.output.appendLine(
     `Discussion of ${o.ticket}: ${o.agent} ${o.resume ? `resuming ${o.session}` : `in session ${o.session}`} in ${cwd}${model ? ` (model ${model})` : ''}${cmd.sandbox ? `, sandboxed in OpenShell sandbox ${cmd.sandbox}` : ''}.`,
