@@ -147,7 +147,7 @@ function doneTicket(source: SpendSource, id: string, at: number, criteria: Reado
 }
 
 /** A range's numbers, counted the same way for it and for the one before. */
-interface Counted {
+export interface ProductivityCounts {
   spend: Spend[];
   usd: number;
   tokens: number;
@@ -156,7 +156,10 @@ interface Counted {
   contexts: number[];
 }
 
-function count(source: SpendSource, r: Range, criteria: ReadonlyMap<string, number>): Counted {
+type Counted = ProductivityCounts;
+
+/** Counts a range (any span: an improvement review reads these too, BL-265). */
+export function countProductivity(source: SpendSource, r: Range, criteria: ReadonlyMap<string, number>): Counted {
   const events = source.between(r.from, r.to);
   const spend = events.filter((e) => e.kind === 'agent-spend') as Spend[];
   const done = [...doneIn(events)].map(([id, at]) => doneTicket(source, id, at, criteria));
@@ -170,11 +173,27 @@ function count(source: SpendSource, r: Range, criteria: ReadonlyMap<string, numb
   };
 }
 
-const perUsd = (c: Counted) => (c.usd ? round2(c.criteria / c.usd) : 0);
-const perMTok = (c: Counted) => (c.tokens ? round2(c.criteria / (c.tokens / 1e6)) : 0);
-const ticketCost = (c: Counted) => (c.done.length ? sum(c.done.map((d) => d.usd)) / c.done.length : 0);
-const outside = (c: Counted) =>
-  c.usd ? Math.round((sum(c.spend.filter((s) => s.data.purpose === 'orchestration').map((s) => s.data.costUsd)) / c.usd) * 100) : 0;
+/**
+ * The numbers of a range that the view shows and an improvement review reads too (BL-265), unrounded, undefined when
+ * there's nothing to count. The view rounds them; the review's `metricDefs` reads them as they are.
+ */
+export const productivityNumbers = {
+  criteriaPerUsd: (c: Counted) => (c.usd ? c.criteria / c.usd : undefined),
+  criteriaPerMTok: (c: Counted) => (c.tokens ? c.criteria / (c.tokens / 1e6) : undefined),
+  /** Of the tickets done whose agents' spend was recorded: the history read in has none (BL-178). */
+  costPerTicket: (c: Counted) => {
+    const spent = c.done.filter((d) => d.usd > 0);
+    return spent.length ? sum(spent.map((d) => d.usd)) / spent.length : undefined;
+  },
+  outsideTickets: (c: Counted) => (c.usd ? sum(c.spend.filter((s) => s.data.purpose === 'orchestration').map((s) => s.data.costUsd)) / c.usd : undefined),
+  /** Tokens per turn. */
+  contextP50: (c: Counted) => (c.contexts.length ? quantile(c.contexts, 0.5) : undefined),
+  contextP90: (c: Counted) => (c.contexts.length ? quantile(c.contexts, 0.9) : undefined),
+};
+const perUsd = (c: Counted) => round2(productivityNumbers.criteriaPerUsd(c) ?? 0);
+const perMTok = (c: Counted) => round2(productivityNumbers.criteriaPerMTok(c) ?? 0);
+const ticketCost = (c: Counted) => productivityNumbers.costPerTicket(c) ?? 0;
+const outside = (c: Counted) => Math.round((productivityNumbers.outsideTickets(c) ?? 0) * 100);
 const turns = (c: Counted) => (c.done.length ? Math.round(sum(c.done.map((d) => d.turns)) / c.done.length) : 0);
 
 function ticketRow(d: DoneTicket): MetricRow {
@@ -186,7 +205,7 @@ function ticketRow(d: DoneTicket): MetricRow {
 /** The bars of a ratio over buckets: criteria done in each per $ spent in it, with its tickets. */
 function ratioBars(source: SpendSource, cols: ReadonlyArray<{ from: number; to: number; label: string }>, criteria: ReadonlyMap<string, number>): MetricBar[] {
   return cols.map((k) => {
-    const c = count(source, k, criteria);
+    const c = countProductivity(source, k, criteria);
     return {
       label: k.label,
       values: [perUsd(c)],
@@ -208,8 +227,8 @@ export function productivitySection(
   },
 ): MetricSection {
   const criteria = o.criteria ?? new Map<string, number>();
-  const a = count(source, o.cur, criteria);
-  const b = count(source, o.prev, criteria);
+  const a = countProductivity(source, o.cur, criteria);
+  const b = countProductivity(source, o.prev, criteria);
   const doneRows = byValue(a.done.map(ticketRow));
   const purposeRows = (p: SpendPurpose) => {
     const by = new Map<string, MetricRow>();

@@ -305,7 +305,7 @@ interface Range {
 }
 
 /** A period's numbers, counted the same way for it and for the one before. */
-interface Counted {
+export interface Counted {
   done: MetricRow[];
   flows: TicketFlow[];
   landed: MetricRow[];
@@ -323,7 +323,8 @@ interface Counted {
   clicks: MetricRow[];
 }
 
-function count(index: EventIndex, r: Range, now: number): Counted {
+/** Counts a span: a period of the view, or any span an improvement review asks for (BL-265). */
+export function count(index: EventIndex, r: Range, now: number): Counted {
   const events = index.between(r.from, r.to);
   const c: Counted = {
     done: [],
@@ -540,7 +541,28 @@ function byValue(rows: MetricRow[]): MetricRow[] {
   return [...rows].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 }
 
-const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
+const ratio = (part: number, whole: number) => (whole ? part / whole : undefined);
+const pct = (share: number | undefined) => Math.round((share ?? 0) * 100);
+const roleSum = (c: Counted, f: 'usd' | 'tokens') => sum(Object.values(c.costByRole).map((x) => x[f]));
+
+/**
+ * The numbers of a span that the view shows and an improvement review reads too (BL-265), unrounded: shares as
+ * fractions, undefined when there's nothing to divide by.
+ */
+export const spanNumbers = {
+  /** The tickets that landed: merged, or moved to Done. */
+  done: (c: Counted) => c.done.length,
+  merges: (c: Counted) => c.landed.length,
+  /** The merges that conflicted on the way, of those landed. */
+  conflicted: (c: Counted) => ratio(c.conflicted.length, c.landed.length),
+  /** The conflicted merges whose conflicts only added lines, of those conflicted. */
+  additions: (c: Counted) => ratio(c.additions.length, c.conflicted.length),
+  checksFailed: (c: Counted) => c.failures.length,
+  checksTimedOut: (c: Counted) => c.timeouts.length,
+  sentBack: (c: Counted) => c.sentBack.length,
+  cost: (c: Counted) => roleSum(c, 'usd'),
+  tokens: (c: Counted) => roleSum(c, 'tokens'),
+};
 
 /** The Metrics view of the period ending at now, each number compared with the period before. */
 export function computeMetrics(
@@ -576,7 +598,7 @@ export function computeMetrics(
     id: 'flow',
     title: 'Flow',
     numbers: [
-      number('done', 'Tickets done', 'count', a.done.length, b.done.length, a.done),
+      number('done', 'Tickets done', 'count', spanNumbers.done(a), spanNumbers.done(b), a.done),
       number(
         'toMerged',
         'To Do to merged',
@@ -640,16 +662,9 @@ export function computeMetrics(
     id: 'merges',
     title: 'Merges',
     numbers: [
-      number('merges', 'Merges', 'count', a.landed.length, b.landed.length, a.landed),
-      number('conflicted', 'Conflicted', 'percent', pct(a.conflicted.length, a.landed.length), pct(b.conflicted.length, b.landed.length), a.conflicted, true),
-      number(
-        'additions',
-        'Of those, only additions',
-        'percent',
-        pct(a.additions.length, a.conflicted.length),
-        pct(b.additions.length, b.conflicted.length),
-        a.additions,
-      ),
+      number('merges', 'Merges', 'count', spanNumbers.merges(a), spanNumbers.merges(b), a.landed),
+      number('conflicted', 'Conflicted', 'percent', pct(spanNumbers.conflicted(a)), pct(spanNumbers.conflicted(b)), a.conflicted, true),
+      number('additions', 'Of those, only additions', 'percent', pct(spanNumbers.additions(a)), pct(spanNumbers.additions(b)), a.additions),
       number(
         'approvalToLanded',
         'Approval to landed',
@@ -659,8 +674,8 @@ export function computeMetrics(
         byValue(a.approvalToLanded),
         true,
       ),
-      number('checksFailed', 'Checks failed', 'count', a.failures.length, b.failures.length, a.failures, true),
-      number('checksTimedOut', 'Checks timed out', 'count', a.timeouts.length, b.timeouts.length, a.timeouts, true),
+      number('checksFailed', 'Checks failed', 'count', spanNumbers.checksFailed(a), spanNumbers.checksFailed(b), a.failures, true),
+      number('checksTimedOut', 'Checks timed out', 'count', spanNumbers.checksTimedOut(a), spanNumbers.checksTimedOut(b), a.timeouts, true),
     ],
     charts: [
       {
@@ -735,7 +750,7 @@ export function computeMetrics(
         byValue(a.rounds),
         true,
       ),
-      number('sentBack', 'Tickets sent back', 'count', a.sentBack.length, b.sentBack.length, a.sentBack, true),
+      number('sentBack', 'Tickets sent back', 'count', spanNumbers.sentBack(a), spanNumbers.sentBack(b), a.sentBack, true),
     ],
     charts: [
       {
@@ -761,7 +776,6 @@ export function computeMetrics(
   };
 
   // Cost.
-  const roleSum = (c: Counted, f: 'usd' | 'tokens') => sum(Object.values(c.costByRole).map((x) => x[f]));
   const costliest = [...a.tickets].sort((x, y) => y[1].usd - x[1].usd || y[1].tokens - x[1].tokens).slice(0, 10);
   const costDays = cols.map((k) => {
     const ended = period === 'day' || k.to - k.from < DAY ? index.between(k.from, k.to).filter((e) => e.kind === 'agent-ended') : index.day(k.from, now).ended;
@@ -784,8 +798,8 @@ export function computeMetrics(
     id: 'cost',
     title: 'Cost',
     numbers: [
-      number('cost', 'Cost', 'usd', roleSum(a, 'usd'), roleSum(b, 'usd'), allRows(a), true),
-      number('tokens', 'Tokens', 'tokens', roleSum(a, 'tokens'), roleSum(b, 'tokens'), byValue(allRows(a).map((r) => ({ ...r, value: undefined }))), true),
+      number('cost', 'Cost', 'usd', spanNumbers.cost(a), spanNumbers.cost(b), allRows(a), true),
+      number('tokens', 'Tokens', 'tokens', spanNumbers.tokens(a), spanNumbers.tokens(b), byValue(allRows(a).map((r) => ({ ...r, value: undefined }))), true),
     ],
     charts: [
       {
