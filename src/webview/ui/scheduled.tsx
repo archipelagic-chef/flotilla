@@ -41,6 +41,12 @@ function Status({ task }: { task: ScheduledTaskView }) {
         <i class="codicon codicon-lightbulb" /> Proposed by {task.proposed}: it runs once you accept it
       </span>
     );
+  if (task.paused)
+    return (
+      <span class="scheduled-status paused" title="It doesn't run on its schedule until the paused: line goes from its file; Run Now still runs it">
+        <i class="codicon codicon-debug-pause" /> Paused
+      </span>
+    );
   if (task.due)
     return (
       <span class="scheduled-status waiting" title={task.waits ? 'Due: it starts once that no longer holds it' : 'Due: it starts within a few minutes'}>

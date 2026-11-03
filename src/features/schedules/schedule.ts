@@ -17,6 +17,8 @@ import {
  * model: opus               # optional, as flotilla.agents.model
  * effort: high              # optional
  * tools: Bash(npm run demo:*)  # optional: more tools its agent may use, comma-separated Claude Code rules
+ * context: metrics          # optional: what Flotilla adds to its prompt (the improvement review's numbers, BL-263)
+ * paused: true              # optional: it doesn't run until this line goes
  * ---
  * What the agent does, and what its report says.
  * ```
@@ -44,6 +46,10 @@ export interface ScheduledTask {
   instructions: string;
   /** Proposed by this agent through the inbox: it runs only once the user accepts it. */
   proposed?: string;
+  /** It doesn't run on its schedule (paused: true); Run Now still runs it. */
+  paused?: boolean;
+  /** What Flotilla gives its agent besides its instructions, by name (context: metrics; see SchedulerDeps.contexts). */
+  context?: string;
 }
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -146,6 +152,10 @@ export function parseTask(name: string, text: string): ScheduledTask | { error: 
   if ('error' in tools) return tools;
   const instructions = body.trim();
   if (!instructions) return { error: 'It has no instructions: write what the agent does after the front matter.' };
+  const paused = (fields.get('paused') ?? 'false').toLowerCase();
+  if (paused !== 'true' && paused !== 'false') return { error: `"paused: ${fields.get('paused')}" is neither true nor false.` };
+  const context = fields.get('context')?.toLowerCase();
+  if (context !== undefined && !/^[a-z][a-z-]*$/.test(context)) return { error: `"context: ${fields.get('context')}" isn't a name (such as metrics).` };
   const title = fields.get('title') || name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, ' ');
   return {
     name,
@@ -157,6 +167,8 @@ export function parseTask(name: string, text: string): ScheduledTask | { error: 
     ...(tools.length ? { tools } : {}),
     instructions,
     ...(fields.get('proposed') ? { proposed: fields.get('proposed') } : {}),
+    ...(paused === 'true' ? { paused: true } : {}),
+    ...(context ? { context } : {}),
   };
 }
 
@@ -299,6 +311,8 @@ export interface TaskPromptInput {
   inboxDir: string;
   mainRoot: string;
   backlogDir: string;
+  /** What its context: adds (Markdown sections, such as the improvement review's numbers). */
+  context?: string;
 }
 
 /** A task's prompt: its instructions, its earlier reports, and what it writes where. */
@@ -308,6 +322,7 @@ export function taskPrompt(o: TaskPromptInput): string {
   return [
     `You are agent ${o.agent}, running Flotilla's scheduled task "${task.name}" (${scheduleText(task.schedule)}) on ${o.day}. Flotilla runs coding agents on a backlog of tickets. Nobody watches this run: do what the instructions say, write your report, and propose tickets for what's worth doing.`,
     `## Your instructions\n\n${task.instructions}`,
+    ...(o.context ? [o.context] : []),
     [
       `## Earlier runs`,
       o.earlier.length

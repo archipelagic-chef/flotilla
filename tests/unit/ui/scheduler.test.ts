@@ -9,7 +9,7 @@ import {
   vi,
 } from 'vitest';
 
-type Finished = { code: number | null; reply?: string };
+type Finished = { code: number | null; reply?: string; limit?: { kind: string; until: Date } };
 
 const runs = vi.hoisted(() => ({
   started: [] as Array<{ prompt: string; tools?: string[]; choice?: { model?: string; effort?: string }; resolve: (r: Finished) => void }>,
@@ -35,7 +35,10 @@ vi.mock('../../../src/ui/backlog/agentRunner', () => ({
   },
 }));
 
-import { Scheduler } from '../../../src/ui/schedules/scheduler';
+import {
+  Scheduler,
+  type SchedulerDeps,
+} from '../../../src/ui/schedules/scheduler';
 import type { AutopilotView } from '../../../src/ui/backlog/autopilot';
 
 const dirs: string[] = [];
@@ -44,7 +47,10 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-function setup(files: Record<string, string>, view: Partial<AutopilotView> = {}) {
+/** Past the scheduler's first two minutes, when it waits for the agents working to be counted. */
+const settled = () => new Date(Date.now() + 3 * 60_000);
+
+function setup(files: Record<string, string>, view: Partial<AutopilotView> = {}, contexts?: SchedulerDeps['contexts']) {
   const backlogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-schedules-'));
   dirs.push(backlogDir);
   fs.mkdirSync(path.join(backlogDir, 'schedules'));
@@ -61,6 +67,7 @@ function setup(files: Record<string, string>, view: Partial<AutopilotView> = {})
     mainRoot: '/repo',
     output: { appendLine() {} } as never,
     openPage: () => undefined,
+    ...(contexts ? { contexts } : {}),
   });
   return { backlogDir, scheduler, slots, given };
 }
@@ -96,24 +103,24 @@ describe('the scheduler', () => {
 
   it("says what's wrong with a file in its .error, and removes it once fixed", async () => {
     const { backlogDir, scheduler } = setup({ 'x.md': '---\nevery: fortnightly\n---\nDo it.\n' });
-    await scheduler.tick();
+    await scheduler.tick(settled());
     const error = path.join(backlogDir, 'schedules', 'x.error');
     expect(fs.readFileSync(error, 'utf8')).toMatch(/isn't a schedule/);
     expect(runs.started).toHaveLength(0);
     fs.writeFileSync(path.join(backlogDir, 'schedules', 'x.md'), '---\nevery: 7 days\n---\nDo it.\n');
-    await scheduler.tick();
+    await scheduler.tick(settled());
     expect(fs.existsSync(error)).toBe(false);
     expect(runs.started).toHaveLength(1);
   });
 
   it('leaves proposed tasks, and tasks held by their conditions', async () => {
     const proposed = setup({ 'p.md': '---\nevery: day\nproposed: Nova-1\n---\nDo it.\n' });
-    await proposed.scheduler.tick();
+    await proposed.scheduler.tick(settled());
     const busy = setup({ 'idle.md': '---\nevery: day\n---\nDo it.\n', 'any.md': '---\nevery: day\nwhen: any\n---\nDo it.\n' }, { running: 2 });
-    await busy.scheduler.tick();
+    await busy.scheduler.tick(settled());
     expect(busy.slots).toEqual(['scheduled-any']);
     const paused = setup({ 'any.md': '---\nevery: day\nwhen: any\n---\nDo it.\n' }, { pausedAll: 2 });
-    await paused.scheduler.tick();
+    await paused.scheduler.tick(settled());
     expect(runs.started).toHaveLength(1);
   });
 
@@ -147,5 +154,56 @@ describe('the scheduler', () => {
     await scheduler.dismiss('offered');
     expect((await scheduler.view()).tasks.map((t) => t.name)).not.toContain('offered');
     await expect(scheduler.accept('../x')).rejects.toThrow(/Not a scheduled task/);
+  });
+
+  it('waits for its first two minutes, so the agents already working are counted (BL-177, BL-263)', async () => {
+    const { scheduler } = setup({ 'x.md': '---\nevery: day\nwhen: any\n---\nDo it.\n' });
+    await scheduler.tick(new Date());
+    expect(runs.started).toHaveLength(0);
+    await scheduler.tick(settled());
+    expect(runs.started).toHaveLength(1);
+  });
+
+  it("doesn't run a paused task on its schedule, and says it's paused; Run Now still runs it (BL-263)", async () => {
+    const { scheduler } = setup({ 'p.md': '---\nevery: day\npaused: true\n---\nDo it.\n' });
+    await scheduler.tick(settled());
+    expect(runs.started).toHaveLength(0);
+    const [task] = (await scheduler.view(settled())).tasks;
+    expect(task).toMatchObject({ paused: true, reports: [] });
+    expect(task.due).toBeUndefined();
+    expect(task.next).toBeUndefined();
+    expect(await scheduler.runNow('p')).toBeUndefined();
+    expect(runs.started).toHaveLength(1);
+    expect(await scheduler.runNow('gone')).toMatch(/no task gone/);
+  });
+
+  it('adds what its context: line names to the prompt, after its instructions (BL-263)', async () => {
+    const seen: string[] = [];
+    const { scheduler } = setup(
+      { 'r.md': '---\nevery: day\ncontext: metrics\n---\nReview it.\n', 'u.md': '---\nevery: day\ncontext: nothing\n---\nDo it.\n' },
+      undefined,
+      {
+        metrics: async ({ task }) => (seen.push(task.name), '## The numbers\n\nTABLE'),
+      },
+    );
+    await scheduler.runNow('r');
+    expect(seen).toEqual(['r']);
+    expect(runs.started[0].prompt).toMatch(/Review it\.[\s\S]*## The numbers\n\nTABLE/);
+    // One Flotilla doesn't know: it runs without.
+    runs.started[0].resolve({ code: 0 });
+    await scheduler.runNow('u');
+    expect(runs.started[1].prompt).toContain('Do it.');
+  });
+
+  it('writes no report when its run stops on a usage limit, so it runs again once the limit lifts (BL-263)', async () => {
+    const { backlogDir, scheduler } = setup({ 'x.md': '---\nevery: 7 days\n---\nDo it.\n' });
+    await scheduler.tick(settled());
+    runs.started[0].resolve({ code: 1, limit: { kind: 'session', until: new Date(Date.now() + 3600_000) } });
+    await vi.waitFor(() => expect(scheduler.running('x')).toBe(false));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fs.existsSync(path.join(backlogDir, 'schedules', 'x'))).toBe(true);
+    expect(fs.readdirSync(path.join(backlogDir, 'schedules', 'x'))).toEqual([]);
+    await scheduler.tick(settled());
+    expect(runs.started).toHaveLength(2);
   });
 });

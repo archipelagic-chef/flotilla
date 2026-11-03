@@ -41,6 +41,13 @@ describe('parsing a task', () => {
     expect(t).toMatchObject({ when: 'idle', title: 'Weekly check', schedule: { kind: 'days', days: 7 } });
   });
 
+  it('reads paused: and context: (BL-263)', () => {
+    expect(parseTask('x', task('every: day\npaused: true\ncontext: Metrics'))).toMatchObject({ paused: true, context: 'metrics' });
+    expect(parseTask('x', task('every: day\npaused: false'))).not.toHaveProperty('paused');
+    expect(parseTask('x', task('every: day\npaused: soon'))).toEqual({ error: expect.stringMatching(/neither true nor false/) });
+    expect(parseTask('x', task('every: day\ncontext: a b'))).toEqual({ error: expect.stringMatching(/isn't a name/) });
+  });
+
   it('reads the schedules people write', () => {
     expect(parseEvery('day')).toEqual({ kind: 'days', days: 1 });
     expect(parseEvery('daily at 6:30')).toEqual({ kind: 'days', days: 1, at: 390 });

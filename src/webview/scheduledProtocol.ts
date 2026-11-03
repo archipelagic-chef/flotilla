@@ -15,6 +15,8 @@ export interface ScheduledTaskView {
   running?: boolean;
   /** Proposed by this agent: it runs only once accepted. */
   proposed?: string;
+  /** It doesn't run on its schedule (paused: true in its file); Run Now still runs it. */
+  paused?: boolean;
   /** Its reports' days, newest first. */
   reports: string[];
 }
