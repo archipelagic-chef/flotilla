@@ -2,6 +2,11 @@ import { spawn } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  networkPolicy,
+  type RuleError,
+  type SecurityPolicy,
+} from './policy';
 
 /**
  * Agents in NVIDIA OpenShell sandboxes (BL-270): the commands that start one in its worktree's sandbox, stop it and
@@ -224,6 +229,44 @@ export function runOpenshell(args: string[], timeoutMs = 60_000): Promise<{ code
     child.on('error', (error) => resolve({ code: -1, output: error.message }));
     child.on('close', (code) => resolve({ code: code ?? -1, output: output.trim() }));
   });
+}
+
+/** `openshell` arguments that say whether a sandbox is there (exit 0). */
+export function sandboxGetArgs(name: string): string[] {
+  return ['sandbox', 'get', name];
+}
+
+/** The rule OpenShell's refusal names (a host, a command), else the network rules as a whole. */
+export function refusedRule(p: SecurityPolicy, output: string, sandbox: string): RuleError {
+  const message = `OpenShell refused the policy (sandbox ${sandbox}): ${output || 'no reason given'}`;
+  const host = p.network.findIndex((r) => r.host.trim() && output.includes(r.host.trim()));
+  if (host >= 0) return { section: 'network', index: host, message };
+  const command = p.commands.findIndex((r) => r.path.trim() && output.includes(r.path.trim()));
+  if (command >= 0) return { section: 'commands', index: command, message };
+  return { section: 'network', index: -1, message };
+}
+
+/**
+ * Loads p's network rules into the sandboxes that are there, one after the other, and stops at the first that OpenShell
+ * refuses: so the first running sandbox checks the policy before it's saved. Sandboxes that aren't there (or no
+ * OpenShell) are skipped: they get the policy when they're made.
+ */
+export async function applyNetworkPolicy(
+  p: SecurityPolicy,
+  names: readonly string[],
+  file: string,
+  run: (args: string[]) => Promise<{ code: number; output: string }> = runOpenshell,
+): Promise<{ applied: string[]; error?: RuleError }> {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, networkPolicy(p));
+  const applied: string[] = [];
+  for (const name of names) {
+    if ((await run(sandboxGetArgs(name))).code !== 0) continue;
+    const result = await run(policySetArgs(name, file));
+    if (result.code === 0) applied.push(name);
+    else if (result.code === POLICY_REFUSED) return { applied, error: refusedRule(p, result.output, name) };
+  }
+  return { applied };
 }
 
 /** Runs openshell in the background, for what may fail unseen (no sandbox, no OpenShell). */

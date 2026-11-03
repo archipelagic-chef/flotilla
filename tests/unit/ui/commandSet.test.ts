@@ -48,6 +48,7 @@ const { hygieneCommands } = await import('../../../src/ui/hygiene');
 const { noteCommands } = await import('../../../src/ui/backlog/notes');
 const { discussionCommands } = await import('../../../src/ui/backlog/discussions');
 const { scheduleCommands } = await import('../../../src/ui/schedules/scheduler');
+const { securityCommands } = await import('../../../src/ui/security/securityCommands');
 
 const root = path.join(__dirname, '../../..');
 /** The features' command lists extension.ts registers (BL-185): a new feature's goes here too. */
@@ -62,6 +63,7 @@ const features = {
   noteCommands,
   discussionCommands,
   scheduleCommands,
+  securityCommands,
 };
 
 describe('commands', () => {

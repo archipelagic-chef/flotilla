@@ -586,6 +586,12 @@
         "icon": "$(graph)"
       },
       {
+        "command": "flotilla.openSecurity",
+        "title": "Security",
+        "category": "Flotilla",
+        "icon": "$(shield)"
+      },
+      {
         "command": "flotilla.fixBacklogReview",
         "title": "Fix a Stopped Review",
         "category": "Flotilla"

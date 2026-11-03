@@ -129,6 +129,8 @@ import {
 } from './ui/backlog/runBlock';
 import { SidebarProvider } from './ui/sidebar/sidebarProvider';
 import { Metrics } from './ui/metrics/metrics';
+import { createSecurity } from './ui/security/security';
+import { securityCommands } from './ui/security/securityCommands';
 import { devGitHubApi } from './ui/ci/devGitHub';
 import { ExplorerDecorations } from './ui/explorerDecorations';
 import { NeedsYouNotifier } from './ui/notifications';
@@ -280,6 +282,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (ws) void vscode.commands.executeCommand('flotilla.openChat', { key: ws.key, chatId: session });
   });
   context.subscriptions.push(metrics);
+  // The Security panel (BL-271): the policy sandboxed agents run under, set by the user.
+  const security = createSecurity(context, location.mainRoot, () => repository.current.map((ws) => ws.worktree.path));
+  context.subscriptions.push(security);
+  registerAll(context.subscriptions, securityCommands({ security }));
   const sidebar = new SidebarProvider({
     metrics,
     extensionUri: context.extensionUri,

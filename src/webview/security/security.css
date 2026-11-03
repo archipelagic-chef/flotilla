@@ -1,0 +1,181 @@
+/* The Security panel (BL-271): the theme's colors, one column of rules. */
+.security {
+  padding: 12px 20px 24px;
+  max-width: 900px;
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+}
+
+.security h1 {
+  font-size: 1.4em;
+  margin: 0 0 6px;
+}
+
+.security h2 {
+  font-size: 1.1em;
+  margin: 20px 0 6px;
+}
+
+.security .dim {
+  color: var(--vscode-descriptionForeground);
+  font-weight: normal;
+  font-size: 0.92em;
+}
+
+.security code {
+  font-family: var(--vscode-editor-font-family);
+}
+
+.security-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.security-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.security-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.security-switch {
+  display: inline-flex;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.security-switch button {
+  font: inherit;
+  color: var(--vscode-descriptionForeground);
+  background: none;
+  border: none;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.security-switch button.on {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.security-switch button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.security-button {
+  font: inherit;
+  padding: 3px 14px;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+.security-button.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.security-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.security-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  background: var(--vscode-inputValidation-warningBackground);
+}
+
+.security-status {
+  margin-top: 8px;
+  color: var(--vscode-testing-iconPassed);
+}
+
+.security-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.security-row.fixed {
+  opacity: 0.8;
+}
+
+.security-access {
+  width: 110px;
+  flex: none;
+}
+
+.security-row input,
+.security-row select {
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 2px 4px;
+}
+
+.security-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.security-port {
+  width: 70px;
+}
+
+.security-icon {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.security-when {
+  font-size: 0.85em;
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.security-when.now {
+  color: var(--vscode-testing-iconPassed);
+}
+
+.security-when.later {
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.security-error {
+  padding: 3px 8px 3px 34px;
+  color: var(--vscode-errorForeground);
+  background: var(--vscode-inputValidation-errorBackground);
+}
+
+.security-add {
+  font: inherit;
+  margin: 6px 0 0 34px;
+  color: var(--vscode-textLink-foreground);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}

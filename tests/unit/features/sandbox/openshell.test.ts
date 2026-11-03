@@ -6,6 +6,7 @@ import {
   it,
 } from 'vitest';
 import {
+  applyNetworkPolicy,
   deleteArgs,
   driverConfig,
   gitDirsOf,
@@ -19,6 +20,7 @@ import {
   sandboxName,
   stopArgs,
 } from '../../../../src/features/sandbox/openshell';
+import { defaultPolicy } from '../../../../src/features/sandbox/policy';
 import { makeTempDir } from '../../../helpers/gitRepo';
 
 describe('OpenShell sandboxes (BL-270)', () => {
@@ -119,5 +121,31 @@ describe('OpenShell sandboxes (BL-270)', () => {
 
   it('loads a policy into a running sandbox and waits for it (BL-271)', () => {
     expect(policySetArgs('flotilla-wt-123456', '/state/p.yaml')).toEqual(['policy', 'set', 'flotilla-wt-123456', '--policy', '/state/p.yaml', '--wait']);
+  });
+
+  it('loads the network rules into the sandboxes that are there, and stops at the rule OpenShell refuses (BL-271)', async () => {
+    const file = path.join(makeTempDir(), 'network-policy.yaml');
+    const calls: string[] = [];
+    const ok = await applyNetworkPolicy(defaultPolicy(), ['a', 'gone', 'b'], file, async (args) => {
+      calls.push(args.join(' '));
+      return { code: args[2] === 'gone' ? 1 : 0, output: '' };
+    });
+    expect(ok).toEqual({ applied: ['a', 'b'] });
+    expect(calls).toContain(`policy set a --policy ${file} --wait`);
+    expect(calls).not.toContain(`policy set gone --policy ${file} --wait`);
+    expect(fs.readFileSync(file, 'utf8')).toContain('api.anthropic.com');
+    const policy = {
+      ...defaultPolicy(),
+      network: [
+        { host: 'ok.org', port: 443 },
+        { host: 'bad.example', port: 443 },
+      ],
+    };
+    const refused = await applyNetworkPolicy(policy, ['a'], file, async (args) =>
+      args[1] === 'set' ? { code: 1, output: 'INVALID_ARGUMENT: endpoint bad.example rejected' } : { code: 0, output: '' },
+    );
+    expect(refused.applied).toEqual([]);
+    expect(refused.error).toMatchObject({ section: 'network', index: 1 });
+    expect(refused.error?.message).toContain('INVALID_ARGUMENT');
   });
 });
