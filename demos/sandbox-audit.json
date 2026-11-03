@@ -74,10 +74,19 @@
       "highlight": ""
     },
     {
+      "wait": 800
+    },
+    {
       "click": "#audit .audit-filter button:has-text(\"All\")"
     },
     {
-      "caption": "A long log shows 50 entries at first; Load more shows the next ones"
+      "waitFor": "#audit .audit-filter button.on:has-text(\"All\")"
+    },
+    {
+      "command": "Notifications: Clear All Notifications"
+    },
+    {
+      "caption": ""
     },
     {
       "highlight": "#audit .audit-foot button:has-text(\"more\u2026\")"
@@ -93,6 +102,9 @@
     },
     {
       "waitFor": "#audit .audit-table tr:nth-child(62)"
+    },
+    {
+      "caption": "A long log comes 50 entries at a time: Load more adds the next ones"
     },
     {
       "highlight": "#audit .audit-table tbody tr:nth-last-child(-n+12)"
