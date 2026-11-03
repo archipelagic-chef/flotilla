@@ -863,6 +863,7 @@ export function spawnDiscussion(
     tools: readonly string[];
     /** See discussArgs. */
     denied?: readonly string[];
+    offer?: readonly string[];
     choice?: AgentChoice;
     output: vscode.OutputChannel;
     ticket: string;
@@ -885,6 +886,7 @@ export function spawnDiscussion(
     resume: o.resume,
     tools: o.tools,
     denied: o.denied,
+    offer: o.offer,
   });
   const cmd = agentCommand(args, cwd);
   o.output.appendLine(

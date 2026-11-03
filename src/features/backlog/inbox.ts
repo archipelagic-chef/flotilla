@@ -17,6 +17,10 @@ import {
   KEEP_WHEN_DONE,
 } from './descriptionShape';
 import { mockupsRule } from './design';
+import {
+  discussionIdsOf,
+  fromDiscussionsLine,
+} from './discussions';
 import { REPORT_FORMAT } from './report';
 import { reviewNotes } from './review';
 import {
@@ -70,6 +74,8 @@ export interface Proposal {
   light?: boolean;
   /** The notes it was proposed from (note: NOTE-12, BL-182): they record it, and it links back to them. */
   notes?: string[];
+  /** The discussions it was proposed from (discussion: DISC-3, BL-268): they record it, and it links back to them. */
+  discussions?: string[];
 }
 
 /** Reads a proposal: "---" front matter (key: value lines), then a ticket ("# Title", description). */
@@ -86,6 +92,7 @@ export function parseProposal(text: string): Proposal | { error: string } {
   if (!claim && !ticket.title.trim()) return { error: 'It has no title: start the ticket with "# Title".' };
   const agent = fields.get('agent');
   const notes = noteIdsOf(fields.get('note') ?? fields.get('notes'));
+  const discussions = discussionIdsOf(fields.get('discussion') ?? fields.get('discussions'));
   return {
     ...(claim ? { claim } : {}),
     title: ticket.title.trim(),
@@ -96,8 +103,15 @@ export function parseProposal(text: string): Proposal | { error: string } {
     ...(fields.get('branch') ? { branch: fields.get('branch') } : {}),
     ...(/^light$/i.test(fields.get('level') ?? '') ? { light: true } : {}),
     ...(notes.length ? { notes } : {}),
+    ...(discussions.length ? { discussions } : {}),
     ...(agent && entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) ? { agent: entryAgent(`Agent ${agent.replace(/^agent\s+/i, '')}`) } : {}),
   };
+}
+
+/** A proposal's description, ending with where it came from: the notes' and discussions' "From …" lines. */
+function fromLines(p: Proposal): string {
+  const from = [...(p.notes ? [fromNotesLine(p.notes)] : []), ...(p.discussions ? [fromDiscussionsLine(p.discussions)] : [])];
+  return from.length ? `${p.description.trim()}\n\n${from.join('\n')}`.trim() : p.description;
 }
 
 /** Adds a proposal to the backlog: its item (and what's wrong with it, if it can't be added). */
@@ -150,6 +164,8 @@ export async function takeInbox(
     onFromNotes?(notes: string[], item: BacklogItem): Promise<void>;
     /** A scheduled task an agent proposed (schedule: <name>, BL-260), saved to schedules/ to accept or dismiss. */
     onTaskProposed?(name: string): void;
+    /** A ticket proposed from discussions (BL-268): they record what they became. */
+    onFromDiscussions?(discussions: string[], item: BacklogItem): Promise<void>;
   },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
@@ -221,12 +237,13 @@ export async function takeInbox(
         } else {
           await store.writeTicket(item.id, {
             title: proposal.title,
-            description: proposal.notes ? `${proposal.description.trim()}\n\n${fromNotesLine(proposal.notes)}`.trim() : proposal.description,
+            description: fromLines(proposal),
             activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
           });
         }
         if (proposal.start && proposal.branch) await opts.onStarted?.(item, proposal.branch);
         if (proposal.notes && !proposal.claim) await opts.onFromNotes?.(proposal.notes, item).catch(() => undefined);
+        if (proposal.discussions && !proposal.claim) await opts.onFromDiscussions?.(proposal.discussions, item).catch(() => undefined);
         // Claims aren't new tickets: their ticket says who started, nobody needs telling.
         if (!proposal.claim) added.push(item);
       }

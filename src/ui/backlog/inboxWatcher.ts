@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Repository } from '../../core/repository';
 import { currentPrefix } from '../../features/backlog/backlog';
+import type { DiscussionStore } from '../../features/backlog/discussions';
 import {
   installCommitHook,
   markWorktree,
@@ -41,6 +42,8 @@ export class BacklogInbox implements vscode.Disposable {
     private readonly roots: { mainRoot: string; commonDir: string },
     /** The notes (BL-182): a proposal from one is recorded in it. */
     private readonly notes?: NoteStore,
+    /** The discussions (BL-268): a proposal from one is recorded in it. */
+    private readonly discussions?: DiscussionStore,
   ) {
     void this.writeGuide();
     this.timer = setInterval(() => void this.take(), 2000);
@@ -87,6 +90,7 @@ export class BacklogInbox implements vscode.Disposable {
         },
         onFromNotes: async (notes, item) => this.notes?.recordBecame(notes, { id: item.id, kind: 'proposal' }),
         onTaskProposed: (name) => this.onTaskProposed?.(name),
+        onFromDiscussions: async (discussions, item) => this.discussions?.recordBecame(discussions, item.id),
       });
     } catch {
       // try again on the next round

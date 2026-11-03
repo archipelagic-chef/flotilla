@@ -9,21 +9,37 @@ import {
   it,
 } from 'vitest';
 import { ASK_ALLOWED } from '../../../src/features/backlog/ask';
+import { addItem } from '../../../src/features/backlog/backlog';
 import {
   discussArgs,
   discussionTurns,
 } from '../../../src/features/backlog/discussChat';
 import {
+  asksForTickets,
   DISCUSSION_ALLOWED,
   DISCUSSION_DENIED,
+  discussionIdsOf,
   DiscussionStore,
   discussionTitle,
   formatDiscussion,
   freeDiscussionPrompt,
   nextDiscussionId,
   parseDiscussion,
+  PROPOSE_OFFER,
+  proposeDiscussionPrompt,
+  proposeTools,
   UNTITLED,
 } from '../../../src/features/backlog/discussions';
+import {
+  parseProposal,
+  takeInbox,
+} from '../../../src/features/backlog/inbox';
+import { LocalBacklog } from '../../../src/features/backlog/localBacklog';
+import { TICKET_SHAPE } from '../../../src/features/backlog/notes';
+import {
+  initRepo,
+  removeDir,
+} from '../../helpers/gitRepo';
 
 let dir: string;
 let store: DiscussionStore;
@@ -124,5 +140,95 @@ describe('a free discussion agent (BL-267)', () => {
       .join('\n');
     expect(discussionTurns(jsonl, { opener: false })).toEqual([{ question: 'What do tickets keep?', answer: 'Markdown files.', state: 'done' }]);
     expect(discussionTurns(jsonl)[0].opener).toBe(true);
+  });
+});
+
+describe('a discussion that proposes tickets when asked (BL-268)', () => {
+  const BACKLOG = '/r/.flotilla/backlog';
+  const args = () =>
+    discussArgs({
+      choice: [],
+      instructions: proposeDiscussionPrompt({ id: 'DISC-3', agent: 'Vega-2', backlogDir: BACKLOG }),
+      plugins: [],
+      session: '11111111-2222-3333-4444-555555555555',
+      resume: true,
+      tools: proposeTools(BACKLOG),
+      offer: PROPOSE_OFFER,
+      denied: DISCUSSION_DENIED,
+    });
+
+  it('may write into the inbox only: Write offered, allowed by its one Edit rule; no Bash', () => {
+    const a = args();
+    expect(a[a.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Edit,Write');
+    expect(a.slice(a.indexOf('--allowedTools') + 1)).toEqual(['Read', 'Grep', 'Glob', 'Edit(//r/.flotilla/backlog/inbox/**)']);
+  });
+
+  it("is told the note agents' ticket shape, the discussion: field, and that it can't change existing tickets", () => {
+    const a = args();
+    const prompt = a[a.indexOf('--append-system-prompt') + 1];
+    expect(prompt).toContain(TICKET_SHAPE);
+    expect(prompt).toContain('`discussion: DISC-3`');
+    expect(prompt).toContain('`agent: Vega-2`');
+    expect(prompt).toContain('/r/.flotilla/backlog/inbox/');
+    expect(prompt).toContain("You can't change existing tickets: when part of it belongs in one, say so in your reply");
+  });
+
+  it('the free discussion points to Propose Tickets', () => {
+    expect(freeDiscussionPrompt({ backlogDir: BACKLOG })).toContain('Propose Tickets');
+  });
+
+  it('takes a message asking for tickets as asking, and one saying not to as not', () => {
+    for (const t of ['Make tickets of this', 'can you propose a ticket for that?', 'Turn this into tickets.', 'tickets from this, please'])
+      expect(asksForTickets(t), t).toBe(true);
+    for (const t of ['No tickets yet, just thinking.', "Don't make a ticket of it", 'How are tickets kept?', 'What does the ticket view show?'])
+      expect(asksForTickets(t), t).toBe(false);
+  });
+
+  it("reads the inbox's discussion field", () => {
+    expect(discussionIdsOf('disc-3, DISC-4, DISC-3')).toEqual(['DISC-3', 'DISC-4']);
+    expect(parseProposal('---\ndiscussion: DISC-3\n---\n# T\n')).toMatchObject({ discussions: ['DISC-3'] });
+    expect(parseProposal('---\nagent: Vega-2\n---\n# T\n')).not.toHaveProperty('discussions');
+  });
+
+  it('records what it became, once each, in its file', async () => {
+    const d = await store.create();
+    await store.talked(d.id, 'Versions');
+    await store.recordBecame([d.id, 'DISC-99', 'NOTE-1'], 'BL-301');
+    await store.recordBecame([d.id], 'BL-302');
+    await store.recordBecame([d.id], 'BL-301');
+    expect((await store.read(d.id))?.became).toEqual(['BL-301', 'BL-302']);
+    expect(fs.readFileSync(store.file(d.id), 'utf8')).toContain('- Became: BL-301, BL-302');
+    expect(fs.existsSync(store.file('DISC-99'))).toBe(false);
+  });
+
+  it('links the proposal back to its discussion, and records it there', async () => {
+    const repo = initRepo();
+    try {
+      const backlog = new LocalBacklog(repo, path.join(repo, '.git'));
+      await backlog.change((d) => addItem(d, 'SSO', 'BL', new Date()).data);
+      const discussions = new DiscussionStore(backlog.dir);
+      const d = await discussions.create();
+      await discussions.talked(d.id, 'Versions of tickets');
+      const inbox = path.join(backlog.dir, 'inbox');
+      fs.mkdirSync(inbox, { recursive: true });
+      fs.writeFileSync(
+        path.join(inbox, 'v.md'),
+        `---\ndiscussion: ${d.id}\nagent: Vega-2\n---\n# Keep ticket history in git\n\n**When it's done:** it's kept.\n`,
+      );
+      const old = new Date(Date.now() - 5000);
+      fs.utimesSync(path.join(inbox, 'v.md'), old, old);
+      await takeInbox(backlog, {
+        prefix: 'BL',
+        mode: 'propose',
+        taken: [],
+        onFromDiscussions: (ids, item) => discussions.recordBecame(ids, item.id),
+      });
+      const ticket = await backlog.readTicket({ id: 'BL-2', title: '' });
+      expect(ticket.description).toBe("**When it's done:** it's kept.\n\nFrom [DISC-1](discussions/DISC-1.md).");
+      expect((await discussions.read(d.id))?.became).toEqual(['BL-2']);
+      expect(fs.readFileSync(path.join(inbox, 'v.added'), 'utf8').trim()).toBe('BL-2');
+    } finally {
+      removeDir(repo);
+    }
   });
 });

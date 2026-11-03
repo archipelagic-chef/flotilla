@@ -22,6 +22,8 @@ export function discussArgs(o: {
   tools: readonly string[];
   /** Rules refused even where tools allow them (a free discussion's: ASK_DENIED, BL-267). */
   denied?: readonly string[];
+  /** Tools offered besides the list's, allowed only by its rules (Write, where an Edit rule says: a proposing discussion's, BL-268). */
+  offer?: readonly string[];
 }): string[] {
   return [
     '-p',
@@ -44,7 +46,7 @@ export function discussArgs(o: {
     ...(o.denied?.length ? ['--disallowedTools', ...o.denied] : []),
     // Last: the lists are variadic.
     '--tools',
-    [...new Set(o.tools.map((t) => t.replace(/\(.*$/, '')))].join(','),
+    [...new Set([...o.tools.map((t) => t.replace(/\(.*$/, '')), ...(o.offer ?? [])])].join(','),
     '--allowedTools',
     ...o.tools,
   ];

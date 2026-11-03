@@ -523,7 +523,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   tickets.useAnswers(answers);
   // Notes (BL-182): requests jotted down in the backlog, which an agent turns into ticket proposals.
   const noteStore = new NoteStore(backlog.dir);
-  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, noteStore);
+  const discussionStore = new DiscussionStore(backlog.dir);
+  const inbox = new BacklogInbox(backlog, integrations, repository, { mainRoot: location.mainRoot, commonDir: location.commonDir }, noteStore, discussionStore);
   context.subscriptions.push(inbox);
   const notes = new NoteAgents({
     extensionUri: context.extensionUri,
@@ -547,10 +548,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Discussions (BL-267): an idea talked through with an agent, no ticket expected.
   const discussions = new Discussions({
     extensionUri: context.extensionUri,
-    store: new DiscussionStore(backlog.dir),
+    store: discussionStore,
     mainRoot: location.mainRoot,
     reference: folder.uri,
     output,
+    openTicket: (id) => void tickets.open(id),
   });
   context.subscriptions.push(discussions);
   registerAll(context.subscriptions, discussionCommands(discussions));

@@ -108,6 +108,8 @@ export interface DiscussionRowView {
   title: string;
   /** When it was last talked in (ISO 8601). */
   talked: string;
+  /** The tickets proposed from it (BL-268). */
+  became?: string[];
 }
 
 export interface NoteView {
