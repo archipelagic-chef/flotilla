@@ -269,6 +269,42 @@ export async function applyNetworkPolicy(
   return { applied };
 }
 
+/** `openshell` arguments that print a sandbox's log (BL-272): the gateway keeps its last 2,000 lines. */
+export function logsArgs(name: string): string[] {
+  return ['logs', name, '--source', 'sandbox'];
+}
+
+/**
+ * A sandbox's log, as `openshell logs` prints it: what it printed in timeoutMs, should it go on streaming. Undefined
+ * without OpenShell, or when it fails (no such sandbox, no gateway).
+ */
+export function readLogs(name: string, timeoutMs = 15_000): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let out = '';
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn('openshell', logsArgs(name), { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch {
+      resolve(undefined);
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve(out);
+    }, timeoutMs);
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (d: string) => (out += d));
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(undefined);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0 || out ? out : undefined);
+    });
+  });
+}
+
 /** Runs openshell in the background, for what may fail unseen (no sandbox, no OpenShell). */
 export function runQuietly(args: string[]): void {
   try {
