@@ -1,0 +1,24 @@
+{
+  "title": "The viewer's strip of thumbnails, to jump to any attachment",
+  "steps": [
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 800 },
+    { "click": ".backlog-item:has-text(\"Remember the last open ticket\") .name" },
+    { "waitFor": "h1:has-text(\"Remember the last open ticket\")" },
+    { "waitFor": ".attachments .attachment-thumb" },
+    { "click": ".attachment-thumb:has(img[alt=\"A new window, on the backlog\"])" },
+    { "waitFor": ".viewer .viewer-strip" },
+    { "caption": "Under the large one: a thumbnail of each attachment, the current one marked" },
+    { "highlight": ".viewer-strip" },
+    { "wait": 1500 },
+    { "caption": "A click on any thumbnail shows that one" },
+    { "click": ".viewer-strip li:last-child .viewer-thumb" },
+    { "waitFor": ".viewer-strip li:last-child .viewer-thumb.current" },
+    { "wait": 1500 },
+    { "caption": "The arrows still go to the next, and the mark goes with them" },
+    { "press": "ArrowRight" },
+    { "waitFor": ".viewer-strip li:first-child .viewer-thumb.current" },
+    { "wait": 1500 },
+    { "caption": "" }
+  ]
+}
