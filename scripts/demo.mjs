@@ -77,7 +77,12 @@ const PROFILE_DIR = path.join(root, '.vscode-test', 'demo-profile');
 const HOME_DIR = path.join(root, '.vscode-test', 'demo-home');
 /** Claude Code's folder in that home: the playground's chats are seeded there (seedChats), so demos can open them. */
 const CLAUDE_DIR = path.join(HOME_DIR, '.claude');
-const PLAYGROUND = path.join(root, '.playground');
+let PLAYGROUND = path.join(root, '.playground');
+/**
+ * --scratch (BL-264): the demo plays on a playground made afresh for it, not .playground, so a product review's
+ * journeys change nothing the user tries by hand, and each starts from the same seeded state.
+ */
+const SCRATCH_PLAYGROUND = path.join(root, '.vscode-test', 'scratch-playground');
 /**
  * Held while a demo runs: a second VS Code on the same profile would hand itself to the first one's window and close.
  * Demos in other worktrees have profiles of their own.
@@ -171,7 +176,10 @@ function prepareProfile(githubUrl, own = {}) {
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('Usage: npm run demo -- record <name> --out <file.gif> [--replace] | check <name> | play <name> | try <name> | list');
+  console.error(
+    'Usage: npm run demo -- record <name> --out <file.gif> [--replace] | check <name> | play <name> | try <name> | list\n' +
+      '  <name> may be a demo file elsewhere (path/to/journey.json); --scratch plays it on a playground made afresh',
+  );
   process.exit(1);
 }
 
@@ -482,6 +490,10 @@ async function play(page, step, github) {
         github.comment(m ? { ticket: m[1], body: m[2] } : { body: step.value });
       }
       break;
+    case 'screenshot':
+      // The window as it is now, next to the demo's file (parseDemo allows only a plain name).
+      await page.screenshot({ path: path.join(step.dir, step.value) });
+      break;
     case 'agentTurn': {
       // The seeded agent's chat goes on by a turn, as a running agent's would (its transcript grows).
       const { appendAgentTurn } = await import('./playground-seed.mjs');
@@ -583,7 +595,9 @@ async function main() {
   pace.recording = mode === 'record';
   const file = demoFile(root, name);
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
-  const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), name), name };
+  const named = path.basename(file, '.json');
+  const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), named), name: named, dir: path.dirname(file) };
+  if (rest.includes('--scratch')) PLAYGROUND = SCRATCH_PLAYGROUND;
   const outAt = rest.indexOf('--out');
   const out = outAt >= 0 ? rest[outAt + 1] : undefined;
   const stillAt = rest.indexOf('--still');
@@ -669,8 +683,14 @@ function startXvfbOn(n) {
 /** Plays (or records) `demo` in the demo window: only one at a time per worktree, as it holds the demo profile. */
 async function show(mode, demo, out, still, display) {
   const playground = PLAYGROUND;
+  // A scratch playground is made afresh, under the demo's lock (so no other demo here plays on it meanwhile).
+  if (playground === SCRATCH_PLAYGROUND) fs.rmSync(playground, { recursive: true, force: true });
   // Made when missing, and brought up to date otherwise (its local origin, BL-113): it changes nothing else.
-  execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], { cwd: root, stdio: 'inherit' });
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'playground.mjs')], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, FLOTILLA_PLAYGROUND: playground },
+  });
 
   const { downloadAndUnzipVSCode } = await import('@vscode/test-electron');
   const { _electron } = await import('playwright-core');
@@ -701,7 +721,7 @@ async function show(mode, demo, out, still, display) {
 
   const xvfb = display === 'virtual' ? await startXvfb() : undefined;
   console.log(
-    `${{ record: 'Recording', try: 'Setting up', check: 'Checking' }[mode] ?? 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on .playground${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
+    `${{ record: 'Recording', try: 'Setting up', check: 'Checking' }[mode] ?? 'Playing'} "${demo.title}" in an isolated VS Code (profile ${path.relative(root, PROFILE_DIR)}, on ${path.relative(root, playground)}${xvfb ? `, on virtual display ${xvfb.display}` : ''})…`,
   );
   const app = await _electron
     .launch({
@@ -780,7 +800,7 @@ async function show(mode, demo, out, still, display) {
         const label = `step ${n + 1} (${step.action} ${JSON.stringify(step.value)}${step.to ? ` to ${JSON.stringify(step.to)}` : ''})`;
         const at = Date.now();
         try {
-          await play(page, step, github);
+          await play(page, { ...step, dir: demo.dir }, github);
         } catch (error) {
           throw await stepFailed(page, demo, n + 1, label, step, error);
         }
@@ -860,7 +880,7 @@ async function show(mode, demo, out, still, display) {
 
 /** Where a demo's failed step leaves its screenshot: next to the demo (git ignores it), gone once a run passes. */
 function failedShot(demo) {
-  return path.join(root, DEMOS_DIR, `${demo.name}.failed.png`);
+  return path.join(demo.dir ?? path.join(root, DEMOS_DIR), `${demo.name}.failed.png`);
 }
 
 /**

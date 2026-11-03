@@ -128,6 +128,14 @@ describe('parseDemo', () => {
     expect(() => parseDemo('{"resetsTicket": 18, "steps": [{"wait": 1}]}', 'd')).toThrow(/a ticket.s id/);
   });
 
+  it('takes a screenshot by a plain name only, saved next to the demo (BL-264)', () => {
+    expect(parseDemo(JSON.stringify({ steps: [{ screenshot: '2026-11-03-files-1.png' }] })).steps).toEqual([
+      { action: 'screenshot', value: '2026-11-03-files-1.png' },
+    ]);
+    expect(() => parseDemo(JSON.stringify({ steps: [{ screenshot: '../x.png' }] }))).toThrow(/a file's name ending in \.png/);
+    expect(() => parseDemo(JSON.stringify({ steps: [{ screenshot: 'x.jpg' }] }))).toThrow(/a file's name ending in \.png/);
+  });
+
   it('says what is wrong, and in which step', () => {
     expect(() => parseDemo('{', 'd')).toThrow(/d: not JSON/);
     expect(() => parseDemo('{"steps": []}', 'd')).toThrow(/at least one step/);
@@ -153,6 +161,11 @@ describe('demoFile', () => {
     expect(demoFile('/r', 'open-ticket')).toBe(path.join('/r', 'demos', 'open-ticket.json'));
     expect(() => demoFile('/r', '../secrets')).toThrow(/isn't a demo's name/);
     expect(() => demoFile('/r', undefined)).toThrow(/isn't a demo's name/);
+  });
+
+  it("is a demo file's path when it ends in .json, from where the command was given (BL-264)", () => {
+    expect(demoFile('/r', '/b/schedules/product-review/2026-11-03-files.json')).toBe(path.resolve('/b/schedules/product-review/2026-11-03-files.json'));
+    expect(demoFile('/r', 'journey.json')).toBe(path.resolve(process.env.INIT_CWD ?? process.cwd(), 'journey.json'));
   });
 
   it('lists none when there is no demos folder', () => {
