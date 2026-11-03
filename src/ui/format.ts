@@ -51,6 +51,21 @@ export function syncKind(ws: Workstream): 'publish' | 'sync' | 'none' {
   return ws.sync.hasRemote ? 'publish' : 'none';
 }
 
+/** What describeWorkstream's counts are, one per line (its tooltip): "2 commits ahead of main", "+4 −0 lines changed from main". */
+export function describeProgress(ws: Workstream): string {
+  const p = ws.progress;
+  if (!p || ws.attention === 'unreachable') return '';
+  const base = p.base ?? 'the base branch';
+  const commits = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+  return [
+    p.ahead ? `${commits(p.ahead)} ahead of ${base}` : '',
+    p.behind ? `${commits(p.behind)} behind ${base}` : '',
+    p.added || p.deleted ? `+${p.added} −${p.deleted} lines changed from ${base}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function describeWorkstream(ws: Workstream, now: Date, inWorkspace = false): string {
   if (ws.attention === 'unreachable') return ATTENTION_LABEL.unreachable;
   const fromAgent = FROM_AGENT.has(ws.attention) && ws.agent !== undefined;
@@ -58,10 +73,10 @@ export function describeWorkstream(ws: Workstream, now: Date, inWorkspace = fals
   const parts = [`${ATTENTION_LABEL[ws.attention]}${fromAgent && ws.agentStale ? ' (last reported)' : ''} · ${formatAge(since, now)}`];
   const p = ws.progress;
   if (p) {
-    const counts = [p.ahead ? `↑${p.ahead}` : '', p.behind ? `↓${p.behind}` : '', p.added || p.deleted ? `+${p.added} −${p.deleted}` : '']
-      .filter(Boolean)
-      .join(' ');
-    if (counts) parts.push(counts);
+    // Words, not ↑↓: in VS Code ↑ means commits to push, and these count against the base branch (the tooltip names it).
+    const commits = [p.ahead ? `${p.ahead} ahead` : '', p.behind ? `${p.behind} behind` : ''].filter(Boolean).join(', ');
+    if (commits) parts.push(commits);
+    if (p.added || p.deleted) parts.push(`+${p.added} −${p.deleted}`);
   }
   const sync = describeSync(ws);
   if (sync) parts.push(sync);

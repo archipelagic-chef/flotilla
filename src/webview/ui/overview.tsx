@@ -144,7 +144,9 @@ export function Overview({ workstreams, machine, active, colors, closed, ci, mis
                 )}
               </span>
             </div>
-            <div class="sec-meta">{ws.description}</div>
+            <div class="sec-meta" data-tip={ws.descriptionTitle || undefined}>
+              {ws.description}
+            </div>
             <div class="sec-meta">{facts.join(' · ')}</div>
             {waiting?.message && (
               <div class="sec-msg">

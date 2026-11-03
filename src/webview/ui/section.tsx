@@ -89,7 +89,11 @@ function Meta({ ws, tool }: { ws: WorkstreamView; tool: Tool }) {
   const waiting = ws.chats.find((c) => c.open && c.state === 'waiting-for-input');
   return (
     <>
-      {ws.description && <div class="sec-meta">{ws.description}</div>}
+      {ws.description && (
+        <div class="sec-meta" data-tip={ws.descriptionTitle || undefined}>
+          {ws.description}
+        </div>
+      )}
       {waiting?.message && tool !== 'chats' && (
         <div class="sec-msg">
           <i class="codicon codicon-bell" />
