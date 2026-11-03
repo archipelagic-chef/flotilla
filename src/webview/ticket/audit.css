@@ -41,6 +41,11 @@
   word-break: break-all;
   font-family: var(--vscode-editor-font-family);
 }
+.audit-table .audit-detail {
+  font-family: var(--vscode-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
 .audit-table tr.blocked {
   background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 15%, transparent);
 }
