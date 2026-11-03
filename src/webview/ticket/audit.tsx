@@ -17,8 +17,16 @@ export function auditTime(iso: string): string {
   return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${hm}`;
 }
 
-/** The entries, as a table: blocked rows marked, the agent's column when there's more than one ticket's or agent's. */
-export function AuditTable({ entries, ticketColumn }: { entries: readonly AuditEntryView[]; ticketColumn?: boolean }) {
+/** The entries, as a table, blocked rows marked; with ticketColumn (the audit of all agents), each one's ticket too. */
+export function AuditTable({
+  entries,
+  ticketColumn,
+  onTicket,
+}: {
+  entries: readonly AuditEntryView[];
+  ticketColumn?: boolean;
+  onTicket?: (id: string) => void;
+}) {
   return (
     <table class="audit-table">
       <thead>
@@ -37,7 +45,17 @@ export function AuditTable({ entries, ticketColumn }: { entries: readonly AuditE
             <td class="audit-time" title={new Date(e.at).toLocaleString()}>
               {auditTime(e.at)}
             </td>
-            {ticketColumn && <td>{e.ticket ?? '—'}</td>}
+            {ticketColumn && (
+              <td>
+                {e.ticket && onTicket ? (
+                  <button class="ticket-link" onClick={() => onTicket(e.ticket!)} title={`Open ${e.ticket} at its Audit`}>
+                    {e.ticket}
+                  </button>
+                ) : (
+                  (e.ticket ?? '—')
+                )}
+              </td>
+            )}
             <td>{e.agent ?? '—'}</td>
             <td class="audit-kind">
               <i class={`codicon codicon-${KIND_ICON[e.kind]}`} /> {e.kind}

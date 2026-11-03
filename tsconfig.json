@@ -27,6 +27,7 @@
     "src/webview/review",
     "src/webview/discussion",
     "src/webview/page",
-    "src/webview/security"
+    "src/webview/security",
+    "src/webview/audit"
   ]
 }
