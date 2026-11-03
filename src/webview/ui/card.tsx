@@ -569,11 +569,6 @@ type CompactProps = Pick<RowProps, 'item' | 'icon' | 'worktrees' | 'agents' | 'c
   saving: boolean;
 };
 
-/**
- * A compact card (BL-183): the title (up to two lines), one status line, the next step as its one button, and one
- * coloured mark when it needs you. Hovered or focused, the status line gives way to a row of the id, the details and
- * the actions, so the card keeps its height; everything else is in its menu (⋯, or right-click) and its ticket.
- */
 /** How many of its sandboxed agents' requests the sandbox blocked (BL-272): a click opens the ticket at its Audit section. */
 function BlockedMark({ id, blocked }: { id: string; blocked: number }) {
   return (
@@ -592,6 +587,11 @@ function BlockedMark({ id, blocked }: { id: string; blocked: number }) {
   );
 }
 
+/**
+ * A compact card (BL-183): the title (up to two lines), one status line, the next step as its one button, and one
+ * coloured mark when it needs you. Hovered or focused, the status line gives way to a row of the id, the details and
+ * the actions, so the card keeps its height; everything else is in its menu (⋯, or right-click) and its ticket.
+ */
 function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, saving, openWorktree }: CompactProps) {
   const busy = useBusy();
   // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
