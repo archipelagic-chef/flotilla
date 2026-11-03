@@ -1581,13 +1581,23 @@ export function seedAudit(dir, profileDir, now = new Date()) {
     [125, 'Vega-2', 'network', 'api.anthropic.com:443', false, 'policy claude'],
     [122, 'Vega-2', 'process', 'npm run test:related', false],
     [118, 'Vega-2', 'network', 'registry.npmjs.org:443', false, 'policy npm'],
-    [97, 'Vega-2', 'network', 'telemetry.example.com:443', true, 'no matching policy'],
+    [97, 'Vega-2', 'network', 'telemetry.example.com:443', true, '/usr/bin/curl · no matching policy'],
     [90, 'Vega-2', 'process', 'git commit -m BL-3: Keep chats', false],
     [62, 'Vega-2', 'file', '/home/node/.ssh/id_rsa', true, 'not in policy'],
     [55, 'Vega-2', 'network', 'github.com:443', false, 'policy github'],
     [35, 'Nova-7', 'network', 'api.anthropic.com:443', false, 'policy claude'],
     [31, 'Nova-7', 'process', 'npx vitest run test/chats.test.js', false],
     [12, 'Nova-7', 'network', 'POST https://paste.example.org/api', true, 'no matching policy'],
+    // The agents' calls to the model and the registry, so the log runs past a page (50) and loads more.
+    ...Array.from({ length: 52 }, (_, i) => {
+      const min = 127 - i * 2;
+      const [target, policy] = [
+        ['api.anthropic.com:443', 'policy claude'],
+        ['registry.npmjs.org:443', 'policy npm'],
+        ['api.github.com:443', 'policy github'],
+      ][i % 3];
+      return [min, min > 40 ? 'Vega-2' : 'Nova-7', 'network', target, false, `/usr/bin/node · ${policy}`];
+    }),
   ];
   fs.writeFileSync(
     path.join(audit, `${sandbox}.jsonl`),

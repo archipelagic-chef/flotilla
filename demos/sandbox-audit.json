@@ -41,6 +41,21 @@
       "wait": 3000
     },
     {
+      "highlight": ""
+    },
+    {
+      "caption": "A blocked connection names the program that tried it, and why the sandbox blocked it"
+    },
+    {
+      "highlight": "#audit tr:has-text(\"telemetry.example.com\") .audit-target"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
       "caption": "Blocked shows only what the sandbox blocked"
     },
     {
@@ -60,6 +75,33 @@
     },
     {
       "click": "#audit .audit-filter button:has-text(\"All\")"
+    },
+    {
+      "caption": "A long log shows 50 entries at first; Load more shows the next ones"
+    },
+    {
+      "highlight": "#audit .audit-foot button:has-text(\"more\u2026\")"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": "#audit .audit-foot button:has-text(\"more\u2026\")"
+    },
+    {
+      "waitFor": "#audit .audit-table tr:nth-child(62)"
+    },
+    {
+      "highlight": "#audit .audit-table tbody tr:nth-last-child(-n+12)"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
     },
     {
       "caption": "Every agent's audit opens in a tab of its own, filtered by ticket, agent, blocked or allowed"
