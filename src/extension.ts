@@ -69,6 +69,7 @@ import {
   SisterChecks,
 } from './ui/backlog/sisterChecks';
 import { ImprovementReview } from './ui/metrics/improvementReview';
+import { REVIEW_CONTEXT } from './features/metrics/review';
 import { openPagePanel } from './ui/schedules/pagePanel';
 import {
   scheduleCommands,
@@ -674,22 +675,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return key;
       })()),
   });
-  // Once a week, an agent reads the metrics and proposes tickets (BL-159).
-  const improvement = new ImprovementReview({
-    backlog,
-    repository,
-    admit: (id) => reviews.admitNew(id),
-    giveBack: (slot) => reviews.giveBack(slot),
-    autopilot: () => autopilot.view(),
-    isLeader: () => leader.isLeader,
-    commonDir: location.commonDir,
-    mainRoot: location.mainRoot,
-    output,
-    extensionUri: context.extensionUri,
-    reference: folder.uri,
-  });
-  context.subscriptions.push(improvement);
-  metrics.reviews = improvement;
   // Tasks that run on a schedule, each an agent without a window (BL-260).
   const scheduler = new Scheduler({
     backlogDir: backlog.dir,
@@ -701,8 +686,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     mainRoot: location.mainRoot,
     output,
     openPage: (file, title) => void openPagePanel({ extensionUri: context.extensionUri, openHref: (href) => tickets.openHref(undefined, href) }, file, title),
+    contexts: { [REVIEW_CONTEXT]: (o) => improvement.context(o) },
   });
   context.subscriptions.push(scheduler, scheduler.watch());
+  // Once a week, an agent reads the metrics and proposes tickets (BL-159): a scheduled task since BL-263.
+  const improvement = new ImprovementReview({ backlog, scheduler, commonDir: location.commonDir, state: context.workspaceState, output });
+  context.subscriptions.push(improvement);
+  metrics.reviews = improvement;
   sidebar.useScheduler(scheduler);
   inbox.onTaskProposed = (name) => void scheduler.offerProposed(name).catch(() => undefined);
   registerAll(context.subscriptions, scheduleCommands({ scheduler }));
@@ -714,8 +704,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       updateCiReads();
       void autopilot.tick();
       void notes.tick();
-      void improvement.tick().catch(() => undefined);
-      void scheduler.tick().catch(() => undefined);
+      void improvement
+        .setUp()
+        .catch(() => undefined)
+        .then(() => scheduler.tick())
+        .catch(() => undefined);
       void reviews.resumePaused();
       void finished.sweep();
       void shared.sweep();

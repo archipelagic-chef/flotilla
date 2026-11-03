@@ -36,7 +36,7 @@ const PROMPTS: ReadonlyArray<[SpendPurpose, RegExp]> = [
     /moved on, and merging it into your branch|^Your task: (fix the checks on the merge|resolve the conflicts of merging|finish merging|merge \S+ branch .* again into|with the user, rewrite the commit history)/,
   ],
   ['resume', /usage limit stopped you|^Flotilla paused you|^The user paused you|^The user stopped .+ you take over|^Flotilla stopped you:/],
-  ['orchestration', /writing Flotilla's improvement review/],
+  ['orchestration', /writing Flotilla's improvement review|running Flotilla's scheduled task/],
   ['first', /You are agent [^,\n]+, working on backlog item/],
 ];
 

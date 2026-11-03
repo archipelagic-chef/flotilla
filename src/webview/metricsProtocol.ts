@@ -99,9 +99,9 @@ export interface MetricsReviews {
   list: Array<{ day: string; title: string }>;
   /** The agent writing one now. */
   running?: string;
-  /** When the next scheduled one is due (YYYY-MM-DD); none when flotilla.metrics.reviewEvery is 0. */
+  /** When the scheduled task runs next (YYYY-MM-DD); none when it's paused, or its file is gone or wrong (BL-263). */
   nextDue?: string;
-  /** What keeps a due one from starting (reviewBlocked), while it's due. */
+  /** What keeps a due one from starting (taskBlocked, or no free slot), while it's due. */
   waiting?: string;
   /** Why Review Now couldn't start one, when it was last clicked and couldn't. */
   refused?: string;

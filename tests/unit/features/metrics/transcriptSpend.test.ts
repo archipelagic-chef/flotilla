@@ -82,6 +82,9 @@ describe('promptPurpose', () => {
       promptPurpose('You are agent Iris-2, working on backlog item BL-9: "x".\n\nYou check its sister tickets against its change: BL-9 was merged.'),
     ).toMatchObject({ purpose: 'shaping', ticket: 'BL-9' });
     expect(promptPurpose("You are agent Gauge-3, writing Flotilla's improvement review of 2026-10-24.")?.purpose).toBe('orchestration');
+    expect(promptPurpose('You are agent Gauge-3, running Flotilla\'s scheduled task "improvement-review" (every 7 days) on 2026-11-03.')?.purpose).toBe(
+      'orchestration',
+    );
     expect(promptPurpose('Please look at the backlog and add tickets')).toBeUndefined();
   });
 });

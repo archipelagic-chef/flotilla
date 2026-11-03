@@ -2108,7 +2108,8 @@
           "type": "number",
           "default": 7,
           "minimum": 0,
-          "markdownDescription": "How many days apart the improvement review runs (0: never; **Review Now** still runs one). An agent reads the metrics of that many days (next to the days before them) and the code, writes the three to five biggest problems in how the work flows to `.flotilla/backlog/reviews/YYYY-MM-DD.md`, and proposes a ticket for each one worth fixing, with an `Improves:` line the next review checks. It runs in the leading window only when no agent works or waits, no usage limit or Pause All is on and the autopilot has nothing to start, on `#flotilla.agents.model#`, and counts against `#flotilla.agents.maxRunning#`."
+          "markdownDescription": "Deprecated: the improvement review is a scheduled task, `.flotilla/backlog/schedules/improvement-review.md`. This setting is read once, to write that file's `every:` (0: `paused: true`); change its schedule in the file.",
+          "markdownDeprecationMessage": "The improvement review is a scheduled task now: change its `every:` in `.flotilla/backlog/schedules/improvement-review.md`."
         },
         "flotilla.agents.maxPrioritized": {
           "type": "number",

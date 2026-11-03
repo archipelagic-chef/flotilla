@@ -1516,15 +1516,22 @@ export function clearDiscussions(dir) {
 }
 
 /**
- * Seeds two improvement reviews (BL-177's Reviews in the Metrics view), 3 and 10 days before now, so the next isn't
- * due yet (none starts as the window opens): each with a diagram, a link to a file at its lines and a ticket
- * reference, as a review agent writes them; a demo may seed them older (`reviewsDaysAgo`), so one is due. Written again
- * on every call, in place of the reviews there were. Returns the days written.
+ * Seeds the improvement review's scheduled task (BL-263; every 7 days, as Flotilla first writes it) and two of its
+ * reports (BL-177's Reviews in the Metrics view), 3 and 10 days before now, so the next isn't due yet (none starts as
+ * the window opens): each with a diagram, a link to a file at its lines and a ticket reference, as a review agent writes
+ * them; a demo may seed them older (`reviewsDaysAgo`), so one is due. Written again on every call, in place of the
+ * reviews there were (after seedScheduledTasks, which clears schedules/). Returns the days written.
  */
 export function seedReviews(dir, now = new Date(), daysAgo = [3, 10]) {
-  const reviews = path.join(dir, '.flotilla', 'backlog', 'reviews');
+  const schedules = path.join(dir, '.flotilla', 'backlog', 'schedules');
+  const reviews = path.join(schedules, 'improvement-review');
   fs.rmSync(reviews, { recursive: true, force: true });
+  fs.rmSync(path.join(dir, '.flotilla', 'backlog', 'reviews'), { recursive: true, force: true });
   fs.mkdirSync(reviews, { recursive: true });
+  fs.writeFileSync(
+    path.join(schedules, 'improvement-review.md'),
+    '---\ntitle: Improvement review\nevery: 7 days\nwhen: idle\ncontext: metrics\n---\nFind the three to five biggest problems in how the work flows, and propose a ticket for each one worth fixing.\n',
+  );
   const days = daysAgo.map((d) => localDay(new Date(now.getTime() - d * 86_400_000)));
   const [latest, earlier] = days;
   fs.writeFileSync(

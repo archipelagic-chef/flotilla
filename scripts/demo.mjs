@@ -710,8 +710,6 @@ async function show(mode, demo, out, still, display) {
   seedCreating(playground);
   // A month of events up to now, for the Metrics view (BL-158).
   seedEvents(playground);
-  // Two improvement reviews, the next one not due yet, for the Metrics view's Reviews (BL-177).
-  seedReviews(playground, new Date(), demo.reviewsDaysAgo);
   // No discussions (BL-267): those an earlier demo started are gone.
   clearDiscussions(playground);
   // The demo's inbox files (BL-264): Flotilla takes them in once it has started, as an agent's.
@@ -724,6 +722,8 @@ async function show(mode, demo, out, still, display) {
   seedScheduledTasks(playground);
   // A sandboxed agent's audit, for the Audit section (BL-272).
   (await import('./playground-seed.mjs')).seedAudit(playground, PROFILE_DIR);
+  // The improvement review's task and two of its reports, the next one not due yet, for the Metrics view's Reviews (BL-177, BL-263).
+  seedReviews(playground, new Date(), demo.reviewsDaysAgo);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 

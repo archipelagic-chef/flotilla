@@ -1,12 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { Repository } from '../../core/repository';
-import {
-  agentChatItem,
-  agentName,
-} from '../../features/backlog/backlog';
-import { INBOX } from '../../features/backlog/inbox';
 import { criteriaCount } from '../../features/metrics/productivity';
 import type { LocalBacklog } from '../../features/backlog/localBacklog';
 import {
@@ -20,227 +14,124 @@ import {
   readImproves,
 } from '../../features/metrics/improves';
 import {
-  listReviews,
-  nextReviewDay,
-  reviewBlocked,
-  reviewDay,
-  reviewDue,
-  reviewPrompt,
-  reviewsDir,
+  moveReviews,
+  REVIEW_TASK,
+  reviewContext,
   reviewTitle,
-  reviewTools,
+  writeReviewTask,
 } from '../../features/metrics/review';
+import {
+  type Schedule,
+  taskDay,
+  taskDir,
+} from '../../features/schedules/schedule';
 import {
   metricsSummary,
   summaryMarkdown,
 } from '../../features/metrics/summary';
-import type { Workstream } from '../../features/workstreams/workstream';
-import type { AutopilotView } from '../backlog/autopilot';
-import {
-  agentChoice,
-  type AgentRun,
-  runAgentHeadless,
-} from '../backlog/agentRunner';
-import { trackProgress } from '../progress';
 import type { MetricsReviews } from '../../webview/metricsProtocol';
-import { openReviewPanel } from './reviewPanel';
+import type { Scheduler } from '../schedules/scheduler';
 
 export interface ImprovementReviewDeps {
   backlog: LocalBacklog;
-  repository: Repository<Workstream>;
-  /** A slot of the agents limit (ReviewLoop.admitNew), given back when the review is done. */
-  admit(id: string): number | undefined;
-  giveBack(slot: number): void;
-  autopilot(): AutopilotView;
-  isLeader(): boolean;
+  scheduler: Scheduler;
   commonDir: string;
-  mainRoot: string;
+  /** Where it notes that flotilla.metrics.reviewEvery was read into the task's file (once: an edit or a delete then stays). */
+  state: vscode.Memento;
   output: vscode.OutputChannel;
-  /** For the review's tab (BL-177). */
-  extensionUri: vscode.Uri;
-  reference: vscode.Uri;
 }
 
-/** The id its slot is taken under. */
-const SLOT_ID = 'improvement-review';
-const CHECK_MS = 60 * 60_000;
-/**
- * How long after the window opens the scheduled review waits (BL-177): the agents already working are counted by then,
- * so it doesn't take their window's first moments for idle. It checks again once that's past.
- */
-const SETTLE_MS = 2 * 60_000;
+/** The workspace state's key: the task's file was written from the setting. */
+const WRITTEN_KEY = 'flotilla.improvementReview.taskWritten';
 /** How long the view says why Review Now couldn't start one (BL-177). */
 const REFUSED_MS = 5 * 60_000;
 
+/** flotilla.metrics.reviewEvery (deprecated, BL-263): read only to write the task's schedule. */
 function every(): number {
   return Math.max(0, vscode.workspace.getConfiguration('flotilla').get<number>('metrics.reviewEvery', 7));
 }
 
 /**
- * The improvement review (BL-159): every flotilla.metrics.reviewEvery days (or Review Now), in the leading window, when
- * no agent works or waits, an agent reads the metrics and the code and writes reviews/YYYY-MM-DD.md, with proposed
- * tickets through the inbox. It takes a slot of the agents limit while it runs.
+ * The improvement review (BL-159) as the Metrics view and its commands see it: since BL-263 a scheduled task,
+ * schedules/improvement-review.md, that the Scheduler runs and whose reports it keeps. This gives its agent the metrics
+ * (its context: metrics), writes its file once from flotilla.metrics.reviewEvery, moves the reviews written before
+ * into its folder, and shows its reports, its next run and Review Now in the Metrics view.
  */
 export class ImprovementReview implements vscode.Disposable {
-  private run: AgentRun | undefined;
-  /** The agent writing the review now. */
-  private writer: string | undefined;
-  private starting = false;
-  private readonly timer: NodeJS.Timeout;
-  private readonly settle: NodeJS.Timeout;
-  private readonly opened = Date.now();
   /** Why Review Now last couldn't start one, and when. */
   private refused: { why: string; at: number } | undefined;
   private readonly changed = new vscode.EventEmitter<void>();
   /** Fires as a review starts, ends or is refused (BL-177): the Metrics view shows it. */
   readonly onDidChange = this.changed.event;
+  private readonly sub: vscode.Disposable;
 
   constructor(private readonly deps: ImprovementReviewDeps) {
-    this.timer = setInterval(() => void this.tick().catch(() => undefined), CHECK_MS);
-    this.settle = setTimeout(() => void this.tick().catch(() => undefined), SETTLE_MS);
+    this.sub = deps.scheduler.onDidChange(() => this.changed.fire());
   }
 
   dispose(): void {
-    clearInterval(this.timer);
-    clearTimeout(this.settle);
+    this.sub.dispose();
     this.changed.dispose();
   }
 
-  get running(): boolean {
-    return !!this.run || this.starting;
-  }
-
-  /** Starts the review when one is due and nothing keeps it (see reviewBlocked). */
-  async tick(now = new Date()): Promise<void> {
-    if (this.running || !this.deps.isLeader() || now.getTime() - this.opened < SETTLE_MS - 1000) return;
-    if (!reviewDue({ last: (await listReviews(this.deps.backlog.dir))[0], every: every(), now })) return;
-    const blocked = reviewBlocked(this.deps.autopilot());
-    if (blocked) return;
-    await this.start(now);
-  }
-
-  /** Review Now: starts one at once (a second one the same day replaces that day's), if a slot is free. */
-  async reviewNow(): Promise<void> {
-    if (this.running) {
-      void vscode.window.showInformationMessage('An improvement review is running already.');
-      return;
+  /**
+   * Makes it a scheduled task (BL-263), in the leading window: its file, once, from the setting; and the reviews of
+   * reviews/ moved to its folder. None is lost: one whose day is in the folder already stays where it is.
+   */
+  async setUp(): Promise<void> {
+    const dir = this.deps.backlog.dir;
+    if (!this.deps.state.get<boolean>(WRITTEN_KEY)) {
+      if (await writeReviewTask(dir, every()))
+        this.deps.output.appendLine(`The improvement review is a scheduled task now: ${path.join(dir, 'schedules', `${REVIEW_TASK}.md`)}.`);
+      await this.deps.state.update(WRITTEN_KEY, true);
     }
-    const why = await this.start(new Date());
+    const moved = await moveReviews(dir);
+    if (moved.length) this.deps.output.appendLine(`Moved the improvement reviews of ${moved.join(', ')} to ${taskDir(dir, REVIEW_TASK)}.`);
+  }
+
+  /** Review Now: runs the task at once, if a slot is free. */
+  async reviewNow(): Promise<void> {
+    const why = await this.deps.scheduler.runNow(REVIEW_TASK);
     this.refused = why ? { why, at: Date.now() } : undefined;
     this.changed.fire();
     // The view counts again once it's past, so the line goes in a view nothing else changes.
     if (why) setTimeout(() => this.changed.fire(), REFUSED_MS + 1000).unref?.();
-    if (why) void vscode.window.showWarningMessage(`Flotilla can't start the improvement review now: ${why}.`);
   }
 
   /** Opens the newest review. */
   async openLatest(): Promise<void> {
-    const day = (await listReviews(this.deps.backlog.dir))[0];
-    if (!day) {
-      void vscode.window.showInformationMessage('No improvement review yet. Review Now writes one.');
-      return;
-    }
-    this.open(day);
+    await this.deps.scheduler.openReport(REVIEW_TASK, (await this.task())?.reports[0]);
   }
 
-  /** Opens a review in its tab, rendered as a ticket is (BL-177). */
+  /** Opens a review as a page (BL-260's, rendered as a ticket is). */
   open(day: string): void {
-    openReviewPanel(
-      { extensionUri: this.deps.extensionUri, backlogDir: this.deps.backlog.dir, mainRoot: this.deps.mainRoot, reference: this.deps.reference },
-      day,
-    );
+    void this.deps.scheduler.openReport(REVIEW_TASK, day).catch(() => undefined);
   }
 
-  /** The reviews, as the Metrics view lists them (BL-177): the reviews written, who writes one now, when the next is due and what holds it. */
+  /** The reviews, as the Metrics view lists them (BL-177): the reports, who writes one now, when the next runs and what holds it. */
   async status(now = new Date()): Promise<MetricsReviews> {
-    const dir = reviewsDir(this.deps.backlog.dir);
-    const days = await listReviews(this.deps.backlog.dir);
+    const task = await this.task(now);
+    const dir = taskDir(this.deps.backlog.dir, REVIEW_TASK);
+    const days = task?.reports ?? [];
     const list = await Promise.all(days.map(async (day) => ({ day, title: reviewTitle(await readHead(path.join(dir, `${day}.md`)), day) })));
-    const nextDue = nextReviewDay({ last: days[0], every: every(), now });
-    const due = reviewDue({ last: days[0], every: every(), now });
-    const waiting = due && !this.running ? (this.deps.isLeader() ? reviewBlocked(this.deps.autopilot()) : 'another window runs the autopilot') : undefined;
     if (this.refused && now.getTime() - this.refused.at > REFUSED_MS) this.refused = undefined;
+    const running = task?.running ? (this.deps.scheduler.runner(REVIEW_TASK) ?? 'An agent') : undefined;
+    const nextDue = task?.next && !task.paused ? taskDay(new Date(Math.max(new Date(task.next).getTime(), now.getTime()))) : undefined;
     return {
       list,
-      ...(this.running ? { running: this.writer ?? 'An agent' } : {}),
+      ...(running ? { running } : {}),
       ...(nextDue ? { nextDue } : {}),
-      ...(waiting ? { waiting } : {}),
-      ...(this.refused && !this.running ? { refused: this.refused.why } : {}),
+      ...(task?.due && task.waits ? { waiting: task.waits } : {}),
+      ...(this.refused && !running ? { refused: this.refused.why } : {}),
     };
   }
 
-  /** Starts the review's agent; what kept it from starting, if anything did. */
-  private async start(now: Date): Promise<string | undefined> {
-    this.starting = true;
-    const slot = this.deps.admit(SLOT_ID);
-    if (slot === undefined) {
-      this.starting = false;
-      const v = this.deps.autopilot();
-      return `${v.running} of ${v.max} agents are running${v.waiting ? `, ${v.waiting} waiting` : ''}`;
-    }
-    let run: AgentRun | undefined;
-    try {
-      const day = reviewDay(now);
-      const dir = this.deps.backlog.dir;
-      const reviewFile = path.join(reviewsDir(dir), `${day}.md`);
-      const inboxDir = path.join(dir, INBOX);
-      await fs.promises.mkdir(reviewsDir(dir), { recursive: true });
-      const last = (await listReviews(dir)).find((d) => d !== day);
-      const agent = agentName(this.takenNames());
-      const prompt = reviewPrompt({
-        agent,
-        day,
-        ...(await this.inputs(now)),
-        reviewFile,
-        inboxDir,
-        eventsDir: eventsDir(this.deps.commonDir),
-        mainRoot: this.deps.mainRoot,
-        backlogDir: dir,
-        ...(last ? { lastReview: path.join(reviewsDir(dir), `${last}.md`) } : {}),
-      });
-      const started = Date.now();
-      run = runAgentHeadless({
-        cwd: this.deps.mainRoot,
-        prompt,
-        name: `${agent} · improvement review ${day}`,
-        track: { agent, role: 'improve' },
-        choice: agentChoice(undefined),
-        output: this.deps.output,
-        slot,
-        ...reviewTools({ reviewFile, inboxDir }),
-      });
-      this.run = run;
-      this.writer = agent;
-      this.changed.fire();
-      void trackProgress('backlog', `${agent} is writing the improvement review`, () => run!.done);
-      void run.done.then(async (result) => {
-        this.run = undefined;
-        this.writer = undefined;
-        this.deps.giveBack(slot);
-        const written = await fs.promises.stat(reviewFile).then(
-          (s) => s.mtimeMs >= started,
-          () => false,
-        );
-        this.changed.fire();
-        if (written) return;
-        // No page: the reply (or why it stopped) is the page, so the review isn't due again at once.
-        const body =
-          result.reply?.trim() ||
-          `${agent} stopped without a review (${result.limit ? `a ${result.limit.kind} limit` : (result.error?.slice(0, 200) ?? `exit code ${result.code}`)}).`;
-        await fs.promises.writeFile(reviewFile, `# Improvement review ${day}\n\n${body}\n`).catch(() => undefined);
-        this.changed.fire();
-      });
-      return undefined;
-    } catch (e) {
-      if (!run) this.deps.giveBack(slot);
-      throw e;
-    } finally {
-      this.starting = false;
-    }
+  private async task(now = new Date()) {
+    return (await this.deps.scheduler.view(now)).tasks.find((t) => t.name === REVIEW_TASK);
   }
 
-  /** What the review is given: the summary, the merged fixes' before and after, and the open tickets. */
-  private async inputs(now: Date): Promise<{ summary: string; fixes: string; openTickets: string[] }> {
+  /** What the review is given (its context: metrics): the summary, the merged fixes' before and after, the open tickets and the events. */
+  async context({ task, now }: { task: { schedule: Schedule }; now: Date }): Promise<string> {
     const events = await readEvents(this.deps.commonDir);
     const data = await this.deps.backlog.read();
     const checks: FixCheck[] = [];
@@ -253,15 +144,14 @@ export class ImprovementReview implements vscode.Disposable {
         if (c.landed) checks.push(c);
       }
     }
-    return {
-      summary: summaryMarkdown(metricsSummary(events, { to: now, days: every() || 7, criteria })),
+    // The period its numbers cover: as long as it's apart (a week for a weekly one).
+    const days = task.schedule.kind === 'days' ? task.schedule.days : 7;
+    return reviewContext({
+      summary: summaryMarkdown(metricsSummary(events, { to: now, days, criteria })),
       fixes: fixesMarkdown(checks),
       openTickets: data.items.filter((i) => i.status !== 'done').map((i) => `${i.id} (${i.status}${i.proposed ? ', proposed' : ''}): ${i.title}`),
-    };
-  }
-
-  private takenNames(): string[] {
-    return this.deps.repository.current.flatMap((w) => w.chats.map((c) => agentChatItem(c.firstPrompt)?.agent ?? '')).filter(Boolean);
+      eventsDir: eventsDir(this.deps.commonDir),
+    });
   }
 }
 

@@ -191,7 +191,7 @@ function Reviews({ reviews, open, reviewNow }: { reviews: MetricsReviews; open(d
     ? reviews.nextDue <= today
       ? `The next review is due now${reviews.waiting ? `, waiting: ${reviews.waiting}` : ''}.`
       : `The next review is due on ${dayLabel(reviews.nextDue)}.`
-    : 'No scheduled reviews (flotilla.metrics.reviewEvery is 0).';
+    : 'No scheduled reviews: the task is paused, or its file (schedules/improvement-review.md) is gone or wrong.';
   return (
     <section class="metrics-section metrics-reviews" aria-label="Improvement reviews">
       <h3>Improvement reviews</h3>

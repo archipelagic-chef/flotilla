@@ -28,7 +28,7 @@ import {
   type Commands,
   showError,
 } from '../commandSet';
-import { openLink } from '../metrics/reviewPanel';
+import { openLink } from './openLink';
 import {
   agentChoice,
   memoryShortage,

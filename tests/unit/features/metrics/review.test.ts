@@ -21,20 +21,26 @@ import {
   landedAt,
   readImproves,
 } from '../../../../src/features/metrics/improves';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
-  nextReviewDay,
-  reviewBlocked,
-  reviewDue,
-  reviewPrompt,
+  moveReviews,
+  reviewContext,
+  reviewTaskFile,
   reviewTitle,
-  reviewTools,
+  writeReviewTask,
 } from '../../../../src/features/metrics/review';
+import {
+  listTaskReports,
+  parseTask,
+  taskPrompt,
+} from '../../../../src/features/schedules/schedule';
 import {
   metricsSummary,
   summaryMarkdown,
   trend,
 } from '../../../../src/features/metrics/summary';
-import { headlessArgs } from '../../../../src/ui/backlog/agentRunner';
 
 function ev<K extends EventKind>(at: string, kind: K, data: EventData[K], ticket?: string): FlotillaEvent<K> {
   return { at: new Date(at).toISOString(), kind, ...(ticket ? { ticket } : {}), data };
@@ -164,72 +170,77 @@ describe('Improves: lines (BL-159)', () => {
   });
 });
 
-describe('the review itself (BL-159)', () => {
-  it('is due a week after the last one, and never with 0', () => {
-    expect(reviewDue({ every: 7, now: NOW })).toBe(true);
-    expect(reviewDue({ last: '2026-10-10', every: 7, now: new Date('2026-10-16T09:00') })).toBe(false);
-    expect(reviewDue({ last: '2026-10-08', every: 7, now: new Date('2026-10-15T09:00') })).toBe(true);
-    expect(reviewDue({ every: 0, now: NOW })).toBe(false);
-  });
-
-  it('says the day the next one is due, as reviewDue counts it (BL-177)', () => {
-    expect(nextReviewDay({ every: 7, now: new Date('2026-10-16T09:00') })).toBe('2026-10-16');
-    expect(nextReviewDay({ last: '2026-10-10', every: 7, now: new Date('2026-10-12T09:00') })).toBe('2026-10-16');
-    expect(reviewDue({ last: '2026-10-10', every: 7, now: new Date('2026-10-16T12:00') })).toBe(true);
-    // Overdue: today.
-    expect(nextReviewDay({ last: '2026-10-01', every: 7, now: new Date('2026-10-16T09:00') })).toBe('2026-10-16');
-    expect(nextReviewDay({ last: '2026-10-10', every: 0, now: NOW })).toBeUndefined();
-  });
-
+describe('the review itself (BL-159), a scheduled task (BL-263)', () => {
   it('is titled by its first heading (BL-177)', () => {
     expect(reviewTitle('intro\n# Improvement review 2026-10-24: merges\n## One', '2026-10-24')).toBe('Improvement review 2026-10-24: merges');
     expect(reviewTitle('no heading', '2026-10-24')).toBe('Improvement review 2026-10-24');
   });
 
-  it('waits while the autopilot is busy, on a limit, or paused', () => {
-    const idle = { running: 0, waiting: 0, enabled: true, idle: 'nothing left in To Do', elsewhere: false };
-    expect(reviewBlocked(idle)).toBeUndefined();
-    expect(reviewBlocked({ ...idle, enabled: false, idle: undefined })).toBeUndefined();
-    expect(reviewBlocked({ ...idle, running: 2 })).toMatch(/2 agents are working/);
-    expect(reviewBlocked({ ...idle, waiting: 1 })).toMatch(/waiting/);
-    expect(reviewBlocked({ ...idle, waitingUntil: '2026-10-15T03:00Z' })).toMatch(/usage limit/);
-    expect(reviewBlocked({ ...idle, pausedAll: 3 })).toMatch(/paused/);
-    expect(reviewBlocked({ ...idle, idle: undefined })).toMatch(/tickets to start/);
+  it("its file runs it every reviewEvery days when idle, with the metrics' context; paused when that's 0", () => {
+    const week = parseTask('improvement-review', reviewTaskFile(7));
+    expect(week).toMatchObject({ title: 'Improvement review', schedule: { kind: 'days', days: 7 }, when: 'idle', context: 'metrics' });
+    expect(week).not.toHaveProperty('paused');
+    expect(parseTask('improvement-review', reviewTaskFile(1))).toMatchObject({ schedule: { kind: 'days', days: 1 } });
+    expect(parseTask('improvement-review', reviewTaskFile(0))).toMatchObject({ schedule: { kind: 'days', days: 1 }, paused: true });
   });
 
-  it('may only read, and write its page and its proposals', () => {
-    const t = reviewTools({ reviewFile: '/b/reviews/2026-10-15.md', inboxDir: '/b/inbox' });
-    expect(t).toEqual({ tools: ['Read', 'Grep', 'Glob', 'Edit(//b/reviews/2026-10-15.md)', 'Edit(//b/inbox/review-*.md)'], offer: ['Write'] });
-    // Write is offered, but allowed only by the Edit rules: not by its name.
-    const args = headlessArgs({ prompt: 'p', name: 'n', sessionId: 's', mode: 'dontAsk', ...t });
-    expect(args.slice(args.indexOf('--tools'))).toEqual(['--tools', 'Read,Grep,Glob,Edit,Write', '--allowedTools', ...t.tools]);
-  });
-
-  it('gives the summary, the fixes and the open tickets, and the shape of a proposal', () => {
-    const p = reviewPrompt({
+  it('gives the summary, the fixes, the open tickets and the events, and asks for its sections and Improves: lines', () => {
+    const task = parseTask('improvement-review', reviewTaskFile(7));
+    if ('error' in task) throw new Error(task.error);
+    const p = taskPrompt({
       agent: 'Nova-7',
+      task,
       day: '2026-10-15',
-      summary: 'SUMMARY',
-      fixes: 'FIXES',
-      openTickets: ['BL-3 (todo): Something'],
-      reviewFile: '/b/reviews/2026-10-15.md',
+      reportFile: '/b/schedules/improvement-review/2026-10-15.md',
+      earlier: ['/b/schedules/improvement-review/2026-10-08.md'],
       inboxDir: '/b/inbox',
-      eventsDir: '/g/flotilla/metrics',
       mainRoot: '/r',
       backlogDir: '/b',
+      context: reviewContext({ summary: 'SUMMARY', fixes: 'FIXES', openTickets: ['BL-3 (todo): Something'], eventsDir: '/g/flotilla/metrics' }),
     });
     // Not "working on backlog item": Flotilla mustn't take its chat for a ticket's.
-    expect(p).toMatch(/^You are agent Nova-7, writing Flotilla's improvement review of 2026-10-15\./);
+    expect(p).toMatch(/^You are agent Nova-7, running Flotilla's scheduled task "improvement-review"/);
     for (const s of [
       'SUMMARY',
       'FIXES',
       'BL-3 (todo): Something',
-      '/b/reviews/2026-10-15.md',
-      '/b/inbox/review-2026-10-15-<n>.md',
+      '/b/schedules/improvement-review/2026-10-15.md',
+      '/b/schedules/improvement-review/2026-10-08.md',
+      '/b/inbox/improvement-review-2026-10-15-<n>.md',
       '/g/flotilla/metrics',
+      '# Improvement review 2026-10-15',
+      '## Fixes checked',
+      '## Problems',
       "**When it's done:**",
       'Improves: <metric id>',
     ])
       expect(p).toContain(s);
+    expect(p.indexOf('## Your instructions')).toBeLessThan(p.indexOf('SUMMARY'));
+  });
+
+  it("moves the reviews of reviews/ into the task's folder, keeping one whose day is there already", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-'));
+    fs.mkdirSync(path.join(dir, 'reviews'));
+    fs.writeFileSync(path.join(dir, 'reviews', '2026-10-24.md'), '# A\n');
+    fs.writeFileSync(path.join(dir, 'reviews', '2026-10-30.md'), '# B\n');
+    fs.mkdirSync(path.join(dir, 'schedules', 'improvement-review'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'schedules', 'improvement-review', '2026-10-30.md'), '# B, already\n');
+    expect(await moveReviews(dir)).toEqual(['2026-10-24']);
+    expect(await listTaskReports(dir, 'improvement-review')).toEqual(['2026-10-30', '2026-10-24']);
+    expect(fs.readFileSync(path.join(dir, 'reviews', '2026-10-30.md'), 'utf8')).toBe('# B\n');
+    fs.rmSync(path.join(dir, 'schedules', 'improvement-review', '2026-10-30.md'));
+    expect(await moveReviews(dir)).toEqual(['2026-10-30']);
+    expect(fs.existsSync(path.join(dir, 'reviews'))).toBe(false);
+    expect(await moveReviews(dir)).toEqual([]);
+  });
+
+  it("writes the task's file once: an edited one is kept", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-'));
+    expect(await writeReviewTask(dir, 14)).toBe(true);
+    const file = path.join(dir, 'schedules', 'improvement-review.md');
+    expect(fs.readFileSync(file, 'utf8')).toContain('every: 14 days');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('14 days', 'Mondays at 06:00'));
+    expect(await writeReviewTask(dir, 7)).toBe(false);
+    expect(fs.readFileSync(file, 'utf8')).toContain('every: Mondays at 06:00');
   });
 });

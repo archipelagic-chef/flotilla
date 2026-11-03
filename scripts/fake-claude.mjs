@@ -197,9 +197,9 @@ async function handleNotes() {
   reply(`Proposed a ticket for ${ids.join(', ')}, after reading the code and the backlog.`);
 }
 
-/** An improvement review's agent (BL-177): writes a short review to the file its prompt names, after a while, so the Metrics view shows it running. */
+/** An improvement review's agent (BL-177; a scheduled task's since BL-263): writes a short review to the file its prompt names, after a while, so the Metrics view shows it running. */
 async function handleReview() {
-  const day = /improvement review of (\d{4}-\d{2}-\d{2})/.exec(prompt)?.[1];
+  const day = /improvement review of (\d{4}-\d{2}-\d{2})/.exec(prompt)?.[1] ?? / on (\d{4}-\d{2}-\d{2})\./.exec(prompt)?.[1];
   const file = /the Write tool, to (\S+?\.md)/.exec(prompt)?.[1];
   await new Promise((r) => setTimeout(r, 12000));
   if (file)
@@ -209,7 +209,8 @@ async function handleReview() {
 
 async function main() {
   if (/^You are agent [A-Za-z0-9-]+, handling note NOTE-\d+/.test(prompt) || (resume && /handling NOTE-\d+$/.test(name))) return handleNotes();
-  if (/^You are agent [A-Za-z0-9-]+, writing Flotilla's improvement review/.test(prompt)) return handleReview();
+  if (/^You are agent [A-Za-z0-9-]+, (writing Flotilla's improvement review|running Flotilla's scheduled task "improvement-review")/.test(prompt))
+    return handleReview();
   const file = ticketFile();
   const text = file ? fs.readFileSync(file, 'utf8') : '';
   const hints = directives(text);
