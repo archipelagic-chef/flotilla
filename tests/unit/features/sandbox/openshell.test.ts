@@ -11,12 +11,12 @@ import {
   gitDirsOf,
   LAUNCH_FAILED,
   launcherScript,
+  policySetArgs,
   PROVIDER,
   SANDBOX_CLAUDE_DIR,
   sandboxedCommand,
   sandboxMounts,
   sandboxName,
-  sandboxPolicy,
   stopArgs,
 } from '../../../../src/features/sandbox/openshell';
 import { makeTempDir } from '../../../helpers/gitRepo';
@@ -60,17 +60,6 @@ describe('OpenShell sandboxes (BL-270)', () => {
       { path: '/home/u/.claude/projects/-repo--worktrees-wt', target: `${SANDBOX_CLAUDE_DIR}/projects/-repo--worktrees-wt` },
     ]);
     expect(JSON.parse(driverConfig(mounts)).docker.mounts[3]).toEqual({ type: 'bind', source: '/tmp/flotilla', target: '/tmp/flotilla', read_only: true });
-  });
-
-  it('lets the sandbox write the mounts only, as the host user', () => {
-    const policy = sandboxPolicy([{ path: '/repo' }, { path: '/tmp/flotilla', readOnly: true }], 1000, 1000);
-    const [ro, rw] = policy.split('read_write:');
-    expect(ro).toContain('"/tmp/flotilla"');
-    expect(ro).not.toContain('"/repo"');
-    expect(rw).toContain('"/repo"');
-    expect(rw).not.toContain('/tmp/flotilla');
-    expect(policy).toContain('run_as_user: "1000"');
-    expect(sandboxPolicy([], 0, 0)).not.toContain('run_as_user');
   });
 
   it("runs claude in the sandbox with sandbox exec: the worktree as working directory, Claude's config dir and the git identity", () => {
@@ -126,5 +115,9 @@ describe('OpenShell sandboxes (BL-270)', () => {
     expect(script).toContain(`exit ${LAUNCH_FAILED}`);
     expect(script.match(/^exec .*/m)?.[0]).toBe('exec openshell sandbox exec -n "$n" "$@"');
     expect(script).not.toMatch(/^\s*claude\b/m);
+  });
+
+  it('loads a policy into a running sandbox and waits for it (BL-271)', () => {
+    expect(policySetArgs('flotilla-wt-123456', '/state/p.yaml')).toEqual(['policy', 'set', 'flotilla-wt-123456', '--policy', '/state/p.yaml', '--wait']);
   });
 });

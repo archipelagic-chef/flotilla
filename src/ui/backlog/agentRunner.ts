@@ -65,10 +65,14 @@ import {
   sandboxedCommand,
   sandboxMounts,
   sandboxName,
-  sandboxPolicy,
   stopArgs,
   writeLauncher,
 } from '../../features/sandbox/openshell';
+import {
+  defaultPolicy,
+  openshellPolicy,
+  type SecurityPolicy,
+} from '../../features/sandbox/policy';
 import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 
@@ -99,8 +103,24 @@ export function setAgentDirs(dirs: readonly string[]): void {
   agentDirs = [...dirs];
 }
 
+/** The folders every agent may reach besides its worktree (setAgentDirs). */
+export function agentDirsNow(): readonly string[] {
+  return agentDirs;
+}
+
 /** Where Flotilla writes its agents' settings files and guard script. */
-const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
+export const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
+
+/**
+ * The security policy sandboxes run under (BL-271, the Security panel's), and where their OpenShell policies are
+ * written: outside every folder a sandbox mounts, so an agent can't read or change them.
+ */
+let securityPolicy: () => SecurityPolicy = () => defaultPolicy();
+let policyDir = path.join(os.tmpdir(), 'flotilla-policies');
+export function setSecurityPolicy(get: () => SecurityPolicy, dir: string): void {
+  securityPolicy = get;
+  policyDir = dir;
+}
 
 /** Whether agents start in OpenShell sandboxes (flotilla.agents.sandbox, BL-270), or on this machine. */
 export function sandboxKind(): 'none' | 'openshell' {
@@ -131,7 +151,7 @@ export function agentCommand(args: string[], cwd: string, o: { tty?: boolean; sc
   const mounts = o.scratch
     ? sandboxMounts({ cwd: AGENT_FILES, dirs: [], gitDirs: [], agentFiles: AGENT_FILES }).filter((m) => m.readOnly)
     : sandboxMounts({ cwd, dirs: agentDirs, gitDirs: gitDirsOf(cwd), agentFiles: AGENT_FILES, transcripts });
-  const policy = writeOnce(AGENT_FILES, 'flotilla-openshell-policy', 'yaml', sandboxPolicy(mounts, process.getuid?.(), process.getgid?.()));
+  const policy = writeOnce(policyDir, 'flotilla-openshell-policy', 'yaml', openshellPolicy(securityPolicy(), mounts, process.getuid?.(), process.getgid?.()));
   const image = vscode.workspace.getConfiguration('flotilla').get<string>('agents.sandboxImage', '').trim();
   const cmd = sandboxedCommand({
     launcher: writeLauncher(AGENT_FILES),

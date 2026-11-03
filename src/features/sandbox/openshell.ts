@@ -94,27 +94,6 @@ export function driverConfig(mounts: readonly Mount[]): string {
 }
 
 /**
- * The sandbox's policy: the system's folders to read, the mounts and the sandbox's own to write (Landlock), and the
- * host's user (uid), so files written in the mounts stay the user's. Its network is OpenShell's: nothing but what the
- * provider adds (Anthropic's API). BL-271 lets the user set it.
- */
-export function sandboxPolicy(mounts: readonly Mount[], uid?: number, gid?: number): string {
-  const list = (items: string[]) => items.map((p) => `    - ${JSON.stringify(p)}`).join('\n');
-  const target = (m: Mount) => m.target ?? m.path;
-  return [
-    'version: 1',
-    'filesystem_policy:',
-    '  include_workdir: true',
-    '  read_only:',
-    list(['/usr', '/lib', '/bin', '/etc', '/opt', '/proc', '/dev', ...mounts.filter((m) => m.readOnly).map(target)]),
-    '  read_write:',
-    list(['/sandbox', '/tmp', '/dev/null', ...mounts.filter((m) => !m.readOnly).map(target)]),
-    ...(uid && gid ? ['process:', `  run_as_user: "${uid}"`, `  run_as_group: "${gid}"`] : []),
-    '',
-  ].join('\n');
-}
-
-/**
  * The launcher: started with FLOTILLA_SANDBOX* in its environment (the sandbox's name first) and `sandbox exec`'s
  * arguments. It says what failed, and how to fix it, on stderr, and exits with LAUNCH_FAILED.
  */
@@ -216,6 +195,35 @@ export function stopArgs(name: string, sessionId: string): string[] {
 /** `openshell` arguments that remove a sandbox. */
 export function deleteArgs(name: string): string[] {
   return ['sandbox', 'delete', name];
+}
+
+/**
+ * `openshell` arguments that load a policy into a running sandbox (BL-271): OpenShell reloads its network rules at
+ * once. It exits 0 when it's loaded, 1 when OpenShell refused the policy.
+ */
+export function policySetArgs(name: string, policyFile: string): string[] {
+  return ['policy', 'set', name, '--policy', policyFile, '--wait'];
+}
+
+/** The exit code of a `policy set` OpenShell refused (its validation failed). */
+export const POLICY_REFUSED = 1;
+
+/** Runs openshell and waits: its exit code (-1 when it couldn't start) and what it wrote. */
+export function runOpenshell(args: string[], timeoutMs = 60_000): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    let output = '';
+    let child;
+    try {
+      child = spawn('openshell', args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs });
+    } catch (error) {
+      resolve({ code: -1, output: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    child.stdout?.on('data', (d: Buffer) => (output += d.toString()));
+    child.stderr?.on('data', (d: Buffer) => (output += d.toString()));
+    child.on('error', (error) => resolve({ code: -1, output: error.message }));
+    child.on('close', (code) => resolve({ code: code ?? -1, output: output.trim() }));
+  });
 }
 
 /** Runs openshell in the background, for what may fail unseen (no sandbox, no OpenShell). */

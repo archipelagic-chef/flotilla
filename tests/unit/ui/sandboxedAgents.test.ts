@@ -21,8 +21,13 @@ import {
   agentCommand,
   runAgentHeadless,
   setAgentDirs,
+  setSecurityPolicy,
 } from '../../../src/ui/backlog/agentRunner';
 import { sandboxName } from '../../../src/features/sandbox/openshell';
+import {
+  defaultPolicy,
+  PolicyStore,
+} from '../../../src/features/sandbox/policy';
 import {
   initRepo,
   makeTempDir,
@@ -130,5 +135,24 @@ describe('agents in OpenShell sandboxes (BL-270)', () => {
     const result = await runAgentHeadless({ cwd: repo, prompt: 'Do it', name: 'Watt-4', output: output as never }).done;
     expect(result.code).toBe(125);
     expect(result.error).toContain("OpenShell's CLI (openshell) isn't on the PATH");
+  });
+
+  it('keeps the policy outside every folder the sandbox mounts, and starts the sandbox on the policy saved in the panel (BL-271)', async () => {
+    const repo = await initRepo();
+    const backlog = makeTempDir();
+    setAgentDirs([backlog]);
+    // VS Code's storage, as the extension gives it: neither in a worktree nor the backlog folder.
+    const storage = makeTempDir();
+    const store = new PolicyStore(path.join(storage, 'globalStorage'), path.join(storage, 'workspaceStorage'), () => defaultPolicy());
+    store.write('all', { ...defaultPolicy(), network: [{ host: 'example.org', port: 443 }] });
+    setSecurityPolicy(() => store.read(), path.join(storage, 'globalStorage', 'openshell'));
+    const cmd = agentCommand(['-p', 'x'], repo);
+    const mounts = (JSON.parse(cmd.env.FLOTILLA_SANDBOX_MOUNTS!) as { docker: { mounts: { source: string }[] } }).docker.mounts.map((m) => m.source);
+    const policyFile = cmd.env.FLOTILLA_SANDBOX_POLICY!;
+    const inside = (p: string, dir: string) => !path.relative(dir, p).startsWith('..');
+    for (const file of [policyFile, store.file('all'), store.file('repository')]) {
+      for (const mount of mounts) expect(inside(file, mount), `${file} in ${mount}`).toBe(false);
+    }
+    expect(fs.readFileSync(policyFile, 'utf8')).toContain('host: "example.org", port: 443');
   });
 });
