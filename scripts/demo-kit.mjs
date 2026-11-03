@@ -24,6 +24,7 @@ export const ACTIONS = [
   'highlight',
   'agentTurn',
   'gitHubComment',
+  'screenshot',
 ];
 /** The demos' folder, from the repository root; a demo is `demos/<name>.json`. */
 export const DEMOS_DIR = 'demos';
@@ -64,6 +65,9 @@ export function parseDemo(text, name = 'demo') {
     ) {
       throw new Error(`${where}: "${action}" takes ${action === 'wait' ? 'a number of milliseconds' : 'a string'}`);
     }
+    // A screenshot is saved next to the demo's file, by a name of its own: nothing a demo says writes elsewhere.
+    if (action === 'screenshot' && !/^[\w.-]+\.png$/.test(value))
+      throw new Error(`${where}: "screenshot" takes a file's name ending in .png, such as step-3.png`);
     if (step.timeout !== undefined && !(Number.isFinite(step.timeout) && step.timeout > 0)) throw new Error(`${where}: "timeout" is a number of milliseconds`);
     if (action === 'drag' && (typeof step.to !== 'string' || !step.to.trim())) throw new Error(`${where}: "drag" drops "to" a selector`);
     return { action, value, ...(action === 'drag' ? { to: step.to } : {}), ...(step.timeout ? { timeout: step.timeout } : {}) };
@@ -85,6 +89,13 @@ export function parseDemo(text, name = 'demo') {
   const days = demo.reviewsDaysAgo;
   if (days !== undefined && !(Array.isArray(days) && days.every((d) => Number.isInteger(d) && d >= 0)))
     throw new Error(`${name}: "reviewsDaysAgo" is a list of whole days, newest first`);
+  // Files put in the playground's backlog inbox as the window opens (BL-264), for a demo of what Flotilla does with one.
+  const inbox = demo.inbox;
+  if (
+    inbox !== undefined &&
+    !(inbox && typeof inbox === 'object' && !Array.isArray(inbox) && Object.entries(inbox).every(([f, t]) => /^[\w.-]+\.md$/.test(f) && typeof t === 'string'))
+  )
+    throw new Error(`${name}: "inbox" is an object of file names (ending in .md) and their text`);
   return {
     title: typeof demo.title === 'string' ? demo.title : name,
     steps,
@@ -94,11 +105,14 @@ export function parseDemo(text, name = 'demo') {
     githubSignedOut: demo.githubSignedOut === true,
     ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
     ...(days ? { reviewsDaysAgo: days } : {}),
+    ...(inbox ? { inbox } : {}),
   };
 }
 
 /** A demo's file by name (letters, digits, - and _ only: a name isn't a path). */
 export function demoFile(root, name) {
+  // A demo written anywhere (a product review's journey, BL-264): its path, from where the command was given.
+  if (/\.json$/.test(name ?? '')) return path.resolve(process.env.INIT_CWD ?? process.cwd(), name);
   if (!/^[\w-]+$/.test(name ?? '')) throw new Error(`"${name ?? ''}" isn't a demo's name: use letters, digits, - and _ (the file is ${DEMOS_DIR}/<name>.json)`);
   return path.join(root, DEMOS_DIR, `${name}.json`);
 }

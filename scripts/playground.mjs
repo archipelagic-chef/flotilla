@@ -30,7 +30,8 @@ const PLAYGROUND_VERSION = 2;
 
 // The playground's files (a small Node app, its tests and launch configurations) live in playground-app/.
 const app = fileURLToPath(new URL('playground-app/', import.meta.url));
-const dir = path.resolve('.playground');
+// FLOTILLA_PLAYGROUND: another folder for it, such as the scratch playground a demo plays on with --scratch (BL-264).
+const dir = path.resolve(process.env.FLOTILLA_PLAYGROUND || '.playground');
 // The playground's origin: a local bare repository whose path ends like a GitHub address, so the CI/CD view takes it for
 // GitHub's playground/app, while fetches and pushes (Flotilla's push on approval, BL-104) never leave the machine
 // (BL-113). The debug window reads its runs from the fake GitHub (npm run fake-github, switched on in the debug profile:
