@@ -408,6 +408,27 @@ function discussion() {
   };
 }
 
+/**
+ * A discussion asked for tickets (BL-268: its system prompt is proposeDiscussionPrompt): a proposal in the inbox, with
+ * its discussion: field, and an answer saying what it proposed. Undefined for any other chat.
+ */
+function proposeFromDiscussion() {
+  const instructions = option('--append-system-prompt') ?? '';
+  if (!/asks you to turn what you agreed on into ticket proposals/.test(instructions)) return undefined;
+  const inbox = /a Markdown file per ticket in (\S+?)\/ /.exec(instructions)?.[1];
+  const id = /`discussion: (DISC-\d+)`/.exec(instructions)?.[1];
+  const who = /`agent: ([\w-]+)`/.exec(instructions)?.[1] ?? 'Fake';
+  const title = "Keep each ticket's history in git";
+  if (inbox && id) {
+    fs.mkdirSync(inbox, { recursive: true });
+    fs.writeFileSync(
+      path.join(inbox, `fake-${id.toLowerCase()}.md`),
+      `---\ndiscussion: ${id}\nagent: ${who}\n---\n# ${title}\n\n**When it's done:** a ticket's past versions are read from git.\n\n**Why:** agreed in ${id}.\n\nAcceptance criteria:\n- [ ] A ticket's tab lists its versions.\n`,
+    );
+  }
+  return `I proposed a ticket from what we agreed on: "${title}". It's in the backlog's proposals, linked back to this discussion. (fake Claude)`;
+}
+
 /** The Ask chat: each user message gets an answer streamed word by word; an interrupt stops it where it is. */
 function chat() {
   emit({ type: 'system', subtype: 'init', session_id: session });
@@ -421,6 +442,7 @@ function chat() {
   const answer = (asked) => {
     const words = (
       discussing?.answer(asked) ??
+      proposeFromDiscussion() ??
       // A free discussion's (BL-267): it talks the idea through, and proposes no ticket.
       (/a free discussion about this repository/.test(option('--append-system-prompt') ?? '')
         ? 'Today a ticket is a Markdown file in the backlog folder, committed with the work. Two ways to go: keep its history in git only, or add an append-only log next to it. Git is simpler; a log survives rebases. Which matters more to you? (fake Claude)'

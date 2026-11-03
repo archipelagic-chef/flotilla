@@ -1476,9 +1476,29 @@ function localDay(at) {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
 }
 
-/** Removes the discussions (BL-267) an earlier demo started: each demo starts with none. */
+/** Removes the discussions (BL-267) an earlier demo started, and the tickets proposed from them (BL-268): each demo starts with none. */
 export function clearDiscussions(dir) {
-  fs.rmSync(path.join(dir, '.flotilla', 'backlog', 'discussions'), { recursive: true, force: true });
+  const backlog = path.join(dir, '.flotilla', 'backlog');
+  fs.rmSync(path.join(backlog, 'discussions'), { recursive: true, force: true });
+  const file = path.join(backlog, 'backlog.json');
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return;
+  }
+  const fromDiscussion = (id) => {
+    try {
+      return /\]\(discussions\/DISC-\d+\.md\)/.test(fs.readFileSync(path.join(backlog, `${id}.md`), 'utf8'));
+    } catch {
+      return false;
+    }
+  };
+  const gone = (data.items ?? []).filter((i) => fromDiscussion(i.id)).map((i) => i.id);
+  if (!gone.length) return;
+  data.items = data.items.filter((i) => !gone.includes(i.id));
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 1)}\n`);
+  for (const id of gone) fs.rmSync(path.join(backlog, `${id}.md`), { force: true });
 }
 
 /**
