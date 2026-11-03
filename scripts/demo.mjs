@@ -714,6 +714,12 @@ async function show(mode, demo, out, still, display) {
   seedReviews(playground, new Date(), demo.reviewsDaysAgo);
   // No discussions (BL-267): those an earlier demo started are gone.
   clearDiscussions(playground);
+  // The demo's inbox files (BL-264): Flotilla takes them in once it has started, as an agent's.
+  for (const [file, text] of Object.entries(demo.inbox ?? {})) {
+    const inbox = path.join(playground, '.flotilla', 'backlog', 'inbox');
+    fs.mkdirSync(inbox, { recursive: true });
+    fs.writeFileSync(path.join(inbox, file), text);
+  }
   // The scheduled tasks, one still proposed (BL-260).
   seedScheduledTasks(playground);
   const cachePath = path.join(mainRoot(root), '.vscode-test');

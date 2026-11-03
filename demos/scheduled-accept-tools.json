@@ -1,0 +1,16 @@
+{
+  "title": "A proposed scheduled task's Accept names the tools its file gives its agent",
+  "settings": { "flotilla.ci.notify": "off" },
+  "inbox": {
+    "product-review-task.md": "---\nschedule: product-review\nagent: Bolt-7\ntitle: Product review\nevery: Mondays at 06:00\ntools: Bash(npm run demo:*)\n---\nGo through Flotilla's journeys with the demo harness, on a scratch playground.\n"
+  },
+  "steps": [
+    { "caption": "An agent proposes a scheduled task whose file says tools: Bash(npm run demo:*)" },
+    { "waitFor": ".notification-toast:has-text(\"proposes a scheduled task\")", "timeout": 30000 },
+    { "caption": "Before you Accept, it says what more its agent may do" },
+    { "highlight": ".notification-toast:has-text(\"Its agent may also use: Bash(npm run demo:*)\")" },
+    { "wait": 2500 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}

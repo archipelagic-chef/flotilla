@@ -136,6 +136,12 @@ describe('parseDemo', () => {
     expect(() => parseDemo(JSON.stringify({ steps: [{ screenshot: 'x.jpg' }] }))).toThrow(/a file's name ending in \.png/);
   });
 
+  it('puts files in the inbox by plain .md names only (BL-264)', () => {
+    expect(parseDemo(JSON.stringify({ steps: [{ wait: 1 }], inbox: { 'a-1.md': 'x' } })).inbox).toEqual({ 'a-1.md': 'x' });
+    expect(() => parseDemo(JSON.stringify({ steps: [{ wait: 1 }], inbox: { '../a.md': 'x' } }))).toThrow(/"inbox" is an object/);
+    expect(() => parseDemo(JSON.stringify({ steps: [{ wait: 1 }], inbox: { 'a.md': 1 } }))).toThrow(/"inbox" is an object/);
+  });
+
   it('says what is wrong, and in which step', () => {
     expect(() => parseDemo('{', 'd')).toThrow(/d: not JSON/);
     expect(() => parseDemo('{"steps": []}', 'd')).toThrow(/at least one step/);

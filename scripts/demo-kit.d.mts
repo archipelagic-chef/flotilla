@@ -28,6 +28,7 @@ export function parseDemo(
   githubSignedOut: boolean;
   resetsTicket?: string;
   reviewsDaysAgo?: number[];
+  inbox?: Record<string, string>;
 };
 export function demoFile(root: string, name: string | undefined): string;
 export function listDemos(root: string): string[];

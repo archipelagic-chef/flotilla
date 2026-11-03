@@ -89,6 +89,13 @@ export function parseDemo(text, name = 'demo') {
   const days = demo.reviewsDaysAgo;
   if (days !== undefined && !(Array.isArray(days) && days.every((d) => Number.isInteger(d) && d >= 0)))
     throw new Error(`${name}: "reviewsDaysAgo" is a list of whole days, newest first`);
+  // Files put in the playground's backlog inbox as the window opens (BL-264), for a demo of what Flotilla does with one.
+  const inbox = demo.inbox;
+  if (
+    inbox !== undefined &&
+    !(inbox && typeof inbox === 'object' && !Array.isArray(inbox) && Object.entries(inbox).every(([f, t]) => /^[\w.-]+\.md$/.test(f) && typeof t === 'string'))
+  )
+    throw new Error(`${name}: "inbox" is an object of file names (ending in .md) and their text`);
   return {
     title: typeof demo.title === 'string' ? demo.title : name,
     steps,
@@ -98,6 +105,7 @@ export function parseDemo(text, name = 'demo') {
     githubSignedOut: demo.githubSignedOut === true,
     ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
     ...(days ? { reviewsDaysAgo: days } : {}),
+    ...(inbox ? { inbox } : {}),
   };
 }
 
