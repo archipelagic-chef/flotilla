@@ -1,0 +1,27 @@
+{
+  "title": "Go to File in main offers only main's files",
+  "steps": [
+    { "caption": "BL-1's src/greeting.js, opened from its worktree" },
+    { "click": "[aria-label=\"Files\"]" },
+    { "click": ".wt-tab:has-text(\"BL-1\")" },
+    { "click": ".row:has-text(\"src\")" },
+    { "click": ".row.file:has-text(\"greeting.js\")" },
+    { "waitFor": ".tab.active:has-text(\"greeting.js\")" },
+    { "caption": "Then main's src/greeting.js" },
+    { "click": ".wt-tab:has-text(\"main\")" },
+    { "click": ".row:has-text(\"src\")" },
+    { "click": ".row.file:has-text(\"greeting.js\")" },
+    { "wait": 800 },
+    { "caption": "Ctrl+P on main: Go to File in main" },
+    { "press": "Control+p" },
+    { "waitFor": ".quick-input-widget .quick-input-title:has-text(\"Go to File in main\")" },
+    { "type": "greeting.js" },
+    { "wait": 1000 },
+    { "caption": "Open editors: only main's greeting.js, not BL-1's copy" },
+    { "highlight": ".quick-input-widget .quick-input-list" },
+    { "wait": 2500 },
+    { "highlight": "" },
+    { "press": "Escape" },
+    { "caption": "" }
+  ]
+}
