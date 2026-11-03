@@ -6,7 +6,8 @@ import './discussions.css';
 
 /**
  * The Discussions section (BL-267), under the Notes lane: folded, like Past notes, its rows the discussions talked in,
- * newest first. A click opens one's tab; Rename and Delete show as the row is hovered. New Discussion is in the title bar.
+ * newest first, each with the tickets it became (BL-268). A click opens one's tab; Rename and Delete show as the row is
+ * hovered. New Discussion is in the title bar.
  */
 export function DiscussionsLane({ discussions }: { discussions: DiscussionRowView[] }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +33,24 @@ export function DiscussionsLane({ discussions }: { discussions: DiscussionRowVie
             >
               <i class="codicon codicon-comment-discussion" />
               <span class="discussion-title">{d.title}</span>
+              {d.became?.length ? (
+                <span class="discussion-became" title={`Became ${d.became.join(', ')}`}>
+                  {d.became.map((id, i) => (
+                    <span key={id}>
+                      {i > 0 && ', '}
+                      <button
+                        class="link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          send({ type: 'backlog', op: 'open', id });
+                        }}
+                      >
+                        {id}
+                      </button>
+                    </span>
+                  ))}
+                </span>
+              ) : null}
               <span class="discussion-when">{shortTime(d.talked)}</span>
               <span class="discussion-actions">
                 <button

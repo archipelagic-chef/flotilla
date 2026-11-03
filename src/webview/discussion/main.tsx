@@ -28,7 +28,28 @@ const send = sendTicket as (message: DiscussionWebviewMessage) => void;
 
 const MESSAGES: ChatMessages = { send: (text) => send({ type: 'discussSend', text }), stop: { type: 'discussStop' } };
 
-/** A discussion (BL-267): its title with Rename and Delete, then the chat, as a ticket's Discuss pane shows it. */
+/** The tickets a discussion became (BL-268), each opening its ticket: "Became BL-301, BL-302 (proposals)". */
+function Became({ ids }: { ids: string[] }) {
+  return (
+    <p class="discussion-became">
+      Became{' '}
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && ', '}
+          <button class="link" onClick={() => send({ type: 'openTicket', id })}>
+            {id}
+          </button>
+        </span>
+      ))}{' '}
+      ({ids.length === 1 ? 'proposal' : 'proposals'})
+    </p>
+  );
+}
+
+/**
+ * A discussion (BL-267): its title with Propose Tickets (BL-268), Rename and Delete, what it became, then the chat, as a
+ * ticket's Discuss pane shows it.
+ */
 function Discussion() {
   const [d, setD] = useState<DiscussionTabView | undefined>();
   useEffect(() => {
@@ -49,6 +70,14 @@ function Discussion() {
         <h1>{d.title}</h1>
         {started && (
           <span class="head-actions">
+            <button
+              class="button propose"
+              disabled={d.chat.busy}
+              title="Have the agent turn what you agreed on into ticket proposals: only now, through the inbox"
+              onClick={() => act({ type: 'propose' } as unknown as TicketWebviewMessage, 'Asking for tickets…')}
+            >
+              <i class="codicon codicon-sparkle" /> {d.proposing ? 'Proposing…' : 'Propose Tickets'}
+            </button>
             <button class="icon" aria-label="Rename" title="Rename" onClick={() => act({ type: 'rename' } as unknown as TicketWebviewMessage, 'Renaming…')}>
               <i class="codicon codicon-edit" />
             </button>
@@ -58,7 +87,12 @@ function Discussion() {
           </span>
         )}
       </div>
-      <p class="muted">A free discussion about this repository and its backlog: no tickets, nothing changed.</p>
+      {d.became?.length ? <Became ids={d.became} /> : null}
+      <p class="muted">
+        {d.proposing
+          ? 'Proposing tickets from the discussion: this turn only, through the inbox.'
+          : 'A free discussion about this repository and its backlog: no tickets until you ask (Propose Tickets), nothing changed.'}
+      </p>
       {d.paused && (
         <div class="hint">
           <i class="codicon codicon-debug-pause" /> Pause All stopped it: write, and it goes on.
