@@ -1,0 +1,86 @@
+{
+  "title": "A ticket's Audit: what its sandboxed agents reached, what the sandbox blocked, and every agent's audit in a tab",
+  "settings": {
+    "flotilla.agents.sandbox": "openshell"
+  },
+  "steps": [
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "caption": "With agents in OpenShell sandboxes, a card says how many of its agents' requests the sandbox blocked"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "highlight": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "A click opens the ticket at its Audit section"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "waitFor": "#audit .audit-table"
+    },
+    {
+      "caption": "Each entry's time, agent, kind, target and result: blocked ones first, marked"
+    },
+    {
+      "highlight": "#audit"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "caption": "Blocked shows only what the sandbox blocked"
+    },
+    {
+      "click": "#audit .audit-filter button:has-text(\"Blocked\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "highlight": "#audit .audit-table"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": "#audit .audit-filter button:has-text(\"All\")"
+    },
+    {
+      "caption": "Every agent's audit opens in a tab of its own, filtered by ticket, agent, blocked or allowed"
+    },
+    {
+      "click": "#audit button:has-text(\"Open all agents' audit\")"
+    },
+    {
+      "waitFor": ".audit-all-page .audit-table"
+    },
+    {
+      "highlight": ".audit-picks"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

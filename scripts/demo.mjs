@@ -696,6 +696,8 @@ async function show(mode, demo, out, still, display) {
   clearDiscussions(playground);
   // The scheduled tasks, one still proposed (BL-260).
   seedScheduledTasks(playground);
+  // A sandboxed agent's audit, for the Audit section (BL-272).
+  (await import('./playground-seed.mjs')).seedAudit(playground, PROFILE_DIR);
   const cachePath = path.join(mainRoot(root), '.vscode-test');
   const executable = await withDownloadLock(cachePath, () => downloadAndUnzipVSCode({ cachePath }));
 
