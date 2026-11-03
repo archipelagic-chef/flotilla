@@ -1,0 +1,74 @@
+/* The Audit section (BL-272) and the audit of all agents: a table, blocked rows marked. */
+.audit .block-head {
+  align-items: center;
+  gap: 10px;
+}
+.audit-filter {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid var(--vscode-panel-border, #3c3c3c);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.audit-filter button {
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.audit-filter button.on {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.audit-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  padding: 2px 8px 4px 4px;
+}
+.audit-table td {
+  padding: 2px 8px 2px 4px;
+  white-space: nowrap;
+}
+.audit-table .audit-target {
+  white-space: normal;
+  word-break: break-all;
+  font-family: var(--vscode-editor-font-family);
+}
+.audit-table .audit-detail {
+  font-family: var(--vscode-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+.audit-table tr.blocked {
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 15%, transparent);
+}
+.audit-table tr.blocked .audit-result {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.audit-table tr.allowed .audit-result {
+  color: var(--vscode-testing-iconPassed, #89d185);
+}
+.audit-foot {
+  display: flex;
+  margin-top: 6px;
+}
+.audit-foot button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+}
+.audit-foot button.link:hover {
+  text-decoration: underline;
+}
+.audit-foot .audit-all {
+  margin-left: auto;
+}

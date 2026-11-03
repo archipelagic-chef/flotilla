@@ -198,6 +198,7 @@ export function ItemRow({
               {turn.kind === 'paused' ? 'Paused' : turn.who}
             </span>
           )}
+          {!renaming && !!item.blocked && <BlockedMark id={item.id} blocked={item.blocked} />}
           {!renaming && item.demo && (
             <button
               class="demo-mark"
@@ -568,6 +569,24 @@ type CompactProps = Pick<RowProps, 'item' | 'icon' | 'worktrees' | 'agents' | 'c
   saving: boolean;
 };
 
+/** How many of its sandboxed agents' requests the sandbox blocked (BL-272): a click opens the ticket at its Audit section. */
+function BlockedMark({ id, blocked }: { id: string; blocked: number }) {
+  return (
+    <button
+      class="blocked-mark"
+      data-tip={`The sandbox blocked ${blocked} of its agents' requests: click to see them in the ticket's Audit`}
+      aria-label={`${blocked} blocked: show its audit`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({ type: 'backlog', op: 'audit', id });
+      }}
+    >
+      <i class="codicon codicon-error" />
+      {blocked} blocked
+    </button>
+  );
+}
+
 /**
  * A compact card (BL-183): the title (up to two lines), one status line, the next step as its one button, and one
  * coloured mark when it needs you. Hovered or focused, the status line gives way to a row of the id, the details and
@@ -628,6 +647,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                 {summary && ` · ${summary}`}
               </span>
             </span>
+            {!!item.blocked && <BlockedMark id={item.id} blocked={item.blocked} />}
             <span class={`card-hover${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={stopControlClick}>
               <span class="card-details">
                 <span class="item-id">{item.id}</span>

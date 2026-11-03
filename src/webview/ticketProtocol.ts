@@ -163,6 +163,28 @@ export interface AttachmentView {
   seconds?: number;
 }
 
+/** A sandbox's audit entry (BL-272), as the ticket and the Audit tab show it. */
+export interface AuditEntryView {
+  at: string;
+  ticket?: string;
+  agent?: string;
+  kind: 'network' | 'file' | 'process';
+  target: string;
+  blocked: boolean;
+  detail?: string;
+  key: string;
+}
+
+/** A ticket's Audit section (BL-272): a page of its sandboxed agents' entries, blocked first, and the counts of all. */
+export interface AuditView {
+  entries: AuditEntryView[];
+  /** The entries that match the filter, shown or not. */
+  total: number;
+  blocked: number;
+  allowed: number;
+  result?: 'blocked' | 'allowed';
+}
+
 export interface TicketView {
   item: BacklogItem;
   /** Markdown, for editing. */
@@ -341,6 +363,8 @@ export interface TicketView {
    * full: the user clicked Check (all claims shown); else the check made on opening it, which shows only glitches.
    */
   check?: TicketCheckView;
+  /** Its sandboxed agents' audit (BL-272): there while agents run in OpenShell sandboxes (flotilla.agents.sandbox). */
+  audit?: AuditView;
 }
 
 export interface TicketCheckView {
@@ -496,7 +520,7 @@ export type TicketWebviewMessage =
   | { type: 'ciShow'; key: string };
 
 /** Where an opened ticket goes: its comment box, its Demo section, or an entry (gone: the reference's entry isn't there). */
-export type FocusTarget = 'comment' | 'demo' | 'discuss' | { entry: string; gone?: true };
+export type FocusTarget = 'comment' | 'demo' | 'discuss' | 'audit' | { entry: string; gone?: true };
 
 /** An entry of a ticket, as the comment box suggests it after "BL-102#" (BL-130). */
 export interface EntrySuggestion {

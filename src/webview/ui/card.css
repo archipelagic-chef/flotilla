@@ -227,7 +227,8 @@
 .backlog-item .turn-chip.turn-stopped {
   color: var(--error);
 }
-/* A review card's demo mark (BL-135): opens the ticket at its Demo section. */
+/* A review card's demo mark (BL-135): opens the ticket at its Demo section. A card's blocked count (BL-272): at its Audit. */
+.backlog-item .blocked-mark,
 .backlog-item .demo-mark {
   flex: none;
   display: inline-flex;
@@ -245,9 +246,12 @@
   color: var(--vscode-badge-foreground);
   cursor: pointer;
 }
+.backlog-item .blocked-mark .codicon,
 .backlog-item .demo-mark .codicon {
   font-size: 11px;
 }
+.backlog-item .blocked-mark:hover,
+.backlog-item .blocked-mark:focus-visible,
 .backlog-item .demo-mark:hover,
 .backlog-item .demo-mark:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
@@ -446,4 +450,11 @@
 .backlog-item.discarded .name {
   text-decoration: line-through;
   color: var(--muted);
+}
+/* Blocked requests in red, not the badge's colors. */
+.backlog-item .blocked-mark {
+  text-transform: none;
+  letter-spacing: 0;
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 25%, transparent);
+  color: var(--vscode-errorForeground, #f14c4c);
 }

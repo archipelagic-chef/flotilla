@@ -100,6 +100,10 @@ import {
   setAgentDirs,
   trackTerminals,
 } from './ui/backlog/agentRunner';
+import {
+  auditDir,
+  SandboxAudit,
+} from './ui/backlog/sandboxAudit';
 import { Shaping } from './ui/backlog/shaping';
 import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
@@ -271,6 +275,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const backlog = new LocalBacklog(location.mainRoot, location.commonDir);
   // Agents reach their tickets from their worktrees, whatever Claude Code's settings block outside them (BL-89).
   setAgentDirs([backlog.dir]);
+  // What sandboxed agents did and what their sandbox blocked (BL-272), kept where no sandbox reaches.
+  const audit = new SandboxAudit(auditDir(context.globalStorageUri.fsPath, location.commonDir), (line) => output.appendLine(line));
+  context.subscriptions.push(audit);
   const integrations = new BacklogIntegrations(backlog, context.secrets, location.mainRoot);
   context.subscriptions.push(integrations);
   // A cancelled pick still opens a terminal (VS Code expects one): in this window's folder.
@@ -288,6 +295,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerAll(context.subscriptions, securityCommands({ security }));
   const sidebar = new SidebarProvider({
     metrics,
+    audit,
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,
@@ -366,6 +374,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     mainRoot: service.roots.mainRoot,
     reference: folder.uri,
     backlog,
+    audit,
     integrations,
     repository,
     merges,

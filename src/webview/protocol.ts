@@ -93,6 +93,8 @@ export interface BacklogItemView extends BacklogItem {
   base?: string;
   /** Its ticket shows a recorded demo (BL-135): its review card has a demo mark. */
   demo?: boolean;
+  /** How many of its sandboxed agents' requests the sandbox blocked (BL-272): its card's count opens its Audit section. */
+  blocked?: number;
   /** Its discussion's chat is open (BL-188): its card says Discussing, and opens that chat. */
   discussing?: boolean;
   /** The ticket whose sister check covers it (BL-236): the autopilot waits for it, and its card says so. */
@@ -584,7 +586,7 @@ export type WebviewMessage =
   | { type: 'backlog'; op: 'cards'; detailed: boolean }
   /** Needs you: answer or request changes (the ticket, its comment box focused); approve the work; the stop's fix. */
   /** comment: its ticket with the comment box focused; demo: its ticket at its Demo section (BL-135). */
-  | { type: 'backlog'; op: 'comment' | 'approve' | 'demo'; id: string }
+  | { type: 'backlog'; op: 'comment' | 'approve' | 'demo' | 'audit'; id: string }
   | { type: 'backlog'; op: 'fix'; id: string; fix: ReviewFix }
   /** Needs you (queued reply): start it now, above the limit, or pause a running agent for it. */
   | { type: 'backlog'; op: 'prioritize'; id: string }
