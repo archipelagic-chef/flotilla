@@ -6,6 +6,7 @@ import {
 import type { ResolvedWorktree } from '../../../src/features/worktrees/resolver';
 import type { Workstream } from '../../../src/features/workstreams/workstream';
 import {
+  describeProgress,
   describeSync,
   describeWorkstream,
   formatAge,
@@ -69,6 +70,17 @@ describe('formatAge', () => {
   });
 });
 
+describe('describeProgress', () => {
+  it('names what each count is, against the base branch', () => {
+    const ws = makeWs({ progress: { base: 'main', baseHead: 'abc', ahead: 1, behind: 2, added: 4, deleted: 0, lastSubject: 'x' } });
+    expect(describeProgress(ws)).toBe('1 commit ahead of main\n2 commits behind main\n+4 −0 lines changed from main');
+  });
+
+  it('is empty without progress', () => {
+    expect(describeProgress(makeWs({}))).toBe('');
+  });
+});
+
 describe('describeWorkstream', () => {
   it('describes an agent waiting for input with progress and an open window', () => {
     const ws = makeWs({
@@ -78,7 +90,7 @@ describe('describeWorkstream', () => {
       windowOpen: true,
       heartbeat: { env: 'container', os: 'linux', updatedAt: now },
     });
-    expect(describeWorkstream(ws, now)).toBe('waiting for input · 2m · ↑3 +120 −40 · open in container');
+    expect(describeWorkstream(ws, now)).toBe('waiting for input · 2m · 3 ahead · +120 −40 · open in container');
   });
 
   it('describes the main worktree open in this window', () => {

@@ -218,7 +218,7 @@ export function WorktreeCard({ ws, ci, color, keys, hint }: { ws: WorkstreamView
         <div class="hover-path">{ws.path}</div>
         <div class="hover-row">
           <i class={`codicon codicon-${ATTENTION_ICON[ws.attention]} ${STATE_CLASS[ws.attention] ?? ''}`} />
-          <span>{ws.description}</span>
+          <span title={ws.descriptionTitle || undefined}>{ws.description}</span>
         </div>
         {ciSummary(ci) && (
           <div class="hover-row">

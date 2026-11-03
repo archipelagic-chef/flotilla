@@ -264,6 +264,8 @@ export interface WorkstreamView {
   attention: AttentionState;
   /** One line: status, progress, sync, window. */
   description: string;
+  /** What the description's counts are, one per line ("2 commits ahead of main"): its tooltip. */
+  descriptionTitle: string;
   /** Plain-text summary (branch, path, status) for screen readers and tests. */
   tooltip: string;
   /** The worktree's folder (or where it was, when unreachable). */

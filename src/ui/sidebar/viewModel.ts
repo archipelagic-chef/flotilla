@@ -25,6 +25,7 @@ import type {
 import { tabLabel } from './tabLabel';
 import {
   ATTENTION_LABEL,
+  describeProgress,
   describeSync,
   describeWorkstream,
   formatAge,
@@ -127,6 +128,7 @@ export function toWorkstreamView(
     inWorkspace,
     attention: ws.attention,
     description: describeWorkstream(ws, now, inWorkspace),
+    descriptionTitle: describeProgress(ws),
     tooltip,
     path: ws.worktree.path ?? ws.worktree.recordedPath ?? '',
     agentMessage: ws.agent?.message || undefined,
