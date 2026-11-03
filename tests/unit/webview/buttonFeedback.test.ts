@@ -41,6 +41,11 @@ const INSTANT = new Set([
   'backlog:demo',
   'note:open',
   'discussion:open',
+  'openAudit',
+  'backlog:audit',
+  // Filtering or paging the sandbox audit (BL-272): read from Flotilla's storage, shown at once.
+  'audit',
+  'more',
   // Opening a prompt or a form of VS Code's: the user goes on there.
   'backlog:new',
   'note:new',

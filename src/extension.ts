@@ -104,6 +104,7 @@ import {
   auditDir,
   SandboxAudit,
 } from './ui/backlog/sandboxAudit';
+import { auditCommands } from './ui/backlog/auditPanel';
 import { Shaping } from './ui/backlog/shaping';
 import { AskAgent } from './ui/backlog/askAgent';
 import { PauseAll } from './ui/backlog/pauseAll';
@@ -706,6 +707,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   inbox.onTaskProposed = (name) => void scheduler.offerProposed(name).catch(() => undefined);
   registerAll(context.subscriptions, scheduleCommands({ scheduler }));
   registerAll(context.subscriptions, metricsCommands({ backlog, repository, metrics, improvement, output }));
+  registerAll(context.subscriptions, auditCommands({ extensionUri: context.extensionUri, audit }));
   context.subscriptions.push(
     autopilot,
     leader.start(() => {
