@@ -1,4 +1,5 @@
 import type {
+  ReportView,
   TicketCiView,
   TicketView,
 } from '../ticketProtocol';
@@ -6,6 +7,7 @@ import {
   type Ask,
   ticketStatus,
 } from '../ticketStatus';
+import { Needs } from './needs';
 import {
   ActionButton,
   send,
@@ -32,17 +34,32 @@ import { ChecksRunning } from './checksPanel';
 import './stateCard.css';
 
 /**
- * An agent's question. On a local ticket its numbered options are buttons: an option is the answer, sent as a comment.
+ * An agent's question: an open report's questions (its Needs form), or an older report's numbered options. On a local
+ * ticket the options are buttons: an option is the answer, sent as a comment.
  * On a remote one a comment goes to the tracker, so the options aren't buttons (Answer… writes it there, as you post).
  */
-function AskBlock({ ask, title, agent, local, stoppable }: { ask: Ask; title: string; agent?: string; local: boolean; stoppable: boolean }) {
+function AskBlock({
+  ask,
+  report,
+  title,
+  agent,
+  local,
+  stoppable,
+}: {
+  ask?: Ask;
+  report?: ReportView;
+  title: string;
+  agent?: string;
+  local: boolean;
+  stoppable: boolean;
+}) {
   return (
     <div class="review-panel waiting ask">
       <i class="codicon codicon-question" />
       <div class="ask-text">
         <strong>{title}</strong>
-        {ask.question && <div class="ask-question">{ask.question}</div>}
-        {local && ask.options.length > 0 && (
+        {ask?.question && <div class="ask-question">{ask.question}</div>}
+        {local && ask && ask.options.length > 0 && (
           <div class="ask-options">
             {ask.options.map((option, i) => (
               <button key={option} class={`button${i ? ' secondary' : ''}`} onClick={() => sendComment(option)} title="Sends this as the answer">
@@ -51,6 +68,8 @@ function AskBlock({ ask, title, agent, local, stoppable }: { ask: Ask; title: st
             ))}
           </div>
         )}
+        {/* A report that asks with "Needs from you:" (BL-280): its questions, answered here; the report points here. */}
+        {report && <Needs report={report} name="state-card" live={local} />}
       </div>
       <button class="button secondary" onClick={focusComment} title={`Write the answer to ${agent ?? 'the agent'} in the comment box`}>
         <i class="codicon codicon-comment" /> Answer…
@@ -89,11 +108,21 @@ export function StateCard({ ticket, ci }: { ticket: TicketView; ci?: TicketCiVie
   // The chat an agent works in, or waits in (to open it).
   const chat = ticket.agents.find((a) => a.state === 'waiting-for-input') ?? ticket.agents.find((a) => a.state === 'working');
   const notStarted = ticket.item.status === 'todo' && !ticket.worktrees.length && !ticket.branches.length;
-  const asking = !!status.ask && ticket.review?.state === 'asking';
+  // The open report's questions, as the ticket read it (status.report is one of ticket.activity's entries).
+  const report = ticket.activity.find((e) => e === status.report)?.report;
+  const asks = !!status.ask || !!report;
+  const asking = asks && ticket.review?.state === 'asking';
   return (
     <>
-      {status.ask && (
-        <AskBlock ask={status.ask} title={status.title} agent={ticket.review?.implementer ?? chat?.agent} local={!ticket.remote} stoppable={asking} />
+      {asks && (
+        <AskBlock
+          ask={status.ask}
+          report={report}
+          title={status.title}
+          agent={ticket.review?.implementer ?? chat?.agent}
+          local={!ticket.remote}
+          stoppable={asking}
+        />
       )}
       {ticket.shaping && <DiscussPanel ticket={ticket} />}
       {ticket.queued && <QueuedPanel queued={ticket.queued} />}
@@ -109,7 +138,7 @@ export function StateCard({ ticket, ci }: { ticket: TicketView; ci?: TicketCiVie
       ) : ticket.rewrite ? (
         <CleanUpPanel ticket={ticket} />
       ) : (
-        !status.ask && (
+        !asks && (
           <div class={`review-panel ${status.tone}`}>
             <i class={`codicon codicon-${STATUS_ICON[status.tone]}`} />
             <span class="review-text">

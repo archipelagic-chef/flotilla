@@ -29,3 +29,7 @@
 .needs .actions-row {
   margin-top: 8px;
 }
+.needs-questions {
+  margin: 4px 0;
+  padding-left: 18px;
+}
