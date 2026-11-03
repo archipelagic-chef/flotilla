@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import {
   appendAgentTurn,
+  REMOTE_ONLY_BRANCH,
   resetTicket,
   seedChats,
   seedCreating,
@@ -214,6 +215,13 @@ describe('playground seed', () => {
     const upstreams = branches.filter(([, b]) => remote(b) === 'origin').map(([id]) => id);
     expect(upstreams).toEqual(['BL-13']);
     expect(git(dir, 'rev-parse', 'origin/feature/BL-13-say-hi-in-the-greeting')).toBe(git(dir, 'rev-parse', 'feature/BL-13-say-hi-in-the-greeting'));
+  });
+
+  it('has a branch only on origin, with no branch or worktree of it here, to start a workstream from (BL-264)', () => {
+    const { dir } = seeded();
+    expect(git(dir, 'log', '-1', '--format=%s', `origin/${REMOTE_ONLY_BRANCH}`)).toBe('Greet in French');
+    expect(git(dir, 'branch', '--list', REMOTE_ONLY_BRANCH)).toBe('');
+    expect(git(dir, 'worktree', 'list')).not.toContain('remote-only');
   });
 
   it('does nothing when the playground is seeded already', async () => {

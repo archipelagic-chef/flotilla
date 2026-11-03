@@ -822,6 +822,18 @@ function branchWorktree(dir, { branch, commits = [], dirty = {}, published = fal
   }
 }
 
+/** The branch only on origin, as a colleague's: a product review starts a workstream from it (BL-264). */
+export const REMOTE_ONLY_BRANCH = 'feature/greet-in-french';
+
+/** A commit on origin alone (a remote-tracking ref: playground.mjs pushes it), with no branch or worktree here. */
+function remoteOnlyBranch(dir, from) {
+  const folder = path.join(dir, '.worktrees', 'remote-only');
+  git(dir, 'worktree', 'add', '-q', '--detach', folder, from);
+  commit(folder, 'Greet in French', { 'src/french.js': 'export const greet = (name) => `Bonjour ${name}`;\n' });
+  git(dir, 'update-ref', `refs/remotes/origin/${REMOTE_ONLY_BRANCH}`, git(folder, 'rev-parse', 'HEAD'));
+  git(dir, 'worktree', 'remove', '--force', folder);
+}
+
 /** Keeps the playground's worktrees and its backlog folder out of its own git status (as Flotilla does). */
 function exclude(dir, lines) {
   const file = path.resolve(dir, git(dir, 'rev-parse', '--git-path', 'info/exclude'));
@@ -881,6 +893,7 @@ export function seedPlayground(dir, now = new Date()) {
   });
   const main = git(dir, 'rev-parse', 'HEAD');
   for (const t of TICKETS.filter((t) => t.branch && t.from !== 'first')) branchWorktree(dir, t, main);
+  remoteOnlyBranch(dir, main);
   writeBacklog(backlog, now);
   seedEvents(dir, now);
   return true;
