@@ -1427,6 +1427,11 @@ function localDay(at) {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
 }
 
+/** Removes the discussions (BL-267) an earlier demo started: each demo starts with none. */
+export function clearDiscussions(dir) {
+  fs.rmSync(path.join(dir, '.flotilla', 'backlog', 'discussions'), { recursive: true, force: true });
+}
+
 /**
  * Seeds two improvement reviews (BL-177's Reviews in the Metrics view), 3 and 10 days before now, so the next isn't
  * due yet (none starts as the window opens): each with a diagram, a link to a file at its lines and a ticket

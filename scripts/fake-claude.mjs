@@ -33,6 +33,7 @@
 // word by word over a few seconds, and stops (a second later) when it's interrupted. As a ticket's discussion (BL-241:
 // its system prompt is discussionPrompt), it opens with a question, writes each answer into the description as agreed,
 // and on Done its summary into the activity ("Ready to start."); it keeps its transcript, so the chat can be resumed.
+// A free discussion (BL-267: its system prompt is freeDiscussionPrompt) gets an answer that talks an idea through.
 //
 // Try it: in the debug window's settings, set "flotilla.agents.claudePath" to the absolute path of this file (it must
 // be executable: chmod +x scripts/fake-claude.mjs). It's not part of the published extension (.vscodeignore).
@@ -420,6 +421,10 @@ function chat() {
   const answer = (asked) => {
     const words = (
       discussing?.answer(asked) ??
+      // A free discussion's (BL-267): it talks the idea through, and proposes no ticket.
+      (/a free discussion about this repository/.test(option('--append-system-prompt') ?? '')
+        ? 'Today a ticket is a Markdown file in the backlog folder, committed with the work. Two ways to go: keep its history in git only, or add an append-only log next to it. Git is simpler; a log survives rebases. Which matters more to you? (fake Claude)'
+        : undefined) ??
       'This is the fake Claude (scripts/fake-claude.mjs): it answers every question the same way, a word at a time, so that the chat can be tried without any usage. Nothing here is read from the ticket.'
     ).split(' ');
     let said = '';

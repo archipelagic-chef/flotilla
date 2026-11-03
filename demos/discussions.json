@@ -1,0 +1,23 @@
+{
+  "title": "New Discussion talks an idea through with an agent, no ticket expected, and keeps it in the Discussions section",
+  "steps": [
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "wait": 1000 },
+    { "caption": "New Discussion, in the backlog's title bar next to New Note" },
+    { "highlight": "[aria-label^=\"New Discussion\"]" },
+    { "click": "[aria-label^=\"New Discussion\"]" },
+    { "waitFor": ".discussion h1:has-text(\"New discussion\")" },
+    { "caption": "Write what's on your mind, and press Enter" },
+    { "click": ".discussion textarea" },
+    { "type": "I need to improve the tickets' version control but I'm not sure how" },
+    { "press": "Enter" },
+    { "caption": "The agent talks it through: what the code does, the options, a question back. No ticket proposed" },
+    { "waitFor": ".discussion .ask-answer:has-text(\"Which matters more to you?\")", "timeout": 30000 },
+    { "wait": 1500 },
+    { "caption": "It's kept: the folded Discussions section lists it, titled by your first line" },
+    { "click": ".discussions-lane .group-head" },
+    { "highlight": ".discussion-row:has-text(\"tickets' version control\")" },
+    { "wait": 2500 },
+    { "caption": "" }
+  ]
+}
