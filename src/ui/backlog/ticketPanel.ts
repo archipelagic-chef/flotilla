@@ -1927,6 +1927,9 @@ export class TicketPanels implements vscode.Disposable {
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href) && !/^[a-z]:[\\/]/i.test(href)) return;
     const link = parseFileLink(/^file:/i.test(href) ? vscode.Uri.parse(href).fsPath + (href.includes('#') ? href.slice(href.indexOf('#')) : '') : href);
+    // A "From DISC-3" link (BL-268): the discussion opens in its tab.
+    const discussion = /(?:^|[\\/])discussions[\\/](DISC-[1-9]\d*)\.md$/.exec(link.path)?.[1];
+    if (discussion) return void vscode.commands.executeCommand('flotilla.openDiscussion', discussion);
     const roots = [
       ...(item ? this.worktreesOf(item) : []).flatMap((w) => (w.worktree.path ? [w.worktree.path] : [])),
       this.deps.mainRoot,
