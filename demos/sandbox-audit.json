@@ -1,0 +1,140 @@
+{
+  "title": "A ticket's Audit: what its sandboxed agents reached, what the sandbox blocked, and every agent's audit in a tab",
+  "settings": {
+    "flotilla.agents.sandbox": "openshell"
+  },
+  "steps": [
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "caption": "With agents in OpenShell sandboxes, a card says how many of its agents' requests the sandbox blocked"
+    },
+    {
+      "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "highlight": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "A click opens the ticket at its Audit section"
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\") .blocked-mark"
+    },
+    {
+      "waitFor": "#audit .audit-table"
+    },
+    {
+      "caption": "Each entry's time, agent, kind, target and result: blocked ones first, marked"
+    },
+    {
+      "highlight": "#audit"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "A blocked connection names the program that tried it, and why the sandbox blocked it"
+    },
+    {
+      "highlight": "#audit tr:has-text(\"telemetry.example.com\") .audit-target"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "Blocked shows only what the sandbox blocked"
+    },
+    {
+      "click": "#audit .audit-filter button:has-text(\"Blocked\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "highlight": "#audit .audit-table"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": "#audit .audit-filter button:has-text(\"All\")"
+    },
+    {
+      "waitFor": "#audit .audit-filter button.on:has-text(\"All\")"
+    },
+    {
+      "command": "Notifications: Clear All Notifications"
+    },
+    {
+      "caption": ""
+    },
+    {
+      "highlight": "#audit .audit-foot button:has-text(\"more\u2026\")"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": "#audit .audit-foot button:has-text(\"more\u2026\")"
+    },
+    {
+      "waitFor": "#audit .audit-table tr:nth-child(62)"
+    },
+    {
+      "caption": "A long log comes 50 entries at a time: Load more adds the next ones"
+    },
+    {
+      "highlight": "#audit .audit-table tbody tr:nth-last-child(-n+12)"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "Every agent's audit opens in a tab of its own, filtered by ticket, agent, blocked or allowed"
+    },
+    {
+      "click": "#audit button:has-text(\"Open all agents' audit\")"
+    },
+    {
+      "waitFor": ".audit-all-page .audit-table"
+    },
+    {
+      "highlight": ".audit-picks"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 // Done. The unit test (tests/unit/features/playgroundSeed.test.ts) seeds a temporary repo with this and checks what it
 // reads as, so change the two together.
 import { execFileSync } from 'node:child_process';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -1562,4 +1563,61 @@ Half the verdicts asked for changes, most for missing tests. Proposed BL-4.
 `,
   );
   return days;
+}
+
+/**
+ * A sandboxed agent's audit (BL-272), for a demo with flotilla.agents.sandbox on: what BL-3's agents reached in their
+ * sandbox and what it blocked, kept where the extension keeps it (its storage in the demo profile, a folder for the
+ * playground's repository), as SandboxAudit copies it from `openshell logs`.
+ */
+export function seedAudit(dir, profileDir, now = new Date()) {
+  const commonDir = path.resolve(dir, git(dir, 'rev-parse', '--git-common-dir'));
+  const hash = crypto.createHash('sha256').update(path.resolve(commonDir)).digest('hex').slice(0, 12);
+  const audit = path.join(profileDir, 'User', 'globalStorage', 'archipelagic.flotilla', 'audit', hash);
+  fs.rmSync(audit, { recursive: true, force: true });
+  fs.mkdirSync(audit, { recursive: true });
+  const sandbox = 'flotilla-feature-bl-3-keep-chats-seeded';
+  const at = (min) => new Date(now.getTime() - min * 60_000).toISOString();
+  fs.writeFileSync(
+    path.join(audit, 'sandboxes.json'),
+    JSON.stringify({
+      [sandbox]: {
+        ticket: 'BL-3',
+        runs: [
+          { agent: 'Vega-2', from: at(130) },
+          { agent: 'Nova-7', from: at(40) },
+        ],
+      },
+    }),
+  );
+  const rows = [
+    [125, 'Vega-2', 'network', 'api.anthropic.com:443', false, 'policy claude'],
+    [122, 'Vega-2', 'process', 'npm run test:related', false],
+    [118, 'Vega-2', 'network', 'registry.npmjs.org:443', false, 'policy npm'],
+    [97, 'Vega-2', 'network', 'telemetry.example.com:443', true, '/usr/bin/curl · no matching policy'],
+    [90, 'Vega-2', 'process', 'git commit -m BL-3: Keep chats', false],
+    [62, 'Vega-2', 'file', '/home/node/.ssh/id_rsa', true, 'not in policy'],
+    [55, 'Vega-2', 'network', 'github.com:443', false, 'policy github'],
+    [35, 'Nova-7', 'network', 'api.anthropic.com:443', false, 'policy claude'],
+    [31, 'Nova-7', 'process', 'npx vitest run test/chats.test.js', false],
+    [12, 'Nova-7', 'network', 'POST https://paste.example.org/api', true, 'no matching policy'],
+    // The agents' calls to the model and the registry, so the log runs past a page (50) and loads more.
+    ...Array.from({ length: 52 }, (_, i) => {
+      const min = 127 - i * 2;
+      const [target, policy] = [
+        ['api.anthropic.com:443', 'policy claude'],
+        ['registry.npmjs.org:443', 'policy npm'],
+        ['api.github.com:443', 'policy github'],
+      ][i % 3];
+      return [min, min > 40 ? 'Vega-2' : 'Nova-7', 'network', target, false, `/usr/bin/node · ${policy}`];
+    }),
+  ];
+  fs.writeFileSync(
+    path.join(audit, `${sandbox}.jsonl`),
+    rows
+      .map(([min, agent, kind, target, blocked, detail], i) =>
+        JSON.stringify({ at: at(min), sandbox, ticket: 'BL-3', agent, kind, target, blocked, ...(detail ? { detail } : {}), key: `seeded-${i}` }),
+      )
+      .join('\n') + '\n',
+  );
 }
