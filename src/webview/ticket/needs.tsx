@@ -27,9 +27,12 @@ import './needs.css';
  * the agent goes on from there. Answered ones, and those of tracker-linked items, show what was chosen, read-only.
  */
 export function Needs({ report, name, live, atTop }: { report: ReportView; name: string; live: boolean; atTop?: boolean }) {
-  const answered = report.answer !== undefined;
   // While the top of the ticket asks its questions (BL-280), the report lists them and points there: one form to fill.
-  if (atTop && !answered) return <AnswerAtTop report={report} />;
+  return atTop && report.answer === undefined ? <AnswerAtTop report={report} /> : <NeedsForm report={report} name={name} live={live} />;
+}
+
+function NeedsForm({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
+  const answered = report.answer !== undefined;
   const interactive = live && !answered && report.questions.length > 0;
   const [answers, setAnswers] = useState<Answer[]>(() => report.questions.map(defaultAnswer));
   const given = answered ? answersIn(report.questions, report.answer!) : [];

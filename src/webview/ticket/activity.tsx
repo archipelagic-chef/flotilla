@@ -69,6 +69,13 @@ const AUTHOR_ICON: Record<string, string> = {
   flotilla: 'info',
 };
 
+/** The open report whose questions the state card asks (BL-280), read once per activity. */
+const openReports = new WeakMap<TicketView['activity'], ActivityEntry | undefined>();
+function openReport(ticket: TicketView): ActivityEntry | undefined {
+  if (!openReports.has(ticket.activity)) openReports.set(ticket.activity, pendingReport(ticket.activity));
+  return openReports.get(ticket.activity);
+}
+
 type EntryKind = 'comment' | 'agent' | 'history';
 
 /** People's comments (here or in the tracker), agents' reports, and Flotilla's notes (what happened). */
@@ -288,9 +295,7 @@ function EntryView({ e, ticket, onFold, nest }: { e: ActivityEntry; ticket: Tick
               <Rendered html={e.report.media} empty="" />
             </div>
           )}
-          {e.report.asks && (
-            <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} atTop={pendingReport(ticket.activity) === e} />
-          )}
+          {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} atTop={openReport(ticket) === e} />}
           {e.report.details && (
             <details class="report-details">
               <summary>Details</summary>
