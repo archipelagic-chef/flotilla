@@ -115,15 +115,30 @@
 }
 /* An attachment large, over the ticket. */
 .viewer {
+  --strip: 0px;
   position: fixed;
   inset: 0;
   z-index: 100;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 40px 16px 16px;
   background: rgba(0, 0, 0, 0.8);
+}
+/* With more than one, the strip of thumbnails under it (BL-279) takes this much of the height. */
+.viewer.with-strip {
+  --strip: 68px;
+}
+/* The previous, the attachment and the next, side by side. */
+.viewer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
 }
 .viewer-figure {
   display: flex;
@@ -138,10 +153,47 @@
 .viewer-figure canvas,
 .viewer-figure video {
   max-width: 100%;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 140px - var(--strip));
   object-fit: contain;
   border-radius: 3px;
   background: var(--vscode-editor-background);
+}
+/* The strip (BL-279): a thumbnail of each, the current one marked; it scrolls sideways when they don't fit. */
+.viewer-strip {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px;
+  overflow-x: auto;
+  list-style: none;
+}
+.viewer-thumb {
+  width: 72px;
+  height: 48px;
+  border-color: transparent;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.viewer-thumb:hover,
+.viewer-thumb:focus-visible {
+  opacity: 1;
+}
+.viewer-thumb.current {
+  opacity: 1;
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.viewer-thumb .play-mark {
+  font-size: 18px;
+}
+.viewer-thumb .demo-tag {
+  top: 2px;
+  left: 2px;
+  padding: 0 3px;
+  font-size: 8px;
+  line-height: 11px;
 }
 /* A video, large (BL-134): when it can't play by itself, a big play button over it, so it doesn't pass for a picture. */
 .viewer-video {
@@ -167,7 +219,7 @@
 /* A diagram, large: it fits the window; a click zooms in to twice that, to scroll around in. */
 .viewer-diagram {
   max-width: 100%;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 140px - var(--strip));
   overflow: auto;
   border-radius: 3px;
   background: var(--vscode-editor-background);
@@ -184,7 +236,7 @@
   width: calc(100vw - 160px);
   max-width: none !important;
   height: auto;
-  max-height: calc(100vh - 164px);
+  max-height: calc(100vh - 164px - var(--strip));
 }
 .viewer-diagram.zoomed svg {
   width: calc(2 * (100vw - 160px));

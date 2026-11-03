@@ -21,6 +21,7 @@ import {
   RecordingBar,
 } from './demo';
 import { playAtSpeed } from './speed';
+import { ViewerStrip } from './viewerStrip';
 
 /** The window event "Show in activity" sends: the activity opens the entry (its detail: the entry's key) and goes there. */
 export const SHOW_ENTRY = 'flotilla-show-entry';
@@ -116,22 +117,31 @@ function addedBy(a: Shown): string {
 /** Its caption: the alt text (a diagram's: the line before it); else a diagram's who and when, a file's name. */
 const caption = (a: Shown) => a.alt ?? (a.kind === 'diagram' ? addedBy(a) : a.name);
 
+/** An attachment small, in a thumbnail (the section's, the viewer's strip): a diagram drawn, a video's first frame, a picture. */
+function Preview({ a }: { a: Shown }) {
+  return (
+    <>
+      {a.kind === 'diagram' ? (
+        <Diagram code={a.code ?? ''} label={caption(a)} />
+      ) : a.kind === 'video' ? (
+        <>
+          {/* Its first frame is the poster; it doesn't play here. */}
+          <video src={a.src} preload="metadata" muted tabIndex={-1} />
+          <i class="codicon codicon-play-circle play-mark" />
+        </>
+      ) : (
+        <img src={a.src} alt={a.alt ?? a.name} loading="lazy" />
+      )}
+      {a.demo && <span class="demo-tag">demo</span>}
+    </>
+  );
+}
+
 function Thumb({ a, onOpen }: { a: AttachmentView; onOpen: () => void }) {
   return (
     <li class="attachment">
       <button class="attachment-thumb" onClick={onOpen} title={`${caption(a)}\n${addedBy(a)}\nClick to open it large`}>
-        {a.kind === 'diagram' ? (
-          <Diagram code={a.code ?? ''} label={caption(a)} />
-        ) : a.kind === 'video' ? (
-          <>
-            {/* Its first frame is the poster; it doesn't play here. */}
-            <video src={a.src} preload="metadata" muted tabIndex={-1} />
-            <i class="codicon codicon-play-circle play-mark" />
-          </>
-        ) : (
-          <img src={a.src} alt={a.alt ?? a.name} loading="lazy" />
-        )}
-        {a.demo && <span class="demo-tag">demo</span>}
+        <Preview a={a} />
       </button>
       <span class="attachment-name">{a.kind === 'diagram' ? (a.alt ?? a.name) : a.name}</span>
       <span class="attachment-meta muted">{addedBy(a)}</span>
@@ -203,51 +213,56 @@ function Viewer({
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [at, list.length]);
+  // The backdrop closes it: around the row as beside the picture, not the strip's gaps (BL-279).
+  const backdrop = (e: MouseEvent) => e.target === e.currentTarget && close();
   return (
-    <div class="viewer" role="dialog" aria-modal="true" aria-label={caption(a)} onClick={(e) => e.target === e.currentTarget && close()}>
+    <div class={many ? 'viewer with-strip' : 'viewer'} role="dialog" aria-modal="true" aria-label={caption(a)} onClick={backdrop}>
       <button class="viewer-close icon-button" onClick={close} title="Close (Escape)" aria-label="Close">
         <i class="codicon codicon-close" />
       </button>
-      {many && (
-        <button class="viewer-nav prev icon-button" onClick={() => go((at - 1 + list.length) % list.length)} title="Previous (←)" aria-label="Previous">
-          <i class="codicon codicon-chevron-left" />
-        </button>
-      )}
-      <figure class="viewer-figure" ref={figure}>
-        {a.demo && a.kind !== 'diagram' && demo(a as AttachmentView)}
-        {a.kind === 'diagram' ? (
-          <LargeDiagram key={a.code} code={a.code ?? ''} label={caption(a)} />
-        ) : a.kind === 'video' ? (
-          <ViewerVideo key={a.src} a={a} />
-        ) : (
-          <img key={a.src} src={a.src} alt={a.alt ?? a.name} />
+      <div class="viewer-row" onClick={backdrop}>
+        {many && (
+          <button class="viewer-nav prev icon-button" onClick={() => go((at - 1 + list.length) % list.length)} title="Previous (←)" aria-label="Previous">
+            <i class="codicon codicon-chevron-left" />
+          </button>
         )}
-        <figcaption>
-          <span class="viewer-caption">{caption(a)}</span>
-          {a.demo && <span class="demo-tag">demo</span>}
-          <span class="muted">
-            {a.kind === 'diagram' ? '' : `${a.name} · `}
-            {addedBy(a)}
-            {many && ` · ${at + 1} of ${list.length}`}
-          </span>
-          {a.entryKey && (
-            <button
-              class="text-button"
-              onClick={() => {
-                close();
-                showEntry(a.entryKey!, a.diagram);
-              }}
-            >
-              <i class="codicon codicon-go-to-file" /> Show in activity
-            </button>
+        <figure class="viewer-figure" ref={figure}>
+          {a.demo && a.kind !== 'diagram' && demo(a as AttachmentView)}
+          {a.kind === 'diagram' ? (
+            <LargeDiagram key={a.code} code={a.code ?? ''} label={caption(a)} />
+          ) : a.kind === 'video' ? (
+            <ViewerVideo key={a.src} a={a} />
+          ) : (
+            <img key={a.src} src={a.src} alt={a.alt ?? a.name} />
           )}
-        </figcaption>
-      </figure>
-      {many && (
-        <button class="viewer-nav next icon-button" onClick={() => go((at + 1) % list.length)} title="Next (→)" aria-label="Next">
-          <i class="codicon codicon-chevron-right" />
-        </button>
-      )}
+          <figcaption>
+            <span class="viewer-caption">{caption(a)}</span>
+            {a.demo && <span class="demo-tag">demo</span>}
+            <span class="muted">
+              {a.kind === 'diagram' ? '' : `${a.name} · `}
+              {addedBy(a)}
+              {many && ` · ${at + 1} of ${list.length}`}
+            </span>
+            {a.entryKey && (
+              <button
+                class="text-button"
+                onClick={() => {
+                  close();
+                  showEntry(a.entryKey!, a.diagram);
+                }}
+              >
+                <i class="codicon codicon-go-to-file" /> Show in activity
+              </button>
+            )}
+          </figcaption>
+        </figure>
+        {many && (
+          <button class="viewer-nav next icon-button" onClick={() => go((at + 1) % list.length)} title="Next (→)" aria-label="Next">
+            <i class="codicon codicon-chevron-right" />
+          </button>
+        )}
+      </div>
+      <ViewerStrip list={list} at={at} go={go} preview={(s) => <Preview a={s} />} label={caption} />
     </div>
   );
 }
