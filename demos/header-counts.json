@@ -1,0 +1,14 @@
+{
+  "title": "A worktree's header says \"2 ahead\", not \"↑2\": ↑ is VS Code's mark for commits to push; hovered, it says what each count is",
+  "steps": [
+    { "click": ".wt-tab:has-text(\"BL-3\")" },
+    { "waitFor": ".sec-meta:has-text(\"ahead\")" },
+    { "caption": "The header: \"2 ahead\" counts commits ahead of main, not commits to push" },
+    { "highlight": ".sec-meta:has-text(\"ahead\")" },
+    { "wait": 1500 },
+    { "caption": "Hovered, it says what each count is" },
+    { "hover": ".sec-meta:has-text(\"ahead\")" },
+    { "waitFor": ".hover-plain:has-text(\"ahead of\")" },
+    { "wait": 2500 }
+  ]
+}
