@@ -33,6 +33,10 @@ import {
 } from './demo';
 import { applyTicketParts } from '../ticketParts';
 import { activeAgents } from '../activeAgents';
+import {
+  Audit,
+  AUDIT_SECTION,
+} from './audit';
 import { PriorityPicker } from '../ui/priority';
 import { TicketCi } from './ci';
 import {
@@ -204,6 +208,7 @@ function App() {
         setDiscussFocus((n) => n + 1);
         setTimeout(() => document.getElementById(DISCUSS_SECTION)?.scrollIntoView({ block: 'start' }));
       } else if (m.type === 'focus' && m.target === 'demo') setTimeout(() => document.getElementById(DEMO_SECTION)?.scrollIntoView({ block: 'start' }));
+      else if (m.type === 'focus' && m.target === 'audit') setTimeout(() => document.getElementById(AUDIT_SECTION)?.scrollIntoView({ block: 'start' }));
       else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
       else if (m.type === 'discussion') setDiscussion(m.discussion);
@@ -451,6 +456,7 @@ function App() {
         {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
         <Changes ticket={ticket} expand={expand} marked={marked} />
         {ticket.agents.length > 0 && <Agents ticket={ticket} />}
+        {ticket.audit && <Audit audit={ticket.audit} />}
       </main>
     </ChangeLinks.Provider>
   );

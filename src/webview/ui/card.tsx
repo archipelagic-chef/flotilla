@@ -198,6 +198,7 @@ export function ItemRow({
               {turn.kind === 'paused' ? 'Paused' : turn.who}
             </span>
           )}
+          {!renaming && !!item.blocked && <BlockedMark id={item.id} blocked={item.blocked} />}
           {!renaming && item.demo && (
             <button
               class="demo-mark"
@@ -573,6 +574,24 @@ type CompactProps = Pick<RowProps, 'item' | 'icon' | 'worktrees' | 'agents' | 'c
  * coloured mark when it needs you. Hovered or focused, the status line gives way to a row of the id, the details and
  * the actions, so the card keeps its height; everything else is in its menu (⋯, or right-click) and its ticket.
  */
+/** How many of its sandboxed agents' requests the sandbox blocked (BL-272): a click opens the ticket at its Audit section. */
+function BlockedMark({ id, blocked }: { id: string; blocked: number }) {
+  return (
+    <button
+      class="blocked-mark"
+      data-tip={`The sandbox blocked ${blocked} of its agents' requests: click to see them in the ticket's Audit`}
+      aria-label={`${blocked} blocked: show its audit`}
+      onClick={(e) => {
+        e.stopPropagation();
+        send({ type: 'backlog', op: 'audit', id });
+      }}
+    >
+      <i class="codicon codicon-error" />
+      {blocked} blocked
+    </button>
+  );
+}
+
 function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenaming, queuedBehind, saving, openWorktree }: CompactProps) {
   const busy = useBusy();
   // A discarded item (BL-209) is over as a done one is: nothing to start; Reopen brings it back.
@@ -628,6 +647,7 @@ function CompactCard({ item, icon, worktrees, agents, color, renaming, setRenami
                 {summary && ` · ${summary}`}
               </span>
             </span>
+            {!!item.blocked && <BlockedMark id={item.id} blocked={item.blocked} />}
             <span class={`card-hover${item.creating || busy.onItem(item.id) ? ' creating' : ''}`} onClick={stopControlClick}>
               <span class="card-details">
                 <span class="item-id">{item.id}</span>

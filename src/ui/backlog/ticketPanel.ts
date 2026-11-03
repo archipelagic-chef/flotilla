@@ -39,6 +39,7 @@ import type { Workstream } from '../../features/workstreams/workstream';
 import type {
   AgentChatView,
   AttachmentView,
+  AuditView,
   EntrySuggestion,
   FocusTarget,
   MediaThumb,
@@ -133,6 +134,8 @@ import {
 } from '../settings';
 import type { ReviewLoop } from './reviewLoop';
 import type { Merger } from './merge';
+import { auditPage } from '../../features/sandbox/audit';
+import type { SandboxAudit } from './sandboxAudit';
 import {
   agentChoice,
   askModel,
@@ -140,6 +143,7 @@ import {
   isRunningInTerminal,
   memoryShortage,
   modelLevels,
+  sandboxKind,
   spawnAsk,
   summarizeAgent,
 } from './agentRunner';
@@ -231,6 +235,9 @@ import { TicketCi } from './ticketCi';
 import { handleMessage } from './ticketMessages';
 import { recordClickWait } from '../../features/metrics/record';
 
+/** How many audit entries a ticket's Audit section shows at first, and more with each Load More. */
+const AUDIT_PAGE = 50;
+
 export interface TicketDeps {
   extensionUri: vscode.Uri;
   /** The main worktree, where branches and commits are read. */
@@ -238,6 +245,8 @@ export interface TicketDeps {
   /** This window's folder, for opening diffs. */
   reference: vscode.Uri;
   backlog: LocalBacklog;
+  /** The sandboxed agents' audit (BL-272). */
+  audit?: SandboxAudit;
   integrations: BacklogIntegrations;
   repository: Repository<Workstream>;
   /** Whether the items' work is merged (read from git). */
@@ -766,6 +775,8 @@ export class TicketPanels implements vscode.Disposable {
         },
       });
     if (this.ci) this.subscriptions.push(this.ci);
+    // New audit lines (BL-272) show in the open tickets' Audit sections.
+    if (deps.audit) this.subscriptions.push(deps.audit.onDidChange(() => this.refreshAll()));
     this.subscriptions.push(
       creatingWorktrees.onDidChange(() => this.refreshAll()),
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
@@ -796,6 +807,22 @@ export class TicketPanels implements vscode.Disposable {
    * or to show their Demo section in (opened from a review card's demo mark, BL-135).
    */
   private readonly focusOnPost = new WeakMap<vscode.WebviewPanel, FocusTarget>();
+  /** What each tab's Audit section shows (BL-272): the entries allowed or blocked, and how many. */
+  private readonly auditShown = new WeakMap<vscode.WebviewPanel, { result?: 'blocked' | 'allowed'; limit: number }>();
+
+  /** The Audit section's filter, or its next page. */
+  async showAudit(panel: vscode.WebviewPanel, m: { result?: 'blocked' | 'allowed'; more?: true }): Promise<void> {
+    const shown = this.auditShown.get(panel) ?? { limit: AUDIT_PAGE };
+    this.auditShown.set(panel, m.more ? { ...shown, limit: shown.limit + AUDIT_PAGE } : { result: m.result, limit: AUDIT_PAGE });
+  }
+
+  /** A ticket's Audit section: with agents in OpenShell sandboxes only. */
+  private auditOf(id: string, panel: vscode.WebviewPanel): AuditView | undefined {
+    if (!this.deps.audit || sandboxKind() !== 'openshell') return undefined;
+    const shown = this.auditShown.get(panel) ?? { limit: AUDIT_PAGE };
+    const page = auditPage(this.deps.audit.entries(), { ticket: id, result: shown.result }, shown.limit);
+    return { ...page, entries: page.entries.map(({ sandbox: _, ...e }) => e), ...(shown.result ? { result: shown.result } : {}) };
+  }
 
   /** What a ticket opened to show a file of its Changes shows once its view is sent (BL-171): that file, or its diff. */
   private readonly changeOnPost = new WeakMap<vscode.WebviewPanel, TicketHostMessage>();
@@ -1634,6 +1661,7 @@ export class TicketPanels implements vscode.Disposable {
       const showActivity = showActivityKept(this.deps.memento);
       const check = this.checks.get(id);
       const changes = this.changeViews.get(id);
+      const audit = this.auditOf(id, panel);
       const next: TicketView = {
         ...view,
         agents,
@@ -1642,6 +1670,7 @@ export class TicketPanels implements vscode.Disposable {
         demoSpeed: demoSpeedKept(this.deps.memento),
         ...(check ? { check } : {}),
         ...(changes ? { changes } : {}),
+        ...(audit ? { audit } : {}),
       };
       const update = ticketUpdate(this.sentViews.get(panel), next);
       if (update) {

@@ -18,4 +18,8 @@ export type AgentsMessage =
   /** Open an agent's chat in Claude Code. */
   | { type: 'openChat'; key: string; id: string }
   /** Summarize a working agent's status with a small model (BL-180): at most once a minute per agent. */
-  | { type: 'summarize'; session: string };
+  | { type: 'summarize'; session: string }
+  /** The Audit section (BL-272): show all, the blocked or the allowed entries; more: the next page. */
+  | { type: 'audit'; result?: 'blocked' | 'allowed'; more?: true }
+  /** Open the audit of all agents, filtered to this ticket. */
+  | { type: 'openAudit' };

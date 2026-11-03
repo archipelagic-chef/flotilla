@@ -73,6 +73,7 @@ import {
   openshellPolicy,
   type SecurityPolicy,
 } from '../../features/sandbox/policy';
+import { sandboxAudit } from './sandboxAudit';
 import { transcriptUsage } from '../../features/metrics/transcriptUsage';
 import { locateRepo } from '../../core/repoLocator';
 
@@ -186,7 +187,15 @@ function gitIdentity(cwd: string): { name?: string; email?: string } {
  * ran. Without OpenShell, or without a sandbox, nothing happens.
  */
 export function removeSandboxOf(worktree: string): void {
-  runQuietly(deleteArgs(sandboxName(worktree)));
+  const name = sandboxName(worktree);
+  // Its log is copied first (BL-272): it's gone with the sandbox.
+  const copied = sandboxAudit()?.beforeRemove(name) ?? Promise.resolve();
+  void copied.catch(() => undefined).finally(() => runQuietly(deleteArgs(name)));
+}
+
+/** Notes an agent's start in its sandbox (BL-272): the sandbox's log after it is its. */
+function noteSandboxRun(cmd: AgentCommand, ticket: string | undefined, agent: string | undefined): void {
+  if (cmd.sandbox && agent) sandboxAudit()?.noteRun(cmd.sandbox, ticket, agent);
 }
 
 /** Ends a session's claude in its sandbox too (Stop): ending the CLI on this machine may leave it running there. */
@@ -470,6 +479,7 @@ export function runAgentInTerminal(o: {
   });
   terminals.set(sessionId, terminal);
   if (cmd.sandbox) terminalSandboxes.set(sessionId, cmd.sandbox);
+  noteSandboxRun(cmd, o.track?.ticket, o.track?.agent);
   if (o.track) {
     const data = {
       role: o.track.role,
@@ -662,6 +672,7 @@ export function runAgentHeadless(o: {
   const spawnedAt = Date.now();
   const track = o.track;
   const who = { ticket: track?.ticket, agent: track?.agent };
+  noteSandboxRun(cmd, who.ticket, who.agent);
   if (track) {
     const data = {
       role: track.role,
@@ -845,6 +856,7 @@ export function spawnAsk(cwd: string, o: { instructions: string; output: vscode.
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));
+  noteSandboxRun(cmd, o.ticket, 'Ask');
   trackAsk(child, { ticket: o.ticket, model });
   return child;
 }
@@ -896,6 +908,7 @@ export function spawnDiscussion(
   const slot = starting.begin();
   child.on('exit', () => starting.end(slot));
   child.on('error', () => starting.end(slot));
+  noteSandboxRun(cmd, o.ticket, o.agent);
   trackAsk(child, { ticket: o.ticket, model, agent: o.agent, role: 'discuss', session: o.session, resumed: o.resume });
   return child;
 }

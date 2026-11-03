@@ -62,7 +62,9 @@ import {
   agentChoice,
   freeMemoryMB,
   minFreeMemoryMB,
+  sandboxKind,
 } from '../backlog/agentRunner';
+import type { SandboxAudit } from '../backlog/sandboxAudit';
 import {
   commitChanges,
   readLog,
@@ -176,6 +178,8 @@ export interface SidebarDeps {
   startup?: Pick<StartupClock, 'mark'>;
   /** The Metrics tool's numbers (BL-158). */
   metrics?: Metrics;
+  /** The sandboxed agents' audit (BL-272): a card shows how many of its entries were blocked. */
+  audit?: SandboxAudit;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -260,6 +264,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.backlog.watch(() => void this.backlogChanged()),
       deps.integrations.onDidChange(() => void this.postBacklog()),
       creatingWorktrees.onDidChange(() => void this.postBacklog()),
+      ...(deps.audit ? [deps.audit.onDidChange(() => void this.postBacklog())] : []),
       removingWorktrees.onDidChange(() => this.postState()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
@@ -438,6 +443,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // What the open tickets wait for, and so which ones each holds up, through chains (BL-238).
     const waits = await waitsOf(data, async (i) => (await store.readTicketCached(i)).description);
     const holders = holdsUp(data, waits);
+    // Each ticket's blocked audit entries (BL-272), while agents run sandboxed.
+    const sandboxed = sandboxKind() === 'openshell';
+    const blockedBy = sandboxed ? (this.deps.audit?.blockedByTicket() ?? new Map<string, number>()) : new Map<string, number>();
     const items = await Promise.all(
       data.items.map(async (item): Promise<BacklogItemView> => {
         const ticket = await store.readTicketCached(item);
@@ -486,6 +494,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // A sister check covers it (BL-236): the autopilot waits for it.
         const checking = checkingOf(data, item.id);
         const demo = item.status === 'review' && gatherAttachments(ticket.description, ticket.activity).some((a) => a.demo);
+        const blocked = sandboxed ? blockedBy.get(item.id) : undefined;
         return {
           ...item,
           summary: cardSummaryOf(ticket.description),
@@ -514,6 +523,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(this.autopilot?.clashOf(item.id) ? { clash: this.autopilot.clashOf(item.id) } : {}),
           ...(base ? { base } : {}),
           ...(demo ? { demo } : {}),
+          ...(blocked ? { blocked } : {}),
           ...(this.discussing(item) ? { discussing: true } : {}),
           ...(checking && item.status === 'todo'
             ? { checking, ...(data.items.find((i) => i.id === checking)?.sisterCheck?.stop ? { checkStopped: true } : {}) }
@@ -608,7 +618,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'comment' });
         return;
       case 'demo':
-        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: 'demo' });
+      case 'audit':
+        await vscode.commands.executeCommand('flotilla.openBacklogItem', m.id, { focus: m.op });
         return;
       case 'approve':
         await vscode.commands.executeCommand('flotilla.reviewBacklogItem', m.id, 'approved', '');

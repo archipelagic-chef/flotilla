@@ -301,7 +301,7 @@ function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Comman
     'flotilla.openBacklogItem': (id?: unknown, opts?: unknown) => {
       const itemId = backlogIdOf(id);
       const focus = (opts as { focus?: unknown } | undefined)?.focus;
-      return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' ? focus : undefined });
+      return itemId && ctx.tickets.open(itemId, { focus: focus === 'comment' || focus === 'demo' || focus === 'audit' ? focus : undefined });
     },
   };
 }
