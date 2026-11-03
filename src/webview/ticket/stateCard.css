@@ -10,3 +10,9 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+/* An open report's questions (BL-280): the card is their frame. */
+.ask-text > .needs {
+  margin-top: 0;
+  padding: 0;
+  border: none;
+}

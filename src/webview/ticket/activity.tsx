@@ -45,6 +45,7 @@ import {
   AskLine,
 } from './askAgent';
 import { Needs } from './needs';
+import { pendingReport } from '../ticketStatus';
 import {
   MarkdownBox,
   mentionPrefix,
@@ -287,7 +288,9 @@ function EntryView({ e, ticket, onFold, nest }: { e: ActivityEntry; ticket: Tick
               <Rendered html={e.report.media} empty="" />
             </div>
           )}
-          {e.report.asks && <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} />}
+          {e.report.asks && (
+            <Needs report={e.report} name={e.key ?? `${e.date}${e.author}`} live={!ticket.remote} atTop={pendingReport(ticket.activity) === e} />
+          )}
           {e.report.details && (
             <details class="report-details">
               <summary>Details</summary>

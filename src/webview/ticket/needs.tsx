@@ -26,8 +26,10 @@ import './needs.css';
  * clicking: a choice (its recommendation preselected) or Other…; one Send posts the answers as the user's comment, and
  * the agent goes on from there. Answered ones, and those of tracker-linked items, show what was chosen, read-only.
  */
-export function Needs({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
+export function Needs({ report, name, live, atTop }: { report: ReportView; name: string; live: boolean; atTop?: boolean }) {
   const answered = report.answer !== undefined;
+  // While the top of the ticket asks its questions (BL-280), the report lists them and points there: one form to fill.
+  if (atTop && !answered) return <AnswerAtTop report={report} />;
   const interactive = live && !answered && report.questions.length > 0;
   const [answers, setAnswers] = useState<Answer[]>(() => report.questions.map(defaultAnswer));
   const given = answered ? answersIn(report.questions, report.answer!) : [];
@@ -133,6 +135,32 @@ export function Needs({ report, name, live }: { report: ReportView; name: string
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** An open report's questions, as text, while the state card asks them: "Answer at the top" scrolls up to it. */
+function AnswerAtTop({ report }: { report: ReportView }) {
+  return (
+    <div class="needs at-top">
+      <div class="needs-line">
+        <i class="codicon codicon-question" /> <strong>Needs from you:</strong>
+      </div>
+      {report.needs && <Rendered html={report.needs} empty="" />}
+      {report.questions.length > 0 && (
+        <ul class="needs-questions">
+          {report.questions.map((q, qi) => (
+            <li key={qi}>{q.text}</li>
+          ))}
+        </ul>
+      )}
+      <button
+        class="text-button"
+        onClick={() => document.querySelector('.review-panel.ask')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        title="The questions are answered in the card at the top of the ticket"
+      >
+        <i class="codicon codicon-arrow-up" /> Answer at the top
+      </button>
     </div>
   );
 }
