@@ -221,7 +221,7 @@ export class Scheduler implements vscode.Disposable {
     const t = (await this.tasks()).find((f) => f.name === name);
     if (!t || !('task' in t) || !t.task.proposed) return;
     const choice = await vscode.window.showInformationMessage(
-      `Agent ${t.task.proposed} proposes a scheduled task, ${t.task.title} (${scheduleText(t.task.schedule)}).`,
+      `Agent ${t.task.proposed} proposes a scheduled task, ${t.task.title} (${scheduleText(t.task.schedule)})${t.task.tools?.length ? `. Its agent may also use: ${t.task.tools.join(', ')}` : ''}.`,
       'Accept',
       'Open',
       'Dismiss',
@@ -276,7 +276,7 @@ export class Scheduler implements vscode.Disposable {
         choice: { ...agentChoice(undefined), ...(model ? { model } : {}), ...(task.effort ? { effort: task.effort } : {}) },
         output: this.deps.output,
         slot,
-        ...taskTools({ reportFile, inboxDir, name: task.name }),
+        ...taskTools({ reportFile, inboxDir, name: task.name, more: task.tools }),
       });
       const going = run;
       this.runs.set(task.name, going);
