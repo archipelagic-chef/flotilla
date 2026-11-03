@@ -16,10 +16,20 @@ export async function worktreeFiles(dir: string): Promise<string[]> {
   return [...new Set(out.split('\0').filter(Boolean))];
 }
 
+/**
+ * The open editors' files that belong to the worktree at `root`, relative to it: those inside it, but not inside
+ * another worktree in its folder (main's `.worktrees/*`), whose files are that worktree's own (BL-277).
+ */
+export function worktreeOpenFiles(root: string, open: readonly string[], worktrees: readonly string[]): string[] {
+  const nested = worktrees.filter((w) => isInside(root, w));
+  const own = open.filter((f) => (samePath(path.dirname(f), root) || isInside(root, f)) && !nested.some((w) => samePath(w, f) || isInside(w, f)));
+  return [...new Set(own.map((f) => toGitPath(path.relative(root, f))))];
+}
+
 type Item = vscode.QuickPickItem & { rel?: string };
 
-/** Ctrl+P for the active worktree: its files, with the ones open in editors first. */
-export async function quickOpenInWorktree(ws: Workstream, reference: vscode.Uri): Promise<void> {
+/** Ctrl+P for the active worktree: its files, with the ones open in editors first; `worktrees` are all the repository's. */
+export async function quickOpenInWorktree(ws: Workstream, reference: vscode.Uri, worktrees: readonly string[] = []): Promise<void> {
   const root = ws.worktree.path;
   if (!root) return;
   const picker = vscode.window.createQuickPick<Item>();
@@ -37,9 +47,9 @@ export async function quickOpenInWorktree(ws: Workstream, reference: vscode.Uri)
   const open = vscode.window.tabGroups.all
     .flatMap((g) => g.tabs)
     .map((t) => (t.input instanceof vscode.TabInputText ? t.input.uri : undefined))
-    .filter((u): u is vscode.Uri => u !== undefined && (samePath(path.dirname(u.fsPath), root) || isInside(root, u.fsPath)))
-    .map((u) => toGitPath(path.relative(root, u.fsPath)));
-  const recent = [...new Set(open)];
+    .filter((u): u is vscode.Uri => u !== undefined)
+    .map((u) => u.fsPath);
+  const recent = worktreeOpenFiles(root, open, worktrees);
   const recentSet = new Set(recent);
   picker.items = [
     ...(recent.length ? [{ label: 'open editors', kind: vscode.QuickPickItemKind.Separator } as Item, ...recent.map(toItem)] : []),

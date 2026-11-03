@@ -199,7 +199,8 @@ export function activeWorktreeCommands(deps: ActiveWorktreeCommandDeps): Command
     'flotilla.quickOpen': () => {
       const ws = repository.current.find((w) => w.key === active.key);
       if (!ws?.worktree.path) return vscode.commands.executeCommand('workbench.action.quickOpen');
-      return quickOpenInWorktree(ws, reference);
+      const worktrees = repository.current.map((w) => w.worktree.path).filter((p): p is string => !!p);
+      return quickOpenInWorktree(ws, reference, worktrees);
     },
     'flotilla.configureActivityBar': () => offerActivityBar(extension, true),
   };
