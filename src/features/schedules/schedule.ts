@@ -16,6 +16,7 @@ import {
  * when: idle                # the default: only when no agent works or waits; any: whenever a slot is free
  * model: opus               # optional, as flotilla.agents.model
  * effort: high              # optional
+ * tools: Bash(npm run demo:*)  # optional: more tools its agent may use, comma-separated Claude Code rules
  * ---
  * What the agent does, and what its report says.
  * ```
@@ -37,6 +38,8 @@ export interface ScheduledTask {
   when: TaskWhen;
   model?: string;
   effort?: AgentEffort;
+  /** Tools its agent may use besides reading and writing its report (tools:), as Claude Code's permission rules. */
+  tools?: string[];
   /** The agent's instructions: the file's body. */
   instructions: string;
   /** Proposed by this agent through the inbox: it runs only once the user accepts it. */
@@ -139,6 +142,8 @@ export function parseTask(name: string, text: string): ScheduledTask | { error: 
   if (when !== 'idle' && when !== 'any') return { error: `"when: ${fields.get('when')}" is neither idle (the default) nor any.` };
   const effort = fields.get('effort')?.toLowerCase();
   if (effort && !AGENT_EFFORTS.includes(effort as AgentEffort)) return { error: `"effort: ${effort}" isn't one of ${AGENT_EFFORTS.join(', ')}.` };
+  const tools = parseTools(fields.get('tools') ?? '');
+  if ('error' in tools) return tools;
   const instructions = body.trim();
   if (!instructions) return { error: 'It has no instructions: write what the agent does after the front matter.' };
   const title = fields.get('title') || name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, ' ');
@@ -149,9 +154,28 @@ export function parseTask(name: string, text: string): ScheduledTask | { error: 
     when,
     ...(fields.get('model') ? { model: fields.get('model') } : {}),
     ...(effort ? { effort: effort as AgentEffort } : {}),
+    ...(tools.length ? { tools } : {}),
     instructions,
     ...(fields.get('proposed') ? { proposed: fields.get('proposed') } : {}),
   };
+}
+
+/** Tools nobody watching may run only with a rule that narrows them: a bare Bash would run any command. */
+const NARROWED = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
+
+/** tools: "Bash(npm run demo:*), WebFetch" as its rules; commas inside a rule's parentheses don't split it. */
+export function parseTools(text: string): string[] | { error: string } {
+  const rules = text
+    .split(/,(?![^()]*\))/)
+    .map((r) => r.trim())
+    .filter(Boolean);
+  for (const rule of rules) {
+    const m = /^([A-Za-z][\w-]*)(\((.+)\))?$/.exec(rule);
+    if (!m) return { error: `"tools: ${text}": "${rule}" isn't a tool's rule, such as Bash(npm run demo:*).` };
+    if (NARROWED.includes(m[1]) && !m[3]?.trim())
+      return { error: `"tools: ${text}": ${m[1]} needs what it may do, such as ${m[1]}(npm run demo:*): nobody watches the run.` };
+  }
+  return rules;
 }
 
 /** A schedule in words: "every 7 days", "Mondays at 06:00", "once on 2026-11-07". */
@@ -241,9 +265,9 @@ export async function listTaskReports(backlogDir: string, name: string): Promise
 /**
  * The only tools a task's agent has: reading anything, and writing its report (and files for it, named after its day,
  * such as a diagram's SVG) and its proposals. As the review's (reviewTools): Write is offered and allowed only where
- * the Edit(path) rules say.
+ * the Edit(path) rules say. A task's tools: line adds its rules (more).
  */
-export function taskTools(o: { reportFile: string; inboxDir: string; name: string }): { tools: string[]; offer: string[] } {
+export function taskTools(o: { reportFile: string; inboxDir: string; name: string; more?: string[] }): { tools: string[]; offer: string[] } {
   const abs = (p: string) => `//${p.replace(/^\/+/, '')}`;
   const day = path.basename(o.reportFile, '.md');
   return {
@@ -254,6 +278,7 @@ export function taskTools(o: { reportFile: string; inboxDir: string; name: strin
       `Edit(${abs(o.reportFile)})`,
       `Edit(${abs(path.dirname(o.reportFile))}/${day}-*)`,
       `Edit(${abs(o.inboxDir)}/${o.name}-*.md)`,
+      ...(o.more ?? []),
     ],
     offer: ['Write'],
   };
@@ -289,7 +314,7 @@ export function taskPrompt(o: TaskPromptInput): string {
         ? `Their reports, newest first:\n${o.earlier.map((f) => `- ${f}`).join('\n')}\n\nRead the last one: check what it proposed (the tickets with the line "${proposedByLine(task.name)}" in ${o.backlogDir}), whether each was accepted and done, and whether it helped. Say so in your report.`
         : 'This is its first run.',
     ].join('\n\n'),
-    `## Where things are\n\nYou can read, not change: the repository at ${o.mainRoot}, and the backlog at ${o.backlogDir} (backlog.json: the tickets with their status; each ticket's <id>.md with its activity). Don't propose what an open ticket already covers: name it in your report instead.`,
+    `## Where things are\n\nYou can read, not change: the repository at ${o.mainRoot}, and the backlog at ${o.backlogDir} (backlog.json: the tickets with their status; each ticket's <id>.md with its activity). Don't propose what an open ticket already covers: name it in your report instead.${task.tools?.length ? ` Besides that, your task gives you: ${task.tools.join(', ')} (the commands run in ${o.mainRoot}).` : ''}`,
     [
       `## What you write`,
       `1. Your report, with the Write tool, to ${o.reportFile} (you may write no other file but those below). In Markdown: "# ${task.title} ${o.day}", then a summary of at most three lines, then what your instructions ask for. Link code from the repository root with its lines, like [src/a.ts:42](src/a.ts#L42); tickets by their ids (BL-12). A diagram as a \`\`\`mermaid block; an image as a file next to the report named ${day}-<name> (.svg), shown with ![What it shows](${day}-<name>.svg).`,

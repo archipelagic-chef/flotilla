@@ -78,6 +78,7 @@ describe('the scheduler', () => {
     // Running already: not started again.
     await scheduler.tick(new Date(2030, 0, 7, 9));
     expect(runs.started).toHaveLength(1);
+
     runs.started[0].resolve({ code: 0, reply: 'All fine.' });
     await vi.waitFor(() => expect(fs.existsSync(path.join(backlogDir, 'schedules', 'docs-check', '2030-01-07.md'))).toBe(true));
     expect(fs.readFileSync(path.join(backlogDir, 'schedules', 'docs-check', '2030-01-07.md'), 'utf8')).toBe('# Docs check 2030-01-07\n\nAll fine.\n');
@@ -86,6 +87,11 @@ describe('the scheduler', () => {
     // Its report is its last run: not due again until 7 days on.
     await scheduler.tick(new Date(2030, 0, 8, 9));
     expect(runs.started).toHaveLength(1);
+  });
+  it("gives a task's agent the tools its file allows (BL-264)", async () => {
+    const { scheduler } = setup({ 'product-review.md': '---\nevery: 7 days\ntools: Bash(npm run demo:*)\n---\nGo through the journeys.\n' });
+    await scheduler.tick(new Date(2030, 0, 7, 9));
+    expect(runs.started.at(-1)?.tools).toContain('Bash(npm run demo:*)');
   });
 
   it("says what's wrong with a file in its .error, and removes it once fixed", async () => {

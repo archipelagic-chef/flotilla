@@ -9,6 +9,7 @@ import {
   parseEvery,
   parseOnce,
   parseTask,
+  parseTools,
   proposedTask,
   type Schedule,
   scheduleText,
@@ -157,6 +158,32 @@ describe("the task's agent", () => {
       ],
       offer: ['Write'],
     });
+  });
+
+  it('may also use what its tools: line allows, and is told so (BL-264)', () => {
+    const more = parseTask('product-review', task('every: Mondays at 06:00\ntools: Bash(npm run demo:*), WebFetch(domain:example.com)'));
+    if ('error' in more) throw new Error(more.error);
+    expect(more.tools).toEqual(['Bash(npm run demo:*)', 'WebFetch(domain:example.com)']);
+    expect(taskTools({ reportFile, inboxDir: '/b/inbox', name: 'product-review', more: more.tools }).tools.slice(-2)).toEqual(more.tools);
+    const p = taskPrompt({
+      agent: 'Nova-1',
+      task: more,
+      day: '2026-11-02',
+      reportFile,
+      earlier: [],
+      inboxDir: '/b/inbox',
+      mainRoot: '/repo',
+      backlogDir: '/b',
+    });
+    expect(p).toContain('your task gives you: Bash(npm run demo:*), WebFetch(domain:example.com) (the commands run in /repo)');
+    expect(t.tools).toBeUndefined();
+  });
+
+  it('refuses a tool nobody could narrow down: a bare Bash runs anything, unwatched', () => {
+    expect(parseTools('Bash')).toEqual({ error: expect.stringContaining('Bash needs what it may do') });
+    expect(parseTools('Bash()')).toEqual({ error: expect.stringContaining("isn't a tool's rule") });
+    expect(parseTools('Bash(npm run demo:*), , WebSearch')).toEqual(['Bash(npm run demo:*)', 'WebSearch']);
+    expect(parseTask('x', task('every: 7 days\ntools: Write'))).toEqual({ error: expect.stringContaining('Write needs') });
   });
 
   it('gets its instructions, its earlier reports, and what to write where', () => {
