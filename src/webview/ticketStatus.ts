@@ -6,6 +6,7 @@ import {
   type BacklogStatus,
   entryAgent,
 } from '../features/backlog/backlog';
+import { parseReport } from '../features/backlog/report';
 
 /** A question an agent reports, with its numbered options (each one a button). */
 export interface Ask {
@@ -40,6 +41,8 @@ export interface TicketStatus {
   /** A line of Flotilla's own after the title (not an agent's words, as detail is). */
   note?: string;
   ask?: Ask;
+  /** The open report that asks with "Needs from you:" (and its questions): its form shows at the top (BL-280). */
+  report?: StatusEntry;
 }
 
 const OPTION = /^\s*(\d{1,2})[.)]\s+(.+?)\s*$/;
@@ -78,7 +81,10 @@ export function isNoteEntry(author: string): boolean {
   return author === 'Flotilla' || !author;
 }
 
-/** The agent report that waits for the user: the last report, when nothing was written after it. */
+/**
+ * The agent report that waits for the user: the last report, when nothing was written after it, and it asks (with
+ * "Needs from you:" and its questions) or ends "Waiting for you.".
+ */
 export function pendingReport(activity: StatusEntry[]): StatusEntry | undefined {
   let last = -1;
   for (let i = activity.length - 1; i >= 0; i--) {
@@ -90,6 +96,7 @@ export function pendingReport(activity: StatusEntry[]): StatusEntry | undefined 
   if (last < 0) return undefined;
   // Anything written after it (a comment, an answer) is the user's: the report isn't waiting anymore.
   if (activity.slice(last + 1).some((e) => !isAgentEntry(e.author) && !isNoteEntry(e.author))) return undefined;
+  if (parseReport(activity[last].body).asks) return activity[last];
   const lines = activity[last].body.split(/\r?\n/).filter((l) => l.trim());
   return lines.length && WAITING.test(lines[lines.length - 1].trim()) ? activity[last] : undefined;
 }
@@ -105,14 +112,17 @@ export function ticketStatus(input: StatusInput): TicketStatus {
   const report = pendingReport(input.activity);
   const waiting = input.agents.find((a) => a.state === 'waiting-for-input');
   if (input.review?.state === 'asking' || report || waiting) {
-    const ask = report ? askOf(report.body) : undefined;
+    // A report that asks in the newer shape carries its questions (its form shows them); an older one, its options.
+    const asks = report && parseReport(report.body).asks ? report : undefined;
+    const ask = report && !asks ? askOf(report.body) : undefined;
     const who = waiting?.agent ?? (report ? entryAgent(report.author) : undefined);
     return {
       tone: 'waiting',
       title: who ? `Waiting for your answer: ${who}` : 'Waiting for your answer',
       // An agent waiting on a prompt in its chat (not a question in the ticket) says what it needs there.
-      detail: !ask?.question && waiting?.message ? waiting.message : undefined,
+      detail: !ask?.question && !asks && waiting?.message ? waiting.message : undefined,
       ...(ask ? { ask } : {}),
+      ...(asks ? { report: asks } : {}),
     };
   }
   if (input.review?.state === 'yours') return { tone: 'waiting', title: 'Ready for your review' };

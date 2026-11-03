@@ -60,6 +60,37 @@ describe('pendingReport', () => {
     ];
     expect(pendingReport(activity)?.author).toBe('Agent Nova-5');
   });
+
+  const ASKS = 'Drew two mockups.\nNeeds from you: pick one.\n\n```question\nWhich?\n- A (recommended)\n- B\n```';
+
+  it('is the last agent report when it asks with "Needs from you:" and its questions (BL-280)', () => {
+    const report = { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: ASKS };
+    expect(pendingReport([report])).toBe(report);
+  });
+
+  it('is a report whose Needs line asks, without questions', () => {
+    const report = { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: 'Done.\nNeeds from you: the API key.' };
+    expect(pendingReport([report])).toBe(report);
+  });
+
+  it('is no report that needs nothing', () => {
+    const report = { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: 'Done.\nNeeds from you: nothing\n\nReady for review.' };
+    expect(pendingReport([report])).toBeUndefined();
+  });
+
+  it('is gone once the questions are answered, or after any comment', () => {
+    const report = { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: ASKS };
+    expect(pendingReport([report, { date: '2026-10-12 22:10', author: 'You', body: '**Which?** A' }])).toBeUndefined();
+    expect(pendingReport([report, { date: '2026-10-12 22:10', author: 'You', body: 'Wait, one thing first.' }])).toBeUndefined();
+  });
+
+  it('is only the latest report: an earlier one that asked is not open', () => {
+    const activity = [
+      { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: ASKS },
+      { date: '2026-10-12 22:30', author: 'Agent Nova-5', body: 'Done.\nNeeds from you: nothing' },
+    ];
+    expect(pendingReport(activity)).toBeUndefined();
+  });
 });
 
 describe('ticketStatus', () => {
@@ -73,6 +104,13 @@ describe('ticketStatus', () => {
       title: 'Waiting for your answer: Nova-5',
       ask: { question: 'Which?', options: ['A', 'B'] },
     });
+  });
+
+  it('carries the open report that asks with "Needs from you:", for its form at the top, not numbered options', () => {
+    const report = { date: '2026-10-12 22:00', author: 'Agent Nova-5', body: 'Needs from you: pick one.\n\n```question\nWhich?\n- A\n- B\n```' };
+    const status = ticketStatus({ ...base, activity: [report] });
+    expect(status).toMatchObject({ tone: 'waiting', title: 'Waiting for your answer: Nova-5', report });
+    expect(status.ask).toBeUndefined();
   });
 
   it('shows the prompt of an agent waiting in its chat', () => {
