@@ -10,6 +10,7 @@ import {
   recordRun,
 } from '../../features/sandbox/audit';
 import { readLogs } from '../../features/sandbox/openshell';
+import { forgetGrants } from '../../features/sandbox/requests';
 
 /** How often the sandboxes' logs are copied while their agents may run: the gateway keeps only its last 2,000 lines. */
 const POLL_MS = 60_000;
@@ -49,8 +50,14 @@ export class SandboxAudit implements vscode.Disposable {
   /** How many entries of each ticket were blocked. */
   blockedByTicket(): Map<string, number> {
     const counts = new Map<string, number>();
-    for (const e of this.entries()) if (e.blocked && e.ticket) counts.set(e.ticket, (counts.get(e.ticket) ?? 0) + 1);
+    for (const e of this.entries()) if (e.blocked && e.ticket && !e.decision) counts.set(e.ticket, (counts.get(e.ticket) ?? 0) + 1);
     return counts;
+  }
+
+  /** Reads the entries again (one Flotilla added, BL-273), and says so. */
+  refresh(): void {
+    this.cache = undefined;
+    this.changed.fire();
   }
 
   /** Notes an agent's start in a sandbox: the entries after it are its. */
@@ -97,6 +104,8 @@ export class SandboxAudit implements vscode.Disposable {
     if (!readRegistry(this.dir)[sandbox]) return;
     await this.copy(sandbox);
     markRemoved(this.dir, sandbox);
+    // What Allow once let it reach ends with it (BL-273).
+    forgetGrants(this.dir, sandbox);
   }
 
   dispose(): void {

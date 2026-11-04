@@ -26,6 +26,7 @@ import { workstreamLabel } from './format';
 import { readSettings } from './settings';
 import type { NoteAgents } from './backlog/notes';
 import type { ReviewLoop } from './backlog/reviewLoop';
+import type { SandboxRequests } from './backlog/sandboxRequests';
 
 /** How long needs are gathered before one notification says them all (`needsYou`). */
 const BATCH_MS = 60_000;
@@ -57,6 +58,8 @@ export class NeedsYouNotifier implements vscode.Disposable {
       /** Shows the note's card in the backlog (where you answer it). */
       openNote: (id: string) => void;
       openWorktree: (ws: Workstream, newWindow: boolean) => Promise<void>;
+      /** The requests sandboxes blocked that ask the user (BL-273). */
+      requests?: Pick<SandboxRequests, 'pending' | 'onDidChange'>;
     },
   ) {
     this.subscriptions = [
@@ -64,6 +67,7 @@ export class NeedsYouNotifier implements vscode.Disposable {
       deps.reviews.onDidChange(() => void this.refresh()),
       deps.notes.onDidChange(() => void this.refresh()),
       deps.backlog.watch(() => void this.refresh()),
+      ...(deps.requests ? [deps.requests.onDidChange(() => void this.refresh())] : []),
     ];
     // The first list is a baseline: what was already there when the window opened isn't news.
     void this.refresh();
@@ -106,7 +110,14 @@ export class NeedsYouNotifier implements vscode.Disposable {
     }));
     // Notes that can't be read right now ask nothing: the tickets and worktrees still count.
     const notes = await this.deps.notes.views().catch(() => []);
-    const next = needsYouList(items, worktrees, notes, holders);
+    // Blocked requests ask while agents run sandboxed (BL-273); an audit that can't be read asks nothing.
+    let blocked = new Map<string, string[]>();
+    try {
+      if (this.deps.requests) blocked = new Map([...this.deps.requests.pending()].map(([id, rs]) => [id, rs.map((r) => r.key)]));
+    } catch {
+      // Nothing blocked to tell.
+    }
+    const next = needsYouList(items, worktrees, notes, holders, blocked);
     const fresh = newNeeds(this.previous, next);
     this.previous = new Set(next.map((n) => n.key));
     this.list = next;

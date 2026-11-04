@@ -116,9 +116,9 @@ export const AGENT_FILES = path.join(os.tmpdir(), 'flotilla');
  * The security policy sandboxes run under (BL-271, the Security panel's), and where their OpenShell policies are
  * written: outside every folder a sandbox mounts, so an agent can't read or change them.
  */
-let securityPolicy: () => SecurityPolicy = () => defaultPolicy();
+let securityPolicy: (sandbox?: string) => SecurityPolicy = () => defaultPolicy();
 let policyDir = path.join(os.tmpdir(), 'flotilla-policies');
-export function setSecurityPolicy(get: () => SecurityPolicy, dir: string): void {
+export function setSecurityPolicy(get: (sandbox?: string) => SecurityPolicy, dir: string): void {
   securityPolicy = get;
   policyDir = dir;
 }
@@ -152,13 +152,19 @@ export function agentCommand(args: string[], cwd: string, o: { tty?: boolean; sc
   const mounts = o.scratch
     ? sandboxMounts({ cwd: AGENT_FILES, dirs: [], gitDirs: [], agentFiles: AGENT_FILES }).filter((m) => m.readOnly)
     : sandboxMounts({ cwd, dirs: agentDirs, gitDirs: gitDirsOf(cwd), agentFiles: AGENT_FILES, transcripts });
-  const policy = writeOnce(policyDir, 'flotilla-openshell-policy', 'yaml', openshellPolicy(securityPolicy(), mounts, process.getuid?.(), process.getgid?.()));
+  const name = o.scratch ? 'flotilla-scratch' : sandboxName(cwd);
+  const policy = writeOnce(
+    policyDir,
+    'flotilla-openshell-policy',
+    'yaml',
+    openshellPolicy(securityPolicy(name), mounts, process.getuid?.(), process.getgid?.()),
+  );
   const image = vscode.workspace.getConfiguration('flotilla').get<string>('agents.sandboxImage', '').trim();
   const cmd = sandboxedCommand({
     launcher: writeLauncher(AGENT_FILES),
     args,
     cwd: o.scratch ? '/sandbox' : cwd,
-    name: o.scratch ? 'flotilla-scratch' : sandboxName(cwd),
+    name,
     mounts,
     policyFile: policy,
     tty: o.tty,

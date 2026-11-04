@@ -24,6 +24,7 @@
 .needs-lane .need-approved .need-icon {
   color: var(--done);
 }
+.needs-lane .need-blocked .need-icon,
 .needs-lane .need-stopped .need-icon,
 .needs-lane .need-failed .need-icon {
   color: var(--error);
@@ -63,4 +64,19 @@
   gap: 4px;
   margin-left: auto;
   flex: none;
+}
+
+/* A blocked request's row (BL-273): what was blocked is the sandbox's word, so it's in the error colour. */
+.needs-lane .need-blocked .need-line:not(.need-blocked-note) {
+  color: var(--error);
+}
+/* What was blocked is read whole, and its three choices wrap in a narrow sidebar. */
+.needs-lane .need-blocked .need-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.needs-lane .need-blocked .need-actions {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }

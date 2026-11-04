@@ -26,12 +26,19 @@ import {
   sandboxKind,
   setSecurityPolicy,
 } from '../backlog/agentRunner';
+import type { SandboxAudit } from '../backlog/sandboxAudit';
+import { SandboxRequests } from '../backlog/sandboxRequests';
 
 /**
  * The Security panel and the policy store behind it, in VS Code's storage: the global one for all repositories, the
  * workspace's for this one. Agents start on the policy in force from now on.
  */
-export function createSecurity(context: vscode.ExtensionContext, mainRoot: string, worktrees: () => (string | undefined)[]): SecurityPanel {
+export function createSecurity(
+  context: vscode.ExtensionContext,
+  mainRoot: string,
+  worktrees: () => (string | undefined)[],
+  audit: SandboxAudit,
+): SecurityPanel {
   let remote: string | undefined;
   try {
     remote = execFileSync('git', ['-C', mainRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -41,8 +48,11 @@ export function createSecurity(context: vscode.ExtensionContext, mainRoot: strin
   const host = remoteHost(remote);
   const store = new PolicyStore(context.globalStorageUri.fsPath, context.storageUri?.fsPath, () => defaultPolicy(host));
   const policyDir = path.join(context.globalStorageUri.fsPath, 'openshell');
-  setSecurityPolicy(() => store.read(), policyDir);
-  return new SecurityPanel(context.extensionUri, store, () => worktrees().flatMap((p) => (p ? [sandboxName(p)] : [])), policyDir);
+  const sandboxes = () => worktrees().flatMap((p) => (p ? [sandboxName(p)] : []));
+  // What a blocked request's Allow once loaded into its sandbox (BL-273) is part of that sandbox's policy.
+  const requests = new SandboxRequests(audit, store, sandboxes, policyDir, () => sandboxKind() === 'openshell');
+  setSecurityPolicy((sandbox) => (sandbox ? requests.policyOf(sandbox) : store.read()), policyDir);
+  return new SecurityPanel(context.extensionUri, store, sandboxes, policyDir, requests);
 }
 
 /**
@@ -61,7 +71,10 @@ export class SecurityPanel implements vscode.Disposable {
     private readonly sandboxes: () => string[],
     /** Where the network rules loaded into running sandboxes are written: outside every mount. */
     private readonly policyDir: string,
+    /** The blocked requests that ask the user (BL-273). */
+    readonly requests: SandboxRequests,
   ) {
+    this.subs.push(requests);
     this.subs.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('flotilla.agents.sandbox')) this.post();
@@ -134,7 +147,9 @@ export class SecurityPanel implements vscode.Disposable {
     }
     let applied: string[] = [];
     if (sandboxKind() === 'openshell') {
-      const result = await applyNetworkPolicy(policy, this.sandboxes(), path.join(this.policyDir, 'network-policy.yaml'));
+      const result = await applyNetworkPolicy(policy, this.sandboxes(), path.join(this.policyDir, 'network-policy.yaml'), undefined, (name) =>
+        this.requests.policyOf(name, policy),
+      );
       if (result.error) {
         this.send({ type: 'securityErrors', errors: [result.error] });
         return;

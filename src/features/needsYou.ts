@@ -12,7 +12,7 @@ import type { AttentionState } from './workstreams/attention';
  * stopped, a proposal to accept), the notes whose agent asks (BL-200) and the worktrees waiting for input or reporting an error. Worked out from the state,
  * so the "Needs you" list and the notifications agree. A window notifies about what is new since its last look.
  */
-export type NeedsYouKind = 'error' | 'waiting' | 'asks' | 'merge' | 'stopped' | 'review' | 'resolved' | 'approved' | 'proposed';
+export type NeedsYouKind = 'error' | 'waiting' | 'asks' | 'blocked' | 'merge' | 'stopped' | 'review' | 'resolved' | 'approved' | 'proposed';
 
 export interface NeedsYou {
   /** Identifies the need: a need that isn't in the previous list is news. */
@@ -37,13 +37,14 @@ export interface NeedsYouWorktree {
 export type NeedsYouNote = Parameters<typeof noteNeed>[0] & { id: string; title: string };
 
 /** The order of the list, and of the groups in a notification. */
-const ORDER: readonly NeedsYouKind[] = ['error', 'waiting', 'asks', 'merge', 'stopped', 'review', 'resolved', 'approved', 'proposed'];
+const ORDER: readonly NeedsYouKind[] = ['error', 'waiting', 'asks', 'blocked', 'merge', 'stopped', 'review', 'resolved', 'approved', 'proposed'];
 
 /** How each kind reads after its subject: one, and several. */
 const PHRASE: Record<NeedsYouKind, readonly [one: string, many: string]> = {
   error: ['reported an error', 'reported errors'],
   waiting: ['is waiting for input', 'are waiting for input'],
   asks: ['asks a question', 'ask questions'],
+  blocked: ['had a request blocked by its sandbox', 'had requests blocked by their sandboxes'],
   merge: ['has a merge that stopped', 'have merges that stopped'],
   stopped: ['has a review that stopped', 'have reviews that stopped'],
   review: ['is ready for your review', 'are ready for your review'],
@@ -89,10 +90,23 @@ export function needsYouList(
   worktrees: readonly NeedsYouWorktree[],
   notes: readonly NeedsYouNote[] = [],
   holdsUp: ReadonlyMap<string, readonly string[]> = new Map(),
+  /** Each ticket's blocked requests that wait on the user, by key (BL-273): its row asks about them first. */
+  blocked: ReadonlyMap<string, readonly string[]> = new Map(),
 ): NeedsYou[] {
   const out: NeedsYou[] = [];
   for (const item of items) {
     const held = holdsUp.get(item.id) ?? [];
+    const requests = item.status === 'done' || item.discarded ? [] : (blocked.get(item.id) ?? []);
+    // A new request is news, though the ticket asked about others before.
+    if (requests.length) {
+      out.push({
+        key: `blocked:${item.id}:${[...requests].sort().join('|')}`,
+        kind: 'blocked',
+        ticket: { id: item.id, title: item.title },
+        ...(held.length ? { holdsUp: [...held] } : {}),
+      });
+      continue;
+    }
     const kind = ticketKind(item, held.length > 0);
     if (kind) out.push({ key: `${kind}:${item.id}`, kind, ticket: { id: item.id, title: item.title }, ...(held.length ? { holdsUp: [...held] } : {}) });
   }

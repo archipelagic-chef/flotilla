@@ -256,15 +256,18 @@ export async function applyNetworkPolicy(
   names: readonly string[],
   file: string,
   run: (args: string[]) => Promise<{ code: number; output: string }> = runOpenshell,
+  /** Each sandbox's policy, when it isn't p: p with the rules Allow once loaded into it (BL-273). */
+  policyOf: (name: string) => SecurityPolicy = () => p,
 ): Promise<{ applied: string[]; error?: RuleError }> {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, networkPolicy(p));
   const applied: string[] = [];
   for (const name of names) {
     if ((await run(sandboxGetArgs(name))).code !== 0) continue;
+    const own = policyOf(name);
+    fs.writeFileSync(file, networkPolicy(own));
     const result = await run(policySetArgs(name, file));
     if (result.code === 0) applied.push(name);
-    else if (result.code === POLICY_REFUSED) return { applied, error: refusedRule(p, result.output, name) };
+    else if (result.code === POLICY_REFUSED) return { applied, error: refusedRule(own, result.output, name) };
   }
   return { applied };
 }

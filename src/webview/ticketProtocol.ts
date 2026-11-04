@@ -173,6 +173,8 @@ export interface AuditEntryView {
   blocked: boolean;
   detail?: string;
   key: string;
+  /** Your decision on a blocked request (BL-273): its agent is "You". */
+  decision?: 'once' | 'always' | 'blocked';
 }
 
 /** A ticket's Audit section (BL-272): a page of its sandboxed agents' entries, blocked first, and the counts of all. */

@@ -65,6 +65,11 @@ import {
   sandboxKind,
 } from '../backlog/agentRunner';
 import type { SandboxAudit } from '../backlog/sandboxAudit';
+import type { SandboxRequests } from '../backlog/sandboxRequests';
+import {
+  blockedNeed,
+  type BlockedRequest,
+} from '../../features/sandbox/requests';
 import {
   commitChanges,
   readLog,
@@ -180,6 +185,8 @@ export interface SidebarDeps {
   metrics?: Metrics;
   /** The sandboxed agents' audit (BL-272): a card shows how many of its entries were blocked. */
   audit?: SandboxAudit;
+  /** The requests sandboxes blocked that ask the user (BL-273): a ticket's "Needs you" row asks about them. */
+  requests?: SandboxRequests;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -265,6 +272,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       deps.integrations.onDidChange(() => void this.postBacklog()),
       creatingWorktrees.onDidChange(() => void this.postBacklog()),
       ...(deps.audit ? [deps.audit.onDidChange(() => void this.postBacklog())] : []),
+      ...(deps.requests ? [deps.requests.onDidChange(() => void this.postBacklog())] : []),
       removingWorktrees.onDidChange(() => this.postState()),
       onDidChangeProgress(() => this.post({ type: 'progress', tools: progressByTool() })),
       this.visibility.event((visible) => this.ci.setVisible(visible)),
@@ -446,6 +454,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     // Each ticket's blocked audit entries (BL-272), while agents run sandboxed.
     const sandboxed = sandboxKind() === 'openshell';
     const blockedBy = sandboxed ? (this.deps.audit?.blockedByTicket() ?? new Map<string, number>()) : new Map<string, number>();
+    // Those that wait on the user (BL-273): its "Needs you" row asks about the oldest.
+    const requests = sandboxed ? (this.deps.requests?.pending() ?? new Map<string, BlockedRequest[]>()) : new Map<string, BlockedRequest[]>();
     const items = await Promise.all(
       data.items.map(async (item): Promise<BacklogItemView> => {
         const ticket = await store.readTicketCached(item);
@@ -464,9 +474,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         // A review start waiting for a free agent is the reviewer agent's turn, not the user's (BL-212).
         // Held for a date (BL-261): nothing to do about it before then, so it doesn't need you.
         const held = item.status === 'todo' ? heldUntil(ticket.description) : undefined;
-        const need = held
-          ? undefined
-          : (needOf({ ...item, ...(queued ? { queued } : {}) }, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined));
+        const requested = item.status === 'done' || item.discarded ? undefined : requests.get(item.id);
+        const need = requested?.length
+          ? blockedNeed(requested)
+          : held
+            ? undefined
+            : (needOf({ ...item, ...(queued ? { queued } : {}) }, ticket.activity) ?? (queued?.kind === 'reply' ? queuedNeed(queued) : undefined));
         // The ticket's run: its last run block (the one its Run button runs).
         const last = pickRunBlock(placedRunBlocks(ticket.activity, (e) => LocalBacklog.entryKey(item.id, e)));
         const run = last && { kind: last.block.kind, title: last.block.title, lines: last.block.lines };
@@ -502,6 +515,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ...(linked?.length ? { linked } : {}),
           ...(merge ? { merge } : {}),
           ...(need ? { need } : {}),
+          ...(requested?.length ? { blockedRequest: requestView(requested) } : {}),
           ...(queued
             ? {
                 queued: {
@@ -627,6 +641,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'fix':
         await vscode.commands.executeCommand('flotilla.fixBacklogReview', m.id, m.fix);
         break;
+      case 'sandboxDecide': {
+        // Only this click decides (BL-273): the request is the audit's, found by its key.
+        const result = (await this.deps.requests?.decide(m.id, m.key, m.choice)) ?? { error: 'Sandboxed agents are off.' };
+        if (result.error) void vscode.window.showWarningMessage(result.error);
+        else if (result.done) void vscode.window.setStatusBarMessage(result.done, 6000);
+        return;
+      }
       case 'prioritize':
         await vscode.commands.executeCommand('flotilla.prioritizeBacklogItem', m.id);
         break;
@@ -1309,4 +1330,18 @@ async function setAgentLimit(max: number): Promise<void> {
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
   await config.update(key, max, target);
+}
+
+/** The oldest of a ticket's blocked requests, for its "Needs you" row (BL-273). */
+function requestView(requests: readonly BlockedRequest[]): NonNullable<BacklogItemView['blockedRequest']> {
+  const [r] = requests;
+  return {
+    key: r.key,
+    kind: r.kind,
+    target: r.target,
+    ...(r.program ? { program: r.program } : {}),
+    ...(r.agent ? { agent: r.agent } : {}),
+    at: r.at,
+    more: requests.length - 1,
+  };
 }
