@@ -5,6 +5,8 @@
     { "command": "Flotilla: Open a Scheduled Task's Report" },
     { "waitFor": ".quick-input-widget .monaco-list-row:has-text(\"Docs check\")" },
     { "click": ".quick-input-widget .monaco-list-row:has-text(\"Docs check\")" },
+    { "waitFor": ".quick-input-widget .monaco-list-row:has-text(\"2026-11-01\")" },
+    { "click": ".quick-input-widget .monaco-list-row:has-text(\"2026-11-01\")" },
     { "waitFor": ".page h1:has-text(\"Docs check\")" },
     { "caption": "It renders as a ticket's report does: its diagram drawn, its links to files at their lines" },
     { "waitFor": ".page .rendered svg" },
