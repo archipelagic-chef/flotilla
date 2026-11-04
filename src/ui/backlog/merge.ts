@@ -519,7 +519,6 @@ export class Merger implements vscode.Disposable {
         void this.updateRound(id).catch(showError);
         continue;
       }
-      this.setChain(id);
       const why = asks
         ? 'its agent needs you: answer its question above, then Update from Main and Merge again'
         : !going
@@ -527,7 +526,12 @@ export class Merger implements vscode.Disposable {
           : run.approved
             ? `${label} moved on during each of its agent's ${run.rounds} rounds, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\`. Update from Main and Merge again for ${CHAIN_ROUNDS} more rounds, or land it when ${label} is quieter`
             : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
-      await this.note(id, `Update from Main and Merge stopped: ${why}. Nothing was merged.`);
+      // The note is written before the chain ends: once it's gone, the ticket already says why it stopped.
+      try {
+        await this.note(id, `Update from Main and Merge stopped: ${why}. Nothing was merged.`);
+      } finally {
+        this.setChain(id);
+      }
     }
     if (![...this.chains.values()].includes('resolving')) {
       clearInterval(this.chainTimer);
