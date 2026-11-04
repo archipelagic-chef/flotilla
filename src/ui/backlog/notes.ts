@@ -95,6 +95,8 @@ export class NoteAgents implements vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
   private readonly subscriptions: vscode.Disposable[] = [];
+  /** Disposed (the window closing): a tick still reading the notes then starts nothing. */
+  private disposed = false;
 
   constructor(private readonly deps: NoteAgentsDeps) {
     const watch = deps.notes.watch(() => {
@@ -236,6 +238,7 @@ export class NoteAgents implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.runs.forEach((r) => r.run.stop());
     this.subscriptions.forEach((s) => s.dispose());
   }
@@ -298,7 +301,7 @@ export class NoteAgents implements vscode.Disposable {
    * looks again: a change that one read too early to see (a limit lifted, a run ended) isn't missed.
    */
   async tick(): Promise<void> {
-    if (!this.deps.isLeader()) return;
+    if (this.disposed || !this.deps.isLeader()) return;
     // Asked while one runs (a note's file written, a limit lifted), it looks again after it: that one may have read the
     // notes before the change.
     if (this.ticking) return (this.again ??= this.ticking.then(() => ((this.again = undefined), this.tick())));
@@ -313,7 +316,7 @@ export class NoteAgents implements vscode.Disposable {
         const busy = new Set([...this.runs.values()].flatMap((r) => r.ids));
         const due = nextNotes(await this.deps.notes.list(), busy, Date.now());
         // None starts into the account's usage limit, known to hold (BL-248): they go on when it lifts.
-        if (!due || memoryShortage() || accountLimit.holds()) return;
+        if (this.disposed || !due || memoryShortage() || accountLimit.holds()) return;
         const slot = this.deps.admit(`note:${due[0].id}`);
         if (slot === undefined) return;
         try {

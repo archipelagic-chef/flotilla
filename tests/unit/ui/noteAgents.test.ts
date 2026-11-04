@@ -100,6 +100,15 @@ describe('NoteAgents and Pause All (BL-193)', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('starts nothing from a tick still reading the notes when they are disposed', async () => {
+    // A test's agents, disposed while their tick runs, started a note agent into the next test (seen on BL-273's merge).
+    const ticking = agents.tick();
+    agents.dispose();
+    await ticking;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(runs.started).toHaveLength(0);
+  });
+
   it('stops a running note agent, keeps its note open with its session, and resumes that chat once lifted', async () => {
     await agents.tick();
     await started(1);
