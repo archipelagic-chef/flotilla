@@ -7,6 +7,7 @@ import {
 import { writeAtomic } from './localBacklog';
 import type { UsageLimit } from './limits';
 import {
+  answerFromText,
   parseReport,
   type Question,
 } from './report';
@@ -180,6 +181,57 @@ export function noteQuestion(note: Pick<Note, 'status' | 'activity' | 'agent'>):
 /** A reply without its question blocks (they're shown as choices to click). */
 export function withoutQuestions(body: string): string {
   return body.replace(/^(`{3,})question[\s\S]*?^\1\s*$/gm, '').trim();
+}
+
+/**
+ * A note's activity as its tab shows it (BL-281), entry by entry: an agent's reply that asks holds its questions, and
+ * once your comment after it answered them, the answers (as that comment gave them); that comment keeps only what else
+ * it said, and isn't shown when it said nothing else (null). The note's file keeps the whole comment.
+ */
+export function noteRounds(activity: ReadonlyArray<{ author: string; body: string }>): Array<{ body: string; questions?: Question[]; answer?: string } | null> {
+  const rounds: Array<{ body: string; questions?: Question[]; answer?: string } | null> = activity.map((e) => ({ body: e.body }));
+  activity.forEach((e, i) => {
+    if (!/^agent\s/i.test(e.author)) return;
+    const { questions } = parseReport(e.body);
+    if (!questions.length) return;
+    rounds[i] = { body: withoutQuestions(e.body), questions };
+    // The answer: your first comment after it (not an edit of the note), before its agent wrote again.
+    for (let j = i + 1; j < activity.length && !/^agent\s/i.test(activity[j].author); j++) {
+      const c = activity[j];
+      if (c.author !== 'You' || c.body.startsWith('You edited the note:')) continue;
+      const { answer, extra } = splitAnswer(questions, c.body);
+      rounds[i] = { body: withoutQuestions(e.body), questions, answer };
+      rounds[j] = extra ? { body: extra } : null;
+      return;
+    }
+  });
+  return rounds;
+}
+
+/**
+ * A comment that answered questions, split into the answers (as `answerComment` wrote them) and what you wrote with
+ * them. One question: its answer is the first paragraph when that's one of its choices, else the whole comment (a free
+ * answer can run over paragraphs). Several: each question's "**question** answer" paragraph.
+ */
+export function splitAnswer(questions: Question[], comment: string): { answer: string; extra: string } {
+  const text = comment.trim();
+  if (questions.length === 1) {
+    const q = questions[0];
+    const [first, ...rest] = text.split(/\n\s*\n/);
+    const picked = q.kind === 'text' ? [] : answerFromText(q, first.trim()).picked;
+    const choice = q.kind === 'several' ? picked.length > 0 : picked.length === 1;
+    if (choice && !picked.includes(q.options.length)) return { answer: first.trim(), extra: rest.join('\n\n').trim() };
+    return { answer: text, extra: '' };
+  }
+  const paragraphs = text.split(/\n\s*\n/);
+  const isAnswer = (p: string) => questions.some((q) => p.trim().startsWith(`**${q.text}** `));
+  return {
+    answer: paragraphs.filter(isAnswer).join('\n\n'),
+    extra: paragraphs
+      .filter((p) => !isAnswer(p))
+      .join('\n\n')
+      .trim(),
+  };
 }
 
 /** Whether an agent's reply asks the user (a question block, or a "Needs from you:" line with something). */

@@ -28,11 +28,13 @@ import {
   notePrompt,
   noteQuestion,
   noteReopenPrompt,
+  noteRounds,
   NoteStore,
   noteTitle,
   noteTools,
   ROW_MS,
   SETTLE_MS,
+  splitAnswer,
   textChange,
   withoutQuestions,
 } from '../../../src/features/backlog/notes';
@@ -276,6 +278,63 @@ describe("the agent's prompt and reply", () => {
     expect(q?.questions.map((x) => [x.text, x.options.map((o) => o.text)])).toEqual([['Which?', ['A', 'B']]]);
     // The note's tab shows the reply without its question block, the question being its choices (BL-216).
     expect(withoutQuestions(asking)).toBe('Two ways to do it.\n\nNeeds from you: which one');
+  });
+
+  describe('its questions, in the reply that asks, with your answers (BL-281)', () => {
+    const one = 'Two ways.\nNeeds from you: a pick\n\n```question\nWhich?\n- A (recommended)\n- B\n```';
+    const two = 'More.\nNeeds from you: two\n\n```question\nColour?\n- Red\n- Blue\n```\n\n```question\nName?\n```';
+    const agent = (body: string) => ({ author: 'Agent Vega-2', body });
+    const you = (body: string) => ({ author: 'You', body });
+    const texts = (r: ReturnType<typeof noteRounds>[number]) => r && { ...r, questions: r.questions?.map((q) => q.text) };
+
+    it('holds open questions in the reply that asks', () => {
+      expect(noteRounds([you('The note'), agent(one)]).map(texts)).toEqual([
+        { body: 'The note' },
+        { body: 'Two ways.\nNeeds from you: a pick', questions: ['Which?'] },
+      ]);
+    });
+
+    it('takes the answer from your comment after it, and shows that comment no more', () => {
+      expect(noteRounds([agent(one), { author: 'Flotilla', body: 'Waiting.' }, you('B')]).map(texts)).toEqual([
+        { body: 'Two ways.\nNeeds from you: a pick', questions: ['Which?'], answer: 'B' },
+        { body: 'Waiting.' },
+        null,
+      ]);
+    });
+
+    it('keeps what else your comment said as your entry, and skips your edits of the note', () => {
+      const edit = you('You edited the note:\n\n```diff\n-a\n+b\n```');
+      expect(noteRounds([agent(one), edit, you('A\n\nAnd make it blue.')]).map(texts)).toEqual([
+        { body: 'Two ways.\nNeeds from you: a pick', questions: ['Which?'], answer: 'A' },
+        { body: edit.body },
+        { body: 'And make it blue.' },
+      ]);
+      expect(noteRounds([agent(two), you('**Colour?** Blue\n\n**Name?** Sky\n\nThanks.')]).map(texts)).toEqual([
+        { body: 'More.\nNeeds from you: two', questions: ['Colour?', 'Name?'], answer: '**Colour?** Blue\n\n**Name?** Sky' },
+        { body: 'Thanks.' },
+      ]);
+    });
+
+    it('keeps an earlier round answered when its agent asks again', () => {
+      expect(noteRounds([agent(one), you('B'), agent(two)]).map(texts)).toEqual([
+        { body: 'Two ways.\nNeeds from you: a pick', questions: ['Which?'], answer: 'B' },
+        null,
+        { body: 'More.\nNeeds from you: two', questions: ['Colour?', 'Name?'] },
+      ]);
+      // Its agent wrote again before you answered: your comment answers the newer reply.
+      expect(noteRounds([agent(one), agent(two), you('**Colour?** Red\n\n**Name?** X')]).map((r) => r?.answer)).toEqual([
+        undefined,
+        '**Colour?** Red\n\n**Name?** X',
+        undefined,
+      ]);
+    });
+
+    it('takes a free answer whole, over paragraphs', () => {
+      const q = noteRounds([agent(one)])[0]!.questions!;
+      expect(splitAnswer(q, 'Neither: C\n\nbecause.')).toEqual({ answer: 'Neither: C\n\nbecause.', extra: '' });
+      expect(splitAnswer(q, 'A, B\n\nmore')).toEqual({ answer: 'A, B\n\nmore', extra: '' });
+      expect(splitAnswer(q, 'A\n\nmore')).toEqual({ answer: 'A', extra: 'more' });
+    });
   });
 
   it("gives a note whose agent stopped without a reply Flotilla's line to answer, newer than an earlier reply (BL-203)", () => {
