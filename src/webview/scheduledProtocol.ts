@@ -1,4 +1,4 @@
-/** The sidebar's Scheduled tool (BL-260): the scheduled tasks, when each runs next, what it waits for, its reports. */
+/** The backlog's Scheduled lane (BL-283, was the Scheduled tool of BL-260): the scheduled tasks, when each runs next, what it waits for, its reports. */
 export interface ScheduledTaskView {
   name: string;
   title: string;
@@ -29,7 +29,7 @@ export interface ScheduledView {
 
 export type ScheduledOp = 'run' | 'report' | 'edit' | 'accept' | 'dismiss' | 'folder';
 
-/** From the Scheduled tool. */
+/** From the Scheduled lane. */
 export type ScheduledWebviewMessage =
   /** The tool is shown: send its view (and again as it changes, until it's closed). */
   | { type: 'scheduled' }
@@ -37,5 +37,5 @@ export type ScheduledWebviewMessage =
   /** report: one of its reports (day), else its newest. folder: the schedules folder (no name). */
   | { type: 'scheduledAction'; op: ScheduledOp; name?: string; day?: string };
 
-/** To the Scheduled tool. */
+/** To the Scheduled lane. */
 export type ScheduledHostMessage = { type: 'scheduledView'; view: ScheduledView };

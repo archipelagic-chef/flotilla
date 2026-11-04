@@ -1,4 +1,6 @@
 import { useState } from 'preact/hooks';
+import type { ScheduledView } from '../scheduledProtocol';
+import { ScheduledLane } from './scheduled';
 import { agentCountLabel } from './agentCount';
 import {
   type AgentChoice,
@@ -73,6 +75,8 @@ export interface Props {
   notes: NoteView[];
   /** The discussions talked in (BL-267), newest first: the Discussions section under Notes. */
   discussions: DiscussionRowView[];
+  /** The scheduled tasks (BL-283): the Scheduled lane under Discussions; undefined until the host sends them. */
+  scheduled?: ScheduledView;
   workstreams: WorkstreamView[];
   colors: ReadonlyMap<string, string>;
   /** The board shows only the tickets an agent works on (kept in the view's state). */
@@ -100,6 +104,7 @@ export function BacklogView({
   mergeQueue,
   notes,
   discussions,
+  scheduled,
   workstreams,
   colors,
   workingOnly,
@@ -202,6 +207,7 @@ export function BacklogView({
       )}
       {!workingOnly && <NotesLane notes={notes} />}
       {!workingOnly && <DiscussionsLane discussions={discussions} />}
+      {!workingOnly && <ScheduledLane view={scheduled} />}
       {proposed.length > 0 && (
         <div class="group lane proposed-lane">
           <div class="row group-head">

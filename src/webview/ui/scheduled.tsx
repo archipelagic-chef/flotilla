@@ -6,6 +6,7 @@ import type {
 } from '../scheduledProtocol';
 import { send } from './api';
 import './scheduled.css';
+import { soon } from './scheduledSoon';
 
 const act = (op: ScheduledOp, name?: string, day?: string) => send({ type: 'scheduledAction', op, ...(name ? { name } : {}), ...(day ? { day } : {}) });
 
@@ -135,27 +136,85 @@ function TaskCard({ task }: { task: ScheduledTaskView }) {
   );
 }
 
+/** What a task's row says at its right: Accept / Dismiss, or what it does next, with Run Now. */
+function RowEnd({ task }: { task: ScheduledTaskView }) {
+  const stop = (e: Event) => e.stopPropagation();
+  if (task.proposed)
+    return (
+      <span class="scheduled-actions" onClick={stop}>
+        <button class="icon" title="Accept the task: it runs on its schedule" aria-label={`Accept ${task.title}`} onClick={() => act('accept', task.name)}>
+          <i class="codicon codicon-check" />
+        </button>
+        <button class="icon" title="Dismiss the task: its file is deleted" aria-label={`Dismiss ${task.title}`} onClick={() => act('dismiss', task.name)}>
+          <i class="codicon codicon-close" />
+        </button>
+      </span>
+    );
+  if (task.error) return <span class="scheduled-when error">error</span>;
+  const label = task.running ? 'running…' : task.paused ? 'paused' : task.due ? 'due' : task.next ? soon(task.next) : 'not again';
+  return (
+    <span class="scheduled-actions" onClick={stop}>
+      <span class={`scheduled-when${task.due && !task.running ? ' waiting' : ''}`} title={task.next ? `Next: ${when(task.next)}` : undefined}>
+        {label}
+      </span>
+      <button
+        class="icon"
+        title="Run Now: its agent starts at once, if an agent slot is free"
+        aria-label={`Run ${task.title} now`}
+        disabled={task.running}
+        onClick={() => act('run', task.name)}
+      >
+        <i class="codicon codicon-play" />
+      </button>
+    </span>
+  );
+}
+
+/** The rows opened, kept while the view lives: a card stays open after a visit to another tool. */
+const openRows = new Set<string>();
+
+/** A task's row in the lane; clicking it opens its full card (status, reports, Edit) under it. */
+function TaskRow({ task }: { task: ScheduledTaskView }) {
+  const [open, setOpenState] = useState(openRows.has(task.name));
+  const setOpen = (on: boolean) => {
+    if (on) openRows.add(task.name);
+    else openRows.delete(task.name);
+    setOpenState(on);
+  };
+  const icon = task.error ? 'warning' : task.proposed ? 'lightbulb' : task.running ? 'loading codicon-modifier-spin' : 'clock';
+  return (
+    <div class={`scheduled-item${open ? ' is-open' : ''}`} data-task={task.name}>
+      <div class="row scheduled-row" role="button" aria-expanded={open} title={task.schedule} onClick={() => setOpen(!open)}>
+        <i class={`codicon codicon-${icon}`} />
+        <span class="name">{task.title}</span>
+        <RowEnd task={task} />
+      </div>
+      {open && <TaskCard task={task} />}
+    </div>
+  );
+}
+
 /**
- * The Scheduled tool (BL-260): every task in .flotilla/backlog/schedules/, proposed ones first, each with when it runs
- * next (or what it waits for), its reports, Run Now and Edit.
+ * The board's Scheduled lane (BL-283), after Discussions: a row per task in .flotilla/backlog/schedules/, proposed
+ * ones first, each with what it does next and Run Now (or Accept / Dismiss); a row opens the task's card. Hidden with
+ * no tasks.
  */
-export function ScheduledBody({ view }: { view?: ScheduledView }) {
-  if (!view) return <div class="empty">Loading the scheduled tasks…</div>;
+export function ScheduledLane({ view }: { view?: ScheduledView }) {
+  if (!view?.tasks.length) return null;
   const tasks = [...view.tasks].sort((a, b) => Number(!!b.proposed) - Number(!!a.proposed));
   return (
-    <div class="scheduled">
-      {tasks.length ? (
-        tasks.map((t) => <TaskCard key={t.name} task={t} />)
-      ) : (
-        <div class="empty">
-          No scheduled tasks yet. A task is a Markdown file in {view.dir}: an <code>every:</code> or <code>once:</code> line in its front matter, and what its
-          agent does.
-        </div>
-      )}
-      <div class="scheduled-foot">
-        <button class="link" title={view.dir} onClick={() => act('folder')}>
-          Open the tasks' folder
+    <div class="group lane scheduled-lane">
+      <div class="row group-head">
+        <span class="name">Scheduled</span>
+        <button class="icon" title={`Open the tasks' folder: ${view.dir}`} aria-label="Open the tasks' folder" onClick={() => act('folder')}>
+          <i class="codicon codicon-folder-opened" />
         </button>
+        <span class="badge">{tasks.length}</span>
+      </div>
+      <div class="lane-body">
+        {tasks.map((t) => (
+          <TaskRow key={t.name} task={t} />
+        ))}
       </div>
     </div>
   );

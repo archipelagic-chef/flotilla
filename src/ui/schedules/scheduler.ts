@@ -83,7 +83,7 @@ export class Scheduler implements vscode.Disposable {
   private readonly settle: NodeJS.Timeout;
   private readonly opened = Date.now();
   private readonly changed = new vscode.EventEmitter<void>();
-  /** A run started or ended, or a task's file or report changed: the Scheduled tool shows it again. */
+  /** A run started or ended, or a task's file or report changed: the backlog's Scheduled lane shows it again. */
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly deps: SchedulerDeps) {
@@ -107,7 +107,7 @@ export class Scheduler implements vscode.Disposable {
     return w;
   }
 
-  /** The Scheduled tool's view (BL-260): each task, when it runs next, what a due one waits for, its reports. */
+  /** The backlog's Scheduled lane's view (BL-260, BL-283): each task, when it runs next, what a due one waits for, its reports. */
   async view(now = new Date()): Promise<ScheduledView> {
     const v = this.deps.autopilot();
     const tasks: ScheduledTaskView[] = [];
