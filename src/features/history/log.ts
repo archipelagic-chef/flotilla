@@ -242,6 +242,15 @@ export async function ticketCommits(cwd: string, opts: { branches: string[]; bas
   return [...byHash.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, opts.limit);
 }
 
+/**
+ * A ticket's own commits (BL-275): on a branch other tickets share (shared), only those whose message starts with one
+ * of its ids ("BL-3: …"); those on a branch of its own, or found by mentioning it, are all its.
+ */
+export function ownCommits<C extends Pick<TicketCommit, 'subject' | 'branches'>>(commits: C[], ids: string[], shared: ReadonlySet<string>): C[] {
+  const own = (subject: string) => ids.some((id) => subject.startsWith(id) && !/[\w-]/.test(subject.charAt(id.length)));
+  return commits.filter((c) => !c.branches.length || c.branches.some((b) => !shared.has(b)) || own(c.subject));
+}
+
 /** The commits of a history kept from a clean-up (from where it started to its tip), newest first. */
 export async function versionCommits(cwd: string, base: string, tip: string, limit: number): Promise<TicketCommit[]> {
   const commits = await runGit(['-c', 'log.showSignature=false', 'log', `--format=${FORMAT}`, '-n', String(limit), `${base}..${tip}`, '--'], { cwd })

@@ -6,6 +6,7 @@ import {
 } from 'vitest';
 import {
   commitChanges,
+  ownCommits,
   readLog,
   ticketCommits,
 } from '../../../src/features/history/log';
@@ -110,5 +111,30 @@ describe('ticketCommits', () => {
       // "BL-12" isn't BL-1.
       ['Prepare ABC-7 on main', []],
     ]);
+  });
+});
+
+describe('ownCommits (BL-275)', () => {
+  const c = (subject: string, branches: string[]) => ({ subject, branches });
+  const shared = new Set(['feature/storage-follow-ups']);
+
+  it("keeps only the ticket's own commits on a branch other tickets share", () => {
+    const commits = [
+      c('BL-3: Keep the chats', ['feature/storage-follow-ups']),
+      c('BL-4: Keep the notes', ['feature/storage-follow-ups']),
+      c('BL-30: Not this one either', ['feature/storage-follow-ups']),
+      c('Tidy up', ['feature/storage-follow-ups']),
+    ];
+    expect(ownCommits(commits, ['BL-3'], shared).map((x) => x.subject)).toEqual(['BL-3: Keep the chats']);
+  });
+
+  it('keeps every commit of a branch of its own, on a ticket with two branches too', () => {
+    const commits = [c('Tidy up', ['feature/BL-3-a']), c('More', ['feature/BL-3-b']), c('BL-4: also here', ['feature/storage-follow-ups', 'feature/BL-3-a'])];
+    expect(ownCommits(commits, ['BL-3'], shared)).toEqual(commits);
+  });
+
+  it('keeps the commits found by mentioning it (merged: on no branch anymore)', () => {
+    const commits = [c('Merge BL-3', [])];
+    expect(ownCommits(commits, ['BL-3'], shared)).toEqual(commits);
   });
 });
