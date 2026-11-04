@@ -88,6 +88,13 @@ describe('what the ticket says about it', () => {
     expect(driftNotes(check([['x', ['a.ts']]]), check([['x', []]], 'b2'))).toEqual(['Branch `x` merges cleanly with main again.']);
   });
 
+  it('says the merge train lands one it takes in, rather than pointing to Update from Main (BL-282)', () => {
+    const [conflict] = driftNotes(check([['x', []]]), check([['x', ['a.ts']]], 'b2'), { inTrain: true });
+    expect(conflict).toContain('`x` now conflicts with main (`a.ts`)');
+    expect(conflict).toContain('The merge train takes it in as it is');
+    expect(conflict).not.toContain('Update from Main');
+  });
+
   it('says nothing when nothing changes, or a first check finds no conflicts', () => {
     expect(driftNotes(undefined, check([['x', []]]))).toEqual([]);
     expect(driftNotes(check([['x', ['a.ts']]]), check([['x', ['a.ts', 'c.ts']]], 'b2'))).toEqual([]);

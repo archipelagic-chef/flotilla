@@ -44,6 +44,7 @@ describe('keeping open tickets current with main', () => {
   let sync: MainSync;
   let handed: Array<{ id: string; prompt: string }>;
   let agentRunning: boolean;
+  let inTrain: boolean;
 
   beforeEach(async () => {
     warnings.length = 0;
@@ -62,6 +63,7 @@ describe('keeping open tickets current with main', () => {
     });
     handed = [];
     agentRunning = false;
+    inTrain = false;
     const ws = { key: 'bl1', worktree: { isMain: false, path: wt, branch: 'feature/BL-1-x' }, chats: [], changes: [] as unknown[], sync: {} };
     sync = new MainSync({
       backlog: store,
@@ -73,6 +75,7 @@ describe('keeping open tickets current with main', () => {
       mainRoot: repo,
       isLeader: () => true,
       output: { appendLine: () => undefined } as never,
+      landsInTrain: () => inTrain,
     });
   });
 
@@ -101,6 +104,15 @@ describe('keeping open tickets current with main', () => {
     await sync.check();
     expect((await item()).mainCheck?.branches[0].conflicts).toEqual([]);
     expect((await activity()).at(-1)).toBe('Branch `feature/BL-1-x` merges cleanly with main again.');
+  });
+
+  it('says the merge train lands a ticket it takes in when its branch comes to conflict with main (BL-282)', async () => {
+    inTrain = true;
+    commitIn(wt, 'one\nTWO\nthree\n');
+    await sync.check();
+    commitIn(repo, 'one\n2\nthree\n');
+    await sync.check();
+    expect((await activity()).at(-1)).toContain('The merge train takes it in as it is');
   });
 
   it('drops the last check of a ticket that is done, so it no longer shows a conflict', async () => {

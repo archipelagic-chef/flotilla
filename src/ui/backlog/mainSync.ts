@@ -40,6 +40,8 @@ export interface MainSyncDeps {
   /** Only the leading window checks (and notes what it finds in the tickets). */
   isLeader: () => boolean;
   output: vscode.OutputChannel;
+  /** The merge train takes the queued ticket in as it is (BL-282): its branch conflicting with main doesn't stop it. */
+  landsInTrain?(id: string): boolean;
 }
 
 /** What Update from Main did: merged main into the branch (or it had it), handed the conflicts to its agent, or stopped. */
@@ -136,7 +138,7 @@ export class MainSync implements vscode.Disposable {
     await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (checks.has(i.id) ? { ...i, mainCheck: checks.get(i.id) } : i)) }));
     for (const [id, next] of checks) {
       const item = open.find((i) => i.id === id)!;
-      const notes = driftNotes(before.get(id), next);
+      const notes = driftNotes(before.get(id), next, { inTrain: !!this.deps.landsInTrain?.(id) });
       for (const b of next.branches) {
         const was = before.get(id)?.branches.find((w) => w.branch === b.branch)?.conflicts ?? [];
         if (b.conflicts.length && b.conflicts.join('\0') !== was.join('\0'))

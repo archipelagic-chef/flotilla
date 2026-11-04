@@ -486,7 +486,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   tickets.useChecker(checker);
   // Open tickets' branches checked against main when either moves (BL-55); Update from Main in the ticket.
-  const mainSync = new MainSync({ backlog, repository, reviews, mainRoot: location.mainRoot, isLeader: () => leader.isLeader, output });
+  const mainSync = new MainSync({
+    backlog,
+    repository,
+    reviews,
+    mainRoot: location.mainRoot,
+    isLeader: () => leader.isLeader,
+    output,
+    landsInTrain: (id) => merger.landsInTrain(id),
+  });
   context.subscriptions.push(mainSync);
   tickets.useMainSync(mainSync);
   // Tickets nobody works on yet are talked through with an agent in a chat (BL-188); Discuss opens that.
