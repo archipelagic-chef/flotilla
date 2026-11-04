@@ -399,6 +399,10 @@ export class NoteStore {
     if (note.status === 'draft') throw new Error(`${id} wasn't sent yet.`);
     if (!text.trim()) throw new Error('The note has no text.');
     if (text.trim() === note.text) return false;
+    // A note no agent has picked up settles again from now, before its new text is written: else the watcher's tick, in
+    // between, takes it as settled long ago and starts its agent on it.
+    const settling = (s: NoteState): NoteState => (s.status === 'open' && !s.session && !s.with ? { ...s, edited: now.toISOString() } : s);
+    if (settling(note) !== note) await this.setState(id, settling);
     const next = this.queue.then(async () => {
       const ticket = parseTicket((await fs.promises.readFile(this.file(id), 'utf8')).replace(/<!--[\s\S]*?-->/g, ''));
       const entry = { date: entryDate(now), author: 'You', body: editEntry(ticket.description, text) };
