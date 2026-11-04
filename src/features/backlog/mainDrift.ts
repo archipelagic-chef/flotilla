@@ -65,17 +65,18 @@ export function baseLabel(base: string): string {
 /**
  * What the ticket notes when a check changes how its branches merge with the base: a branch that now conflicts, or
  * one that merges cleanly again. Nothing for the first check that finds no conflicts, or a list of files that changes.
+ * inTrain: the merge train takes the ticket in as it is (its resolution recorded), so it lands from there (BL-282).
  */
-export function driftNotes(prev: MainCheck | undefined, next: MainCheck): string[] {
+export function driftNotes(prev: MainCheck | undefined, next: MainCheck, o: { inTrain?: boolean } = {}): string[] {
   const label = baseLabel(next.base);
   return next.branches.flatMap((b) => {
     const was = prev?.branches.find((p) => p.branch === b.branch);
     const before = (was?.conflicts.length ?? 0) > 0;
     const now = b.conflicts.length > 0;
     if (now && !before) {
-      return [
-        `Branch \`${b.branch}\` now conflicts with ${label} (${fileList(b.conflicts, 10)}): ${label} moved on since it branched. **Update from ${capitalize(label)}** merges ${label} into it, handing the conflicts to its agent.`,
-      ];
+      const what = `Branch \`${b.branch}\` now conflicts with ${label} (${fileList(b.conflicts, 10)}): ${label} moved on since it branched.`;
+      if (o.inTrain) return [`${what} The merge train takes it in as it is, its resolution recorded: it lands from there, with nothing for you to do.`];
+      return [`${what} **Update from ${capitalize(label)}** merges ${label} into it, handing the conflicts to its agent.`];
     }
     if (!now && before) return [`Branch \`${b.branch}\` merges cleanly with ${label} again.`];
     return [];
