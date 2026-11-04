@@ -129,7 +129,7 @@ async function agentDone(backlog: LocalBacklog, merger: unknown, id: string, fro
   (merger as Private).runs.set(id, run);
 }
 
-async function setup(items: BacklogItem[]) {
+async function setup(items: BacklogItem[], deps: object = {}) {
   const { LocalBacklog } = await import('../../../src/features/backlog/localBacklog');
   const { Merger } = await import('../../../src/ui/backlog/merge');
   const repo = initRepo();
@@ -138,7 +138,7 @@ async function setup(items: BacklogItem[]) {
   const backlog = new LocalBacklog(home, path.join(repo, '.git'));
   await backlog.change(() => ({ version: 1, next: 1, items }));
   const repository = { current: [{ key: 'main', worktree: { branch: 'main', path: repo, isMain: true }, chats: [] }] };
-  const merger = new Merger({ backlog, repository, mainRoot: repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv } as never);
+  const merger = new Merger({ backlog, repository, mainRoot: repo, output: { appendLine() {} }, openTicket() {}, checksEnv: fakeChecksEnv, ...deps } as never);
   const item = async (id: string) => (await backlog.read()).items.find((i) => i.id === id)!;
   const worktrees = () => git(repo, 'worktree', 'list').split('\n').length;
   return { repo, backlog, merger, item, worktrees };
@@ -941,6 +941,26 @@ describe('The merge queue (BL-140)', () => {
     merger.dispose();
   });
 
+  it('Update from Main and Merge lands a ticket the train takes in from the train: no rebase, no hand-off (BL-282)', async () => {
+    let updates = 0;
+    const { repo, merger, item } = await setup([approved('BL-1'), approved('BL-2')], { updateFromMain: async () => (updates++, 'handed' as const) });
+    branches(repo);
+    ui.settings['merge.onApprove'] = 'off';
+    await merger.approved('BL-2', 'Rex-1');
+    await merger.approved('BL-1', 'Rex-1');
+    await merger.refreshTrain();
+    expect(merger.landsInTrain('BL-1')).toBe(true);
+    ui.answers = ['Land 2'];
+
+    await merger.updateAndMerge('BL-1');
+
+    expect(updates).toBe(0);
+    expect((await item('BL-1')).status).toBe('done');
+    expect((await item('BL-2')).status).toBe('done');
+    expect(merger.chainOf('BL-1')).toBeUndefined();
+    merger.dispose();
+  });
+
   it('Merge All Ready lets a ticket that conflicts with the ones ahead wait, and lands the ones behind it', async () => {
     const { repo, backlog, merger, item } = await setup([approved('BL-2'), approved('BL-3'), approved('BL-1')]);
     branches(repo);
@@ -1282,7 +1302,8 @@ describe('Update from Main and Merge (BL-154)', () => {
     commit(repo, 'a.txt', 'ours\n', 'BL-1: a');
     git(repo, 'checkout', '-q', 'main');
     commit(repo, 'a.txt', 'theirs\n', 'main: a');
-    const state = { working: false, updates: 0 };
+    // quick: its agent is done as soon as it's handed the branch.
+    const state = { working: false, updates: 0, quick: false };
     // Its agent: main merged into the branch, the conflict resolved its way.
     const resolve = () => {
       git(repo, 'checkout', '-q', 'feature/BL-1-one');
@@ -1299,7 +1320,7 @@ describe('Update from Main and Merge (BL-154)', () => {
       checksEnv: fakeChecksEnv,
       chainPollMs: 10,
       agentWorking: () => state.working,
-      updateFromMain: async () => (state.updates++, (state.working = true), 'handed' as const),
+      updateFromMain: async () => (state.updates++, (state.working = !state.quick), 'handed' as const),
     } as never);
     const item = async () => (await backlog.read()).items.find((i) => i.id === 'BL-1')!;
     const review = (state: 'revising' | 'approved') =>
@@ -1307,7 +1328,11 @@ describe('Update from Main and Merge (BL-154)', () => {
         ...d,
         items: d.items.map((i) => ({ ...i, status: state === 'approved' ? 'review' : 'doing', review: { ...i.review!, state } })),
       }));
-    return { repo, merger, item, state, resolve, review };
+    const activity = async () => (await backlog.readTicket(await item())).activity;
+    // Its agent's hand-off: back in review, for you (a ticket you approved comes back to you, see ReviewLoop).
+    const handOff = () =>
+      backlog.change((d) => ({ ...d, items: d.items.map((i) => ({ ...i, status: 'review', review: { ...i.review!, state: 'yours', byUser: true } })) }));
+    return { repo, backlog, merger, item, state, resolve, review, activity, handOff };
   }
 
   it('hands the conflicts to its agent, then merges once it has resolved them', async () => {
@@ -1333,16 +1358,61 @@ describe('Update from Main and Merge (BL-154)', () => {
     merger.dispose();
   });
 
-  it('stops, merging nothing, when its agent is done and the branch still conflicts', async () => {
-    const { repo, merger, item, state } = await conflicting();
+  it('hands it back to its agent while main moves, and stops after 3 rounds, merging nothing (BL-282)', async () => {
+    const { repo, merger, item, state, activity } = await conflicting();
     const before = git(repo, 'rev-parse', 'main');
+    state.quick = true;
 
     await merger.updateAndMerge('BL-1');
+    await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
+
+    expect(state.updates).toBe(3);
+    expect(git(repo, 'rev-parse', 'main')).toBe(before);
+    // It stays approved, in review: Update from Main and Merge again goes on from there.
+    expect((await item()).status).toBe('review');
+    const notes = (await activity()).map((e) => e.body);
+    expect(notes.filter((b) => b.includes("It's handed back to its agent"))).toHaveLength(2);
+    expect(notes.at(-1)).toContain("main moved on during each of its agent's 3 rounds");
+    merger.dispose();
+  });
+
+  it('stops for you when its agent asks you something (BL-282)', async () => {
+    const { backlog, merger, state, activity } = await conflicting();
+
+    await merger.updateAndMerge('BL-1');
+    await backlog.change((d) => ({ ...d, items: d.items.map((i) => ({ ...i, status: 'doing', review: { ...i.review!, state: 'asking' } })) }));
     state.working = false;
     await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
 
-    expect(git(repo, 'rev-parse', 'main')).toBe(before);
-    expect((await item()).status).toBe('review');
+    expect(state.updates).toBe(1);
+    expect((await activity()).at(-1)!.body).toContain('its agent needs you');
+    merger.dispose();
+  });
+
+  it('lands with your one approval when main moves while its agent resolves (BL-263, BL-282)', async () => {
+    const { repo, merger, item, state, resolve, activity, handOff } = await conflicting();
+
+    // Approved, it conflicts: its agent takes main in (round 1).
+    await merger.updateAndMerge('BL-1');
+    await handOff();
+    resolve();
+    // Main moves on while it works, conflicting again.
+    commit(repo, 'a.txt', 'theirs again\n', 'main: a again');
+    state.working = false;
+    // Approved without asking, and handed back to its agent (round 2).
+    await vi.waitFor(() => expect(state.updates).toBe(2), { timeout: 10_000 });
+    expect(merger.chainOf('BL-1')).toBe('resolving');
+    await handOff();
+    resolve();
+    state.working = false;
+
+    await vi.waitFor(() => expect(merger.chainOf('BL-1')).toBeUndefined(), { timeout: 10_000 });
+    expect((await item()).status).toBe('done');
+    expect(git(repo, 'log', '-1', '--format=%s', 'main')).toBe('Merge BL-1: Item BL-1');
+    const entries = await activity();
+    expect(entries.filter((e) => e.author === 'You')).toHaveLength(0);
+    expect(entries.filter((e) => e.body.startsWith('Approved automatically (Update from Main and Merge)'))).toHaveLength(2);
+    expect(entries.some((e) => e.body.includes('round 2 of 3'))).toBe(true);
     merger.dispose();
   });
 });

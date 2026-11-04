@@ -84,6 +84,7 @@ import {
   trainState,
 } from '../../features/backlog/mergeTrain';
 import { entryDate } from '../../features/backlog/ticket';
+import { baseLabel } from '../../features/backlog/mainDrift';
 import { resolveBase } from '../../features/workstreams/progress';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { MergeQueueView } from '../../webview/protocol';
@@ -117,6 +118,9 @@ export type Chain = 'updating' | 'resolving' | 'merging';
 
 /** How often Update from Main and Merge looks whether its agent is done resolving. */
 const CHAIN_POLL_MS = 15_000;
+
+/** How many rounds in a row Update from Main and Merge hands a branch to its agent, main moving meanwhile (BL-282). */
+export const CHAIN_ROUNDS = 3;
 
 export interface MergeDeps {
   backlog: LocalBacklog;
@@ -227,7 +231,10 @@ export class Merger implements vscode.Disposable {
   private readonly ciStops = new Map<string, CiStop>();
   /** Update from Main and Merge under way (BL-154), by ticket: the part it's at. */
   private readonly chains = new Map<string, Chain>();
+  /** A chain's rounds with its agent, and whether you had approved the ticket when it started (BL-282). */
+  private readonly chainRuns = new Map<string, { approved: boolean; rounds: number }>();
   private chainTimer: NodeJS.Timeout | undefined;
+  private checkingChains = false;
   /** The merge queue and its train as last read (BL-140), for the views. */
   /**
    * Land All, Resolving Conflicts (BL-226): what its run landed, what needs you, what was taken out of the queue; going
@@ -422,19 +429,40 @@ export class Merger implements vscode.Disposable {
     if (this.chains.has(id) || !this.deps.updateFromMain) return;
     // A merge of it under way (its resolution approved, waiting for CI or its turn) lands it: its branch isn't
     // rebased again, nor handed back to its agent (BL-227).
-    if (this.runsMergeOf(id) || (await this.item(id))?.merging) {
+    const item = await this.item(id);
+    if (this.runsMergeOf(id) || item?.merging) {
       void vscode.window.showInformationMessage(`${id} is being merged already: its ticket says where it is.`);
       return;
     }
+    // The merge train takes it in as it is (its resolution recorded): it lands from there, its branch as it is (BL-282).
+    if (item && readyToMerge(item) && this.landsInTrain(id)) return this.mergeChained(id);
+    this.chainRuns.set(id, { approved: !!item && readyToMerge(item), rounds: 0 });
+    return this.updateRound(id);
+  }
+
+  /** The merge train takes the queued ticket in as it is: its train commit is made (BL-282). */
+  landsInTrain(id: string): boolean {
+    return this.queueSeen.queue.includes(id) && !!this.queueSeen.train?.entries.find((e) => e.id === id)?.commit;
+  }
+
+  /** A round of Update from Main and Merge: main taken into the branch, by its agent when it conflicts. */
+  private async updateRound(id: string): Promise<void> {
+    const run = this.chainRuns.get(id) ?? { approved: false, rounds: 0 };
     this.setChain(id, 'updating');
-    const outcome = await this.deps.updateFromMain(id).catch((e: unknown) => {
+    this.chainRuns.set(id, run);
+    const outcome = await this.deps.updateFromMain!(id).catch((e: unknown) => {
       this.setChain(id);
       throw e;
     });
     if (outcome === 'updated') return this.mergeChained(id);
     if (outcome !== 'handed') return this.setChain(id);
+    run.rounds++;
     this.setChain(id, 'resolving');
-    await this.note(id, `Update from Main and Merge: its agent resolves the conflicts with main; once they're resolved, it merges.`);
+    if (run.rounds === 1)
+      await this.note(
+        id,
+        `Update from Main and Merge: its agent resolves the conflicts with main; once they're resolved, it merges${run.approved ? ', approved as you approved it' : ''}.`,
+      );
     this.chainTimer ??= setInterval(() => void this.checkChains().catch(showError), this.deps.chainPollMs ?? CHAIN_POLL_MS);
   }
 
@@ -448,24 +476,57 @@ export class Merger implements vscode.Disposable {
   }
 
   /**
-   * The chains whose agent is resolving: each merges once its agent is done, the work approved again (its hand-off goes
-   * through review: an approval waiting for you holds it there) and its branch takes main in cleanly.
+   * The chains whose agent is resolving: each merges once its agent is done, the work approved and its branch takes
+   * main in cleanly. A ticket you had approved stays approved: its agent's hand-off is approved without asking, and a
+   * branch that conflicts again (main moved meanwhile) goes back to its agent, up to CHAIN_ROUNDS rounds (BL-282).
+   * Without that approval, its hand-off goes through review: an approval waiting for you holds it there.
    */
   async checkChains(): Promise<void> {
+    // One look at a time: a poll that overlaps a slow one would hand a branch to its agent twice.
+    if (this.checkingChains) return;
+    this.checkingChains = true;
+    try {
+      await this.checkChainsNow();
+    } finally {
+      this.checkingChains = false;
+    }
+  }
+
+  private async checkChainsNow(): Promise<void> {
     const base = await this.baseBranch().catch(() => undefined);
     for (const [id, chain] of this.chains) {
       if (chain !== 'resolving' || this.deps.agentWorking?.(id)) continue;
-      const item = await this.item(id);
+      const run = this.chainRuns.get(id) ?? { approved: false, rounds: 1 };
+      let item = await this.item(id);
       const going = !!item && item.status !== 'done' && !!item.review && item.review.state !== 'stopped';
-      if (item && going && !readyToMerge(item)) continue;
+      const asks = going && item!.review!.state === 'asking';
+      if (item && going && !asks && !readyToMerge(item)) {
+        if (!run.approved || item.status !== 'review' || item.review?.state !== 'yours') continue;
+        item = await this.approveChained(item, run.rounds);
+      }
       const branch = item && base && (await this.branchOf(item, base, true));
       const conflicts = branch ? await mergeConflicts(this.deps.mainRoot, branch, base).catch(() => ['?']) : ['?'];
-      if (item && going && !conflicts.length) {
+      if (item && going && !asks && !conflicts.length) {
         void this.mergeChained(id).catch(showError);
         continue;
       }
+      const label = baseLabel(base ?? 'main');
+      if (item && going && !asks && run.approved && run.rounds < CHAIN_ROUNDS) {
+        await this.note(
+          id,
+          `Update from Main and Merge: its agent is done, but ${label} moved on meanwhile and \`${branch ?? 'its branch'}\` conflicts again (${conflicts.map((f) => `\`${f}\``).join(', ')}). It's handed back to its agent: round ${run.rounds + 1} of ${CHAIN_ROUNDS}.`,
+        );
+        void this.updateRound(id).catch(showError);
+        continue;
+      }
       this.setChain(id);
-      const why = !going ? 'its review stopped' : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
+      const why = asks
+        ? 'its agent needs you: answer its question above, then Update from Main and Merge again'
+        : !going
+          ? 'its review stopped'
+          : run.approved
+            ? `${label} moved on during each of its agent's ${run.rounds} rounds, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\`. Update from Main and Merge again for ${CHAIN_ROUNDS} more rounds, or land it when ${label} is quieter`
+            : `its agent is done, and \`${branch ?? 'its branch'}\` still conflicts with \`${base ?? 'main'}\``;
       await this.note(id, `Update from Main and Merge stopped: ${why}. Nothing was merged.`);
     }
     if (![...this.chains.values()].includes('resolving')) {
@@ -474,9 +535,28 @@ export class Merger implements vscode.Disposable {
     }
   }
 
+  /** Its agent's hand-off in Update from Main and Merge, approved without asking: you had approved the ticket (BL-282). */
+  private async approveChained(item: BacklogItem, round: number): Promise<BacklogItem | undefined> {
+    await this.deps.backlog.change(
+      (d) => ({
+        ...d,
+        items: d.items.map((i) =>
+          i.id === item.id && i.review ? { ...i, review: { ...i.review, state: 'approved' as const, byUser: true, reason: undefined } } : i,
+        ),
+      }),
+      { by: 'Flotilla' },
+    );
+    recordEvent('merge-approved', { ticket: item.id, data: { by: 'Update from Main and Merge' } });
+    await this.note(
+      item.id,
+      `Approved automatically (Update from Main and Merge): you had approved the ticket, and its agent took main in${round > 1 ? ` again (round ${round})` : ''}. It merges after its checks.`,
+    );
+    return this.item(item.id);
+  }
+
   private setChain(id: string, chain?: Chain): void {
     if (chain) this.chains.set(id, chain);
-    else this.chains.delete(id);
+    else (this.chains.delete(id), this.chainRuns.delete(id));
     this.changed.fire();
   }
 
