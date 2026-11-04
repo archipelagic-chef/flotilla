@@ -1027,6 +1027,11 @@ function seedSchedules(backlog, now) {
       '',
     ].join('\n'),
   );
+  // The tickets that run proposed (BL-262): one accepted (BL-2), one still in Needs you (BL-4), one dismissed.
+  fs.writeFileSync(
+    path.join(dir, 'docs-check', `${name}.tickets`),
+    "BL-2\tKeep the sidebar's scroll on refresh\nBL-4\tSort the backlog by priority\nBL-90\tDocument the Run button in the README\n",
+  );
   // The run the week before, and a task an agent proposed, for the Scheduled view.
   const before = new Date(day.getTime() - 7 * 86_400_000);
   const earlier = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, '0')}-${String(before.getDate()).padStart(2, '0')}`;
