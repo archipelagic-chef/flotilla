@@ -25,6 +25,8 @@ export interface AuditEntry {
   detail?: string;
   /** The line's hash: a line read twice is kept once. */
   key: string;
+  /** The user's decision on a blocked request (BL-273), not the sandbox's: its agent is "You". */
+  decision?: 'once' | 'always' | 'blocked';
 }
 
 /** The agents that ran in a sandbox, and the ticket it's for. */
@@ -235,4 +237,10 @@ export function keepAudit(dir: string, sandbox: string, text: string): number {
   fs.mkdirSync(dir, { recursive: true });
   fs.appendFileSync(logFile(dir, sandbox), added.map((e) => JSON.stringify(e)).join('\n') + '\n');
   return added.length;
+}
+
+/** Adds an entry Flotilla made (the user's decision, BL-273) to a sandbox's log. */
+export function appendAudit(dir: string, e: AuditEntry): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.appendFileSync(logFile(dir, e.sandbox), `${JSON.stringify(e)}\n`);
 }

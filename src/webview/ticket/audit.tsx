@@ -63,7 +63,7 @@ export function AuditTable({
             <td class="audit-target" title={e.detail ? `${e.target}: ${e.detail}` : e.target}>
               {e.target}
               {/* Why it was blocked, and the program that tried, shown in its row; an allowed one's policy is in its tooltip. */}
-              {e.blocked && e.detail && <div class="audit-detail">{e.detail}</div>}
+              {(e.blocked || e.decision) && e.detail && <div class="audit-detail">{e.detail}</div>}
             </td>
             <td class="audit-result" title={e.detail}>
               {e.blocked ? (

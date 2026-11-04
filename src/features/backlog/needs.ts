@@ -25,7 +25,7 @@ export const waitsForSignIn = (i: BacklogItem): boolean =>
  * approved work not merged yet, a merge that stopped or waits for approval, a stopped review, a start that failed, a reply queued for an agent. Shared by the host
  * and the webview (no node or vscode APIs).
  */
-export type NeedKind = 'asking' | 'yours' | 'approved' | 'merge' | 'stopped' | 'failed' | 'queued' | 'sister';
+export type NeedKind = 'asking' | 'yours' | 'approved' | 'merge' | 'stopped' | 'failed' | 'queued' | 'sister' | 'blocked';
 
 export interface Need {
   kind: NeedKind;

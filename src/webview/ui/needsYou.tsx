@@ -36,6 +36,7 @@ const NEED_ICON: Record<NeedKind, string> = {
   failed: 'error',
   queued: 'clock',
   sister: 'references',
+  blocked: 'shield',
 };
 const NEED_TITLE: Record<NeedKind, string> = {
   asking: 'Has a question for you',
@@ -46,6 +47,7 @@ const NEED_TITLE: Record<NeedKind, string> = {
   failed: "The autopilot couldn't start it",
   queued: 'Your reply waits for a free agent',
   sister: "Another ticket's change covers it, or is at odds with it",
+  blocked: 'Its sandbox blocked a request: allow it, or keep it blocked',
 };
 
 /**
@@ -153,6 +155,9 @@ function NeedRow({ item }: { item: BacklogItem }) {
       <span class="item-id">{item.id}</span>
       <span class="name">{item.title}</span>
       <span class="need-line">{need.line}</span>
+      {need.kind === 'blocked' && item.blockedRequest?.kind === 'file' && (
+        <span class="need-line need-blocked-note">A folder applies from the agent's next start</span>
+      )}
       {item.holdsUp?.length ? <HoldsUp ids={item.holdsUp} /> : null}
       {age && <span class="need-age">{age}</span>}
       <span class="need-actions" onClick={(e) => e.stopPropagation()}>
@@ -207,6 +212,7 @@ function NeedRow({ item }: { item: BacklogItem }) {
             </BusyButton>
           </>
         )}
+        {need.kind === 'blocked' && item.blockedRequest && <BlockedActions id={item.id} request={item.blockedRequest} />}
         {need.kind === 'failed' && (
           <BusyButton
             class="button"
@@ -223,6 +229,38 @@ function NeedRow({ item }: { item: BacklogItem }) {
         </button>
       </span>
     </div>
+  );
+}
+
+/**
+ * A blocked request's choices (BL-273): Allow Once loads the rule into the ticket's sandbox only, Always Allow adds it to
+ * the Security policy, Keep Blocked asks no more. A folder can't be allowed in a running sandbox: it has no Allow Once.
+ */
+function BlockedActions({ id, request }: { id: string; request: NonNullable<BacklogItem['blockedRequest']> }) {
+  const decide = (choice: 'once' | 'always' | 'blocked') => ({ type: 'backlog' as const, op: 'sandboxDecide' as const, id, key: request.key, choice });
+  const what = request.program ? `${request.target} for ${request.program}` : request.target;
+  return (
+    <>
+      {request.kind === 'network' && (
+        <BusyButton class="button" message={decide('once')} title={`Lets ${id}'s sandbox reach ${what}, until it's removed`}>
+          Allow Once
+        </BusyButton>
+      )}
+      <BusyButton
+        class={`button${request.kind === 'file' ? '' : ' secondary'}`}
+        message={decide('always')}
+        title={
+          request.kind === 'file'
+            ? `Adds ${what} to the Security policy: agents reach it from their next start`
+            : `Adds ${what} to the Security policy, for every sandbox`
+        }
+      >
+        Always Allow
+      </BusyButton>
+      <BusyButton class="button secondary" message={decide('blocked')} title={`Keeps ${what} blocked: ${id} won't ask about it again`}>
+        Keep Blocked
+      </BusyButton>
+    </>
   );
 }
 

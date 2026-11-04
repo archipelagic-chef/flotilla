@@ -292,12 +292,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(metrics);
   // The Security panel (BL-271): the policy sandboxed agents run under, set by the user.
-  const security = createSecurity(context, location.mainRoot, () => repository.current.map((ws) => ws.worktree.path));
+  const security = createSecurity(context, location.mainRoot, () => repository.current.map((ws) => ws.worktree.path), audit);
   context.subscriptions.push(security);
   registerAll(context.subscriptions, securityCommands({ security }));
   const sidebar = new SidebarProvider({
     metrics,
     audit,
+    requests: security.requests,
     extensionUri: context.extensionUri,
     repository,
     reference: folder.uri,
@@ -627,6 +628,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     openTicket: (id) => void tickets.open(id),
     openNote: (id) => void notes.openNote(id, true),
     openWorktree: (ws, newWindow) => openWorktree(ctx, ws.worktree.path!, newWindow),
+    requests: security.requests,
   });
   context.subscriptions.push(
     sidebar,

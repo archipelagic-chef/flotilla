@@ -51,6 +51,19 @@ describe('needsYouList', () => {
     expect(needsYouList(items, []).map((n) => n.key)).toEqual(['asks:BL-2', 'stopped:BL-4', 'review:BL-1', 'approved:BL-3', 'proposed:BL-5']);
   });
 
+  it("tells of a ticket's blocked requests instead of its other need, and again when a new one is blocked (BL-273)", () => {
+    const items = [item('BL-1', { review: review('yours') }), item('BL-2', { status: 'doing' }), item('BL-3', { status: 'done' })];
+    const blocked = new Map([
+      ['BL-1', ['network:pypi.org:443']],
+      ['BL-3', ['file:/x']],
+    ]);
+    const list = needsYouList(items, [], [], new Map(), blocked);
+    expect(list.map((n) => n.key)).toEqual(['blocked:BL-1:network:pypi.org:443']);
+    expect(needsYouMessage(list)).toBe('BL-1 had a request blocked by its sandbox.');
+    const more = needsYouList(items, [], [], new Map(), new Map([['BL-1', ['network:pypi.org:443', 'file:/y']]]));
+    expect(newNeeds(new Set(list.map((n) => n.key)), more)).toHaveLength(1);
+  });
+
   it('tells of a merge that stopped as a warning, and of a resolution that waits for you, not "ready to merge" (BL-229)', () => {
     const merging = (state: 'resolving' | 'resolved' | 'failed', stopped?: boolean) =>
       ({
