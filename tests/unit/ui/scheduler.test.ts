@@ -40,6 +40,8 @@ import {
   type SchedulerDeps,
 } from '../../../src/ui/schedules/scheduler';
 import type { AutopilotView } from '../../../src/ui/backlog/autopilot';
+import * as vscode from 'vscode';
+import { recordRunTicket } from '../../../src/features/schedules/schedule';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -50,7 +52,7 @@ afterEach(() => {
 /** Past the scheduler's first two minutes, when it waits for the agents working to be counted. */
 const settled = () => new Date(Date.now() + 3 * 60_000);
 
-function setup(files: Record<string, string>, view: Partial<AutopilotView> = {}, contexts?: SchedulerDeps['contexts']) {
+function setup(files: Record<string, string>, view: Partial<AutopilotView> = {}, contexts?: SchedulerDeps['contexts'], items?: SchedulerDeps['items']) {
   const backlogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flotilla-schedules-'));
   dirs.push(backlogDir);
   fs.mkdirSync(path.join(backlogDir, 'schedules'));
@@ -68,6 +70,7 @@ function setup(files: Record<string, string>, view: Partial<AutopilotView> = {},
     output: { appendLine() {} } as never,
     openPage: () => undefined,
     ...(contexts ? { contexts } : {}),
+    ...(items ? { items } : {}),
   });
   return { backlogDir, scheduler, slots, given };
 }
@@ -175,6 +178,57 @@ describe('the scheduler', () => {
     expect(await scheduler.runNow('p')).toBeUndefined();
     expect(runs.started).toHaveLength(1);
     expect(await scheduler.runNow('gone')).toMatch(/no task gone/);
+  });
+
+  it('pauses and resumes a task in its file, its other lines kept (BL-262)', async () => {
+    const { scheduler, backlogDir } = setup({ 'p.md': '---\nevery: day\nwhen: any\n---\nDo it.\n' });
+    const file = path.join(backlogDir, 'schedules', 'p.md');
+    await scheduler.pause('p', true);
+    expect(fs.readFileSync(file, 'utf8')).toBe('---\nevery: day\nwhen: any\npaused: true\n---\nDo it.\n');
+    await scheduler.tick(settled());
+    expect(runs.started).toHaveLength(0);
+    await scheduler.pause('p', false);
+    expect(fs.readFileSync(file, 'utf8')).toBe('---\nevery: day\nwhen: any\n---\nDo it.\n');
+    await scheduler.tick(settled());
+    expect(runs.started).toHaveLength(1);
+  });
+
+  it('asks before Run Now during Pause All, and starts only if you say so (BL-262)', async () => {
+    const { scheduler } = setup({ 'p.md': '---\nevery: day\n---\nDo it.\n' }, { pausedAll: 2 });
+    const ask = vi.spyOn(vscode.window, 'showWarningMessage').mockResolvedValueOnce(undefined as never);
+    expect(await scheduler.runNow('p')).toBe('all agents are paused');
+    expect(runs.started).toHaveLength(0);
+    expect(ask).toHaveBeenCalledWith(expect.stringMatching(/All agents are paused/), { modal: true }, 'Run Now');
+    ask.mockResolvedValueOnce('Run Now' as never);
+    expect(await scheduler.runNow('p')).toBeUndefined();
+    expect(runs.started).toHaveLength(1);
+    ask.mockRestore();
+  });
+
+  it('lists the tickets each run proposed, with whether each was accepted, dismissed or is still proposed (BL-262)', async () => {
+    const items = async () =>
+      [
+        { id: 'BL-1', title: 'One', status: 'todo', created: '' },
+        { id: 'BL-2', title: 'Two', status: 'todo', created: '', proposed: {} },
+      ] as never;
+    const { scheduler, backlogDir } = setup({ 'p.md': '---\nevery: day\n---\nDo it.\n' }, {}, undefined, items);
+    fs.mkdirSync(path.join(backlogDir, 'schedules', 'p'));
+    fs.writeFileSync(path.join(backlogDir, 'schedules', 'p', '2026-11-02.md'), '# Report\n');
+    for (const t of [
+      { id: 'BL-1', title: 'One' },
+      { id: 'BL-2', title: 'Two' },
+      { id: 'BL-3', title: 'Three' },
+    ])
+      await recordRunTicket(backlogDir, 'p', '2026-11-02', t);
+    const [task] = (await scheduler.view(settled())).tasks;
+    expect(task.reports).toEqual(['2026-11-02']);
+    expect(task.proposals).toEqual({
+      '2026-11-02': [
+        { id: 'BL-1', title: 'One', state: 'accepted' },
+        { id: 'BL-2', title: 'Two', state: 'proposed' },
+        { id: 'BL-3', title: 'Three', state: 'dismissed' },
+      ],
+    });
   });
 
   it('adds what its context: line names to the prompt, after its instructions (BL-263)', async () => {

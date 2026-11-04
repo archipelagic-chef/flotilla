@@ -487,6 +487,11 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.newScheduledTask",
+        "title": "New Scheduled Task",
+        "category": "Flotilla"
+      },
+      {
         "command": "flotilla.runScheduledTaskNow",
         "title": "Run a Scheduled Task Now",
         "category": "Flotilla"

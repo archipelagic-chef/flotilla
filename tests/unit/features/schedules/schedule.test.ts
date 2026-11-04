@@ -5,18 +5,23 @@ import {
 } from 'vitest';
 import {
   acceptedTask,
+  newTaskFile,
   nextRun,
   parseEvery,
   parseOnce,
   parseTask,
   parseTools,
+  pausedTask,
   proposedTask,
   type Schedule,
+  scheduleLine,
   scheduleText,
   taskBlocked,
   taskDue,
+  taskOfInboxFile,
   taskPrompt,
   taskTools,
+  withProposedBy,
 } from '../../../../src/features/schedules/schedule';
 
 const task = (front: string, body = 'Check the docs.') => `---\n${front}\n---\n${body}\n`;
@@ -229,5 +234,30 @@ describe('a task proposed through the inbox', () => {
   it('says what is wrong with it', () => {
     expect(proposedTask(task('schedule: Bad Name\nevery: day'))).toEqual({ error: expect.stringMatching(/name/) });
     expect(proposedTask(task('schedule: x'))).toEqual({ error: expect.stringMatching(/not when it runs/) });
+  });
+});
+
+describe('pausing, new tasks and what a run proposed (BL-262)', () => {
+  it('sets and removes paused: in the front matter only', () => {
+    const text = '---\nevery: day\npaused: false\n---\npaused: in the body stays\n';
+    expect(pausedTask(text, true)).toBe('---\nevery: day\npaused: true\n---\npaused: in the body stays\n');
+    expect(pausedTask(pausedTask(text, true), false)).toBe('---\nevery: day\n---\npaused: in the body stays\n');
+  });
+
+  it("reads a new task's schedule, with or without every: / once:, and says what's wrong", () => {
+    expect(scheduleLine('Mondays at 06:00')).toEqual({ line: 'every: Mondays at 06:00' });
+    expect(scheduleLine('once: 2026-11-07 at 09:00')).toEqual({ line: 'once: 2026-11-07 at 09:00' });
+    expect(scheduleLine('2026-11-07')).toEqual({ line: 'once: 2026-11-07' });
+    expect(scheduleLine('fortnight')).toMatchObject({ error: expect.stringMatching(/isn't a schedule/) });
+    expect(scheduleLine('')).toMatchObject({ error: expect.any(String) });
+    const file = newTaskFile({ schedule: 'every: 7 days', instructions: ' Check the docs. ' });
+    expect(parseTask('docs-check', file)).toMatchObject({ name: 'docs-check', instructions: 'Check the docs.' });
+  });
+
+  it("finds an inbox file's task, and adds its Proposed by: line unless it has one", () => {
+    expect(taskOfInboxFile('docs-check-1.md', ['docs', 'docs-check'])).toBe('docs-check');
+    expect(taskOfInboxFile('other.md', ['docs'])).toBeUndefined();
+    expect(withProposedBy('Fix it.', 'docs')).toBe('Fix it.\n\nProposed by: docs');
+    expect(withProposedBy('Fix it.\n\nProposed by: docs', 'docs')).toBe('Fix it.\n\nProposed by: docs');
   });
 });

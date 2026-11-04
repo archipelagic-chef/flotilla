@@ -695,6 +695,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     openPage: (file, title) => void openPagePanel({ extensionUri: context.extensionUri, openHref: (href) => tickets.openHref(undefined, href) }, file, title),
     contexts: { [REVIEW_CONTEXT]: (o) => improvement.context(o) },
+    items: async () => (await backlog.read()).items,
   });
   context.subscriptions.push(scheduler, scheduler.watch());
   // Once a week, an agent reads the metrics and proposes tickets (BL-159): a scheduled task since BL-263.
@@ -703,6 +704,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   metrics.reviews = improvement;
   sidebar.useScheduler(scheduler);
   inbox.onTaskProposed = (name) => void scheduler.offerProposed(name).catch(() => undefined);
+  inbox.runDay = (task) => scheduler.runDay(task);
   registerAll(context.subscriptions, scheduleCommands({ scheduler }));
   registerAll(context.subscriptions, metricsCommands({ backlog, repository, metrics, improvement, output }));
   registerAll(context.subscriptions, auditCommands({ extensionUri: context.extensionUri, audit }));

@@ -325,12 +325,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const s = this.scheduler;
     if (!s) return;
     if (m.op === 'folder') return s.openFolder();
+    if (m.op === 'new') {
+      await s.newTask();
+      return this.postScheduled();
+    }
     if (!m.name) return;
+    if (m.op === 'ticket') return void vscode.commands.executeCommand('flotilla.openBacklogItem', m.name);
     if (m.op === 'run') await s.runNow(m.name);
     else if (m.op === 'report') await s.openReport(m.name, m.day);
     else if (m.op === 'edit') await s.edit(m.name);
     else if (m.op === 'accept') await s.accept(m.name);
     else if (m.op === 'dismiss') await s.dismiss(m.name);
+    else if (m.op === 'pause' || m.op === 'resume') await s.pause(m.name, m.op === 'pause');
     await this.postScheduled();
   }
 

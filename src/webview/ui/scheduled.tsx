@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type {
+  RunTicket,
   ScheduledOp,
   ScheduledTaskView,
   ScheduledView,
@@ -44,7 +45,7 @@ function Status({ task }: { task: ScheduledTaskView }) {
     );
   if (task.paused)
     return (
-      <span class="scheduled-status paused" title="It doesn't run on its schedule until the paused: line goes from its file; Run Now still runs it">
+      <span class="scheduled-status paused" title="It doesn't run on its schedule until you Resume it; Run Now still runs it">
         <i class="codicon codicon-debug-pause" /> Paused
       </span>
     );
@@ -55,6 +56,37 @@ function Status({ task }: { task: ScheduledTaskView }) {
       </span>
     );
   return <span class="scheduled-status">{task.next ? `Next: ${when(task.next)}` : 'Ran: not again'}</span>;
+}
+
+const TICKET_STATE: Record<RunTicket['state'], { icon: string; text: string }> = {
+  accepted: { icon: 'check', text: 'accepted' },
+  dismissed: { icon: 'close', text: 'dismissed' },
+  proposed: { icon: 'inbox', text: 'in Needs you' },
+};
+
+/** The tickets a run proposed (BL-262), each linked, with whether you accepted or dismissed it. */
+function RunTickets({ tickets }: { tickets?: RunTicket[] }) {
+  if (!tickets?.length) return null;
+  return (
+    <ul class="scheduled-tickets" aria-label="The tickets it proposed">
+      {tickets.map((t) => (
+        <li key={t.id} class={`is-${t.state}`}>
+          {t.state === 'dismissed' ? (
+            <span class="scheduled-ticket">
+              {t.id} {t.title}
+            </span>
+          ) : (
+            <button class="link scheduled-ticket" title={`Open ${t.id}`} onClick={() => act('ticket', t.id)}>
+              {t.id} {t.title}
+            </button>
+          )}
+          <span class="scheduled-ticket-state">
+            <i class={`codicon codicon-${TICKET_STATE[t.state].icon}`} /> {TICKET_STATE[t.state].text}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** A task: its title and schedule, its status, its last report, and its actions; its earlier reports in a fold. */
@@ -83,15 +115,25 @@ function TaskCard({ task }: { task: ScheduledTaskView }) {
             </>
           ) : (
             !task.error && (
-              <button
-                class="icon"
-                title="Run Now: its agent starts at once, if an agent slot is free"
-                aria-label={`Run ${task.title} now`}
-                disabled={task.running}
-                onClick={() => act('run', task.name)}
-              >
-                <i class="codicon codicon-play" />
-              </button>
+              <>
+                <button
+                  class="icon"
+                  title={task.paused ? 'Resume: it runs on its schedule again' : "Pause: it doesn't run on its schedule until you resume it"}
+                  aria-label={`${task.paused ? 'Resume' : 'Pause'} ${task.title}`}
+                  onClick={() => act(task.paused ? 'resume' : 'pause', task.name)}
+                >
+                  <i class={`codicon codicon-${task.paused ? 'debug-continue' : 'debug-pause'}`} />
+                </button>
+                <button
+                  class="icon"
+                  title="Run Now: its agent starts at once, if an agent slot is free"
+                  aria-label={`Run ${task.title} now`}
+                  disabled={task.running}
+                  onClick={() => act('run', task.name)}
+                >
+                  <i class="codicon codicon-play" />
+                </button>
+              </>
             )
           )}
           <button
@@ -123,12 +165,16 @@ function TaskCard({ task }: { task: ScheduledTaskView }) {
           <span class="scheduled-none">No report yet</span>
         )}
       </div>
+      {last && <RunTickets tickets={task.proposals?.[last]} />}
       {open && (
         <div class="scheduled-reports">
           {earlier.map((day) => (
-            <button key={day} class="link scheduled-report" onClick={() => act('report', task.name, day)}>
-              Report of {day}
-            </button>
+            <div key={day}>
+              <button class="link scheduled-report" onClick={() => act('report', task.name, day)}>
+                Report of {day}
+              </button>
+              <RunTickets tickets={task.proposals?.[day]} />
+            </div>
           ))}
         </div>
       )}
@@ -206,6 +252,14 @@ export function ScheduledLane({ view }: { view?: ScheduledView }) {
     <div class="group lane scheduled-lane">
       <div class="row group-head">
         <span class="name">Scheduled</span>
+        <button
+          class="icon"
+          title="New Scheduled Task: its name, when it runs and what its agent does"
+          aria-label="New scheduled task"
+          onClick={() => act('new')}
+        >
+          <i class="codicon codicon-add" />
+        </button>
         <button class="icon" title={`Open the tasks' folder: ${view.dir}`} aria-label="Open the tasks' folder" onClick={() => act('folder')}>
           <i class="codicon codicon-folder-opened" />
         </button>

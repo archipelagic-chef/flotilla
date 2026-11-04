@@ -11,9 +11,13 @@ import { writeAtomic } from '../../features/backlog/localBacklog';
 import {
   acceptedTask,
   listTaskReports,
+  newTaskFile,
   nextRun,
   parseTask,
+  pausedTask,
+  readRunTickets,
   type ScheduledTask,
+  scheduleLine,
   schedulesDir,
   scheduleText,
   taskBlocked,
@@ -25,7 +29,9 @@ import {
   validTaskName,
 } from '../../features/schedules/schedule';
 import type { Workstream } from '../../features/workstreams/workstream';
+import type { BacklogItem } from '../../features/backlog/backlog';
 import type {
+  RunTicket,
   ScheduledTaskView,
   ScheduledView,
 } from '../../webview/scheduledProtocol';
@@ -56,6 +62,8 @@ export interface SchedulerDeps {
   openPage(file: string, title: string): void;
   /** What a task's context: line adds to its prompt, by name: Markdown sections (the improvement review's numbers, BL-263). */
   contexts?: Record<string, (o: { task: ScheduledTask; now: Date }) => Promise<string>>;
+  /** The backlog's items: whether each ticket a run proposed was accepted or dismissed (BL-262). */
+  items?(): Promise<readonly BacklogItem[]>;
 }
 
 /** A task's file as read: the task, or what's wrong with its file. */
@@ -79,6 +87,8 @@ export class Scheduler implements vscode.Disposable {
   private readonly runs = new Map<string, AgentRun | 'starting'>();
   /** The agent of each run going, by task. */
   private readonly agents = new Map<string, string>();
+  /** The day of each task's last run (its report's): the tickets it proposes go with it (BL-262). */
+  private readonly days = new Map<string, string>();
   private readonly timer: NodeJS.Timeout;
   private readonly settle: NodeJS.Timeout;
   private readonly opened = Date.now();
@@ -111,10 +121,16 @@ export class Scheduler implements vscode.Disposable {
   async view(now = new Date()): Promise<ScheduledView> {
     const v = this.deps.autopilot();
     const tasks: ScheduledTaskView[] = [];
+    const items = new Map(((await this.deps.items?.().catch(() => [])) ?? []).map((i) => [i.id, i]));
     for (const t of await this.tasks()) {
       const reports = await listTaskReports(this.deps.backlogDir, t.name);
+      const proposals: Record<string, RunTicket[]> = {};
+      for (const day of reports) {
+        const tickets = await readRunTickets(this.deps.backlogDir, t.name, day);
+        if (tickets.length) proposals[day] = tickets.map((k) => ({ ...k, state: ticketState(items.get(k.id)) }));
+      }
       if (!('task' in t)) {
-        tasks.push({ name: t.name, title: t.name, error: t.error, reports });
+        tasks.push({ name: t.name, title: t.name, error: t.error, reports, ...(Object.keys(proposals).length ? { proposals } : {}) });
         continue;
       }
       const { task } = t;
@@ -133,6 +149,7 @@ export class Scheduler implements vscode.Disposable {
         ...(task.proposed ? { proposed: task.proposed } : {}),
         ...(task.paused ? { paused: true } : {}),
         reports,
+        ...(Object.keys(proposals).length ? { proposals } : {}),
       });
     }
     return { tasks, dir: schedulesDir(this.deps.backlogDir) };
@@ -150,6 +167,57 @@ export class Scheduler implements vscode.Disposable {
     await fs.promises.rm(this.fileOf(name), { force: true });
     await fs.promises.rm(path.join(schedulesDir(this.deps.backlogDir), `${name}.error`), { force: true });
     this.changed.fire();
+  }
+
+  /** Pause (paused: true in its file) or Resume a task: a paused task isn't run when due (BL-262). */
+  async pause(name: string, paused: boolean): Promise<void> {
+    const file = this.fileOf(name);
+    await writeAtomic(file, pausedTask(await fs.promises.readFile(file, 'utf8'), paused));
+    this.changed.fire();
+  }
+
+  /** New Scheduled Task: asks for its name, schedule and instructions (each checked before it's saved), and writes its file. */
+  async newTask(): Promise<string | undefined> {
+    const dir = schedulesDir(this.deps.backlogDir);
+    const name = await vscode.window.showInputBox({
+      title: 'New scheduled task (1/3): its name',
+      prompt: 'Lower case letters, digits and dashes; its proposals are inbox/<name>-*.md',
+      placeHolder: 'docs-check',
+      validateInput: (v) =>
+        !validTaskName(v.trim())
+          ? 'Use lower case letters, digits and dashes, such as docs-check.'
+          : fs.existsSync(path.join(dir, `${v.trim()}.md`))
+            ? `A task ${v.trim()} is there already: give yours another name.`
+            : undefined,
+    });
+    if (!name) return undefined;
+    const when = await vscode.window.showInputBox({
+      title: 'New scheduled task (2/3): when it runs',
+      prompt: 'every: "Mondays at 06:00", "7 days", "day at 06:00"; or once: "2026-11-07 at 09:00"',
+      placeHolder: 'Mondays at 06:00',
+      validateInput: (v) => {
+        const l = scheduleLine(v);
+        return 'error' in l ? l.error : undefined;
+      },
+    });
+    const line = when === undefined ? undefined : scheduleLine(when);
+    if (!line || 'error' in line) return undefined;
+    const instructions = await vscode.window.showInputBox({
+      title: 'New scheduled task (3/3): what its agent does',
+      prompt: 'Its instructions; Edit opens its file for more',
+      placeHolder: 'Check the docs against the code, and propose a ticket for each that is out of date.',
+      validateInput: (v) => (v.trim() ? undefined : 'Say what its agent does.'),
+    });
+    if (!instructions?.trim()) return undefined;
+    await fs.promises.mkdir(dir, { recursive: true });
+    await writeAtomic(path.join(dir, `${name.trim()}.md`), newTaskFile({ schedule: line.line, instructions }));
+    this.changed.fire();
+    return name.trim();
+  }
+
+  /** The day of a task's last run (its report's), once it has started one in this window. */
+  runDay(name: string): string | undefined {
+    return this.days.get(name);
   }
 
   /** Edit: the task's file in an editor. */
@@ -220,6 +288,12 @@ export class Scheduler implements vscode.Disposable {
       return t.error;
     }
     if (this.running(t.name)) return void vscode.window.showInformationMessage(`${t.task.title} is running already.`);
+    // Pause All holds the agents: Run Now asks before starting one anyway (BL-262).
+    const paused = this.deps.autopilot().pausedAll;
+    if (paused) {
+      const go = await vscode.window.showWarningMessage(`All agents are paused (${paused} held). Run ${t.task.title} now anyway?`, { modal: true }, 'Run Now');
+      if (go !== 'Run Now') return 'all agents are paused';
+    }
     const why = await this.start(t.task, new Date());
     if (why) void vscode.window.showWarningMessage(`Flotilla can't start ${t.task.title} now: ${why}.`);
     return why;
@@ -285,6 +359,7 @@ export class Scheduler implements vscode.Disposable {
     let run: AgentRun | undefined;
     try {
       const day = taskDay(now);
+      this.days.set(task.name, day);
       const dir = taskDir(this.deps.backlogDir, task.name);
       const reportFile = path.join(dir, `${day}.md`);
       const inboxDir = path.join(this.deps.backlogDir, INBOX);
@@ -370,8 +445,15 @@ export class Scheduler implements vscode.Disposable {
 }
 
 /** The scheduled tasks' commands (until the Scheduled view, BL-262, has their buttons). */
+/** A ticket a run proposed, as the backlog has it now: gone from it is dismissed. */
+function ticketState(item: BacklogItem | undefined): RunTicket['state'] {
+  if (!item || item.discarded) return 'dismissed';
+  return item.proposed ? 'proposed' : 'accepted';
+}
+
 export function scheduleCommands({ scheduler }: { scheduler: Scheduler }): Commands {
   return {
+    'flotilla.newScheduledTask': () => scheduler.newTask().catch(showError),
     'flotilla.runScheduledTaskNow': () => scheduler.runNow().catch(showError),
     'flotilla.openScheduledTaskReport': () => scheduler.openReport().catch(showError),
   };

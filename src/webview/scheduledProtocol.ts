@@ -19,6 +19,15 @@ export interface ScheduledTaskView {
   paused?: boolean;
   /** Its reports' days, newest first. */
   reports: string[];
+  /** The tickets each run proposed, by its report's day (BL-262). */
+  proposals?: Record<string, RunTicket[]>;
+}
+
+/** A ticket a run proposed (BL-262): proposed is still in Needs you; dismissed is gone from the backlog. */
+export interface RunTicket {
+  id: string;
+  title: string;
+  state: 'accepted' | 'dismissed' | 'proposed';
 }
 
 export interface ScheduledView {
@@ -27,14 +36,14 @@ export interface ScheduledView {
   dir: string;
 }
 
-export type ScheduledOp = 'run' | 'report' | 'edit' | 'accept' | 'dismiss' | 'folder';
+export type ScheduledOp = 'run' | 'report' | 'edit' | 'accept' | 'dismiss' | 'pause' | 'resume' | 'new' | 'folder' | 'ticket';
 
 /** From the Scheduled lane. */
 export type ScheduledWebviewMessage =
   /** The tool is shown: send its view (and again as it changes, until it's closed). */
   | { type: 'scheduled' }
   | { type: 'scheduledClosed' }
-  /** report: one of its reports (day), else its newest. folder: the schedules folder (no name). */
+  /** report: one of its reports (day), else its newest. folder: the schedules folder, new: New Scheduled Task (no name). ticket: a ticket a run proposed (name: its id). */
   | { type: 'scheduledAction'; op: ScheduledOp; name?: string; day?: string };
 
 /** To the Scheduled lane. */

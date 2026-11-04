@@ -38,8 +38,12 @@ import {
 import {
   frontMatter,
   proposedTask,
+  recordRunTicket,
   SCHEDULES_DIR,
   schedulesDir,
+  taskDay,
+  taskOfInboxFile,
+  withProposedBy,
 } from '../schedules/schedule';
 
 /**
@@ -166,6 +170,8 @@ export async function takeInbox(
     onTaskProposed?(name: string): void;
     /** A ticket proposed from discussions (BL-268): they record what they became. */
     onFromDiscussions?(discussions: string[], item: BacklogItem): Promise<void>;
+    /** The day of a scheduled task's run going now (its report's), for the tickets it proposes (BL-262); else today. */
+    runDay?(task: string): string | undefined;
   },
 ): Promise<BacklogItem[]> {
   const dir = path.join(store.dir, INBOX);
@@ -177,6 +183,8 @@ export async function takeInbox(
     return [];
   }
   const added: BacklogItem[] = [];
+  // A scheduled task's proposals are inbox/<task>-*.md (BL-262): Flotilla says which task proposed them.
+  const tasks = (await fs.promises.readdir(schedulesDir(store.dir)).catch(() => [] as string[])).flatMap((n) => (n.endsWith('.md') ? [n.slice(0, -3)] : []));
   for (const name of names) {
     const file = path.join(dir, name);
     const base = path.join(dir, name.slice(0, -'.md'.length));
@@ -213,6 +221,8 @@ export async function takeInbox(
       }
       continue;
     }
+    const task = 'error' in proposal || proposal.claim ? undefined : taskOfInboxFile(name, tasks);
+    if (task && !('error' in proposal)) proposal = { ...proposal, description: withProposedBy(proposal.description, task) };
     let item: BacklogItem | undefined;
     let error = 'error' in proposal ? proposal.error : 'Not added.';
     if (!('error' in proposal)) {
@@ -241,6 +251,8 @@ export async function takeInbox(
             activity: [{ date: entryDate(new Date()), author: by, body: proposal.start ? 'Added this ticket and started on it.' : 'Proposed this ticket.' }],
           });
         }
+        if (task)
+          await recordRunTicket(store.dir, task, opts.runDay?.(task) ?? taskDay(new Date()), { id: item.id, title: proposal.title }).catch(() => undefined);
         if (proposal.start && proposal.branch) await opts.onStarted?.(item, proposal.branch);
         if (proposal.notes && !proposal.claim) await opts.onFromNotes?.(proposal.notes, item).catch(() => undefined);
         if (proposal.discussions && !proposal.claim) await opts.onFromDiscussions?.(proposal.discussions, item).catch(() => undefined);

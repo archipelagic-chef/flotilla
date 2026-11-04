@@ -360,6 +360,63 @@ export function taskPrompt(o: TaskPromptInput): string {
   ].join('\n\n');
 }
 
+/** A task's file with its paused: line set (paused) or gone (resumed), its other lines as they were (BL-262). */
+export function pausedTask(text: string, paused: boolean): string {
+  const m = /^(---\r?\n)([\s\S]*?)(^---[ \t]*\r?$)/m.exec(text);
+  if (!m) return text;
+  const lines = m[2].split(/\r?\n/).filter((l) => l && !/^\s*paused\s*:/i.test(l));
+  if (paused) lines.push('paused: true');
+  return `${text.slice(0, m.index)}${m[1]}${lines.map((l) => `${l}\n`).join('')}${text.slice(m.index + m[1].length + m[2].length)}`;
+}
+
+/** A schedule as New Scheduled Task asks for it ("every: Mondays at 06:00", "Mondays at 06:00", "once: 2026-11-07"): its front matter line, or what's wrong. */
+export function scheduleLine(text: string): { line: string } | { error: string } {
+  const t = text.trim();
+  if (!t) return { error: 'Say when it runs: "Mondays at 06:00", "7 days" or "once: 2026-11-07".' };
+  const m = /^(every|once)\s*:\s*(.*)$/i.exec(t);
+  const kind = m ? m[1].toLowerCase() : /^\d{4}-\d{2}-\d{2}/.test(t) ? 'once' : 'every';
+  const what = (m ? m[2] : t).trim();
+  const s = kind === 'once' ? parseOnce(what) : parseEvery(what);
+  return 'error' in s ? s : { line: `${kind}: ${what}` };
+}
+
+/** A new task's file, from New Scheduled Task's answers. */
+export function newTaskFile(o: { schedule: string; instructions: string }): string {
+  return `---\n${o.schedule}\n---\n${o.instructions.trim()}\n`;
+}
+
+/**
+ * The tickets a run proposed (BL-262), kept next to its report as schedules/<task>/<day>.tickets: a line each, its id and
+ * its title as proposed (a dismissed one is gone from the backlog, so the title is kept here).
+ */
+export function runTicketsFile(backlogDir: string, name: string, day: string): string {
+  return path.join(taskDir(backlogDir, name), `${day}.tickets`);
+}
+
+export async function readRunTickets(backlogDir: string, name: string, day: string): Promise<{ id: string; title: string }[]> {
+  const text = await fs.promises.readFile(runTicketsFile(backlogDir, name, day), 'utf8').catch(() => '');
+  return text.split('\n').flatMap((l) => {
+    const m = /^(\S+)\t(.*)$/.exec(l);
+    return m ? [{ id: m[1], title: m[2] }] : [];
+  });
+}
+
+export async function recordRunTicket(backlogDir: string, name: string, day: string, t: { id: string; title: string }): Promise<void> {
+  await fs.promises.mkdir(taskDir(backlogDir, name), { recursive: true });
+  await fs.promises.appendFile(runTicketsFile(backlogDir, name, day), `${t.id}\t${t.title.replace(/\s+/g, ' ')}\n`);
+}
+
+/** The task an inbox file is a proposal of (<task>-*.md), of those there are: the longest name it starts with. */
+export function taskOfInboxFile(file: string, tasks: readonly string[]): string | undefined {
+  return tasks.filter((t) => file.startsWith(`${t}-`)).sort((a, b) => b.length - a.length)[0];
+}
+
+/** A proposal's description with its task's Proposed by: line, unless it has one already (BL-262). */
+export function withProposedBy(description: string, name: string): string {
+  if (/^Proposed by:/im.test(description)) return description;
+  return `${description.trim()}\n\n${proposedByLine(name)}`.trim();
+}
+
 /** A task an agent proposes through the inbox (front matter schedule: <name>): its name and the file to save. */
 export function proposedTask(text: string): { name: string; file: string; task: ScheduledTask } | { error: string } {
   const { fields, body } = frontMatter(text);

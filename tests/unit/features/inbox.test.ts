@@ -150,6 +150,37 @@ describe('backlog inbox', () => {
     expect(fs.readFileSync(path.join(inbox, 'b.error'), 'utf8')).toMatch(/there already/);
     expect(fs.readFileSync(path.join(inbox, 'c.error'), 'utf8')).toMatch(/not when it runs/);
   });
+
+  it("adds Proposed by: to a task's proposals itself, and records them with its run (BL-262)", async () => {
+    const repo = initRepo();
+    cleanup.push(repo);
+    const store = new LocalBacklog(repo, path.join(repo, '.git'));
+    const inbox = path.join(store.dir, 'inbox');
+    fs.mkdirSync(inbox, { recursive: true });
+    fs.mkdirSync(path.join(store.dir, 'schedules'), { recursive: true });
+    fs.writeFileSync(path.join(store.dir, 'schedules', 'docs-check.md'), '---\nevery: day\n---\nCheck.\n');
+    const old = new Date(Date.now() - 5000);
+    for (const [name, text] of [
+      ['docs-check-1.md', '# Fix the README\n\nIt is out of date.\n'],
+      ['docs-check-2.md', '# Fix the guide\n\nProposed by: docs-check\n'],
+      ['other.md', '# Something else\n\nNot from a task.\n'],
+    ]) {
+      fs.writeFileSync(path.join(inbox, name), text);
+      fs.utimesSync(path.join(inbox, name), old, old);
+    }
+    const added = await takeInbox(store, { prefix: 'BL', mode: 'propose', taken: [], runDay: () => '2026-11-02' });
+    expect(added).toHaveLength(3);
+    const description = async (title: string) => (await store.readTicket(added.find((i) => i.title === title)!)).description;
+    expect(await description('Fix the README')).toBe('It is out of date.\n\nProposed by: docs-check');
+    expect((await description('Fix the guide')).match(/Proposed by/g)).toHaveLength(1);
+    expect(await description('Something else')).not.toMatch(/Proposed by/);
+    expect(fs.readFileSync(path.join(store.dir, 'schedules', 'docs-check', '2026-11-02.tickets'), 'utf8')).toBe(
+      added
+        .filter((i) => i.title.startsWith('Fix'))
+        .map((i) => `${i.id}\t${i.title}\n`)
+        .join(''),
+    );
+  });
 });
 
 describe('claims', () => {

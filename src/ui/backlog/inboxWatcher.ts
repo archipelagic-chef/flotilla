@@ -34,6 +34,8 @@ export class BacklogInbox implements vscode.Disposable {
   private busy = false;
   /** A scheduled task an agent proposed (BL-260): the scheduler offers it to accept. */
   onTaskProposed?: (name: string) => void;
+  /** The day of a scheduled task's run going now (BL-262): the tickets it proposes are recorded with that run. */
+  runDay?: (task: string) => string | undefined;
 
   constructor(
     private readonly backlog: LocalBacklog,
@@ -90,6 +92,7 @@ export class BacklogInbox implements vscode.Disposable {
         },
         onFromNotes: async (notes, item) => this.notes?.recordBecame(notes, { id: item.id, kind: 'proposal' }),
         onTaskProposed: (name) => this.onTaskProposed?.(name),
+        runDay: (task) => this.runDay?.(task),
         onFromDiscussions: async (discussions, item) => this.discussions?.recordBecame(discussions, item.id),
       });
     } catch {
