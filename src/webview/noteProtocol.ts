@@ -18,10 +18,21 @@ export interface NoteTabView {
   with?: string;
   /** What it became, as its card says ("Became BL-180 (proposal)"), once it has. */
   became?: string;
-  /** Its agent's replies, your answers and edits, Flotilla's lines, rendered. */
-  activity: Array<{ author: string; date: string; html: string }>;
-  /** What its agent asks, while it waits for you (BL-216): its questions, answered by clicking, as a ticket's. */
-  asks?: { questions: Question[] };
+  /**
+   * Its agent's replies, your comments and edits, Flotilla's lines, rendered. A reply that asks holds its questions
+   * (BL-281): live, answered by clicking while it waits for you (BL-216); once answered, with the answer that comment
+   * gave, read-only. That comment shows only what else it said.
+   */
+  activity: Array<{ author: string; date: string; html: string; asks?: NoteAsks }>;
+}
+
+/** The questions an agent's reply in a note asks (BL-281). */
+export interface NoteAsks {
+  questions: Question[];
+  /** The answers, as the comment that answered them gave them; undefined while they're open. */
+  answer?: string;
+  /** It waits for these answers now: they're clicked here and sent with the comment box. */
+  live?: boolean;
 }
 
 /**
