@@ -85,7 +85,7 @@ export function isNoteEntry(author: string): boolean {
  * The agent report that waits for the user: the last report, when nothing was written after it, and it asks (with
  * "Needs from you:" and its questions) or ends "Waiting for you.".
  */
-export function pendingReport(activity: StatusEntry[]): StatusEntry | undefined {
+export function pendingReport<E extends StatusEntry>(activity: E[]): E | undefined {
   let last = -1;
   for (let i = activity.length - 1; i >= 0; i--) {
     if (isAgentEntry(activity[i].author)) {
