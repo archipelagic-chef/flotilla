@@ -142,7 +142,13 @@ export interface BacklogProblem {
 }
 
 /** The views under Version Control in the tool strip. */
-export type VcView = 'changes' | 'history' | 'compare' | 'ci' | 'ticketChanges' | 'ticketCommits';
+export type VcView = 'changes' | 'history' | 'compare' | 'ci';
+
+/**
+ * The Backlog's views in the tool strip (BL-275): its list, or the version control of the ticket whose tab is active
+ * (its Changes, Commits and CI), shown as sub-items of the Backlog tool.
+ */
+export type BacklogPart = 'list' | 'changes' | 'commits' | 'ci';
 
 /**
  * A ticket as Version Control shows it when a worktree is the ticket's (BL-171): its header, its Changes (every file it
@@ -339,11 +345,13 @@ export type HostMessage =
   | { type: 'reveal'; key: string; path?: string; tool?: Tool; vcView?: VcView }
   /** Show a worktree's history with a ticket's commits highlighted, and the one clicked (on the ticket) selected. */
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
-  /** Expand in a ticket's Changes (BL-171): Version Control on the ticket's Changes in its worktree, that file selected. */
-  | { type: 'showTicketChanges'; key: string; ticket: string; path: string }
-  /** By commit on an expanded file (BL-213): Version Control on the ticket's commits in its worktree, at that commit. */
-  | { type: 'showTicketCommits'; key: string; ticket: string; hash?: string }
-  /** Back from an expanded file (BL-211): the Backlog, if Version Control is still on a ticket's Changes or commits. */
+  /** The ticket whose tab is the active editor (BL-275): its card is highlighted; none: no ticket tab is active. */
+  | { type: 'activeTicket'; id?: string }
+  /** View Version Control, or Expand in a ticket's Changes (BL-171): the Backlog on the ticket's Changes, that file selected. */
+  | { type: 'showTicketChanges'; ticket: string; path?: string }
+  /** By commit on an expanded file (BL-213): the Backlog on the ticket's Commits, at that commit. */
+  | { type: 'showTicketCommits'; ticket: string; hash?: string }
+  /** Back from an expanded file (BL-211): the Backlog's list, if it's still on a ticket's Changes or Commits. */
   | { type: 'leaveTicketChanges' }
   /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
@@ -524,6 +532,8 @@ export type WebviewMessage =
   | { type: 'commitFiles'; key: string; hash: string }
   /** A ticket's changes and commits, for Version Control's ticket views (answered with ticketVc). */
   | { type: 'ticketVc'; id: string }
+  /** View Version Control on a card (BL-275): the ticket's tab, and its Changes under its card. */
+  | { type: 'viewTicketVc'; id: string }
   /** A file of a ticket's Changes in the diff editor (group: its index in the ticket's change). */
   | { type: 'openTicketChange'; id: string; group: number; path: string }
   /** A commit picked in Version Control's ticket commits (BL-213): the ticket's expanded file shows it, when By commit is on. */

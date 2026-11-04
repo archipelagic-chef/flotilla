@@ -876,16 +876,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'showCommits', key, ticket, hashes, selected });
   }
 
-  /** Shows a worktree's Version Control on its ticket's Changes, that file selected (Expand in the ticket, BL-171). */
-  async showTicketChanges(key: string, ticket: string, path: string): Promise<void> {
+  /** Shows the Backlog on a ticket's Changes (BL-275), that file selected (View Version Control; Expand, BL-171). */
+  async showTicketChanges(ticket: string, path?: string): Promise<void> {
     await this.showKeepingFocus();
-    this.act({ type: 'showTicketChanges', key, ticket, path });
+    this.act({ type: 'showTicketChanges', ticket, path });
   }
 
-  /** Shows a worktree's Version Control on its ticket's commits, at that one (By commit in the ticket, BL-213). */
-  async showTicketCommits(key: string, ticket: string, hash?: string): Promise<void> {
+  /** Shows the Backlog on a ticket's Commits (BL-275), at that one (By commit in the ticket, BL-213). */
+  async showTicketCommits(ticket: string, hash?: string): Promise<void> {
     await this.showKeepingFocus();
-    this.act({ type: 'showTicketCommits', key, ticket, hash });
+    this.act({ type: 'showTicketCommits', ticket, hash });
+  }
+
+  /** The ticket whose tab is the active editor (BL-275), kept for a page that loads again. */
+  private activeTicketId: string | undefined;
+
+  /** The active ticket changed (BL-275): its card is highlighted, with its version control under the Backlog. */
+  activeTicket(id: string | undefined): void {
+    this.activeTicketId = id;
+    if (this.view && this.ready) this.post({ type: 'activeTicket', id });
   }
 
   /** Back from an expanded file (BL-211): the sidebar's page shows the Backlog, if it's still on a ticket's Changes or commits. */
@@ -996,6 +1005,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.postState();
         this.post({ type: 'active', key: this.deps.active.key });
         this.post({ type: 'tabs', closed: [...this.deps.active.closedTabs] });
+        this.post({ type: 'activeTicket', id: this.activeTicketId });
         void this.postBacklog();
         void this.postNotes();
         void this.postDiscussions();
@@ -1117,6 +1127,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       }
       case 'ticketVc':
         this.post({ type: 'ticketVc', id: m.id, view: await this.tickets?.ticketVc(m.id) });
+        return;
+      case 'viewTicketVc':
+        await vscode.commands.executeCommand('flotilla.viewTicketVersionControl', m.id);
         return;
       case 'openTicketChange':
         await this.tickets?.openTicketChange(m.id, m.group, m.path);

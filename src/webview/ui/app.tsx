@@ -10,6 +10,7 @@ import {
   ALL,
   type AutopilotState,
   type BacklogItemView,
+  type BacklogPart,
   type BacklogProblem,
   type CiView,
   type DirEntry,
@@ -78,9 +79,10 @@ import {
 import {
   TicketChangesBody,
   TicketCommitsBody,
-  TicketHeader,
-  ticketOf,
 } from './ticketVc';
+import { worktreeAt } from './ticketWorktree';
+import { CurrentTicket } from './currentTicket';
+import { branchMatches } from '../../features/backlog/backlog';
 import { backFromTicketChanges } from './ticketBack';
 import {
   type CommitFiles,
@@ -108,6 +110,8 @@ export interface Persisted {
   history: string[];
   /** The view under Version Control. */
   vcView: VcView;
+  /** The Backlog's list, or the active ticket's Changes, Commits or CI under it (BL-275). */
+  backlogPart?: BacklogPart;
   /** Version Control › Compare's comparisons, newest first; the view shows only while there are any. */
   comparisons: CompareChoice[];
   nextComparison: number;
@@ -169,6 +173,14 @@ const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
   { id: 'history', label: 'History', icon: 'history' },
   { id: 'compare', label: 'Compare', icon: 'git-compare' },
   { id: 'ci', label: 'CI/CD', icon: 'github-action' },
+];
+
+/** Under the Backlog in the tool strip while a ticket's tab is active (BL-275): its list, and the ticket's version control. */
+const BACKLOG_PARTS: Array<{ id: BacklogPart; label: (id: string) => string; icon: string }> = [
+  { id: 'list', label: () => 'Backlog', icon: 'list-flat' },
+  { id: 'changes', label: (id) => `${id}'s Changes`, icon: 'diff-multiple' },
+  { id: 'commits', label: (id) => `${id}'s Commits`, icon: 'git-commit' },
+  { id: 'ci', label: (id) => `${id}'s CI`, icon: 'github-action' },
 ];
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
@@ -250,6 +262,8 @@ export function App() {
   /** The file selected in a ticket's Changes (the one Expand was on), and the commit shown of its Commits, by id. */
   const [ticketFile, setTicketFile] = useState<Record<string, string>>({});
   const [ticketCommit, setTicketCommit] = useState<Record<string, string>>({});
+  // The ticket whose tab is the active editor (BL-275): its card is highlighted, its version control under the Backlog.
+  const [activeTicket, setActiveTicket] = useState<string>();
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
   /** Request ids: the latest per comparison, and which comparison each one is for. */
   const compareRequests = useRef({ next: 0, latest: new Map<number, number>(), owner: new Map<number, number>() });
@@ -480,15 +494,19 @@ export function App() {
         case 'ticketVc':
           setTicketVcs((prev) => new Map(prev).set(m.id, m.view ?? null));
           return;
+        case 'activeTicket':
+          setActiveTicket(m.id);
+          return;
+        // The worktree tabs stay as they are (BL-275): it's the ticket's, under the Backlog.
         case 'showTicketChanges':
-          setActive(m.key);
-          update((prev) => ({ ...prev, tool: 'vc', vcView: 'ticketChanges' }));
-          setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path }));
+          setActiveTicket(m.ticket);
+          update((prev) => ({ ...prev, tool: 'backlog', backlogPart: 'changes' }));
+          if (m.path) setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path! }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
         case 'showTicketCommits':
-          setActive(m.key);
-          update((prev) => ({ ...prev, tool: 'vc', vcView: 'ticketCommits' }));
+          setActiveTicket(m.ticket);
+          update((prev) => ({ ...prev, tool: 'backlog', backlogPart: 'commits' }));
           if (m.hash) setTicketCommit((prev) => ({ ...prev, [m.ticket]: m.hash! }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
@@ -577,33 +595,25 @@ export function App() {
   const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
   useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
 
-  // The active worktree's ticket, for Version Control's header and ticket views: read again as its worktree changes.
-  const shownWs = active === ALL ? undefined : workstreams?.find((w) => w.key === active);
-  const shownTicket = ticketOf(shownWs, backlog);
-  const ticketShown = persisted.tool === 'vc' && !!shownTicket;
+  // The active ticket (BL-275), a local one: its version control under the Backlog, read again as its worktrees change.
+  const ticket = backlog?.find((i) => i.id === activeTicket && !i.source && !i.proposed);
+  const ticketWorktrees = ticket ? (workstreams ?? []).filter((w) => !w.isMain && branchMatches(ticket, w.branch)) : [];
+  const backlogPart: BacklogPart = ticket ? (persisted.backlogPart ?? 'list') : 'list';
+  const partShown = persisted.tool === 'backlog' && backlogPart !== 'list';
+  const ticketState =
+    ticket &&
+    `${ticket.status}\n${ticketWorktrees.map((w) => `${w.key} ${w.totals.staged} ${w.totals.unstaged} ${w.sync.ahead} ${w.sync.head ?? ''}`).join('\n')}`;
   useEffect(() => {
-    if (ticketShown && shownTicket) send({ type: 'ticketVc', id: shownTicket.id });
-  }, [ticketShown, shownTicket?.id, shownWs]);
+    if (partShown && ticket) send({ type: 'ticketVc', id: ticket.id });
+  }, [partShown, ticket?.id, ticketState]);
 
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
   const { tool } = persisted;
-  // Compare shows only while there are comparisons, a ticket's views only for a ticket's worktree.
-  const ticket = shownTicket;
+  // Compare shows only while there are comparisons; a view no longer there (a ticket's, before BL-275) is Changes.
   const vcView =
-    (persisted.vcView === 'compare' && !persisted.comparisons.length) ||
-    ((persisted.vcView === 'ticketChanges' || persisted.vcView === 'ticketCommits') && !ticket)
-      ? 'changes'
-      : persisted.vcView;
-  const vcViews = [
-    ...VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0),
-    ...(ticket
-      ? [
-          { id: 'ticketChanges' as const, label: `${ticket.id}'s Changes`, icon: 'diff-multiple' },
-          { id: 'ticketCommits' as const, label: `${ticket.id}'s Commits`, icon: 'git-commit' },
-        ]
-      : []),
-  ];
+    (persisted.vcView === 'compare' && !persisted.comparisons.length) || !VC_VIEWS.some((v) => v.id === persisted.vcView) ? 'changes' : persisted.vcView;
+  const vcViews = VC_VIEWS.filter((v) => v.id !== 'compare' || persisted.comparisons.length > 0);
   const ticketView = ticket ? (ticketVcs.get(ticket.id) ?? undefined) : undefined;
   // With the active worktree's branch, unless that's the base (main, or the All tab): then it's left to pick.
   const addComparison = () =>
@@ -681,30 +691,53 @@ export function App() {
         />
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
-      {tool === 'vc' && vcView === 'ticketChanges' && ticket && (
+      {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
+    </>
+  );
+
+  /** The active ticket's Changes, Commits or CI under its pinned card (BL-275): the ticket's, from any worktree. */
+  const ticketPart = (id: string) => {
+    const main = workstreams.find((w) => w.isMain) ?? workstreams[0];
+    if (backlogPart === 'changes')
+      return (
         <TicketChangesBody
-          ws={ws}
+          workstreams={workstreams}
           view={ticketView}
-          selected={ticketFile[ticket.id]}
-          select={(path) => setTicketFile((prev) => ({ ...prev, [ticket.id]: path }))}
+          selected={ticketFile[id]}
+          select={(path) => setTicketFile((prev) => ({ ...prev, [id]: path }))}
         />
-      )}
-      {tool === 'vc' && vcView === 'ticketCommits' && ticket && (
+      );
+    if (backlogPart === 'commits') {
+      // Its commits are read where its first change is (they're in every worktree: they share the repository).
+      const group = ticketView?.change.groups[0];
+      const ws = (group && worktreeAt(workstreams, group.dir)) ?? ticketWorktrees[0] ?? main;
+      return (
         <TicketCommitsBody
           ws={ws}
           view={ticketView}
-          selected={ticketCommit[ticket.id]}
+          selected={ticketCommit[id]}
           select={(hash) => {
-            setTicketCommit((prev) => ({ ...prev, [ticket.id]: hash }));
-            send({ type: 'pickTicketCommit', id: ticket.id, hash });
+            setTicketCommit((prev) => ({ ...prev, [id]: hash }));
+            send({ type: 'pickTicketCommit', id, hash });
           }}
           files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
           requestFiles={requestCommitFiles}
         />
-      )}
-      {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
-    </>
-  );
+      );
+    }
+    // CI: the runs of its branches, one section per worktree.
+    if (!ticketWorktrees.length) return <div class="empty">No CI to show: {id} has no worktree.</div>;
+    return (
+      <>
+        {ticketWorktrees.map((w) => (
+          <div key={w.key} class="ticket-ci" data-section={w.key}>
+            {ticketWorktrees.length > 1 && <WorktreeHeader ws={w} tool="vc" />}
+            <CiBody view={ci[w.key]} worktree={w.key} />
+          </div>
+        ))}
+      </>
+    );
+  };
 
   let content;
   if (tool === 'backlog') {
@@ -737,6 +770,7 @@ export function App() {
           setActive(key);
           update((p) => ({ ...p, tool: 'files' }));
         }}
+        pinned={partShown && ticket ? { id: ticket.id, body: ticketPart(ticket.id) } : undefined}
       />
     );
   } else if (tool === 'vc' && vcView === 'compare') {
@@ -809,7 +843,6 @@ export function App() {
     content = (
       <div class="single" data-section={activeWs.key}>
         {tool === 'chats' && <HooksNotice missing={activeWs.reachable && !activeWs.hasHooks ? 1 : 0} />}
-        {tool === 'vc' && ticket && <TicketHeader item={ticket} />}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>
@@ -954,6 +987,24 @@ export function App() {
                     </span>
                   )}
                 </button>
+                {t.id === 'backlog' && tool === 'backlog' && ticket && (
+                  <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label={`${ticket.id}'s Version Control`}>
+                    {BACKLOG_PARTS.map((v) => (
+                      <button
+                        key={v.id}
+                        class="sub-tool"
+                        role="tab"
+                        aria-selected={backlogPart === v.id}
+                        aria-label={v.id === 'list' ? 'Backlog: All Tickets' : `Backlog: ${v.label(ticket.id)}`}
+                        data-tip={v.label(ticket.id)}
+                        data-tip-pos="right"
+                        onClick={() => update((p) => ({ ...p, backlogPart: v.id }))}
+                      >
+                        <i class={`codicon codicon-${v.icon}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {t.id === 'vc' && tool === 'vc' && (
                   <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
                     {vcViews.map((v) => (
@@ -985,7 +1036,10 @@ export function App() {
             <i class="codicon codicon-extensions" />
           </button>
         </nav>
-        <div class="content">{content}</div>
+        <div class="content">
+          {/* The ticket whose tab is active (BL-275): its cards are highlighted. */}
+          <CurrentTicket.Provider value={activeTicket}>{content}</CurrentTicket.Provider>
+        </div>
       </div>
       <Hover
         render={(el) => {

@@ -94,6 +94,7 @@ import {
 import {
   commitsTouching,
   movesSince,
+  ownCommits,
   startCommit,
   ticketCommits,
   versionCommits,
@@ -258,10 +259,12 @@ export interface TicketDeps {
   revealWorktree(key: string): void;
   /** Shows a worktree's history in the sidebar, a ticket's commits highlighted, without taking the focus. */
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
-  /** Shows the ticket's Changes in a worktree's Version Control in the sidebar, that file selected (BL-171). */
-  showTicketChanges(key: string, ticket: string, path: string): Promise<void>;
-  /** Shows the ticket's commits in a worktree's Version Control in the sidebar, at that commit (By commit, BL-213). */
-  showTicketCommits(key: string, ticket: string, hash?: string): Promise<void>;
+  /** Shows the ticket's Changes under the sidebar's Backlog (BL-275), that file selected (BL-171). */
+  showTicketChanges(ticket: string, path?: string): Promise<void>;
+  /** Shows the ticket's Commits under the sidebar's Backlog (BL-275), at that commit (By commit, BL-213). */
+  showTicketCommits(ticket: string, hash?: string): Promise<void>;
+  /** The ticket whose tab (or a diff opened from it) is the active editor, or none (BL-275): its card is highlighted. */
+  activeTicket?(id: string | undefined): void;
   /** Back from an expanded file (BL-211): the sidebar shows the Backlog again, if it's still on a ticket's Changes or commits. */
   leaveTicketChanges(): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
@@ -782,6 +785,10 @@ export class TicketPanels implements vscode.Disposable {
       { dispose: deps.repository.onDidChange(() => void this.repositoryChanged()).dispose },
       deps.backlog.watch((changed) => void this.backlogChanged(changed)),
       deps.merges.watch(() => this.refreshAll()),
+      // The highlighted card follows the active editor (BL-275).
+      ...(vscode.window.tabGroups
+        ? [vscode.window.tabGroups.onDidChangeTabs(() => this.activeChanged()), vscode.window.tabGroups.onDidChangeTabGroups(() => this.activeChanged())]
+        : []),
       // A new default model or effort (BL-242): the pickers show "Default (Sonnet)" at once.
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (['model', 'effort', 'lightModel'].some((k) => e.affectsConfiguration(`flotilla.agents.${k}`))) this.refreshAll();
@@ -794,7 +801,39 @@ export class TicketPanels implements vscode.Disposable {
     );
   }
 
+  /** The ticket last told to be the active one (BL-275). */
+  private shownActive: string | undefined;
+
+  /**
+   * The ticket whose tab is the active editor (BL-275), or whose diff is (opened from its Changes, so reviewing a file
+   * keeps its card highlighted); none for any other editor.
+   */
+  activeTicket(): string | undefined {
+    for (const [id, panel] of this.panels) if (panel.active) return id;
+    return this.ticketDiffs?.originOf(vscode.window.tabGroups?.activeTabGroup.activeTab)?.id;
+  }
+
+  private activeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * The active editor changed: the sidebar is told, a moment later, so a diff opening from the ticket (its tab active
+   * before it's known as the ticket's) doesn't take the highlight away for an instant.
+   */
+  private activeChanged(): void {
+    clearTimeout(this.activeTimer);
+    this.activeTimer = setTimeout(() => this.tellActive(), 150);
+  }
+
+  /** The sidebar is told when the active ticket changes. */
+  private tellActive(): void {
+    const id = this.activeTicket();
+    if (id === this.shownActive) return;
+    this.shownActive = id;
+    this.deps.activeTicket?.(id);
+  }
+
   dispose(): void {
+    clearTimeout(this.activeTimer);
     this.ticketDiffs?.dispose();
     this.subscriptions.forEach((d) => d.dispose());
     this.panels.forEach((p) => p.dispose());
@@ -862,6 +901,7 @@ export class TicketPanels implements vscode.Disposable {
     await this.beside(item.id);
     const modified = await openChangeDiff(this.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`, line);
     this.diffs.openedDiff(modified, { id: item.id, path: f.path });
+    this.activeChanged();
   }
 
   /**
@@ -872,8 +912,7 @@ export class TicketPanels implements vscode.Disposable {
   async expandChange(item: BacklogItem, group: number, path: string): Promise<void> {
     const g = (await this.changesShown(item)).groups[group];
     if (!g?.files.some((f) => f.path === path)) return;
-    const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
-    if (ws) await this.deps.showTicketChanges(ws.key, item.id, path);
+    await this.deps.showTicketChanges(item.id, path);
   }
 
   /**
@@ -893,8 +932,7 @@ export class TicketPanels implements vscode.Disposable {
     );
     const hash = startCommit(commits, touching);
     void panel.webview.postMessage({ type: 'showCommit', hash } satisfies TicketHostMessage);
-    const ws = this.worktreesOf(item).find((w) => w.worktree.path === g.dir);
-    if (ws) await this.deps.showTicketCommits(ws.key, item.id, hash);
+    await this.deps.showTicketCommits(item.id, hash);
   }
 
   /** A commit picked in the sidebar's ticket commits (BL-213): the ticket's tab, if open, shows its expanded file in it. */
@@ -906,22 +944,18 @@ export class TicketPanels implements vscode.Disposable {
   async ticketVc(id: string): Promise<TicketVcView | undefined> {
     const item = await this.item(id);
     if (!item || item.remote) return undefined;
-    const [change, { commits }] = await Promise.all([this.changesShown(item), this.work(item)]);
-    return { id: item.id, title: item.title, change, commits };
+    const [change, { commits }, { items }] = await Promise.all([this.changesShown(item), this.work(item), this.deps.backlog.read()]);
+    // A branch that carries other tickets too (BL-275): only the commits that say they're this one's.
+    const branches = new Set(commits.flatMap((c) => c.branches));
+    const shared = new Set([...branches].filter((b) => items.some((i) => i.id !== item.id && branchMatches(i, b))));
+    const ids = [item.id, ...(item.links ?? []).map((l) => l.id)];
+    return { id: item.id, title: item.title, change, commits: ownCommits(commits, ids, shared) };
   }
 
-  /** A file of a ticket's Changes picked in the sidebar's Version Control: the ticket's tab shows its whole diff. */
+  /** A file of a ticket's Changes picked under its card in the sidebar (BL-275): its diff in VS Code's diff editor. */
   async openTicketChange(id: string, group: number, path: string): Promise<void> {
-    const show: TicketHostMessage = { type: 'showFull', group, path };
-    const existing = this.panels.get(id);
-    if (existing) {
-      existing.reveal(undefined, true);
-      void existing.webview.postMessage(show);
-      return;
-    }
-    await this.open(id);
-    const panel = this.panels.get(id);
-    if (panel) this.changeOnPost.set(panel, show);
+    const item = await this.item(id);
+    if (item) await this.openChange(item, group, path);
   }
 
   async open(id: string, o: { focus?: FocusTarget } = {}): Promise<void> {
@@ -946,6 +980,7 @@ export class TicketPanels implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, 'media', 'flotilla.svg');
     panel.webview.html = this.html(panel.webview, dist);
     this.panels.set(id, panel);
+    this.activeChanged();
     // Its agents' replies are seen now (BL-127): its card no longer says so.
     if (item.unseenReplies) {
       await this.deps.backlog.change((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? (({ unseenReplies: _, ...rest }) => rest)(i) : i)) }));
@@ -955,10 +990,12 @@ export class TicketPanels implements vscode.Disposable {
     const live = setInterval(() => void this.liveActivity(panel), LIVE_MS);
     // Told before a button refuses: a glitch found on opening it shows as a line (BL-163).
     void this.check(id, false);
+    panel.onDidChangeViewState?.(() => this.activeChanged());
     panel.onDidDispose(() => {
       ci?.dispose();
       clearInterval(live);
       this.panels.delete(id);
+      this.activeChanged();
       this.checks.delete(id);
       this.changeViews.delete(id);
       // Its Ask chat ends with it: nothing of it is kept.

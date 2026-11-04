@@ -6,18 +6,18 @@ import {
 import { backFromTicketChanges } from '../../../src/webview/ui/ticketBack';
 
 describe('Back from an expanded file (BL-211)', () => {
-  it("switches the sidebar from the ticket's Changes to the Backlog", () => {
-    expect(backFromTicketChanges({ tool: 'vc', vcView: 'ticketChanges' })).toEqual({ tool: 'backlog', vcView: 'ticketChanges' });
+  it("switches the Backlog from the ticket's Changes to its list", () => {
+    expect(backFromTicketChanges({ tool: 'backlog', backlogPart: 'changes' })).toEqual({ tool: 'backlog', backlogPart: 'list' });
   });
 
-  it("switches the sidebar from the ticket's commits to the Backlog (By commit, BL-213)", () => {
-    expect(backFromTicketChanges({ tool: 'vc', vcView: 'ticketCommits' })).toEqual({ tool: 'backlog', vcView: 'ticketCommits' });
+  it("switches the Backlog from the ticket's Commits to its list (By commit, BL-213)", () => {
+    expect(backFromTicketChanges({ tool: 'backlog', backlogPart: 'commits' })).toEqual({ tool: 'backlog', backlogPart: 'list' });
   });
 
   it('leaves the sidebar where the user moved it since', () => {
-    const files = { tool: 'files', vcView: 'ticketChanges' } as const;
-    const history = { tool: 'vc', vcView: 'history' } as const;
+    const files = { tool: 'files', backlogPart: 'changes' } as const;
+    const ci = { tool: 'backlog', backlogPart: 'ci' } as const;
     expect(backFromTicketChanges(files)).toBe(files);
-    expect(backFromTicketChanges(history)).toBe(history);
+    expect(backFromTicketChanges(ci)).toBe(ci);
   });
 });

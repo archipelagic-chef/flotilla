@@ -50,6 +50,13 @@
   gap: 4px;
   cursor: grab;
 }
+/* The ticket whose tab is active (BL-275): an accent bar and border, as a selected list row. */
+.backlog-item.current {
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
+  box-shadow:
+    inset 2px 0 0 var(--focus),
+    inset 0 0 0 1px color-mix(in srgb, var(--focus) 60%, transparent);
+}
 .backlog-item .status-toggle {
   width: 20px;
   height: 20px;

@@ -22,6 +22,8 @@ const INSTANT = new Set([
   'openChange',
   'expandChange',
   'openTicketChange',
+  // View Version Control (BL-275): the ticket's tab opens, the Backlog shows its Changes.
+  'viewTicketVc',
   'noteOpen',
   'openChat',
   'openCommit',

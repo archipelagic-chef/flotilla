@@ -1,21 +1,12 @@
-/* Version Control when a worktree is a ticket's (BL-171): its header, its Changes and its Commits. */
-.ticket-vc-head {
+/* A ticket's version control under its card in the Backlog (BL-275): the pinned card, its Changes and its Commits. */
+.ticket-vc {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  flex-direction: column;
+  min-height: 0;
+}
+.ticket-vc-card {
+  flex: none;
   border-bottom: 1px solid var(--border);
-  min-width: 0;
-}
-.ticket-vc-title {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.ticket-vc-id {
-  font-weight: 600;
 }
 .ticket-changes .counts,
 .ticket-changes .group-head .counts {

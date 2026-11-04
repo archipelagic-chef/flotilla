@@ -645,6 +645,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.viewTicketVersionControl",
+        "title": "View Version Control",
+        "category": "Flotilla",
+        "icon": "$(source-control)"
+      },
+      {
         "command": "flotilla.renameBacklogItem",
         "title": "Rename Backlog Item…",
         "category": "Flotilla"
@@ -1167,6 +1173,10 @@
           "when": "false"
         },
         {
+          "command": "flotilla.viewTicketVersionControl",
+          "when": "false"
+        },
+        {
           "command": "flotilla.deleteBacklogItem",
           "when": "false"
         },
@@ -1350,6 +1360,11 @@
           "command": "flotilla.linkBacklogItem",
           "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
           "group": "2_work@5"
+        },
+        {
+          "command": "flotilla.viewTicketVersionControl",
+          "when": "webviewId == 'flotilla.sidebar' && webviewSection == 'backlogItem' && backlogLocal",
+          "group": "2_work@6"
         },
         {
           "command": "flotilla.renameBacklogItem",
