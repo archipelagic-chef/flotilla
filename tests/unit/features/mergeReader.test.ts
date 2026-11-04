@@ -87,6 +87,20 @@ describe('MergeReader', () => {
     expect(map.get('BL-11')?.state).toBe('merged');
   });
 
+  it("doesn't call a branch merged when it was rebased onto the base with no commits of its own, then the base moved on (BL-284)", async () => {
+    // BL-273 and BL-262: started from main, then Update from Main rebased them (still without commits) onto main's
+    // new tip; their reflog says "rebase (finish): … onto <that tip>" at that tip, which main then left behind.
+    const repo = repoWith('feature/BL-12-x', 0);
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'on main');
+    git(repo, 'checkout', '-q', 'feature/BL-12-x');
+    git(repo, 'rebase', '-q', 'main');
+    git(repo, 'checkout', '-q', 'main');
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'main moves on');
+    const map = await new MergeReader(repo).read([item('BL-12', { status: 'review', branches: ['feature/BL-12-x'] })], 'main');
+    expect(map.get('BL-12')?.state).toBe('none');
+    expect(movesToDone(item('BL-12', { status: 'review' }), map.get('BL-12'))).toBe(false);
+  });
+
   it('reports partly merged for an epic whose branches are some merged, some not', async () => {
     const repo = repoWith('feature/BL-4-a', 1);
     git(repo, 'checkout', '-q', '-b', 'feature/BL-4-b', 'main');

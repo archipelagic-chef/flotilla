@@ -82,16 +82,20 @@ export class MergeReader {
       return { branch, state: 'unmerged', commits };
     }
     // Ancestor of the base: merged if the branch made its tip itself (its reflog says so), else empty. A branch
-    // back on the commit it was created from, reset to or fast-forwarded to is in the base too, with no work of its own.
+    // back on the commit it was created from, reset to or fast-forwarded to is in the base too, with no work of its own;
+    // so is one rebased with nothing of its own onto the base (Update from Main on a branch without commits, BL-284).
     const log = await runGit(['reflog', 'show', '--format=%H %gs', `refs/heads/${branch}`], { cwd: this.cwd }).catch(() => '');
-    const worked = log.split('\n').some((line) => line.startsWith(`${sha} `) && madeCommit(line.slice(sha.length + 1)));
+    const worked = log.split('\n').some((line) => line.startsWith(`${sha} `) && madeCommit(line.slice(sha.length + 1), sha));
     return { branch, state: worked ? 'merged' : 'empty', commits: 0 };
   }
 }
 
-/** Whether a reflog entry's subject is the branch making a commit: a commit, amend, rebase, cherry-pick, revert or
- * real merge, not its creation, a reset or a fast-forward. */
-function madeCommit(subject: string): boolean {
+/** Whether a reflog entry's subject is the branch making a commit (sha): a commit, amend, rebase, cherry-pick, revert
+ * or real merge, not its creation, a reset, a fast-forward, or a rebase that ended on the commit it was onto (it had
+ * no commits of its own to replay, so its tip is the base's commit, not one it made). */
+function madeCommit(subject: string, sha: string): boolean {
+  const onto = /\(finish\): \S+ onto ([0-9a-f]{7,})$/.exec(subject)?.[1];
+  if (onto && sha.startsWith(onto)) return false;
   if (/^(commit|cherry-pick|revert|rebase|am)\b/.test(subject)) return true;
   return /^(merge|pull)\b/.test(subject) && !/: Fast-forward$/.test(subject);
 }
