@@ -67,7 +67,6 @@ import { noteFinished } from './notes';
 import { noteNeed } from '../../features/backlog/needs';
 import { MetricsBody } from '../metrics/view';
 import type { ScheduledView } from '../scheduledProtocol';
-import { ScheduledBody } from './scheduled';
 import type {
   MetricsPeriod,
   MetricsView,
@@ -176,7 +175,6 @@ const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'backlog', label: 'Backlog', icon: 'checklist' },
   { id: 'metrics', label: 'Metrics', icon: 'graph' },
-  { id: 'scheduled', label: 'Scheduled', icon: 'clock' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'vc', label: 'Version Control', icon: 'source-control' },
@@ -207,7 +205,9 @@ function ancestors(path: string): string[] {
 export function App() {
   const [persisted, setPersisted] = useState<Persisted>(() => {
     const saved = (vscode.getState() as Partial<Persisted> | undefined) ?? {};
-    return { ...INITIAL, ...saved, search: { ...INITIAL_SEARCH, ...saved.search } };
+    // The Scheduled tool is the backlog's Scheduled lane now (BL-283): a window saved on it opens on the backlog.
+    const tool = (saved.tool as string | undefined) === 'scheduled' ? 'backlog' : saved.tool;
+    return { ...INITIAL, ...saved, ...(tool ? { tool } : {}), search: { ...INITIAL_SEARCH, ...saved.search } };
   });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
   const [machine, setMachine] = useState<MachineState | undefined>(undefined);
@@ -545,8 +545,9 @@ export function App() {
     return () => send({ type: 'metricsClosed' });
   }, [metricsShown]);
 
-  // The Scheduled tool (BL-260) asks for its tasks while it's shown; the host sends them again as they change.
-  const scheduledShown = persisted.tool === 'scheduled';
+  // The backlog's Scheduled lane (BL-283) asks for the tasks while the backlog is shown; the host sends them again as
+  // they change, and every 30 s for "in 4 d".
+  const scheduledShown = persisted.tool === 'backlog';
   useEffect(() => {
     if (!scheduledShown) return;
     send({ type: 'scheduled' });
@@ -718,6 +719,7 @@ export function App() {
         mergeQueue={backlogInfo.mergeQueue}
         notes={notes}
         discussions={discussions}
+        scheduled={scheduled}
         workstreams={workstreams}
         colors={colors}
         workingOnly={!!persisted.workingOnly}
@@ -769,8 +771,6 @@ export function App() {
         reviewNow={() => send({ type: 'metricsReviewNow' })}
       />
     );
-  } else if (tool === 'scheduled') {
-    content = <ScheduledBody view={scheduled} />;
   } else if (tool === 'overview') {
     content = (
       <Overview

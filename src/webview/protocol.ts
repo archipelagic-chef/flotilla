@@ -44,7 +44,7 @@ import type { TicketCommit } from '../features/history/log';
 import type { TicketChange } from './ticketProtocol';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'backlog' | 'metrics' | 'scheduled' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
 
 export type {
   BacklogItem,

@@ -302,7 +302,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     void this.postBacklog();
   }
 
-  /** The scheduled tasks (BL-260), listed in the Scheduled tool (created after the sidebar). */
+  /** The scheduled tasks (BL-260), listed in the backlog's Scheduled lane (BL-283) (created after the sidebar). */
   useScheduler(scheduler: Scheduler): void {
     this.scheduler = scheduler;
     this.subscriptions.push(scheduler.onDidChange(() => void this.postScheduled()));
@@ -320,7 +320,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     if (this.scheduledShown) this.post({ type: 'scheduledView', view });
   }
 
-  /** The Scheduled tool's buttons. */
+  /** The Scheduled lane's buttons. */
   private async scheduledAction(m: Extract<WebviewMessage, { type: 'scheduledAction' }>): Promise<void> {
     const s = this.scheduler;
     if (!s) return;
