@@ -83,7 +83,7 @@ const AUTHOR_ICON: Record<string, string> = {
  * clicking: a choice (its recommendation preselected) or Other…; one Send posts the answers as the user's comment, and
  * the agent goes on from there. Answered ones, and those of tracker-linked items, show what was chosen, read-only.
  */
-function Needs({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
+export function Needs({ report, name, live }: { report: ReportView; name: string; live: boolean }) {
   const answered = report.answer !== undefined;
   const interactive = live && !answered && report.questions.length > 0;
   const [answers, setAnswers] = useState<Answer[]>(() => report.questions.map(defaultAnswer));

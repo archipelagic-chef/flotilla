@@ -10,16 +10,20 @@ import {
   askingEntry,
   becameText,
   noteQuestion,
+  noteRounds,
   type NoteStore,
-  withoutQuestions,
 } from '../../features/backlog/notes';
+import type { Question } from '../../features/backlog/report';
 import type {
   NoteHostMessage,
   NoteTabView,
   NoteWebviewMessage,
 } from '../../webview/noteProtocol';
 import type { NoteView } from '../../webview/protocol';
-import { renderMarkdown } from './ticketPanel';
+import {
+  renderMarkdown,
+  resolveMedia,
+} from './ticketPanel';
 
 export interface NotePanelDeps {
   extensionUri: vscode.Uri;
@@ -84,16 +88,36 @@ export async function openNotePanel(deps: NotePanelDeps, sentId?: string, answer
       ...((shownAs?.agent ?? n.agent) ? { agent: shownAs?.agent ?? n.agent } : {}),
       ...(n.with ? { with: n.with } : {}),
       ...(n.status === 'handled' || n.became.length ? { became: becameText(n.became) } : {}),
-      activity: await Promise.all(
-        n.activity.map(async (e) => ({
-          author: e.author,
-          date: e.date,
-          // The question blocks of the reply that asks show as its choices, under the activity (BL-216).
-          html: await renderMarkdown(asks?.questions.length && e === asking ? withoutQuestions(e.body) : e.body, panel.webview, notes.dir),
-        })),
-      ),
-      ...(asks?.questions.length ? { asks: { questions: asks.questions } } : {}),
+      activity: (
+        await Promise.all(
+          noteRounds(n.activity).map(async (round, i) => {
+            if (!round) return undefined;
+            const e = n.activity[i];
+            const questions = round.questions && (await Promise.all(round.questions.map((q) => withPictures(q, panel.webview))));
+            return {
+              author: e.author,
+              date: e.date,
+              // A reply's question blocks show as its questions, in it (BL-216, BL-281); a comment that answered shows what else it said.
+              html: await renderMarkdown(round.body, panel.webview, notes.dir),
+              ...(questions
+                ? { asks: { questions, ...(round.answer !== undefined ? { answer: round.answer } : asks && e === asking ? { live: true } : {}) } }
+                : {}),
+            };
+          }),
+        )
+      ).filter((e) => !!e),
     };
+  };
+  // Mockups to pick (BL-257): each choice's picture, as the webview loads it.
+  const withPictures = async (q: Question, webview: vscode.Webview): Promise<Question> => {
+    if (!q.options.some((o) => o.image)) return q;
+    const options = await Promise.all(
+      q.options.map(async ({ image, ...o }) => {
+        const media = image ? await resolveMedia(image, webview, notes.dir).catch(() => undefined) : undefined;
+        return media && 'src' in media ? { ...o, image: media.src } : o;
+      }),
+    );
+    return { ...q, options };
   };
   const refresh = async () => {
     const note = await view();

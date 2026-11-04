@@ -25,6 +25,7 @@ import {
   MarkdownBox,
   previewReplies,
 } from '../ticket/markdownBox';
+import { Needs } from '../ticket/activity';
 import './note.css';
 
 /** The page's one VS Code API (the ticket's module acquired it), for the note's messages as well as the box's. */
@@ -198,7 +199,7 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
   const [text, setText] = useState(note.text);
   const [comment, setComment] = useState('');
   // The answers to its agent's questions, afresh whenever it asks others.
-  const questions = note.status === 'asking' ? (note.asks?.questions ?? []) : [];
+  const questions = note.status === 'asking' ? (note.activity.find((e) => e.asks?.live)?.asks?.questions ?? []) : [];
   const asked = JSON.stringify(questions);
   const [answers, setAnswers] = useState<{ asked: string; answers: Answer[] }>({ asked, answers: questions.map(defaultAnswer) });
   if (answers.asked !== asked) setAnswers({ asked, answers: questions.map(defaultAnswer) });
@@ -298,13 +299,28 @@ function SentNote({ note, mention }: { note: NoteTabView; mention: string }) {
             <b>{e.author}</b> · {e.date}
           </div>
           <div class="rendered" dangerouslySetInnerHTML={{ __html: e.html }} />
+          {/* Its questions, in it (BL-281): to answer while it waits for you, else with what you picked. */}
+          {e.asks?.live && questions.length > 0 ? (
+            <div ref={questionsRef}>
+              <Questions questions={questions} answers={answers.answers} setAnswers={(a) => setAnswers({ asked, answers: a })} onSubmit={post} />
+            </div>
+          ) : (
+            e.asks && (
+              <Needs
+                report={{
+                  summary: '',
+                  details: '',
+                  asks: true,
+                  questions: e.asks.questions,
+                  ...(e.asks.answer !== undefined ? { answer: e.asks.answer } : {}),
+                }}
+                name={`note-${i}`}
+                live={false}
+              />
+            )
+          )}
         </div>
       ))}
-      {questions.length > 0 && (
-        <div ref={questionsRef}>
-          <Questions questions={questions} answers={answers.answers} setAnswers={(a) => setAnswers({ asked, answers: a })} onSubmit={post} />
-        </div>
-      )}
       <div class="comment-box">
         <MarkdownBox
           value={comment}

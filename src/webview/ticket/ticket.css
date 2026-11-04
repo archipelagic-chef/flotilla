@@ -331,6 +331,17 @@ h2 {
   border-color: var(--vscode-focusBorder);
   outline: 1px solid var(--vscode-focusBorder);
 }
+/* An answered question (read-only): what was picked stands out, the rest steps back (BL-281). */
+.choice:has(> input:disabled, > .pick-line > input:disabled) {
+  opacity: 0.6;
+}
+.choice:has(> input:checked:disabled, > .pick-line > input:checked:disabled) {
+  opacity: 1;
+  font-weight: 600;
+}
+.choice:has(> input:checked:disabled, > .pick-line > input:checked:disabled) input {
+  accent-color: var(--vscode-focusBorder);
+}
 .choice.pick > img {
   width: 100%;
   height: auto;
