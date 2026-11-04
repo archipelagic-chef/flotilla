@@ -1,4 +1,8 @@
-import { useState } from 'preact/hooks';
+import {
+  useContext,
+  useState,
+} from 'preact/hooks';
+import { CurrentTicket } from './currentTicket';
 import {
   holdsUpLine,
   type Need,
@@ -140,9 +144,12 @@ function NeedRow({ item }: { item: BacklogItem }) {
   const open = () => send({ type: 'backlog', op: 'open', id: item.id });
   // The actions of the ticket, here: the first fix of a stopped review is the one to offer first.
   const fix = r?.state === 'stopped' ? fixesFor(r.stop?.kind, !!r.stop?.task)[0] : undefined;
+  // Highlighted too while its tab is active (BL-275); its card in the lanes is the one scrolled to.
+  const current = useContext(CurrentTicket) === item.id;
   return (
     <div
-      class={`row backlog-item need need-${need.kind}`}
+      aria-current={current ? 'true' : undefined}
+      class={`row backlog-item${current ? ' current' : ''} need need-${need.kind}`}
       tabIndex={0}
       title={NEED_TITLE[need.kind]}
       onClick={open}

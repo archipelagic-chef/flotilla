@@ -3,19 +3,18 @@ import {
   useRef,
 } from 'preact/hooks';
 import type {
-  BacklogItemView,
   TicketVcView,
   WorkstreamView,
 } from '../protocol';
 import type { ChangedFile } from '../ticketProtocol';
 import type { TicketCommit } from '../../features/history/log';
-import { branchMatches } from '../../features/backlog/backlog';
 import {
   menuContext,
   run,
   send,
 } from './api';
 import { vcFileContext } from '../vcFile';
+import { worktreeAt } from './ticketWorktree';
 import { CHANGE_LETTER } from './files';
 import { fileIcon } from './icons';
 import { ago } from './ago';
@@ -23,27 +22,10 @@ import type { CommitFiles } from './vc';
 import './ticketVc.css';
 
 /**
- * Version Control when a worktree is a ticket's (BL-171): a header naming the ticket, and two views of its
- * own: its Changes (every file it changes, as the ticket's Changes section lists them, in full) and its Commits (one at
- * a time, stepped through with Previous and Next).
+ * A ticket's version control under its card in the Backlog (BL-275): its Changes (every file it changes, as the
+ * ticket's Changes section lists them, a group per branch or worktree) and its Commits (one at a time, stepped through
+ * with Previous and Next). It's the ticket's, not a worktree's: a merged ticket's change shows without its worktree.
  */
-
-/** The ticket a worktree works on: the local item whose branch it's on. */
-export function ticketOf(ws: WorkstreamView | undefined, backlog: BacklogItemView[] | undefined): BacklogItemView | undefined {
-  if (!ws || ws.isMain || !ws.branch) return undefined;
-  return backlog?.find((i) => !i.source && !i.proposed && branchMatches(i, ws.branch));
-}
-
-/** Above the worktree's header in every Version Control view: the ticket, as plain text (Back to it is in the ticket's tab, BL-211). */
-export function TicketHeader({ item }: { item: Pick<BacklogItemView, 'id' | 'title'> }) {
-  return (
-    <div class="ticket-vc-head">
-      <span class="ticket-vc-title" data-tip={item.title} data-tip-if-cut>
-        <span class="ticket-vc-id">{item.id}</span> {item.title}
-      </span>
-    </div>
-  );
-}
 
 /** "+12 −3", or "binary". */
 function Counts({ f }: { f: Pick<ChangedFile, 'added' | 'deleted' | 'binary'> }) {
@@ -57,12 +39,12 @@ function Counts({ f }: { f: Pick<ChangedFile, 'added' | 'deleted' | 'binary'> })
 
 /** The ticket's Changes in full: each comparison's files, with their line counts; the one Expand was on selected. */
 export function TicketChangesBody({
-  ws,
+  workstreams,
   view,
   selected,
   select,
 }: {
-  ws: WorkstreamView;
+  workstreams: WorkstreamView[];
   view: TicketVcView | undefined;
   selected?: string;
   select(path: string): void;
@@ -83,45 +65,49 @@ export function TicketChangesBody({
         <span class="badge">{change.files}</span>
         <Counts f={change} />
       </div>
-      {change.groups.map((g, group) => (
-        <div key={`${g.dir}\n${g.label}`} role="group" aria-label={g.label}>
-          {change.groups.length > 1 && (
-            <div class="row group-head sub" data-tip={g.compared}>
-              <span class="name">{g.label}</span>
-              <span class="badge">{g.files.length}</span>
-            </div>
-          )}
-          {g.files.map((f) => {
-            const parts = f.path.split('/');
-            const name = parts.pop()!;
-            const diff = { type: 'openTicketChange', id: view.id, group, path: f.path } as const;
-            const open = () => {
-              select(f.path);
-              send(diff);
-            };
-            return (
-              <div
-                key={f.path}
-                class={`row change ticket-file${selected === f.path ? ' selected' : ''}`}
-                role="button"
-                tabIndex={0}
-                aria-current={selected === f.path ? 'true' : undefined}
-                data-tip={f.uncommitted ? 'Changed and not committed yet' : undefined}
-                data-vscode-context={menuContext('vcFile', vcFileContext(ws.key, f, diff, ws.context))}
-                onClick={open}
-                onKeyDown={(e) => e.key === 'Enter' && open()}
-              >
-                <i class={fileIcon(name)} />
-                <span class={`name k-${f.kind}`}>{name}</span>
-                <span class="dir">{parts.join('/')}</span>
-                {f.uncommitted && <i class="codicon codicon-circle-filled uncommitted" aria-label="Not committed yet" />}
-                <Counts f={f} />
-                <span class={`letter k-${f.kind}`}>{CHANGE_LETTER[f.kind]}</span>
+      {change.groups.map((g, group) => {
+        const ws = worktreeAt(workstreams, g.dir);
+        return (
+          <div key={`${g.dir}\n${g.label}`} role="group" aria-label={g.label}>
+            {change.groups.length > 1 && (
+              <div class="row group-head sub" data-tip={g.compared}>
+                <span class="name">{g.label}</span>
+                <span class="badge">{g.files.length}</span>
+                <Counts f={g} />
               </div>
-            );
-          })}
-        </div>
-      ))}
+            )}
+            {g.files.map((f) => {
+              const parts = f.path.split('/');
+              const name = parts.pop()!;
+              const diff = { type: 'openTicketChange', id: view.id, group, path: f.path } as const;
+              const open = () => {
+                select(f.path);
+                send(diff);
+              };
+              return (
+                <div
+                  key={f.path}
+                  class={`row change ticket-file${selected === f.path ? ' selected' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={selected === f.path ? 'true' : undefined}
+                  data-tip={f.uncommitted ? 'Changed and not committed yet' : undefined}
+                  data-vscode-context={ws && menuContext('vcFile', vcFileContext(ws.key, f, diff, ws.context))}
+                  onClick={open}
+                  onKeyDown={(e) => e.key === 'Enter' && open()}
+                >
+                  <i class={fileIcon(name)} />
+                  <span class={`name k-${f.kind}`}>{name}</span>
+                  <span class="dir">{parts.join('/')}</span>
+                  {f.uncommitted && <i class="codicon codicon-circle-filled uncommitted" aria-label="Not committed yet" />}
+                  <Counts f={f} />
+                  <span class={`letter k-${f.kind}`}>{CHANGE_LETTER[f.kind]}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

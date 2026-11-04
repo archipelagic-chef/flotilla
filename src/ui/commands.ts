@@ -161,6 +161,8 @@ export interface SidebarHandle {
   revealInFiles(key: string, path: string): void;
   /** Opens a Version Control file row's diff, as clicking the row does. */
   openDiff(diff: VcFileDiff): Promise<void>;
+  /** Shows the Backlog on a ticket's Changes, under its card (BL-275). */
+  showTicketChanges(ticket: string): Promise<void>;
 }
 
 export interface CommandContext {
@@ -298,6 +300,13 @@ function backlogCommands(ctx: CommandContext, chats: chatUi.ChatContext): Comman
         verdict === 'approved' || verdict === 'changes' ? verdict : undefined,
         typeof text === 'string' ? text : undefined,
       ),
+    // View Version Control (BL-275): the ticket's tab, and its Changes under its card in the Backlog.
+    'flotilla.viewTicketVersionControl': async (card?: unknown) => {
+      const id = backlogIdOf(card);
+      if (!id) return;
+      await ctx.tickets.open(id);
+      await ctx.sidebar.showTicketChanges(id);
+    },
     'flotilla.openBacklogItem': (id?: unknown, opts?: unknown) => {
       const itemId = backlogIdOf(id);
       const focus = (opts as { focus?: unknown } | undefined)?.focus;

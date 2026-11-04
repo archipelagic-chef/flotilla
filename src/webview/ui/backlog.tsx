@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { ScheduledView } from '../scheduledProtocol';
 import { ScheduledLane } from './scheduled';
@@ -89,6 +90,11 @@ export interface Props {
   detailed: boolean;
   setDetailed(on: boolean): void;
   openWorktree(key: string): void;
+  /**
+   * A ticket's Changes, Commits or CI (BL-275), shown instead of the lanes: its card pinned at the top (the same card,
+   * live, with its buttons), the part under it.
+   */
+  pinned?: { id: string; body: ComponentChildren };
 }
 
 /**
@@ -114,6 +120,7 @@ export function BacklogView({
   detailed,
   setDetailed,
   openWorktree,
+  pinned,
 }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [discardedOpen, setDiscardedOpen] = useState(false);
@@ -161,6 +168,32 @@ export function BacklogView({
     e.dataTransfer.dropEffect = 'move';
     if (dropAt?.status !== lane || dropAt.before !== before) setDropAt({ status: lane, before });
   };
+
+  const pinnedItem = pinned && items?.find((i) => i.id === pinned.id);
+  if (pinned && pinnedItem) {
+    return (
+      <div class="backlog ticket-vc">
+        <div class="ticket-vc-card">
+          <ItemRow
+            item={pinnedItem}
+            icon={LANES.find((l) => l.lane === laneOf(pinnedItem))?.icon ?? 'circle-large-outline'}
+            worktrees={worktreesOf(pinnedItem)}
+            agents={agentsOf(pinnedItem)}
+            color={(ws) => colors.get(ws.key)}
+            renaming={renaming === pinnedItem.id}
+            setRenaming={(on) => setRenaming(on ? pinnedItem.id : undefined)}
+            queuedBehind={(mergeQueue?.entries.findIndex((e) => e.id === pinnedItem.id) ?? -1) > 0}
+            dropBefore={false}
+            onDragOver={() => undefined}
+            onDrop={() => undefined}
+            openWorktree={openWorktree}
+            compact={!detailed}
+          />
+        </div>
+        {pinned.body}
+      </div>
+    );
+  }
 
   return (
     <div class="backlog" onDragEnd={() => setDropAt(undefined)}>

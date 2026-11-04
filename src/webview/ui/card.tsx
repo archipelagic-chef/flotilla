@@ -29,6 +29,7 @@ import {
   menuContext,
   send,
 } from './api';
+import { useCurrent } from './currentTicket';
 import {
   act,
   BusyButton,
@@ -101,9 +102,14 @@ export function ItemRow({
   // A working agent's status, on a line of its own (BL-175): the one that did something last.
   const since = (a: CardAgent) => a.activity?.tool?.since ?? '';
   const live = agents.filter((a) => a.activity).sort((a, b) => since(b).localeCompare(since(a)))[0];
+  // The ticket whose tab is active (BL-275): highlighted, and scrolled to.
+  const el = useRef<HTMLDivElement>(null);
+  const current = useCurrent(item.id, el);
   return (
     <div
-      class={`row backlog-item st-${item.status}${discarded ? ' discarded' : ''}${compact ? ' compact' : ''}${dropBefore ? ' drop-before' : ''}${live && !renaming && !compact ? ' has-status' : ''}${saving ? ' saving' : ''}`}
+      ref={el}
+      aria-current={current ? 'true' : undefined}
+      class={`row backlog-item${current ? ' current' : ''} st-${item.status}${discarded ? ' discarded' : ''}${compact ? ' compact' : ''}${dropBefore ? ' drop-before' : ''}${live && !renaming && !compact ? ' has-status' : ''}${saving ? ' saving' : ''}`}
       aria-busy={saving}
       tabIndex={0}
       // Right-click (or Shift+F10 on the focused card) opens VS Code's menu; package.json says what's in it.
@@ -435,6 +441,14 @@ export function ItemRow({
                       icon="comment-discussion"
                     />
                   )}
+                  <button
+                    class="icon"
+                    aria-label="View Version Control"
+                    title="View Version Control: its Changes, Commits and CI, under the Backlog"
+                    onClick={() => send({ type: 'viewTicketVc', id: item.id })}
+                  >
+                    <i class="codicon codicon-source-control" />
+                  </button>
                   <BusyButton class="icon" aria-label="Link to an Issue (Jira, GitHub)…" message={{ type: 'backlog', op: 'link', id: item.id }} icon="link" />
                   <button class="icon" aria-label="Rename" onClick={() => setRenaming(true)}>
                     <i class="codicon codicon-edit" />
