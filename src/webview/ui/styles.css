@@ -675,22 +675,6 @@ textarea:focus {
   color: var(--muted);
 }
 
-/* ---- overview ---- */
-.machine {
-  padding: 0 8px 6px 10px;
-}
-.card {
-  padding: 5px 6px 6px 8px;
-  box-shadow: inset 3px 0 0 var(--ws-color);
-  cursor: pointer;
-}
-.card:hover {
-  background: var(--hover);
-}
-.card.current {
-  background: color-mix(in srgb, var(--ws-color) 10%, var(--vscode-sideBar-background));
-}
-
 .toggle {
   width: 22px;
   height: 20px;
@@ -835,10 +819,6 @@ ins {
 }
 .tree {
   padding-bottom: 12px;
-}
-
-.card + .card {
-  margin-top: 4px;
 }
 
 /* ---- hovers, like VS Code's ---- */

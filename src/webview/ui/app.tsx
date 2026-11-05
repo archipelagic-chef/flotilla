@@ -52,7 +52,6 @@ import {
   scopeState,
   scopeSummary,
 } from '../../features/ci/summary';
-import { Overview } from './overview';
 import {
   INITIAL_SEARCH,
   type SearchResults,
@@ -209,7 +208,6 @@ const TICKET_PARTS: Array<{ id: Exclude<BacklogPart, 'list'>; label: (id: string
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'metrics', label: 'Metrics', icon: 'graph' },
   { id: 'backlog', label: 'Backlog', icon: 'checklist' },
-  { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'chats', label: 'Chats', icon: 'comment-discussion' },
 ];
 
@@ -237,13 +235,14 @@ function ancestors(path: string): string[] {
 export function App() {
   const [persisted, setPersisted] = useState<Persisted>(() => {
     const saved = (vscode.getState() as Partial<Persisted> | undefined) ?? {};
-    // The Scheduled tool is the backlog's Scheduled lane now (BL-283): a window saved on it opens on the backlog.
-    const tool = (saved.tool as string | undefined) === 'scheduled' ? 'backlog' : saved.tool;
+    // The Scheduled tool is the backlog's Scheduled lane now (BL-283), and the Overview is gone (BL-293): a window saved
+    // on either opens on the backlog.
+    const tool = ['scheduled', 'overview'].includes(saved.tool as string) ? 'backlog' : saved.tool;
     return { ...INITIAL, ...saved, ...(tool ? { tool } : {}), search: { ...INITIAL_SEARCH, ...saved.search } };
   });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
   const [machine, setMachine] = useState<MachineState | undefined>(undefined);
-  /** Worktrees whose tab is closed; they stay in the Overview. */
+  /** Worktrees whose tab is closed; Switch Active Worktree… reopens one. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
@@ -837,6 +836,9 @@ export function App() {
         }}
         pinned={partShown && ticket ? { id: ticket.id, body: ticketPart(ticket.id) } : undefined}
         main={{ ws: workstreams.find((w) => w.isMain), selected: view.picked.kind === 'main', select: () => select(MAIN) }}
+        machine={machine}
+        missingExclusions={missingExclusions}
+        slow={slow}
       />
     );
   } else if (tool === 'vc' && vcView === 'compare') {
@@ -884,24 +886,6 @@ export function App() {
         openEditor={() => send({ type: 'metricsEditor', period })}
         openReview={(day) => send({ type: 'metricsReview', day })}
         reviewNow={() => send({ type: 'metricsReviewNow' })}
-      />
-    );
-  } else if (tool === 'overview') {
-    content = (
-      <Overview
-        workstreams={workstreams}
-        machine={machine}
-        active={active ?? ''}
-        colors={colors}
-        closed={closed}
-        ci={ci}
-        missing={missingExclusions}
-        slow={slow}
-        onSelect={(key) => {
-          setClosed((c) => new Set([...c].filter((k) => k !== key)));
-          setActive(key);
-          update((p) => ({ ...p, tool: 'files' }));
-        }}
       />
     );
   } else if (!activeWs) {
@@ -995,7 +979,7 @@ export function App() {
                   {open > 0 && <span class="n">{open}</span>}
                   <button
                     class="tab-close"
-                    data-tip="Close Tab (the worktree stays in the Overview)"
+                    data-tip="Close Tab (Switch Active Worktree… reopens it)"
                     aria-label={`Close ${ws.label}`}
                     onClick={(e) => {
                       e.stopPropagation();

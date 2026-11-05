@@ -424,11 +424,6 @@
         "category": "Flotilla"
       },
       {
-        "command": "flotilla.showOverview",
-        "title": "Show Overview",
-        "category": "Flotilla"
-      },
-      {
         "command": "flotilla.showBacklog",
         "title": "Show Backlog",
         "category": "Flotilla"
@@ -1057,10 +1052,6 @@
         {
           "command": "flotilla.revealFileInOS",
           "when": "false"
-        },
-        {
-          "command": "flotilla.showOverview",
-          "when": "flotilla.state == ready"
         },
         {
           "command": "flotilla.showSearch",

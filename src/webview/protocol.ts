@@ -44,7 +44,7 @@ import type { TicketCommit } from '../features/history/log';
 import type { TicketChange } from './ticketProtocol';
 
 /** The tools in the strip on the left. */
-export type Tool = 'overview' | 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
+export type Tool = 'backlog' | 'metrics' | 'files' | 'search' | 'vc' | 'chats';
 
 export type {
   BacklogItem,
@@ -361,7 +361,7 @@ export type HostMessage =
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
   /** The active worktree changed outside the webview (shortcut, status bar). */
   | { type: 'active'; key: string }
-  /** Worktrees whose tab is closed (still in the Overview). */
+  /** Worktrees whose tab is closed (Switch Active Worktree… reopens one). */
   | { type: 'tabs'; closed: string[] }
   /** Exclusions VS Code's settings still lack for a worktrees folder in the main folder (empty: none to show). */
   | { type: 'exclusions'; missing: string[] }
@@ -415,7 +415,7 @@ export type HostMessage =
   | { type: 'log'; key: string; head: string | undefined; skip: number; commits: CommitView[]; more: boolean; error?: string };
 
 /** What a command acts on. Context-menu commands receive this too (merged with VS Code's webview fields). */
-/** The machine, for the Overview: its free memory, the agents working in every window, and the windows open on worktrees. */
+/** The machine, for the Backlog (its agent count's tooltip, a low-memory warning): its free memory, the agents working in every window, and the windows open on worktrees. */
 export interface MachineState {
   /** Free memory, in MB. */
   freeMB: number;
@@ -489,7 +489,7 @@ export interface AutopilotQueued {
   since?: string;
 }
 
-/** A repository on a slow drive: what the Overview says, and how to fix it. */
+/** A repository on a slow drive: what the Backlog's notice says, and how to fix it. */
 export interface SlowStorageView {
   message: string;
   fix: string;

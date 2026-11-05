@@ -41,7 +41,7 @@ async function apply(target: vscode.ConfigurationTarget): Promise<void> {
   }
 }
 
-/** The Overview's button: sets what's missing in the user's settings (the recommended choice of the offer). */
+/** The Backlog notice's button (Hide Worktrees): sets what's missing in the user's settings (the recommended choice of the offer). */
 export function hideWorktrees(): Promise<void> {
   return apply(vscode.ConfigurationTarget.Global);
 }

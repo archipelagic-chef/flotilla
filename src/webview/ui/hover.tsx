@@ -199,7 +199,7 @@ const STATE_CLASS: Partial<Record<WorkstreamView['attention'], string>> = {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** The hover of a worktree (tab, header, Overview card): branch, folder, status, changes, chats and how to open it. */
+/** The hover of a worktree (tab, header): branch, folder, status, changes, chats and how to open it. */
 export function WorktreeCard({ ws, ci, color, keys, hint }: { ws: WorkstreamView; ci?: CiView; color: string; keys?: string; hint?: string }) {
   const open = ws.chats.filter((c) => c.open);
   const waiting = open.filter((c) => c.state === 'waiting-for-input').length;

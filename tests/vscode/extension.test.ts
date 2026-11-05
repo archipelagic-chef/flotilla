@@ -36,7 +36,7 @@ suite('Flotilla smoke test', () => {
   });
 
   test('opens the sidebar on each tab', async () => {
-    for (const id of ['flotilla.showOverview', 'flotilla.showFiles', 'flotilla.showSearch', 'flotilla.showVersionControl', 'flotilla.showChats'])
+    for (const id of ['flotilla.showFiles', 'flotilla.showSearch', 'flotilla.showVersionControl', 'flotilla.showChats'])
       await vscode.commands.executeCommand(id);
     await vscode.commands.executeCommand('flotilla.selectWorktree', 0);
   });

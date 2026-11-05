@@ -22,6 +22,14 @@ import type {
   NoteView,
   WorkstreamView,
 } from '../protocol';
+import type {
+  MachineState,
+  SlowStorageView,
+} from '../protocol';
+import {
+  BacklogNotices,
+  machineLine,
+} from './backlogNotices';
 import { send } from './api';
 import {
   act,
@@ -97,6 +105,12 @@ export interface Props {
   pinned?: { id: string; body: ComponentChildren };
   /** Main's row at the top (BL-290): selected when no ticket or worktree is, for Files, Search and Version Control. */
   main?: { ws?: WorkstreamView; selected: boolean; select(): void };
+  /** The machine (BL-293): its line in the agent count's tooltip, a warning above the lanes while memory is low. */
+  machine?: MachineState;
+  /** What VS Code's settings still let see the worktrees folder: a notice above the lanes while there's any. */
+  missingExclusions: readonly string[];
+  /** The repository is on a slow drive: a notice above the lanes. */
+  slow?: SlowStorageView;
 }
 
 /**
@@ -124,6 +138,9 @@ export function BacklogView({
   openWorktree,
   pinned,
   main,
+  machine,
+  missingExclusions,
+  slow,
 }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [discardedOpen, setDiscardedOpen] = useState(false);
@@ -210,9 +227,19 @@ export function BacklogView({
         setDetailed={setDetailed}
       />
       {countLabel && autopilot && (
-        <AgentCount label={countLabel} autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />
+        <AgentCount
+          label={countLabel}
+          autopilot={autopilot}
+          titles={titles}
+          live={live}
+          open={autopilotOpen}
+          setOpen={setAutopilotOpen}
+          machine={machineLine(machine)}
+        />
       )}
-      {autopilot?.enabled && <AutopilotBar autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} />}
+      {autopilot?.enabled && (
+        <AutopilotBar autopilot={autopilot} titles={titles} live={live} open={autopilotOpen} setOpen={setAutopilotOpen} machine={machineLine(machine)} />
+      )}
       {mergeQueue && mergeQueue.entries.length > 0 && <MergeQueueBar queue={mergeQueue} />}
       {workingOnly && items && items.length > 0 && (
         <button class="working-bar" onClick={() => setWorkingOnly(false)} title="Click to show every ticket">
@@ -231,6 +258,7 @@ export function BacklogView({
           </span>
         </button>
       ))}
+      <BacklogNotices machine={machine} missing={missingExclusions} slow={slow} />
       {main?.ws && <MainRow ws={main.ws} selected={main.selected} select={main.select} />}
       <NeedsYou items={items ?? []} notes={notes} />
       {!items && <div class="empty">Loading the backlog…</div>}

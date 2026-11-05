@@ -9,8 +9,8 @@ const CLOSED_KEY = 'flotilla.closedTabs';
 
 /**
  * The worktree this window works in, picked with the sidebar's worktree tabs (or ALL). New terminals and chats start
- * there, and the status bar shows it. Also keeps which worktree tabs are closed (they are still listed in the
- * Overview, and opening one there reopens its tab). Both are remembered per window.
+ * there, and the status bar shows it. Also keeps which worktree tabs are closed (Switch Active Worktree… still lists
+ * them, and picking one there reopens its tab). Both are remembered per window.
  */
 export class ActiveWorktree implements vscode.Disposable {
   private value: string;

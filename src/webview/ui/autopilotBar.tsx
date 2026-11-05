@@ -29,13 +29,20 @@ interface FoldProps {
   live?: ReadonlyMap<string, readonly CardAgent[]>;
   open: boolean;
   setOpen: (open: boolean) => void;
+  /** The machine in a line (BL-293): agents and windows across VS Code, free memory. Added to the tooltip. */
+  machine?: string;
+}
+
+/** A tooltip, with the machine's line under it when there is one. */
+function withMachine(title: string, machine: string | undefined): string {
+  return machine ? `${title}\n${machine}` : title;
 }
 
 /**
  * The autopilot's bar, while it's on: what it does now. A click folds its details out (BL-153); its switch turns it off
  * (asking first while agents work). Try Now sits on the bar while it waits for the usage limit, in the details when open.
  */
-export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldProps) {
+export function AutopilotBar({ autopilot, titles, live, open, setOpen, machine }: FoldProps) {
   return (
     <div class={`autopilot-box${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="autopilot-bar">
@@ -43,7 +50,7 @@ export function AutopilotBar({ autopilot, titles, live, open, setOpen }: FoldPro
           class="autopilot-what"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          title={open ? 'Click to fold the details' : "Click to see what it's doing"}
+          title={withMachine(open ? 'Click to fold the details' : "Click to see what it's doing", machine)}
         >
           <i class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
           <i class="codicon codicon-rocket" />
@@ -113,7 +120,7 @@ function Switch({ on }: { on: boolean }) {
 }
 
 /** The agent count, with the autopilot off (BL-107): a click folds out the same details, with the switch to turn it on. */
-export function AgentCount({ label, autopilot, titles, live, open, setOpen }: FoldProps & { label: string }) {
+export function AgentCount({ label, autopilot, titles, live, open, setOpen, machine }: FoldProps & { label: string }) {
   return (
     <div class={`autopilot-box off${autopilot.pausedAll !== undefined ? ' paused-all' : ''}`}>
       <div class="agent-count-line">
@@ -121,7 +128,7 @@ export function AgentCount({ label, autopilot, titles, live, open, setOpen }: Fo
           class="agent-count"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          title={open ? 'Click to fold the details' : 'Click to see what the agents are doing'}
+          title={withMachine(open ? 'Click to fold the details' : 'Click to see what the agents are doing', machine)}
         >
           <i class={`codicon codicon-chevron-${open ? 'down' : 'right'}`} />
           <i class="codicon codicon-hubot" />

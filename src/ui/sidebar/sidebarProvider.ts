@@ -294,7 +294,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private autopilot: Autopilot | undefined;
   private storage: StorageMonitor | undefined;
 
-  /** Whether the repository is on a slow drive, shown in the Overview (created after the sidebar). */
+  /** Whether the repository is on a slow drive, shown at the top of the Backlog (created after the sidebar). */
   useStorage(storage: StorageMonitor): void {
     this.storage = storage;
     this.subscriptions.push(storage.onDidChange(() => this.postStorage()));
@@ -845,7 +845,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.ci.update(all);
   }
 
-  /** The Overview says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
+  /** The Backlog says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
   private postExclusions(): void {
     const inFolder = this.deps.repository.current.some((ws) => ws.worktree.path && isInWorktreesFolder(this.deps.mainRoot, ws.worktree.path));
     this.post({ type: 'exclusions', missing: inFolder ? currentMissingExclusions() : [] });

@@ -26,7 +26,6 @@ export function viewCommands(deps: ViewCommandDeps): Commands {
     'flotilla.showJobLog': (arg?: unknown) => showJobLog(arg, jobLogs),
     'flotilla.showSidebar': () => vscode.commands.executeCommand(`${SidebarProvider.viewId}.focus`),
     'flotilla.showNeedsYou': () => needs.showList(),
-    'flotilla.showOverview': () => sidebar.showTool('overview'),
     'flotilla.showBacklog': () => sidebar.showTool('backlog'),
     'flotilla.foldAll': () => sidebar.fold(true),
     'flotilla.unfoldAll': () => sidebar.fold(false),

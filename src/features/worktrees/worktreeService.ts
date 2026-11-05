@@ -127,7 +127,7 @@ export class WorktreeService {
         try {
           adopted = (await makePortable(wt.path, wt.adminDir)) || adopted;
         } catch (error) {
-          // One worktree we cannot adopt (EPERM, EACCES, ...) must not blank the whole overview.
+          // One worktree we cannot adopt (EPERM, EACCES, ...) must not blank the whole list.
           options.onAdoptError?.(wt, error);
         }
       }

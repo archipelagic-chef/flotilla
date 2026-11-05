@@ -58,7 +58,7 @@ export class StorageMonitor implements vscode.Disposable {
 
   constructor(private readonly deps: StorageDeps) {}
 
-  /** What the Overview shows while the repository is slow (undefined otherwise). */
+  /** What the Backlog's notice shows while the repository is slow (undefined otherwise). */
   get slow(): { message: string; fix: string } | undefined {
     return this.report?.slow ? slowStorageText(this.report) : undefined;
   }
