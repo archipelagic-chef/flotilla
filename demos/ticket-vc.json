@@ -1,5 +1,5 @@
 {
-  "title": "The ticket you're viewing is highlighted in the Backlog, and the Backlog's sub-items in the tool strip show its Changes, Commits and CI under its pinned card",
+  "title": "The ticket you're viewing is highlighted in the Backlog, and the Backlog's Version Control in the tool strip shows its Changes, Commits and CI under its pinned card",
   "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
   "steps": [
     { "command": "Close All Editor Groups" },
@@ -13,7 +13,8 @@
     { "caption": "BL-3's tab is the active editor: its card is highlighted" },
     { "highlight": ".backlog-item.current" },
     { "wait": 2500 },
-    { "caption": "Under the Backlog in the tool strip: BL-3's Changes, Commits and CI" },
+    { "caption": "Under the Backlog's Version Control in the tool strip: BL-3's Changes, Commits and CI" },
+    { "click": "[aria-label=\"Backlog: Version Control\"]" },
     { "highlight": "[aria-label=\"BL-3's Version Control\"]" },
     { "wait": 2500 },
     { "highlight": "" },

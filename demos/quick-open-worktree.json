@@ -2,7 +2,8 @@
   "title": "Go to File in main offers only main's files",
   "steps": [
     { "caption": "BL-1's src/greeting.js, opened from its worktree" },
-    { "click": "[aria-label=\"Files\"]" },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "click": "[aria-label=\"Backlog: Files\"]" },
     { "click": ".wt-tab:has-text(\"BL-1\")" },
     { "click": ".row:has-text(\"src\")" },
     { "click": ".row.file:has-text(\"greeting.js\")" },
