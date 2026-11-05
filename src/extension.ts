@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import { ChatSeen } from './ui/chatSeen';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -295,7 +296,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const security = createSecurity(context, location.mainRoot, () => repository.current.map((ws) => ws.worktree.path), audit);
   context.subscriptions.push(security);
   registerAll(context.subscriptions, securityCommands({ security }));
+  const chatSeen = new ChatSeen(context.workspaceState);
+  context.subscriptions.push(chatSeen);
   const sidebar = new SidebarProvider({
+    chatSeen,
     metrics,
     audit,
     requests: security.requests,
@@ -595,6 +599,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const decorations = new ExplorerDecorations(repository, folder.uri, inWorkspace);
   const ctx: CommandContext = {
     extension: context,
+    chatSeen,
     service,
     repository,
     sidebar: {

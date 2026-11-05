@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import type { ChatSeen } from './chatSeen';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
@@ -53,6 +54,8 @@ const HOOKS_OFFERED_KEY = 'flotilla.hooksOffered';
 
 export interface ChatContext {
   extension: vscode.ExtensionContext;
+  /** When this window last opened each chat: opening one marks its reply seen (BL-286). */
+  chatSeen?: ChatSeen;
   /** Root of the worktree open in this window; chats started here run in it. */
   currentRoot: string;
   /** Git dir of that worktree, where this window's chats record their state. */
@@ -167,6 +170,7 @@ export async function openChat(ctx: ChatContext, ws: Workstream, chatId: string,
     void vscode.window.showWarningMessage(`Can't open this chat: it's no longer listed in ${workstreamLabel(ws)}.`);
     return;
   }
+  void ctx.chatSeen?.mark(chat.id);
   const dir = chat.cwd ?? ws.worktree.path ?? ctx.currentRoot;
   const here = samePath(dir, ctx.currentRoot);
   const active = chat.open && (chat.state === 'working' || chat.state === 'waiting-for-input');

@@ -10,6 +10,10 @@ import {
   health,
   type StuckRules,
 } from '../../features/chats/activity';
+import {
+  isUnseen,
+  type SeenRecord,
+} from '../../features/chats/seen';
 import type { Workstream } from '../../features/workstreams/workstream';
 import type { FileChange } from '../../core/git/porcelain';
 import {
@@ -53,7 +57,28 @@ function chatVia(chat: Chat, all: readonly Workstream[]): string | undefined {
   return ws ? workstreamLabel(ws) : path.basename(chat.cwd);
 }
 
-export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bigContext = 200_000, rules: StuckRules = DEFAULT_STUCK_RULES): ChatView {
+/** What the sidebar knows of chats beyond their records (BL-286): which run headless, and when each was last opened here. */
+export interface ChatMarks {
+  headless(id: string): boolean;
+  seen: SeenRecord;
+}
+
+const NO_MARKS: ChatMarks = { headless: () => false, seen: { since: Number.MAX_SAFE_INTEGER, at: {} } };
+
+/** The key of the worktree a chat runs in, when that's one of them (its cwd), else undefined. */
+function runsIn(chat: Chat, all: readonly Workstream[]): string | undefined {
+  if (!chat.cwd) return undefined;
+  return all.find((w) => w.worktree.path && samePath(w.worktree.path, chat.cwd!))?.key;
+}
+
+export function toChatView(
+  chat: Chat,
+  all: readonly Workstream[],
+  now: Date,
+  bigContext = 200_000,
+  rules: StuckRules = DEFAULT_STUCK_RULES,
+  marks: ChatMarks = NO_MARKS,
+): ChatView {
   const u = chat.usage;
   const live = chat.state === 'working' && !chat.stalled ? chat.activity : undefined;
   const h = live && health(live, chat.updatedAt.toISOString(), rules, true, now.getTime());
@@ -70,6 +95,10 @@ export function toChatView(chat: Chat, all: readonly Workstream[], now: Date, bi
     linkedBy: chat.linkedBy,
     via: chat.linkedBy === 'cwd' ? undefined : chatVia(chat, all),
     age: chatAge(chat, now),
+    at: chat.updatedAt.getTime(),
+    ...(runsIn(chat, all) ? { runsIn: runsIn(chat, all) } : {}),
+    ...(agent || marks.headless(chat.id) ? { detached: true } : {}),
+    ...(isUnseen(chat, marks.seen) ? { unseen: true } : {}),
     ...(agent ? { agent: { name: agent.agent, item: agent.item } } : {}),
     ...(u?.context ? { size: { label: formatTokens(u.context), tip: big ? `${usageTip(u)} ${BIG_CHAT_HINT}` : usageTip(u), big } } : {}),
     ...(live ? { activity: live } : {}),
@@ -108,6 +137,7 @@ export function toWorkstreamView(
   changesLimit: number,
   bigContext = 200_000,
   rules: StuckRules = DEFAULT_STUCK_RULES,
+  marks: ChatMarks = NO_MARKS,
 ): WorkstreamView {
   // The limit is per worktree, across both lists: staged changes first (they're what a commit takes).
   const staged = capChanges(ws.staged, changesLimit);
@@ -136,7 +166,7 @@ export function toWorkstreamView(
     unstaged: unstaged.items,
     totals: { staged: staged.total, unstaged: unstaged.total },
     sync: { kind: sync, text: describeSync(ws) || (sync === 'sync' ? 'up to date' : ''), ahead: ws.sync.ahead, behind: ws.sync.behind, head: ws.sync.head },
-    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext, rules)),
+    chats: ws.chats.map((c) => toChatView(c, all, now, bigContext, rules, marks)),
     hasHooks: ws.hasHooks,
     context: workstreamContext(ws, inWorkspace),
   };

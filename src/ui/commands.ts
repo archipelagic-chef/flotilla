@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import type { ChatSeen } from './chatSeen';
 import * as vscode from 'vscode';
 import {
   fromLabel,
@@ -167,6 +168,8 @@ export interface SidebarHandle {
 
 export interface CommandContext {
   extension: vscode.ExtensionContext;
+  /** When this window last opened each chat (BL-286). */
+  chatSeen?: ChatSeen;
   service: WorktreeService;
   repository: Repository<Workstream>;
   sidebar: SidebarHandle;
@@ -197,6 +200,7 @@ export async function openWorktree(ctx: CommandContext, dir: string, newWindow: 
 export function chatContext(ctx: CommandContext): chatUi.ChatContext {
   return {
     extension: ctx.extension,
+    chatSeen: ctx.chatSeen,
     currentRoot: ctx.currentRoot,
     currentGitDir: ctx.currentGitDir,
     mainRoot: ctx.service.roots.mainRoot,
@@ -361,7 +365,7 @@ async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter)
   if (arg instanceof vscode.Uri) {
     const ws = ctx.repository.current.find((w) => w.worktree.path && samePath(w.worktree.path, arg.fsPath));
     if (ws) return ws;
-  } else if (isTarget(arg)) {
+  } else if (isTarget(arg) && !arg.pick) {
     const ws = ctx.repository.current.find((w) => w.key === arg.key);
     if (ws) return ws;
   } else if (arg === undefined) {
@@ -370,7 +374,10 @@ async function pickWorkstream(ctx: CommandContext, arg: Arg, filter: PickFilter)
     if (ws && (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain)) return ws;
   }
   const now = new Date();
-  const candidates = ctx.repository.current.filter((ws) => (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain));
+  const first = isTarget(arg) ? arg.key : undefined;
+  const candidates = ctx.repository.current
+    .filter((ws) => (filter.includeUnreachable || ws.worktree.path) && !(filter.excludeMain && ws.worktree.isMain))
+    .sort((a, b) => Number(b.key === first) - Number(a.key === first));
   if (candidates.length === 0) {
     void vscode.window.showInformationMessage('No matching workstreams.');
     return undefined;

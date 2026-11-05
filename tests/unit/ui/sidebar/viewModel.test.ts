@@ -4,10 +4,13 @@ import {
   it,
 } from 'vitest';
 import type { FileChange } from '../../../../src/core/git/porcelain';
+import type { Chat } from '../../../../src/features/chats/chats';
 import type { Workstream } from '../../../../src/features/workstreams/workstream';
 import {
   capChanges,
   changedViews,
+  type ChatMarks,
+  toChatView,
   toWorkstreamView,
 } from '../../../../src/ui/sidebar/viewModel';
 import type { WorkstreamView } from '../../../../src/webview/protocol';
@@ -71,5 +74,38 @@ describe('a worktree in the sidebar', () => {
     expect(view.staged).toHaveLength(3);
     expect(view.unstaged).toHaveLength(2);
     expect(view.totals).toEqual({ staged: 3, unstaged: 10 });
+  });
+});
+
+describe('a chat in the Chats list (BL-286)', () => {
+  const chat = (over: Partial<Chat> = {}): Chat => ({
+    id: 'c1',
+    source: 'claude-code',
+    title: 'A chat',
+    state: 'done',
+    linkedBy: 'cwd',
+    updatedAt: new Date(5000),
+    open: true,
+    ...over,
+  });
+  const marks = (over: Partial<ChatMarks> = {}): ChatMarks => ({ headless: () => false, seen: { since: 0, at: {} }, ...over });
+
+  it('carries its last activity, to sort by', () => {
+    expect(toChatView(chat(), [], new Date(6000)).at).toBe(5000);
+  });
+
+  it("is detached when it's one of Flotilla's agents: its first line names one, or it runs headless", () => {
+    const named = chat({ firstPrompt: 'You are agent Nova-7, working on backlog item BL-286: "x"' });
+    expect(toChatView(named, [], new Date(6000), undefined, undefined, marks()).detached).toBe(true);
+    expect(toChatView(chat(), [], new Date(6000), undefined, undefined, marks({ headless: (id) => id === 'c1' })).detached).toBe(true);
+    expect(toChatView(chat(), [], new Date(6000), undefined, undefined, marks()).detached).toBeUndefined();
+  });
+
+  it('has an unseen reply when its turn ended after it was last opened here', () => {
+    const view = (seenAt?: number) =>
+      toChatView(chat(), [], new Date(6000), undefined, undefined, marks({ seen: { since: 0, at: seenAt === undefined ? {} : { c1: seenAt } } })).unseen;
+    expect(view()).toBe(true);
+    expect(view(4000)).toBe(true);
+    expect(view(5000)).toBeUndefined();
   });
 });
