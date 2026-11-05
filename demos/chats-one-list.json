@@ -1,0 +1,29 @@
+{
+  "title": "Chats: one list of every chat, newest first, with its state, ticket and worktree",
+  "steps": [
+    { "click": "[aria-label=\"Chats\"]" },
+    { "waitFor": ".chats .chat" },
+    { "caption": "Every chat of every worktree in one list, newest first, whichever tab is selected" },
+    { "highlight": ".chats" },
+    { "wait": 1500 },
+    { "caption": "Each row: its state in a word, the ticket it belongs to, and the worktree it runs in" },
+    { "highlight": ".chats .chat:has(.chat-ticket)" },
+    { "wait": 1500 },
+    { "caption": "Flotilla's agents are greyed with a gear: they work on their own" },
+    { "highlight": ".chats .chat.detached .detached-mark" },
+    { "wait": 1200 },
+    { "caption": "The toggle hides them" },
+    { "highlight": ".agents-toggle" },
+    { "click": ".agents-toggle" },
+    { "wait": 1200 },
+    { "caption": "…and shows them again" },
+    { "click": ".agents-toggle" },
+    { "wait": 1000 },
+    { "caption": "A click on a row's ticket opens it" },
+    { "highlight": "" },
+    { "click": ".chats .chat .chat-ticket" },
+    { "waitFor": "h1" },
+    { "wait": 1200 },
+    { "caption": "" }
+  ]
+}
