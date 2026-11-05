@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The Overview is gone**: the sidebar's tool strip goes Metrics, Backlog and Chats, and *Show Overview* is no more; the Backlog's cards, the Chats list and the worktree tabs show what it listed (a closed tab comes back with *Switch Active Worktree…*). Its warnings show at the top of the Backlog instead, each while it applies: the worktrees folder isn't excluded (*Hide Worktrees*), the repository is on a slow drive (*How to Fix*), or memory is too low for agents to start. The agents working, windows open and memory free are in the agent count's tooltip.
+
 - **A ticket's Changes lead into its version control**: they say how big the change is and list its three biggest files, each opening its diff in the ticket's place (*Back to* brings the ticket back), with *View Version Control* for the rest (its changes, commits and CI under its card in the Backlog). The ticket's own file tree, inline diffs, Expand view, By commit and Open All Changes are gone. A report's link to a file the ticket changes opens its diff at the line, in place of the separate "diff" mark.
 
 - **Spend over time in Metrics**: which chats spent tokens, hour by hour. The Cost section stacks the last 6 hours, 24 hours or 7 days (by day) by chat, in tokens or $: agents by name and ticket ("reviewer Ziggy-8 · BL-201"), your own chats by title, the smallest as Others. Picking an hour, or a chat in the legend, lists its tokens by kind, turns, purpose and cost, and opens its ticket or chat. A running chat counts up to its latest turn.

@@ -1,0 +1,17 @@
+{
+  "title": "The Overview is gone: its warnings show at the top of the Backlog",
+  "settings": { "flotilla.agents.minFreeMemoryMB": 1000000 },
+  "steps": [
+    { "wait": 2000 },
+    { "highlight": "nav.tools" },
+    { "caption": "The tool strip: Metrics, Backlog (with Files, Search and Version Control under it), Chats. No Overview" },
+    { "wait": 2500 },
+    { "click": "nav.tools [aria-label=\"Backlog\"]" },
+    { "waitFor": ".machine-notice" },
+    { "highlight": ".machine-notice" },
+    { "caption": "The Overview's low-memory warning is at the top of the Backlog now, while it applies" },
+    { "wait": 3000 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}

@@ -2,7 +2,7 @@
   "title": "The sidebar's tool strip starts with Metrics, then Backlog",
   "steps": [
     { "highlight": "nav.tools" },
-    { "caption": "Metrics first, Backlog second, then Overview and Chats; Files, Search and Version Control sit under Backlog" },
+    { "caption": "Metrics first, Backlog second, then Chats: no Overview. Files, Search and Version Control sit under Backlog" },
     { "wait": 2500 },
     { "click": "nav.tools [aria-label=\"Backlog\"]" },
     { "click": "nav.tools [aria-label=\"Backlog: Version Control\"]" },
