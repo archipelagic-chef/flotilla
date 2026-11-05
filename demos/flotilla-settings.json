@@ -1,7 +1,6 @@
 {
   "title": "Flotilla Settings: the gear at the top of the sidebar opens all of Flotilla's settings, in six groups",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "hover": ".part.sidebar .composite.title" },
     { "waitFor": "[aria-label=\"Flotilla Settings…\"]" },
     { "highlight": "[aria-label=\"Flotilla Settings…\"]" },

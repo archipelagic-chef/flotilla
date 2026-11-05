@@ -1,7 +1,6 @@
 {
   "title": "Choose the agents' default model and effort in the backlog's title bar",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".agent-default-model" },
     { "caption": "The backlog's title bar: the agents' default model, and its effort next to it" },

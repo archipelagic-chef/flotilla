@@ -3,9 +3,6 @@
   "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
   "resetsTicket": "BL-18",
   "steps": [
-    { "command": "Close All Editor Groups" },
-    { "command": "Notifications: Clear All Notifications" },
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
     { "caption": "Needs you: BL-18 waits for you to pick a design" },

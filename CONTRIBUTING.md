@@ -228,7 +228,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 
 | Step | What it does |
 | --- | --- |
-| `{ "command": "Close All Editor Groups" }` | runs a command through the Command Palette, typed as a user would |
+| `{ "command": "Flotilla: Show Needs You…" }` | runs a command through the Command Palette, typed as a user would; one that only tidies the window (below) runs by a key, with no palette |
 | `{ "click": "[aria-label=\"Backlog\"]" }` | moves the pointer to the first visible element the [Playwright selector](https://playwright.dev/docs/other-locators) finds, in the workbench or any webview (the sidebar, a ticket), and clicks it |
 | `{ "rightClick": ".commit-file" }` | the same, with the right button: a row's right-click menu opens (its items are in the workbench: `.context-view .action-label:has-text("Open File")`) |
 | `{ "hover": ".ci-run" }` | moves the pointer onto it and leaves it there, so what shows on hover (a row's actions) can be clicked next |
@@ -244,7 +244,7 @@ A demo's steps each do one thing, in order. A step waits up to 15 s for what it 
 
 A demo can be a file anywhere, given by its path ending in `.json` (`npm run demo -- check /path/to/journey.json`): the product review's agent writes its journeys next to its report, and their screenshots (and a failed step's) land there too. `--scratch` plays it on a playground made afresh for that run (`.vscode-test/scratch-playground`), not `.playground`, so nothing it clicks changes what you try by hand, and each run starts from the same seeded state (BL-264). A demo's `"inbox": { "<name>.md": "<text>" }` puts those files in the playground's backlog inbox as the window opens, for Flotilla to take in as an agent's (`demos/scheduled-accept-tools.json` proposes a scheduled task with it).
 
-Every demo starts on the Flotilla view: the recorder opens it before the demo starts (BL-243), in every mode, so no recording shows the palette that opens it and Try it yourself opens on it as well. A `command` step that focuses it later brings it back after another view. The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
+Every demo starts in a clean window on the Flotilla view: before step 1, in every mode, the recorder closes the editors, clears the notifications and focuses the Flotilla view (BL-243, BL-294), so no recording shows any of it and Try it yourself opens on the same window. A demo's steps are only what its ticket shows: don't begin one with Close All Editor Groups, Notifications: Clear All Notifications or Focus on Flotilla View (`check` warns about a demo that does). Those commands, and View: Close All Editors, only tidy the window, so when a demo uses one partway through (to bring the Flotilla view back after another one) it runs by a key the demo profile binds, with no palette on screen; the list is `QUIET_COMMANDS` in [scripts/demo-kit.mjs](scripts/demo-kit.mjs). Any other command plays through the palette, as a user would run it. The example, [demos/open-ticket.json](demos/open-ticket.json), opens a ticket from the backlog:
 
 ```json
 {

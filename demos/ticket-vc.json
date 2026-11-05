@@ -2,9 +2,6 @@
   "title": "The ticket you're viewing is highlighted in the Backlog, and the Backlog's Version Control in the tool strip shows its Changes, Commits and CI under its pinned card",
   "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
   "steps": [
-    { "command": "Close All Editor Groups" },
-    { "command": "Notifications: Clear All Notifications" },
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "wait": 800 },
     { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },

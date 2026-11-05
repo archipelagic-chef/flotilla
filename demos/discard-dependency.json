@@ -1,7 +1,6 @@
 {
   "title": "Discard a ticket that another depends on: that one stops waiting for it, and its ticket says why",
   "steps": [
-    { "command": "Focus on Flotilla View" },
     { "click": "[aria-label=\"Backlog\"]" },
     { "waitFor": ".backlog-item:has-text(\"List attached files in the activity\"):has-text(\"Waits for BL-10\")" },
     { "caption": "This ticket depends on BL-10, so it waits for it" },
