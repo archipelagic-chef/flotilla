@@ -15,6 +15,9 @@ export interface ListedChat {
 
 const TICKET_ID = /^[A-Z][A-Z0-9]*-\d+$/;
 
+/** Whether `a` is the better copy of a chat to show: where it runs, then the newer. */
+const better = (a: ChatView, b: ChatView) => Number(a.linkedBy === 'cwd') - Number(b.linkedBy === 'cwd') || a.at - b.at;
+
 /**
  * Every chat of every worktree, once each, newest first. A chat listed in several worktrees (linked by edits or by
  * hand) is shown once, where it runs. Detached ones (Flotilla's agents) are left out when `hideDetached`.
@@ -27,8 +30,8 @@ export function chatList(workstreams: readonly WorkstreamView[], o: { hideDetach
       if (o.hideDetached && chat.detached) continue;
       const runsIn = (chat.runsIn && byKey.get(chat.runsIn)) || ws;
       const known = byId.get(chat.id);
-      // The copy in the worktree it runs in wins over one linked elsewhere.
-      if (known && (known.chat.linkedBy === 'cwd' || chat.linkedBy !== 'cwd')) continue;
+      // The copy in the worktree it runs in wins over one linked elsewhere; between two of those, the newer.
+      if (known && better(known.chat, chat) >= 0) continue;
       const ticket = chat.agent?.item ?? (TICKET_ID.test(runsIn.label) ? runsIn.label : undefined);
       byId.set(chat.id, { chat, ws, runsIn, ...(ticket ? { ticket } : {}) });
     }

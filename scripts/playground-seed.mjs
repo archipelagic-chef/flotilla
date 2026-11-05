@@ -1112,7 +1112,7 @@ const MORE_CHATS = [
     title: 'Where should the playground notes go?',
     state: 'done',
     ago: 20,
-    updatedAgo: -3,
+    updatedAgo: -10,
     turns: [{ say: 'Where should the playground notes go?', reply: 'In its README, under How to run it.' }],
   },
 ];

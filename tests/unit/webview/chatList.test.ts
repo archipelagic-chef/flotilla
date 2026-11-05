@@ -31,6 +31,11 @@ describe('the Chats list', () => {
     expect(list[0].runsIn.key).toBe('f');
   });
 
+  it('shows the newer copy of a chat that two worktrees list as their own', () => {
+    const list = chatList([ws('a', 'BL-1', [chat('x', 10, { state: 'ended', open: false })]), ws('b', 'BL-2', [chat('x', 20)])]);
+    expect(list.map((c) => c.runsIn.key)).toEqual(['b']);
+  });
+
   it("names the ticket: the agent's, else the worktree's", () => {
     const agent = chat('a', 10, { detached: true, agent: { name: 'Nova-7', item: 'BL-9' } });
     const list = chatList([ws('f', 'BL-7', [agent, chat('b', 5)]), ws('main', 'main', [chat('c', 1)])]);
