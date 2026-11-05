@@ -59,6 +59,10 @@ import {
   listDemos,
   nearestElements,
   parseDemo,
+  pressedKey,
+  quietCommand,
+  quietKeybindings,
+  SETUP_COMMANDS,
   plainSettings,
   resultLine,
   staleBuild,
@@ -169,6 +173,8 @@ function prepareProfile(githubUrl, own = {}) {
   Object.assign(settings, own);
   fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
   fs.writeFileSync(DEMO_OWN_FILE, `${JSON.stringify(Object.keys(own))}\n`);
+  // A key for each command that only tidies the window (BL-294): play runs them so, with no palette on screen.
+  fs.writeFileSync(path.join(PROFILE_DIR, 'User', 'keybindings.json'), `${JSON.stringify(quietKeybindings(), null, 2)}\n`);
   // What the last demo left in the playground's window (the sidebar's state: a fold open, a filter on; the editors and
   // views open) goes: each demo starts from the same window, so a toggle it clicks toggles the same way every time.
   fs.rmSync(path.join(PROFILE_DIR, 'User', 'workspaceStorage'), { recursive: true, force: true });
@@ -424,6 +430,13 @@ async function play(page, step, github) {
   const timeout = step.timeout ?? TIMEOUT_MS;
   switch (step.action) {
     case 'command': {
+      // A command that only tidies the window runs by its key, so the palette doesn't show for it (BL-294).
+      const quiet = quietCommand(step.value);
+      if (quiet) {
+        await page.keyboard.press(pressedKey(quiet.key));
+        await page.waitForTimeout(pace.fast ? 100 : 250);
+        break;
+      }
       await page.keyboard.press('F1');
       const input = page.locator('.quick-input-widget input');
       await input.waitFor({ state: 'visible', timeout });
@@ -597,6 +610,7 @@ async function main() {
   if (!fs.existsSync(file)) usage(`There's no demo "${name}" (${path.relative(root, file)}). The demos: ${listDemos(root).join(', ') || 'none'}.`);
   const named = path.basename(file, '.json');
   const demo = { ...parseDemo(fs.readFileSync(file, 'utf8'), named), name: named, dir: path.dirname(file) };
+  for (const warning of demo.warnings) console.warn(`Warning: ${warning}`);
   if (rest.includes('--scratch')) PLAYGROUND = SCRATCH_PLAYGROUND;
   const outAt = rest.indexOf('--out');
   const out = outAt >= 0 ? rest[outAt + 1] : undefined;
@@ -796,8 +810,9 @@ async function show(mode, demo, out, still, display) {
       checking = (async () => {
         while (recording && !(await gate.check())) await new Promise((r) => setTimeout(r, CHECK_MS));
       })();
-      // The Flotilla view is open before the demo starts (BL-243), so no recording shows the palette that opens it.
-      await play(page, { action: 'command', value: 'Focus on Flotilla View' }, github);
+      // The window is tidied before the demo starts, in every mode (BL-243, BL-294): no editors, no notifications, the
+      // Flotilla view focused. By their keys, and before `start`, so no recording shows any of it.
+      for (const value of SETUP_COMMANDS) await play(page, { action: 'command', value }, github);
       await play(page, { action: 'waitFor', value: '[aria-label="Backlog"]' }, github);
       start = Date.now();
       recorded.start = start;

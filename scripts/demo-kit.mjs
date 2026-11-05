@@ -36,6 +36,42 @@ export const TITLE_MARKER = 'Flotilla demo';
 const DEV_HOST = '[Extension Development Host] ';
 
 /**
+ * The commands that only tidy the window (BL-294), by their name in the palette: the recorder runs them by a key of
+ * their own (QUIET_KEYBINDINGS, in the demo profile), so no recording shows the palette for them. The window is tidied
+ * so before every demo starts; a demo uses one only partway through, say to bring the Flotilla view back.
+ */
+export const QUIET_COMMANDS = {
+  'Focus on Flotilla View': { id: 'flotilla.sidebar.focus', key: 'ctrl+alt+shift+f9' },
+  'Close All Editor Groups': { id: 'workbench.action.closeAllGroups', key: 'ctrl+alt+shift+f10' },
+  'View: Close All Editors': { id: 'workbench.action.closeAllEditors', key: 'ctrl+alt+shift+f11' },
+  'Notifications: Clear All Notifications': { id: 'notifications.clearAll', key: 'ctrl+alt+shift+f12' },
+};
+
+/** The quiet command a palette name is (case and spaces aside), or undefined. */
+export function quietCommand(name) {
+  const plain = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+  const found = Object.entries(QUIET_COMMANDS).find(([n]) => plain(n) === plain(name ?? ''));
+  return found && { name: found[0], ...found[1] };
+}
+
+/** The demo profile's keybindings.json: a key for each quiet command. */
+export function quietKeybindings() {
+  return Object.values(QUIET_COMMANDS).map(({ id, key }) => ({ key, command: id }));
+}
+
+/** A keybinding's key ("ctrl+alt+shift+f9") as Playwright presses it ("Control+Alt+Shift+F9"). */
+export function pressedKey(key) {
+  const names = { ctrl: 'Control', alt: 'Alt', shift: 'Shift', cmd: 'Meta' };
+  return key
+    .split('+')
+    .map((k) => names[k] ?? k.toUpperCase())
+    .join('+');
+}
+
+/** The window tidied before a demo's first step, in every mode: no editors, no notifications, the Flotilla view. */
+export const SETUP_COMMANDS = ['Close All Editor Groups', 'Notifications: Clear All Notifications', 'Focus on Flotilla View'];
+
+/**
  * A demo's script, checked: `{ title?, steps: [{ <action>: value, timeout? }] }`. Throws with what's wrong (and the
  * step's number), so an agent can fix its script before anything is launched.
  */
@@ -96,9 +132,21 @@ export function parseDemo(text, name = 'demo') {
     !(inbox && typeof inbox === 'object' && !Array.isArray(inbox) && Object.entries(inbox).every(([f, t]) => /^[\w.-]+\.md$/.test(f) && typeof t === 'string'))
   )
     throw new Error(`${name}: "inbox" is an object of file names (ending in .md) and their text`);
+  // Steps that tidy the window before anything else repeat what the recorder does before every demo (BL-294).
+  const lead = [];
+  for (const step of steps) {
+    if (step.action !== 'command' || !quietCommand(step.value)) break;
+    lead.push(step.value);
+  }
+  const warnings = lead.length
+    ? [
+        `${name}: ${lead.length > 1 ? `steps 1–${lead.length}` : 'step 1'} (${lead.join(', ')}) can go: every demo starts with no editors, no notifications and the Flotilla view focused`,
+      ]
+    : [];
   return {
     title: typeof demo.title === 'string' ? demo.title : name,
     steps,
+    warnings,
     settings,
     runsOnPush: demo.runsOnPush === true,
     ciPasses: demo.ciPasses === true,

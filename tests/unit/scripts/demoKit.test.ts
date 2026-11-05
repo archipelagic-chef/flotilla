@@ -33,8 +33,13 @@ import {
   parseDemo,
   parseJsonc,
   plainSettings,
+  pressedKey,
+  QUIET_COMMANDS,
+  quietCommand,
+  quietKeybindings,
   recordingLength,
   resultLine,
+  SETUP_COMMANDS,
   staleBuild,
   stepsToPlay,
   STILL_MS,
@@ -81,7 +86,7 @@ describe('parseDemo', () => {
       JSON.stringify({
         title: 'T',
         steps: [
-          { command: 'Focus on Flotilla View' },
+          { command: 'Flotilla: Open Metrics' },
           { click: 'text=BL-3', timeout: 5000 },
           { hover: '.ci-run' },
           { drag: 'text=BL-2', to: 'text=BL-1' },
@@ -95,7 +100,7 @@ describe('parseDemo', () => {
     expect(demo).toEqual({
       title: 'T',
       steps: [
-        { action: 'command', value: 'Focus on Flotilla View' },
+        { action: 'command', value: 'Flotilla: Open Metrics' },
         { action: 'click', value: 'text=BL-3', timeout: 5000 },
         { action: 'hover', value: '.ci-run' },
         { action: 'drag', value: 'text=BL-2', to: 'text=BL-1' },
@@ -108,7 +113,27 @@ describe('parseDemo', () => {
       runsOnPush: false,
       ciPasses: false,
       githubSignedOut: false,
+      warnings: [],
     });
+  });
+
+  it('warns about a demo that starts by tidying the window, which the recorder already did (BL-294)', () => {
+    const steps = (...commands: string[]) => JSON.stringify({ steps: [...commands.map((command) => ({ command })), { click: 'text=BL-3' }] });
+    const [warning] = parseDemo(steps('Close All Editor Groups', 'notifications: clear all notifications', 'Focus on Flotilla View'), 'd').warnings;
+    expect(warning).toMatch(/^d: steps 1–3 \(Close All Editor Groups, notifications: clear all notifications, Focus on Flotilla View\) can go/);
+    expect(parseDemo(steps('View: Close All Editors'), 'd').warnings).toEqual([expect.stringMatching(/^d: step 1 \(View: Close All Editors\) can go/)]);
+    // A command the demo shows, or a tidying one partway through, is no warning.
+    expect(parseDemo(steps('Flotilla: Show Needs You…', 'Focus on Flotilla View'), 'd').warnings).toEqual([]);
+    expect(parseDemo(JSON.stringify({ steps: [{ click: 'text=BL-3' }, { command: 'Focus on Flotilla View' }] }), 'd').warnings).toEqual([]);
+  });
+
+  it('knows the quiet commands by their palette names, and gives each a key of its own', () => {
+    expect(quietCommand(' focus on  flotilla view ')).toMatchObject({ name: 'Focus on Flotilla View', id: 'flotilla.sidebar.focus' });
+    expect(quietCommand('Flotilla: Show Needs You…')).toBeUndefined();
+    const keys = quietKeybindings().map((k) => k.key);
+    expect(new Set(keys).size).toBe(Object.keys(QUIET_COMMANDS).length);
+    for (const name of SETUP_COMMANDS) expect(quietCommand(name)).toBeDefined();
+    expect(pressedKey('ctrl+alt+shift+f9')).toBe('Control+Alt+Shift+F9');
   });
 
   it("takes Flotilla's settings the demo plays with, and no others", () => {
