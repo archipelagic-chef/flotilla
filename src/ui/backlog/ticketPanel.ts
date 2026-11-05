@@ -92,10 +92,8 @@ import {
   gatherAttachments,
 } from '../../features/backlog/attachments';
 import {
-  commitsTouching,
   movesSince,
   ownCommits,
-  startCommit,
   ticketCommits,
   versionCommits,
 } from '../../features/history/log';
@@ -105,13 +103,10 @@ import {
   ticketsForRepositoryChange,
 } from '../../features/backlog/refresh';
 import { resolveBase } from '../../features/workstreams/progress';
-import {
-  pickedChange,
-  ticketChange,
-} from '../../features/diffs/ticketChange';
+import { ticketChange } from '../../features/diffs/ticketChange';
 import {
   type DiffOrigin,
-  focusBeside,
+  focusTicket,
   TicketDiffs,
 } from './ticketDiffs';
 import {
@@ -261,12 +256,8 @@ export interface TicketDeps {
   showCommits(key: string, ticket: string, hashes: string[], selected: string): Promise<void>;
   /** Shows the ticket's Changes under the sidebar's Backlog (BL-275), that file selected (BL-171). */
   showTicketChanges(ticket: string, path?: string): Promise<void>;
-  /** Shows the ticket's Commits under the sidebar's Backlog (BL-275), at that commit (By commit, BL-213). */
-  showTicketCommits(ticket: string, hash?: string): Promise<void>;
   /** The ticket whose tab (or a diff opened from it) is the active editor, or none (BL-275): its card is highlighted. */
   activeTicket?(id: string | undefined): void;
-  /** Back from an expanded file (BL-211): the sidebar shows the Backlog again, if it's still on a ticket's Changes or commits. */
-  leaveTicketChanges(): Promise<void>;
   /** What's remembered for the user (across windows): "Show activity" is kept open or shut. */
   memento: vscode.Memento;
   /** Where the Ask chats' processes log (BL-80). */
@@ -873,10 +864,10 @@ export class TicketPanels implements vscode.Disposable {
     return (this.ticketDiffs ??= new TicketDiffs((o) => this.showChange(o)));
   }
 
-  /** Makes the editor group beside the ticket the active one: a diff opened next opens there, the ticket in view. */
-  async beside(id: string): Promise<void> {
+  /** Makes the ticket's tab the active one in its group: a diff opened next opens there, in the ticket's place. */
+  async inPlace(id: string): Promise<void> {
     const panel = this.panels.get(id);
-    if (panel) await focusBeside(panel);
+    if (panel) await focusTicket(panel);
   }
 
   /** Back from a diff: the ticket, its Changes scrolled to the file the diff shows, marked. */
@@ -892,52 +883,17 @@ export class TicketPanels implements vscode.Disposable {
     if (panel) this.changeOnPost.set(panel, { type: 'showChange', ...(o.path ? { path: o.path } : {}) });
   }
 
-  /** A file of the ticket's Changes in the diff editor, beside the ticket; the diff's title bar leads back to it. */
-  async openChange(item: BacklogItem, group: number, path: string, line?: number): Promise<void> {
+  /** A file of the ticket's Changes in the diff editor, in the ticket's place (its group); the diff's title bar leads back to it. */
+  async openChange(item: BacklogItem, group: number, path: string, line?: number): Promise<boolean> {
     // The change as the ticket shows it: what it lists is what opens.
     const g = (await this.changesShown(item)).groups[group];
     const f = g?.files.find((x) => x.path === path);
-    if (!g || !f) return;
-    await this.beside(item.id);
+    if (!g || !f) return false;
+    await this.inPlace(item.id);
     const modified = await openChangeDiff(this.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`, line);
     this.diffs.openedDiff(modified, { id: item.id, path: f.path });
     this.activeChanged();
-  }
-
-  /**
-   * Expand on a file of the ticket's Changes (BL-171), whose tab shows its diff: the sidebar follows, its worktree's
-   * Version Control on the ticket's Changes, that file selected. A merged ticket has no worktree to show it in (its
-   * compare in Version Control is BL-173's).
-   */
-  async expandChange(item: BacklogItem, group: number, path: string): Promise<void> {
-    const g = (await this.changesShown(item)).groups[group];
-    if (!g?.files.some((f) => f.path === path)) return;
-    await this.deps.showTicketChanges(item.id, path);
-  }
-
-  /**
-   * By commit on the file expanded in the ticket's tab (BL-213): the tab shows the file in the latest of the ticket's
-   * commits that changes it (else the latest), and the sidebar follows, its Version Control on the ticket's commits at
-   * that one, to step through them.
-   */
-  async byCommit(item: BacklogItem, panel: vscode.WebviewPanel, group: number, path: string): Promise<void> {
-    const g = (await this.changesShown(item)).groups[group];
-    const f = g?.files.find((x) => x.path === path);
-    if (!g || !f) return;
-    const { commits } = await this.work(item);
-    const touching = await commitsTouching(
-      g.dir,
-      commits.map((c) => c.hash),
-      f.origPath ? [f.path, f.origPath] : [f.path],
-    );
-    const hash = startCommit(commits, touching);
-    void panel.webview.postMessage({ type: 'showCommit', hash } satisfies TicketHostMessage);
-    await this.deps.showTicketCommits(item.id, hash);
-  }
-
-  /** A commit picked in the sidebar's ticket commits (BL-213): the ticket's tab, if open, shows its expanded file in it. */
-  pickTicketCommit(id: string, hash: string): void {
-    void this.panels.get(id)?.webview.postMessage({ type: 'showCommit', hash } satisfies TicketHostMessage);
+    return true;
   }
 
   /** A ticket as the sidebar's Version Control shows it (BL-171): its changes and commits; undefined when there's no such item. */
@@ -1143,16 +1099,6 @@ export class TicketPanels implements vscode.Disposable {
     })();
   }
 
-  /** The commits a ticket's Changes are narrowed to (BL-174), by ticket: none, all its change. */
-  private readonly picked = new Map<string, string[]>();
-
-  /** Narrows the ticket's Changes to some of its commits (none: all its change again), and sends them as they're read. */
-  narrowChanges(item: BacklogItem, commits: readonly string[]): void {
-    if (commits.length) this.picked.set(item.id, [...commits]);
-    else this.picked.delete(item.id);
-    this.refreshChanges(item);
-  }
-
   /** The ticket's change as its tab shows it (read now if it hasn't been yet). */
   async changesShown(item: BacklogItem): Promise<TicketChange> {
     return this.changeViews.get(item.id) ?? (await this.readChanges(item));
@@ -1161,8 +1107,6 @@ export class TicketPanels implements vscode.Disposable {
   /** What the ticket's work changes compared with main: its own branches (in their worktrees), else its merge. */
   async readChanges(item: BacklogItem): Promise<TicketChange> {
     const cwd = this.deps.mainRoot;
-    const picked = this.picked.get(item.id);
-    if (picked) return pickedChange(cwd, picked);
     const base = await resolveBase(cwd, readSettings().defaultBase);
     const local = (await runGit(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { cwd })).split('\n').filter(Boolean);
     const worktrees = new Map(

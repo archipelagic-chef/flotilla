@@ -355,12 +355,8 @@ export type HostMessage =
   | { type: 'showCommits'; key: string; ticket: string; hashes: string[]; selected: string }
   /** The ticket whose tab is the active editor (BL-275): its card is highlighted; none: no ticket tab is active. */
   | { type: 'activeTicket'; id?: string }
-  /** View Version Control, or Expand in a ticket's Changes (BL-171): the Backlog on the ticket's Changes, that file selected. */
+  /** View Version Control, or a file of the ticket's opened from it (BL-276): the Backlog on the ticket's Changes, that file selected. */
   | { type: 'showTicketChanges'; ticket: string; path?: string }
-  /** By commit on an expanded file (BL-213): the Backlog on the ticket's Commits, at that commit. */
-  | { type: 'showTicketCommits'; ticket: string; hash?: string }
-  /** Back from an expanded file (BL-211): the Backlog's list, if it's still on a ticket's Changes or Commits. */
-  | { type: 'leaveTicketChanges' }
   /** A ticket's changes and commits (asked for with ticketVc); undefined: it isn't a ticket (anymore). */
   | { type: 'ticketVc'; id: string; view?: TicketVcView }
   /** The active worktree changed outside the webview (shortcut, status bar). */
@@ -546,8 +542,6 @@ export type WebviewMessage =
   | { type: 'viewTicketVc'; id: string }
   /** A file of a ticket's Changes in the diff editor (group: its index in the ticket's change). */
   | { type: 'openTicketChange'; id: string; group: number; path: string }
-  /** A commit picked in Version Control's ticket commits (BL-213): the ticket's expanded file shows it, when By commit is on. */
-  | { type: 'pickTicketCommit'; id: string; hash: string }
   | { type: 'copy'; text: string }
   | { type: 'refs' }
   | ({ type: 'ci' } & CiRequest)

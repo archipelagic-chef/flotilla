@@ -42,7 +42,7 @@ import type {
   EntrySuggestion,
   TicketChange,
 } from '../ticketProtocol';
-import { changeLink } from './changeTree';
+import { changeLink } from './changeFiles';
 import './markdownBox.css';
 
 /** Replies to pasted or dropped images, by request id. */
@@ -308,12 +308,13 @@ export function MarkdownBox({
   );
 }
 
-/** The ticket's change, for the "diff" marks on links to its files (BL-174). */
+/** The ticket's change, for links to its files (BL-174): they open their diffs (BL-276). */
 export const ChangeLinks = createContext<TicketChange | undefined>(undefined);
 
 /**
  * Rendered Markdown from the host (VS Code's renderer; scripts are blocked by the page's policy). A link to a file the
- * ticket changes gets a "diff" mark after it (BL-174), which opens its diff at the line.
+ * ticket changes opens its diff at the line (BL-276), and the Backlog shows the ticket's Changes; other files open as
+ * they are.
  */
 export function Rendered({ html, empty }: { html: string; empty: string }) {
   const el = useRef<HTMLDivElement>(null);
@@ -321,18 +322,17 @@ export function Rendered({ html, empty }: { html: string; empty: string }) {
   useEffect(() => {
     const root = el.current;
     if (!root) return;
-    root.querySelectorAll('.diff-mark').forEach((m) => m.remove());
     root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
       const at = changeLink(a.getAttribute('href') ?? '', change);
-      if (!at) return;
-      const mark = document.createElement('button');
-      mark.className = 'diff-mark';
-      mark.textContent = 'diff';
-      mark.title = `Its diff in ${change!.groups[at.group].label}${at.line ? `, at line ${at.line}` : ''}`;
-      mark.dataset.diffGroup = String(at.group);
-      mark.dataset.diffPath = at.path;
-      if (at.line) mark.dataset.diffLine = String(at.line);
-      a.after(mark);
+      a.classList.toggle('change-link', !!at);
+      if (!at) {
+        // No longer one of its files: the title it was given goes.
+        if (a.dataset.diffGroup !== undefined) a.removeAttribute('title');
+        delete a.dataset.diffGroup;
+        return;
+      }
+      a.title = `Its diff in ${change!.groups[at.group].label}${at.line ? `, at line ${at.line}` : ''}`;
+      a.dataset.diffGroup = String(at.group);
     });
   }, [html, change]);
   // Mermaid blocks become diagrams, again whenever the html is new.
@@ -389,15 +389,16 @@ export function Rendered({ html, empty }: { html: string; empty: string }) {
       act({ type: 'run', key: run.dataset.runKey!, index: Number(run.dataset.runIndex), ...(run.dataset.runTry ? { try: true } : {}) }, 'Running…');
       return;
     }
-    const mark = (e.target as HTMLElement).closest<HTMLElement>('.diff-mark');
-    if (mark) {
-      const { diffGroup, diffPath, diffLine } = mark.dataset;
-      send({ type: 'openChange', group: Number(diffGroup), path: diffPath!, ...(diffLine ? { line: Number(diffLine) } : {}) });
-      return;
-    }
     const a = (e.target as HTMLElement).closest('a');
     const href = a?.getAttribute('href');
     if (!href) return;
+    // A file the ticket changes: its diff (BL-276).
+    const at = a!.dataset.diffGroup !== undefined ? changeLink(href, change) : undefined;
+    if (at) {
+      e.preventDefault();
+      send({ type: 'openChange', group: at.group, path: at.path, ...(at.line ? { line: at.line } : {}) });
+      return;
+    }
     // A link to an entry of this ticket (a reply's parent, BL-126; a comment's reference, BL-130).
     if (href.startsWith('#')) {
       if (href.length > 1) {

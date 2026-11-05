@@ -20,10 +20,10 @@ import {
 const INSTANT = new Set([
   // Opening things: they show their result.
   'openChange',
-  'expandChange',
   'openTicketChange',
-  // View Version Control (BL-275): the ticket's tab opens, the Backlog shows its Changes.
+  // View Version Control (BL-275, BL-276): the ticket's tab opens, the Backlog shows its Changes.
   'viewTicketVc',
+  'viewVersionControl',
   'noteOpen',
   'openChat',
   'openCommit',

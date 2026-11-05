@@ -1,17 +1,6 @@
 import * as vscode from 'vscode';
 import { runGit } from '../../../core/git/gitCli';
 import { openCommit } from '../../openCommit';
-import { openChangeEntries } from '../../../core/diff/openDiff';
-import { commitFileDiff } from '../../../features/diffs/commitFileDiff';
-import {
-  fileDiff,
-  WHOLE_FILE,
-} from '../../../features/diffs/fileDiff';
-import type {
-  FileDiff,
-  TicketHostMessage,
-} from '../../../webview/ticketProtocol';
-import { filterFiles } from '../../../webview/ticket/changeTree';
 import type { Handlers } from './context';
 import type { FilesMessage } from './files.messages';
 
@@ -59,56 +48,12 @@ export const filesHandlers: Handlers<FilesMessage> = {
     }
     await openCommit(panels.deps.reference, panels.deps.mainRoot, m.hash);
   },
+  // From the ticket (its biggest files, a report's link, BL-276): its diff, and the Backlog on the ticket's Changes at it.
   openChange: async ({ item, panels }, m) => {
-    await panels.openChange(item, m.group, m.path, m.line);
+    if (await panels.openChange(item, m.group, m.path, m.line)) await panels.deps.showTicketChanges(item.id, m.path);
   },
-  expandChange: async ({ item, panels }, m) => {
-    await panels.expandChange(item, m.group, m.path);
-  },
-  collapseChange: async ({ panels }) => {
-    await panels.deps.leaveTicketChanges();
-  },
-  byCommit: async ({ item, panel, panels }, m) => {
-    await panels.byCommit(item, panel, m.group, m.path);
-  },
-  readCommitDiff: async ({ item, panel, panels }, m) => {
-    const g = (await panels.changesShown(item)).groups[m.group];
-    const f = g?.files.find((x) => x.path === m.path);
-    const { diff, file } =
-      !g || !f
-        ? { diff: { note: 'No longer in its changes.' }, file: undefined }
-        : await commitFileDiff(g.dir, m.hash, f.origPath ? [f.path, f.origPath] : [f.path]).catch((e: Error) => ({
-            diff: { note: `Couldn't read its diff: ${e.message}` },
-            file: undefined,
-          }));
-    void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff, ...(file ? { file } : {}) } satisfies TicketHostMessage);
-  },
-  readChangeDiff: async ({ item, panel, panels }, m) => {
-    const g = (await panels.changesShown(item)).groups[m.group];
-    const f = g?.files.find((x) => x.path === m.path);
-    const diff: FileDiff =
-      !g || !f
-        ? { note: 'No longer in its changes.' }
-        : await fileDiff(g.dir, f, f.left ?? g.left, f.right ?? g.right, m.whole ? WHOLE_FILE : 3).catch((e: Error) => ({
-            note: `Couldn't read its diff: ${e.message}`,
-          }));
-    void panel.webview.postMessage({ type: 'changeDiff', requestId: m.requestId, diff } satisfies TicketHostMessage);
-  },
-  narrowChanges: async ({ item, panels }, m) => {
-    panels.narrowChanges(item, m.commits);
-  },
-  openAllChanges: async ({ item, panels }, m) => {
-    const { groups } = await panels.changesShown(item);
-    const entries = groups.flatMap((g) =>
-      filterFiles(g.files, m.filter ?? '').map((f) => ({ worktreeDir: g.dir, change: f, leftRef: f.left ?? g.left, rightRef: f.right ?? g.right })),
-    );
-    if (!entries.length) {
-      void vscode.window.showInformationMessage(`${item.id} changes no files yet.`);
-      return;
-    }
-    await panels.beside(item.id);
-    await openChangeEntries(panels.deps.reference, entries, `${item.id}: Changes`);
-    panels.diffs.openedList(`${item.id}: Changes`, { id: item.id });
+  viewVersionControl: async ({ id }) => {
+    await vscode.commands.executeCommand('flotilla.viewTicketVersionControl', id);
   },
   openHref: async ({ item, panels }, m) => {
     await panels.openHref(item, m.href);

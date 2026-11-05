@@ -83,7 +83,6 @@ import {
 import { worktreeAt } from './ticketWorktree';
 import { CurrentTicket } from './currentTicket';
 import { branchMatches } from '../../features/backlog/backlog';
-import { backFromTicketChanges } from './ticketBack';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -503,15 +502,6 @@ export function App() {
           if (m.path) setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path! }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
-        case 'showTicketCommits':
-          setActiveTicket(m.ticket);
-          update((prev) => ({ ...prev, tool: 'backlog', backlogPart: 'commits' }));
-          if (m.hash) setTicketCommit((prev) => ({ ...prev, [m.ticket]: m.hash! }));
-          send({ type: 'ticketVc', id: m.ticket });
-          return;
-        case 'leaveTicketChanges':
-          update(backFromTicketChanges);
-          return;
         case 'showCommits':
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
@@ -714,10 +704,7 @@ export function App() {
           ws={ws}
           view={ticketView}
           selected={ticketCommit[id]}
-          select={(hash) => {
-            setTicketCommit((prev) => ({ ...prev, [id]: hash }));
-            send({ type: 'pickTicketCommit', id, hash });
-          }}
+          select={(hash) => setTicketCommit((prev) => ({ ...prev, [id]: hash }))}
           files={(hash) => commitFiles.get(`${ws.key}\n${hash}`)}
           requestFiles={requestCommitFiles}
         />

@@ -6,22 +6,10 @@ export type FilesMessage =
   | { type: 'openHref'; href: string }
   /** Open what a commit changed. */
   | { type: 'openCommit'; hash: string }
-  /** A file of its Changes in the diff editor (group: its index; line: on its right side, else its left), or all of them in the multi-file diff editor. */
+  /** A file of its Changes in VS Code's diff editor (group: its index; line: on its right side, else its left); the Backlog shows the ticket's Changes too (BL-276). */
   | { type: 'openChange'; group: number; path: string; line?: number }
-  /** Expand (BL-171): the sidebar's Version Control on the ticket's Changes, that file selected (the tab shows its diff). */
-  | { type: 'expandChange'; group: number; path: string }
-  /** Back from the expanded file (BL-211): the sidebar shows the Backlog again, if it's still where Expand left it. */
-  | { type: 'collapseChange' }
-  /** By commit on the expanded file (BL-213): the sidebar's Version Control on the ticket's commits, at the one to start from (answered with showCommit). */
-  | { type: 'byCommit'; group: number; path: string }
-  /** The expanded file as one of the ticket's commits changed it (BL-213), all of it (answered with changeDiff). */
-  | { type: 'readCommitDiff'; requestId: number; group: number; path: string; hash: string }
-  /** A file's diff, to show inline, or (whole) all of the file for the full view (answered with changeDiff). */
-  | { type: 'readChangeDiff'; requestId: number; group: number; path: string; whole?: boolean }
-  /** Open All Changes: those the path filter leaves (filter, BL-174), else all. */
-  | { type: 'openAllChanges'; filter?: string }
-  /** Narrow its Changes to some of its commits (BL-174); none: all of its change again. */
-  | { type: 'narrowChanges'; commits: string[] }
+  /** View Version Control (BL-275, BL-276): the ticket's Changes under its card in the Backlog. */
+  | { type: 'viewVersionControl' }
   /** Create a worktree for a branch of the item that has none. */
   | { type: 'checkout'; branch: string }
   /** Remove a worktree of the ticket (asks first, as Remove Worktree… does). */
