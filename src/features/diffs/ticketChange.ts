@@ -161,36 +161,6 @@ async function commitsGroup(cwd: string, id: string, base: string): Promise<Chan
   });
 }
 
-/**
- * The change of some of the ticket's commits (BL-174): those picked in its Changes, combined as its own commits on main
- * are (each file from before the first of them that touches it to the last), oldest first whatever the order picked.
- */
-export async function pickedChange(cwd: string, hashes: readonly string[]): Promise<TicketChange> {
-  const log = hashes.length ? await runGit(['log', '--no-walk=unsorted', '--format=%H%x09%P', ...hashes, '--'], { cwd }) : '';
-  const parents = new Map(
-    log
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => line.split('\t'))
-      .map(([hash, ps]) => [hash, ps?.split(' ').filter(Boolean)[0] ?? EMPTY_TREE] as const),
-  );
-  // Oldest first, as history has them (not by date: commits of the same second).
-  const order = parents.size ? (await runGit(['rev-list', '--topo-order', '-n', '5000', ...parents.keys(), '--'], { cwd })).split('\n') : [];
-  const sorted = order.filter((h) => parents.has(h));
-  const commits = [...new Set([...sorted, ...parents.keys()])].reverse().map((hash) => ({ hash, parent: parents.get(hash)! }));
-  const n = commits.length;
-  const g = n
-    ? await commitsOf(cwd, commits, {
-        label: `${n} commit${n === 1 ? '' : 's'} picked`,
-        compared: n === 1 ? `the commit ${short(commits[0].hash)} against its parent` : `the ${n} commits picked, combined`,
-      })
-    : undefined;
-  return {
-    ...(g?.files.length ? summarize('picked', [g]) : { stage: 'picked' as const, groups: [], files: 0, added: 0, deleted: 0 }),
-    picked: commits.map((c) => c.hash),
-  };
-}
-
 /** Commits (oldest first) as one group: their files combined, each counted from its first side to its last. */
 async function commitsOf(cwd: string, commits: ReadonlyArray<{ hash: string; parent: string }>, o: { label: string; compared: string }): Promise<ChangeGroup> {
   const changes = await Promise.all(commits.map((c) => runGit(['diff', '--name-status', '-z', '-M', c.parent, c.hash], { cwd }).then(parseNameStatus)));

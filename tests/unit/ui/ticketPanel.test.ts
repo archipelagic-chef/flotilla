@@ -276,7 +276,7 @@ describe('Open Chat (BL-131)', () => {
   });
 });
 
-describe('Expand in Changes (BL-171)', () => {
+describe("The ticket's Changes and its version control (BL-275, BL-276)", () => {
   const ws = { key: '/repo/.git/worktrees/bl-1', worktree: { branch: 'feature/BL-1-a-ticket', path: '/repo/.worktrees/bl-1', isMain: false } };
   const file = { path: 'src/reload.js', kind: 'modified', added: 4, deleted: 1 };
   const change = {
@@ -289,34 +289,36 @@ describe('Expand in Changes (BL-171)', () => {
   const commits = [{ hash: 'b'.repeat(40), short: 'bbbbbbb', subject: 'Second', author: 'A', date: '2026-10-25T10:00:00Z', branches: [] }];
   function expandable() {
     const showTicketChanges = vi.fn(async () => undefined);
-    const showTicketCommits = vi.fn(async () => undefined);
-    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { showTicketChanges, showTicketCommits } }) as ReturnType<typeof panelsWith> & {
+    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { showTicketChanges } }) as ReturnType<typeof panelsWith> & {
       changesShown: () => Promise<unknown>;
       work: () => Promise<unknown>;
       ticketVc: (id: string) => Promise<unknown>;
     };
     panels.changesShown = async () => change;
     panels.work = async () => ({ commits });
-    return { panels, showTicketChanges, showTicketCommits };
+    return { panels, showTicketChanges };
   }
 
-  it("opens the ticket's Changes under the sidebar's Backlog, that file selected (BL-275)", async () => {
+  it("opens a file of the ticket's in the diff editor, and the Backlog on its Changes at that file (BL-276)", async () => {
     const { panels, showTicketChanges } = expandable();
-    await panels.onMessage('BL-1', tab(), { type: 'expandChange', group: 0, path: 'src/reload.js' });
+    const openChange = vi.fn(async () => true);
+    (panels as unknown as { openChange: typeof openChange }).openChange = openChange;
+    await panels.onMessage('BL-1', tab(), { type: 'openChange', group: 0, path: 'src/reload.js', line: 7 });
+    expect(openChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'BL-1' }), 0, 'src/reload.js', 7);
     expect(showTicketChanges).toHaveBeenCalledWith('BL-1', 'src/reload.js');
   });
 
-  it('does nothing for a file the Changes no longer list', async () => {
+  it('leaves the Backlog as it is for a file the Changes no longer list', async () => {
     const { panels, showTicketChanges } = expandable();
-    await panels.onMessage('BL-1', tab(), { type: 'expandChange', group: 0, path: 'src/gone.js' });
+    await panels.onMessage('BL-1', tab(), { type: 'openChange', group: 0, path: 'src/gone.js' });
     expect(showTicketChanges).not.toHaveBeenCalled();
   });
 
-  it('has the sidebar show the Backlog again on Back from the expanded file (BL-211)', async () => {
-    const leaveTicketChanges = vi.fn(async () => undefined);
-    const panels = panelsWith(async () => undefined, { workstreams: [ws], deps: { leaveTicketChanges } });
-    await panels.onMessage('BL-1', tab(), { type: 'collapseChange' });
-    expect(leaveTicketChanges).toHaveBeenCalledOnce();
+  it('View Version Control in the ticket runs the command the card has (BL-276)', async () => {
+    const { panels } = expandable();
+    vscode.commands.executeCommand.mockClear();
+    await panels.onMessage('BL-1', tab(), { type: 'viewVersionControl' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('flotilla.viewTicketVersionControl', 'BL-1');
   });
 
   it("opens a file picked under the ticket's card in the diff editor, as the ticket's Changes do (BL-275)", async () => {
@@ -329,14 +331,6 @@ describe('Expand in Changes (BL-171)', () => {
     t.openChange = openChange;
     await t.openTicketChange('BL-1', 0, 'src/reload.js');
     expect(openChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'BL-1' }), 0, 'src/reload.js');
-  });
-
-  it("goes By commit: the tab at the latest commit, the sidebar on the ticket's commits there (BL-213)", async () => {
-    const { panels, showTicketCommits } = expandable();
-    const t = tab();
-    await panels.onMessage('BL-1', t, { type: 'byCommit', group: 0, path: 'src/reload.js' });
-    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showCommit', hash: commits[0].hash });
-    expect(showTicketCommits).toHaveBeenCalledWith('BL-1', commits[0].hash);
   });
 
   it("tells the sidebar the ticket whose tab is active, and none once no ticket's is (BL-275)", () => {
@@ -359,14 +353,6 @@ describe('Expand in Changes (BL-171)', () => {
     expect(activeTicket).toHaveBeenLastCalledWith(undefined);
     // Told only when it changes.
     expect(activeTicket).toHaveBeenCalledTimes(3);
-  });
-
-  it('shows a commit picked in the sidebar in the tab (BL-213)', () => {
-    const { panels } = expandable();
-    const t = tab();
-    panels.panels.set('BL-1', t);
-    (panels as unknown as { pickTicketCommit: (id: string, hash: string) => void }).pickTicketCommit('BL-1', commits[0].hash);
-    expect(t.webview.postMessage).toHaveBeenCalledWith({ type: 'showCommit', hash: commits[0].hash });
   });
 
   it("gives Version Control the ticket's title, Changes and commits", async () => {

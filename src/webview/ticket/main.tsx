@@ -83,14 +83,7 @@ import {
   Parts,
   Work,
 } from './work';
-import {
-  changeDiffReplies,
-  Changes,
-} from './changes';
-import {
-  DiffView,
-  type FullAt,
-} from './diffView';
+import { Changes } from './changes';
 import { Activity } from './activity';
 import { StateCard } from './stateCard';
 import { ticketSteps } from './steps';
@@ -142,49 +135,6 @@ function App() {
   // Counts Discuss presses: its pane's box is focused again at each.
   const [discussFocus, setDiscussFocus] = useState(0);
   const [ci, setCi] = useState<TicketCiView>();
-  /**
-   * A file of its Changes expanded to the whole tab (BL-171): only its diff shows, under a header that leads back,
-   * the ticket kept as it was underneath (its folds, drafts); Back shows it again where it was scrolled to, the file
-   * marked. The sidebar's Version Control follows, on the ticket's Changes with that file selected (unless it's the
-   * one that asked: from: 'host'); Back has it show the Backlog again (BL-211).
-   */
-  const [full, setFull] = useState<FullAt>();
-  const [marked, setMarked] = useState<string>();
-  const scrolled = useRef<number>();
-  const fullRef = useRef<FullAt>();
-  fullRef.current = full;
-  /**
-   * By commit on the expanded file (BL-213): the file as the commit picked changed it (hash: none until the host says
-   * where to start, or when there are no commits). The sidebar's Version Control is on the ticket's commits meanwhile,
-   * so stepping to another file keeps it there; a file picked in its Changes (from: 'host') is the whole change again.
-   */
-  const [byCommit, setByCommit] = useState<{ hash?: string }>();
-  const byCommitRef = useRef(byCommit);
-  byCommitRef.current = byCommit;
-  const expand = (at: FullAt, from?: 'host') => {
-    if (!fullRef.current) scrolled.current = window.scrollY;
-    if (!fullRef.current || from === 'host') setByCommit((byCommitRef.current = undefined));
-    fullRef.current = at;
-    setFull(at);
-    setMarked(at.path);
-    if (from !== 'host' && !byCommitRef.current) send({ type: 'expandChange', group: at.group, path: at.path });
-  };
-  const back = () => {
-    setFull(undefined);
-    setByCommit(undefined);
-    send({ type: 'collapseChange' });
-  };
-  const mode = (commits: boolean) => {
-    const at = fullRef.current;
-    if (!at || commits === !!byCommitRef.current) return;
-    setByCommit((byCommitRef.current = commits ? {} : undefined));
-    send(commits ? { type: 'byCommit', group: at.group, path: at.path } : { type: 'expandChange', group: at.group, path: at.path });
-  };
-  useEffect(() => {
-    if (full || scrolled.current === undefined) return;
-    window.scrollTo(0, scrolled.current);
-    scrolled.current = undefined;
-  }, [full]);
   // The speed demos play at, as the host keeps it (BL-218).
   useEffect(() => keptSpeed(received?.demoSpeed), [received?.demoSpeed]);
   useEffect(() => {
@@ -212,16 +162,7 @@ function App() {
       else if (m.type === 'focus') setTimeout(() => document.querySelector<HTMLTextAreaElement>('.comment-box textarea')?.focus());
       else if (m.type === 'ask') setAsk(m.ask);
       else if (m.type === 'discussion') setDiscussion(m.discussion);
-      // Back from VS Code's diff editor: the ticket at its Changes (which scroll there themselves).
-      // A file of its Changes picked in the sidebar's Version Control: its diff.
-      else if (m.type === 'showFull') expand({ group: m.group, path: m.path }, 'host');
-      // The commit to show By commit: where it starts, or the one picked in the sidebar (ignored when it's off).
-      else if (m.type === 'showCommit') {
-        if (fullRef.current && byCommitRef.current) setByCommit((byCommitRef.current = { hash: m.hash }));
-      } else if (m.type === 'showChange') {
-        scrolled.current = undefined;
-        setFull(undefined);
-      } else if (m.type === 'ci') setCi(m.ci);
+      else if (m.type === 'ci') setCi(m.ci);
       else if (m.type === 'imageSaved') {
         imageReplies.get(m.requestId)?.(m.markdown);
         imageReplies.delete(m.requestId);
@@ -231,9 +172,6 @@ function App() {
       } else if (m.type === 'entries') {
         entryReplies.get(m.requestId)?.(m.entries);
         entryReplies.delete(m.requestId);
-      } else if (m.type === 'changeDiff') {
-        changeDiffReplies.get(m.requestId)?.(m.diff, m.file);
-        changeDiffReplies.delete(m.requestId);
       } else if (m.type === 'previewed') {
         previewReplies.get(m.requestId)?.(m.html);
         previewReplies.delete(m.requestId);
@@ -273,10 +211,9 @@ function App() {
   // Its agent stopped to be resumed (BL-198): Resume leads, and Start an Agent (afresh) follows.
   const resume = steps.main === 'resume';
   return (
-    // The ticket's change for the diff marks on links to its files (BL-174).
+    // The ticket's change, for links to its files: they open their diffs (BL-174, BL-276).
     <ChangeLinks.Provider value={ticket.changes}>
-      {full && <DiffView ticket={ticket} at={full} back={back} go={expand} byCommit={byCommit} mode={mode} />}
-      <main class="ticket" hidden={!!full}>
+      <main class="ticket">
         <header>
           <div class="meta">
             <span class="ticket-id">{ticket.item.id}</span>
@@ -454,7 +391,7 @@ function App() {
         <Activity ticket={ticket} />
         {ticket.children.length > 0 && <Parts ticket={ticket} />}
         {(worktrees.length > 0 || ticket.branches.length > 0 || ticket.commits.length > 0 || ticket.history.length > 0) && <Work ticket={ticket} />}
-        <Changes ticket={ticket} expand={expand} marked={marked} />
+        <Changes ticket={ticket} />
         {ticket.agents.length > 0 && <Agents ticket={ticket} />}
         {ticket.audit && <Audit audit={ticket.audit} />}
       </main>

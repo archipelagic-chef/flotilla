@@ -160,7 +160,6 @@ const LOG_PAGE = 50;
 export interface TicketVc {
   ticketVc(id: string): Promise<TicketVcView | undefined>;
   openTicketChange(id: string, group: number, path: string): Promise<void>;
-  pickTicketCommit(id: string, hash: string): void;
 }
 
 export interface SidebarDeps {
@@ -881,16 +880,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.act({ type: 'showCommits', key, ticket, hashes, selected });
   }
 
-  /** Shows the Backlog on a ticket's Changes (BL-275), that file selected (View Version Control; Expand, BL-171). */
+  /** Shows the Backlog on a ticket's Changes (BL-275), that file selected (View Version Control, and a file of its opened from the ticket, BL-276). */
   async showTicketChanges(ticket: string, path?: string): Promise<void> {
     await this.showKeepingFocus();
     this.act({ type: 'showTicketChanges', ticket, path });
-  }
-
-  /** Shows the Backlog on a ticket's Commits (BL-275), at that one (By commit in the ticket, BL-213). */
-  async showTicketCommits(ticket: string, hash?: string): Promise<void> {
-    await this.showKeepingFocus();
-    this.act({ type: 'showTicketCommits', ticket, hash });
   }
 
   /** The ticket whose tab is the active editor (BL-275), kept for a page that loads again. */
@@ -900,11 +893,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   activeTicket(id: string | undefined): void {
     this.activeTicketId = id;
     if (this.view && this.ready) this.post({ type: 'activeTicket', id });
-  }
-
-  /** Back from an expanded file (BL-211): the sidebar's page shows the Backlog, if it's still on a ticket's Changes or commits. */
-  async leaveTicketChanges(): Promise<void> {
-    this.act({ type: 'leaveTicketChanges' });
   }
 
   /** Brings the sidebar into view, the focus staying in the editor (the ticket). */
@@ -1138,9 +1126,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       case 'openTicketChange':
         await this.tickets?.openTicketChange(m.id, m.group, m.path);
-        return;
-      case 'pickTicketCommit':
-        this.tickets?.pickTicketCommit(m.id, m.hash);
         return;
       case 'copy':
         await vscode.env.clipboard.writeText(m.text);
