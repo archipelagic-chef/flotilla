@@ -184,9 +184,9 @@ const BACKLOG_PARTS: Array<{ id: BacklogPart; label: (id: string) => string; ico
 ];
 
 const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
-  { id: 'overview', label: 'Overview', icon: 'dashboard' },
-  { id: 'backlog', label: 'Backlog', icon: 'checklist' },
   { id: 'metrics', label: 'Metrics', icon: 'graph' },
+  { id: 'backlog', label: 'Backlog', icon: 'checklist' },
+  { id: 'overview', label: 'Overview', icon: 'dashboard' },
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'vc', label: 'Version Control', icon: 'source-control' },
