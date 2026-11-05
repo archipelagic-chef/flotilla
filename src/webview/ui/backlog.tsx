@@ -18,13 +18,11 @@ import type {
   BacklogProblem,
   BacklogStatus,
   DiscussionRowView,
+  MachineState,
   MergeQueueView,
   NoteView,
-  WorkstreamView,
-} from '../protocol';
-import type {
-  MachineState,
   SlowStorageView,
+  WorkstreamView,
 } from '../protocol';
 import {
   BacklogNotices,
