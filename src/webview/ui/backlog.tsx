@@ -95,6 +95,8 @@ export interface Props {
    * live, with its buttons), the part under it.
    */
   pinned?: { id: string; body: ComponentChildren };
+  /** Main's row at the top (BL-290): selected when no ticket or worktree is, for Files, Search and Version Control. */
+  main?: { ws?: WorkstreamView; selected: boolean; select(): void };
 }
 
 /**
@@ -121,6 +123,7 @@ export function BacklogView({
   setDetailed,
   openWorktree,
   pinned,
+  main,
 }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [discardedOpen, setDiscardedOpen] = useState(false);
@@ -228,6 +231,7 @@ export function BacklogView({
           </span>
         </button>
       ))}
+      {main?.ws && <MainRow ws={main.ws} selected={main.selected} select={main.select} />}
       <NeedsYou items={items ?? []} notes={notes} />
       {!items && <div class="empty">Loading the backlog…</div>}
       {items?.length === 0 && (
@@ -366,5 +370,23 @@ export function BacklogView({
         </div>
       )}
     </div>
+  );
+}
+
+/** Main, pinned above the lanes (BL-290): selecting it (or nothing else) shows the main worktree in Files, Search and VC. */
+function MainRow({ ws, selected, select }: { ws: WorkstreamView; selected: boolean; select(): void }) {
+  const changes = ws.totals.staged + ws.totals.unstaged;
+  return (
+    <button
+      class={`backlog-item main-row${selected ? ' current' : ''}`}
+      aria-pressed={selected}
+      aria-label={`Main: ${ws.branch}`}
+      title={selected ? 'Selected: Files, Search and Version Control show main' : 'Select main: Files, Search and Version Control show it'}
+      onClick={select}
+    >
+      <i class="codicon codicon-home" />
+      <span class="nm">{ws.branch}</span>
+      <span class="hint">{changes ? `${changes} change${changes === 1 ? '' : 's'}` : selected ? 'Selected' : ''}</span>
+    </button>
   );
 }

@@ -966,6 +966,82 @@ ins {
   bottom: 6px;
 }
 
+/* Version Control's own views, one level deeper under the Backlog's Version Control (BL-290). */
+.sub-tools.deep::before {
+  left: 20px;
+}
+.tools .sub-tools.deep .sub-tool {
+  width: 22px;
+  height: 22px;
+}
+.tools .sub-tools.deep .sub-tool .codicon {
+  font-size: 13px;
+}
+
+/* The item Files, Search and Version Control show (BL-290): click it to go back to its card. */
+.picked-head {
+  padding: 4px 6px 2px;
+}
+.picked-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
+  box-shadow:
+    inset 2px 0 0 var(--focus),
+    inset 0 0 0 1px color-mix(in srgb, var(--focus) 60%, transparent);
+}
+.picked-name .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picked-name .back {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.7;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+.picked-name:hover .back {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground);
+}
+.picked-worktrees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.picked-worktrees button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9em;
+  background: none;
+  cursor: pointer;
+}
+.picked-worktrees button[aria-checked='true'] {
+  border-color: var(--focus);
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--focus) 18%, transparent));
+}
+
 /* ---- compare ---- */
 .compare-bar {
   display: flex;

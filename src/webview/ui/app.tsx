@@ -81,8 +81,24 @@ import {
   TicketCommitsBody,
 } from './ticketVc';
 import { worktreeAt } from './ticketWorktree';
-import { CurrentTicket } from './currentTicket';
-import { branchMatches } from '../../features/backlog/backlog';
+import {
+  CurrentTicket,
+  SelectTicket,
+} from './currentTicket';
+import {
+  NoWorktree,
+  PickedHeader,
+} from './pickedHeader';
+import {
+  MAIN,
+  type Picked,
+  pickedTicket,
+  pickFor,
+  samePick,
+  selectTicket,
+  shown,
+  stripFor,
+} from './picked';
 import {
   type CommitFiles,
   type CommitHighlight,
@@ -109,8 +125,10 @@ export interface Persisted {
   hideDetached?: boolean;
   /** The view under Version Control. */
   vcView: VcView;
-  /** The Backlog's list, or the active ticket's Changes, Commits or CI under it (BL-275). */
+  /** The Backlog's list, or the selected ticket's Changes, Commits or CI under it (BL-275). */
   backlogPart?: BacklogPart;
+  /** The item selected in the Backlog, which Files, Search and Version Control show (BL-290); none: main. */
+  picked?: Picked;
   /** Version Control › Compare's comparisons, newest first; the view shows only while there are any. */
   comparisons: CompareChoice[];
   nextComparison: number;
@@ -173,9 +191,16 @@ const VC_VIEWS: Array<{ id: VcView; label: string; icon: string }> = [
   { id: 'ci', label: 'CI/CD', icon: 'github-action' },
 ];
 
-/** Under the Backlog in the tool strip while a ticket's tab is active (BL-275): its list, and the ticket's version control. */
-const BACKLOG_PARTS: Array<{ id: BacklogPart; label: (id: string) => string; icon: string }> = [
-  { id: 'list', label: () => 'Backlog', icon: 'list-flat' },
+/** Under the Backlog in the tool strip (BL-290): its list, and its sub-views, which show the selected item. */
+const BACKLOG_SUBVIEWS: Array<{ id: Tool; label: string; icon: string }> = [
+  { id: 'backlog', label: 'All Tickets', icon: 'list-flat' },
+  { id: 'files', label: 'Files', icon: 'files' },
+  { id: 'search', label: 'Search', icon: 'search' },
+  { id: 'vc', label: 'Version Control', icon: 'source-control' },
+];
+
+/** Under Version Control while a ticket is selected (BL-275): its Changes, Commits and CI, under its pinned card. */
+const TICKET_PARTS: Array<{ id: Exclude<BacklogPart, 'list'>; label: (id: string) => string; icon: string }> = [
   { id: 'changes', label: (id) => `${id}'s Changes`, icon: 'diff-multiple' },
   { id: 'commits', label: (id) => `${id}'s Commits`, icon: 'git-commit' },
   { id: 'ci', label: (id) => `${id}'s CI`, icon: 'github-action' },
@@ -185,9 +210,6 @@ const TOOLS: Array<{ id: Tool; label: string; icon: string }> = [
   { id: 'metrics', label: 'Metrics', icon: 'graph' },
   { id: 'backlog', label: 'Backlog', icon: 'checklist' },
   { id: 'overview', label: 'Overview', icon: 'dashboard' },
-  { id: 'files', label: 'Files', icon: 'files' },
-  { id: 'search', label: 'Search', icon: 'search' },
-  { id: 'vc', label: 'Version Control', icon: 'source-control' },
   { id: 'chats', label: 'Chats', icon: 'comment-discussion' },
 ];
 
@@ -221,7 +243,6 @@ export function App() {
   });
   const [workstreams, setWorkstreams] = useState<WorkstreamView[] | undefined>(undefined);
   const [machine, setMachine] = useState<MachineState | undefined>(undefined);
-  const [active, setActiveState] = useState<string>(ALL);
   /** Worktrees whose tab is closed; they stay in the Overview. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
@@ -260,8 +281,6 @@ export function App() {
   /** The file selected in a ticket's Changes (the one Expand was on), and the commit shown of its Commits, by id. */
   const [ticketFile, setTicketFile] = useState<Record<string, string>>({});
   const [ticketCommit, setTicketCommit] = useState<Record<string, string>>({});
-  // The ticket whose tab is the active editor (BL-275): its card is highlighted, its version control under the Backlog.
-  const [activeTicket, setActiveTicket] = useState<string>();
   const [compareResults, setCompareResults] = useState<ReadonlyMap<number, Comparison>>(new Map());
   /** Request ids: the latest per comparison, and which comparison each one is for. */
   const compareRequests = useRef({ next: 0, latest: new Map<number, number>(), owner: new Map<number, number>() });
@@ -271,8 +290,14 @@ export function App() {
   const requested = useRef(new Set<string>());
   /** Each worktree's Files rows in the order they're shown: a Shift range covers them, drawn or not. */
   const treeOrder = useRef(new Map<string, string[]>());
-  const stateRef = useRef({ persisted, active, workstreams });
-  stateRef.current = { persisted, active, workstreams };
+  // What Files, Search and Version Control show (BL-290): the selected item's worktree, main by default.
+  const view = shown(persisted.picked, workstreams ?? [], backlog);
+  const active = view.ws?.key;
+  const stateRef = useRef({ persisted, active, workstreams, backlog });
+  stateRef.current = { persisted, active, workstreams, backlog };
+  /** The extension's own active worktree, sent once the page loads: the selection kept here wins over it. */
+  const restored = useRef(false);
+  const ticketRestored = useRef(false);
 
   const update: Update = useCallback((change) => {
     setPersisted((prev) => {
@@ -282,11 +307,27 @@ export function App() {
     });
   }, []);
 
-  /** Makes a worktree (or ALL) active here and in the extension (status bar, new terminals and chats). */
-  const setActive = useCallback((key: string) => {
-    setActiveState(key);
-    send({ type: 'active', key });
-  }, []);
+  /** Selects an item in the Backlog (BL-290): Files, Search and Version Control show it. */
+  const select = useCallback((picked: Picked) => update((p) => (samePick(p.picked, picked) ? p : { ...p, picked, backlogPart: 'list' })), [update]);
+  /** Selects the item a worktree is shown as (its ticket, or main), unless it's already the one shown. */
+  const setActive = useCallback(
+    (key: string) => {
+      const { active: current, workstreams: wss, backlog: items } = stateRef.current;
+      if (key !== ALL && key !== current) select(pickFor(key, wss ?? [], items));
+    },
+    [select],
+  );
+  /** A card's click selects its ticket (BL-290), a local one, even when its tab is already the active editor. */
+  const selectCard = useCallback(
+    (id: string) => {
+      if (stateRef.current.backlog?.some((i) => i.id === id && !i.source && !i.proposed)) update((p) => selectTicket(p, id));
+    },
+    [update],
+  );
+  // The worktree shown is the extension's active one too (status bar, new terminals and chats).
+  useEffect(() => {
+    if (active) send({ type: 'active', key: active });
+  }, [active]);
 
   const requestDir = useCallback((key: string, path: string) => {
     const k = dirKey(key, path);
@@ -363,7 +404,14 @@ export function App() {
           setMachine(m.machine);
           return;
         case 'active':
-          setActiveState(m.key);
+          // The one it sends as the page loads is what was shown before: the selection kept here says it already.
+          if (restored.current) {
+            // There's no All any more: All Worktrees (Ctrl+Alt+0) is main.
+            const key = m.key === ALL ? stateRef.current.workstreams?.find((w) => w.isMain)?.key : m.key;
+            if (key) setActive(key);
+            if (key && key === stateRef.current.active && m.key === ALL) send({ type: 'active', key });
+          }
+          restored.current = true;
           return;
         case 'storage':
           setSlow(m.slow);
@@ -472,7 +520,7 @@ export function App() {
           // Show the folder the new item goes into (or the renamed item's folder), in the Files tool of that worktree.
           const dir = m.kind === 'rename' ? m.path.split('/').slice(0, -1).join('/') : m.dir;
           const parents = dir ? ancestors(`${dir}/x`) : [];
-          if (current !== ALL && current !== m.key) setActive(m.key);
+          setActive(m.key);
           update((prev) => ({
             ...prev,
             tool: 'files',
@@ -493,20 +541,29 @@ export function App() {
           setTicketVcs((prev) => new Map(prev).set(m.id, m.view ?? null));
           return;
         case 'activeTicket':
-          setActiveTicket(m.id);
+          // A ticket whose tab becomes active is selected (BL-290); with none, the selection stays. The one it sends as
+          // the page loads is the tab active then: the selection kept here wins over it, as for 'active'.
+          if (m.id && ticketRestored.current) {
+            const id = m.id;
+            update((prev) => selectTicket(prev, id));
+          }
+          ticketRestored.current = true;
           return;
         // The worktree tabs stay as they are (BL-275): it's the ticket's, under the Backlog.
         case 'showTicketChanges':
-          setActiveTicket(m.ticket);
-          update((prev) => ({ ...prev, tool: 'backlog', backlogPart: 'changes' }));
+          update((prev) => ({ ...prev, tool: 'backlog', backlogPart: 'changes', picked: pickedTicket(prev.picked, m.ticket) }));
           if (m.path) setTicketFile((prev) => ({ ...prev, [m.ticket]: m.path! }));
           send({ type: 'ticketVc', id: m.ticket });
           return;
-        case 'showCommits':
+        case 'showCommits': {
+          // A ticket's commits are its Commits under its card (BL-275); a worktree's, its History.
+          const pick = pickFor(m.key, stateRef.current.workstreams ?? [], stateRef.current.backlog);
+          if (pick.kind === 'ticket') setTicketCommit((prev) => ({ ...prev, [pick.id]: m.selected }));
           setActive(m.key);
           update((prev) => ({ ...prev, tool: 'vc', vcView: 'history', collapsed: prev.collapsed.filter((c) => c !== m.key) }));
           setHighlight({ key: m.key, ticket: m.ticket, hashes: new Set(m.hashes), selected: m.selected });
           return;
+        }
         case 'reveal': {
           if (m.path === undefined) {
             // A worktree to show (e.g. one just created): make it active.
@@ -516,11 +573,11 @@ export function App() {
           }
           if (m.tool === 'files') {
             // Reveal in Files (BL-244): to the Files tool, its worktree shown.
-            if (current !== ALL && current !== m.key) setActive(m.key);
+            setActive(m.key);
             if (p.tool !== 'files') update((prev) => ({ ...prev, tool: 'files' }));
           }
           // The active editor's file, like the Explorer's auto-reveal: only in the Files tool, and only if its worktree is shown.
-          else if (p.tool !== 'files' || (current !== ALL && current !== m.key)) return;
+          else if (p.tool !== 'files' || current !== m.key) return;
           const parents = ancestors(m.path);
           update((prev) => ({
             ...prev,
@@ -576,19 +633,27 @@ export function App() {
   }, [workstreams === undefined, measureTabs]);
   useEffect(measureTabs, [workstreams, closed, active, measureTabs]);
 
-  // Fold All in the view title: offered where the All tab shows worktree sections.
-  const sectioned =
-    active === ALL &&
-    ['files', 'search', 'vc'].includes(persisted.tool) &&
-    !(persisted.tool === 'vc' && persisted.vcView === 'compare' && persisted.comparisons.length > 0);
+  // Fold All in the view title: no view shows worktree sections any more (Chats is one list, BL-286).
+  const sectioned = false;
   const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
   useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
 
-  // The active ticket (BL-275), a local one: its version control under the Backlog, read again as its worktrees change.
-  const ticket = backlog?.find((i) => i.id === activeTicket && !i.source && !i.proposed);
-  const ticketWorktrees = ticket ? (workstreams ?? []).filter((w) => !w.isMain && branchMatches(ticket, w.branch)) : [];
-  const backlogPart: BacklogPart = ticket ? (persisted.backlogPart ?? 'list') : 'list';
-  const partShown = persisted.tool === 'backlog' && backlogPart !== 'list';
+  // The selected ticket (BL-275, BL-290), a local one: its version control under the Backlog, read again as its worktrees change.
+  const { ticket, worktrees: ticketWorktrees } = view;
+  // A ticket's version control is its Changes, Commits and CI under its pinned card (BL-275): Version Control's views
+  // (a saved window's, or History from its ticket) open there; Compare, of any two branches, stays.
+  const vcAsPart: BacklogPart | undefined =
+    ticket && persisted.tool === 'vc' && !(persisted.vcView === 'compare' && persisted.comparisons.length)
+      ? persisted.vcView === 'history'
+        ? 'commits'
+        : persisted.vcView === 'ci'
+          ? 'ci'
+          : 'changes'
+      : undefined;
+  const tool: Tool = vcAsPart ? 'backlog' : persisted.tool;
+  const backlogPart: BacklogPart = vcAsPart ?? (ticket ? (persisted.backlogPart ?? 'list') : 'list');
+  const partShown = tool === 'backlog' && backlogPart !== 'list';
+  const strip = stripFor(tool, partShown);
   const ticketState =
     ticket &&
     `${ticket.status}\n${ticketWorktrees.map((w) => `${w.key} ${w.totals.staged} ${w.totals.unstaged} ${w.sync.ahead} ${w.sync.head ?? ''}`).join('\n')}`;
@@ -598,7 +663,6 @@ export function App() {
 
   if (!workstreams) return <div class="empty">Loading worktrees…</div>;
 
-  const { tool } = persisted;
   // Compare shows only while there are comparisons; a view no longer there (a ticket's, before BL-275) is Changes.
   const vcView =
     (persisted.vcView === 'compare' && !persisted.comparisons.length) || !VC_VIEWS.some((v) => v.id === persisted.vcView) ? 'changes' : persisted.vcView;
@@ -618,8 +682,8 @@ export function App() {
     },
   ].filter((v) => !v.shown);
   const colors = colorsFor(workstreams);
-  const activeWs = active === ALL ? undefined : workstreams.find((w) => w.key === active);
-  const scope = activeWs ? [activeWs] : workstreams;
+  const activeWs = view.ws;
+  const scope = activeWs ? [activeWs] : [];
   const changeCount = scope.reduce((n, w) => n + w.totals.staged + w.totals.unstaged, 0);
   // Chats waiting for the user, in every worktree (a chat waits wherever it runs): approvals, and output to reply to.
   // A chat linked to several worktrees counts once.
@@ -637,7 +701,7 @@ export function App() {
   /** What's in progress for a tool, to show on its icon (and say in its hover). */
   const busyFor = (id: Tool): string[] => [...(progress[id] ?? []), ...(id === 'search' && searching ? ['Searching…'] : [])];
   /** CI of the scope (the active worktree, or all of them on the All tab): its state on the Version Control tool, and what failed. */
-  const ciViews = active === ALL ? workstreams.map((w) => ci[w.key]) : [ci[active]];
+  const ciViews = active ? [ci[active]] : [];
   const ciState = scopeState(ciViews);
   const ciTip = scopeSummary(ciViews);
   const files: FilesApi = {
@@ -724,6 +788,15 @@ export function App() {
     );
   };
 
+  // The selected item, above Files, Search and Version Control: back to its card (main's row) in the Backlog.
+  const pickedHeader = (
+    <PickedHeader
+      view={view}
+      back={() => update((p) => ({ ...p, tool: 'backlog', backlogPart: 'list' }))}
+      pickWorktree={(key) => ticket && select({ kind: 'ticket', id: ticket.id, worktree: key })}
+    />
+  );
+
   let content;
   if (tool === 'backlog') {
     // The backlog is the repository's, whichever tab is active.
@@ -756,6 +829,7 @@ export function App() {
           update((p) => ({ ...p, tool: 'files' }));
         }}
         pinned={partShown && ticket ? { id: ticket.id, body: ticketPart(ticket.id) } : undefined}
+        main={{ ws: workstreams.find((w) => w.isMain), selected: view.picked.kind === 'main', select: () => select(MAIN) }}
       />
     );
   } else if (tool === 'vc' && vcView === 'compare') {
@@ -810,7 +884,7 @@ export function App() {
       <Overview
         workstreams={workstreams}
         machine={machine}
-        active={active}
+        active={active ?? ''}
         colors={colors}
         closed={closed}
         ci={ci}
@@ -823,12 +897,21 @@ export function App() {
         }}
       />
     );
+  } else if (!activeWs) {
+    // A ticket with no worktree (or the backlog still loading): its Files and Search have nothing to show.
+    content = (
+      <>
+        {pickedHeader}
+        {ticket ? <NoWorktree id={ticket.id} /> : <div class="empty">Loading the backlog…</div>}
+      </>
+    );
   } else if (tool === 'search') {
     content = (
       <>
-        {activeWs && <WorktreeHeader ws={activeWs} tool={tool} />}
+        {pickedHeader}
+        <WorktreeHeader ws={activeWs} tool={tool} />
         <SearchView
-          scope={activeWs ? activeWs.key : ALL}
+          scope={activeWs.key}
           search={persisted.search}
           results={results}
           refresh={searchRefresh}
@@ -839,42 +922,19 @@ export function App() {
         />
       </>
     );
-  } else if (activeWs) {
+  } else {
     content = (
       <div class="single" data-section={activeWs.key}>
+        {pickedHeader}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>
-    );
-  } else {
-    content = (
-      <>
-        {workstreams.map((ws) => (
-          <Section
-            key={ws.key}
-            ws={ws}
-            tool={tool}
-            color={colors.get(ws.key)!}
-            collapsed={persisted.collapsed.includes(ws.key)}
-            onToggle={() =>
-              update((p) => ({ ...p, collapsed: p.collapsed.includes(ws.key) ? p.collapsed.filter((c) => c !== ws.key) : [...p.collapsed, ws.key] }))
-            }
-            onSelect={() => setActive(ws.key)}
-          >
-            {body(ws)}
-          </Section>
-        ))}
-      </>
     );
   }
 
   return (
     <div class="app" style={{ '--ws-color': activeWs ? colors.get(activeWs.key) : 'var(--focus)' }}>
       <div class="wt-tabs" role="tablist" aria-label="Worktrees">
-        <button class="wt-tab all" role="tab" aria-selected={active === ALL} data-tip="All Worktrees" data-keys="Ctrl+Alt+0" onClick={() => setActive(ALL)}>
-          <i class="codicon codicon-layers" />
-          <span class="nm">All</span>
-        </button>
         {/* The arrows show only when there are hidden tabs that way. */}
         {overflow.left && (
           <button class="wt-nav" aria-label="Scroll Tabs Left" onClick={() => scrollTabs(-1)}>
@@ -960,24 +1020,24 @@ export function App() {
       <div class="body">
         <nav class="tools" role="tablist" aria-orientation="vertical" aria-label="Tools">
           {TOOLS.map((t) => {
-            const badge = t.id === 'vc' ? changeCount : t.id === 'chats' ? pending.size : t.id === 'backlog' ? backlogCount : 0;
+            const badge = t.id === 'chats' ? pending.size : t.id === 'backlog' ? backlogCount : 0;
             const busy = busyFor(t.id);
+            const group = t.id === 'backlog' && strip.top === 'backlog';
             return (
               <Fragment key={t.id}>
                 <button
                   role="tab"
-                  aria-selected={tool === t.id}
+                  aria-selected={tool === t.id || group}
                   aria-label={t.label}
                   aria-busy={busy.length > 0}
                   data-tip={(() => {
-                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : []), ...(t.id === 'vc' && ciTip ? [ciTip] : [])];
+                    const lines = [...busy, ...(t.id === 'chats' ? pendingTip : [])];
                     return lines.length ? [t.label, ...lines].join('\n') : undefined;
                   })()}
                   data-tip-pos="right"
-                  onClick={() => update((p) => ({ ...p, tool: t.id }))}
+                  onClick={() => update((p) => ({ ...p, tool: t.id, ...(t.id === 'backlog' ? { backlogPart: 'list' } : {}) }))}
                 >
                   <i class={`codicon codicon-${t.icon}`} />
-                  {t.id === 'vc' && ciState && <span class={`ci-dot ${ciState}`} />}
                   {badge > 0 && <span class={`b${t.id === 'chats' ? ' alert' : ''}`}>{badge}</span>}
                   {busy.length > 0 && (
                     <span class={`b busy${badge > 0 ? ' top' : ''}`}>
@@ -985,42 +1045,84 @@ export function App() {
                     </span>
                   )}
                 </button>
-                {t.id === 'backlog' && tool === 'backlog' && ticket && (
-                  <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label={`${ticket.id}'s Version Control`}>
-                    {BACKLOG_PARTS.map((v) => (
-                      <button
-                        key={v.id}
-                        class="sub-tool"
-                        role="tab"
-                        aria-selected={backlogPart === v.id}
-                        aria-label={v.id === 'list' ? 'Backlog: All Tickets' : `Backlog: ${v.label(ticket.id)}`}
-                        data-tip={v.label(ticket.id)}
-                        data-tip-pos="right"
-                        onClick={() => update((p) => ({ ...p, backlogPart: v.id }))}
-                      >
-                        <i class={`codicon codicon-${v.icon}`} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {t.id === 'vc' && tool === 'vc' && (
-                  <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
-                    {vcViews.map((v) => (
-                      <button
-                        key={v.id}
-                        class="sub-tool"
-                        role="tab"
-                        aria-selected={vcView === v.id}
-                        aria-label={`Version Control: ${v.label}`}
-                        data-tip={v.label}
-                        data-tip-pos="right"
-                        onClick={() => update((p) => ({ ...p, vcView: v.id }))}
-                      >
-                        <i class={`codicon codicon-${v.icon}`} />
-                        {v.id === 'ci' && ciState && <span class={`ci-dot ${ciState}`} />}
-                      </button>
-                    ))}
-                    {addable.length > 0 && <AddViewMenu views={addable} />}
+                {/* Under the Backlog (BL-290): its list, and Files, Search and Version Control of the selected item. */}
+                {group && (
+                  <div class="sub-tools" role="tablist" aria-orientation="vertical" aria-label="Backlog views">
+                    {BACKLOG_SUBVIEWS.map((v) => {
+                      const vcOpen = strip.sub === 'vc';
+                      const on = strip.sub === v.id;
+                      const subBadge = v.id === 'vc' ? changeCount : 0;
+                      const subBusy = busyFor(v.id);
+                      const lines = [...subBusy, ...(v.id === 'vc' && ciTip ? [ciTip] : [])];
+                      return (
+                        <Fragment key={v.id}>
+                          <button
+                            class="sub-tool"
+                            role="tab"
+                            aria-selected={on}
+                            aria-label={`Backlog: ${v.label}`}
+                            aria-busy={subBusy.length > 0}
+                            data-tip={[v.label, ...lines].join('\n')}
+                            data-tip-pos="right"
+                            onClick={() =>
+                              update((p) =>
+                                // A ticket's version control is under its pinned card (BL-275).
+                                v.id === 'vc' && ticket
+                                  ? { ...p, tool: 'backlog', backlogPart: partShown ? backlogPart : 'changes' }
+                                  : { ...p, tool: v.id, backlogPart: 'list' },
+                              )
+                            }
+                          >
+                            <i class={`codicon codicon-${v.icon}`} />
+                            {v.id === 'vc' && ciState && <span class={`ci-dot ${ciState}`} />}
+                            {subBadge > 0 && <span class="b">{subBadge}</span>}
+                            {subBusy.length > 0 && (
+                              <span class={`b busy${subBadge > 0 ? ' top' : ''}`}>
+                                <i class="codicon codicon-sync" />
+                              </span>
+                            )}
+                          </button>
+                          {v.id === 'vc' && vcOpen && ticket && (
+                            <div class="sub-tools deep" role="tablist" aria-orientation="vertical" aria-label={`${ticket.id}'s Version Control`}>
+                              {TICKET_PARTS.map((part) => (
+                                <button
+                                  key={part.id}
+                                  class="sub-tool"
+                                  role="tab"
+                                  aria-selected={partShown && backlogPart === part.id}
+                                  aria-label={`Backlog: ${part.label(ticket.id)}`}
+                                  data-tip={part.label(ticket.id)}
+                                  data-tip-pos="right"
+                                  onClick={() => update((p) => ({ ...p, tool: 'backlog', backlogPart: part.id }))}
+                                >
+                                  <i class={`codicon codicon-${part.icon}`} />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {v.id === 'vc' && vcOpen && !ticket && (
+                            <div class="sub-tools deep" role="tablist" aria-orientation="vertical" aria-label="Version Control views">
+                              {vcViews.map((cv) => (
+                                <button
+                                  key={cv.id}
+                                  class="sub-tool"
+                                  role="tab"
+                                  aria-selected={vcView === cv.id}
+                                  aria-label={`Version Control: ${cv.label}`}
+                                  data-tip={cv.label}
+                                  data-tip-pos="right"
+                                  onClick={() => update((p) => ({ ...p, tool: 'vc', vcView: cv.id }))}
+                                >
+                                  <i class={`codicon codicon-${cv.icon}`} />
+                                  {cv.id === 'ci' && ciState && <span class={`ci-dot ${ciState}`} />}
+                                </button>
+                              ))}
+                              {addable.length > 0 && <AddViewMenu views={addable} />}
+                            </div>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </div>
                 )}
               </Fragment>
@@ -1035,8 +1137,10 @@ export function App() {
           </button>
         </nav>
         <div class="content">
-          {/* The ticket whose tab is active (BL-275): its cards are highlighted. */}
-          <CurrentTicket.Provider value={activeTicket}>{content}</CurrentTicket.Provider>
+          {/* The selected ticket (BL-275, BL-290): its cards are highlighted. */}
+          <SelectTicket.Provider value={selectCard}>
+            <CurrentTicket.Provider value={ticket?.id}>{content}</CurrentTicket.Provider>
+          </SelectTicket.Provider>
         </div>
       </div>
       <Hover

@@ -57,6 +57,27 @@
     inset 2px 0 0 var(--focus),
     inset 0 0 0 1px color-mix(in srgb, var(--focus) 60%, transparent);
 }
+/* Main's row above the lanes (BL-290): selected when nothing else is. */
+.backlog-item.main-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 8px);
+  margin: 2px 4px 6px;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.backlog-item.main-row .nm {
+  flex: 1;
+}
+.backlog-item.main-row .hint {
+  opacity: 0.7;
+  font-size: 0.9em;
+}
 .backlog-item .status-toggle {
   width: 20px;
   height: 20px;

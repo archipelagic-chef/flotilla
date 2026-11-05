@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -29,7 +30,10 @@ import {
   menuContext,
   send,
 } from './api';
-import { useCurrent } from './currentTicket';
+import {
+  SelectTicket,
+  useCurrent,
+} from './currentTicket';
 import {
   act,
   BusyButton,
@@ -105,6 +109,11 @@ export function ItemRow({
   // The ticket whose tab is active (BL-275): highlighted, and scrolled to.
   const el = useRef<HTMLDivElement>(null);
   const current = useCurrent(item.id, el);
+  const selectTicket = useContext(SelectTicket);
+  const open = () => {
+    selectTicket(item.id);
+    send({ type: 'backlog', op: 'open', id: item.id });
+  };
   return (
     <div
       ref={el}
@@ -137,11 +146,11 @@ export function ItemRow({
       }}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onClick={() => !renaming && send({ type: 'backlog', op: 'open', id: item.id })}
+      onClick={() => !renaming && open()}
       onKeyDown={(e) => {
         if (renaming) return;
         if (e.key === 'F2' && !remote) setRenaming(true);
-        else if (e.key === 'Enter') send({ type: 'backlog', op: 'open', id: item.id });
+        else if (e.key === 'Enter') open();
         else if (e.key === 'Delete' && !remote) act({ type: 'backlog', op: 'delete', id: item.id });
         else return;
         e.preventDefault();

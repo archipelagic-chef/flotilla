@@ -2,7 +2,10 @@ import {
   useContext,
   useState,
 } from 'preact/hooks';
-import { CurrentTicket } from './currentTicket';
+import {
+  CurrentTicket,
+  SelectTicket,
+} from './currentTicket';
 import {
   holdsUpLine,
   type Need,
@@ -141,7 +144,12 @@ function NeedRow({ item }: { item: BacklogItem }) {
   const need = item.need!;
   const r = item.review;
   const age = waited(need.since);
-  const open = () => send({ type: 'backlog', op: 'open', id: item.id });
+  // Its click selects the ticket (BL-290), as its card's does.
+  const selectTicket = useContext(SelectTicket);
+  const open = () => {
+    selectTicket(item.id);
+    send({ type: 'backlog', op: 'open', id: item.id });
+  };
   // The actions of the ticket, here: the first fix of a stopped review is the one to offer first.
   const fix = r?.state === 'stopped' ? fixesFor(r.stop?.kind, !!r.stop?.task)[0] : undefined;
   // Highlighted too while its tab is active (BL-275); its card in the lanes is the one scrolled to.
