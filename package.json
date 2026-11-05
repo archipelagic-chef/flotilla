@@ -681,6 +681,12 @@
         "category": "Flotilla"
       },
       {
+        "command": "flotilla.openSettings",
+        "title": "Flotilla Settings…",
+        "category": "Flotilla",
+        "icon": "$(gear)"
+      },
+      {
         "command": "flotilla.backlogIntegrations",
         "title": "Backlog Integrations (Jira, GitHub Issues)…",
         "category": "Flotilla",
@@ -1221,6 +1227,16 @@
           "command": "flotilla.refresh",
           "when": "view == flotilla.sidebar && flotilla.state == ready",
           "group": "navigation@2"
+        },
+        {
+          "command": "flotilla.openSettings",
+          "when": "view == flotilla.sidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "flotilla.backlogIntegrations",
+          "when": "view == flotilla.sidebar && flotilla.state == ready",
+          "group": "2_settings@0"
         },
         {
           "command": "flotilla.copyClaudeHookConfig",
@@ -1773,435 +1789,529 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Flotilla",
-      "properties": {
-        "flotilla.copyFiles": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "Worktrees",
+        "order": 1,
+        "properties": {
+          "flotilla.copyFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Glob patterns (relative to the main worktree) of ignored files to copy into new worktrees, e.g. \".env\"."
           },
-          "default": [],
-          "description": "Glob patterns (relative to the main worktree) of ignored files to copy into new worktrees, e.g. \".env\"."
-        },
-        "flotilla.setupCommand": {
-          "type": "string",
-          "default": "",
-          "description": "Command to run in a terminal in a new worktree, e.g. \"npm install\". With flotilla.linkFolders, use a command that keeps what's there (npm install, not npm ci, which deletes node_modules first)."
-        },
-        "flotilla.linkFolders": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "flotilla.setupCommand": {
+            "type": "string",
+            "default": "",
+            "description": "Command to run in a terminal in a new worktree, e.g. \"npm install\". With flotilla.linkFolders, use a command that keeps what's there (npm install, not npm ci, which deletes node_modules first)."
           },
-          "default": [],
-          "markdownDescription": "Folders (relative to the main worktree) that a new worktree gets as hard links to the main worktree's, before `#flotilla.setupCommand#` runs, e.g. `[\"node_modules\"]`. Linked files take no extra space, and the setup command installs only what the worktree's branch changes. A hard-linked file is the same file in both worktrees: package managers replace files rather than edit them, so the files that installs and tools do write in place are copied instead (in `node_modules`: `.package-lock.json`, `.bin`, caches such as `.vite`, and packages with install scripts, such as esbuild's). A worktree can then be installed again on another platform (a devcontainer) without touching the main worktree's files. Folders on another drive are skipped."
-        },
-        "flotilla.removeFinishedWorktrees": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "ask",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Remove a done ticket's worktree when nothing in it can be lost and nobody is using it; ask otherwise.",
-            "Ask before removing any done ticket's worktree.",
-            "Never remove worktrees on your behalf."
-          ],
-          "default": "auto",
-          "description": "What happens to a ticket's worktree once the ticket is Done. Its branch is always kept."
-        },
-        "flotilla.autoAdopt": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically make worktrees inside the repository portable across host and container."
-        },
-        "flotilla.defaultBase": {
-          "type": "string",
-          "default": "",
-          "description": "Base branch for progress and comparisons. Empty: origin/HEAD, then main, then master."
-        },
-        "flotilla.activeWindowMinutes": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "description": "A workstream with changes newer than this is 'active'."
-        },
-        "flotilla.staleAfterDays": {
-          "type": "number",
-          "default": 7,
-          "minimum": 1,
-          "description": "A workstream with no activity for this long is 'stale'."
-        },
-        "flotilla.sisterCheckDelaySeconds": {
-          "type": "number",
-          "default": 180,
-          "minimum": 0,
-          "description": "When a ticket of an epic is merged, discarded or its description reworked, an agent checks its sister tickets against it this long after the last change: edits close together run one check."
-        },
-        "flotilla.agentStatusStaleMinutes": {
-          "type": "number",
-          "default": 10,
-          "minimum": 1,
-          "description": "A 'working' agent report older than this is shown as last reported."
-        },
-        "flotilla.notify": {
-          "type": "string",
-          "enum": [
-            "needsYou",
-            "all",
-            "off"
-          ],
-          "enumDescriptions": [
-            "One notification for what needs you (tickets asking a question, ready for review, approved, stopped; worktrees waiting for input or reporting an error), gathered for about a minute. Only the leading window shows it.",
-            "A notification for each of those as it happens.",
-            "No notifications. The Needs you count in the status bar still shows."
-          ],
-          "default": "needsYou",
-          "description": "Which notifications Flotilla shows for what needs you."
-        },
-        "flotilla.ci.pushOnApproval": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Push when `origin` is on GitHub and a workflow in `.github/workflows` runs on push.",
-            "Push to `origin`, whatever it is.",
-            "Don't push approved tickets' branches."
-          ],
-          "default": "auto",
-          "markdownDescription": "When a ticket is approved, push its branch to `origin` (setting its upstream), and again when it gets new commits while approved, so CI runs on it before Merge to main. Never another remote, never a force push, and only commits authored and committed with the repository's identity (`user.name`, `user.email`): anything else stops the push, and the ticket says why."
-        },
-        "flotilla.github.pullRequests": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Open pull requests when `origin` is on GitHub.",
-            "Don't open pull requests."
-          ],
-          "default": "auto",
-          "markdownDescription": "When a ticket's agent reports \"Ready for review\", push its branch to `origin` (with the checks of `#flotilla.ci.pushOnApproval#`) and open a pull request into main for it on GitHub, or keep the one it has. Merge to main still lands it: the pull request then shows as merged, or Flotilla closes it when other commits landed. Uses your GitHub sign-in in VS Code."
-        },
-        "flotilla.ci.notify": {
-          "type": "string",
-          "enum": [
-            "failures",
-            "all",
-            "off"
-          ],
-          "enumDescriptions": [
-            "Notify when a run on a worktree's branch fails.",
-            "Notify when a run on a worktree's branch finishes, passed or failed.",
-            "Don't notify about CI runs."
-          ],
-          "default": "failures",
-          "description": "Notify when a CI run you watched (on a worktree's branch) finishes. Only the window that leads the backlog notifies."
-        },
-        "flotilla.pollSeconds": {
-          "type": "number",
-          "default": 15,
-          "minimum": 5,
-          "description": "How often to refresh the worktrees in use (a window open, an agent running, recent changes) while the Workstreams view is visible. Other worktrees are refreshed every few minutes, so a commit on the base branch reaches them within that time; a commit, stage or checkout in a worktree shows there within this interval."
-        },
-        "flotilla.tagChatTitles": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the worktree in Claude Code's own session list: chats linked to a worktree are renamed to \"<branch>: <title>\" once Claude Code has titled them. A title you set yourself is never replaced."
-        },
-        "flotilla.search.maxResults": {
-          "type": "number",
-          "default": 2000,
-          "minimum": 100,
-          "description": "Search results per worktree before Flotilla asks you to refine the search or show more."
-        },
-        "flotilla.changes.limit": {
-          "type": "number",
-          "default": 5000,
-          "minimum": 100,
-          "description": "Changes shown per worktree (staged and unstaged together) before Flotilla says \"and N more\". Stage All, Discard All and commits still cover every change; open a terminal in the worktree to see them all."
-        },
-        "flotilla.tabLabelPattern": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Regular expression that finds the id to show on a worktree tab (its first group, or the whole match), e.g. `T\\d+`. Empty: a Jira key such as `ABC-123`, or an issue number at the start of a branch part (`123-fix` → `#123`); otherwise the last part of the branch."
-        },
-        "flotilla.backlog.idPrefix": {
-          "type": "string",
-          "default": "BL",
-          "pattern": "^[A-Z][A-Z0-9]{1,9}$",
-          "patternErrorMessage": "2–10 capital letters or digits, starting with a letter, like BL or WEB.",
-          "markdownDescription": "Prefix of new local backlog item ids, as in `BL-12`, until another one is chosen when adding an item (the backlog then keeps that one). Tabs label worktrees by these ids."
-        },
-        "flotilla.backlog.branchPattern": {
-          "type": "string",
-          "default": "feature/{id}-{slug}",
-          "markdownDescription": "Branch name for work started from a backlog item. `{id}` is the item's id (e.g. `BL-12`), `{slug}` its title in lower case with dashes."
-        },
-        "flotilla.backlog.commitPrefix": {
-          "type": "string",
-          "enum": ["agents", "everyone", "off"],
-          "enumDescriptions": [
-            "Agents' commits (Claude Code's) in a worktree working on an item must start with its id, like \"BL-12: \".",
-            "Everyone's commits in such a worktree must start with the item's id.",
-            "Commit messages aren't checked."
-          ],
-          "default": "agents",
-          "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it."
-        },
-        "flotilla.merge.style": {
-          "type": "string",
-          "enum": [
-            "fast-forward",
-            "merge-commit"
-          ],
-          "enumDescriptions": [
-            "Main fast-forwards to the ticket's branch: Merge to main rebases it onto main (squashing its fixup! commits) when it isn't on top of it, runs the checks on that tip and moves main there. The history stays linear, with no merge commits.",
-            "A merge commit (`git merge --no-ff`) for each ticket, as before."
-          ],
-          "default": "fast-forward",
-          "markdownDescription": "How a ticket lands on main (Merge to main, and the merge train)."
-        },
-        "flotilla.merge.checkCommand": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. It runs in the system shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows), not the terminal's default one. When they fail, the base branch doesn't move: the merge is kept for an agent to fix (Fix with Agent, in the ticket), or to cancel. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
-        },
-        "flotilla.merge.checks": {
-          "type": "string",
-          "enum": ["ci", "local"],
-          "enumDescriptions": [
-            "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once; **Flotilla: Stop Pushing the Merge Train** takes it back). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
-            "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
-          ],
-          "default": "ci",
-          "markdownDescription": "What Merge to main decides on: CI's result for what lands (the branch's pushed tip, or the ticket's commit in the merge train), or the local checks."
-        },
-        "flotilla.checks.maxParallel": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "maximum": 64,
-          "markdownDescription": "How many test runs of the repository's worktrees (agents', merges') go at once; the others wait their turn, a merge's first, and each run gets its share of the cores. `0`: 1 per 16 cores. Read by test scripts that queue (this repository's `npm test`), from `.git/flotilla/checks.json`."
-        },
-        "flotilla.merge.onApprove": {
-          "type": "string",
-          "enum": ["ask", "auto", "off"],
-          "enumDescriptions": [
-            "When a ticket is approved, offer to merge it.",
-            "When a ticket is approved, merge it (it stops at anything that needs you: conflicts, failing checks).",
-            "Approving doesn't merge; merge from the ticket."
-          ],
-          "default": "ask",
-          "markdownDescription": "What happens when a ticket's work is approved (by the reviewer agent, or by you)."
-        },
-        "flotilla.review.automatic": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "When a backlog item goes to In Review (moved there, or its agent reports `Ready for review.`), start a reviewer agent: a different agent that reviews the work and gives a verdict in the ticket. Changes requested go back to the implementer, and the reviewer looks again, until it approves or `#flotilla.review.maxRounds#` is reached. The agents run without a window (`claude -p`); their chats open from the ticket."
-        },
-        "flotilla.review.maxRounds": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 10,
-          "markdownDescription": "How many review rounds the reviewer and the implementer go through before the loop stops and leaves the decision to you."
-        },
-        "flotilla.agents.sandbox": {
-          "type": "string",
-          "scope": "machine",
-          "enum": ["none", "openshell"],
-          "enumDescriptions": [
-            "Agents run on this machine, with your rights.",
-            "Every agent runs in its worktree's own NVIDIA OpenShell sandbox. It reaches only its worktree, the backlog folder, its git dirs and Flotilla's agent files. When OpenShell can't start it, it doesn't start."
-          ],
-          "default": "none",
-          "markdownDescription": "Where the agents Flotilla starts run (ticket agents, reviewers, the autopilot's, notes' and Ask's). `openshell` needs the [OpenShell](https://github.com/NVIDIA/OpenShell) CLI and a running gateway that allows bind mounts (`[openshell.drivers.docker] enable_bind_mounts = true`). Claude's login reaches the sandbox through an OpenShell provider, `flotilla-claude`, made from `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`). What each sandbox allowed and blocked is copied from its log every minute and shown in its ticket's Audit section and *Flotilla: Open Sandbox Audit*. Set in your user settings only: a repository can't change it."
-        },
-        "flotilla.agents.sandboxImage": {
-          "type": "string",
-          "scope": "machine",
-          "default": "",
-          "markdownDescription": "The image OpenShell sandboxes start from (`openshell sandbox create --from`): a community sandbox's name, a Dockerfile's folder or an image. It needs `claude`, `node` and `git`. Empty: OpenShell's default. Only with `#flotilla.agents.sandbox#` set to `openshell`."
-        },
-        "flotilla.agents.permissionMode": {
-          "type": "string",
-          "scope": "machine",
-          "enum": ["auto", "acceptEdits", "dontAsk", "bypassPermissions"],
-          "enumDescriptions": [
-            "Claude Code decides what's safe to do without asking (auto mode).",
-            "File edits are allowed; commands only if your Claude Code settings allow them.",
-            "Only what your Claude Code settings allow; everything else is refused.",
-            "Everything is allowed. Only in a sandbox (a dev container you can throw away)."
-          ],
-          "default": "auto",
-          "markdownDescription": "What agents Flotilla runs without a window (the autopilot's, reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused. Set in your user settings only: a repository can't change it."
-        },
-        "flotilla.agents.model": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The model agents Flotilla starts on tickets use, unless a ticket chooses its own: an alias (`opus`, `sonnet`, `haiku`, `fable`) or a model's full name. Empty: Claude Code's default."
-        },
-        "flotilla.agents.lightModel": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
-        },
-        "flotilla.agents.stuck.silentMinutes": {
-          "type": "number",
-          "default": 10,
-          "minimum": 0,
-          "markdownDescription": "A working agent looks stuck when its transcript hasn't changed for this many minutes while its process runs (not counting a command or a subagent it waits for). Its card then offers Open Transcript, Check and Stop. 0: no such warning."
-        },
-        "flotilla.agents.stuck.repeatedFailures": {
-          "type": "number",
-          "default": 3,
-          "minimum": 0,
-          "markdownDescription": "A working agent looks stuck when the same command failed this many times in a row, with no edit in between. 0: no such warning."
-        },
-        "flotilla.agents.stuck.commandMinutes": {
-          "type": "number",
-          "default": 15,
-          "minimum": 0,
-          "markdownDescription": "A working agent looks stuck when one command has run longer than this many minutes. 0: no such warning."
-        },
-        "flotilla.agents.autoCompactWindow": {
-          "type": "number",
-          "default": 200000,
-          "minimum": 0,
-          "maximum": 1000000,
-          "markdownDescription": "The context size, in tokens, that agents Flotilla starts compact against (Claude Code's `autoCompactWindow`, 100000 or more): they summarize their context sooner, so each turn re-reads less. 0: Claude Code's own (the model's whole context window)."
-        },
-        "flotilla.agents.subagentModel": {
-          "type": "string",
-          "default": "sonnet",
-          "markdownDescription": "The model of the subagents Flotilla's agents start (they search and report back; the agent judges what they find). Never a stronger one than the agent's own. Empty: the agent's own model."
-        },
-        "flotilla.agents.guardOutput": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Keep large outputs out of Flotilla's agents' context: a whole read of a file over 400 lines, a plain `cat` of one, or a whole `git diff`/`git show` over 600 changed lines is refused with how to look instead (grep, a line range, `--stat`), and how to get it whole anyway."
-        },
-        "flotilla.agents.tokenBudget": {
-          "type": "number",
-          "default": 25,
-          "minimum": 0,
-          "markdownDescription": "Millions of tokens an agent Flotilla runs may re-read from its context before it's stopped and its ticket asks you whether it goes on (the biggest tickets so far took about 12). An agent that runs the same failing command 5 times in a row with no edit in between is stopped too. 0: no budget."
-        },
-        "flotilla.chats.bigContext": {
-          "type": "number",
-          "default": 200000,
-          "minimum": 0,
-          "markdownDescription": "Past this context, in tokens, a chat is marked in the sidebar, and once per chat of yours Flotilla says what it costs: every turn re-reads the whole chat. 0: never."
-        },
-        "flotilla.agents.effort": {
-          "type": "string",
-          "enum": ["", "low", "medium", "high", "xhigh", "max"],
-          "enumDescriptions": ["Claude Code's default (your /effort setting).", "", "", "", "", ""],
-          "default": "",
-          "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
-        },
-        "flotilla.agents.lean": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Start agents lean: without your skills, plugins and MCP servers, with the coding tools only (Bash, Read, Edit, Write, Grep, Glob, subagents, the web). Everything an agent starts with is context it re-reads on every turn; this makes it about a quarter smaller. Your own Claude Code sessions keep everything. Agents opened in Claude Code's panel (no model or effort chosen) start as usual."
-        },
-        "flotilla.ask.model": {
-          "type": "string",
-          "default": "sonnet",
-          "markdownDescription": "The model that answers in a ticket's **Ask** chat (an alias like `sonnet` or `haiku`, or a model id). Ask is off the record: it only reads (files, wherever on disk your account can read them, and `git log`/`git diff`/`git show`/`git status`), nothing of it is written to the ticket or kept, and agents don't see it. It doesn't count against `#flotilla.agents.maxRunning#`, but waits while memory is short."
-        },
-        "flotilla.agents.maxRunning": {
-          "type": "number",
-          "default": 2,
-          "minimum": 1,
-          "maximum": 10,
-          "markdownDescription": "How many agents Flotilla runs at once, in all: the autopilot's tickets, reviews, revisions after a review, and agents going on after a usage limit. Starts Flotilla makes on its own wait in a queue when it's reached: your replies (answers, requested changes) first, then reviews and revisions, then resumes, then new tickets. Starts you make with a ticket's Start or Start Review run at once, and count toward it. Prioritize starts a queued one now, above the limit (see `#flotilla.agents.maxPrioritized#`)."
-        },
-        "flotilla.metrics.reviewEvery": {
-          "type": "number",
-          "default": 7,
-          "minimum": 0,
-          "markdownDescription": "Deprecated: the improvement review is a scheduled task, `.flotilla/backlog/schedules/improvement-review.md`. This setting is read once, to write that file's `every:` (0: `paused: true`); change its schedule in the file.",
-          "markdownDeprecationMessage": "The improvement review is a scheduled task now: change its `every:` in `.flotilla/backlog/schedules/improvement-review.md`."
-        },
-        "flotilla.agents.maxPrioritized": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "maximum": 10,
-          "markdownDescription": "How many agents Prioritize may run above `#flotilla.agents.maxRunning#` at once: a queued start (a reply, a review, new work) that you prioritize starts now. At this ceiling, Prioritize asks which running agent to pause to make room; it goes back to the head of the queue. Prioritize starts nothing while free memory is short (`#flotilla.agents.minFreeMemoryMB#`). 0: Prioritize takes a free slot, and asks for a pause whenever there's none."
-        },
-        "flotilla.agents.minFreeMemoryMB": {
-          "type": "number",
-          "default": 2048,
-          "minimum": 0,
-          "markdownDescription": "Free memory (MB) the machine needs before Flotilla starts an agent: each agent's Claude Code process takes about 300 MB, and builds and tests more. The autopilot and reviews wait until there's room; a manual start says so and offers to start anyway. 0 turns the check off."
-        },
-        "flotilla.review.model": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The model reviewer agents use. Empty: the ticket's choice, else `#flotilla.agents.model#`."
-        },
-        "flotilla.review.effort": {
-          "type": "string",
-          "enum": ["", "low", "medium", "high", "xhigh", "max"],
-          "enumDescriptions": ["Claude Code's default (your /effort setting).", "", "", "", "", ""],
-          "default": "",
-          "markdownDescription": "How hard reviewer agents think. Empty: the ticket's choice, else `#flotilla.agents.effort#`."
-        },
-        "flotilla.autopilot.avoidClashes": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
-        },
-        "flotilla.backlog.cards": {
-          "type": "string",
-          "enum": ["compact", "detailed"],
-          "enumDescriptions": ["Each card shows its title, one status line and its next step; the rest on hover, in its menu and in its ticket.", "Each card shows every detail: the id, priority, agents, chips and badges."],
-          "default": "compact",
-          "markdownDescription": "How much the backlog's cards show. The Compact / Detailed switch in the backlog's title sets it."
-        },
-        "flotilla.autopilot.maxAgents": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 10,
-          "markdownDescription": "The older name of `#flotilla.agents.maxRunning#`: when set, it's the limit on agents running at once. Empty: `#flotilla.agents.maxRunning#` applies."
-        },
-        "flotilla.agents.claudePath": {
-          "type": "string",
-          "scope": "machine",
-          "default": "",
-          "markdownDescription": "The Claude Code CLI to run agents with. Empty: the one the Claude Code extension comes with, else `claude` on the PATH. Set in your user settings only: a repository can't change it."
-        },
-        "flotilla.backlog.agentTickets": {
-          "type": "string",
-          "enum": ["propose", "add"],
-          "enumDescriptions": [
-            "Tickets agents add are proposals: they wait in the backlog's Proposed group for you to accept or dismiss them.",
-            "Tickets agents add join the backlog at once."
-          ],
-          "default": "propose",
-          "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how)."
-        },
-        "flotilla.dev.githubApi": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
-        },
-        "flotilla.dev.githubSignedOut": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "For development only: the fake GitHub (`#flotilla.dev.githubApi#`) starts signed out, so pull requests and the CI/CD view ask you to sign in. Its **Sign In** signs it in until the window reloads."
+          "flotilla.linkFolders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Folders (relative to the main worktree) that a new worktree gets as hard links to the main worktree's, before `#flotilla.setupCommand#` runs, e.g. `[\"node_modules\"]`. Linked files take no extra space, and the setup command installs only what the worktree's branch changes. A hard-linked file is the same file in both worktrees: package managers replace files rather than edit them, so the files that installs and tools do write in place are copied instead (in `node_modules`: `.package-lock.json`, `.bin`, caches such as `.vite`, and packages with install scripts, such as esbuild's). A worktree can then be installed again on another platform (a devcontainer) without touching the main worktree's files. Folders on another drive are skipped."
+          },
+          "flotilla.removeFinishedWorktrees": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ask",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Remove a done ticket's worktree when nothing in it can be lost and nobody is using it; ask otherwise.",
+              "Ask before removing any done ticket's worktree.",
+              "Never remove worktrees on your behalf."
+            ],
+            "default": "auto",
+            "description": "What happens to a ticket's worktree once the ticket is Done. Its branch is always kept."
+          },
+          "flotilla.autoAdopt": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically make worktrees inside the repository portable across host and container."
+          },
+          "flotilla.defaultBase": {
+            "type": "string",
+            "default": "",
+            "description": "Base branch for progress and comparisons. Empty: origin/HEAD, then main, then master."
+          },
+          "flotilla.activeWindowMinutes": {
+            "type": "number",
+            "default": 5,
+            "minimum": 1,
+            "description": "A workstream with changes newer than this is 'active'."
+          },
+          "flotilla.staleAfterDays": {
+            "type": "number",
+            "default": 7,
+            "minimum": 1,
+            "description": "A workstream with no activity for this long is 'stale'."
+          },
+          "flotilla.sisterCheckDelaySeconds": {
+            "type": "number",
+            "default": 180,
+            "minimum": 0,
+            "description": "When a ticket of an epic is merged, discarded or its description reworked, an agent checks its sister tickets against it this long after the last change: edits close together run one check."
+          },
+          "flotilla.search.maxResults": {
+            "type": "number",
+            "default": 2000,
+            "minimum": 100,
+            "description": "Search results per worktree before Flotilla asks you to refine the search or show more."
+          },
+          "flotilla.changes.limit": {
+            "type": "number",
+            "default": 5000,
+            "minimum": 100,
+            "description": "Changes shown per worktree (staged and unstaged together) before Flotilla says \"and N more\". Stage All, Discard All and commits still cover every change; open a terminal in the worktree to see them all."
+          },
+          "flotilla.tabLabelPattern": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Regular expression that finds the id to show on a worktree tab (its first group, or the whole match), e.g. `T\\d+`. Empty: a Jira key such as `ABC-123`, or an issue number at the start of a branch part (`123-fix` → `#123`); otherwise the last part of the branch."
+          }
+        }
+      },
+      {
+        "title": "Backlog & Tickets",
+        "order": 2,
+        "properties": {
+          "flotilla.backlog.idPrefix": {
+            "type": "string",
+            "default": "BL",
+            "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+            "patternErrorMessage": "2–10 capital letters or digits, starting with a letter, like BL or WEB.",
+            "markdownDescription": "Prefix of new local backlog item ids, as in `BL-12`, until another one is chosen when adding an item (the backlog then keeps that one). Tabs label worktrees by these ids. Tickets from Jira or GitHub Issues come in through [Backlog Integrations…](command:flotilla.backlogIntegrations).",
+            "order": 1
+          },
+          "flotilla.backlog.branchPattern": {
+            "type": "string",
+            "default": "feature/{id}-{slug}",
+            "markdownDescription": "Branch name for work started from a backlog item. `{id}` is the item's id (e.g. `BL-12`), `{slug}` its title in lower case with dashes.",
+            "order": 2
+          },
+          "flotilla.backlog.commitPrefix": {
+            "type": "string",
+            "enum": [
+              "agents",
+              "everyone",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Agents' commits (Claude Code's) in a worktree working on an item must start with its id, like \"BL-12: \".",
+              "Everyone's commits in such a worktree must start with the item's id.",
+              "Commit messages aren't checked."
+            ],
+            "default": "agents",
+            "markdownDescription": "Whose commits in a worktree working on a backlog item must start with the item's id (`BL-12: …`). A git `commit-msg` hook checks it; an existing hook keeps running after it.",
+            "order": 3
+          },
+          "flotilla.backlog.cards": {
+            "type": "string",
+            "enum": [
+              "compact",
+              "detailed"
+            ],
+            "enumDescriptions": [
+              "Each card shows its title, one status line and its next step; the rest on hover, in its menu and in its ticket.",
+              "Each card shows every detail: the id, priority, agents, chips and badges."
+            ],
+            "default": "compact",
+            "markdownDescription": "How much the backlog's cards show. The Compact / Detailed switch in the backlog's title sets it.",
+            "order": 4
+          },
+          "flotilla.backlog.agentTickets": {
+            "type": "string",
+            "enum": [
+              "propose",
+              "add"
+            ],
+            "enumDescriptions": [
+              "Tickets agents add are proposals: they wait in the backlog's Proposed group for you to accept or dismiss them.",
+              "Tickets agents add join the backlog at once."
+            ],
+            "default": "propose",
+            "markdownDescription": "What happens to tickets agents add to the backlog (any agent can, through `.flotilla/backlog/inbox/`; `.flotilla/backlog/AGENTS.md` tells them how).",
+            "order": 5
+          }
+        }
+      },
+      {
+        "title": "Agents",
+        "order": 3,
+        "properties": {
+          "flotilla.agentStatusStaleMinutes": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "description": "A 'working' agent report older than this is shown as last reported."
+          },
+          "flotilla.tagChatTitles": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show the worktree in Claude Code's own session list: chats linked to a worktree are renamed to \"<branch>: <title>\" once Claude Code has titled them. A title you set yourself is never replaced."
+          },
+          "flotilla.agents.sandbox": {
+            "type": "string",
+            "scope": "machine",
+            "enum": [
+              "none",
+              "openshell"
+            ],
+            "enumDescriptions": [
+              "Agents run on this machine, with your rights.",
+              "Every agent runs in its worktree's own NVIDIA OpenShell sandbox. It reaches only its worktree, the backlog folder, its git dirs and Flotilla's agent files. When OpenShell can't start it, it doesn't start."
+            ],
+            "default": "none",
+            "markdownDescription": "Where the agents Flotilla starts run (ticket agents, reviewers, the autopilot's, notes' and Ask's). `openshell` needs the [OpenShell](https://github.com/NVIDIA/OpenShell) CLI and a running gateway that allows bind mounts (`[openshell.drivers.docker] enable_bind_mounts = true`). Claude's login reaches the sandbox through an OpenShell provider, `flotilla-claude`, made from `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`). What each sandbox allowed and blocked is copied from its log every minute and shown in its ticket's Audit section and *Flotilla: Open Sandbox Audit*. Set in your user settings only: a repository can't change it."
+          },
+          "flotilla.agents.sandboxImage": {
+            "type": "string",
+            "scope": "machine",
+            "default": "",
+            "markdownDescription": "The image OpenShell sandboxes start from (`openshell sandbox create --from`): a community sandbox's name, a Dockerfile's folder or an image. It needs `claude`, `node` and `git`. Empty: OpenShell's default. Only with `#flotilla.agents.sandbox#` set to `openshell`."
+          },
+          "flotilla.agents.permissionMode": {
+            "type": "string",
+            "scope": "machine",
+            "enum": [
+              "auto",
+              "acceptEdits",
+              "dontAsk",
+              "bypassPermissions"
+            ],
+            "enumDescriptions": [
+              "Claude Code decides what's safe to do without asking (auto mode).",
+              "File edits are allowed; commands only if your Claude Code settings allow them.",
+              "Only what your Claude Code settings allow; everything else is refused.",
+              "Everything is allowed. Only in a sandbox (a dev container you can throw away)."
+            ],
+            "default": "auto",
+            "markdownDescription": "What agents Flotilla runs without a window (the autopilot's, reviewers, and implementers making the changes asked for) may do. Nobody is there to approve a request, so what isn't allowed is refused. Set in your user settings only: a repository can't change it."
+          },
+          "flotilla.agents.model": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "The model agents Flotilla starts on tickets use, unless a ticket chooses its own: an alias (`opus`, `sonnet`, `haiku`, `fable`) or a model's full name. Empty: Claude Code's default."
+          },
+          "flotilla.agents.lightModel": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "The model for tickets marked Light (small, mechanical work: chosen in the ticket, or by the agent that proposed it), e.g. `sonnet`. Their reviewers use `#flotilla.agents.model#`, and a Light ticket moves up to it when its review requests changes a second time or its agent says it needs a stronger model. Empty: no ticket is Light."
+          },
+          "flotilla.agents.stuck.silentMinutes": {
+            "type": "number",
+            "default": 10,
+            "minimum": 0,
+            "markdownDescription": "A working agent looks stuck when its transcript hasn't changed for this many minutes while its process runs (not counting a command or a subagent it waits for). Its card then offers Open Transcript, Check and Stop. 0: no such warning."
+          },
+          "flotilla.agents.stuck.repeatedFailures": {
+            "type": "number",
+            "default": 3,
+            "minimum": 0,
+            "markdownDescription": "A working agent looks stuck when the same command failed this many times in a row, with no edit in between. 0: no such warning."
+          },
+          "flotilla.agents.stuck.commandMinutes": {
+            "type": "number",
+            "default": 15,
+            "minimum": 0,
+            "markdownDescription": "A working agent looks stuck when one command has run longer than this many minutes. 0: no such warning."
+          },
+          "flotilla.agents.autoCompactWindow": {
+            "type": "number",
+            "default": 200000,
+            "minimum": 0,
+            "maximum": 1000000,
+            "markdownDescription": "The context size, in tokens, that agents Flotilla starts compact against (Claude Code's `autoCompactWindow`, 100000 or more): they summarize their context sooner, so each turn re-reads less. 0: Claude Code's own (the model's whole context window)."
+          },
+          "flotilla.agents.subagentModel": {
+            "type": "string",
+            "default": "sonnet",
+            "markdownDescription": "The model of the subagents Flotilla's agents start (they search and report back; the agent judges what they find). Never a stronger one than the agent's own. Empty: the agent's own model."
+          },
+          "flotilla.agents.guardOutput": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Keep large outputs out of Flotilla's agents' context: a whole read of a file over 400 lines, a plain `cat` of one, or a whole `git diff`/`git show` over 600 changed lines is refused with how to look instead (grep, a line range, `--stat`), and how to get it whole anyway."
+          },
+          "flotilla.agents.tokenBudget": {
+            "type": "number",
+            "default": 25,
+            "minimum": 0,
+            "markdownDescription": "Millions of tokens an agent Flotilla runs may re-read from its context before it's stopped and its ticket asks you whether it goes on (the biggest tickets so far took about 12). An agent that runs the same failing command 5 times in a row with no edit in between is stopped too. 0: no budget."
+          },
+          "flotilla.chats.bigContext": {
+            "type": "number",
+            "default": 200000,
+            "minimum": 0,
+            "markdownDescription": "Past this context, in tokens, a chat is marked in the sidebar, and once per chat of yours Flotilla says what it costs: every turn re-reads the whole chat. 0: never."
+          },
+          "flotilla.agents.effort": {
+            "type": "string",
+            "enum": [
+              "",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "enumDescriptions": [
+              "Claude Code's default (your /effort setting).",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "default": "",
+            "markdownDescription": "How hard agents Flotilla starts on tickets think (Claude Code's `--effort`), unless a ticket chooses its own."
+          },
+          "flotilla.agents.lean": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Start agents lean: without your skills, plugins and MCP servers, with the coding tools only (Bash, Read, Edit, Write, Grep, Glob, subagents, the web). Everything an agent starts with is context it re-reads on every turn; this makes it about a quarter smaller. Your own Claude Code sessions keep everything. Agents opened in Claude Code's panel (no model or effort chosen) start as usual."
+          },
+          "flotilla.ask.model": {
+            "type": "string",
+            "default": "sonnet",
+            "markdownDescription": "The model that answers in a ticket's **Ask** chat (an alias like `sonnet` or `haiku`, or a model id). Ask is off the record: it only reads (files, wherever on disk your account can read them, and `git log`/`git diff`/`git show`/`git status`), nothing of it is written to the ticket or kept, and agents don't see it. It doesn't count against `#flotilla.agents.maxRunning#`, but waits while memory is short."
+          },
+          "flotilla.agents.claudePath": {
+            "type": "string",
+            "scope": "machine",
+            "default": "",
+            "markdownDescription": "The Claude Code CLI to run agents with. Empty: the one the Claude Code extension comes with, else `claude` on the PATH. Set in your user settings only: a repository can't change it."
+          }
+        }
+      },
+      {
+        "title": "Autopilot",
+        "order": 4,
+        "properties": {
+          "flotilla.agents.maxRunning": {
+            "type": "number",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 10,
+            "markdownDescription": "How many agents Flotilla runs at once, in all: the autopilot's tickets, reviews, revisions after a review, and agents going on after a usage limit. Starts Flotilla makes on its own wait in a queue when it's reached: your replies (answers, requested changes) first, then reviews and revisions, then resumes, then new tickets. Starts you make with a ticket's Start or Start Review run at once, and count toward it. Prioritize starts a queued one now, above the limit (see `#flotilla.agents.maxPrioritized#`)."
+          },
+          "flotilla.agents.maxPrioritized": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 10,
+            "markdownDescription": "How many agents Prioritize may run above `#flotilla.agents.maxRunning#` at once: a queued start (a reply, a review, new work) that you prioritize starts now. At this ceiling, Prioritize asks which running agent to pause to make room; it goes back to the head of the queue. Prioritize starts nothing while free memory is short (`#flotilla.agents.minFreeMemoryMB#`). 0: Prioritize takes a free slot, and asks for a pause whenever there's none."
+          },
+          "flotilla.agents.minFreeMemoryMB": {
+            "type": "number",
+            "default": 2048,
+            "minimum": 0,
+            "markdownDescription": "Free memory (MB) the machine needs before Flotilla starts an agent: each agent's Claude Code process takes about 300 MB, and builds and tests more. The autopilot and reviews wait until there's room; a manual start says so and offers to start anyway. 0 turns the check off."
+          },
+          "flotilla.autopilot.avoidClashes": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Off (the default), the autopilot starts the next To Do ticket from main at once and waits only for the tickets it names with `Depends on:`; overlapping changes are reconciled when it merges. On, the autopilot also holds back a ticket that would change files a ticket in progress changes (the paths its description names, and those its parent and the tickets it depends on changed), until that one is merged: its work then builds on it instead of being redone after a conflict. A ticket you start yourself always starts."
+          },
+          "flotilla.autopilot.maxAgents": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "markdownDescription": "The older name of `#flotilla.agents.maxRunning#`: when set, it's the limit on agents running at once. Empty: `#flotilla.agents.maxRunning#` applies."
+          }
+        }
+      },
+      {
+        "title": "Review & Merge",
+        "order": 5,
+        "properties": {
+          "flotilla.merge.style": {
+            "type": "string",
+            "enum": [
+              "fast-forward",
+              "merge-commit"
+            ],
+            "enumDescriptions": [
+              "Main fast-forwards to the ticket's branch: Merge to main rebases it onto main (squashing its fixup! commits) when it isn't on top of it, runs the checks on that tip and moves main there. The history stays linear, with no merge commits.",
+              "A merge commit (`git merge --no-ff`) for each ticket, as before."
+            ],
+            "default": "fast-forward",
+            "markdownDescription": "How a ticket lands on main (Merge to main, and the merge train)."
+          },
+          "flotilla.merge.checkCommand": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "The checks run on a ticket's merge (Merge to main, in the ticket) before the base branch moves to it, in a terminal, in the merge's temporary worktree. It runs in the system shell (`/bin/sh` on macOS and Linux, `cmd.exe` on Windows), not the terminal's default one. When they fail, the base branch doesn't move: the merge is kept for an agent to fix (Fix with Agent, in the ticket), or to cancel. Empty: the repository's `typecheck` and `test` scripts, if its `package.json` has them (its `node_modules` is linked into the temporary worktree)."
+          },
+          "flotilla.merge.checks": {
+            "type": "string",
+            "enum": [
+              "ci",
+              "local"
+            ],
+            "enumDescriptions": [
+              "Merge to main decides on CI's result: on the branch's pushed tip when that's the tree that lands, else on the ticket's commit in the merge train, pushed to origin's `flotilla/merge-queue/<ticket>` (asked once; **Flotilla: Stop Pushing the Merge Train** takes it back). It waits while CI runs, and never merges past red CI; the checks run locally only when there's no CI.",
+              "Always run the checks locally (`flotilla.merge.checkCommand`), on the merge."
+            ],
+            "default": "ci",
+            "markdownDescription": "What Merge to main decides on: CI's result for what lands (the branch's pushed tip, or the ticket's commit in the merge train), or the local checks."
+          },
+          "flotilla.checks.maxParallel": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 64,
+            "markdownDescription": "How many test runs of the repository's worktrees (agents', merges') go at once; the others wait their turn, a merge's first, and each run gets its share of the cores. `0`: 1 per 16 cores. Read by test scripts that queue (this repository's `npm test`), from `.git/flotilla/checks.json`."
+          },
+          "flotilla.merge.onApprove": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "auto",
+              "off"
+            ],
+            "enumDescriptions": [
+              "When a ticket is approved, offer to merge it.",
+              "When a ticket is approved, merge it (it stops at anything that needs you: conflicts, failing checks).",
+              "Approving doesn't merge; merge from the ticket."
+            ],
+            "default": "ask",
+            "markdownDescription": "What happens when a ticket's work is approved (by the reviewer agent, or by you)."
+          },
+          "flotilla.review.automatic": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "When a backlog item goes to In Review (moved there, or its agent reports `Ready for review.`), start a reviewer agent: a different agent that reviews the work and gives a verdict in the ticket. Changes requested go back to the implementer, and the reviewer looks again, until it approves or `#flotilla.review.maxRounds#` is reached. The agents run without a window (`claude -p`); their chats open from the ticket."
+          },
+          "flotilla.review.maxRounds": {
+            "type": "number",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 10,
+            "markdownDescription": "How many review rounds the reviewer and the implementer go through before the loop stops and leaves the decision to you."
+          },
+          "flotilla.metrics.reviewEvery": {
+            "type": "number",
+            "default": 7,
+            "minimum": 0,
+            "markdownDescription": "Deprecated: the improvement review is a scheduled task, `.flotilla/backlog/schedules/improvement-review.md`. This setting is read once, to write that file's `every:` (0: `paused: true`); change its schedule in the file.",
+            "markdownDeprecationMessage": "The improvement review is a scheduled task now: change its `every:` in `.flotilla/backlog/schedules/improvement-review.md`."
+          },
+          "flotilla.review.model": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "The model reviewer agents use. Empty: the ticket's choice, else `#flotilla.agents.model#`."
+          },
+          "flotilla.review.effort": {
+            "type": "string",
+            "enum": [
+              "",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "enumDescriptions": [
+              "Claude Code's default (your /effort setting).",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "default": "",
+            "markdownDescription": "How hard reviewer agents think. Empty: the ticket's choice, else `#flotilla.agents.effort#`."
+          }
+        }
+      },
+      {
+        "title": "CI & Notifications",
+        "order": 6,
+        "properties": {
+          "flotilla.notify": {
+            "type": "string",
+            "enum": [
+              "needsYou",
+              "all",
+              "off"
+            ],
+            "enumDescriptions": [
+              "One notification for what needs you (tickets asking a question, ready for review, approved, stopped; worktrees waiting for input or reporting an error), gathered for about a minute. Only the leading window shows it.",
+              "A notification for each of those as it happens.",
+              "No notifications. The Needs you count in the status bar still shows."
+            ],
+            "default": "needsYou",
+            "description": "Which notifications Flotilla shows for what needs you."
+          },
+          "flotilla.ci.pushOnApproval": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Push when `origin` is on GitHub and a workflow in `.github/workflows` runs on push.",
+              "Push to `origin`, whatever it is.",
+              "Don't push approved tickets' branches."
+            ],
+            "default": "auto",
+            "markdownDescription": "When a ticket is approved, push its branch to `origin` (setting its upstream), and again when it gets new commits while approved, so CI runs on it before Merge to main. Never another remote, never a force push, and only commits authored and committed with the repository's identity (`user.name`, `user.email`): anything else stops the push, and the ticket says why."
+          },
+          "flotilla.github.pullRequests": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Open pull requests when `origin` is on GitHub.",
+              "Don't open pull requests."
+            ],
+            "default": "auto",
+            "markdownDescription": "When a ticket's agent reports \"Ready for review\", push its branch to `origin` (with the checks of `#flotilla.ci.pushOnApproval#`) and open a pull request into main for it on GitHub, or keep the one it has. Merge to main still lands it: the pull request then shows as merged, or Flotilla closes it when other commits landed. Uses your GitHub sign-in in VS Code."
+          },
+          "flotilla.ci.notify": {
+            "type": "string",
+            "enum": [
+              "failures",
+              "all",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Notify when a run on a worktree's branch fails.",
+              "Notify when a run on a worktree's branch finishes, passed or failed.",
+              "Don't notify about CI runs."
+            ],
+            "default": "failures",
+            "description": "Notify when a CI run you watched (on a worktree's branch) finishes. Only the window that leads the backlog notifies."
+          },
+          "flotilla.pollSeconds": {
+            "type": "number",
+            "default": 15,
+            "minimum": 5,
+            "description": "How often to refresh the worktrees in use (a window open, an agent running, recent changes) while the Workstreams view is visible. Other worktrees are refreshed every few minutes, so a commit on the base branch reaches them within that time; a commit, stage or checkout in a worktree shows there within this interval."
+          },
+          "flotilla.dev.githubApi": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "For development only: the address of the fake GitHub (`npm run fake-github`, e.g. `http://127.0.0.1:4010`) that the CI/CD view reads instead of GitHub. Read only in the Extension Development Host, and only for a loopback address; a sign-in isn't asked for then."
+          },
+          "flotilla.dev.githubSignedOut": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "For development only: the fake GitHub (`#flotilla.dev.githubApi#`) starts signed out, so pull requests and the CI/CD view ask you to sign in. Its **Sign In** signs it in until the window reloads."
+          }
         }
       }
-    },
+    ],
     "submenus": [
       {
         "id": "flotilla.explorer",

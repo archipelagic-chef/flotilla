@@ -7,6 +7,7 @@ import {
 import type { BacklogIntegrations } from '../backlog/integrations';
 import { newBacklogItem } from '../backlog/newItem';
 import type { Commands } from '../commandSet';
+import { openFlotillaSettings } from '../flotillaSettings';
 import type { NeedsYouNotifier } from '../notifications';
 import { SidebarProvider } from './sidebarProvider';
 
@@ -18,7 +19,7 @@ export interface ViewCommandDeps {
   integrations: BacklogIntegrations;
 }
 
-/** The sidebar's commands: show it or one of its tools, fold its lists, the Needs you list, a CI job's log. */
+/** The sidebar's commands: show it or one of its tools, its settings, fold its lists, the Needs you list, a CI job's log. */
 export function viewCommands(deps: ViewCommandDeps): Commands {
   const { sidebar, needs, jobLogs, backlog, integrations } = deps;
   return {
@@ -29,6 +30,7 @@ export function viewCommands(deps: ViewCommandDeps): Commands {
     'flotilla.showBacklog': () => sidebar.showTool('backlog'),
     'flotilla.foldAll': () => sidebar.fold(true),
     'flotilla.unfoldAll': () => sidebar.fold(false),
+    'flotilla.openSettings': () => openFlotillaSettings(),
     'flotilla.addBacklogItem': async () => {
       await sidebar.showTool('backlog');
       await newBacklogItem(backlog, integrations);
