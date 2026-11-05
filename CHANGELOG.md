@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **A ticket's Changes lead into its version control**: they say how big the change is and list its three biggest files, each opening its diff, with *View Version Control* for the rest (its changes, commits and CI under its card in the Backlog). The ticket's own file tree, inline diffs, Expand view, By commit and Open All Changes are gone. A report's link to a file the ticket changes opens its diff at the line, in place of the separate "diff" mark.
+
 - **Spend over time in Metrics**: which chats spent tokens, hour by hour. The Cost section stacks the last 6 hours, 24 hours or 7 days (by day) by chat, in tokens or $: agents by name and ticket ("reviewer Ziggy-8 · BL-201"), your own chats by title, the smallest as Others. Picking an hour, or a chat in the legend, lists its tokens by kind, turns, purpose and cost, and opens its ticket or chat. A running chat counts up to its latest turn.
 
 - **Merge to main on CI's checks**: an approved ticket's branch is pushed to `origin` (`flotilla.ci.pushOnApproval`, with the repository's identity only, never forced over someone else's push), and Merge to main decides on CI's result for what lands instead of running the checks locally (`flotilla.merge.checks`): it waits while CI runs, and never merges past red CI. The merge train's commits get CI on `flotilla/merge-queue/<ticket>` branches. Without CI, the local checks run as before. The ticket shows its branch's CI live, with the CI/CD view's runs, jobs, logs and actions.
