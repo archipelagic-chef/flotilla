@@ -106,8 +106,8 @@ export interface Persisted {
   expanded: Record<string, string[]>;
   /** Commit message drafts per workstream key. */
   drafts: Record<string, string>;
-  /** Workstream keys whose chat history is open. */
-  history: string[];
+  /** The Chats list leaves out Flotilla's agents (BL-286). */
+  hideDetached?: boolean;
   /** The view under Version Control. */
   vcView: VcView;
   /** The Backlog's list, or the active ticket's Changes, Commits or CI under it (BL-275). */
@@ -129,7 +129,6 @@ const INITIAL: Persisted = {
   collapsed: [],
   expanded: {},
   drafts: {},
-  history: [],
   vcView: 'changes',
   comparisons: [],
   nextComparison: 1,
@@ -590,7 +589,7 @@ export function App() {
   // Fold All in the view title: offered where the All tab shows worktree sections.
   const sectioned =
     active === ALL &&
-    ['files', 'search', 'vc', 'chats'].includes(persisted.tool) &&
+    ['files', 'search', 'vc'].includes(persisted.tool) &&
     !(persisted.tool === 'vc' && persisted.vcView === 'compare' && persisted.comparisons.length > 0);
   const allFolded = sectioned && !!workstreams?.length && workstreams.every((w) => persisted.collapsed.includes(w.key));
   useEffect(() => send({ type: 'folding', canFold: sectioned, allFolded }), [sectioned, allFolded]);
@@ -691,7 +690,6 @@ export function App() {
         />
       )}
       {tool === 'vc' && vcView === 'ci' && <CiBody view={ci[ws.key]} worktree={ws.key} />}
-      {tool === 'chats' && <ChatsBody ws={ws} historyOpen={persisted.history.includes(ws.key)} update={update} />}
     </>
   );
 
@@ -789,6 +787,21 @@ export function App() {
         compare={compare}
       />
     );
+  } else if (tool === 'chats') {
+    // Every chat in one list, whichever tab is selected (BL-286).
+    content = (
+      <>
+        <HooksNotice missing={workstreams.filter((w) => w.reachable && !w.hasHooks).length} />
+        <ChatsBody
+          workstreams={workstreams}
+          colors={colors}
+          first={activeWs?.key}
+          hideDetached={!!persisted.hideDetached}
+          update={update}
+          openTicket={(ticket) => send({ type: 'metricsOpen', ticket })}
+        />
+      </>
+    );
   } else if (tool === 'metrics') {
     // The repository's, whichever tab is active.
     const period = persisted.metricsPeriod ?? 'week';
@@ -842,7 +855,6 @@ export function App() {
   } else if (activeWs) {
     content = (
       <div class="single" data-section={activeWs.key}>
-        {tool === 'chats' && <HooksNotice missing={activeWs.reachable && !activeWs.hasHooks ? 1 : 0} />}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>
@@ -850,7 +862,6 @@ export function App() {
   } else {
     content = (
       <>
-        {tool === 'chats' && <HooksNotice missing={workstreams.filter((w) => w.reachable && !w.hasHooks).length} />}
         {workstreams.map((ws) => (
           <Section
             key={ws.key}

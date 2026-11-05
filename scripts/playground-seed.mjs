@@ -1057,6 +1057,65 @@ const PANEL_CHAT = '8b4f6c32-5d7e-4a91-8c2b-3e4d5f6a7b81';
 /** An agent's chat whose process ended without its record saying so: it shows as working, for a Check to find (BL-163). */
 const STALE_CHAT = '9c5a7d43-6e8f-4ba2-9d3c-4f5e6a7b8c92';
 const BL3_WORKTREE = path.join('.worktrees', 'feature-BL-3-keep-chats-when-a-window-reloads');
+// Worktrees few demos look at (BL-286): the chats there change only the Chats list's demo.
+const BL11_WORKTREE = path.join('.worktrees', 'feature-BL-11-keep-the-filter-on-worktree-removal');
+const BL16_WORKTREE = path.join('.worktrees', 'feature-BL-16-say-how-to-run-the-playground');
+/** The Chats list's other chats (BL-286): in main, BL-11 and BL-16, one in each state the list shows. */
+const MORE_CHATS = [
+  {
+    sessionId: 'a1d6e8f4-7a9b-4c13-8e4d-5a6b7c8d9e01',
+    where: '',
+    title: 'Why is the greeting test slow?',
+    state: 'done',
+    ago: 120,
+    updatedAgo: 95,
+    turns: [{ say: 'Why is the greeting test slow?', reply: 'It starts a server for each case; one shared server would do.' }],
+  },
+  {
+    sessionId: 'b2e7f9a5-8b0c-4d24-9f5e-6b7c8d9e0f12',
+    where: '',
+    title: 'Rename the playground scripts',
+    state: 'ended',
+    ago: 300,
+    updatedAgo: 240,
+    turns: [{ say: 'Rename the playground scripts to start with play-', reply: 'Renamed them, and the README says so.' }],
+  },
+  {
+    sessionId: 'c3f8a0b6-9c1d-4e35-8a6f-7c8d9e0f1a23',
+    where: '',
+    title: 'Lyra-5 · BL-11',
+    state: 'done',
+    agent: 'Lyra-5',
+    ago: 40,
+    updatedAgo: 30,
+    turns: [
+      {
+        say: 'You are agent Lyra-5, working on backlog item BL-11: "Keep the filter on worktree removal". Find where main resets the filter first.',
+        reply: 'Main resets it in removeWorktree; I reported where in BL-11.',
+      },
+    ],
+  },
+  {
+    sessionId: 'd4a9b1c7-0d2e-4f46-9b7a-8d9e0f1a2b34',
+    where: BL11_WORKTREE,
+    title: 'Run the filter tests',
+    state: 'waiting-for-input',
+    message: 'Claude needs your permission to use Bash',
+    ago: 12,
+    updatedAgo: 3,
+    turns: [{ say: 'Run the filter tests', tools: [{ name: 'Bash', input: { command: 'npm test -- filter', description: 'Run the filter tests' } }] }],
+  },
+  {
+    // Its turn ends after the demo's window opens: a reply you haven't seen yet.
+    sessionId: 'e5b0c2d8-1e3f-4a57-8c8b-9e0f1a2b3c45',
+    where: BL16_WORKTREE,
+    title: 'Where should the playground notes go?',
+    state: 'done',
+    ago: 20,
+    updatedAgo: -10,
+    turns: [{ say: 'Where should the playground notes go?', reply: 'In its README, under How to run it.' }],
+  },
+];
 const MODEL = 'claude-opus-5-5';
 
 /** Vega-2's todo list (TodoWrite), with its first `done` steps done and the next in progress. */
@@ -1156,7 +1215,7 @@ function turnLines(turn, { sessionId, cwd, entrypoint, n }, at) {
 const transcriptFile = (home, cwd, sessionId) => path.join(home, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`);
 
 /**
- * Seeds the playground's chats: an agent's (claude -p, so it opens read-only, BL-121) in BL-3's worktree, working,
+ * Seeds the playground's chats (and MORE_CHATS, in other worktrees, for the Chats list): an agent's (claude -p, so it opens read-only, BL-121) in BL-3's worktree, working,
  * a panel chat there, done, and an agent's that shows as working though nothing runs it (for a Check, BL-163). Their records go to the worktree's git folder (as Flotilla's hook writes them), their
  * transcripts to `claudeHome`'s projects (the demo window's own home: never the user's). Written again on every call,
  * so the agent's chat is fresh and open whenever a demo starts. Returns the transcripts' paths.
@@ -1164,22 +1223,33 @@ const transcriptFile = (home, cwd, sessionId) => path.join(home, 'projects', cwd
 export function seedChats(dir, claudeHome, now = new Date()) {
   const cwd = path.join(dir, BL3_WORKTREE);
   if (!fs.existsSync(cwd)) return [];
-  const records = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats');
-  fs.mkdirSync(records, { recursive: true });
   const chats = [
     { sessionId: AGENT_CHAT, entrypoint: 'sdk-cli', turns: AGENT_TURNS, title: 'Vega-2 · BL-3', state: 'working', agent: 'Vega-2', ago: 6 },
     { sessionId: PANEL_CHAT, entrypoint: 'claude-vscode', turns: PANEL_TURNS, title: 'What chatOf returns without a chat', state: 'done', ago: 50 },
     // Last written 7 minutes ago, and nothing runs it: it shows as working until a Check cleans it up.
     { sessionId: STALE_CHAT, entrypoint: 'sdk-cli', turns: STALE_TURNS, title: 'Orbit-2 · BL-3', state: 'working', agent: 'Orbit-2', ago: 8, quietFor: 7 },
   ];
-  return chats.map((c) => {
+  const more = MORE_CHATS.map((c) => ({ ...c, entrypoint: c.agent ? 'sdk-cli' : 'claude-vscode', cwd: path.join(dir, c.where) })).filter((c) =>
+    fs.existsSync(c.cwd),
+  );
+  return [...chats.map((c) => ({ ...c, cwd })), ...more].map((c) => {
+    const cwd = c.cwd;
+    const records = path.resolve(cwd, git(cwd, 'rev-parse', '--git-dir'), 'flotilla', 'chats');
+    fs.mkdirSync(records, { recursive: true });
+    // A demo that unlinked it (Unlink in the Chats list) doesn't hide it from the next one.
+    const unlinked = path.join(records, '..', 'unlinked.json');
+    if (fs.existsSync(unlinked)) {
+      const ids = JSON.parse(fs.readFileSync(unlinked, 'utf8'));
+      if (Array.isArray(ids) && ids.includes(c.sessionId)) fs.writeFileSync(unlinked, JSON.stringify(ids.filter((id) => id !== c.sessionId)));
+    }
     const startedAt = new Date(now.getTime() - c.ago * 60_000);
     const lines = c.turns.map((turn, n) => turnLines(turn, { ...c, cwd, n }, new Date(startedAt.getTime() + n * 60_000))).join('');
     const file = transcriptFile(claudeHome, cwd, c.sessionId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${lines}${JSON.stringify({ type: 'custom-title', sessionId: c.sessionId, customTitle: c.title })}\n`);
-    const updatedAt = c.quietFor ? new Date(now.getTime() - c.quietFor * 60_000) : now;
-    if (c.quietFor) fs.utimesSync(file, updatedAt, updatedAt);
+    const quiet = c.quietFor ?? c.updatedAgo;
+    const updatedAt = quiet ? new Date(now.getTime() - quiet * 60_000) : now;
+    if (quiet) fs.utimesSync(file, updatedAt, updatedAt);
     const record = {
       sessionId: c.sessionId,
       state: c.state,
@@ -1190,6 +1260,7 @@ export function seedChats(dir, claudeHome, now = new Date()) {
       updatedAt: updatedAt.toISOString(),
     };
     if (c.agent) record.agent = c.agent;
+    if (c.message) record.message = c.message;
     fs.writeFileSync(path.join(records, `${c.sessionId}.json`), `${JSON.stringify(record, null, 1)}\n`);
     return file;
   });

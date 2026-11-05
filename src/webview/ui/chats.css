@@ -1,22 +1,86 @@
-.chat .sub {
-  grid-column: 2 / 4;
-  font-size: 12px;
-  line-height: 16px;
+/* The Chats list (BL-286, Design B): one line per chat — state, title, state word, ticket, worktree chip. */
+.chats-bar {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+.chats-bar .new-chat {
+  flex: 1;
+}
+.agents-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
   color: var(--muted);
+}
+.chats .chat {
+  grid-template-columns: 16px minmax(0, 1fr) auto auto auto;
+}
+.chat .chat-state {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.chat .chat-state.st-waiting {
+  color: var(--waiting);
+}
+.chat .chat-state.st-unseen,
+.st-unseen {
+  color: var(--vscode-charts-blue);
+}
+.chat .chat-state.st-working {
+  color: var(--vscode-charts-blue);
+}
+.chat .chat-state.st-stopped,
+.st-stopped {
+  color: var(--vscode-errorForeground);
+}
+.chat .chat-state.st-done {
+  color: var(--vscode-charts-green);
+}
+.chat.unseen .title {
+  font-weight: 600;
+}
+.chat.detached .title {
+  color: var(--muted);
+}
+.chat .detached-mark {
+  font-size: 12px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.chat .chat-ticket {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chat .chat-wt {
+  --wt: var(--muted);
+  max-width: 9ch;
+  padding: 0 6px;
+  border: 1px solid var(--wt);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--wt) 22%, transparent);
+  color: var(--wt);
+  font-size: 10px;
+  line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chat .sub.st-waiting {
-  color: var(--waiting);
+.chats .chat:hover .chat-state,
+.chats .chat:focus-within .chat-state {
+  display: none;
 }
 .chat .chat-size.big {
   color: var(--vscode-editorWarning-foreground);
-}
-.chat .chat-size .codicon {
   font-size: 11px;
   vertical-align: -1px;
   margin-right: 2px;
+}
+.chat.past {
+  opacity: 0.6;
 }
 .chat.past .title {
   color: var(--muted);
@@ -28,11 +92,9 @@
 .new-chat:hover {
   color: inherit;
 }
-.subhead {
-  padding-left: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+.chat .chat-wt.chat-ticket {
+  cursor: pointer;
+}
+.chat .chat-wt.chat-ticket:hover {
+  text-decoration: underline;
 }

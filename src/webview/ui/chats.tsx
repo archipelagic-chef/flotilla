@@ -1,33 +1,43 @@
-import type { ChatState } from '../../features/chats/chats';
-import type {
-  ChatView,
-  WorkstreamView,
-} from '../protocol';
+import type { WorkstreamView } from '../protocol';
 import {
   menuContext,
   run,
 } from './api';
 import type { Update } from './app';
+import {
+  chatList,
+  type ListedChat,
+  type ListState,
+  listState,
+} from './chatList';
 import './chats.css';
 
-const STATE_ICON: Record<ChatState, string> = {
-  'waiting-for-input': 'bell-dot st-waiting',
+const STATE_ICON: Record<ListState, string> = {
+  waiting: 'bell-dot st-waiting',
+  unseen: 'circle-filled st-unseen',
   working: 'loading codicon-modifier-spin st-working',
+  stopped: 'debug-stop st-stopped',
   done: 'pass st-done',
   ended: 'history muted',
 };
 
-const STATE_LABEL: Record<ChatState, string> = {
-  'waiting-for-input': 'waiting for you',
+const STATE_LABEL: Record<ListState, string> = {
+  waiting: 'waiting for you',
+  unseen: 'new reply',
   working: 'working',
+  stopped: 'stopped',
   done: 'finished',
   ended: 'ended',
 };
 
 interface Props {
-  ws: WorkstreamView;
-  historyOpen: boolean;
+  workstreams: readonly WorkstreamView[];
+  colors: ReadonlyMap<string, string>;
+  /** The selected tab's worktree: New Chat offers it first. */
+  first?: string;
+  hideDetached: boolean;
   update: Update;
+  openTicket(id: string): void;
 }
 
 /** Shown once above the chat lists while some worktree lacks the hooks that report chat state. */
@@ -44,58 +54,68 @@ export function HooksNotice({ missing }: { missing: number }) {
   );
 }
 
-export function ChatsBody({ ws, historyOpen, update }: Props) {
-  const open = ws.chats.filter((c) => c.open);
-  const history = ws.chats.filter((c) => !c.open);
-  const target = { key: ws.key };
+/** Every chat of every worktree in one list, newest first (BL-286, Design B). */
+export function ChatsBody({ workstreams, colors, first, hideDetached, update, openTicket }: Props) {
+  const all = chatList(workstreams);
+  const detached = all.filter((c) => c.chat.detached).length;
+  const shown = hideDetached ? all.filter((c) => !c.chat.detached) : all;
+  const firstKey = first ?? workstreams.find((w) => w.isCurrent)?.key ?? workstreams[0]?.key;
   return (
     <div class="chats">
-      {open.map((c) => (
-        <ChatRow key={c.id} ws={ws} chat={c} />
-      ))}
-      <button class="row new-chat" onClick={() => run('flotilla.newChat', target)}>
-        <i class="codicon codicon-add" />
-        <span class="name">New chat</span>
-      </button>
-      {history.length > 0 && (
-        <>
+      <div class="chats-bar">
+        <button class="row new-chat" onClick={() => firstKey && run('flotilla.newChat', { key: firstKey, pick: true })}>
+          <i class="codicon codicon-add" />
+          <span class="name">New chat…</span>
+        </button>
+        {detached > 0 && (
           <button
-            class="row subhead"
-            aria-expanded={historyOpen}
-            onClick={() => update((p) => ({ ...p, history: p.history.includes(ws.key) ? p.history.filter((k) => k !== ws.key) : [...p.history, ws.key] }))}
+            class="link agents-toggle"
+            aria-pressed={!hideDetached}
+            data-tip={hideDetached ? `Show Flotilla's agents (${detached})` : "Hide Flotilla's agents"}
+            onClick={() => update((p) => ({ ...p, hideDetached: !p.hideDetached }))}
           >
-            <i class={`codicon codicon-chevron-${historyOpen ? 'down' : 'right'} chev`} />
-            <span class="name">History</span>
-            <span class="badge">{history.length}</span>
+            <i class={`codicon codicon-${hideDetached ? 'eye-closed' : 'eye'}`} />
+            Agents: {hideDetached ? `hidden (${detached})` : 'shown'}
           </button>
-          {historyOpen && history.map((c) => <ChatRow key={c.id} ws={ws} chat={c} />)}
-        </>
-      )}
+        )}
+      </div>
+      {shown.map((c) => (
+        <ChatRow key={c.chat.id} item={c} color={colors.get(c.runsIn.key)} openTicket={openTicket} />
+      ))}
+      {shown.length === 0 && <div class="empty">No chats{hideDetached && detached ? ' but agents' : ''}.</div>}
     </div>
   );
 }
 
-function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
+function ChatRow({ item, color, openTicket }: { item: ListedChat; color?: string; openTicket(id: string): void }) {
+  const { chat, ws, runsIn, ticket } = item;
   const target = { key: ws.key, chatId: chat.id };
-  const sub = chat.state === 'waiting-for-input' && chat.message ? `“${chat.message}”` : `${chat.stalled ? 'Stopped' : STATE_LABEL[chat.state]} · ${chat.age}`;
+  const state = listState(chat);
+  const tip = [
+    chat.title,
+    chat.message && `“${chat.message}”`,
+    `${STATE_LABEL[state]} · ${chat.age}`,
+    chat.size?.tip,
+    chat.detached && "One of Flotilla's agents: it works on its own",
+  ]
+    .filter(Boolean)
+    .join('\n');
   return (
     <div
-      class={`chat${chat.open ? '' : ' past'}`}
+      class={`chat${state === 'ended' ? ' past' : ''}${chat.detached ? ' detached' : ''}${chat.unseen ? ' unseen' : ''}`}
       role="button"
       tabIndex={0}
+      data-tip={tip}
       data-vscode-context={menuContext('chat', { key: ws.key, chatId: chat.id, flotillaWs: ws.context, linkedBy: chat.linkedBy })}
       onClick={() => run('flotilla.openChat', target)}
       onKeyDown={(e) => e.key === 'Enter' && run('flotilla.openChat', target)}
     >
-      <i class={`codicon codicon-${STATE_ICON[chat.state]} state`} />
+      <i class={`codicon codicon-${STATE_ICON[state]} state`} />
       <span class="title">
+        {chat.detached && <i class="codicon codicon-gear detached-mark" aria-label="detached" />}
         {chat.title}
-        {chat.via && (
-          <span class="tag" data-tip={chat.linkedBy === 'edit' ? `Runs in ${chat.via} and edited files here` : `Runs in ${chat.via}; linked by hand`}>
-            via {chat.via}
-          </span>
-        )}
       </span>
+      {/* On hover they take the state word's place, so the ticket and the worktree chip stay clickable. */}
       <span class="hover-actions" onClick={(e) => e.stopPropagation()}>
         <button class="icon" aria-label={chat.open ? 'Open Chat' : 'Resume Chat'} onClick={() => run('flotilla.openChat', target)}>
           <i class="codicon codicon-link-external" />
@@ -104,15 +124,25 @@ function ChatRow({ ws, chat }: { ws: WorkstreamView; chat: ChatView }) {
           <i class="codicon codicon-close" />
         </button>
       </span>
-      <span class={`sub${chat.state === 'waiting-for-input' ? ' st-waiting' : ''}`}>
-        {sub}
-        {chat.size && (
-          <span class={`chat-size${chat.size.big ? ' big' : ''}`} data-tip={chat.size.tip}>
-            {' · '}
-            {chat.size.big && <i class="codicon codicon-warning" />}
-            {chat.size.label}
-          </span>
-        )}
+      <span class={`chat-state st-${state}`}>
+        {chat.size?.big && <i class="codicon codicon-warning chat-size big" />}
+        {STATE_LABEL[state]}
+      </span>
+      {ticket && ticket !== runsIn.label ? (
+        <button class="link chat-ticket" data-tip={`Open ${ticket}`} onClick={(e) => (e.stopPropagation(), openTicket(ticket))}>
+          {ticket}
+        </button>
+      ) : (
+        <span />
+      )}
+      {/* The worktree's chip; when it's named after the ticket, it opens that ticket too, rather than say it twice. */}
+      <span
+        class={`chat-wt${ticket === runsIn.label ? ' chat-ticket' : ''}`}
+        style={color ? { '--wt': color } : undefined}
+        data-tip={ticket === runsIn.label ? `Runs in ${runsIn.branch} · Open ${ticket}` : `Runs in ${runsIn.branch}`}
+        onClick={ticket === runsIn.label ? (e) => (e.stopPropagation(), openTicket(ticket)) : undefined}
+      >
+        {runsIn.label}
       </span>
     </div>
   );
