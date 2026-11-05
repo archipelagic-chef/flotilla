@@ -128,9 +128,17 @@ button {
   display: flex;
   min-height: 0;
 }
+/* The content, under the selected item's bar (BL-290), which doesn't scroll with it. */
+.pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   position: relative;
 }
@@ -980,7 +988,9 @@ ins {
 
 /* The item Files, Search and Version Control show (BL-290): click it to go back to its card. */
 .picked-head {
-  padding: 4px 6px 2px;
+  flex: none;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
 }
 .picked-name {
   display: flex;

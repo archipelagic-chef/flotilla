@@ -788,11 +788,18 @@ export function App() {
     );
   };
 
-  // The selected item, above Files, Search and Version Control: back to its card (main's row) in the Backlog.
-  const pickedHeader = (
+  // The selected item, in a bar above the Backlog, Files, Search and Version Control that doesn't scroll away: in the
+  // Backlog's list it scrolls to its card (main's row); elsewhere it goes back to it there.
+  const inList = tool === 'backlog' && !partShown;
+  const pickedHeader = ['backlog', 'files', 'search', 'vc'].includes(tool) && !(tool === 'vc' && vcView === 'compare') && (
     <PickedHeader
       view={view}
-      back={() => update((p) => ({ ...p, tool: 'backlog', backlogPart: 'list' }))}
+      here={inList}
+      back={() =>
+        inList
+          ? document.querySelector<HTMLElement>('.content .backlog-item.current')?.scrollIntoView?.({ block: 'center' })
+          : update((p) => ({ ...p, tool: 'backlog', backlogPart: 'list' }))
+      }
       pickWorktree={(key) => ticket && select({ kind: 'ticket', id: ticket.id, worktree: key })}
     />
   );
@@ -899,16 +906,10 @@ export function App() {
     );
   } else if (!activeWs) {
     // A ticket with no worktree (or the backlog still loading): its Files and Search have nothing to show.
-    content = (
-      <>
-        {pickedHeader}
-        {ticket ? <NoWorktree id={ticket.id} /> : <div class="empty">Loading the backlog…</div>}
-      </>
-    );
+    content = <>{ticket ? <NoWorktree id={ticket.id} /> : <div class="empty">Loading the backlog…</div>}</>;
   } else if (tool === 'search') {
     content = (
       <>
-        {pickedHeader}
         <WorktreeHeader ws={activeWs} tool={tool} />
         <SearchView
           scope={activeWs.key}
@@ -925,7 +926,6 @@ export function App() {
   } else {
     content = (
       <div class="single" data-section={activeWs.key}>
-        {pickedHeader}
         <WorktreeHeader ws={activeWs} tool={tool} />
         {activeWs.reachable ? <div class="sec-body">{body(activeWs)}</div> : <div class="empty">Not reachable from this environment.</div>}
       </div>
@@ -1136,11 +1136,14 @@ export function App() {
             <i class="codicon codicon-extensions" />
           </button>
         </nav>
-        <div class="content">
-          {/* The selected ticket (BL-275, BL-290): its cards are highlighted. */}
-          <SelectTicket.Provider value={selectCard}>
-            <CurrentTicket.Provider value={ticket?.id}>{content}</CurrentTicket.Provider>
-          </SelectTicket.Provider>
+        <div class="pane">
+          {pickedHeader}
+          <div class="content">
+            {/* The selected ticket (BL-275, BL-290): its cards are highlighted. */}
+            <SelectTicket.Provider value={selectCard}>
+              <CurrentTicket.Provider value={ticket?.id}>{content}</CurrentTicket.Provider>
+            </SelectTicket.Provider>
+          </div>
         </div>
       </div>
       <Hover
