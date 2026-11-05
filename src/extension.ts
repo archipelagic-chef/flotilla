@@ -144,7 +144,13 @@ import { NeedsYouNotifier } from './ui/notifications';
 import { readSettings } from './ui/settings';
 import { resolveBase } from './features/workstreams/progress';
 import { localBase } from './features/backlog/merge';
-import { hygieneCommands } from './ui/hygiene';
+import {
+  hideWorktrees,
+  hygieneCommands,
+  hygieneOfferedHere,
+  markHygieneOffered,
+} from './ui/hygiene';
+import { MachineWarnings } from './ui/machineWarnings';
 import { WorkstreamStatusBar } from './ui/statusBar';
 import { StorageMonitor } from './ui/storage';
 import { FinishedWorktrees } from './ui/finishedWorktrees';
@@ -298,8 +304,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerAll(context.subscriptions, securityCommands({ security }));
   const chatSeen = new ChatSeen(context.workspaceState);
   context.subscriptions.push(chatSeen);
+  const warnings = new MachineWarnings({
+    mainRoot: location.mainRoot,
+    globalState: context.globalState,
+    hideWorktrees,
+    offeredHere: hygieneOfferedHere,
+    markOffered: () => markHygieneOffered(context, location.mainRoot),
+  });
   const sidebar = new SidebarProvider({
     chatSeen,
+    warnings,
     metrics,
     audit,
     requests: security.requests,
@@ -748,7 +762,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ...(fakeSlow ? { mounts: () => [{ mountPoint: '/', fsType: '9p' }] } : {}),
   });
   context.subscriptions.push(storage);
-  sidebar.useStorage(storage);
   void storage.start();
   sidebar.useQueue(reviews);
   // Other windows ask this one to select chats that run here (Open Chat on an active chat, from their side).

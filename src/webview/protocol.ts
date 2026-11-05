@@ -363,8 +363,6 @@ export type HostMessage =
   | { type: 'active'; key: string }
   /** Worktrees whose tab is closed (Switch Active Worktree… reopens one). */
   | { type: 'tabs'; closed: string[] }
-  /** Exclusions VS Code's settings still lack for a worktrees folder in the main folder (empty: none to show). */
-  | { type: 'exclusions'; missing: string[] }
   | { type: 'searchResults'; id: number; groups: SearchGroup[]; truncated: boolean; limit: number; error?: string }
   /** The file icon theme (undefined: none, use generic icons). */
   | { type: 'iconTheme'; theme: { css: string; map: IconMap } | undefined }
@@ -405,8 +403,6 @@ export type HostMessage =
   | { type: 'ci'; views: Record<string, CiView> }
   /** What's in progress per tool (titles), for the tool strip's icons. */
   | { type: 'progress'; tools: Partial<Record<Tool, string[]>> }
-  /** The repository is on a slow drive (undefined: it isn't). */
-  | { type: 'storage'; slow?: SlowStorageView }
   /** Fold (or unfold) every worktree section of the All tab. */
   | { type: 'fold'; folded: boolean }
   /** The files a commit changed (against its first parent). */
@@ -487,12 +483,6 @@ export interface AutopilotQueued {
   reason: 'slot' | 'memory' | 'limit';
   kind: 'reply' | 'review' | 'resume' | 'new';
   since?: string;
-}
-
-/** A repository on a slow drive: what the Backlog's notice says, and how to fix it. */
-export interface SlowStorageView {
-  message: string;
-  fix: string;
 }
 
 export interface Target {

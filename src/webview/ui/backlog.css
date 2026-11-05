@@ -49,11 +49,6 @@
   font-size: 14px;
   margin-top: 1px;
 }
-/* The machine's notices' buttons (Hide Worktrees, How to Fix), at the line's end. */
-.backlog-problem .link {
-  margin-left: auto;
-  flex: none;
-}
 .lane .lane-filter {
   margin-left: auto;
 }

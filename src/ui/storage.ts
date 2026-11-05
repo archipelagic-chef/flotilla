@@ -50,18 +50,10 @@ function readMounts(): MountEntry[] | undefined {
  * in the background (git maintenance), never during a history clean-up.
  */
 export class StorageMonitor implements vscode.Disposable {
-  private report: StorageReport | undefined;
   private packing = false;
   private timer: ReturnType<typeof setInterval> | undefined;
-  private readonly emitter = new vscode.EventEmitter<void>();
-  readonly onDidChange = this.emitter.event;
 
   constructor(private readonly deps: StorageDeps) {}
-
-  /** What the Backlog's notice shows while the repository is slow (undefined otherwise). */
-  get slow(): { message: string; fix: string } | undefined {
-    return this.report?.slow ? slowStorageText(this.report) : undefined;
-  }
 
   /** Starts the checks. Never rejects: packing starts whether or not the storage could be measured. */
   async start(): Promise<void> {
@@ -87,8 +79,6 @@ export class StorageMonitor implements vscode.Disposable {
     const report = storageReport({ dir, mounts: mounts(), probe: () => probe(this.deps.commonDir) });
     this.deps.output.appendLine(report.slow ? `Repository storage is slow (${report.fsType ?? 'measured reads'}).` : 'Repository storage is local.');
     if (!report.slow) return;
-    this.report = report;
-    this.emitter.fire();
     await this.notifyOnce(report);
   }
 
@@ -127,6 +117,5 @@ export class StorageMonitor implements vscode.Disposable {
 
   dispose(): void {
     if (this.timer) clearInterval(this.timer);
-    this.emitter.dispose();
   }
 }

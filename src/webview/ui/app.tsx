@@ -20,7 +20,6 @@ import {
   type MergeQueueView,
   type NoteView,
   type RefComparison,
-  type SlowStorageView,
   type TicketVcView,
   type Tool,
   type VcView,
@@ -244,7 +243,6 @@ export function App() {
   const [machine, setMachine] = useState<MachineState | undefined>(undefined);
   /** Worktrees whose tab is closed; Switch Active Worktree… reopens one. */
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
-  const [missingExclusions, setMissingExclusions] = useState<readonly string[]>([]);
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map());
   const [marks, setMarks] = useState<ReadonlyMap<string, Record<string, ChangeKind>>>(new Map());
   const [selection, setSelection] = useState<Selection | undefined>(undefined);
@@ -258,7 +256,6 @@ export function App() {
   const [discussions, setDiscussions] = useState<DiscussionRowView[]>([]);
   /** The CI/CD view of each worktree, by key. */
   const [ci, setCi] = useState<Record<string, CiView>>({});
-  const [slow, setSlow] = useState<SlowStorageView | undefined>(undefined);
   const [metrics, setMetrics] = useState<{ view?: MetricsView; error?: string }>({});
   const [scheduled, setScheduled] = useState<ScheduledView | undefined>(undefined);
   /** A ticket's commits to highlight in a worktree's history (clicked on the ticket). */
@@ -412,14 +409,8 @@ export function App() {
           }
           restored.current = true;
           return;
-        case 'storage':
-          setSlow(m.slow);
-          return;
         case 'tabs':
           setClosed(new Set(m.closed));
-          return;
-        case 'exclusions':
-          setMissingExclusions(m.missing);
           return;
         case 'dir':
           setDirs((prev) => new Map(prev).set(dirKey(m.key, m.path), m.entries));
@@ -837,8 +828,6 @@ export function App() {
         pinned={partShown && ticket ? { id: ticket.id, body: ticketPart(ticket.id) } : undefined}
         main={{ ws: workstreams.find((w) => w.isMain), selected: view.picked.kind === 'main', select: () => select(MAIN) }}
         machine={machine}
-        missingExclusions={missingExclusions}
-        slow={slow}
       />
     );
   } else if (tool === 'vc' && vcView === 'compare') {

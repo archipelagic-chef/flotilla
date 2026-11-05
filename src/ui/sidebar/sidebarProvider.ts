@@ -7,7 +7,6 @@ import type { StartupClock } from '../../core/startupClock';
 import * as vscode from 'vscode';
 import { setAgentDefault } from '../backlog/agentDefaults';
 import type { Autopilot } from '../backlog/autopilot';
-import type { StorageMonitor } from '../storage';
 import type { Repository } from '../../core/repository';
 import {
   openChangeDiff,
@@ -125,6 +124,7 @@ import {
 import { isInWorktreesFolder } from '../../features/worktrees/exclusions';
 import { ShownFolders } from './shownFolders';
 import { currentMissingExclusions } from '../hygiene';
+import type { MachineWarnings } from '../machineWarnings';
 import {
   changedViews,
   tabOrder,
@@ -166,6 +166,8 @@ export interface SidebarDeps {
   extensionUri: vscode.Uri;
   /** When this window last opened each chat: the Chats list marks replies not seen since (BL-286). */
   chatSeen?: ChatSeen;
+  /** The machine's warnings as toasts (BL-293): the worktrees folder not excluded, too little memory for agents. */
+  warnings?: MachineWarnings;
   repository: Repository<Workstream>;
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
@@ -262,7 +264,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
           e.affectsConfiguration('search.exclude') ||
           e.affectsConfiguration('git.repositoryScanIgnoredFolders')
         )
-          this.postExclusions();
+          this.warnExclusions();
         if (
           e.affectsConfiguration('flotilla.backlog.cards') ||
           e.affectsConfiguration('flotilla.agents.model') ||
@@ -292,19 +294,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private autopilot: Autopilot | undefined;
-  private storage: StorageMonitor | undefined;
-
-  /** Whether the repository is on a slow drive, shown at the top of the Backlog (created after the sidebar). */
-  useStorage(storage: StorageMonitor): void {
-    this.storage = storage;
-    this.subscriptions.push(storage.onDidChange(() => this.postStorage()));
-    this.postStorage();
-  }
-
-  private postStorage(): void {
-    this.post({ type: 'storage', ...(this.storage?.slow ? { slow: this.storage.slow } : {}) });
-  }
-
   private queue: ReviewLoop | undefined;
 
   /** The agents' queue: a user's reply waiting for one is a "Needs you" row, with Prioritize. */
@@ -836,19 +825,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
       windows: all.filter((ws) => ws.windowOpen).length,
     };
     this.post({ type: 'state', workstreams: changed, keys, machine });
+    this.deps.warnings?.memory(machine.freeMB, machine.minFreeMB);
     if (this.view && this.pageLoaded && keys.length) this.deps.startup?.mark('worktrees shown');
     this.shown.retain(new Set(all.map((ws) => ws.key)));
     this.listed.retain(new Set(all.map((ws) => ws.key)));
     if (!loaded) return;
     for (const ws of all) this.postMarks(ws);
-    this.postExclusions();
+    this.warnExclusions();
     this.ci.update(all);
   }
 
-  /** The Backlog says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
-  private postExclusions(): void {
+  /** A toast says what still lets VS Code see the worktrees folder, when there are worktrees in it. */
+  private warnExclusions(): void {
     const inFolder = this.deps.repository.current.some((ws) => ws.worktree.path && isInWorktreesFolder(this.deps.mainRoot, ws.worktree.path));
-    this.post({ type: 'exclusions', missing: inFolder ? currentMissingExclusions() : [] });
+    void this.deps.warnings?.exclusions(inFolder ? currentMissingExclusions() : []);
   }
 
   /** Shows a workstream; with path, also expands to and highlights that file in the Files tool. */
@@ -1004,7 +994,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         void this.postDiscussions();
         this.post({ type: 'progress', tools: progressByTool() });
         this.post({ type: 'ci', views: this.ci.snapshot() });
-        this.postStorage();
         this.ready = true;
         this.pending.splice(0).forEach((message) => this.post(message));
         return;

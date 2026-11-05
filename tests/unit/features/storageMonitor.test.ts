@@ -178,7 +178,6 @@ describe('StorageMonitor notification', () => {
     const text = String(showWarningMessage.mock.calls[0][0]);
     expect(text).toContain('9p');
     expect(text).not.toContain(repo);
-    expect(first.monitor.slow?.message).toContain('9p');
   });
 
   it('opens the docs when asked to', async () => {

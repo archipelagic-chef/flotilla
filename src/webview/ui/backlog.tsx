@@ -21,13 +21,9 @@ import type {
   MachineState,
   MergeQueueView,
   NoteView,
-  SlowStorageView,
   WorkstreamView,
 } from '../protocol';
-import {
-  BacklogNotices,
-  machineLine,
-} from './backlogNotices';
+import { machineLine } from './machineLine';
 import { send } from './api';
 import {
   act,
@@ -103,12 +99,8 @@ export interface Props {
   pinned?: { id: string; body: ComponentChildren };
   /** Main's row at the top (BL-290): selected when no ticket or worktree is, for Files, Search and Version Control. */
   main?: { ws?: WorkstreamView; selected: boolean; select(): void };
-  /** The machine (BL-293): its line in the agent count's tooltip, a warning above the lanes while memory is low. */
+  /** The machine (BL-293): its line in the agent count's tooltip. */
   machine?: MachineState;
-  /** What VS Code's settings still let see the worktrees folder: a notice above the lanes while there's any. */
-  missingExclusions: readonly string[];
-  /** The repository is on a slow drive: a notice above the lanes. */
-  slow?: SlowStorageView;
 }
 
 /**
@@ -137,8 +129,6 @@ export function BacklogView({
   pinned,
   main,
   machine,
-  missingExclusions,
-  slow,
 }: Props) {
   const [doneOpen, setDoneOpen] = useState(false);
   const [discardedOpen, setDiscardedOpen] = useState(false);
@@ -256,7 +246,6 @@ export function BacklogView({
           </span>
         </button>
       ))}
-      <BacklogNotices machine={machine} missing={missingExclusions} slow={slow} />
       {main?.ws && <MainRow ws={main.ws} selected={main.selected} select={main.select} />}
       <NeedsYou items={items ?? []} notes={notes} />
       {!items && <div class="empty">Loading the backlog…</div>}

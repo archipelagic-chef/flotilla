@@ -41,7 +41,20 @@ async function apply(target: vscode.ConfigurationTarget): Promise<void> {
   }
 }
 
-/** The Backlog notice's button (Hide Worktrees): sets what's missing in the user's settings (the recommended choice of the offer). */
+/** The offer was shown in this window: the warning toast doesn't say the same again (BL-293). */
+let offeredHere = false;
+
+/** Whether the first-time offer to hide .worktrees was shown in this window (the warning would say the same). */
+export function hygieneOfferedHere(): boolean {
+  return offeredHere;
+}
+
+/** The warning said it (BL-293): the first-time offer isn't made after it. */
+export function markHygieneOffered(extension: vscode.ExtensionContext, mainRoot: string): Thenable<void> {
+  return extension.globalState.update(`flotilla.hygieneOffered:${pathKey(mainRoot)}`, true);
+}
+
+/** The warning toast's button (Hide Worktrees): sets what's missing in the user's settings (the recommended choice of the offer). */
 export function hideWorktrees(): Promise<void> {
   return apply(vscode.ConfigurationTarget.Global);
 }
@@ -50,6 +63,7 @@ export async function maybeOfferHygiene(extension: vscode.ExtensionContext, main
   const key = `flotilla.hygieneOffered:${pathKey(mainRoot)}`;
   if (extension.globalState.get<boolean>(key)) return;
   await extension.globalState.update(key, true);
+  offeredHere = true;
   const user = 'User Settings (recommended)';
   const workspace = 'Workspace Settings';
   const choice = await vscode.window.showInformationMessage(
