@@ -76,12 +76,9 @@ export class TicketDiffs implements vscode.Disposable {
 }
 
 /**
- * Makes the editor group beside a ticket's (to its right) the active one, made if there's none, so that what opens
- * next opens there and the ticket stays in view.
+ * Makes a ticket's tab the active one in its own editor group, so that what opens next opens there, in its place
+ * (BL-276): a diff from its Changes takes the ticket's place, and Back to the ticket brings it back.
  */
-export async function focusBeside(panel: vscode.WebviewPanel): Promise<void> {
-  const column = panel.viewColumn ?? vscode.ViewColumn.One;
-  const right = vscode.window.tabGroups.all.find((g) => g.viewColumn === column + 1);
-  if (!panel.active) panel.reveal(column, false);
-  await vscode.commands.executeCommand(right ? 'workbench.action.focusRightGroup' : 'workbench.action.newGroupRight');
+export async function focusTicket(panel: vscode.WebviewPanel): Promise<void> {
+  if (!panel.active) panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Active, false);
 }

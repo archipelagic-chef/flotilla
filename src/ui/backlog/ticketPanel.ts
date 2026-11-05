@@ -106,7 +106,7 @@ import { resolveBase } from '../../features/workstreams/progress';
 import { ticketChange } from '../../features/diffs/ticketChange';
 import {
   type DiffOrigin,
-  focusBeside,
+  focusTicket,
   TicketDiffs,
 } from './ticketDiffs';
 import {
@@ -864,10 +864,10 @@ export class TicketPanels implements vscode.Disposable {
     return (this.ticketDiffs ??= new TicketDiffs((o) => this.showChange(o)));
   }
 
-  /** Makes the editor group beside the ticket the active one: a diff opened next opens there, the ticket in view. */
-  async beside(id: string): Promise<void> {
+  /** Makes the ticket's tab the active one in its group: a diff opened next opens there, in the ticket's place. */
+  async inPlace(id: string): Promise<void> {
     const panel = this.panels.get(id);
-    if (panel) await focusBeside(panel);
+    if (panel) await focusTicket(panel);
   }
 
   /** Back from a diff: the ticket, its Changes scrolled to the file the diff shows, marked. */
@@ -883,13 +883,13 @@ export class TicketPanels implements vscode.Disposable {
     if (panel) this.changeOnPost.set(panel, { type: 'showChange', ...(o.path ? { path: o.path } : {}) });
   }
 
-  /** A file of the ticket's Changes in the diff editor, beside the ticket; the diff's title bar leads back to it. */
+  /** A file of the ticket's Changes in the diff editor, in the ticket's place (its group); the diff's title bar leads back to it. */
   async openChange(item: BacklogItem, group: number, path: string, line?: number): Promise<boolean> {
     // The change as the ticket shows it: what it lists is what opens.
     const g = (await this.changesShown(item)).groups[group];
     const f = g?.files.find((x) => x.path === path);
     if (!g || !f) return false;
-    await this.beside(item.id);
+    await this.inPlace(item.id);
     const modified = await openChangeDiff(this.deps.reference, g.dir, f, f.left ?? g.left, f.right ?? g.right, `${item.id}: ${g.label}`, line);
     this.diffs.openedDiff(modified, { id: item.id, path: f.path });
     this.activeChanged();

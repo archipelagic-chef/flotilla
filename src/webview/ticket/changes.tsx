@@ -33,7 +33,7 @@ const STAGE: Record<string, string> = {
 
 /**
  * What the ticket's work changes (BL-276): how big it is, its biggest files (each opening its diff in VS Code's diff
- * editor, beside the ticket) and View Version Control, which shows all of it under the ticket's card in the Backlog
+ * editor, in the ticket's place) and View Version Control, which shows all of it under the ticket's card in the Backlog
  * (BL-275). The ticket has no file tree or diffs of its own.
  */
 export function Changes({ ticket }: { ticket: TicketView }) {
@@ -84,7 +84,7 @@ export function Changes({ ticket }: { ticket: TicketView }) {
                   key={`${group}:${file.path}`}
                   class="change-file"
                   onClick={() => send({ type: 'openChange', group, path: file.path })}
-                  title={`${file.origPath ? `${file.origPath} → ` : ''}${file.path}${file.uncommitted ? '\nNot committed yet' : ''}\nIts diff, beside the ticket`}
+                  title={`${file.origPath ? `${file.origPath} → ` : ''}${file.path}${file.uncommitted ? '\nNot committed yet' : ''}\nIts diff, in place of the ticket`}
                 >
                   <span class={`change-letter kind-${letter}`}>{letter}</span>
                   <span class="change-name">{file.path}</span>
