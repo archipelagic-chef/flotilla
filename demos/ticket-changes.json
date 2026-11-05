@@ -1,51 +1,168 @@
 {
-  "title": "A ticket's Changes preview its files; Expand shows only the file's diff, under a header that says it's the ticket's, with one Back to it; the sidebar's Version Control follows on the ticket's Changes",
-  "settings": { "flotilla.ci.notify": "off", "flotilla.notify": "off" },
+  "title": "A ticket's Changes say how big the change is and list its biggest files, each opening its diff; View Version Control shows all of it under the ticket's card in the Backlog; a report's link to one of its files opens its diff at the line",
+  "settings": {
+    "flotilla.ci.notify": "off",
+    "flotilla.notify": "off"
+  },
   "steps": [
-    { "command": "Close All Editor Groups" },
-    { "command": "Notifications: Clear All Notifications" },
-    { "command": "Focus on Flotilla View" },
-    { "click": "[aria-label=\"Backlog\"]" },
-    { "wait": 800 },
-    { "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
-    { "waitFor": "h1:has-text(\"Keep chats when a window reloads\")" },
-    { "caption": "1. The ticket's Changes preview: a file's diff unfolds inline" },
-    { "hover": ".changes .block-head" },
-    { "waitFor": ".change-file:has-text(\"reload.js\")" },
-    { "click": ".change-file:has-text(\"reload.js\") .change-unfold" },
-    { "waitFor": ":nth-match(.change-hunk, 2)" },
-    { "wait": 2500 },
-    { "caption": "2. Expand: only the file's diff, the ticket out of the way" },
-    { "hover": ":nth-match(.change-hunk, 2) .change-action" },
-    { "wait": 1000 },
-    { "click": ":nth-match(.change-hunk, 2) .change-action" },
-    { "waitFor": ".diff-view .full-gap" },
-    { "wait": 2000 },
-    { "caption": "Its header: ← Back to BL-3, and where it is, BL-3 › Changes › src/reload.js" },
-    { "hover": ".diff-view-crumbs" },
-    { "wait": 2500 },
-    { "caption": "The lines between the changes fold; a click shows them" },
-    { "hover": ".diff-view .full-gap" },
-    { "wait": 600 },
-    { "click": ".diff-view .full-gap" },
-    { "waitFor": ".diff-view .full-row:has-text(\"export function forget\")" },
-    { "wait": 1800 },
-    { "caption": "The sidebar follows: Version Control on BL-3's Changes, reload.js selected" },
-    { "hover": ".ticket-file.selected:has-text(\"reload.js\")" },
-    { "wait": 2000 },
-    { "caption": "Another file there shows its diff, the same way" },
-    { "hover": ".ticket-file:has-text(\"chats.js\")" },
-    { "wait": 600 },
-    { "click": ".ticket-file:has-text(\"chats.js\")" },
-    { "waitFor": ".diff-view-crumbs:has-text(\"src/chats.js\")" },
-    { "wait": 2200 },
-    { "caption": "3. Back to BL-3: the ticket again, at that file, and the sidebar on the Backlog" },
-    { "hover": ".diff-view-back" },
-    { "wait": 1000 },
-    { "click": ".diff-view-back" },
-    { "waitFor": ".change-file.current:has-text(\"chats.js\")" },
-    { "waitFor": ".backlog-item:has-text(\"Keep chats when a window reloads\")" },
-    { "wait": 2500 },
-    { "caption": "" }
+    {
+      "command": "Close All Editor Groups"
+    },
+    {
+      "command": "Notifications: Clear All Notifications"
+    },
+    {
+      "command": "Focus on Flotilla View"
+    },
+    {
+      "click": "[aria-label=\"Backlog\"]"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "waitFor": "h1:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "hover": ".changes .block-head"
+    },
+    {
+      "waitFor": ".changes .change-file:has-text(\"chats.js\")"
+    },
+    {
+      "caption": "BL-3's Changes: how big it is, its three biggest files, and View Version Control. No file tree or diffs of its own"
+    },
+    {
+      "highlight": ".changes"
+    },
+    {
+      "wait": 3500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "A file opens its diff in the ticket's place, not beside it, and the Backlog shows BL-3's Changes, that file selected"
+    },
+    {
+      "hover": ".changes .change-file:has-text(\"reload.js\")"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "click": ".changes .change-file:has-text(\"reload.js\")"
+    },
+    {
+      "waitFor": ".monaco-diff-editor"
+    },
+    {
+      "highlight": ".editor-group-container"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "waitFor": ".ticket-vc-card .backlog-item"
+    },
+    {
+      "highlight": ".ticket-vc"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "Back to BL-3 brings the ticket back where it was. View Version Control leads to the same place"
+    },
+    {
+      "hover": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
+    },
+    {
+      "highlight": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
+    },
+    {
+      "waitFor": "h1:has-text(\"Keep chats when a window reloads\")"
+    },
+    {
+      "hover": ".changes .view-vc"
+    },
+    {
+      "highlight": ".changes .view-vc"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "click": ".changes .view-vc"
+    },
+    {
+      "waitFor": ".ticket-vc-card .backlog-item"
+    },
+    {
+      "highlight": ".ticket-vc"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": "A report's link to a file BL-3 changes opens that file's diff, at the line, and the Backlog shows BL-3's Changes"
+    },
+    {
+      "hover": "a.change-link:has-text(\"src/chats.js:6\")"
+    },
+    {
+      "highlight": "a.change-link:has-text(\"src/chats.js:6\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "click": "a.change-link:has-text(\"src/chats.js:6\")"
+    },
+    {
+      "waitFor": ".monaco-diff-editor"
+    },
+    {
+      "highlight": ".editor-group-container"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ".ticket-vc"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
   ]
 }
