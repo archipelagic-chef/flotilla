@@ -332,7 +332,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private async scheduledAction(m: Extract<WebviewMessage, { type: 'scheduledAction' }>): Promise<void> {
     const s = this.scheduler;
     if (!s) return;
-    if (m.op === 'folder') return s.openFolder();
     if (m.op === 'new') {
       await s.newTask();
       return this.postScheduled();

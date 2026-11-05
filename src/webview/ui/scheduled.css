@@ -1,8 +1,17 @@
 /* The board's Scheduled lane (BL-283): a row per scheduled task; a row opens its card (BL-260), with its status, its
    reports and its actions. */
+/* Its header's + sits at the right, before the chevron and the count, as the other lanes' buttons do (BL-285). */
+.scheduled-lane .group-head > .icon {
+  margin-left: auto;
+}
+.scheduled-lane .group-head > .icon + .lane-chev {
+  margin-left: 0;
+}
 .scheduled-row {
   cursor: pointer;
   gap: 6px;
+  /* Its icon where the other lanes' rows have theirs: 6px of padding and 2px into their 20px status button. */
+  padding-left: 8px;
 }
 .scheduled-row .name {
   flex: 1;

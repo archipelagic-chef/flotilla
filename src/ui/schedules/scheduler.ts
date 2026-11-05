@@ -225,12 +225,6 @@ export class Scheduler implements vscode.Disposable {
     await vscode.window.showTextDocument(vscode.Uri.file(this.fileOf(name)));
   }
 
-  /** The tasks' folder, in the Explorer (made if it isn't there yet). */
-  async openFolder(): Promise<void> {
-    await fs.promises.mkdir(schedulesDir(this.deps.backlogDir), { recursive: true });
-    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(schedulesDir(this.deps.backlogDir)));
-  }
-
   private fileOf(name: string): string {
     if (!validTaskName(name)) throw new Error(`Not a scheduled task: ${name}`);
     return path.join(schedulesDir(this.deps.backlogDir), `${name}.md`);
