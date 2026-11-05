@@ -248,6 +248,14 @@ export interface ChatView {
   via?: string;
   /** "2m", "3h", "yesterday"-style age. */
   age: string;
+  /** Its last activity (ms): the Chats list is sorted by it, newest first (BL-286). */
+  at: number;
+  /** The key of the worktree it runs in, when that's another one than the one it's listed in (linked by edits or by hand). */
+  runsIn?: string;
+  /** One of Flotilla's agents (headless, or its first line names an agent and ticket): you don't talk to it. */
+  detached?: boolean;
+  /** Its last turn ended after you last opened it in this window. */
+  unseen?: boolean;
   /** Its record says working, but it went quiet: it shows as stopped (BL-131). */
   stalled?: boolean;
   /** Its context ("210k"), what that costs (the tooltip), and whether it's past flotilla.chats.bigContext (BL-70). */
@@ -500,6 +508,8 @@ export interface Target {
   prompt?: string;
   /** Files of a multi-selection, in the same group. */
   paths?: string[];
+  /** Ask which worktree, with `key`'s first (New Chat in the Chats list, BL-286). */
+  pick?: boolean;
   /** In the Files tab: path is a folder. */
   isDir?: boolean;
 }

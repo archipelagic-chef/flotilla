@@ -1,4 +1,5 @@
 import type { Merger } from '../backlog/merge';
+import type { ChatSeen } from '../chatSeen';
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { singleFlight } from '../../core/singleFlight';
@@ -61,6 +62,7 @@ import type { NoteAgents } from '../backlog/notes';
 import {
   agentChoice,
   freeMemoryMB,
+  isRunningHeadless,
   minFreeMemoryMB,
   sandboxKind,
 } from '../backlog/agentRunner';
@@ -163,6 +165,8 @@ export interface TicketVc {
 
 export interface SidebarDeps {
   extensionUri: vscode.Uri;
+  /** When this window last opened each chat: the Chats list marks replies not seen since (BL-286). */
+  chatSeen?: ChatSeen;
   repository: Repository<Workstream>;
   /** URI of this window's workspace folder; keeps scheme and remote authority. */
   reference: vscode.Uri;
@@ -243,6 +247,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     });
     this.subscriptions.push(
       { dispose: deps.repository.onDidChange(() => this.postState()).dispose },
+      ...(deps.chatSeen ? [deps.chatSeen.onDidChange(() => this.postState())] : []),
       // A discussion's chat opened or closed: its card says so (BL-188).
       {
         dispose: deps.repository.onDidChange(() => {
@@ -819,8 +824,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const pattern = config.get<string>('tabLabelPattern') || undefined;
     const limit = config.get<number>('changes.limit', 5000);
     const rules = stuckRules();
+    const marks = { headless: isRunningHeadless, seen: this.deps.chatSeen?.record ?? { since: Date.now(), at: {} } };
     const views = tabOrder(all).map((ws) => ({
-      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext(), rules),
+      ...toWorkstreamView(ws, all, now, this.deps.inWorkspace(ws), pattern, limit, bigContext(), rules, marks),
       ...(removingWorktrees.has(ws.key) ? { removing: true } : {}),
     }));
     const { changed, keys } = changedViews(views, this.sent);
