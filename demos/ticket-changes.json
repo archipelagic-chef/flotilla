@@ -45,7 +45,7 @@
       "highlight": ""
     },
     {
-      "caption": "A file opens its diff in VS Code's diff editor, and the Backlog shows BL-3's Changes, that file selected"
+      "caption": "A file opens its diff in the ticket's place, not beside it, and the Backlog shows BL-3's Changes, that file selected"
     },
     {
       "hover": ".changes .change-file:has-text(\"reload.js\")"
@@ -60,6 +60,15 @@
       "waitFor": ".monaco-diff-editor"
     },
     {
+      "highlight": ".editor-group-container"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
       "waitFor": ".ticket-vc-card .backlog-item"
     },
     {
@@ -72,19 +81,25 @@
       "highlight": ""
     },
     {
-      "caption": "Back to BL-3: View Version Control leads to the same place"
+      "caption": "Back to BL-3 brings the ticket back where it was. View Version Control leads to the same place"
     },
     {
-      "command": "Close All Editor Groups"
+      "hover": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
     },
     {
-      "click": "[aria-label=\"Backlog\"]"
+      "highlight": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
     },
     {
-      "wait": 600
+      "wait": 1200
     },
     {
-      "click": ".backlog-item:has-text(\"Keep chats when a window reloads\")"
+      "highlight": ""
+    },
+    {
+      "click": ".statusbar-item[id$=\"flotilla.backToTicket\"]"
+    },
+    {
+      "waitFor": "h1:has-text(\"Keep chats when a window reloads\")"
     },
     {
       "hover": ".changes .view-vc"
@@ -130,6 +145,12 @@
     },
     {
       "waitFor": ".monaco-diff-editor"
+    },
+    {
+      "highlight": ".editor-group-container"
+    },
+    {
+      "wait": 2000
     },
     {
       "highlight": ".ticket-vc"
