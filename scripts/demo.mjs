@@ -702,7 +702,13 @@ async function show(mode, demo, out, still, display) {
   if (demo.resetsTicket) (await import('./playground-seed.mjs')).resetTicket(playground, demo.resetsTicket);
   const { ACTION_DELAY_MS, startFakeGitHub } = await import('./fake-github.mjs');
   const github = await startFakeGitHub({ port: 0, repoDir: playground, actionDelayMs: ACTION_DELAY_MS, runsOnPush: demo.runsOnPush, ciPasses: demo.ciPasses });
-  prepareProfile(github.url, { ...demo.settings, ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}) });
+  prepareProfile(github.url, {
+    ...demo.settings,
+    ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}),
+    ...(demo.slowStorage ? { 'flotilla.dev.slowStorage': true } : {}),
+    // The playground's worktrees folder is watched, so the Backlog says so, with Hide Worktrees.
+    ...(demo.worktreesNotExcluded ? { 'files.watcherExclude': { '.worktrees/**': false } } : {}),
+  });
   fs.mkdirSync(HOME_DIR, { recursive: true });
   // Its chats, fresh: the agent's is working (BL-123).
   const { clearDiscussions, seedChats, seedCreating, seedEvents, seedReviews, seedScheduledTasks } = await import('./playground-seed.mjs');

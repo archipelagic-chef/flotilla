@@ -1,17 +1,85 @@
 {
   "title": "The Overview is gone: its warnings show at the top of the Backlog",
-  "settings": { "flotilla.agents.minFreeMemoryMB": 1000000 },
+  "settings": {
+    "flotilla.agents.minFreeMemoryMB": 1000000
+  },
+  "slowStorage": true,
+  "worktreesNotExcluded": true,
   "steps": [
-    { "wait": 2000 },
-    { "highlight": "nav.tools" },
-    { "caption": "The tool strip: Metrics, Backlog (with Files, Search and Version Control under it), Chats. No Overview" },
-    { "wait": 2500 },
-    { "click": "nav.tools [aria-label=\"Backlog\"]" },
-    { "waitFor": ".machine-notice" },
-    { "highlight": ".machine-notice" },
-    { "caption": "The Overview's low-memory warning is at the top of the Backlog now, while it applies" },
-    { "wait": 3000 },
-    { "highlight": "" },
-    { "caption": "" }
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": "nav.tools"
+    },
+    {
+      "caption": "The tool strip: Metrics, Backlog (with Files, Search and Version Control under it), Chats. No Overview"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "click": "nav.tools [aria-label=\"Backlog\"]"
+    },
+    {
+      "waitFor": ".machine-notice:has-text(\"Low on memory\")"
+    },
+    {
+      "highlight": ".machine-notice:has-text(\"Low on memory\")"
+    },
+    {
+      "caption": "Low memory: no agent starts below the minimum free (flotilla.agents.minFreeMemoryMB)"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "waitFor": ".machine-notice:has-text(\"aren't excluded\")"
+    },
+    {
+      "highlight": ".machine-notice:has-text(\"aren't excluded\")"
+    },
+    {
+      "caption": "The worktrees folder isn't excluded from file watching, with Hide Worktrees"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "waitFor": ".machine-notice:has-text(\"slow drive\")"
+    },
+    {
+      "highlight": ".machine-notice:has-text(\"slow drive\")"
+    },
+    {
+      "caption": "The repository is on a slow drive, with How to Fix"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ".machine-notice:has-text(\"aren't excluded\") button:has-text(\"Hide Worktrees\")"
+    },
+    {
+      "caption": "Hide Worktrees sets the exclusion, and its notice goes"
+    },
+    {
+      "click": ".machine-notice:has-text(\"aren't excluded\") button:has-text(\"Hide Worktrees\")"
+    },
+    {
+      "waitFor": ".backlog:not(:has(.machine-notice:has-text(\"aren't excluded\")))"
+    },
+    {
+      "highlight": ".backlog"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
   ]
 }

@@ -83,6 +83,10 @@ export function parseDemo(text, name = 'demo') {
   if (demo.ciPasses !== undefined && typeof demo.ciPasses !== 'boolean') throw new Error(`${name}: "ciPasses" is true or false`);
   // The fake GitHub starts signed out (BL-245), for a demo of the sign-in prompts.
   if (demo.githubSignedOut !== undefined && typeof demo.githubSignedOut !== 'boolean') throw new Error(`${name}: "githubSignedOut" is true or false`);
+  // The repository reads as on a slow drive, and the worktrees folder isn't excluded from file watching (BL-293), for a
+  // demo of the Backlog's notices.
+  for (const key of ['slowStorage', 'worktreesNotExcluded'])
+    if (demo[key] !== undefined && typeof demo[key] !== 'boolean') throw new Error(`${name}: "${key}" is true or false`);
   // The ticket a demo answers is put back as seeded before it plays (BL-257), for a demo that changes it.
   if (demo.resetsTicket !== undefined && typeof demo.resetsTicket !== 'string') throw new Error(`${name}: "resetsTicket" is a ticket's id`);
   // How old the seeded improvement reviews are (BL-177), for a demo where one is due.
@@ -103,6 +107,8 @@ export function parseDemo(text, name = 'demo') {
     runsOnPush: demo.runsOnPush === true,
     ciPasses: demo.ciPasses === true,
     githubSignedOut: demo.githubSignedOut === true,
+    ...(demo.slowStorage ? { slowStorage: true } : {}),
+    ...(demo.worktreesNotExcluded ? { worktreesNotExcluded: true } : {}),
     ...(demo.resetsTicket ? { resetsTicket: demo.resetsTicket } : {}),
     ...(days ? { reviewsDaysAgo: days } : {}),
     ...(inbox ? { inbox } : {}),
