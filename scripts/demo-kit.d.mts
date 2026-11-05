@@ -26,6 +26,7 @@ export function parseDemo(
   runsOnPush: boolean;
   ciPasses: boolean;
   githubSignedOut: boolean;
+  worktreesNotExcluded: boolean;
   resetsTicket?: string;
   reviewsDaysAgo?: number[];
   inbox?: Record<string, string>;

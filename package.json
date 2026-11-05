@@ -2299,11 +2299,6 @@
             "type": "boolean",
             "default": false,
             "markdownDescription": "For development only: the fake GitHub (`#flotilla.dev.githubApi#`) starts signed out, so pull requests and the CI/CD view ask you to sign in. Its **Sign In** signs it in until the window reloads."
-          },
-          "flotilla.dev.slowStorage": {
-            "type": "boolean",
-            "default": false,
-            "markdownDescription": "For development only: the repository reads as being on a slow drive (a 9p file system), so the Backlog shows its slow-storage notice. Read when the window opens."
           }
         }
       }

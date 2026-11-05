@@ -705,8 +705,7 @@ async function show(mode, demo, out, still, display) {
   prepareProfile(github.url, {
     ...demo.settings,
     ...(demo.githubSignedOut ? { 'flotilla.dev.githubSignedOut': true } : {}),
-    ...(demo.slowStorage ? { 'flotilla.dev.slowStorage': true } : {}),
-    // The playground's worktrees folder is watched, so the Backlog says so, with Hide Worktrees.
+    // The playground's worktrees folder is watched, so a notification says so, with Hide Worktrees.
     ...(demo.worktreesNotExcluded ? { 'files.watcherExclude': { '.worktrees/**': false } } : {}),
   });
   fs.mkdirSync(HOME_DIR, { recursive: true });

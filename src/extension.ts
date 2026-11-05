@@ -751,15 +751,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ctx.startWork = (item, ws) => reviews.startWork(item, ws, { byHand: true });
   sidebar.useAutopilot(autopilot);
   // A repository on a slow drive is said so once, and packed in the background when it has too many loose objects.
-  // flotilla.dev.slowStorage (BL-293): the repository reads as on a slow (9p) drive, so a demo shows the Backlog's notice.
-  const fakeSlow = vscode.workspace.getConfiguration('flotilla').get<boolean>('dev.slowStorage', false);
   const storage = new StorageMonitor({
     mainRoot: location.mainRoot,
     commonDir: location.commonDir,
     backlog,
     globalState: context.globalState,
     output,
-    ...(fakeSlow ? { mounts: () => [{ mountPoint: '/', fsType: '9p' }] } : {}),
   });
   context.subscriptions.push(storage);
   void storage.start();

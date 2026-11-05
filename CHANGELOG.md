@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **The Overview is gone**: the sidebar's tool strip goes Metrics, Backlog and Chats, and *Show Overview* is no more; the Backlog's cards, the Chats list and the worktree tabs show what it listed (a closed tab comes back with *Switch Active Worktree…*). Its warnings show at the top of the Backlog instead, each while it applies: the worktrees folder isn't excluded (*Hide Worktrees*), the repository is on a slow drive (*How to Fix*), or memory is too low for agents to start. The agents working, windows open and memory free are in the agent count's tooltip.
+- **The Overview is gone**: the sidebar's tool strip goes Metrics, Backlog and Chats, and *Show Overview* is no more; the Backlog's cards, the Chats list and the worktree tabs show what it listed (a closed tab comes back with *Switch Active Worktree…*). Its warnings are notifications now, each when it starts to apply: the worktrees folder isn't excluded (*Hide Worktrees*, or *Don't Show Again*), or memory falls too low for agents to start (at most once in 30 minutes); a slow drive keeps its notification with *How to Fix*. The agents working, windows open and memory free are in the agent count's tooltip.
 
 - **A ticket's Changes lead into its version control**: they say how big the change is and list its three biggest files, each opening its diff in the ticket's place (*Back to* brings the ticket back), with *View Version Control* for the rest (its changes, commits and CI under its card in the Backlog). The ticket's own file tree, inline diffs, Expand view, By commit and Open All Changes are gone. A report's link to a file the ticket changes opens its diff at the line, in place of the separate "diff" mark.
 

@@ -1,0 +1,80 @@
+{
+  "title": "The Overview is gone: its warnings are notifications",
+  "settings": {
+    "flotilla.agents.minFreeMemoryMB": 1000000
+  },
+  "worktreesNotExcluded": true,
+  "steps": [
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": "nav.tools"
+    },
+    {
+      "caption": "The tool strip: Metrics, Backlog (with Files, Search and Version Control under it), Chats. No Overview"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "click": "nav.tools [aria-label=\"Backlog\"]"
+    },
+    {
+      "highlight": ".backlog"
+    },
+    {
+      "caption": "The Backlog has no warnings of its own any more: they're notifications"
+    },
+    {
+      "wait": 4000
+    },
+    {
+      "click": "div.statusbar-item[aria-label=\"Notifications\"]"
+    },
+    {
+      "waitFor": ".notifications-center .notification-list-item:has-text(\"Low on memory\")",
+      "timeout": 30000
+    },
+    {
+      "highlight": ".notifications-center .notification-list-item:has-text(\"Low on memory\")"
+    },
+    {
+      "caption": "Low memory: no agent starts below the minimum free (flotilla.agents.minFreeMemoryMB)"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "waitFor": ".notifications-center .notification-list-item:has-text(\"aren't excluded\")",
+      "timeout": 30000
+    },
+    {
+      "highlight": ".notifications-center .notification-list-item:has-text(\"aren't excluded\")"
+    },
+    {
+      "caption": "The worktrees folder isn't excluded, with Hide Worktrees and Don't Show Again"
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "caption": "Hide Worktrees sets the exclusions, and its notification goes"
+    },
+    {
+      "click": ".notifications-center .notification-list-item:has-text(\"aren't excluded\") .monaco-button:has-text(\"Hide Worktrees\")"
+    },
+    {
+      "waitFor": ".monaco-workbench:not(:has(.notification-list-item:has-text(\"aren't excluded\")))"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "highlight": ""
+    },
+    {
+      "caption": ""
+    }
+  ]
+}
