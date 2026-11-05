@@ -255,6 +255,32 @@ describe('playground seed', () => {
     attached.dispose();
   });
 
+  it('seeds chats in main, BL-11 and BL-16 too, one in each state the Chats list shows (BL-286)', async () => {
+    const { dir } = seeded();
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+    cleanup.push(home);
+    seedChats(dir, home, now);
+    const read = async (rel: string) => {
+      const worktree = path.join(dir, rel);
+      const gitDir = path.resolve(worktree, git(worktree, 'rev-parse', '--git-dir'));
+      const transcripts = await readTranscripts(worktree, home);
+      return mergeChats(await readChatRecords(gitDir), transcripts, await readUnlinked(gitDir), { now, openHours: 12, staleMinutes: 10 });
+    };
+    const main = await read('.');
+    expect(main.map((c) => [c.title, c.state, c.open])).toEqual(
+      expect.arrayContaining([
+        ['Why is the greeting test slow?', 'done', true],
+        ['Rename the playground scripts', 'ended', false],
+        ['Lyra-5 · BL-11', 'done', true],
+      ]),
+    );
+    const bl11 = await read('.worktrees/feature-BL-11-keep-the-filter-on-worktree-removal');
+    expect(bl11).toEqual([expect.objectContaining({ state: 'waiting-for-input', message: expect.stringContaining('permission') })]);
+    // Its turn ends after the window opens: a reply not seen yet.
+    const bl16 = await read('.worktrees/feature-BL-16-say-how-to-run-the-playground');
+    expect(bl16[0].updatedAt.getTime()).toBeGreaterThan(now.getTime());
+  });
+
   it("seeds chats in BL-3's worktree that read as an agent's, working, a panel chat, done, and a stale agent's", async () => {
     const { dir } = seeded();
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
@@ -267,7 +293,7 @@ describe('playground seed', () => {
       return { transcripts, chats };
     };
 
-    expect(seedChats(dir, home, now)).toHaveLength(3);
+    expect(seedChats(dir, home, now)).toHaveLength(8);
     const { transcripts, chats } = await read(now);
     const agent = chats.find((c) => c.title === 'Vega-2 · BL-3');
     expect(agent).toMatchObject({ state: 'working', open: true, agent: 'Vega-2', model: 'claude-opus-5-5' });
@@ -283,7 +309,7 @@ describe('playground seed', () => {
     // The agent goes on by one turn (its transcript grows), then has none left.
     const file = transcripts.find((t) => t.sessionId === agent?.id)!;
     const later = new Date(now.getTime() + 60_000);
-    const transcript = () => fs.readFileSync(path.join(home, 'projects', fs.readdirSync(path.join(home, 'projects'))[0]!, `${agent!.id}.jsonl`), 'utf8');
+    const transcript = () => fs.readFileSync(path.join(home, 'projects', worktree.replace(/[^a-zA-Z0-9]/g, '-'), `${agent!.id}.jsonl`), 'utf8');
     expect(transcriptMarkdown(transcript(), agent!.title)).toContain('Grep: Find where chats are saved');
     expect(transcriptMarkdown(transcript(), agent!.title)).not.toContain('Added chatOf');
     expect(appendAgentTurn(dir, home, later)).toBe(true);
@@ -297,8 +323,10 @@ describe('playground seed', () => {
     expect(appendAgentTurn(dir, home, later)).toBe(false);
     expect((await read(later)).chats.find((c) => c.id === file.sessionId)).toMatchObject({ state: 'working', open: true });
 
-    // Seeded again (the next demo), it starts over.
+    // Seeded again (the next demo), it starts over, linked again if a demo unlinked it.
+    fs.writeFileSync(path.join(gitDir, 'flotilla', 'unlinked.json'), JSON.stringify([agent!.id]));
     seedChats(dir, home, later);
+    expect((await readUnlinked(gitDir)).has(agent!.id)).toBe(false);
     expect(transcriptMarkdown(transcript(), agent!.title)).not.toContain('Added chatOf');
   });
 });
