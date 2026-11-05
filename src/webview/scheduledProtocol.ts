@@ -36,14 +36,14 @@ export interface ScheduledView {
   dir: string;
 }
 
-export type ScheduledOp = 'run' | 'report' | 'edit' | 'accept' | 'dismiss' | 'pause' | 'resume' | 'new' | 'folder' | 'ticket';
+export type ScheduledOp = 'run' | 'report' | 'edit' | 'accept' | 'dismiss' | 'pause' | 'resume' | 'new' | 'ticket';
 
 /** From the Scheduled lane. */
 export type ScheduledWebviewMessage =
   /** The tool is shown: send its view (and again as it changes, until it's closed). */
   | { type: 'scheduled' }
   | { type: 'scheduledClosed' }
-  /** report: one of its reports (day), else its newest. folder: the schedules folder, new: New Scheduled Task (no name). ticket: a ticket a run proposed (name: its id). */
+  /** report: one of its reports (day), else its newest. new: New Scheduled Task (no name). ticket: a ticket a run proposed (name: its id). */
   | { type: 'scheduledAction'; op: ScheduledOp; name?: string; day?: string };
 
 /** To the Scheduled lane. */

@@ -240,36 +240,47 @@ function TaskRow({ task }: { task: ScheduledTaskView }) {
   );
 }
 
+/** The lane open or folded (BL-285), kept while the view lives, as its rows are: it starts open. */
+let laneOpen = true;
+
 /**
  * The board's Scheduled lane (BL-283), after Discussions: a row per task in .flotilla/backlog/schedules/, proposed
  * ones first, each with what it does next and Run Now (or Accept / Dismiss); a row opens the task's card. Hidden with
- * no tasks.
+ * no tasks. Its header folds it (BL-285).
  */
 export function ScheduledLane({ view }: { view?: ScheduledView }) {
+  const [open, setOpenState] = useState(laneOpen);
   if (!view?.tasks.length) return null;
+  const setOpen = (on: boolean) => {
+    laneOpen = on;
+    setOpenState(on);
+  };
   const tasks = [...view.tasks].sort((a, b) => Number(!!b.proposed) - Number(!!a.proposed));
   return (
     <div class="group lane scheduled-lane">
-      <div class="row group-head">
+      <div class="row group-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span class="name">Scheduled</span>
         <button
           class="icon"
           title="New Scheduled Task: its name, when it runs and what its agent does"
           aria-label="New scheduled task"
-          onClick={() => act('new')}
+          onClick={(e) => {
+            e.stopPropagation();
+            act('new');
+          }}
         >
           <i class="codicon codicon-add" />
         </button>
-        <button class="icon" title={`Open the tasks' folder: ${view.dir}`} aria-label="Open the tasks' folder" onClick={() => act('folder')}>
-          <i class="codicon codicon-folder-opened" />
-        </button>
+        <i class={`codicon codicon-chevron-${open ? 'down' : 'right'} lane-chev`} aria-label={open ? 'Fold the Scheduled lane' : 'Unfold the Scheduled lane'} />
         <span class="badge">{tasks.length}</span>
       </div>
-      <div class="lane-body">
-        {tasks.map((t) => (
-          <TaskRow key={t.name} task={t} />
-        ))}
-      </div>
+      {open && (
+        <div class="lane-body">
+          {tasks.map((t) => (
+            <TaskRow key={t.name} task={t} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

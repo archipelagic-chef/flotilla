@@ -1,0 +1,29 @@
+{
+  "title": "The Scheduled lane folds from its header like the other lanes, its New Scheduled Task (+) at the header's right",
+  "steps": [
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".scheduled-lane .scheduled-item:has-text(\"Docs check\")" },
+    { "caption": "The Scheduled lane's header: its + sits at the right, beside the chevron and the count; no folder button" },
+    { "highlight": ".scheduled-lane .group-head" },
+    { "wait": 2500 },
+    { "caption": "A click on the header folds the lane to its one line, with its count" },
+    { "click": ".scheduled-lane .group-head .name" },
+    { "waitFor": ".scheduled-lane .lane-chev.codicon-chevron-right" },
+    { "highlight": ".scheduled-lane" },
+    { "wait": 2500 },
+    { "caption": "The lane stays folded after a visit to another tool, while the window is open" },
+    { "click": "[aria-label=\"Chats\"]" },
+    { "wait": 1000 },
+    { "click": "[aria-label=\"Backlog\"]" },
+    { "waitFor": ".scheduled-lane .lane-chev.codicon-chevron-right" },
+    { "highlight": ".scheduled-lane" },
+    { "wait": 2000 },
+    { "caption": "Another click unfolds it" },
+    { "click": ".scheduled-lane .group-head .name" },
+    { "waitFor": ".scheduled-lane .scheduled-item:has-text(\"Docs check\")" },
+    { "highlight": ".scheduled-lane" },
+    { "wait": 2500 },
+    { "highlight": "" },
+    { "caption": "" }
+  ]
+}
